@@ -1,0 +1,8 @@
+{
+  "entry": "client/dist/index.html",
+  "managedCronJobs": [],
+  "name": "Crewkat",
+  "platformVersion": 22,
+  "runtime": "typescript",
+  "slug": "tradesign"
+}

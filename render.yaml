@@ -1,0 +1,46 @@
+# Render Blueprint for the Crewkat standalone web service.
+#
+# Deploy via: Render dashboard -> New -> Blueprint -> connect the repo
+# containing this file. Nothing here is provisioned until Danny approves it
+# in the Render dashboard.
+#
+# Cost (as approved 2026-09-26): Starter web service ~$7/mo + 2 GB
+# persistent disk ~$0.50/mo.
+#
+# IMPORTANT: SQLite requires exactly one running instance. numInstances is
+# pinned to 1 below; do not scale this service horizontally.
+
+services:
+  - type: web
+    name: crewkat
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /healthz
+    disk:
+      name: crewkat-data
+      mountPath: /data
+      sizeGB: 2
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: NODE_ENV
+        value: production
+      # Secrets: entered by Danny in the Render dashboard (never committed).
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_PREMIUM_PRICE_ID
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Set to the public URL once known (temporary *.onrender.com URL first,
+      # then https://crewkat.com after the DNS cutover).
+      - key: CREWKAT_PUBLIC_URL
+        sync: false

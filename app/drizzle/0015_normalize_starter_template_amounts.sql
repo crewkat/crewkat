@@ -1,0 +1,1 @@
+UPDATE `quote_templates` SET `line_items_json` = replace(`line_items_json`, '"amount":""', '"amount":"0"') WHERE `is_starter` = 1;

@@ -1,0 +1,8 @@
+node_modules
+app/node_modules
+app/client/dist
+app/client/dist-cvm
+app/server/dist
+.git
+*.log
+.DS_Store
