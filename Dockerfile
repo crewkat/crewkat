@@ -9,20 +9,29 @@
 # variable is the supported switch for self-hosted builds; it only affects
 # this image build and never touches the live private web artifact.
 
-FROM oven/bun:1.3 AS build
-WORKDIR /build/app
+FROM oven/bun:1 AS build
+WORKDIR /build
 
-COPY app/package.json app/bun.lock ./
-COPY vendor/space-sdk.tgz ../vendor/space-sdk.tgz
+# Install dependencies first (cached layer). package.json references the
+# vendored SDK as file:../vendor/space-sdk.tgz, so the tarball must land at
+# /build/vendor/space-sdk.tgz. NOTE: a COPY destination containing "../"
+# proved unreliable on some builders (the tarball silently missed its target
+# and `bun install` failed) — stage everything with plain relative paths.
+COPY app/package.json app/bun.lock ./app/
+COPY vendor/space-sdk.tgz ./vendor/space-sdk.tgz
+WORKDIR /build/app
 RUN bun install --frozen-lockfile
 
-COPY app/ ./
+# Full source, then compile the bundles.
+WORKDIR /build
+COPY app/ ./app/
+WORKDIR /build/app
 RUN bun run build:server && bun run build:privileged
 RUN HATCH_SPACES_BUILD_DRIVER=1 bun run build:client
 
 # Runtime stage: Bun + poppler-utils (pdftoppm for PDF page previews),
 # the standalone harness, compiled bundles, and migrations.
-FROM oven/bun:1.3
+FROM oven/bun:1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends poppler-utils ca-certificates \
