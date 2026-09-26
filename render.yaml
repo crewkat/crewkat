@@ -15,7 +15,7 @@ services:
     name: crewkat
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: 0.5c-512mb # 0.5 CPU / 512 MB (Starter-equivalent); named plans like "starter" are no longer valid
     numInstances: 1
     healthCheckPath: /healthz
     disk:
