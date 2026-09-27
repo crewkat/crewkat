@@ -2566,7 +2566,7 @@ function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: (
     { title: "Entrada y salida del equipo", description: "Marca horas y ubicación GPS por trabajo", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
     { title: "Facturas recurrentes", description: "Programa la frecuencia y genera cada factura al vencer", screen: { name: "invoices" }, icon: toolIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
     { title: "Controles del dueño", description: "Administra equipo, reglas, bandeja y datos guardados", screen: { name: "admin" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Portal del cliente", description: "Acceso seguro del cliente y mensajes", comingSoon: "Próximamente — necesita cuentas seguras y alojamiento público en el lanzamiento.", icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
+    { title: "Portal del cliente", description: "Abre un trabajo → Portal del cliente para crear un enlace seguro para tu cliente", screen: { name: "jobs" }, icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
   ] : [
     { title: "Orders waiting on suppliers", description: "Compare bids, create orders, and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
     { title: "Supplier directory", description: "Save contacts and tax files", screen: { name: "expansion", tab: "suppliers" }, icon: toolIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
@@ -2581,7 +2581,7 @@ function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: (
     { title: "Crew clock-in/out", description: "Record time and GPS location by job", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
     { title: "Recurring invoices", description: "Set a schedule and generate each invoice when due", screen: { name: "invoices" }, icon: toolIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
     { title: "Admin controls", description: "Manage team, rules, inbox, and stored data", screen: { name: "admin" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Client portal", description: "Secure client access and messages", comingSoon: "Coming soon — needs secure accounts and public hosting at launch.", icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
+    { title: "Client portal", description: "Open a job → Client portal to create a secure link for your client", screen: { name: "jobs" }, icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
   ];
   const openTool = (tile: ToolTile) => {
     if (tile.comingSoon) setSoon(tile);
