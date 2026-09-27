@@ -5502,13 +5502,13 @@ function FontPicker({
   );
 }
 function financialTotals(
-  items: Array<{ amount: string }>,
+  items: Array<{ amount: string; quantity?: number; discount?: string }> ,
   discountType: AdjustmentType,
   discountValue: string,
   taxType: AdjustmentType,
   taxValue: string,
 ) {
-  const subtotal = items.reduce((sum, item) => sum + money(item.amount), 0);
+  const subtotal = items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
   const discountRaw = Math.max(0, money(discountValue));
   const discount = Math.min(
     subtotal,
@@ -5585,7 +5585,8 @@ type FinancialDocument = {
   jobAddress: string;
   shippingAddress?: string;
   jobType: string;
-  lineItems: Array<{ description: string; amount: string }>;
+  lineItems: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>;
+  invoiceNumber?: string;
   subtotal: string;
   discountType: AdjustmentType;
   discountValue: string;
@@ -5634,9 +5635,11 @@ async function buildFinancialPdf(
       : lang === "es"
         ? "FACTURA"
         : "INVOICE";
-  const docNumber = document.id
-    ? `${kind === "quote" ? "EST" : "INV"}${String(document.id).padStart(4, "0")}`
-    : "";
+  const docNumber = kind === "invoice" && document.invoiceNumber
+    ? document.invoiceNumber
+    : document.id
+      ? `${kind === "quote" ? "EST" : "INV"}${String(document.id).padStart(4, "0")}`
+      : "";
   const font = document.font || settings?.defaultDocumentFont || "helvetica";
   const bandH = theme === "bold" ? 72 : 56;
   const inBand = theme === "bold" || theme === "classic";
@@ -5755,12 +5758,15 @@ async function buildFinancialPdf(
   doc.setFont(font, "normal");
   doc.setFontSize(9);
   for (const item of document.lineItems) {
-    const lines = doc.splitTextToSize(
-      item.description,
-      w - margin * 2 - 130,
-    ) as string[];
+    const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
+    const qty = item.quantity ?? 1;
+    const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
+    const detail = qty !== 1 || item.unit !== "none" || money(item.discount ?? "0") > 0
+      ? `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`
+      : itemLabel;
+    const lines = doc.splitTextToSize(detail, w - margin * 2 - 130) as string[];
     doc.text(lines, margin + 8, y);
-    doc.text(usd(money(item.amount)), w - margin - 8, y, { align: "right" });
+    doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
     y += Math.max(20, lines.length * 11 + 6);
   }
   y += 6;
@@ -6645,7 +6651,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: 
   const [saving, setSaving] = useState(false);
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
   const move = (index: number, direction: -1 | 1) => { const next = [...form.lineItems]; const target = index + direction; if (target < 0 || target >= next.length) return; const current = next[index]; const other = next[target]; if (!current || !other) return; next[index] = other; next[target] = current; setForm({...form,lineItems:next}); };
-  const save = async () => { const items=form.lineItems.filter((item)=>item.description.trim()); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  const save = async () => { const items=form.lineItems.filter((item)=>item.description.trim()).map((item)=>({description:item.description,amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const})); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   return <div className="document-overlay editor-overlay" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
     <header className="document-overlay-head"><button onClick={onCancel}><BackIcon />{t.close}</button><strong>{kind === "invoice" ? t.invoices : (lang === "es" ? "Cotización" : "Estimate")}</strong><button className="small-button" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
     <div className="financial-editor">
@@ -6843,432 +6849,90 @@ function InvoiceBuilder({
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
-  const growth = useQuery({
-    queryKey: ["growth-toolkit"],
-    queryFn: () => api.getGrowthToolkit({}),
-  });
-  const documentParameters = useQuery({
-    queryKey: ["document-parameters"],
-    queryFn: () => api.getDocumentParameters({}),
-  });
-  const jobQuery = useQuery({
-    queryKey: ["job", jobId],
-    enabled: Boolean(jobId),
-    queryFn: () => api.getJob({ id: jobId ?? 0 }),
-  });
-  const defaultApplied = useRef(false);
-  const taxApplied = useRef(false);
+  const jobQuery = useQuery({ queryKey: ["job", jobId], enabled: Boolean(jobId), queryFn: () => api.getJob({ id: jobId ?? 0 }) });
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const [activeSheet, setActiveSheet] = useState<"details" | "discount" | "tax" | null>(null);
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [taxEnabled, setTaxEnabled] = useState(false);
   const [form, setForm] = useState({
-    quoteId: null as number | null,
-    jobId: jobId ?? (null as number | null),
-    clientId: null as number | null,
-    clientName: "",
-    clientPhone: "",
-    clientEmail: "",
-    jobAddress: "",
-    shippingAddress: "",
-    jobType: "",
-    issueDate: new Date().toLocaleDateString("en-CA"),
-    dueDate: "",
-    status: "draft" as InvoiceStatus,
-    recurringFrequency: "none" as
-      "none" | "daily" | "weekly" | "monthly" | "quarterly",
-    nextDueDate: "",
-    recurringEndDate: "",
-    theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme,
-    font: (settings?.defaultDocumentFont ?? "helvetica") as DocumentFont,
-    accentColor: settings?.accentColor ?? "#1f5a4a",
-    showTaxLine: settings?.defaultShowTaxLine ?? true,
-    showDiscountLine: settings?.defaultShowDiscountLine ?? true,
-    showPaidLine: settings?.defaultShowPaidLine ?? true,
-    showPaymentTerms: settings?.defaultShowPaymentTerms ?? true,
-    showFooterNotes: settings?.defaultShowFooterNotes ?? true,
-    showLogo: settings?.defaultShowLogo ?? true,
-    showCompanyInfo: settings?.defaultShowCompanyInfo ?? true,
-    footnote: settings?.defaultFootnote ?? "",
-    discountType: "percent" as AdjustmentType,
-    discountValue: "0",
-    taxType: "percent" as AdjustmentType,
-    taxValue: "0",
-    lineItems: [{ description: "", amount: "" }],
+    invoiceNumber: "", quoteId: null as number | null, jobId: jobId ?? (null as number | null), clientId: null as number | null,
+    clientName: "", clientPhone: "", clientEmail: "", jobAddress: "", shippingAddress: "", jobType: "",
+    issueDate: new Date().toLocaleDateString("en-CA"), dueDate: "", status: "draft" as InvoiceStatus,
+    recurringFrequency: "none" as "none" | "daily" | "weekly" | "monthly" | "quarterly", nextDueDate: "", recurringEndDate: "",
+    theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme, font: (settings?.defaultDocumentFont ?? "helvetica") as DocumentFont,
+    accentColor: settings?.accentColor ?? "#1f5a4a", showTaxLine: settings?.defaultShowTaxLine ?? true,
+    showDiscountLine: settings?.defaultShowDiscountLine ?? true, showPaidLine: settings?.defaultShowPaidLine ?? true,
+    showPaymentTerms: settings?.defaultShowPaymentTerms ?? true, showFooterNotes: settings?.defaultShowFooterNotes ?? true,
+    showLogo: settings?.defaultShowLogo ?? true, showCompanyInfo: settings?.defaultShowCompanyInfo ?? true,
+    footnote: settings?.defaultFootnote ?? "", discountType: "percent" as AdjustmentType, discountValue: "0",
+    taxType: "percent" as AdjustmentType, taxValue: "0",
+    lineItems: [{ name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" as "none" | "days" | "hours" }],
   });
   useEffect(() => {
     const job = jobQuery.data?.job;
-    if (job && !form.clientName)
-      setForm((v) => ({
-        ...v,
-        clientId: job.clientId,
-        clientName: job.clientName,
-        clientPhone: job.clientPhone,
-        clientEmail: job.clientEmail,
-        jobAddress: job.jobAddress,
-        jobType: job.jobType,
-      }));
+    if (job && !form.clientName) setForm((v) => ({ ...v, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType }));
   }, [jobQuery.data, form.clientName]);
   useEffect(() => {
-    if (settings && !defaultApplied.current) {
-      setForm((v) => ({
-        ...v,
-        theme: settings.defaultQuoteTheme,
-        font: settings.defaultDocumentFont,
-        accentColor: settings.accentColor,
-        showTaxLine: settings.defaultShowTaxLine,
-        showDiscountLine: settings.defaultShowDiscountLine,
-        showPaidLine: settings.defaultShowPaidLine,
-        showPaymentTerms: settings.defaultShowPaymentTerms,
-        showFooterNotes: settings.defaultShowFooterNotes,
-        showLogo: settings.defaultShowLogo,
-        showCompanyInfo: settings.defaultShowCompanyInfo,
-        footnote: settings.defaultFootnote,
-      }));
-      defaultApplied.current = true;
+    if (!form.invoiceNumber && invoicesQuery.data) {
+      const highest = invoicesQuery.data.invoices.reduce((max, invoice) => Math.max(max, invoice.id), 0);
+      setForm((v) => ({ ...v, invoiceNumber: `INV-${String(highest + 1).padStart(4, "0")}` }));
     }
-  }, [settings]);
-  useEffect(() => {
-    if (documentParameters.data && !taxApplied.current) {
-      setForm((v) => ({
-        ...v,
-        taxValue: documentParameters.data.defaultTaxRate,
-      }));
-      taxApplied.current = true;
-    }
-  }, [documentParameters.data]);
-  const totals = financialTotals(
-    form.lineItems,
-    form.discountType,
-    form.discountValue,
-    form.taxType,
-    form.taxValue,
-  );
-  const [error, setError] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
+  }, [invoicesQuery.data, form.invoiceNumber]);
+  const totals = financialTotals(form.lineItems, form.discountType, discountEnabled ? form.discountValue : "0", form.taxType, taxEnabled ? form.taxValue : "0");
+  const closeSheet = () => { setSheetClosing(true); window.setTimeout(() => { setActiveSheet(null); setSheetClosing(false); }, 180); };
+  const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
   const save = useMutation({
-    mutationFn: () =>
-      api.saveInvoice({
-        ...form,
-        lineItems: form.lineItems.filter((i) => i.description.trim()),
-        subtotal: usd(totals.subtotal),
-        total: usd(totals.total),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["invoices"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      onBack();
-    },
+    mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); onBack(); },
     onError: () => setError(t.error),
   });
-  const preview: FinancialDocument = {
-    ...form,
-    subtotal: usd(totals.subtotal),
-    total: usd(totals.total),
-  };
-  return (
-    <main className="page form-page">
-      <PageHeader lang={lang} title={t.newInvoice} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
-      <form
-        className="job-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (
-            !form.clientName.trim() ||
-            !form.lineItems.some((i) => i.description.trim())
-          ) {
-            setError(t.required);
-            return;
-          }
-          save.mutate();
-        }}
-      >
-        <ClientPicker
-          lang={lang}
-          value={form.clientName}
-          onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
-          onPick={(c) =>
-            setForm({
-              ...form,
-              clientId: c.id,
-              clientName: c.name,
-              clientPhone: c.phone,
-              clientEmail: c.email,
-              jobAddress: c.address,
-            })
-          }
-        />
-        <label>
-          <span>{t.client} *</span>
-          <input
-            value={form.clientName}
-            onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-          />
-        </label>
-        <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
-        <div className="field-pair">
-          <label>
-            <span>{t.phone}</span>
-            <input
-              type="tel"
-              value={form.clientPhone}
-              onChange={(e) =>
-                setForm({ ...form, clientPhone: e.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t.email}</span>
-            <input
-              type="email"
-              value={form.clientEmail}
-              onChange={(e) =>
-                setForm({ ...form, clientEmail: e.target.value })
-              }
-            />
-          </label>
-        </div>
-        <label>
-          <span>{t.type}</span>
-          <input
-            value={form.jobType}
-            onChange={(e) => setForm({ ...form, jobType: e.target.value })}
-          />
-        </label>
-        {settings?.addJobSiteAddress !== false && <label>
-          <span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span>
-          <input
-            value={form.jobAddress}
-            onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}
-          />
-        </label>}
-        {settings?.addShippingAddress && <label>
-          <span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span>
-          <input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })} />
-        </label>}
-        </div></details>
-        <div className="field-pair">
-          <label>
-            <span>{t.issueDate}</span>
-            <input
-              type="date"
-              value={form.issueDate}
-              onChange={(e) => setForm({ ...form, issueDate: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{t.dueDate}</span>
-            <input
-              type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            />
-          </label>
-        </div>
-        <details className="action-details editor-advanced"><summary>{lang === "es" ? "Facturación avanzada" : "Advanced billing"}</summary><div className="compact-form">
-        <label>
-          <span>{t.invoiceStatus}</span>
-          <select
-            value={form.status}
-            onChange={(e) =>
-              setForm({ ...form, status: e.target.value as InvoiceStatus })
-            }
-          >
-            <option value="draft">{t.draft}</option>
-            <option value="sent">{t.sent}</option>
-            <option value="paid">{t.paid}</option>
-            <option value="overdue">{t.overdueStatus}</option>
-          </select>
-        </label>
-        <div className="field-pair">
-          <label>
-            <span>{t.recurring}</span>
-            <select
-              value={form.recurringFrequency}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  recurringFrequency: e.target.value as
-                    "none" | "daily" | "weekly" | "monthly" | "quarterly",
-                })
-              }
-            >
-              <option value="none">{t.none}</option>
-              <option value="daily">
-                {lang === "es" ? "Diaria" : "Daily"}
-              </option>
-              <option value="weekly">{t.weekly}</option>
-              <option value="monthly">{t.monthly}</option>
-              <option value="quarterly">
-                {lang === "es" ? "Trimestral" : "Quarterly"}
-              </option>
-            </select>
-          </label>
-          {form.recurringFrequency !== "none" && (
-            <label>
-              <span>{t.nextDue}</span>
-              <input
-                type="date"
-                value={form.nextDueDate}
-                onChange={(e) =>
-                  setForm({ ...form, nextDueDate: e.target.value })
-                }
-              />
-            </label>
-          )}
-        </div>
-        {form.recurringFrequency !== "none" && (
-          <label>
-            <span>
-              {lang === "es" ? "Termina (opcional)" : "Ends (optional)"}
-            </span>
-            <input
-              type="date"
-              value={form.recurringEndDate}
-              onChange={(e) =>
-                setForm({ ...form, recurringEndDate: e.target.value })
-              }
-            />
-          </label>
-        )}
-        </div></details>
-        <fieldset className="form-section">
-          <legend>{t.lineItems}</legend>
-          {(growth.data?.priceBook.length ?? 0) > 0 && (
-            <div className="quick-add">
-              <span>
-                {lang === "es"
-                  ? "Agregar de lista de precios"
-                  : "Add from price book"}
-              </span>
-              <div>
-                {growth.data?.priceBook.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        lineItems: [
-                          ...form.lineItems.filter(
-                            (line) => line.description || line.amount,
-                          ),
-                          {
-                            description:
-                              item.name +
-                              (item.description
-                                ? ` — ${item.description}`
-                                : ""),
-                            amount: item.unitPrice,
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    {item.name} · {usd(money(item.unitPrice))}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {form.lineItems.map((item, i) => (
-            <div className="line-item" key={i}>
-              <input
-                placeholder={t.item}
-                value={item.description}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    lineItems: form.lineItems.map((x, j) =>
-                      j === i ? { ...x, description: e.target.value } : x,
-                    ),
-                  })
-                }
-              />
-              <input
-                placeholder="$0.00"
-                inputMode="decimal"
-                value={item.amount}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    lineItems: form.lineItems.map((x, j) =>
-                      j === i ? { ...x, amount: e.target.value } : x,
-                    ),
-                  })
-                }
-              />
-            </div>
-          ))}
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() =>
-              setForm({
-                ...form,
-                lineItems: [...form.lineItems, { description: "", amount: "" }],
-              })
-            }
-          >
-            <PlusIcon />
-            {t.addLine}
-          </button>
-          <div className="field-pair">
-            <AdjustmentField
-              lang={lang}
-              label={t.discount}
-              type={form.discountType}
-              value={form.discountValue}
-              onType={(discountType) => setForm({ ...form, discountType })}
-              onValue={(discountValue) => setForm({ ...form, discountValue })}
-            />
-            <AdjustmentField
-              lang={lang}
-              label={t.tax}
-              type={form.taxType}
-              value={form.taxValue}
-              onType={(taxType) => setForm({ ...form, taxType })}
-              onValue={(taxValue) => setForm({ ...form, taxValue })}
-            />
-          </div>
-          <div className="calculation-summary">
-            <span>
-              {t.subtotal}
-              <strong>{usd(totals.subtotal)}</strong>
-            </span>
-            {totals.discount > 0 && (
-              <span>
-                {t.discount}
-                <strong>-{usd(totals.discount)}</strong>
-              </span>
-            )}
-            {totals.tax > 0 && (
-              <span>
-                {t.tax}
-                <strong>{usd(totals.tax)}</strong>
-              </span>
-            )}
-            <span className="grand-total">
-              {t.total}
-              <strong>{usd(totals.total)}</strong>
-            </span>
-          </div>
-        </fieldset>
-        <label>
-          <span>{t.footnote}</span>
-          <textarea
-            rows={3}
-            value={form.footnote}
-            onChange={(e) => setForm({ ...form, footnote: e.target.value })}
-          />
-        </label>
-        {error && <p className="status error">{error}</p>}
-        <button
-          className="primary-button sticky-submit"
-          disabled={save.isPending}
-        >
-          {save.isPending ? t.saving : t.saveInvoice}
-        </button>
-      </form>
-      {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
-    </main>
-  );
+  const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
+  const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
+  const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
+  return <main className="page form-page invoice-builder-page">
+    <PageHeader lang={lang} title={t.newInvoice} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
+    <form className="job-form invoice-fly-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
+      <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
+      <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
+      <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
+        <div className="field-pair"><label><span>{t.phone}</span><input type="tel" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}/></label><label><span>{t.email}</span><input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}/></label></div>
+        <label><span>{t.type}</span><input value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })}/></label>
+        {settings?.addJobSiteAddress !== false && <label><span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span><input value={form.jobAddress} onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}/></label>}
+        {settings?.addShippingAddress && <label><span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span><input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}/></label>}
+      </div></details>
+      <fieldset className="form-section invoice-items-section"><legend>{t.lineItems}</legend>
+        {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card" key={index}>
+          <div className="invoice-line-head"><strong>{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</strong>{form.lineItems.length > 1 && <button type="button" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
+          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} placeholder={lang === "es" ? "Trabajo o material" : "Work or material"}/></label>
+          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={2} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/></label>
+          <div className="invoice-line-grid"><label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={item.amount} onChange={(e) => updateItem(index, { amount: e.target.value })} placeholder="$0.00"/></label><label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={item.quantity} onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}/></label></div>
+          <div className="invoice-line-grid"><label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label></div>
+          <div className="invoice-line-total"><span>{lang === "es" ? "Total de partida" : "Item total"}</span><strong>{usd(lineTotal)}</strong></div>
+        </article>})}
+        <button className="secondary-button" type="button" onClick={() => setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] })}><PlusIcon />{t.addLine}</button>
+      </fieldset>
+      <section className="invoice-totals-block"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>
+        {!discountEnabled ? <button type="button" onClick={() => setActiveSheet("discount")}><span>＋ {t.discount}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("discount")}><span>{t.discount}</span><strong>-{usd(totals.discount)}</strong></button>}
+        {!taxEnabled ? <button type="button" onClick={() => setActiveSheet("tax")}><span>＋ {t.tax}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("tax")}><span>{t.tax}</span><strong>{usd(totals.tax)}</strong></button>}
+        <div className="invoice-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div>
+      </section>
+      <details className="action-details editor-advanced"><summary>{lang === "es" ? "Facturación avanzada" : "Advanced billing"}</summary><div className="compact-form">
+        <label><span>{t.invoiceStatus}</span><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as InvoiceStatus })}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select></label>
+        <label><span>{t.recurring}</span><select value={form.recurringFrequency} onChange={(e) => setForm({ ...form, recurringFrequency: e.target.value as typeof form.recurringFrequency })}><option value="none">{t.none}</option><option value="daily">{lang === "es" ? "Diaria" : "Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang === "es" ? "Trimestral" : "Quarterly"}</option></select></label>
+        {form.recurringFrequency !== "none" && <><label><span>{t.nextDue}</span><input type="date" value={form.nextDueDate} onChange={(e) => setForm({ ...form, nextDueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Termina (opcional)" : "Ends (optional)"}</span><input type="date" value={form.recurringEndDate} onChange={(e) => setForm({ ...form, recurringEndDate: e.target.value })}/></label></>}
+      </div></details>
+      <label><span>{t.footnote}</span><textarea rows={3} value={form.footnote} onChange={(e) => setForm({ ...form, footnote: e.target.value })}/></label>
+      {error && <p className="status error">{error}</p>}
+      <button className="primary-button sticky-submit" disabled={save.isPending}>{save.isPending ? t.saving : t.saveInvoice}</button>
+    </form>
+    {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={closeSheet}>×</button></header>
+      {activeSheet === "details" ? <div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Número de factura" : "Invoice number"}</span><input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}/><small>{lang === "es" ? "Asignado automáticamente; puedes cambiarlo." : "Assigned automatically — you can change it."}</small></label></div> : <div className="invoice-adjustment-sheet"><AdjustmentField lang={lang} label={activeSheet === "discount" ? t.discount : t.tax} type={activeSheet === "discount" ? form.discountType : form.taxType} value={activeSheet === "discount" ? form.discountValue : form.taxValue} onType={(value) => activeSheet === "discount" ? setForm({ ...form, discountType: value }) : setForm({ ...form, taxType: value })} onValue={(value) => activeSheet === "discount" ? setForm({ ...form, discountValue: value }) : setForm({ ...form, taxValue: value })}/><button type="button" className="primary-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(true) : setTaxEnabled(true); closeSheet(); }}>{lang === "es" ? "Agregar" : "Add"} {activeSheet === "discount" ? t.discount.toLowerCase() : t.tax.toLowerCase()}</button><button type="button" className="text-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(false) : setTaxEnabled(false); closeSheet(); }}>{lang === "es" ? "Quitar" : "Remove"}</button></div>}
+    </section></div>}
+    {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }}/>} 
+  </main>;
 }
 function InvoicePreview({
   lang,

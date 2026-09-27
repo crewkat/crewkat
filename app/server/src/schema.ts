@@ -129,6 +129,7 @@ export const quotes = sqliteTable("quotes", {
 export const invoices = sqliteTable("invoices", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceNumber: text("invoice_number").notNull().default(""),
   quoteId: integer("quote_id").references(() => quotes.id, { onDelete: "set null" }),
   jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }),
   clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),

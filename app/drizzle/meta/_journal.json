@@ -260,6 +260,13 @@
    "when": 1790668800001,
    "tag": "0037_add_client_tags",
    "breakpoints": true
+  },
+  {
+   "idx": 37,
+   "version": "6",
+   "when": 1790668800002,
+   "tag": "0038_add_invoice_numbers",
+   "breakpoints": true
   }
  ]
 }
