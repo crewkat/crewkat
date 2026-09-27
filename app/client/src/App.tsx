@@ -317,7 +317,7 @@ type Screen =
   | { name: "tools" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
-  | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" }
+  | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" }
   | { name: "jobs" }
   | { name: "new" }
   | { name: "expansion"; tab?: "losses" | "warranties" | "videos" | "crew" | "scanner" | "tax" | "suppliers" | "plans" }
@@ -2343,7 +2343,13 @@ type ToolTile = {
   icon: ReactNode;
   screen?: Screen;
   comingSoon?: string;
+  pro?: boolean;
 };
+
+function isProToolScreen(screen?: Screen) {
+  if (!screen) return false;
+  return screen.name === "proWorkspace" || screen.name === "businessTools" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
+}
 
 function ToolStatus({ lang, comingSoon }: { lang: Lang; comingSoon?: string }) {
   return (
@@ -2389,8 +2395,22 @@ function ComingSoonSheet({
   );
 }
 
+function UpgradeGateSheet({ lang, tool, onClose, onUpgrade }: { lang: Lang; tool: ToolTile; onClose: () => void; onUpgrade: () => void }) {
+  return <div className="client-sheet-backdrop" role="presentation" onClick={onClose}>
+    <section className="client-sheet pro-gate-sheet" role="dialog" aria-modal="true" aria-labelledby="pro-gate-title" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" />
+      <header><div><span className="pro-header-badge">PRO</span><h2 id="pro-gate-title">{tool.title}</h2></div><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button></header>
+      <p>{lang === "es" ? "Esta herramienta está incluida con Crewkat Premium." : "This tool is included with Crewkat Premium."}</p>
+      <button className="primary-button" type="button" onClick={onUpgrade}>{lang === "es" ? "Ver Premium" : "View Premium"}</button>
+    </section>
+  </div>;
+}
+
 function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
   const [soon, setSoon] = useState<ToolTile | null>(null);
+  const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
   const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
   const estimating: ToolTile[] = lang === "es" ? [
     { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
@@ -2400,6 +2420,10 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Medidas", description: "Suma áreas y estima pintura", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
     { title: "Concreto", description: "Yardas cúbicas y bolsas", screen: { name: "toolbox", tab: "yards" }, icon: toolIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
     { title: "Madera", description: "Calcula pies tabla", screen: { name: "toolbox", tab: "board" }, icon: toolIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
+    { title: "Paneles de yeso", description: "Hojas, tornillos y compuesto", screen: { name: "toolbox", tab: "drywall" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
+    { title: "Techos", description: "Cuadrados, desperdicio y paquetes", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
+    { title: "Cajas de loseta", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
+    { title: "Margen y recargo", description: "Convierte costo, margen y recargo", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
   ] : [
     { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
     { title: "Material guide", description: "Check common sizes and references", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
@@ -2408,6 +2432,10 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Measurements", description: "Add areas and estimate paint", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
     { title: "Concrete", description: "Cubic yards and bag counts", screen: { name: "toolbox", tab: "yards" }, icon: toolIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
     { title: "Lumber", description: "Calculate board feet", screen: { name: "toolbox", tab: "board" }, icon: toolIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
+    { title: "Drywall sheets", description: "Sheets, screws, and compound", screen: { name: "toolbox", tab: "drywall" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
+    { title: "Roofing squares", description: "Squares, waste, and bundles", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
+    { title: "Tile boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
+    { title: "Markup & margin", description: "Convert cost, margin, and markup", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
   ];
   const office: ToolTile[] = lang === "es" ? [
     { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
@@ -2448,7 +2476,8 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Crew hours", description: "Review saved hours by crew member", screen: { name: "expansion", tab: "crew" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
   ];
   const openTool = (tile: ToolTile) => {
-    if (tile.comingSoon) setSoon(tile);
+    if (!isPremium && (tile.pro || isProToolScreen(tile.screen))) setLockedTool(tile);
+    else if (tile.comingSoon) setSoon(tile);
     else if (tile.screen) setScreen(tile.screen);
   };
   const section = (title: string, tiles: ToolTile[]) => (
@@ -2457,7 +2486,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
       <div className="tool-directory">
         {tiles.map((tile) => (
           <button key={tile.title} type="button" onClick={() => openTool(tile)}>
-            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
+            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span><span className="tool-row-end">{!isPremium && (tile.pro || isProToolScreen(tile.screen)) && <b className="pro-row-badge">PRO</b>}{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
           </button>
         ))}
       </div>
@@ -2471,13 +2500,25 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
         <span><strong>{lang === "es" ? "Herramientas Pro" : "Pro Tools"}</strong><small>{lang === "es" ? "Operaciones avanzadas, equipo, seguridad y control." : "Advanced operations, equipment, safety, and control."}</small></span>
         <BackIcon />
       </button>
-      <div className="tools-featured-panels"><CrewClockPanel lang={lang} /><BookingLinkPanel lang={lang} /></div>
+      <div className="tools-featured-panels">
+        {isPremium ? <CrewClockPanel lang={lang} /> : <ProFeatureCard title={lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock"} description={lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job."} onClick={() => setLockedTool({ title: lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock", description: "", icon: null, pro: true })} />}
+        {isPremium ? <BookingLinkPanel lang={lang} /> : <ProFeatureCard title={lang === "es" ? "Formulario público de estimado" : "Public estimate form"} description={lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website."} onClick={() => setLockedTool({ title: lang === "es" ? "Formulario público de estimado" : "Public estimate form", description: "", icon: null, pro: true })} />}
+      </div>
       {section(lang === "es" ? "Herramientas para estimar" : "Estimating toolbox", estimating)}
       {section(lang === "es" ? "Negocio y oficina" : "Business & office", office)}
       {section(lang === "es" ? "Operaciones" : "Operations", operations)}
       {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
+      {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
     </main>
   );
+}
+
+function ProFeatureCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
+  return <button type="button" className="pro-feature-card" onClick={onClick}>
+    <span className="tool-tile-icon"><Icon><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon></span>
+    <span><strong>{title}</strong><small>{description}</small></span>
+    <b className="pro-row-badge">PRO</b>
+  </button>;
 }
 
 function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
@@ -2713,137 +2754,71 @@ function JobFields({
   lang,
   form,
   setForm,
+  hideClientFields = false,
+  onOpenDates,
 }: {
   lang: Lang;
   form: ReturnType<typeof emptyJob>;
   setForm: (v: ReturnType<typeof emptyJob>) => void;
+  hideClientFields?: boolean;
+  onOpenDates?: () => void;
 }) {
   const t = copy[lang];
   return (
     <>
-      <label>
-        <span>{t.client} *</span>
-        <input
-          value={form.clientName}
-          onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-          aria-label={t.client}
-        />
-      </label>
-      <label>
-        <span>{t.phone}</span>
-        <input
-          type="tel"
-          value={form.clientPhone}
-          onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}
-          aria-label={t.phone}
-        />
-      </label>
-      <label>
-        <span>{t.email}</span>
-        <input
-          type="email"
-          value={form.clientEmail}
-          onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}
-          aria-label={t.email}
-        />
-      </label>
+      {!hideClientFields && <>
+        <label>
+          <span>{t.client} *</span>
+          <input value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} aria-label={t.client} />
+        </label>
+        <label>
+          <span>{t.phone}</span>
+          <input type="tel" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })} aria-label={t.phone} />
+        </label>
+        <label>
+          <span>{t.email}</span>
+          <input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })} aria-label={t.email} />
+        </label>
+      </>}
       <label>
         <span>{t.address} *</span>
-        <input
-          value={form.jobAddress}
-          onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}
-          aria-label={t.address}
-        />
+        <input value={form.jobAddress} onChange={(e) => setForm({ ...form, jobAddress: e.target.value })} aria-label={t.address} />
       </label>
       <label>
         <span>{t.type} *</span>
-        <input
-          value={form.jobType}
-          onChange={(e) => setForm({ ...form, jobType: e.target.value })}
-          aria-label={t.type}
-        />
+        <input value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })} aria-label={t.type} />
       </label>
-      <div className="field-pair">
-        <label>
-          <span>{t.date}</span>
-          <input
-            type="date"
-            value={form.jobDate}
-            onChange={(e) => setForm({ ...form, jobDate: e.target.value })}
-            aria-label={t.date}
-          />
-        </label>
-        <label>
-          <span>{t.appointment}</span>
-          <input
-            type="datetime-local"
-            value={form.appointmentAt}
-            onChange={(e) =>
-              setForm({ ...form, appointmentAt: e.target.value })
-            }
-            aria-label={t.appointment}
-          />
-        </label>
-      </div>
+      {onOpenDates ? <button className="job-plus-row" type="button" onClick={onOpenDates}>
+        <span><b>＋</b><span><strong>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</strong><small>{[form.jobDate ? formatDate(form.jobDate, lang) : "", form.appointmentAt ? new Date(form.appointmentAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }) : ""].filter(Boolean).join(" · ") || (lang === "es" ? "Agregar horario" : "Add schedule")}</small></span></span><BackIcon />
+      </button> : <div className="field-pair">
+        <label><span>{t.date}</span><input type="date" value={form.jobDate} onChange={(e) => setForm({ ...form, jobDate: e.target.value })} aria-label={t.date} /></label>
+        <label><span>{t.appointment}</span><input type="datetime-local" value={form.appointmentAt} onChange={(e) => setForm({ ...form, appointmentAt: e.target.value })} aria-label={t.appointment} /></label>
+      </div>}
       <label>
         <span>{t.notes}</span>
-        <textarea
-          rows={3}
-          value={form.notes}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          aria-label={t.notes}
-        />
+        <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} aria-label={t.notes} />
       </label>
-      <fieldset className="form-section">
-        <legend>{t.invoice}</legend>
+      <details className="action-details job-payment-details"><summary>{lang === "es" ? "Detalles de pago" : "Payment details"}</summary><div className="compact-form">
         <div className="field-pair">
-          <label>
-            <span>{t.amountDue}</span>
-            <input
-              inputMode="decimal"
-              value={form.amountDue}
-              onChange={(e) => setForm({ ...form, amountDue: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{t.dueDate}</span>
-            <input
-              type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            />
-          </label>
+          <label><span>{t.amountDue}</span><input inputMode="decimal" value={form.amountDue} onChange={(e) => setForm({ ...form, amountDue: e.target.value })} /></label>
+          <label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
         </div>
-        <label>
-          <span>{t.depositAmount}</span>
-          <input
-            inputMode="decimal"
-            value={form.depositAmount}
-            onChange={(e) =>
-              setForm({ ...form, depositAmount: e.target.value })
-            }
-          />
-        </label>
-        <label>
-          <span>{t.paymentNotes}</span>
-          <textarea
-            rows={2}
-            value={form.paymentNotes}
-            onChange={(e) => setForm({ ...form, paymentNotes: e.target.value })}
-          />
-        </label>
-      </fieldset>
+        <label><span>{t.depositAmount}</span><input inputMode="decimal" value={form.depositAmount} onChange={(e) => setForm({ ...form, depositAmount: e.target.value })} /></label>
+        <label><span>{t.paymentNotes}</span><textarea rows={2} value={form.paymentNotes} onChange={(e) => setForm({ ...form, paymentNotes: e.target.value })} /></label>
+      </div></details>
     </>
   );
 }
 function ClientPicker({
   lang,
   value,
+  selectedClient,
   onValueChange,
   onPick,
 }: {
   lang: Lang;
   value: string;
+  selectedClient?: { name: string; phone: string } | null;
   onValueChange: (value: string) => void;
   onPick: (client: Client) => void;
 }) {
@@ -2861,6 +2836,15 @@ function ClientPicker({
       .some((field) => field.toLocaleLowerCase(lang === "es" ? "es" : "en").includes(term));
   });
   const emptyText = lang === "es" ? "No hay clientes que coincidan" : "No matching clients";
+  if (selectedClient && !open) return (
+    <section className="client-picker selected">
+      <span className="client-picker-label">{t.chooseClient}</span>
+      <button type="button" className="selected-client-row" onClick={() => setOpen(true)}>
+        <span><strong>{selectedClient.name}</strong><small>{selectedClient.phone || (lang === "es" ? "Sin teléfono" : "No phone")}</small></span>
+        <b>{lang === "es" ? "Cambiar" : "Change"}</b>
+      </button>
+    </section>
+  );
   return (
     <section className={`client-picker${open ? " open" : ""}`}>
       <label>
@@ -2909,6 +2893,20 @@ function ClientPicker({
     </section>
   );
 }
+function JobDateSheet({ lang, jobDate, appointmentAt, onChange, onClose, closing = false }: { lang: Lang; jobDate: string; appointmentAt: string; onChange: (value: { jobDate: string; appointmentAt: string }) => void; onClose: () => void; closing?: boolean }) {
+  return <div className={`client-sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="client-sheet job-date-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Fecha y cita" : "Job date and appointment"}>
+      <div className="sheet-handle" />
+      <header><h2>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={onClose}>×</button></header>
+      <div className="compact-form">
+        <label><span>{copy[lang].date}</span><input type="date" value={jobDate} onChange={(event) => onChange({ jobDate: event.target.value, appointmentAt })} /></label>
+        <label><span>{copy[lang].appointment}</span><input type="datetime-local" value={appointmentAt} onChange={(event) => onChange({ jobDate, appointmentAt: event.target.value })} /></label>
+      </div>
+      <p className="sheet-note">{lang === "es" ? "Los cambios se guardan al cerrar." : "Changes save when you close."}</p>
+    </section>
+  </div>;
+}
+
 function JobFormScreen({
   lang,
   onBack,
@@ -2923,6 +2921,9 @@ function JobFormScreen({
     emptyJob(new Date().toLocaleDateString("en-CA")),
   );
   const [error, setError] = useState("");
+  const [dateSheetOpen, setDateSheetOpen] = useState(false);
+  const [dateSheetClosing, setDateSheetClosing] = useState(false);
+  const closeDateSheet = () => { setDateSheetClosing(true); window.setTimeout(() => { setDateSheetOpen(false); setDateSheetClosing(false); }, 180); };
   const create = useMutation({
     mutationFn: () => api.createJob(form),
     onSuccess: (v) => onCreated(v.id),
@@ -2947,6 +2948,7 @@ function JobFormScreen({
         <ClientPicker
           lang={lang}
           value={form.clientName}
+          selectedClient={form.clientId ? { name: form.clientName, phone: form.clientPhone } : null}
           onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
           onPick={(c) =>
             setForm({
@@ -2959,7 +2961,7 @@ function JobFormScreen({
             })
           }
         />
-        <JobFields lang={lang} form={form} setForm={setForm} />
+        <JobFields lang={lang} form={form} setForm={setForm} hideClientFields={Boolean(form.clientId)} onOpenDates={() => setDateSheetOpen(true)} />
         {error && <p className="status error">{error}</p>}
         <button
           className="primary-button sticky-submit"
@@ -2968,6 +2970,7 @@ function JobFormScreen({
           {create.isPending ? t.saving : t.create}
         </button>
       </form>
+      {dateSheetOpen && <JobDateSheet lang={lang} jobDate={form.jobDate} appointmentAt={form.appointmentAt} onChange={(value) => setForm({ ...form, ...value })} onClose={closeDateSheet} closing={dateSheetClosing} />}
     </main>
   );
 }
@@ -2992,6 +2995,11 @@ function JobDetail({
   const [shareBusy, setShareBusy] = useState(false);
   const [socialNotice, setSocialNotice] = useState("");
   const [socialNoticeError, setSocialNoticeError] = useState(false);
+  const [activeJobSheet, setActiveJobSheet] = useState<"client" | "dates" | "invoices" | "contracts" | "payment" | "deposit" | "address" | null>(null);
+  const [jobSheetClosing, setJobSheetClosing] = useState(false);
+  const [linkTab, setLinkTab] = useState<"new" | "existing">("new");
+  const [clientSearch, setClientSearch] = useState("");
+  const [detailDraft, setDetailDraft] = useState({ notes: "", jobDate: "", appointmentAt: "", depositAmount: "", paymentNotes: "" });
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
   const query = useQuery({
@@ -3006,11 +3014,16 @@ function JobDetail({
     queryKey: ["invoices"],
     queryFn: () => api.listInvoices({}),
   });
+  const clientsQuery = useQuery({ queryKey: ["clients", "job-picker"], queryFn: () => api.listClients({ search: "" }) });
+  const documentsQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const operationsQuery = useQuery({
     queryKey: ["job-operations", jobId],
     queryFn: () => api.getJobOperations({ jobId }),
   });
   const job = query.data?.job;
+  useEffect(() => {
+    if (job) setDetailDraft({ notes: job.notes, jobDate: job.jobDate, appointmentAt: job.appointmentAt, depositAmount: job.depositAmount, paymentNotes: job.paymentNotes });
+  }, [job?.id, job?.updatedAt]);
   const [completionNote, setCompletionNote] = useState("");
   const [completionError, setCompletionError] = useState("");
   const requirements = useMutation({
@@ -3035,6 +3048,23 @@ function JobDetail({
           : "Add a note explaining any missing required photos.",
       ),
   });
+  const refreshJob = async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ["job", jobId] }),
+      client.invalidateQueries({ queryKey: ["jobs"] }),
+      client.invalidateQueries({ queryKey: ["invoices"] }),
+      client.invalidateQueries({ queryKey: ["documents"] }),
+    ]);
+  };
+  const setJobClient = useMutation({ mutationFn: (clientId: number | null) => api.setJobClient({ jobId, clientId }), onSuccess: refreshJob });
+  const saveJobInfo = useMutation({ mutationFn: () => api.updateJobInfo({ jobId, ...detailDraft }), onSuccess: refreshJob });
+  const linkInvoice = useMutation({ mutationFn: ({ invoiceId, linkedJobId }: { invoiceId: number; linkedJobId: number | null }) => api.linkInvoiceToJob({ invoiceId, jobId: linkedJobId }), onSuccess: refreshJob });
+  const linkDocument = useMutation({ mutationFn: (documentId: number) => api.linkDocumentToJob({ documentId, jobId }), onSuccess: refreshJob });
+  const closeJobSheet = (save = false) => {
+    if (save && activeJobSheet && ["dates", "payment", "deposit"].includes(activeJobSheet)) saveJobInfo.mutate();
+    setJobSheetClosing(true);
+    window.setTimeout(() => { setActiveJobSheet(null); setJobSheetClosing(false); }, 180);
+  };
   const upload = useMutation({
     mutationFn: async ({
       file,
@@ -3175,7 +3205,7 @@ function JobDetail({
     <main className="page detail-page">
       <PageHeader
         lang={lang}
-        title={job.clientName}
+        title={job.jobType}
         onBack={onBack}
         actions={
           <button
@@ -3187,23 +3217,20 @@ function JobDetail({
           </button>
         }
       />
+      <section className="job-client-selector">
+        <span>{lang === "es" ? "Cliente" : "Client"}</span>
+        <button type="button" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }}>
+          <span><strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong><small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small></span><BackIcon />
+        </button>
+      </section>
       <section className="job-summary">
         <div>
           <p className="job-type">{job.jobType}</p>
-          <h2>{job.jobAddress}</h2>
+          <button type="button" className="job-address-button" onClick={() => setActiveJobSheet("address")}><h2>{job.jobAddress}</h2><small>{lang === "es" ? "Copiar o abrir en Maps" : "Copy or open in Maps"}</small></button>
           <p>{formatDate(job.jobDate, lang)}</p>
         </div>
-        <button className="small-button" onClick={() => setEditing(!editing)}>
-          {editing ? t.done : t.edit}
-        </button>
+        <button className="small-button" onClick={() => setEditing(!editing)}>{editing ? t.done : t.edit}</button>
       </section>
-      <nav className="record-jump-links" aria-label={lang === "es" ? "Información relacionada" : "Related records"}>
-        <button onClick={() => job.clientId ? setScreen({ name: "client", clientId: job.clientId }) : setScreen({ name: "clients" })}><strong>{job.clientName}</strong><small>{lang === "es" ? "Cliente" : "Client"}</small></button>
-        <button onClick={() => jobInvoices[0] ? setScreen({ name: "invoicePreview", invoiceId: jobInvoices[0].id }) : setScreen({ name: "invoiceNew", jobId })}><strong>{jobInvoices.length}</strong><small>{lang === "es" ? "Facturas" : "Invoices"}</small></button>
-        <button onClick={() => jobQuotes[0] ? setScreen({ name: "quotePreview", quoteId: jobQuotes[0].id }) : setScreen({ name: "quoteNew", clientId: job.clientId ?? undefined })}><strong>{jobQuotes.length}</strong><small>{lang === "es" ? "Presupuestos" : "Estimates"}</small></button>
-        <button onClick={() => document.querySelector('.job-accordion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><strong>{query.data.photos.length + documentCount}</strong><small>{lang === "es" ? "Fotos y documentos" : "Photos & documents"}</small></button>
-        <button onClick={() => setScreen({ name: "operations", tab: "calendar" })}><strong>{lang === "es" ? "Ver" : "View"}</strong><small>{lang === "es" ? "Calendario" : "Schedule"}</small></button>
-      </nav>
       {settings?.simpleMode !== true && operationsQuery.data && (
         <section className="profit-strip">
           <div>
@@ -3319,301 +3346,51 @@ function JobDetail({
           </>
         )}
       </section>)}
-      <section className="job-accordion" aria-label={t.fieldTools}>
-        <AccordionSection
-          title={t.photosGroup}
-          count={query.data.photos.length}
-          icon={<CameraIcon />}
-          defaultOpen
-        >
-          <div className="accordion-actions">
-            <button onClick={shareSocial} disabled={shareBusy}>
-              <ShareIcon />
-              <span>{shareBusy ? t.socialWait : t.social}</span>
-            </button>
-          </div>
-          {socialNotice && (
-            <p
-              className={`status social-notice${socialNoticeError ? " error" : ""}`}
-              role="status"
-            >
-              {socialNotice}
-            </p>
-          )}
+      <section className="job-accordion job-hub" aria-label={lang === "es" ? "Centro del trabajo" : "Job hub"}>
+        <AccordionSection title={lang === "es" ? "Facturas" : "Invoices"} count={jobInvoices.length} icon={<Icon><path d="M7 3h10v18l-2-1-3 1-3-1-2 1z"/><path d="M9 8h6M9 12h6M9 16h4"/></Icon>} defaultOpen>
+          <div className="job-section-heading"><p>{lang === "es" ? "Facturas vinculadas a este trabajo" : "Invoices linked to this job"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar factura" : "Add invoice"} onClick={() => { setLinkTab("new"); setActiveJobSheet("invoices"); }}>＋</button></div>
+          {jobInvoices.length ? <div className="job-linked-list">{jobInvoices.map((invoice) => <article key={invoice.id}><button type="button" onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{invoice.invoiceNumber}</strong><small>{usd(money(invoice.totalWithLateFee))} · {t[invoice.status]}</small></span><BackIcon /></button><button type="button" className="unlink-button" onClick={() => linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: null })}>{lang === "es" ? "Desvincular" : "Unlink"}</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay facturas vinculadas." : "No linked invoices yet."}</p>}
+          {jobQuotes.length > 0 && <div className="related-estimates"><strong>{lang === "es" ? "Presupuestos relacionados" : "Related estimates"}</strong>{jobQuotes.map((quote) => <button key={quote.id} type="button" onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}><span>#{quote.id} · {usd(money(quote.total))}</span><BackIcon /></button>)}</div>}
+        </AccordionSection>
+        <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} icon={<FileIcon />}>
+          <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
+          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: doc.kind === "contract" ? "contract" : "change" })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
+        </AccordionSection>
+        <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
+          <div className="job-value-row"><p>{job.paymentNotes || (lang === "es" ? "Sin notas de pago" : "No payment notes")}</p><button type="button" className="small-button" onClick={() => setActiveJobSheet("payment")}>{job.paymentNotes ? t.edit : (lang === "es" ? "Agregar" : "Add")}</button></div>
+        </AccordionSection>
+        <AccordionSection title={lang === "es" ? "Depósitos" : "Deposits"} count={job.depositAmount ? 1 : 0} icon={<Icon><path d="M4 7h16v12H4zM8 11h8M8 15h5"/></Icon>}>
+          <div className="job-value-row"><p><strong>{job.depositAmount ? usd(money(job.depositAmount)) : usd(0)}</strong></p><button type="button" className="small-button" onClick={() => setActiveJobSheet("deposit")}>{job.depositAmount ? t.edit : (lang === "es" ? "Registrar" : "Record")}</button></div>
+        </AccordionSection>
+        <AccordionSection title={lang === "es" ? "Fotos" : "Pictures"} count={query.data.photos.length} icon={<CameraIcon />}>
+          <div className="accordion-actions"><button onClick={shareSocial} disabled={shareBusy}><ShareIcon /><span>{shareBusy ? t.socialWait : t.social}</span></button></div>
+          {socialNotice && <p className={`status social-notice${socialNoticeError ? " error" : ""}`} role="status">{socialNotice}</p>}
           <div className="photo-workspace">
-            <div className="stage-tabs">
-              {(["before", "during", "after"] as const).map((s) => (
-                <button
-                  key={s}
-                  className={stage === s ? "active" : ""}
-                  onClick={() => setStage(s)}
-                >
-                  {t[s]}{" "}
-                  <span>
-                    {query.data.photos.filter((p) => p.stage === s).length}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="upload-row">
-              <button
-                className="camera-button"
-                onClick={() => camera.current?.click()}
-              >
-                <CameraIcon />
-                {t.camera}
-              </button>
-              <button
-                className="gallery-button"
-                onClick={() => gallery.current?.click()}
-              >
-                {t.gallery}
-              </button>
-              <input
-                className="sr-only"
-                ref={camera}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={files}
-              />
-              <input
-                className="sr-only"
-                ref={gallery}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={files}
-              />
-            </div>
-            <div className="photo-grid">
-              {query.data.photos
-                .filter((p) => p.stage === stage)
-                .map((p) => (
-                  <PhotoCard
-                    key={p.id}
-                    photo={p}
-                    lang={lang}
-                    jobId={jobId}
-                    onAnnotate={() =>
-                      setScreen({
-                        name: "tool",
-                        jobId,
-                        mode: "annotate",
-                        photoId: p.id,
-                      })
-                    }
-                  />
-                ))}
-            </div>
-            {query.data.photos.filter((p) => p.stage === stage).length ===
-              0 && (
-              <div className="stage-empty">
-                <CameraIcon />
-                <p>{t.noPhotos}</p>
-              </div>
-            )}
+            <div className="stage-tabs">{(["before", "during", "after"] as const).map((s) => <button key={s} className={stage === s ? "active" : ""} onClick={() => setStage(s)}>{t[s]} <span>{query.data.photos.filter((p) => p.stage === s).length}</span></button>)}</div>
+            <div className="upload-row"><button className="camera-button" onClick={() => camera.current?.click()}><CameraIcon />{t.camera}</button><button className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files}/><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files}/></div>
+            <div className="photo-grid">{query.data.photos.filter((p) => p.stage === stage).map((p) => <PhotoCard key={p.id} photo={p} lang={lang} jobId={jobId} onAnnotate={() => setScreen({ name: "tool", jobId, mode: "annotate", photoId: p.id })}/>)}</div>
+            {query.data.photos.filter((p) => p.stage === stage).length === 0 && <div className="stage-empty"><CameraIcon /><p>{t.noPhotos}</p></div>}
           </div>
         </AccordionSection>
-        <AccordionSection
-          title={t.documentsGroup}
-          count={documentCount}
-          icon={<FileIcon />}
-        >
-          <div className="tool-grid">
-            <ToolButton
-              label={t.proof}
-              onClick={() => setScreen({ name: "proof", jobId })}
-            />
-            <ToolButton
-              label={lang === "es" ? "Antes / después" : "Before / after"}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "beforeAfter" })
-              }
-            />
-            <ToolButton
-              label={t.contract}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "contract" })
-              }
-            />
-            <ToolButton
-              label={t.change}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}
-            />
-            <ToolButton
-              label={t.completionCertificate}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "completion" })
-              }
-            />
-          </div>
-          {query.data.documents.length > 0 && (
-            <div className="mini-list">
-              {query.data.documents.map((d) => (
-                <div key={d.id}>
-                  <span>
-                    <strong>{d.title}</strong>
-                    <small>
-                      {t.signed}{" "}
-                      {new Intl.DateTimeFormat(
-                        lang === "es" ? "es-US" : "en-US",
-                        { dateStyle: "medium" },
-                      ).format(new Date(d.signedAt))}
-                    </small>
-                  </span>
-                  <button
-                    onClick={() =>
-                      setScreen({
-                        name: "tool",
-                        jobId,
-                        mode: d.kind === "contract" ? "contract" : "change",
-                      })
-                    }
-                  >
-                    {t.viewDocument}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+        <AccordionSection title={lang === "es" ? "Otra información del trabajo" : "Other job info"} count={[job.notes, job.jobDate, job.appointmentAt].filter(Boolean).length} icon={<Icon><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></Icon>}>
+          <button className="job-plus-row detail-date-row" type="button" onClick={() => setActiveJobSheet("dates")}><span><b>＋</b><span><strong>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</strong><small>{formatDate(job.jobDate, lang)}{job.appointmentAt ? ` · ${new Date(job.appointmentAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></span></span><BackIcon /></button>
+          <label className="job-notes-editor"><span>{t.notes}</span><textarea rows={3} value={detailDraft.notes} onChange={(event) => setDetailDraft({ ...detailDraft, notes: event.target.value })}/></label>
+          <button className="secondary-button" type="button" disabled={saveJobInfo.isPending} onClick={() => saveJobInfo.mutate()}>{saveJobInfo.isPending ? t.saving : t.save}</button>
         </AccordionSection>
-        <AccordionSection
-          title={t.quotesInvoicesGroup}
-          count={jobQuotes.length + jobInvoices.length}
-          icon={
-            <Icon>
-              <path d="M7 3h10v18l-2-1-3 1-3-1-2 1z" />
-              <path d="M9 8h6M9 12h6M9 16h4" />
-            </Icon>
-          }
-        >
-          <div className="tool-grid">
-            <ToolButton
-              label={t.quoteBuilder}
-              onClick={() => setScreen({ name: "quotes" })}
-            />
-            <ToolButton
-              label={t.newInvoice}
-              onClick={() => setScreen({ name: "invoiceNew", jobId })}
-            />
-            <ToolButton
-              label={t.invoices}
-              onClick={() => setScreen({ name: "invoices" })}
-            />
-            <ToolButton
-              label={t.deposit}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "deposit" })
-              }
-            />
-          </div>
-          {(jobQuotes.length > 0 || jobInvoices.length > 0) && (
-            <div className="mini-list">
-              {jobQuotes.map((quote) => (
-                <div key={`quote-${quote.id}`}>
-                  <span>
-                    <strong>
-                      {t.quoteBuilder} #{quote.id}
-                    </strong>
-                    <small>{usd(money(quote.total))}</small>
-                  </span>
-                  <button
-                    onClick={() =>
-                      setScreen({ name: "quotePreview", quoteId: quote.id })
-                    }
-                  >
-                    {t.viewDocument}
-                  </button>
-                </div>
-              ))}
-              {jobInvoices.map((invoice) => (
-                <div key={`invoice-${invoice.id}`}>
-                  <span>
-                    <strong>
-                      {t.invoices} #{invoice.id}
-                    </strong>
-                    <small>
-                      {usd(money(invoice.totalWithLateFee))} ·{" "}
-                      {t[invoice.status]}
-                    </small>
-                  </span>
-                  <button
-                    onClick={() =>
-                      setScreen({
-                        name: "invoicePreview",
-                        invoiceId: invoice.id,
-                      })
-                    }
-                  >
-                    {t.viewDocument}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </AccordionSection>
-        <AccordionSection
-          title={t.clientUpdatesGroup}
-          count={query.data.progressUpdates.length}
-          icon={<ShareIcon />}
-        >
-          <div className="tool-grid">
-            <ToolButton
-              label={t.progress}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "progress" })
-              }
-            />
-            <ToolButton
-              label={t.texts}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}
-            />
-          </div>
-        </AccordionSection>
-        <AccordionSection
-          title={t.jobTrackingGroup}
-          count={trackingCount}
-          icon={<CheckIcon />}
-        >
-          <div className="tool-grid">
-            <ToolButton
-              label={t.timeTracking}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}
-            />
-            <ToolButton
-              label={t.receipts}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "receipts" })
-              }
-            />
-            <ToolButton
-              label={t.crewChecklist}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}
-            />
-            <ToolButton
-              label={lang === "es" ? "Subcontratistas" : "Subcontractors"}
-              onClick={() =>
-                setScreen({ name: "tool", jobId, mode: "subcontractors" })
-              }
-            />
-            <ToolButton
-              label={t.voiceNotes}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}
-            />
-            <ToolButton
-              label={t.punch}
-              onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}
-            />
-            <ToolButton
-              label={
-                lang === "es" ? "Operaciones del trabajo" : "Job operations"
-              }
-              onClick={() => setScreen({ name: "jobOps", jobId })}
-            />
-          </div>
+        <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} icon={<CheckIcon />}>
+          <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Operaciones del trabajo" : "Job operations"} onClick={() => setScreen({ name: "jobOps", jobId })}/></div>
         </AccordionSection>
       </section>
+      {activeJobSheet && <div className={`client-sheet-backdrop${jobSheetClosing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet)); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={activeJobSheet}>
+        <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={() => closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet))}>×</button></header>
+        {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
+        {activeJobSheet === "dates" && <div className="compact-form"><label><span>{t.date}</span><input type="date" value={detailDraft.jobDate} onChange={(event) => setDetailDraft({ ...detailDraft, jobDate: event.target.value })}/></label><label><span>{t.appointment}</span><input type="datetime-local" value={detailDraft.appointmentAt} onChange={(event) => setDetailDraft({ ...detailDraft, appointmentAt: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Los cambios se guardan al cerrar." : "Changes save when you close."}</p></div>}
+        {(activeJobSheet === "invoices" || activeJobSheet === "contracts") && <><div className="direction-toggle" role="tablist"><button type="button" className={linkTab === "new" ? "active" : ""} onClick={() => setLinkTab("new")}>{lang === "es" ? "Nuevo" : "New"}</button><button type="button" className={linkTab === "existing" ? "active" : ""} onClick={() => setLinkTab("existing")}>{lang === "es" ? "Existente" : "Existing"}</button></div>{linkTab === "new" ? <div className="sheet-new-actions">{activeJobSheet === "invoices" ? <button className="primary-button" type="button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>{lang === "es" ? "Crear factura para este trabajo" : "Create invoice for this job"}</button> : <><button className="primary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>{lang === "es" ? "Nuevo contrato" : "New contract"}</button><button className="secondary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>{lang === "es" ? "Nueva orden de cambio" : "New change order"}</button></>}</div> : <div className="sheet-record-list">{activeJobSheet === "invoices" ? (invoicesQuery.data?.invoices ?? []).filter((invoice) => invoice.jobId !== jobId).map((invoice) => <button type="button" key={invoice.id} onClick={() => { linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: jobId }); closeJobSheet(); }}><span><strong>{invoice.invoiceNumber} · {invoice.clientName}</strong><small>{usd(money(invoice.totalWithLateFee))}</small></span><PlusIcon/></button>) : (documentsQuery.data?.documents ?? []).filter((doc) => doc.jobId !== jobId).map((doc) => <button type="button" key={doc.id} onClick={() => { linkDocument.mutate(doc.id); closeJobSheet(); }}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><PlusIcon/></button>)}</div>}</>}
+        {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Los cambios se guardan al cerrar." : "Changes save when you close."}</p></div>}
+        {activeJobSheet === "deposit" && <div className="compact-form"><label><span>{t.depositAmount}</span><input inputMode="decimal" value={detailDraft.depositAmount} onChange={(event) => setDetailDraft({ ...detailDraft, depositAmount: event.target.value })} placeholder="$0.00"/></label><p className="sheet-note">{lang === "es" ? "El depósito se guarda al cerrar." : "The deposit saves when you close."}</p></div>}
+        {activeJobSheet === "address" && <div className="address-sheet-actions"><p>{job.jobAddress}</p><button type="button" onClick={() => { void copyText(job.jobAddress); closeJobSheet(); }}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang === "es" ? "Copiar dirección" : "Copy address"}</span></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.jobAddress)}`} target="_blank" rel="noreferrer"><Icon><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></Icon><span>{lang === "es" ? "Abrir en Maps" : "Open in Maps"}</span></a></div>}
+        {(setJobClient.isError || saveJobInfo.isError || linkInvoice.isError || linkDocument.isError) && <p className="status error">{t.error}</p>}
+      </section></div>}
     </main>
   );
 }
@@ -4201,7 +3978,6 @@ function SettingsScreen({
               </div>
             </SettingsAccordion>
           </>}
-          <h2 className="settings-group-title">{lang === "es" ? "Negocio" : "Business"}</h2>
           <SettingsAccordion
             title={lang === "es" ? "Información de la empresa" : "Company info"}
             icon={
@@ -4336,6 +4112,7 @@ function SettingsScreen({
             </label>
           </SettingsAccordion>
 
+          <h2 className="settings-group-title">{lang === "es" ? "Negocio" : "Business"}</h2>
           <SettingsAccordion
             title={lang === "es" ? "Opciones de pago" : "Payment options"}
             icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}
@@ -15277,7 +15054,43 @@ function BookingRequestScreen({ lang }: { lang: Lang }) {
 }
 
 type ToolboxTab =
-  "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board";
+  "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin";
+type ToolHistoryEntry = { id: number; value: string };
+
+function useToolHistory(key: ToolboxTab) {
+  const storageKey = `crewkat-tool-history-${key}`;
+  const [entries, setEntries] = useState<ToolHistoryEntry[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as ToolHistoryEntry[];
+      return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+    } catch { return []; }
+  });
+  const add = (value: string) => {
+    const next = [{ id: Date.now(), value }, ...entries.filter((entry) => entry.value !== value)].slice(0, 5);
+    setEntries(next);
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
+  };
+  return { entries, add };
+}
+
+function ResultHistory({ lang, tool, value }: { lang: Lang; tool: ToolboxTab; value: string }) {
+  const { entries, add } = useToolHistory(tool);
+  const [copied, setCopied] = useState<number | null>(null);
+  const copyResult = async (entry: ToolHistoryEntry) => {
+    try { await navigator.clipboard.writeText(entry.value); }
+    catch {
+      const area = document.createElement("textarea"); area.value = entry.value; document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove();
+    }
+    setCopied(entry.id);
+    window.setTimeout(() => setCopied(null), 1300);
+  };
+  return <section className="result-history" aria-label={lang === "es" ? "Resultados recientes" : "Recent results"}>
+    <header><div><strong>{lang === "es" ? "Resultados recientes" : "Recent results"}</strong><small>{lang === "es" ? "Toca un resultado para copiarlo" : "Tap a result to copy it"}</small></div><button type="button" onClick={() => add(value)}>{lang === "es" ? "Guardar" : "Save result"}</button></header>
+    {entries.length === 0 ? <p>{lang === "es" ? "Guarda un cálculo para verlo aquí." : "Save a calculation to keep it here."}</p> : <div>{entries.map((entry) => <button type="button" key={entry.id} onClick={() => void copyResult(entry)}><span>{entry.value}</span><small>{copied === entry.id ? (lang === "es" ? "Copiado" : "Copied") : (lang === "es" ? "Copiar" : "Copy")}</small></button>)}</div>}
+  </section>;
+}
+
 function NumInput({
   label,
   value,
@@ -15304,32 +15117,38 @@ function NumInput({
   );
 }
 function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () => void; initialTab?: ToolboxTab }) {
-  const [tab] = useState<ToolboxTab>(initialTab ?? "loan");
+  const tab = initialTab ?? "loan";
   const labels: Record<ToolboxTab, string> = {
-    loan: lang === "es" ? "Préstamo" : "Loan",
-    materials: lang === "es" ? "Materiales" : "Materials",
+    loan: lang === "es" ? "Préstamo" : "Loan payment",
+    materials: lang === "es" ? "Materiales" : "Material guide",
     angle: lang === "es" ? "Ángulos" : "Angles",
-    convert: lang === "es" ? "Convertir" : "Convert",
-    area: lang === "es" ? "Área" : "Area",
-    yards: lang === "es" ? "Yardas³" : "Yards³",
-    board: lang === "es" ? "Pies tabla" : "Board feet",
+    convert: lang === "es" ? "Convertir" : "Unit converter",
+    area: lang === "es" ? "Medidas" : "Measurements",
+    yards: lang === "es" ? "Concreto" : "Concrete",
+    board: lang === "es" ? "Madera" : "Lumber",
+    drywall: lang === "es" ? "Paneles de yeso" : "Drywall sheets",
+    roofing: lang === "es" ? "Techos" : "Roofing squares",
+    tile: lang === "es" ? "Cajas de loseta" : "Tile boxes",
+    margin: lang === "es" ? "Margen y recargo" : "Markup & margin",
   };
-  return (
-    <main className="page toolbox-page">
-      <PageHeader
-        lang={lang}
-        title={labels[tab]}
-        onBack={onBack}
-      />
-      {tab === "loan" && <LoanCalculator lang={lang} />}{" "}
-      {tab === "materials" && <MaterialReference lang={lang} />}{" "}
-      {tab === "angle" && <AngleCalculator lang={lang} />}{" "}
-      {tab === "convert" && <UnitConverter lang={lang} />}{" "}
-      {tab === "area" && <AreaCalculator lang={lang} />}{" "}
-      {tab === "yards" && <YardsCalculator lang={lang} />}{" "}
-      {tab === "board" && <BoardFeetCalculator lang={lang} />}
-    </main>
-  );
+  return <div className="toolbox-modal-backdrop" role="presentation" onClick={onBack}>
+    <section className="toolbox-window" role="dialog" aria-modal="true" aria-labelledby="toolbox-title" onClick={(event) => event.stopPropagation()}>
+      <header className="toolbox-window-head"><div className="toolbox-head-icon"><Icon><path d="M4 19h16M6 16l4-5 3 2 5-7" /></Icon></div><div><small>{lang === "es" ? "Herramienta de estimación" : "Estimating tool"}</small><h1 id="toolbox-title">{labels[tab]}</h1></div><button type="button" aria-label={lang === "es" ? "Cerrar herramienta" : "Close tool"} onClick={onBack}>×</button></header>
+      <div className="toolbox-window-body">
+        {tab === "loan" && <LoanCalculator lang={lang} />}
+        {tab === "materials" && <MaterialReference lang={lang} />}
+        {tab === "angle" && <AngleCalculator lang={lang} />}
+        {tab === "convert" && <UnitConverter lang={lang} />}
+        {tab === "area" && <AreaCalculator lang={lang} />}
+        {tab === "yards" && <YardsCalculator lang={lang} />}
+        {tab === "board" && <BoardFeetCalculator lang={lang} />}
+        {tab === "drywall" && <DrywallCalculator lang={lang} />}
+        {tab === "roofing" && <RoofingCalculator lang={lang} />}
+        {tab === "tile" && <TileCalculator lang={lang} />}
+        {tab === "margin" && <MarginCalculator lang={lang} />}
+      </div>
+    </section>
+  </div>;
 }
 function LoanCalculator({ lang }: { lang: Lang }) {
   const [price, setPrice] = useState("10000"),
@@ -15429,6 +15248,7 @@ function LoanCalculator({ lang }: { lang: Lang }) {
           </tbody>
         </table>
       </div>
+      <ResultHistory lang={lang} tool="loan" value={`${lang === "es" ? "Pago mensual" : "Monthly payment"}: ${usd(payment)} · ${lang === "es" ? "Interés" : "Interest"}: ${usd(interest)}`} />
     </section>
   );
 }
@@ -15633,6 +15453,7 @@ function AngleCalculator({ lang }: { lang: Lang }) {
         </strong>
         <span>4/12 ≈ 18.4° · 6/12 ≈ 26.6° · 8/12 ≈ 33.7° · 12/12 = 45°</span>
       </div>
+      <ResultHistory lang={lang} tool="angle" value={`${lang === "es" ? "Pendiente" : "Pitch"}: ${x ? ((r / x) * 12).toFixed(2) : "0"}/12 · ${angle.toFixed(1)}°`} />
     </section>
   );
 }
@@ -15724,6 +15545,7 @@ function UnitConverter({ lang }: { lang: Lang }) {
           ft³ = 1 yd³ · 1 gal = 3.785 L · 1 lb = 0.4536 kg · 1 oz = 28.35 g
         </span>
       </div>
+      <ResultHistory lang={lang} tool="convert" value={`${value} ${from} = ${Number.isFinite(result) ? result.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "0"} ${to}`} />
     </section>
   );
 }
@@ -15871,6 +15693,7 @@ function AreaCalculator({ lang }: { lang: Lang }) {
           </p>
         </div>
       </details>
+      <ResultHistory lang={lang} tool="area" value={`${lang === "es" ? "Área total" : "Total area"}: ${total.toFixed(2)} ft² · ${lang === "es" ? "Pintura" : "Paint"}: ${Math.ceil(gallons)} gal`} />
     </section>
   );
 }
@@ -15938,6 +15761,7 @@ function YardsCalculator({ lang }: { lang: Lang }) {
         <strong>{Math.ceil(cfWaste / 0.45)} × 60 lb</strong> ·{" "}
         <strong>{Math.ceil(cfWaste / 0.6)} × 80 lb</strong>
       </p>
+      <ResultHistory lang={lang} tool="yards" value={`${withWaste.toFixed(2)} yd³ · ${Math.ceil(cfWaste / 0.6)} × 80 lb`} />
     </section>
   );
 }
@@ -16025,8 +15849,45 @@ function BoardFeetCalculator({ lang }: { lang: Lang }) {
         {lang === "es" ? "Total" : "Total"}:{" "}
         <strong>{rows.reduce((s, r) => s + r.bf, 0).toFixed(2)} BF</strong>
       </p>
+      <ResultHistory lang={lang} tool="board" value={`${Math.max(1, Math.round(money(qty)))} × ${t} × ${w} × ${l} = ${(each * Math.max(1, Math.round(money(qty)))).toFixed(2)} BF`} />
     </section>
   );
+}
+
+function DrywallCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("1000"), [waste, setWaste] = useState("10"), [sheetSize, setSheetSize] = useState("32");
+  const adjusted = money(area) * (1 + money(waste) / 100);
+  const sheets = Math.ceil(adjusted / Math.max(1, money(sheetSize)));
+  const screws = Math.ceil(sheets * 32);
+  const compound = Math.ceil(adjusted / 450);
+  const result = `${sheets} ${lang === "es" ? "hojas" : "sheets"} · ${screws} ${lang === "es" ? "tornillos" : "screws"} · ${compound} ${lang === "es" ? "cubetas de compuesto" : "buckets of compound"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Paneles de yeso" : "Drywall takeoff"}</h2><p>{lang === "es" ? "Estimado rápido para pared o techo." : "Quick wall or ceiling estimate."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área (ft²)" : "Area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/><label><span>{lang === "es" ? "Tamaño de hoja" : "Sheet size"}</span><select value={sheetSize} onChange={(e)=>setSheetSize(e.target.value)}><option value="32">4 × 8 · 32 ft²</option><option value="40">4 × 10 · 40 ft²</option><option value="48">4 × 12 · 48 ft²</option></select></label></div><div className="calculator-results"><div><span>{lang === "es" ? "Hojas" : "Sheets"}</span><strong>{sheets}</strong></div><div><span>{lang === "es" ? "Tornillos" : "Screws"}</span><strong>{screws}</strong></div><div><span>{lang === "es" ? "Compuesto" : "Compound"}</span><strong>{compound}</strong></div></div><ResultHistory lang={lang} tool="drywall" value={result}/></section>;
+}
+
+function RoofingCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("2400"), [waste, setWaste] = useState("12"), [bundlesPerSquare, setBundlesPerSquare] = useState("3");
+  const squares = money(area) * (1 + money(waste) / 100) / 100;
+  const bundles = Math.ceil(squares * Math.max(1, money(bundlesPerSquare)));
+  const result = `${squares.toFixed(2)} ${lang === "es" ? "cuadrados" : "squares"} · ${bundles} ${lang === "es" ? "paquetes" : "bundles"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Techos" : "Roofing takeoff"}</h2><p>{lang === "es" ? "Calcula cuadrados y paquetes de tejas." : "Calculate roofing squares and shingle bundles."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área del techo (ft²)" : "Roof area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/><NumInput label={lang === "es" ? "Paquetes por cuadrado" : "Bundles per square"} value={bundlesPerSquare} onChange={setBundlesPerSquare}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Cuadrados" : "Squares"}</span><strong>{squares.toFixed(2)}</strong></div><div><span>{lang === "es" ? "Paquetes" : "Bundles"}</span><strong>{bundles}</strong></div></div><ResultHistory lang={lang} tool="roofing" value={result}/></section>;
+}
+
+function TileCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("180"), [waste, setWaste] = useState("10"), [coverage, setCoverage] = useState("12");
+  const needed = money(area) * (1 + money(waste) / 100);
+  const boxes = Math.ceil(needed / Math.max(0.01, money(coverage)));
+  const result = `${needed.toFixed(1)} ft² · ${boxes} ${lang === "es" ? "cajas" : "boxes"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Cajas de loseta" : "Tile box estimator"}</h2><p>{lang === "es" ? "Calcula cobertura con desperdicio." : "Calculate coverage with waste."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área (ft²)" : "Area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/><NumInput label={lang === "es" ? "Cobertura por caja (ft²)" : "Coverage per box (ft²)"} value={coverage} onChange={setCoverage}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Cobertura necesaria" : "Coverage needed"}</span><strong>{needed.toFixed(1)} ft²</strong></div><div><span>{lang === "es" ? "Cajas" : "Boxes"}</span><strong>{boxes}</strong></div></div><ResultHistory lang={lang} tool="tile" value={result}/></section>;
+}
+
+function MarginCalculator({ lang }: { lang: Lang }) {
+  const [cost, setCost] = useState("1000"), [percent, setPercent] = useState("25"), [mode, setMode] = useState<"markup" | "margin">("markup");
+  const c = money(cost), p = Math.min(99.9, Math.max(0, money(percent))) / 100;
+  const price = mode === "margin" ? c / Math.max(0.001, 1 - p) : c * (1 + p);
+  const profit = price - c;
+  const actualMargin = price ? profit / price * 100 : 0;
+  const result = `${lang === "es" ? "Precio" : "Price"}: ${usd(price)} · ${lang === "es" ? "Ganancia" : "Profit"}: ${usd(profit)} · ${lang === "es" ? "Margen" : "Margin"}: ${actualMargin.toFixed(1)}%`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Margen y recargo" : "Markup & margin"}</h2><div className="segmented-control" role="group" aria-label={lang === "es" ? "Método" : "Method"}><button type="button" className={mode === "markup" ? "active" : ""} onClick={()=>setMode("markup")}>{lang === "es" ? "Recargo" : "Markup"}</button><button type="button" className={mode === "margin" ? "active" : ""} onClick={()=>setMode("margin")}>{lang === "es" ? "Margen" : "Margin"}</button></div><div className="field-pair"><NumInput label={lang === "es" ? "Costo" : "Cost"} value={cost} onChange={setCost}/><NumInput label={`${mode === "markup" ? (lang === "es" ? "Recargo" : "Markup") : (lang === "es" ? "Margen" : "Margin")} %`} value={percent} onChange={setPercent}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Precio de venta" : "Selling price"}</span><strong>{usd(price)}</strong></div><div><span>{lang === "es" ? "Ganancia" : "Profit"}</span><strong>{usd(profit)}</strong></div><div><span>{lang === "es" ? "Margen real" : "Actual margin"}</span><strong>{actualMargin.toFixed(1)}%</strong></div></div><ResultHistory lang={lang} tool="margin" value={result}/></section>;
 }
 
 function CrewClockPanel({ lang }: { lang: Lang }) {
