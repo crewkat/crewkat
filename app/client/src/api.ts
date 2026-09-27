@@ -76,7 +76,7 @@ function isAuthErrorBody(body: unknown): boolean {
 
 // Single-flight silent refresh: concurrent expired requests share one
 // refreshSession call, so a rotation is never mistaken for token theft.
-let lastEndpoint: RequestInfo | URL = "./actions";
+let lastEndpoint: RequestInfo | URL = "/actions";
 let refreshPromise: Promise<boolean> | null = null;
 export function trySilentRefresh(force = false): Promise<boolean> {
   if (!force) {
@@ -165,7 +165,7 @@ type PortalHardenedApi = Omit<BaseApi, "createPortalLink"> & {
 // The hosted Crewkat server has the hardened portal action contracts. They are
 // declared here while this artifact's client remains type-linked to its local
 // action module; requests still cross the normal typed actions boundary.
-export const api = createActionClient<typeof Actions>({ fetch: authenticatedFetch }) as PortalHardenedApi;
+export const api = createActionClient<typeof Actions>({ fetch: authenticatedFetch, endpoint: "/actions" }) as PortalHardenedApi;
 
 // Re-exported for convenience so client code can do
 //
