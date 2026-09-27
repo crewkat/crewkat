@@ -1133,8 +1133,6 @@ fieldset { padding: 0; border: 0; }
 .marketplace-page .app-header h1 { text-align:left; padding-left:4px; }
 .marketplace-page .header-actions { gap:0; }
 .marketplace-page .icon-button.active { color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,transparent); }
-.marketplace-intro { display:flex; align-items:flex-start; gap:9px; padding:12px 2px 4px; }
-.marketplace-intro p { margin:1px 0 0; color:var(--dim); font-size:12px; line-height:1.4; }
 .preview-badge { display:inline-flex; align-items:center; flex:0 0 auto; min-height:22px; padding:3px 7px; border-radius:5px; background:color-mix(in srgb,var(--green) 14%,var(--surface)); color:var(--green); font-size:10px; font-weight:900; letter-spacing:.05em; text-transform:uppercase; }
 .market-search,.market-location { display:grid; grid-template-columns:22px minmax(0,1fr) auto; align-items:center; gap:8px; min-height:48px; margin:10px 0; padding:0 12px; border:1px solid var(--border); border-radius:24px; background:var(--surface); color:var(--dim); }
 .market-search.emphasized { border-color:color-mix(in srgb,var(--accent) 65%,var(--border)); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 10%,transparent); }
@@ -1155,7 +1153,8 @@ fieldset { padding: 0; border: 0; }
 .market-card-main { width:100%; display:block; padding:0; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
 .market-card-photo { position:relative; aspect-ratio:1/1; overflow:hidden; border-radius:10px; background:var(--surface-2); }
 .market-card-photo img { width:100%; height:100%; display:block; object-fit:cover; }
-.market-card-photo > span { width:100%; height:100%; display:grid; place-items:center; color:var(--dim); }
+.market-card-placeholder { width:100%; height:100%; display:grid; place-items:center; background:color-mix(in srgb,var(--surface-2) 88%,#b9aa9b); color:var(--dim); }
+.market-card-placeholder > svg { width:46px; height:46px; stroke-width:1.6; }
 .market-card-photo b { position:absolute; right:7px; bottom:7px; padding:4px 6px; border-radius:5px; background:var(--accent); color:var(--accent-ink); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
 .market-promoted-badge { position:absolute; left:7px; top:7px; z-index:3; padding:4px 7px; border-radius:5px; background:#101827; color:#fff; font-size:9px; font-style:normal; font-weight:900; letter-spacing:.035em; text-transform:uppercase; box-shadow:0 1px 4px rgba(0,0,0,.24); }
 .market-card-copy { display:grid; gap:2px; padding-top:8px; }
