@@ -253,6 +253,13 @@
    "when": 1790668800000,
    "tag": "0036_portal_link_hardening",
    "breakpoints": true
+  },
+  {
+   "idx": 36,
+   "version": "6",
+   "when": 1790535273858,
+   "tag": "0037_add_client_tags",
+   "breakpoints": true
   }
  ]
 }

@@ -9,6 +9,7 @@ export const clients = sqliteTable("clients", {
   address: text("address").notNull().default(""),
   notes: text("notes").notNull().default(""),
   referredByClientId: integer("referred_by_client_id"),
+  tags: text("tags").notNull().default("[]"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

@@ -1,0 +1,202 @@
+// Phase 1 client list tests (migration 0037: tags, aggregates, sorting).
+// Scratch DB via secure-login-harness + pure clientListUtils unit tests.
+// Run: bun scripts/test-clients-phase1.mjs
+import { createTestEnv } from "./secure-login-harness.mjs";
+
+const results = [];
+const check = (name, ok, detail = "") => {
+  results.push({ name, ok });
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  if (!ok) process.exitCode = 1;
+};
+const expectThrow = async (name, fn, match) => {
+  try {
+    await fn();
+    check(name, false, "did not throw");
+  } catch (e) {
+    check(name, String(e.message).includes(match), `got: ${e.message.slice(0, 80)}`);
+  }
+};
+
+const env = await createTestEnv();
+const { Actions, libsql, withMeta } = env;
+const q = async (sql, args = []) => (await libsql.execute({ sql, args })).rows;
+
+// Mirror production: server.mjs parses args with action.request before the handler.
+const call = (action, args, extra = {}) => {
+  const parsed = action.request.safeParse(args ?? {});
+  if (!parsed.success) throw new Error("Invalid request for this action.");
+  return action.handler(withMeta({ ...extra }), parsed.data);
+};
+
+try {
+  // --- setup: migration 0037 applied -----------------------------------------
+  const cols = await q("PRAGMA table_info(clients)");
+  const tagsCol = cols.find((c) => c.name === "tags");
+  check("migration 0037: clients.tags column exists", !!tagsCol, JSON.stringify(tagsCol ?? null));
+  check(
+    "migration 0037: tags NOT NULL DEFAULT '[]'",
+    tagsCol?.notnull === 1 && tagsCol?.dflt_value === "'[]'",
+    `notnull=${tagsCol?.notnull} default=${tagsCol?.dflt_value}`,
+  );
+
+  await env.createVerifiedUser("owner@test.com", "correct-horse-123");
+  const login = await Actions.login.handler(
+    withMeta({ userAgent: "t", clientIp: "10.9.0.1" }),
+    { email: "owner@test.com", password: "correct-horse-123" },
+  );
+  const callOwn = (action, args, extra = {}) =>
+    call(action, { _sessionToken: login.sessionToken, ...args }, extra);
+
+  // --- saveClient persists + normalizes tags -----------------------------------
+  const c1 = await callOwn(Actions.saveClient, {
+    id: null, name: "Zoe Alvarez", phone: "", email: "", address: "", notes: "",
+    tags: [" VIP ", "vip", "Repeat"],
+  });
+  const row1 = (await q("SELECT tags FROM clients WHERE id = ?", [c1.id]))[0];
+  check(
+    "saveClient: tags normalized (trim, dedupe)",
+    row1.tags === JSON.stringify(["VIP", "Repeat"]),
+    row1.tags,
+  );
+  await expectThrow(
+    "saveClient: empty tag rejected by request validation",
+    () => callOwn(Actions.saveClient, { id: null, name: "Bad", phone: "", email: "", address: "", notes: "", tags: [""] }),
+    "Invalid request",
+  );
+
+  const c2 = await callOwn(Actions.saveClient, {
+    id: null, name: "amy chen", phone: "", email: "", address: "", notes: "",
+    tags: ["vip"],
+  });
+  const c3 = await callOwn(Actions.saveClient, {
+    id: null, name: "Miguel Torres", phone: "", email: "", address: "", notes: "",
+    tags: [],
+  });
+  const row3 = (await q("SELECT tags FROM clients WHERE id = ?", [c3.id]))[0];
+  check("saveClient: empty tags persist as []", row3.tags === "[]", row3.tags);
+
+  // Legacy rows (pre-0037) get the default.
+  await q("INSERT INTO clients (company_id, name, created_at, updated_at) VALUES (1, 'Legacy Lou', 1, 1)");
+  const legacy = (await q("SELECT tags FROM clients WHERE name = 'Legacy Lou'"))[0];
+  check("migration default: legacy rows read as []", legacy.tags === "[]", legacy.tags);
+
+  // --- aggregates from invoices/payments --------------------------------------
+  const now = Date.now();
+  const inv1 = Number((await q(
+    "INSERT INTO invoices (company_id, client_id, client_name, line_items_json, total, status, created_at, updated_at) VALUES (1, ?, 'Zoe Alvarez', '[]', '1875.00', 'sent', ?, ?) RETURNING id",
+    [c1.id, now, now],
+  ))[0].id);
+  const inv2 = Number((await q(
+    "INSERT INTO invoices (company_id, client_id, client_name, line_items_json, total, status, created_at, updated_at) VALUES (1, ?, 'Zoe Alvarez', '[]', '125.00', 'sent', ?, ?) RETURNING id",
+    [c1.id, now, now],
+  ))[0].id);
+  await q("INSERT INTO payments (company_id, invoice_id, amount, payment_date, method, created_at) VALUES (1, ?, '500.00', '2026-09-27', 'cash', ?)", [inv1, now]);
+
+  const list = await callOwn(Actions.listClients, { search: "" });
+  const byId = Object.fromEntries(list.clients.map((c) => [c.id, c]));
+  const zoe = byId[c1.id];
+  check("listClients: invoiceCount", zoe.invoiceCount === 2, String(zoe.invoiceCount));
+  check("listClients: totalInvoiced", zoe.totalInvoiced === 2000, String(zoe.totalInvoiced));
+  check("listClients: totalPaid", zoe.totalPaid === 500, String(zoe.totalPaid));
+  check("listClients: balanceDue", zoe.balanceDue === 1500, String(zoe.balanceDue));
+  check("listClients: paymentPercent", zoe.paymentPercent === 25, String(zoe.paymentPercent));
+  check("listClients: tags round-trip", JSON.stringify(zoe.tags) === JSON.stringify(["VIP", "Repeat"]), JSON.stringify(zoe.tags));
+  const miguel = byId[c3.id];
+  check("listClients: no invoices -> zeros", miguel.invoiceCount === 0 && miguel.balanceDue === 0 && miguel.paymentPercent === 0);
+  // Overpayment never yields a negative balance.
+  await q("INSERT INTO payments (company_id, invoice_id, amount, payment_date, method, created_at) VALUES (1, ?, '2000.00', '2026-09-27', 'cash', ?)", [inv2, now]);
+  const zoe2 = (await callOwn(Actions.listClients, { search: "" })).clients.find((c) => c.id === c1.id);
+  check("listClients: balanceDue floors at 0 on overpayment", zoe2.balanceDue === 0, String(zoe2.balanceDue));
+
+  // --- alphabetical default (case-insensitive) ---------------------------------
+  const names = (await callOwn(Actions.listClients, { search: "" })).clients.map((c) => c.name);
+  check(
+    "listClients: alphabetical case-insensitive default",
+    JSON.stringify(names) === JSON.stringify(["amy chen", "Legacy Lou", "Miguel Torres", "Zoe Alvarez"]),
+    JSON.stringify(names),
+  );
+
+  // --- search matches tags -----------------------------------------------------
+  const vipSearch = await callOwn(Actions.listClients, { search: "vip" });
+  check(
+    "listClients: search matches tags",
+    vipSearch.clients.length === 2 && vipSearch.clients.every((c) => c.tags.some((t) => t.toLowerCase() === "vip")),
+    vipSearch.clients.map((c) => c.name).join(","),
+  );
+
+  // --- getClient includes the new fields ---------------------------------------
+  const got = await callOwn(Actions.getClient, { id: c1.id });
+  check("getClient: tags", JSON.stringify(got.client.tags) === JSON.stringify(["VIP", "Repeat"]));
+  check("getClient: invoiceCount", got.client.invoiceCount === 2, String(got.client.invoiceCount));
+  check("getClient: balanceDue", got.client.balanceDue === 0, String(got.client.balanceDue));
+
+  // --- edit persists tags --------------------------------------------------------
+  await callOwn(Actions.saveClient, {
+    id: c1.id, name: "Zoe Alvarez", phone: "", email: "", address: "", notes: "",
+    tags: ["VIP", "Commercial"],
+  });
+  const edited = await callOwn(Actions.getClient, { id: c1.id });
+  check("saveClient edit: tags replaced", JSON.stringify(edited.client.tags) === JSON.stringify(["VIP", "Commercial"]));
+  await expectThrow(
+    "saveClient: >12 tags rejected",
+    () => callOwn(Actions.saveClient, { id: null, name: "X", phone: "", email: "", address: "", notes: "", tags: Array.from({ length: 13 }, (_, i) => `t${i}`) }),
+    "Invalid request",
+  );
+
+  // --- pure client list utils ----------------------------------------------------
+  const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+  const utils = await import(`${REPO}/app/client/src/clientListUtils.ts`);
+  check("initials: two words", utils.clientInitials("Danny Rivera") === "DR");
+  check("initials: one word", utils.clientInitials("Madonna") === "M");
+  check("initials: blank", utils.clientInitials("  ") === "?");
+  check("initials: extra spaces", utils.clientInitials("  Ana  María  López ") === "AL");
+  check("avatar color: stable per name", utils.avatarColorIndex("Danny Rivera") === utils.avatarColorIndex("danny rivera"));
+  check("avatar color: in range", utils.avatarColorIndex("Zoe") >= 0 && utils.avatarColorIndex("Zoe") < utils.AVATAR_COLORS.length);
+  check("usdShort: 1875", utils.usdShort(1875) === "$1.88K", utils.usdShort(1875));
+  check("usdShort: 2000", utils.usdShort(2000) === "$2K", utils.usdShort(2000));
+  check("usdShort: 25000", utils.usdShort(25000) === "$25K", utils.usdShort(25000));
+  check("usdShort: 999", utils.usdShort(999) === "$999", utils.usdShort(999));
+  check("usdShort: 1.5M", utils.usdShort(1500000) === "$1.5M", utils.usdShort(1500000));
+  check("usdShort: 0", utils.usdShort(0) === "$0", utils.usdShort(0));
+
+  const mk = (id, name, tags, invoiceCount, totalInvoiced, totalPaid, balanceDue, paymentPercent) => ({
+    id, name, tags, invoiceCount, totalInvoiced, totalPaid, balanceDue, paymentPercent,
+  });
+  const sample = [
+    mk(1, "Zoe Alvarez", ["VIP"], 2, 2000, 500, 1500, 25),
+    mk(2, "amy chen", ["vip", "Repeat"], 1, 500, 500, 0, 100),
+    mk(3, "Miguel Torres", [], 3, 9000, 1000, 8000, 11),
+  ];
+  const namesOf = (arr) => arr.map((c) => c.name);
+  check("sort: name asc", JSON.stringify(namesOf(utils.sortClientList(sample, "name", "asc"))) === JSON.stringify(["amy chen", "Miguel Torres", "Zoe Alvarez"]));
+  check("sort: name desc", JSON.stringify(namesOf(utils.sortClientList(sample, "name", "desc"))) === JSON.stringify(["Zoe Alvarez", "Miguel Torres", "amy chen"]));
+  check("sort: balanceDue desc", JSON.stringify(namesOf(utils.sortClientList(sample, "balanceDue", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: balanceDue asc", JSON.stringify(namesOf(utils.sortClientList(sample, "balanceDue", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
+  check("sort: totalPaid desc", JSON.stringify(namesOf(utils.sortClientList(sample, "totalPaid", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: invoiceCount desc", JSON.stringify(namesOf(utils.sortClientList(sample, "invoiceCount", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: invoiceCount asc", JSON.stringify(namesOf(utils.sortClientList(sample, "invoiceCount", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
+  check("sort: ties fall back to name", (() => {
+    const tied = [mk(1, "Zoe", [], 1, 0, 0, 0, 0), mk(2, "amy", [], 1, 0, 0, 0, 0)];
+    return JSON.stringify(namesOf(utils.sortClientList(tied, "balanceDue", "asc"))) === JSON.stringify(["amy", "Zoe"]);
+  })());
+  check("sort: does not mutate input", (() => {
+    const before = sample.map((c) => c.id);
+    utils.sortClientList(sample, "name", "desc");
+    return JSON.stringify(sample.map((c) => c.id)) === JSON.stringify(before);
+  })());
+  check("filter: OR across tags", JSON.stringify(namesOf(utils.filterClientsByTags(sample, ["repeat"]))) === JSON.stringify(["amy chen"]));
+  check("filter: case-insensitive", utils.filterClientsByTags(sample, ["VIP"]).length === 2);
+  check("filter: empty selection returns all", utils.filterClientsByTags(sample, []).length === 3);
+  check("filter: no match", utils.filterClientsByTags(sample, ["nope"]).length === 0);
+  const counts = utils.tagCounts(sample);
+  check("tagCounts: vip count 2", counts.find((x) => x.tag.toLowerCase() === "vip")?.count === 2, JSON.stringify(counts));
+  check("tagCounts: sorted by count desc", counts[0].count >= counts[counts.length - 1].count);
+  check("cleanTagValue: trims + collapses", utils.cleanTagValue("  big   spender ") === "big spender");
+  check("cleanTagValue: caps at 40", utils.cleanTagValue("x".repeat(50)).length === 40);
+
+  const passed = results.filter((r) => r.ok).length;
+  console.log(`\n${passed}/${results.length} checks passed`);
+} finally {
+  await env.cleanup();
+}

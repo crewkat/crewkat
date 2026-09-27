@@ -6397,6 +6397,7 @@ var clients = sqliteTable("clients", {
   address: text("address").notNull().default(""),
   notes: text("notes").notNull().default(""),
   referredByClientId: integer2("referred_by_client_id"),
+  tags: text("tags").notNull().default("[]"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -7335,7 +7336,7 @@ var documentFontSchema = _enum(["helvetica", "times", "courier", "palatino"]);
 var adjustmentTypeSchema = _enum(["percent", "fixed"]);
 var invoiceStatusSchema = _enum(["draft", "sent", "paid", "overdue"]);
 var documentKindSchema = _enum(["invoice", "quote", "contract", "change_order"]);
-var clientSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), notes: string2(), referredByClientId: number2().nullable(), referredByName: string2().nullable(), referralCount: number2(), jobCount: number2(), quoteCount: number2(), totalInvoiced: number2(), totalPaid: number2(), paymentPercent: number2(), createdAt: string2(), updatedAt: string2() });
+var clientSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), notes: string2(), tags: array(string2()), referredByClientId: number2().nullable(), referredByName: string2().nullable(), referralCount: number2(), jobCount: number2(), quoteCount: number2(), totalInvoiced: number2(), totalPaid: number2(), balanceDue: number2(), invoiceCount: number2(), paymentPercent: number2(), createdAt: string2(), updatedAt: string2() });
 var jobSchema = object({
   id: number2(),
   clientId: number2().nullable(),
@@ -7408,7 +7409,42 @@ var voiceNoteSchema = object({ id: number2(), jobId: number2(), title: string2()
 var certificateSchema = object({ id: number2(), jobId: number2(), completionDate: string2(), warrantyTerms: string2(), createdAt: string2(), updatedAt: string2() });
 var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), simpleMode: boolean2() });
 var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable() });
-var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), notes: string2().trim().max(2000), referredByClientId: number2().int().positive().nullable().default(null) });
+var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
+function normalizeClientTags(tags) {
+  if (!Array.isArray(tags))
+    return [];
+  const seen = new Set;
+  const out = [];
+  for (const raw of tags) {
+    if (typeof raw !== "string")
+      continue;
+    const tag = raw.trim();
+    if (!tag || tag.length > 40)
+      continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= 12)
+      break;
+  }
+  return out;
+}
+function parseClientTags(raw) {
+  if (Array.isArray(raw))
+    return normalizeClientTags(raw);
+  if (typeof raw !== "string" || !raw)
+    return [];
+  try {
+    return normalizeClientTags(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+function clientBalanceDue(totalInvoiced, totalPaid) {
+  return Math.max(0, Math.round((totalInvoiced - totalPaid) * 100) / 100);
+}
 var leadStageSchema = _enum(["new", "contacted", "quoted", "won", "lost"]);
 var appointmentSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), startsAt: string2(), notes: string2(), exteriorWork: boolean2() });
 var priceBookSchema = object({ id: number2(), name: string2(), description: string2(), unitPrice: string2(), createdAt: string2() });
@@ -8583,18 +8619,18 @@ If that was you, just sign in again. If not, we recommend changing your password
   }),
   listClients: defineAction({ request: object({ search: string2().max(120).default("") }), response: object({ clients: array(clientSchema) }), async handler(ctx, args) {
     const db = ctx.db();
-    const rows = await db.select().from(clients).orderBy(clients.name);
+    const rows = await db.select().from(clients).orderBy(sql`"clients"."name" COLLATE NOCASE ASC`);
     const jobs2 = await db.select({ clientId: jobs.clientId }).from(jobs);
     const quotes2 = await db.select({ clientId: quotes.clientId }).from(quotes);
     const invoices2 = await db.select({ id: invoices.id, clientId: invoices.clientId, total: invoices.total }).from(invoices);
     const payments2 = await db.select({ invoiceId: payments.invoiceId, amount: payments.amount }).from(payments);
     const term = args.search.trim().toLowerCase();
-    return { clients: rows.filter((c) => !term || [c.name, c.phone, c.email, c.address].some((v) => v.toLowerCase().includes(term))).map((c) => {
+    return { clients: rows.filter((c) => !term || [c.name, c.phone, c.email, c.address, parseClientTags(c.tags).join(" ")].some((v) => v.toLowerCase().includes(term))).map((c) => {
       const clientInvoices = invoices2.filter((invoice) => invoice.clientId === c.id);
       const invoiceIds = new Set(clientInvoices.map((invoice) => invoice.id));
       const totalInvoiced = clientInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
       const totalPaid = payments2.filter((payment) => invoiceIds.has(payment.invoiceId)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-      return { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.filter((j) => j.clientId === c.id).length, quoteCount: quotes2.filter((q) => q.clientId === c.id).length, totalInvoiced, totalPaid, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
+      return { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.filter((j) => j.clientId === c.id).length, quoteCount: quotes2.filter((q) => q.clientId === c.id).length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: clientInvoices.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
     }) };
   } }),
   getClient: defineAction({ request: object({ id: number2().int().positive() }), response: object({ client: clientSchema.nullable(), jobs: array(jobSchema), quotes: array(quoteSchema) }), async handler(ctx, args) {
@@ -8611,7 +8647,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const payments2 = await db.select({ invoiceId: payments.invoiceId, amount: payments.amount }).from(payments);
     const totalInvoiced = invoices2.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const totalPaid = payments2.filter((payment) => invoiceIds.has(payment.invoiceId)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    return { client: { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.length, quoteCount: quotes2.length, totalInvoiced, totalPaid, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() }, jobs: jobs2.map((j) => {
+    return { client: { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.length, quoteCount: quotes2.length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: invoices2.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() }, jobs: jobs2.map((j) => {
       const jobPhotos = photos2.filter((p) => p.jobId === j.id);
       return jobShape(j, jobPhotos.length, jobPhotos.map((p) => p.stage));
     }), quotes: quotes2.map(quoteShape) };
@@ -8619,12 +8655,13 @@ If that was you, just sign in again. If not, we recommend changing your password
   saveClient: defineAction({ request: clientInputSchema.extend({ id: number2().int().positive().nullable() }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const now = new Date;
+    const tags = JSON.stringify(normalizeClientTags(args.tags));
     if (args.id) {
-      await db.update(clients).set({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, referredByClientId: args.referredByClientId, updatedAt: now }).where(eq(clients.id, args.id));
+      await db.update(clients).set({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, tags, referredByClientId: args.referredByClientId, updatedAt: now }).where(eq(clients.id, args.id));
       ctx.invalidateQueries();
       return { id: args.id };
     }
-    const rows = await db.insert(clients).values({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, referredByClientId: args.referredByClientId, createdAt: now, updatedAt: now }).returning({ id: clients.id });
+    const rows = await db.insert(clients).values({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, tags, referredByClientId: args.referredByClientId, createdAt: now, updatedAt: now }).returning({ id: clients.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save client.");

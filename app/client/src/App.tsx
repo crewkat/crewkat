@@ -28,6 +28,7 @@ type ReactNode,
 type TouchEvent,
 } from "react";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { AVATAR_COLORS, avatarColorIndex, cleanTagValue, clientInitials, filterClientsByTags, sortClientList, tagCounts, usdShort, type ClientListItem, type ClientSortKey, type SortDirection } from "./clientListUtils";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
@@ -370,6 +371,24 @@ const copy = {
     newClient: "New client",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
+    sort: "Sort",
+    filters: "Filters",
+    sortClients: "Sort clients",
+    alphabetically: "Alphabetically",
+    balanceDue: "Balance due",
+    totalPaid: "Total paid",
+    totalInvoices: "Total invoices",
+    ascending: "Ascending",
+    descending: "Descending",
+    reset: "Reset",
+    apply: "Apply",
+    clearAll: "Clear all",
+    applyFilters: "Apply filters",
+    tags: "Tags",
+    addTag: "Add tag",
+    tagPlaceholder: "Type a tag and press Enter",
+    addClient: "Add client",
+    noTags: "No tags yet.",
     clientHistory: "Client history",
     deleteClient: "Delete client",
     jobsAndQuotes: "Jobs & quotes",
@@ -662,6 +681,24 @@ const copy = {
     newClient: "Nuevo cliente",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
+    sort: "Ordenar",
+    filters: "Filtros",
+    sortClients: "Ordenar clientes",
+    alphabetically: "Alfabéticamente",
+    balanceDue: "Saldo pendiente",
+    totalPaid: "Total pagado",
+    totalInvoices: "Total de facturas",
+    ascending: "Ascendente",
+    descending: "Descendente",
+    reset: "Restablecer",
+    apply: "Aplicar",
+    clearAll: "Borrar todo",
+    applyFilters: "Aplicar filtros",
+    tags: "Etiquetas",
+    addTag: "Agregar etiqueta",
+    tagPlaceholder: "Escribe una etiqueta y pulsa Enter",
+    addClient: "Agregar cliente",
+    noTags: "Aún no hay etiquetas.",
     clientHistory: "Historial del cliente",
     deleteClient: "Eliminar cliente",
     jobsAndQuotes: "Trabajos y cotizaciones",
@@ -955,6 +992,16 @@ const PlusIcon = () => (
 const BackIcon = () => (
   <Icon>
     <path d="m15 18-6-6 6-6" />
+  </Icon>
+);
+const SortIcon = () => (
+  <Icon>
+    <path d="M7 4v13M4 14l3 3 3-3M17 20V7M14 10l3-3 3 3" />
+  </Icon>
+);
+const FilterIcon = () => (
+  <Icon>
+    <path d="M4 5h16l-6 8v6l-4 2v-8z" />
   </Icon>
 );
 const CameraIcon = () => (
@@ -1595,6 +1642,7 @@ function CrewkatApplication() {
   if (!auth) throw new Error("Authentication context is unavailable.");
   const appShellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(appShellRef);
+  useKeyboardInset();
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
@@ -7301,6 +7349,166 @@ function InvoicePreview({
   </main>;
 }
 
+// --- Keyboard-aware offset ----------------------------------------------------
+// Keeps sticky bottom buttons above the on-screen keyboard even where
+// `interactive-widget=resizes-content` isn't honored: the visual viewport
+// shrinks when the keyboard opens, and --kb-offset tracks the difference.
+function useKeyboardInset() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--kb-offset", `${Math.round(kb)}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      window.removeEventListener("orientationchange", update);
+      document.documentElement.style.setProperty("--kb-offset", "0px");
+    };
+  }, []);
+}
+
+// --- Reusable animated bottom sheet -------------------------------------------
+function FloatingSheet({
+  open,
+  onClose,
+  label,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  const [render, setRender] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    if (open) {
+      if (timer.current) window.clearTimeout(timer.current);
+      setClosing(false);
+      setRender(true);
+    } else if (render && !closing) {
+      setClosing(true);
+      timer.current = window.setTimeout(() => {
+        setRender(false);
+        setClosing(false);
+      }, 200);
+    }
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    };
+  }, [open, render, closing]);
+  if (!render) return null;
+  return (
+    <div
+      className={`sheet-backdrop${closing ? " is-closing" : ""}`}
+      onClick={onClose}
+      role="presentation"
+    >
+      <section
+        className={`floating-sheet${closing ? " is-closing" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="floating-sheet-handle" aria-hidden="true" />
+        {children}
+      </section>
+    </div>
+  );
+}
+
+// --- Client avatar: colored initials, stable per client name ------------------
+function ClientAvatar({ name, size = 44 }: { name: string; size?: number }) {
+  const [bg, fg] = AVATAR_COLORS[avatarColorIndex(name)] ?? AVATAR_COLORS[0]!;
+  return (
+    <span
+      className="client-avatar"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: bg,
+        color: fg,
+        fontSize: Math.round(size * 0.38),
+      }}
+      aria-hidden="true"
+    >
+      {clientInitials(name)}
+    </span>
+  );
+}
+
+// --- Tag editor for the client form -------------------------------------------
+function TagsInput({
+  lang,
+  tags,
+  onChange,
+}: {
+  lang: Lang;
+  tags: string[];
+  onChange: (tags: string[]) => void;
+}) {
+  const t = copy[lang];
+  const [draft, setDraft] = useState("");
+  const commit = (raw: string) => {
+    const value = cleanTagValue(raw);
+    setDraft("");
+    if (!value) return;
+    if (tags.some((tag) => tag.toLowerCase() === value.toLowerCase())) return;
+    onChange([...tags, value].slice(0, 12));
+  };
+  return (
+    <label>
+      <span>{t.tags}</span>
+      <div className="tag-editor">
+        {tags.map((tag) => (
+          <span key={tag.toLowerCase()} className="tag-chip">
+            {tag}
+            <button
+              type="button"
+              className="tag-chip-remove"
+              aria-label={`${tag} ×`}
+              onClick={() => onChange(tags.filter((x) => x !== tag))}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/[,;\n]$/.test(v)) commit(v.slice(0, -1));
+            else setDraft(v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit(draft);
+            } else if (e.key === "Backspace" && !draft && tags.length > 0) {
+              onChange(tags.slice(0, -1));
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim()) commit(draft);
+          }}
+          placeholder={t.tagPlaceholder}
+          maxLength={40}
+          enterKeyHint="done"
+        />
+      </div>
+    </label>
+  );
+}
+
 const blankClient = {
   id: null as number | null,
   name: "",
@@ -7308,6 +7516,7 @@ const blankClient = {
   email: "",
   address: "",
   notes: "",
+  tags: [] as string[],
   referredByClientId: null as number | null,
 };
 function ClientForm({
@@ -7375,6 +7584,11 @@ function ClientForm({
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
         />
       </label>
+      <TagsInput
+        lang={lang}
+        tags={form.tags}
+        onChange={(tags) => setForm({ ...form, tags })}
+      />
       <label>
         <span>{t.referredBy}</span>
         <select
@@ -7398,7 +7612,7 @@ function ClientForm({
             ))}
         </select>
       </label>
-      <button className="primary-button" disabled={save.isPending}>
+      <button className="primary-button sticky-submit" disabled={save.isPending}>
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
@@ -7414,60 +7628,251 @@ function ClientsScreen({
   setScreen: (s: Screen) => void;
 }) {
   const t = copy[lang];
-  const client = useQueryClient();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
+  const [sortKey, setSortKey] = useState<ClientSortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDirection>("asc");
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draftSortKey, setDraftSortKey] = useState<ClientSortKey>("name");
+  const [draftSortDir, setDraftSortDir] = useState<SortDirection>("asc");
+  const [draftTags, setDraftTags] = useState<string[]>([]);
   const query = useQuery({
     queryKey: ["clients", search],
     queryFn: () => api.listClients({ search }),
   });
+  const fetched: ClientListItem[] = query.data?.clients ?? [];
+  const counts = tagCounts(fetched);
+  const visible = sortClientList(
+    filterClientsByTags(fetched, activeTags),
+    sortKey,
+    sortDir,
+  );
+  const openSort = () => {
+    setDraftSortKey(sortKey);
+    setDraftSortDir(sortDir);
+    setSortOpen(true);
+  };
+  const openFilter = () => {
+    setDraftTags(activeTags);
+    setFilterOpen(true);
+  };
+  const sortOptions: Array<[ClientSortKey, string]> = [
+    ["name", t.alphabetically],
+    ["balanceDue", t.balanceDue],
+    ["totalPaid", t.totalPaid],
+    ["invoiceCount", t.totalInvoices],
+  ];
   return (
-    <main className="page">
+    <main className="page clients-page">
       <PageHeader lang={lang} title={t.clients} onBack={onBack} />
-      <div className="clients-toolbar">
-        <button className="primary-button" onClick={() => setAdding(!adding)}>
-          <PlusIcon />
-          {t.newClient}
-        </button>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t.searchClients}
-          aria-label={t.searchClients}
-        />
-      </div>
+      {!adding && (
+        <div className="clients-controls">
+          <input
+            className="clients-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t.searchClients}
+            aria-label={t.searchClients}
+          />
+          <button
+            type="button"
+            className="round-button"
+            aria-label={t.sort}
+            onClick={openSort}
+          >
+            <SortIcon />
+          </button>
+          <button
+            type="button"
+            className={`round-button${activeTags.length > 0 ? " active" : ""}`}
+            aria-label={t.filters}
+            onClick={openFilter}
+          >
+            <FilterIcon />
+            {activeTags.length > 0 && (
+              <span className="round-button-badge">{activeTags.length}</span>
+            )}
+          </button>
+        </div>
+      )}
       {adding && (
         <ClientForm
           lang={lang}
-          onSaved={(id) => {
-            client.invalidateQueries({ queryKey: ["clients"] });
-            setScreen({ name: "client", clientId: id });
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["clients"] });
+            setAdding(false);
           }}
         />
       )}
       <section className="client-list">
-        {query.data?.clients.map((c) => (
+        {visible.map((c) => (
           <button
             key={c.id}
+            className="client-row"
             onClick={() => setScreen({ name: "client", clientId: c.id })}
           >
-            <span className="client-avatar">
-              {c.name.slice(0, 1).toUpperCase()}
-            </span>
-            <span>
+            <ClientAvatar name={c.name} />
+            <span className="client-row-main">
               <strong>{c.name}</strong>
-              <small>{[c.phone, c.email].filter(Boolean).join(" · ")}</small>
-              <span className="client-payment"><b>{usd(c.totalInvoiced)}</b><small>{c.paymentPercent}% {lang === "es" ? "pagado" : "paid"} · {c.jobCount} {t.jobs}</small></span>
+              <small>
+                {c.invoiceCount} {t.invoices}
+              </small>
+              {c.tags.length > 0 && (
+                <span className="client-row-tags">
+                  {c.tags.slice(0, 3).map((tag) => (
+                    <span key={tag} className="tag-chip tag-chip-static">
+                      {tag}
+                    </span>
+                  ))}
+                </span>
+              )}
             </span>
-            <BackIcon />
+            <span className="client-row-money">
+              <b>{usdShort(c.totalInvoiced)}</b>
+              <small>
+                {c.paymentPercent}% {lang === "es" ? "pagado" : "paid"}
+              </small>
+            </span>
           </button>
         ))}
       </section>
-      {query.data?.clients.length === 0 && (
+      {visible.length === 0 && (
         <div className="empty-state">
           <h2>{t.noClients}</h2>
         </div>
       )}
+      {!adding && (
+        <button
+          type="button"
+          className="add-client-pill"
+          onClick={() => setAdding(true)}
+        >
+          <PlusIcon />
+          {t.addClient}
+        </button>
+      )}
+      <FloatingSheet
+        open={sortOpen}
+        onClose={() => setSortOpen(false)}
+        label={t.sortClients}
+      >
+        <h2 className="sheet-title">{t.sortClients}</h2>
+        <div className="sort-options">
+          {sortOptions.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`sort-option${draftSortKey === key ? " selected" : ""}`}
+              onClick={() => setDraftSortKey(key)}
+            >
+              <span>{label}</span>
+              {draftSortKey === key && (
+                <span className="sort-option-check">
+                  <CheckIcon />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="sort-direction">
+          <button
+            type="button"
+            className={draftSortDir === "asc" ? "selected" : ""}
+            onClick={() => setDraftSortDir("asc")}
+          >
+            {t.ascending}
+          </button>
+          <button
+            type="button"
+            className={draftSortDir === "desc" ? "selected" : ""}
+            onClick={() => setDraftSortDir("desc")}
+          >
+            {t.descending}
+          </button>
+        </div>
+        <div className="sheet-actions">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setDraftSortKey("name");
+              setDraftSortDir("asc");
+            }}
+          >
+            {t.reset}
+          </button>
+          <button
+            type="button"
+            className="primary-button sheet-apply"
+            onClick={() => {
+              setSortKey(draftSortKey);
+              setSortDir(draftSortDir);
+              setSortOpen(false);
+            }}
+          >
+            {t.apply}
+          </button>
+        </div>
+      </FloatingSheet>
+      <FloatingSheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        label={t.filters}
+      >
+        <h2 className="sheet-title">{t.filters}</h2>
+        <div className="filter-tags">
+          {counts.map(({ tag, count }) => {
+            const selected = draftTags.some(
+              (x) => x.toLowerCase() === tag.toLowerCase(),
+            );
+            return (
+              <button
+                key={tag}
+                type="button"
+                className={`filter-tag${selected ? " selected" : ""}`}
+                onClick={() =>
+                  setDraftTags(
+                    selected
+                      ? draftTags.filter(
+                          (x) => x.toLowerCase() !== tag.toLowerCase(),
+                        )
+                      : [...draftTags, tag],
+                  )
+                }
+              >
+                <span className="filter-tag-check">
+                  {selected && <CheckIcon />}
+                </span>
+                <span className="filter-tag-name">{tag}</span>
+                <span className="filter-tag-count">{count}</span>
+              </button>
+            );
+          })}
+          {counts.length === 0 && <p className="muted">{t.noTags}</p>}
+        </div>
+        <div className="sheet-actions">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setDraftTags([])}
+          >
+            {t.clearAll}
+          </button>
+          <button
+            type="button"
+            className="primary-button sheet-apply"
+            onClick={() => {
+              setActiveTags(draftTags);
+              setFilterOpen(false);
+            }}
+          >
+            {t.applyFilters}
+          </button>
+        </div>
+      </FloatingSheet>
     </main>
   );
 }
@@ -7520,6 +7925,7 @@ function ClientDetail({
           email: c.email,
           address: c.address,
           notes: c.notes,
+          tags: c.tags,
           referredByClientId: c.referredByClientId,
         }}
         onSaved={() => {
