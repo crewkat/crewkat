@@ -8755,6 +8755,55 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  setJobClient: defineAction({ request: object({ jobId: number2().int().positive(), clientId: number2().int().positive().nullable() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    if (args.clientId === null) {
+      await db.update(jobs).set({ clientId: null, updatedAt: new Date }).where(eq(jobs.id, args.jobId));
+    } else {
+      const selected = (await db.select().from(clients).where(eq(clients.id, args.clientId)).limit(1))[0];
+      if (!selected)
+        throw new Error("Client not found.");
+      await db.update(jobs).set({ clientId: selected.id, clientName: selected.name, clientPhone: selected.phone, clientEmail: selected.email, updatedAt: new Date }).where(eq(jobs.id, args.jobId));
+    }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  updateJobInfo: defineAction({ request: object({ jobId: number2().int().positive(), notes: string2().trim().max(3000), jobDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: string2().max(40), depositAmount: string2().trim().max(80), paymentNotes: string2().trim().max(1000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const { jobId, ...values } = args;
+    await ctx.db().update(jobs).set({ ...values, depositAmount: normalizeMoney(args.depositAmount), updatedAt: new Date }).where(eq(jobs.id, jobId));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  linkInvoiceToJob: defineAction({ request: object({ invoiceId: number2().int().positive(), jobId: number2().int().positive().nullable() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const invoice = (await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1))[0];
+    if (!invoice)
+      throw new Error("Invoice not found.");
+    if (args.jobId === null) {
+      await db.update(invoices).set({ jobId: null, updatedAt: new Date }).where(eq(invoices.id, args.invoiceId));
+    } else {
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      await db.update(invoices).set({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, updatedAt: new Date }).where(eq(invoices.id, args.invoiceId));
+    }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  listDocuments: defineAction({ request: object({}), response: object({ documents: array(documentSchema) }), async handler(ctx) {
+    const rows = await ctx.db().select().from(documents).orderBy(desc(documents.signedAt));
+    const documents2 = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null })));
+    return { documents: documents2 };
+  } }),
+  linkDocumentToJob: defineAction({ request: object({ documentId: number2().int().positive(), jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const job = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+    if (!job)
+      throw new Error("Job not found.");
+    await db.update(documents).set({ jobId: args.jobId }).where(eq(documents.id, args.documentId));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
   addPhoto: defineAction({ request: object({ jobId: number2().int().positive(), stage: stageSchema, caption: string2().trim().max(500).default(""), filename: string2().min(1).max(240), contentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]), capturedAt: string2().datetime(), dataBase64: string2().min(1).max(30000000), annotatedFromId: number2().int().positive().nullable().default(null) }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const key = `jobs/${args.jobId}/${crypto.randomUUID()}`;
@@ -11157,6 +11206,11 @@ var PREMIUM_ACTIONS = new Set([
   "revokeDocumentLink",
   "updateJobSiteLocation",
   "suggestJobsByLocation",
+  "setJobClient",
+  "updateJobInfo",
+  "linkInvoiceToJob",
+  "listDocuments",
+  "linkDocumentToJob",
   "clockInCrew",
   "clockOutCrew",
   "getCrewClockStatus",
