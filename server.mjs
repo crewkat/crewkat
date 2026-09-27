@@ -381,6 +381,11 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/" || urlPath === "") {
     return sendFile(res, join(MARKETING_DIST, "index.html"));
   }
+  // Crawler + browser well-known files live at the root.
+  if (urlPath === "/robots.txt" || urlPath === "/sitemap.xml" || urlPath === "/favicon.ico") {
+    const name = urlPath === "/favicon.ico" ? "favicon.png" : urlPath.slice(1);
+    return sendFile(res, join(MARKETING_DIST, name));
+  }
   if (urlPath === "/app" || urlPath.startsWith("/app/")) {
     const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
     const filePath = safeJoin(CLIENT_DIST, relative);
