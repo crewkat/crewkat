@@ -673,6 +673,7 @@ export const marketplaceMessages = sqliteTable("marketplace_messages", {
   imageFilename: text("image_filename").notNull().default(""),
   imageContentType: text("image_content_type").notNull().default(""),
   sender: text("sender", { enum: ["me", "other"] }).notNull().default("me"),
+  senderCompanyId: integer("sender_company_id"),
   readAt: integer("read_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

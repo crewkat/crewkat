@@ -1297,6 +1297,8 @@ fieldset { padding: 0; border: 0; }
 .message-thread article { max-width:86%; padding:9px 11px; border-radius:14px 14px 3px 14px; background:color-mix(in srgb,var(--accent) 14%,var(--surface)); }
 .message-thread article img { width:100%; max-height:220px; display:block; object-fit:cover; border-radius:9px; }
 .message-thread article p { margin:5px 0; white-space:pre-wrap; }
+.message-thread article.incoming { align-self:flex-start; border-radius:14px 14px 14px 3px; background:var(--surface); border:1px solid var(--edge); }
+.message-sender { display:block; font-size:10px; font-weight:700; color:var(--accent); margin-bottom:3px; }
 .message-thread time { display:block; color:var(--dim); font-size:9px; text-align:right; }
 .thread-empty { align-self:center; margin:auto; color:var(--dim); font-size:13px; text-align:center; }
 .message-composer { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
@@ -1397,7 +1399,9 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 .marketplace-inbox-button { position:relative; overflow:visible; }
 .marketplace-inbox-button > b { position:absolute; top:1px; right:0; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border:2px solid var(--surface); border-radius:999px; background:#c9342c; color:#fff; font-size:9px; line-height:1; }
 .market-inbox { display:grid; gap:14px; }
-.market-inbox-list { overflow:hidden; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
+.market-inbox-list { overflow:hidden; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); margin-bottom:14px; }
+.market-inbox-subheading { margin:14px 0 8px; }
+.market-inbox-subheading h3 { margin:0; font-size:13px; font-weight:800; color:var(--dim); text-transform:uppercase; letter-spacing:0.04em; }
 .market-inbox-list > button { width:100%; min-height:82px; display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:11px; padding:12px; border:0; border-bottom:1px solid var(--border); background:transparent; color:var(--text); text-align:left; cursor:pointer; }
 .market-inbox-list > button:last-child { border-bottom:0; }
 .market-inbox-list > button.unread { background:color-mix(in srgb,var(--accent) 7%,var(--surface)); }

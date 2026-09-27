@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
-import { and, desc, eq, gte, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
@@ -95,8 +95,8 @@ const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
 const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), isMine: z.boolean(), photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
-const marketplaceMessageSchema = z.object({ id: z.number(), listingId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), sender: z.enum(["me", "other"]), isRead: z.boolean(), createdAt: z.string() });
-const marketplaceInboxRowSchema = z.object({ listingId: z.number(), listingTitle: z.string(), companyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number() });
+const marketplaceMessageSchema = z.object({ id: z.number(), listingId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), sender: z.enum(["me", "other"]), senderName: z.string(), isRead: z.boolean(), createdAt: z.string() });
+const marketplaceInboxRowSchema = z.object({ listingId: z.number(), listingTitle: z.string(), companyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
 const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(), startDate: z.string(), endDate: z.string(), note: z.string(), status: z.enum(["requested", "confirmed", "declined"]), createdAt: z.string() });
 
 function jobShape(row: typeof schema.jobs.$inferSelect, photoCount = 0, photoStages: string[] = []) {
@@ -1900,8 +1900,28 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ listingId: z.number().int().positive() }),
     response: z.object({ messages: z.array(marketplaceMessageSchema) }),
     async handler(ctx, args) {
-      const rows = await ctx.db<typeof schema>().select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.listingId, args.listingId)).orderBy(schema.marketplaceMessages.createdAt);
-      return { messages: await Promise.all(rows.map(async (row) => ({ id: row.id, listingId: row.listingId, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, sender: row.sender, isRead: row.sender === "me" || row.readAt !== null, createdAt: row.createdAt.toISOString() }))) };
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.listingId, args.listingId)).orderBy(schema.marketplaceMessages.createdAt);
+      // Get company names for senders (from settings table)
+      const companyIds = new Set<number>();
+      for (const row of rows) {
+        if (row.senderCompanyId) companyIds.add(row.senderCompanyId);
+      }
+      const companies = companyIds.size > 0
+        ? await db.select({ companyId: schema.settings.companyId, companyName: schema.settings.companyName }).from(schema.settings).where(inArray(schema.settings.companyId, [...companyIds]))
+        : [];
+      const companyNameById = new Map(companies.map((c) => [c.companyId, c.companyName]));
+      // Get listing owner name as fallback
+      const listing = (await db.select({ companyId: schema.marketplaceListings.companyId, companyName: schema.marketplaceListings.companyName }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      return { messages: await Promise.all(rows.map(async (row) => {
+        let senderName = "Unknown";
+        if (row.senderCompanyId && companyNameById.has(row.senderCompanyId)) {
+          senderName = companyNameById.get(row.senderCompanyId)!;
+        } else if (row.sender === "me" && listing) {
+          senderName = listing.companyName;
+        }
+        return { id: row.id, listingId: row.listingId, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, sender: row.sender, senderName, isRead: row.sender === "me" || row.readAt !== null, createdAt: row.createdAt.toISOString() };
+      })) };
     },
   }),
   getMarketplaceInbox: defineAction({
@@ -1914,13 +1934,19 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings),
       ]);
       const listingById = new Map(listings.map((listing) => [listing.id, listing]));
-      const grouped = new Map<number, { listingId: number; listingTitle: string; companyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number }>();
+      const grouped = new Map<number, { listingId: number; listingTitle: string; companyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number; isInquiry: boolean }>();
       const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       for (const message of messages) {
         const listing = listingById.get(message.listingId);
-        if (!listing || listing.companyId !== myCompanyId) continue;
+        if (!listing) continue;
+        const isOwner = listing.companyId === myCompanyId;
+        const isMyInquiry = !isOwner && message.senderCompanyId === myCompanyId;
+        if (!isOwner && !isMyInquiry) continue;
         const existing = grouped.get(message.listingId);
-        const unread = message.sender === "other" && message.readAt === null ? 1 : 0;
+        // For owners: unread = messages from others not read. For inquirers: unread = messages from owner not read.
+        const unread = isOwner
+          ? (message.sender === "other" && message.readAt === null ? 1 : 0)
+          : (message.sender === "me" && message.readAt === null ? 1 : 0);
         if (!existing) {
           grouped.set(message.listingId, {
             listingId: message.listingId,
@@ -1929,6 +1955,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             lastMessage: message.body || (message.imageBlobKey ? "Photo" : "Message"),
             lastMessageAt: message.createdAt.toISOString(),
             unreadCount: unread,
+            isInquiry: !isOwner,
           });
         } else {
           existing.unreadCount += unread;
@@ -1944,8 +1971,17 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args): Promise<{ ok: true }> {
       const db = ctx.db<typeof schema>();
       const listing = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
-      if (listing && listing.companyId === workspaceIdentity(ctx).workspaceCompanyId) {
+      if (!listing) { ctx.invalidateQueries(); return { ok: true }; }
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      if (listing.companyId === myCompanyId) {
+        // Owner: mark inquirer messages as read
         await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other"), isNull(schema.marketplaceMessages.readAt)));
+      } else {
+        // Inquirer: mark owner messages as read (only in threads I participated in)
+        const myMessages = await db.select({ id: schema.marketplaceMessages.id }).from(schema.marketplaceMessages).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.senderCompanyId, myCompanyId))).limit(1);
+        if (myMessages.length > 0) {
+          await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "me"), isNull(schema.marketplaceMessages.readAt)));
+        }
       }
       ctx.invalidateQueries();
       return { ok: true };
@@ -1961,10 +1997,11 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (!listing) throw new Error("This listing is no longer available.");
       const isOwner = listing.companyId === workspaceIdentity(ctx).workspaceCompanyId;
       const sender = isOwner ? "me" : "other";
+      const senderCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key) await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
       try {
-        const made = (await db.insert(schema.marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, readAt: isOwner ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
+        const made = (await db.insert(schema.marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, senderCompanyId, readAt: isOwner ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
         if (!made) throw new Error("The message could not be saved.");
         ctx.invalidateQueries(); return { id: made.id };
       } catch (error) { if (key) await ctx.blobs.delete(key).catch(() => {}); throw error; }
