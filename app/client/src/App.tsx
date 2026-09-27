@@ -1011,8 +1011,8 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
   const items: Array<{ tab: RootTab; label: string; icon: ReactNode }> = [
     { tab: "today", label: lang === "es" ? "Inicio" : "Home", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
     { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
-    { tab: "marketplace", label: lang === "es" ? "Mercado" : "Marketplace", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon> },
     { tab: "invoices", label: lang === "es" ? "Facturas" : "Invoices", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
+    { tab: "marketplace", label: lang === "es" ? "Mercado" : "Marketplace", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon> },
   ];
   const quickActions: Array<{ label: string; destination: Screen; icon: ReactNode }> = [
     { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
