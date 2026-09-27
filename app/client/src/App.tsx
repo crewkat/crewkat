@@ -1006,22 +1006,39 @@ function rootTabFor(screen: Screen): RootTab {
   if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail"].includes(screen.name)) return "marketplace";
   return "tools";
 }
-function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void }) {
-  const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
-  const labels: Record<RootTab, string> = lang === "es"
-    ? { today: "Hoy", jobs: "Trabajos", invoices: "Facturas", clients: "Clientes", marketplace: "Mercado", tools: "Herramientas" }
-    : { today: "Today", jobs: "Jobs", invoices: "Invoices", clients: "Clients", marketplace: "Marketplace", tools: "Tools" };
-  const icons: Record<RootTab, ReactNode> = {
-    today: <Icon><path d="M4 5h16v15H4zM8 3v4M16 3v4M7 11h3M14 11h3M7 15h3" /></Icon>,
-    jobs: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon>,
-    invoices: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon>,
-    clients: <Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon>,
-    marketplace: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>,
-    tools: <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon>,
+function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void; onNavigate: (screen: Screen) => void }) {
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const items: Array<{ tab: RootTab; label: string; icon: ReactNode }> = [
+    { tab: "today", label: lang === "es" ? "Inicio" : "Home", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
+    { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
+    { tab: "invoices", label: lang === "es" ? "Facturas" : "Invoices", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
+    { tab: "tools", label: lang === "es" ? "Herramientas" : "Tools", icon: <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon> },
+  ];
+  const quickActions: Array<{ label: string; destination: Screen; icon: ReactNode }> = [
+    { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
+    { label: lang === "es" ? "Nuevo estimado" : "New estimate", destination: { name: "quoteNew" }, icon: <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon> },
+    { label: lang === "es" ? "Nueva factura" : "New invoice", destination: { name: "invoiceNew" }, icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon> },
+    { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7M19 4v6M16 7h6"/></Icon> },
+  ];
+  const selectDestination = (destination: Screen) => {
+    setQuickCreateOpen(false);
+    onNavigate(destination);
   };
-  return <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
-    {(Object.keys(labels) as RootTab[]).map((tab) => <button key={tab} className={active === tab ? "active" : ""} aria-current={active === tab ? "page" : undefined} onClick={() => onSelect(tab)}><span className="bottom-nav-icon">{icons[tab]}{tab === "marketplace" && (inbox.data?.unreadCount ?? 0) > 0 && <b className="nav-unread-badge" aria-label={`${inbox.data?.unreadCount ?? 0} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(inbox.data?.unreadCount ?? 0, 99)}</b>}</span><span>{labels[tab]}</span></button>)}
-  </nav>;
+  return <>
+    <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
+      {items.slice(0, 2).map((item) => <button type="button" key={item.tab} className={active === item.tab ? "active" : ""} aria-current={active === item.tab ? "page" : undefined} onClick={() => onSelect(item.tab)}><span className="bottom-nav-icon">{item.icon}</span><span>{item.label}</span></button>)}
+      <button type="button" className="bottom-nav-add" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><span aria-hidden="true">+</span></button>
+      {items.slice(2).map((item) => <button type="button" key={item.tab} className={active === item.tab ? "active" : ""} aria-current={active === item.tab ? "page" : undefined} onClick={() => onSelect(item.tab)}><span className="bottom-nav-icon">{item.icon}</span><span>{item.label}</span></button>)}
+    </nav>
+    {quickCreateOpen && <div className="quick-create-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuickCreateOpen(false); }}>
+      <section className="quick-create-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-create-title">
+        <header><div><span>{lang === "es" ? "Acceso rápido" : "Quick create"}</span><h2 id="quick-create-title">{lang === "es" ? "¿Qué deseas crear?" : "What would you like to create?"}</h2></div><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setQuickCreateOpen(false)}><Icon><path d="m6 6 12 12M18 6 6 18" /></Icon></button></header>
+        <div className="quick-create-grid">
+          {quickActions.map((action) => <button type="button" key={action.destination.name} onClick={() => selectDestination(action.destination)}><span>{action.icon}</span><strong>{action.label}</strong><BackIcon /></button>)}
+        </div>
+      </section>
+    </div>}
+  </>;
 }
 
 const SettingsNavigationContext = createContext<(() => void) | null>(null);
@@ -1982,7 +1999,7 @@ function CrewkatApplication() {
           onBack={goBack}
         />
       )}
-      {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} />}
+      {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
     </div>
     </SettingsNavigationContext.Provider>
   );
@@ -9648,11 +9665,17 @@ function TodayScreen({
   toggleLanguage: () => void;
 }) {
   const qc = useQueryClient();
-  const today = new Date().toLocaleDateString("en-CA");
+  const auth = useContext(AuthContext);
+  const now = new Date();
+  const today = now.toLocaleDateString("en-CA");
   const query = useQuery({
     queryKey: ["automation-center", today],
     queryFn: () => api.getAutomationCenter({ today }),
   });
+  const jobsQuery = useQuery({ queryKey: ["jobs", ""], queryFn: () => api.listJobs({ search: "" }) });
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: () => api.listAppointments({}) });
+  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
   const d = query.data;
   const fieldIntel = useQuery({
     queryKey: ["field-intelligence-today", today],
@@ -9755,90 +9778,101 @@ function TodayScreen({
         .length ?? 0) +
       proAttentionCount
     : 0;
+  const allJobs = jobsQuery.data?.jobs ?? [];
+  const openJobs = allJobs.filter((job) => !job.completedAt);
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const activeThisWeekIds = new Set<number>();
+  for (const job of openJobs) {
+    const updatedAt = new Date(job.updatedAt);
+    if (updatedAt >= weekStart && updatedAt < weekEnd) activeThisWeekIds.add(job.id);
+  }
+  for (const appointment of appointmentsQuery.data?.appointments ?? []) {
+    const startsAt = new Date(appointment.startsAt);
+    if (appointment.jobId && startsAt >= weekStart && startsAt < weekEnd) activeThisWeekIds.add(appointment.jobId);
+  }
+  const activeThisWeek = activeThisWeekIds.size || openJobs.length;
+  const recentJobs = openJobs.slice(0, 2);
+  const latestInvoice = invoicesQuery.data?.invoices[0] ?? null;
+  const unreadMarketplace = inboxQuery.data?.unreadCount ?? 0;
+  const hour = now.getHours();
+  const greeting = lang === "es"
+    ? hour < 12 ? "Buenos días" : hour < 18 ? "Buenas tardes" : "Buenas noches"
+    : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const dateHeading = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "short", day: "numeric" }).format(now);
+  const userInitial = (auth?.user.name.trim().charAt(0) || "C").toUpperCase();
+  const compactJobDate = (date: string) => {
+    if (date === today) return lang === "es" ? "Hoy" : "Today";
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (date === tomorrow.toLocaleDateString("en-CA")) return lang === "es" ? "Mañana" : "Tomorrow";
+    return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" }).format(new Date(`${date}T12:00:00`));
+  };
+  const invoiceStatusLabel = (status: InvoiceStatus) => status === "paid"
+    ? (lang === "es" ? "Pagada" : "Paid")
+    : status === "overdue"
+      ? (lang === "es" ? "Vencida" : "Overdue")
+      : status === "sent"
+        ? (lang === "es" ? "Enviada" : "Sent")
+        : (lang === "es" ? "Borrador" : "Draft");
   if (!d)
     return (
       <main className="page today-page" aria-busy="true">
-        <PageHeader
-          lang={lang}
-          title={APP_INFO.name}
-          actions={
-            <button
-              className="lang-toggle"
-              onClick={toggleLanguage}
-              aria-label={copy[lang].language}
-            >
-              {lang === "en" ? "ES" : "EN"}
-            </button>
-          }
-        />
-        <section className="today-hero today-hero-loading">
-          <div>
-            <span>{formatDate(today, lang)}</span>
-            <strong aria-hidden="true">—</strong>
-            <p>
-              {lang === "es"
-                ? "revisando las acciones de hoy"
-                : "checking today’s actions"}
-            </p>
+        <header className="home-header">
+          <div><span>{dateHeading}</span><strong>{greeting}</strong></div>
+          <div className="home-header-actions">
+            <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+            <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
           </div>
-          <button
-            className="secondary-button"
-            onClick={() => setScreen({ name: "jobs" })}
-          >
-            {lang === "es" ? "Ver trabajos" : "View jobs"}
-            <BackIcon />
-          </button>
-        </section>
-        <TodayMoneySnapshot lang={lang} />
-        <div className="loading-block" aria-label={lang === "es" ? "Cargando estado de acciones" : "Loading action status"} />
-        <section className="crew-compose crew-compose-loading">
-          <div>
-            <span>
-              {lang === "es"
-                ? "Mensaje matutino del equipo"
-                : "Crew morning message"}
-            </span>
-            <strong>{lang === "es" ? "Revisando el plan de hoy…" : "Checking today’s plan…"}</strong>
-          </div>
-        </section>
+        </header>
+        <div className="home-summary-card home-summary-loading"><span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span><strong>—</strong><small>{lang === "es" ? "Cargando actividad…" : "Loading activity…"}</small></div>
+        <div className="loading-block" aria-label={lang === "es" ? "Cargando inicio" : "Loading home"} />
       </main>
     );
   return (
     <main className="page today-page">
-      <PageHeader
-        lang={lang}
-        title={APP_INFO.name}
-        actions={
-          <>
-            <button
-              className="lang-toggle"
-              onClick={toggleLanguage}
-              aria-label={copy[lang].language}
-            >
-              {lang === "en" ? "ES" : "EN"}
-            </button>
-
-          </>
-        }
-      />
-      <section className="today-hero">
+      <header className="home-header">
         <div>
-          <span>{formatDate(today, lang)}</span>
-          <strong>{actionCount}</strong>
-          <p>
-            {lang === "es"
-              ? "acciones que merecen atención"
-              : "actions worth your attention"}
-          </p>
+          <span>{dateHeading}</span>
+          <strong>{greeting}</strong>
         </div>
-        <button
-          className="secondary-button"
-          onClick={() => setScreen({ name: "jobs" })}
-        >
-          {lang === "es" ? "Ver trabajos" : "View jobs"}
-          <BackIcon />
-        </button>
+        <div className="home-header-actions">
+          <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+          <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
+        </div>
+      </header>
+      <section className="home-summary-card" aria-label={lang === "es" ? "Resumen de trabajos" : "Job summary"}>
+        <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
+        <strong>{openJobs.length}</strong>
+        <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
       </section>
+      <section className="home-jobs-section">
+        <header><h2>{lang === "es" ? "Trabajos" : "Jobs"}</h2><button type="button" onClick={() => setScreen({ name: "jobs" })}>{lang === "es" ? "Ver todo" : "View all"}</button></header>
+        <div className="home-job-list">
+          {recentJobs.map((job, index) => <button type="button" key={job.id} className="home-job-card" onClick={() => setScreen({ name: "detail", jobId: job.id })}>
+            <span className={`home-job-icon${index % 2 === 1 ? " alternate" : ""}`}><Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon></span>
+            <span><strong>{job.clientName}</strong><small>{job.jobType} · {compactJobDate(job.jobDate)}</small></span>
+            <BackIcon />
+          </button>)}
+          {jobsQuery.data && recentJobs.length === 0 && <button type="button" className="home-job-card home-job-empty" onClick={() => setScreen({ name: "new" })}>
+            <span className="home-job-icon"><PlusIcon /></span><span><strong>{lang === "es" ? "Crea tu primer trabajo" : "Create your first job"}</strong><small>{lang === "es" ? "Agrega el cliente, alcance y fecha" : "Add the client, scope, and date"}</small></span><BackIcon />
+          </button>}
+        </div>
+      </section>
+      {latestInvoice && <button type="button" className="home-invoice-card" onClick={() => setScreen({ name: "invoicePreview", invoiceId: latestInvoice.id })}>
+        <span><small>{lang === "es" ? "Factura" : "Invoice"} {latestInvoice.invoiceNumber}</small><strong>{usd(money(latestInvoice.totalWithLateFee))}</strong></span>
+        <b className={`status-chip ${latestInvoice.status}`}>{invoiceStatusLabel(latestInvoice.status)}</b>
+      </button>}
+      <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
+        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
+        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon alternate"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+      </section>
+      <button type="button" className="home-attention-card" onClick={() => { const target = document.querySelector(".automation-group, .today-clear, .today-field-strip"); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
+        <span><strong>{actionCount}</strong><small>{lang === "es" ? "acciones que merecen atención" : "actions worth your attention"}</small></span><BackIcon />
+      </button>
       <TodayMoneySnapshot lang={lang} />
       {!settings?.simpleMode && fieldIntel && (
         proAttentionCount > 0 ? <section className="today-field-strip">

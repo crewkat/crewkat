@@ -13,9 +13,9 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #eef1f0;
+  --bg: #f4f2ed;
   --surface: #ffffff;
-  --surface-2: #e3e8e6;
+  --surface-2: #e9e6df;
   --text: #171a1c;
   --dim: #5d6866;
   --border: #c9d1ce;
@@ -1939,3 +1939,116 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 @media (min-width:720px) { .toolbox-modal-backdrop { align-items:center; padding:28px; } .toolbox-window { max-height:min(86dvh,820px); border-radius:22px; } }
 @media (max-width:390px) { .tools-home .everyday-tool-group .tool-directory > button { grid-template-columns:40px minmax(0,1fr) auto; padding-inline:9px; gap:9px; } .tool-row-end { gap:4px; } .pro-row-badge { padding-inline:5px; } }
 @media (prefers-reduced-motion:reduce) { .toolbox-modal-backdrop,.toolbox-window { animation:none!important; } }
+
+
+/* Marketing-mockup home and raised quick-create navigation */
+.bottom-nav {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-height: 72px;
+  padding-top: 6px;
+  overflow: visible;
+  border-top-color: color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
+}
+.bottom-nav > button { min-height: 58px; border-radius: 12px; }
+.bottom-nav > button.active { color: var(--accent); background: transparent; }
+.bottom-nav > button.active .bottom-nav-icon { transform: translateY(-1px); }
+.bottom-nav .bottom-nav-add {
+  position: relative;
+  z-index: 2;
+  align-self: start;
+  width: 62px;
+  min-width: 62px;
+  height: 62px;
+  min-height: 62px;
+  margin: -25px auto 0;
+  display: grid;
+  place-items: center;
+  border: 6px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1d1008;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent), 0 4px 12px rgba(19, 21, 25, .16);
+}
+.bottom-nav .bottom-nav-add:active { transform: translateY(1px); }
+.bottom-nav .bottom-nav-add > span { display: block; overflow: visible; font-size: 34px; line-height: 1; font-weight: 500; transform: translateY(-1px); }
+.quick-create-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; padding: 18px 12px 0; background: rgba(9, 13, 18, .58); }
+.quick-create-sheet { width: min(100%, 560px); padding: 18px 16px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface); box-shadow: 0 -20px 55px rgba(0,0,0,.2); }
+.quick-create-sheet > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.quick-create-sheet > header > div { display: grid; gap: 3px; }
+.quick-create-sheet > header span { color: var(--accent); font-size: 11px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
+.quick-create-sheet h2 { margin: 0; font: 800 23px/1.15 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.quick-create-sheet > header > button { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 50%; background: var(--surface-2); }
+.quick-create-sheet > header svg { width: 20px; }
+.quick-create-grid { display: grid; gap: 8px; }
+.quick-create-grid > button { width: 100%; min-height: 62px; display: grid; grid-template-columns: 42px minmax(0,1fr) 18px; align-items: center; gap: 12px; padding: 9px 12px; border: 0; border-radius: 13px; background: var(--bg); color: var(--text); text-align: left; }
+.quick-create-grid > button > span { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+.quick-create-grid > button > span svg { width: 21px; }
+.quick-create-grid > button > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
+
+.today-page { max-width: 680px; padding-inline: 18px; padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
+.home-header { min-height: 88px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: max(12px, env(safe-area-inset-top)); }
+.home-header > div:first-child { min-width: 0; display: grid; gap: 2px; }
+.home-header > div:first-child > span { color: var(--dim); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .085em; }
+.home-header > div:first-child > strong { overflow: hidden; font: 800 24px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.home-header-actions { display: flex; align-items: center; gap: 4px; }
+.home-avatar { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 50%; background: #1a2433; color: #fff; font-size: 14px; font-weight: 850; box-shadow: 0 3px 10px rgba(23,31,43,.16); }
+.home-summary-card { display: grid; gap: 3px; margin: 4px 0 22px; padding: 20px; border-radius: 18px; background: #1a2433; color: #fff; box-shadow: 0 12px 30px rgba(26,36,51,.18); }
+.home-summary-card > span, .home-summary-card > small { color: #aeb6c2; font-size: 12px; font-weight: 700; }
+.home-summary-card > strong { margin: 2px 0; color: var(--accent); font: 850 42px/.95 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.04em; }
+.home-summary-loading { min-height: 128px; }
+.home-jobs-section { margin-bottom: 16px; }
+.home-jobs-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 2px 9px; }
+.home-jobs-section h2 { margin: 0; font: 800 19px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.home-jobs-section > header button { min-height: 40px; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 850; }
+.home-job-list { display: grid; gap: 8px; }
+.home-job-card { width: 100%; min-height: 70px; display: grid; grid-template-columns: 44px minmax(0,1fr) 18px; align-items: center; gap: 12px; padding: 11px 13px; border: 0; border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 9%, transparent); }
+.home-job-card > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.home-job-card strong, .home-job-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-job-card strong { font-size: 15px; }
+.home-job-card small { color: var(--dim); font-size: 11px; }
+.home-job-card > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
+.home-job-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
+.home-job-icon.alternate { background: color-mix(in srgb, #1a2433 12%, var(--surface)); color: #526073; }
+.home-job-icon svg { width: 21px; height: 21px; }
+.home-invoice-card { width: 100%; min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 14px 0; padding: 14px 15px; border: 1px solid color-mix(in srgb, var(--border) 68%, transparent); border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; }
+.home-invoice-card > span { min-width: 0; display: grid; gap: 3px; }
+.home-invoice-card small { color: var(--dim); font-size: 11px; }
+.home-invoice-card strong { font: 850 21px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.home-quick-access { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; margin: 14px 0; }
+.home-quick-access > button { position: relative; min-width: 0; min-height: 96px; display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 10px; padding: 13px; border: 0; border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 8%, transparent); }
+.home-quick-access > button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.home-quick-access strong, .home-quick-access small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-quick-access strong { font-size: 14px; }
+.home-quick-access small { color: var(--dim); font-size: 10px; }
+.home-quick-access > button > svg { position: absolute; top: 10px; right: 9px; width: 15px; transform: rotate(180deg); color: var(--dim); }
+.home-access-icon { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
+.home-access-icon.alternate { background: color-mix(in srgb, #1a2433 12%, var(--surface)); color: #526073; }
+.home-access-icon svg { width: 20px; }
+.home-access-icon > b { position: absolute; top: -8px; right: -8px; min-width: 19px; height: 19px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--surface); border-radius: 999px; background: #c9342c; color: #fff; font-size: 9px; }
+.home-attention-card { width: 100%; min-height: 58px; display: grid; grid-template-columns: minmax(0,1fr) 18px; align-items: center; gap: 10px; margin: 16px 0 10px; padding: 10px 2px; border: 0; border-block: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; }
+.home-attention-card > span { display: flex; align-items: baseline; gap: 9px; }
+.home-attention-card strong { color: var(--accent); font: 850 25px/1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.home-attention-card small { color: var(--dim); font-size: 12px; font-weight: 750; }
+.home-attention-card > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
+.today-page .money-snapshot { overflow: hidden; border: 0; border-radius: 15px; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 7%, transparent); }
+.today-page .automation-card, .today-page .today-field-strip, .today-page .crew-compose { border-color: color-mix(in srgb, var(--border) 72%, transparent); border-radius: 15px; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 7%, transparent); }
+.today-page .today-clear { min-height: 10rem; border-radius: 15px; background: var(--surface); box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 7%, transparent); }
+
+:root[data-theme="dark"] .home-summary-card { background: #232f40; box-shadow: none; }
+:root[data-theme="dark"] .home-avatar { background: #303d50; }
+:root[data-theme="dark"] .home-job-icon.alternate, :root[data-theme="dark"] .home-access-icon.alternate { color: #bfc9d7; background: #293546; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .home-summary-card { background: #232f40; box-shadow: none; }
+  :root:not([data-theme]) .home-avatar { background: #303d50; }
+  :root:not([data-theme]) .home-job-icon.alternate, :root:not([data-theme]) .home-access-icon.alternate { color: #bfc9d7; background: #293546; }
+}
+@media (min-width: 720px) {
+  .quick-create-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .home-job-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 390px) {
+  .home-header > div:first-child > strong { font-size: 22px; }
+  .home-quick-access > button { grid-template-columns: 34px minmax(0,1fr); gap: 8px; padding-inline: 10px; }
+  .home-access-icon { width: 34px; height: 34px; }
+}
