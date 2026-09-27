@@ -18,7 +18,7 @@
 //   POST /stripe-webhook   -> Stripe event ingestion (raw body + signature)
 //   GET  /healthz          -> liveness probe for the hosting platform
 //   GET  /blobs/<key>     -> blob file serving
-//   GET  /*               -> static client bundle + SPA fallback to index.html
+//   GET  /*               -> marketing site at /, app bundle at /app/*
 //
 // Environment:
 //   PORT                 HTTP port (Render injects this). Default 3000.
@@ -358,33 +358,9 @@ async function readBody(req, { raw = false } = {}) {
 
 const CLIENT_DIST = join(APP_DIR, "client/dist");
 
-async function serveStatic(res, urlPath) {
-  const relative = urlPath === "/" ? "/index.html" : urlPath;
-  const filePath = resolve(CLIENT_DIST, `.${relative}`);
-  if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + sep)) {
-    res.writeHead(403);
-    res.end();
-    return;
-  }
-  let fileStat;
-  try {
-    fileStat = await stat(filePath);
-  } catch {
-    fileStat = null;
-  }
-  if (!fileStat || !fileStat.isFile()) {
-    // SPA fallback: client-side routes resolve to index.html. A missing file
-    // under /assets/ is a genuine 404 so broken asset URLs fail loudly.
-    if (relative.startsWith("/assets/")) {
-      res.writeHead(404, { "x-content-type-options": "nosniff" });
-      res.end();
-      return;
-    }
-    const index = await readFile(join(CLIENT_DIST, "index.html"));
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff" });
-    res.end(index);
-    return;
-  }
+const MARKETING_DIST = join(CLIENT_DIST, "marketing");
+
+async function sendFile(res, filePath) {
   const bytes = await readFile(filePath);
   res.writeHead(200, {
     "content-type": mimeFor(filePath),
@@ -392,6 +368,65 @@ async function serveStatic(res, urlPath) {
     "x-content-type-options": "nosniff",
   });
   res.end(bytes);
+}
+
+function safeJoin(root, relative) {
+  const filePath = resolve(root, `.${relative}`);
+  if (filePath !== root && !filePath.startsWith(root + sep)) return null;
+  return filePath;
+}
+
+async function serveStatic(res, urlPath) {
+  // Marketing site at / ; the app lives at /app.
+  if (urlPath === "/" || urlPath === "") {
+    return sendFile(res, join(MARKETING_DIST, "index.html"));
+  }
+  if (urlPath === "/app" || urlPath.startsWith("/app/")) {
+    const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
+    const filePath = safeJoin(CLIENT_DIST, relative);
+    if (!filePath) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    let fileStat;
+    try {
+      fileStat = await stat(filePath);
+    } catch {
+      fileStat = null;
+    }
+    if (!fileStat || !fileStat.isFile()) {
+      // SPA fallback: client-side routes resolve to the app index. A missing
+      // file under /app/assets/ is a genuine 404 so broken asset URLs fail loudly.
+      if (relative.startsWith("/assets/")) {
+        res.writeHead(404, { "x-content-type-options": "nosniff" });
+        res.end();
+        return;
+      }
+      return sendFile(res, join(CLIENT_DIST, "index.html"));
+    }
+    return sendFile(res, filePath);
+  }
+  if (urlPath.startsWith("/marketing/")) {
+    const filePath = safeJoin(MARKETING_DIST, urlPath.slice(10) || "/index.html");
+    if (!filePath) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    let fileStat;
+    try {
+      fileStat = await stat(filePath);
+    } catch {
+      fileStat = null;
+    }
+    if (fileStat && fileStat.isFile()) return sendFile(res, filePath);
+    res.writeHead(404, { "x-content-type-options": "nosniff" });
+    res.end();
+    return;
+  }
+  // Unknown paths fall back to the marketing site.
+  return sendFile(res, join(MARKETING_DIST, "index.html"));
 }
 
 async function serveBlob(res, urlPath) {
