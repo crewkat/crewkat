@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const clients = sqliteTable("clients", {
   companyId: integer("company_id").notNull().default(1),
@@ -731,3 +731,21 @@ export const stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
   type: text("type").notNull(),
   processedAt: integer("processed_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+export const backupRuns = sqliteTable("backup_runs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: ["daily-db", "weekly-full", "manual", "monthly-verify"] }).notNull(),
+  status: text("status", { enum: ["running", "ok", "failed"] }).notNull(),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  dbBytes: integer("db_bytes"),
+  blobBytes: integer("blob_bytes"),
+  totalBytes: integer("total_bytes"),
+  filePath: text("file_path"),
+  offsiteSent: integer("offsite_sent", { mode: "boolean" }).notNull().default(false),
+  integrityOk: integer("integrity_ok", { mode: "boolean" }),
+  error: text("error"),
+  notes: text("notes"),
+}, (table) => [
+  index("idx_backup_runs_started").on(table.startedAt),
+]);

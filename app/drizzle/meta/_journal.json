@@ -232,6 +232,13 @@
       "when": 1790455785307,
       "tag": "0033_add_workspaces_and_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1790558400000,
+      "tag": "0034_automated_backups",
+      "breakpoints": true
     }
   ]
 }

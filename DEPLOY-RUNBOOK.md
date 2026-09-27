@@ -123,9 +123,12 @@ Render will prompt for the `sync: false` keys. Enter real values; leave
 
 - **Stay-logged-in (30-day token) was NOT shipped** — blocked earlier by a
   security audit; sessions behave as before. Needs a decision before retry.
-- **No automatic Render-disk backups are configured** — set a recurring
-  in-app backup (download the `.crewkat` file weekly) until disk snapshots
-  are arranged.
+- **Automated backups are built in (2026-09-27)** — the server takes a
+  daily `VACUUM INTO` snapshot and a Sunday weekly `tar.gz` (DB + blobs),
+  keeps 7 daily / 4 weekly on the disk, and emails copies offsite through
+  Resend. Status and a "Back up now" button live in Settings → Backup &
+  restore. The manual `.crewkat` download below is still useful before risky
+  changes.
 - **Single instance only** — SQLite can't scale horizontally; the Blueprint
   pins `numInstances: 1`.
 - **Play Store app comes after** the web app is live and stable (Danny's
@@ -139,3 +142,51 @@ Render will prompt for the `sync: false` keys. Enter real values; leave
 The live private artifact is untouched by this migration. If anything fails,
 keep using it — nothing is deleted or changed there. The Render service can
 be suspended from the dashboard; the disk retains `/data` until deleted.
+
+## 10. Disaster recovery — restoring from an automated backup
+
+Automated backups run on the server itself: a daily `VACUUM INTO` snapshot
+(`/data/backups/app-YYYYMMDD-HHmmss-<rand>.db`, 7 kept) and a Sunday weekly
+`tar.gz` of the snapshot plus `/data/blobs` (`crewkat-full-*.tar.gz`, 4
+kept). Copies are also emailed offsite through Resend. `/data/backups` is
+**not** served over HTTP.
+
+**Full restore (disk corrupted or data destroyed):**
+
+1. In Render: suspend the Crewkat service (or scale to 0) so nothing writes
+   to the database.
+2. Open a Render shell (or SSH) on the service with the disk attached.
+3. Pick the newest good weekly archive, or the newest daily snapshot:
+   `ls -lt /data/backups`.
+4. If using the weekly archive: `mkdir -p /tmp/restore && tar -xzf
+   /data/backups/crewkat-full-<stamp>.tar.gz -C /tmp/restore`.
+5. Verify the snapshot before touching the live DB:
+   `sqlite3 /tmp/restore/app-<stamp>-*.db "PRAGMA integrity_check;"`
+   must print `ok`.
+6. Sanity-check row counts, e.g.
+   `sqlite3 /tmp/restore/app-<stamp>-*.db "SELECT count(*) FROM jobs;"`
+   and compare with expectations.
+7. Copy the verified snapshot over the live database:
+   `cp /tmp/restore/app-<stamp>-*.db /data/app.db` (fill in the exact snapshot filename).
+8. If restoring from the weekly archive, restore blobs too:
+   `cp -r /tmp/restore/blobs/. /data/blobs/`.
+9. Resume the service and verify: log in, check jobs/clients/invoices and
+   that job photos load.
+
+**Table-level restore (one table clobbered, rest of DB fine):**
+
+1. Suspend the service.
+2. Extract the newest good weekly archive to `/tmp/restore` as above.
+3. Dump just the table from the snapshot:
+   `sqlite3 /tmp/restore/app-<stamp>-*.db ".dump jobs" > /tmp/jobs.sql`
+4. On a copy of the live DB, drop the damaged table, import the dump, and
+   run `PRAGMA integrity_check;`.
+5. Swap the repaired copy into `/data/app.db` and resume the service.
+
+**Restore from the emailed offsite copy:** download the attachment from the
+`[Crewkat backup]` email, then follow the same verify → copy steps above.
+
+The scheduler also runs a monthly automated restore test (extracts the
+latest weekly archive into `/tmp`, checks integrity, row counts, and 5
+random blob keys) and logs it in the `backup_runs` table — visible in
+Settings → Backup & restore. Failure alerts go to `BACKUP_ALERT_EMAIL`.

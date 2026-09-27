@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -472,6 +472,34 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[crewkat] listening on 0.0.0.0:${PORT} (data: ${DATA_DIR})`);
 });
+
+// ---------------------------------------------------------------------------
+// Automated backups: in-process scheduler (single Render instance)
+// ---------------------------------------------------------------------------
+
+try {
+  const stale = await recoverStaleBackupRuns(makeCtx());
+  if (stale > 0) console.log(`[crewkat][backup] marked ${stale} stale backup run(s) as failed.`);
+} catch (error) {
+  console.error("[crewkat][backup] startup recovery failed:", error);
+}
+
+if (!process.env.BACKUP_ALERT_EMAIL) {
+  console.error("[crewkat][backup] BACKUP_ALERT_EMAIL is not set — automated backups will not run. Set it in the Render env vars.");
+} else {
+  const BACKUP_TICK_MS = 5 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runScheduledBackup(makeCtx());
+      if (result.ran) console.log(`[crewkat][backup] ${result.kind} run finished (ok=${result.ok}).`);
+    } catch (error) {
+      console.error("[crewkat][backup] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 60 * 1000); // catch up shortly after boot in case the hour already passed
+  setInterval(tick, BACKUP_TICK_MS).unref();
+  console.log(`[crewkat][backup] scheduler armed (hour ${process.env.BACKUP_HOUR || "3"} UTC, tick every ${BACKUP_TICK_MS / 60000} min).`);
+}
 
 function shutdown(signal) {
   console.log(`[crewkat] received ${signal}; shutting down...`);

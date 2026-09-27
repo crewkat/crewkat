@@ -1,6 +1,11 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
-import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, like, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
+import { execFile } from "node:child_process";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { promisify } from "node:util";
 import * as schema from "./schema";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
@@ -388,6 +393,347 @@ function workspaceIdentity(ctx: Ctx) {
   const scoped = ctx as WorkspaceCtx;
   if (!scoped.workspaceCompanyId || !scoped.workspaceUserId) throw new Error("Sign in to continue.");
   return scoped;
+}
+
+// ---------------------------------------------------------------------------
+// Automated backups (in-process scheduler; Tier A snapshots + Tier B weekly
+// full archives, offsite via Resend email attachments, monthly restore test).
+// ---------------------------------------------------------------------------
+
+const BACKUP_DIR_NAME = "backups";
+const BACKUP_RESEND_LIMIT_BYTES = 40_000_000; // Resend total email size ceiling
+const execFileAsync = promisify(execFile);
+
+type BackupKind = "daily-db" | "weekly-full" | "manual";
+
+interface BackupConfig {
+  alertEmail: string;
+  hour: number;
+  diskCapMB: number;
+  fullSizeAlertMB: number;
+}
+
+function backupConfig(): BackupConfig {
+  const int = (value: string | undefined, fallback: number) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  return {
+    alertEmail: (process.env.BACKUP_ALERT_EMAIL || "").trim(),
+    hour: Math.min(23, Math.max(0, int(process.env.BACKUP_HOUR, 3))),
+    diskCapMB: Math.max(128, int(process.env.BACKUP_DISK_CAP_MB, 1024)),
+    fullSizeAlertMB: Math.max(5, int(process.env.BACKUP_FULL_SIZE_ALERT_MB, 30)),
+  };
+}
+
+function utcStamp(date = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function sendBackupAlert(ctx: Ctx, cfg: BackupConfig, subject: string, text: string) {
+  if (!cfg.alertEmail) {
+    console.error(`[crewkat][backup] ALERT (no BACKUP_ALERT_EMAIL configured): ${subject}\n${text}`);
+    return;
+  }
+  try {
+    await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments: [] });
+  } catch (error) {
+    console.error("[crewkat][backup] alert email failed:", error);
+  }
+}
+
+async function pruneBackups(dir: string, cfg: BackupConfig, notes: string[]) {
+  let entries: Array<{ name: string; path: string; mtimeMs: number; size: number }> = [];
+  try {
+    const names = await readdir(dir);
+    for (const name of names) {
+      if (!/^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(name) && !/^crewkat-full-\d{8}-\d{6}\.tar\.gz$/.test(name)) continue;
+      const path = join(dir, name);
+      const st = await stat(path);
+      if (st.isFile()) entries.push({ name, path, mtimeMs: st.mtimeMs, size: st.size });
+    }
+  } catch {
+    return;
+  }
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs); // newest first
+  const dailies = entries.filter((e) => e.name.endsWith(".db"));
+  const weeklies = entries.filter((e) => e.name.endsWith(".tar.gz"));
+  const keep = new Set<string>([...dailies.slice(0, 7), ...weeklies.slice(0, 4)].map((e) => e.path));
+  // Never delete the newest daily or newest weekly, even under disk pressure.
+  const protectedPaths = new Set<string>([...dailies.slice(0, 1), ...weeklies.slice(0, 1)].map((e) => e.path));
+  const cap = cfg.diskCapMB * 1024 * 1024;
+  let total = entries.filter((e) => keep.has(e.path)).reduce((sum, e) => sum + e.size, 0);
+  const capVictims = entries.filter((e) => keep.has(e.path) && !protectedPaths.has(e.path)).sort((a, b) => a.mtimeMs - b.mtimeMs);
+  for (const victim of capVictims) {
+    if (total <= cap) break;
+    await rm(victim.path, { force: true });
+    keep.delete(victim.path);
+    total -= victim.size;
+    notes.push(`Pruned ${victim.name} (disk cap).`);
+  }
+  for (const entry of entries) {
+    if (keep.has(entry.path)) continue;
+    await rm(entry.path, { force: true });
+    notes.push(`Pruned ${entry.name} (retention).`);
+  }
+}
+
+interface BackupResult {
+  ok: boolean;
+  runId: number | null;
+  kind: BackupKind;
+  filePath: string | null;
+  totalBytes: number | null;
+  offsiteSent: boolean;
+  integrityOk: boolean;
+  error: string | null;
+}
+
+export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Promise<BackupResult> {
+  const cfg = backupConfig();
+  const db = ctx.db<typeof schema>();
+  const dir = join(ctx.spaceDir, BACKUP_DIR_NAME);
+  const startedAt = new Date();
+  let runId: number | null = null;
+
+  const fail = async (error: string): Promise<BackupResult> => {
+    if (runId) {
+      await db.update(schema.backupRuns).set({ status: "failed", finishedAt: new Date(), error: error.slice(0, 2000) }).where(eq(schema.backupRuns.id, runId));
+    }
+    await sendBackupAlert(ctx, cfg, `[Crewkat backup] backup FAILED (${kind})`, `An automated Crewkat backup failed.\n\nKind: ${kind}\nTime: ${new Date().toISOString()}\nError: ${error}\nBackup run row: ${runId ?? "n/a"}\n\nOpen Crewkat → Settings → Backups to retry manually.`);
+    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error };
+  };
+
+  try {
+    await mkdir(dir, { recursive: true });
+    const claimed = await db.insert(schema.backupRuns).values({ kind, status: "running", startedAt, notes: notes || null }).returning({ id: schema.backupRuns.id });
+    runId = claimed[0]?.id ?? null;
+    if (!runId) throw new Error("Could not claim a backup run row.");
+
+    // Tier A: consistent SQLite snapshot via VACUUM INTO.
+    const stamp = utcStamp(startedAt);
+    const snapshotName = `app-${stamp}-${crypto.randomUUID().slice(0, 6)}.db`;
+    if (!/^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(snapshotName)) throw new Error("Invalid snapshot name.");
+    const snapshotPath = join(dir, snapshotName);
+    const escapedSnapshot = snapshotPath.replace(/'/g, "''");
+    await db.run(sql.raw(`VACUUM INTO '${escapedSnapshot}'`));
+    const dbBytes = (await stat(snapshotPath)).size;
+
+    // Verify the snapshot: ATTACH + integrity_check + row counts vs live.
+    let integrityOk = false;
+    await db.run(sql.raw(`ATTACH DATABASE '${escapedSnapshot}' AS __snap`));
+    try {
+      const check = await db.all(sql.raw(`PRAGMA __snap.integrity_check`));
+      integrityOk = (check ?? []).every((row) => String((row as Record<string, unknown>).integrity_check).toLowerCase() === "ok");
+      const counts = await db.all(sql.raw(
+        `SELECT 'jobs' AS t, (SELECT count(*) FROM main.jobs) AS live, (SELECT count(*) FROM __snap.jobs) AS snap ` +
+        `UNION ALL SELECT 'invoices', (SELECT count(*) FROM main.invoices), (SELECT count(*) FROM __snap.invoices) ` +
+        `UNION ALL SELECT 'auth_users', (SELECT count(*) FROM main.auth_users), (SELECT count(*) FROM __snap.auth_users)`
+      ));
+      const mismatched = (counts ?? []).filter((row) => Number((row as Record<string, unknown>).live) !== Number((row as Record<string, unknown>).snap));
+      if (!integrityOk) throw new Error("Snapshot integrity_check did not return ok.");
+      if (mismatched.length > 0) throw new Error(`Row-count mismatch in snapshot: ${mismatched.map((row) => String((row as Record<string, unknown>).t)).join(", ")}.`);
+    } finally {
+      await db.run(sql.raw(`DETACH DATABASE __snap`));
+    }
+
+    // Tier B: weekly-full (or manual) also ships a tar.gz of the snapshot + blobs.
+    let totalBytes = dbBytes;
+    let blobBytes: number | null = null;
+    let tarPath: string | null = null;
+    let filePath = snapshotPath;
+    if (kind === "weekly-full" || kind === "manual") {
+      const tarName = `crewkat-full-${stamp}.tar.gz`;
+      tarPath = join(dir, tarName);
+      await mkdir(join(ctx.spaceDir, "blobs"), { recursive: true });
+      await execFileAsync("tar", ["-czf", tarPath, "-C", dir, snapshotName, "-C", ctx.spaceDir, "blobs"]);
+      totalBytes = (await stat(tarPath)).size;
+      blobBytes = Math.max(0, totalBytes - dbBytes);
+      filePath = tarPath;
+    }
+
+    // Retention + disk-cap pruning.
+    const pruneNotes: string[] = [];
+    await pruneBackups(dir, cfg, pruneNotes);
+
+    // Offsite: email the snapshot (always) and the full archive when it fits.
+    let offsiteSent = false;
+    const dateLabel = startedAt.toISOString().slice(0, 10);
+    if (cfg.alertEmail) {
+      const attachments = [{
+        filename: snapshotName,
+        contentType: "application/x-sqlite3",
+        dataBase64: (await readFile(snapshotPath)).toString("base64"),
+      }];
+      let subject = `[Crewkat backup] ${dateLabel} — app.db (${formatBytes(dbBytes)}) OK`;
+      let text =
+        `Automated Crewkat backup completed.\n\n` +
+        `Kind: ${kind}\n` +
+        `Snapshot: ${snapshotName} (${formatBytes(dbBytes)})\n` +
+        `Integrity check: ok\n` +
+        `Row counts: jobs / invoices / auth_users match the live database.\n` +
+        `\nRestore: extract the attachment, verify it with PRAGMA integrity_check, and copy it over /data/app.db while the service is suspended. Full procedure: DEPLOY-RUNBOOK.md section 10.`;
+      if (tarPath && totalBytes < BACKUP_RESEND_LIMIT_BYTES) {
+        attachments.push({
+          filename: basename(tarPath),
+          contentType: "application/gzip",
+          dataBase64: (await readFile(tarPath)).toString("base64"),
+        });
+        subject = `[Crewkat backup] ${dateLabel} — full (${formatBytes(totalBytes)}) OK`;
+        text += `\nFull snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) — database plus all job photos/blobs.`;
+      } else if (tarPath) {
+        text += `\nFull snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) was NOT emailed (over the ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)} email limit) — it is retained on the server disk.`;
+      }
+      const delivery = await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments });
+      offsiteSent = delivery.delivery === "sent";
+      if (!offsiteSent) pruneNotes.push("Offsite email failed to send.");
+    }
+
+    // Warn as the weekly full approaches the email size ceiling.
+    if (tarPath && totalBytes >= cfg.fullSizeAlertMB * 1024 * 1024) {
+      await sendBackupAlert(ctx, cfg,
+        `[Crewkat backup] weekly full is ${formatBytes(totalBytes)}`,
+        `The weekly full snapshot has reached ${formatBytes(totalBytes)} (alert threshold ${cfg.fullSizeAlertMB} MB).\nEmail offsite stops working at ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)}.\nSet up the S3 offsite option (see dev-briefs/automated-backups.md section 2.5) before then.`);
+      pruneNotes.push(`Size alert sent (${formatBytes(totalBytes)}).`);
+    }
+
+    await db.update(schema.backupRuns).set({
+      status: "ok", finishedAt: new Date(), dbBytes, blobBytes, totalBytes,
+      filePath, offsiteSent, integrityOk: true, notes: pruneNotes.join(" ") || null,
+    }).where(eq(schema.backupRuns.id, runId));
+    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null };
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+export async function performMonthlyVerify(ctx: Ctx, cfg: BackupConfig) {
+  const db = ctx.db<typeof schema>();
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const recent = await db.select({ id: schema.backupRuns.id }).from(schema.backupRuns)
+    .where(and(eq(schema.backupRuns.kind, "monthly-verify"), eq(schema.backupRuns.status, "ok"), gte(schema.backupRuns.startedAt, thirtyDaysAgo)))
+    .limit(1);
+  if (recent.length > 0) return;
+
+  const claimed = await db.insert(schema.backupRuns).values({ kind: "monthly-verify", status: "running", startedAt: new Date() }).returning({ id: schema.backupRuns.id });
+  const runId = claimed[0]?.id ?? null;
+  const fail = async (error: string) => {
+    if (runId) await db.update(schema.backupRuns).set({ status: "failed", finishedAt: new Date(), error: error.slice(0, 2000) }).where(eq(schema.backupRuns.id, runId));
+    await sendBackupAlert(ctx, cfg, "[Crewkat backup] monthly restore test FAILED",
+      `The automated monthly restore test failed — backups may not be restorable.\n\nTime: ${new Date().toISOString()}\nError: ${error}\n\nInvestigate before the next weekly run.`);
+  };
+
+  let workDir: string | null = null;
+  try {
+    const latest = await db.select().from(schema.backupRuns)
+      .where(and(eq(schema.backupRuns.kind, "weekly-full"), eq(schema.backupRuns.status, "ok")))
+      .orderBy(desc(schema.backupRuns.startedAt)).limit(1);
+    const tarPath = latest[0]?.filePath;
+    if (!tarPath) throw new Error("No successful weekly full backup found to verify.");
+
+    workDir = await mkdtemp(join(tmpdir(), "crewkat-restore-test-"));
+    await execFileAsync("tar", ["-xzf", tarPath, "-C", workDir]);
+    const dbName = (await readdir(workDir)).find((n) => /^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(n));
+    if (!dbName) throw new Error("Extracted archive is missing the database snapshot.");
+    const escapedDb = join(workDir, dbName).replace(/'/g, "''");
+
+    await db.run(sql.raw(`ATTACH DATABASE '${escapedDb}' AS __verify`));
+    try {
+      const check = await db.all(sql.raw(`PRAGMA __verify.integrity_check`));
+      const ok = (check ?? []).every((row) => String((row as Record<string, unknown>).integrity_check).toLowerCase() === "ok");
+      if (!ok) throw new Error("Restored snapshot integrity_check failed.");
+      const counts = await db.all(sql.raw(
+        `SELECT 'jobs' AS t, (SELECT count(*) FROM main.jobs) AS live, (SELECT count(*) FROM __verify.jobs) AS snap ` +
+        `UNION ALL SELECT 'invoices', (SELECT count(*) FROM main.invoices), (SELECT count(*) FROM __verify.invoices)`
+      ));
+      const mismatched = (counts ?? []).filter((row) => Number((row as Record<string, unknown>).live) !== Number((row as Record<string, unknown>).snap));
+      if (mismatched.length > 0) throw new Error("Row counts differ between the live DB and the restored snapshot.");
+      // Spot-check 5 random blob keys exist in the extracted blobs dir.
+      const keys = await db.all(sql.raw(`SELECT blob_key AS k FROM main.photos WHERE blob_key IS NOT NULL AND blob_key != '' ORDER BY RANDOM() LIMIT 5`));
+      const missing: string[] = [];
+      for (const row of (keys ?? [])) {
+        const key = String((row as Record<string, unknown>).k);
+        if (!key || key.includes("..")) continue;
+        try { await stat(join(workDir, "blobs", key)); } catch { missing.push(key); }
+      }
+      if (missing.length > 0) throw new Error(`Restored archive is missing ${missing.length} blob file(s).`);
+    } finally {
+      await db.run(sql.raw(`DETACH DATABASE __verify`));
+    }
+
+    if (runId) {
+      await db.update(schema.backupRuns).set({ status: "ok", finishedAt: new Date(), integrityOk: true, notes: "Monthly restore test passed: latest weekly full extracts, integrity_check ok, row counts match, 5 random blob keys present." }).where(eq(schema.backupRuns.id, runId));
+    }
+  } catch (error) {
+    await fail(error instanceof Error ? error.message : String(error));
+  } finally {
+    if (workDir) await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+let backupInProgress = false;
+let lastMissedRunAlertAt = 0;
+
+async function checkMissedRuns(ctx: Ctx, cfg: BackupConfig) {
+  const db = ctx.db<typeof schema>();
+  const cutoff = new Date(Date.now() - 48 * 3600 * 1000);
+  const recentOk = await db.select({ id: schema.backupRuns.id }).from(schema.backupRuns)
+    .where(and(eq(schema.backupRuns.status, "ok"), gte(schema.backupRuns.startedAt, cutoff))).limit(1);
+  if (recentOk.length === 0 && Date.now() - lastMissedRunAlertAt > 24 * 3600 * 1000) {
+    lastMissedRunAlertAt = Date.now();
+    await sendBackupAlert(ctx, cfg, "[Crewkat backup] no successful backup in 48h",
+      "The backup scheduler is running but no backup has succeeded in the last 48 hours.\nCheck Crewkat → Settings → Backups for failed runs and investigate.");
+  }
+}
+
+/**
+ * Scheduler entry point (called from server.mjs). Runs at most once per UTC
+ * day, at/after BACKUP_HOUR (default 03:00 UTC). Sundays take a weekly-full
+ * tar.gz; other days a daily-db VACUUM INTO snapshot. Triggers the monthly
+ * restore test after a weekly run when one is due.
+ */
+export async function runScheduledBackup(ctx: Ctx): Promise<{ ran: boolean; kind?: BackupKind; ok?: boolean }> {
+  const cfg = backupConfig();
+  if (!cfg.alertEmail) {
+    console.error("[crewkat][backup] BACKUP_ALERT_EMAIL is not set — automated backups are disabled. Set it in the Render env vars.");
+    return { ran: false };
+  }
+  if (backupInProgress) return { ran: false };
+  const db = ctx.db<typeof schema>();
+  const now = new Date();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const todays = await db.select({ id: schema.backupRuns.id }).from(schema.backupRuns)
+    .where(gte(schema.backupRuns.startedAt, dayStart)).limit(1);
+  if (todays.length > 0) return { ran: false };
+  if (now.getUTCHours() < cfg.hour) return { ran: false };
+
+  backupInProgress = true;
+  try {
+    const kind: BackupKind = now.getUTCDay() === 0 ? "weekly-full" : "daily-db";
+    const result = await performBackup(ctx, kind);
+    if (result.ok && kind === "weekly-full") await performMonthlyVerify(ctx, cfg);
+    await checkMissedRuns(ctx, cfg);
+    return { ran: true, kind, ok: result.ok };
+  } finally {
+    backupInProgress = false;
+  }
+}
+
+/** Marks runs left in "running" by a crashed/restarted process as failed. */
+export async function recoverStaleBackupRuns(ctx: Ctx): Promise<number> {
+  const db = ctx.db<typeof schema>();
+  const stale = await db.select({ id: schema.backupRuns.id }).from(schema.backupRuns).where(eq(schema.backupRuns.status, "running"));
+  for (const row of stale) {
+    await db.update(schema.backupRuns).set({ status: "failed", finishedAt: new Date(), error: "Server restarted mid-run; marked failed at startup." }).where(eq(schema.backupRuns.id, row.id));
+  }
+  return stale.length;
 }
 
 const BaseActions = {
@@ -1079,6 +1425,74 @@ const BaseActions = {
         await ctx.blobs.delete(blobKey).catch(() => {});
         throw error;
       }
+    },
+  }),
+  runAutomatedBackup: defineAction({
+    request: z.object({ note: z.string().trim().max(500).default("") }),
+    response: z.object({
+      ok: z.boolean(),
+      runId: z.number().nullable(),
+      kind: z.string(),
+      filePath: z.string().nullable(),
+      totalBytes: z.number().nullable(),
+      offsiteSent: z.boolean(),
+      integrityOk: z.boolean(),
+      error: z.string().nullable(),
+    }),
+    async handler(ctx, args) {
+      if (backupInProgress) throw new Error("A backup is already running. Try again in a few minutes.");
+      backupInProgress = true;
+      try {
+        const result = await performBackup(ctx, "manual", args.note);
+        if (!result.ok) throw new Error(result.error || "Backup failed.");
+        ctx.invalidateQueries();
+        return {
+          ok: true, runId: result.runId, kind: result.kind, filePath: result.filePath,
+          totalBytes: result.totalBytes, offsiteSent: result.offsiteSent, integrityOk: result.integrityOk, error: null,
+        };
+      } finally {
+        backupInProgress = false;
+      }
+    },
+  }),
+  getBackupStatus: defineAction({
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      backupHourUtc: z.number(),
+      runs: z.array(z.object({
+        id: z.number(),
+        kind: z.string(),
+        status: z.string(),
+        startedAt: z.string(),
+        finishedAt: z.string().nullable(),
+        totalBytes: z.number().nullable(),
+        offsiteSent: z.boolean(),
+        integrityOk: z.boolean().nullable(),
+        error: z.string().nullable(),
+        notes: z.string().nullable(),
+      })),
+    }),
+    async handler(ctx) {
+      const cfg = backupConfig();
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.backupRuns).orderBy(desc(schema.backupRuns.startedAt)).limit(10);
+      return {
+        configured: Boolean(cfg.alertEmail),
+        backupHourUtc: cfg.hour,
+        runs: rows.map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          status: row.status,
+          startedAt: row.startedAt.toISOString(),
+          finishedAt: row.finishedAt?.toISOString() ?? null,
+          totalBytes: row.totalBytes,
+          offsiteSent: row.offsiteSent,
+          integrityOk: row.integrityOk,
+          error: row.error,
+          notes: row.notes,
+        })),
+      };
     },
   }),
 

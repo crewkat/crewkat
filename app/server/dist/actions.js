@@ -2892,7 +2892,7 @@ function initializeContext(params) {
     external: params?.external ?? undefined
   };
 }
-function process(schema, ctx, _params = { path: [], schemaPath: [] }) {
+function process2(schema, ctx, _params = { path: [], schemaPath: [] }) {
   var _a;
   const def = schema._zod.def;
   const seen = ctx.seen.get(schema);
@@ -2929,7 +2929,7 @@ function process(schema, ctx, _params = { path: [], schemaPath: [] }) {
     if (parent) {
       if (!result.ref)
         result.ref = parent;
-      process(parent, ctx, params);
+      process2(parent, ctx, params);
       ctx.seen.get(parent).isParent = true;
     }
   }
@@ -3212,14 +3212,14 @@ function isTransforming(_schema, _ctx) {
 }
 var createToJSONSchemaMethod = (schema, processors = {}) => (params) => {
   const ctx = initializeContext({ ...params, processors });
-  process(schema, ctx);
+  process2(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
 var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) => {
   const { libraryOptions, target } = params ?? {};
   const ctx = initializeContext({ ...libraryOptions ?? {}, target, io, processors });
-  process(schema, ctx);
+  process2(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
@@ -3369,7 +3369,7 @@ var arrayProcessor = (schema, ctx, _json, params) => {
   if (typeof maximum === "number")
     json.maxItems = maximum;
   json.type = "array";
-  json.items = process(def.element, ctx, {
+  json.items = process2(def.element, ctx, {
     ...params,
     path: [...params.path, "items"]
   });
@@ -3381,7 +3381,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
   json.properties = {};
   const shape = def.shape;
   for (const key in shape) {
-    json.properties[key] = process(shape[key], ctx, {
+    json.properties[key] = process2(shape[key], ctx, {
       ...params,
       path: [...params.path, "properties", key]
     });
@@ -3404,7 +3404,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
     if (ctx.io === "output")
       json.additionalProperties = false;
   } else if (def.catchall) {
-    json.additionalProperties = process(def.catchall, ctx, {
+    json.additionalProperties = process2(def.catchall, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
@@ -3413,7 +3413,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
 var unionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
   const isExclusive = def.inclusive === false;
-  const options = def.options.map((x, i) => process(x, ctx, {
+  const options = def.options.map((x, i) => process2(x, ctx, {
     ...params,
     path: [...params.path, isExclusive ? "oneOf" : "anyOf", i]
   }));
@@ -3425,11 +3425,11 @@ var unionProcessor = (schema, ctx, json, params) => {
 };
 var intersectionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const a = process(def.left, ctx, {
+  const a = process2(def.left, ctx, {
     ...params,
     path: [...params.path, "allOf", 0]
   });
-  const b = process(def.right, ctx, {
+  const b = process2(def.right, ctx, {
     ...params,
     path: [...params.path, "allOf", 1]
   });
@@ -3442,7 +3442,7 @@ var intersectionProcessor = (schema, ctx, json, params) => {
 };
 var nullableProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const inner = process(def.innerType, ctx, params);
+  const inner = process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   if (ctx.target === "openapi-3.0") {
     seen.ref = def.innerType;
@@ -3453,20 +3453,20 @@ var nullableProcessor = (schema, ctx, json, params) => {
 };
 var nonoptionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
 var defaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   json.default = JSON.parse(JSON.stringify(def.defaultValue));
 };
 var prefaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   if (ctx.io === "input")
@@ -3474,7 +3474,7 @@ var prefaultProcessor = (schema, ctx, json, params) => {
 };
 var catchProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   let catchValue;
@@ -3489,20 +3489,20 @@ var pipeProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
   const inIsTransform = def.in._zod.traits.has("$ZodTransform");
   const innerType = ctx.io === "input" ? inIsTransform ? def.out : def.in : def.out;
-  process(innerType, ctx, params);
+  process2(innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 };
 var readonlyProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   json.readOnly = true;
 };
 var optionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
@@ -5032,6 +5032,9 @@ function or(...unfilteredConditions) {
     new StringChunk(")")
   ]);
 }
+var gte = (left, right) => {
+  return sql`${left} >= ${bindIfParam(right, left)}`;
+};
 function isNull(value) {
   return sql`${value} is null`;
 }
@@ -5795,6 +5798,13 @@ function strFromU8(dat, latin1) {
   }
 }
 
+// src/actions.ts
+import { execFile } from "child_process";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "fs/promises";
+import { tmpdir } from "os";
+import { basename, join } from "path";
+import { promisify } from "util";
+
 // ../node_modules/drizzle-orm/sqlite-core/foreign-keys.js
 class ForeignKeyBuilder {
   static [entityKind] = "SQLiteForeignKeyBuilder";
@@ -6366,6 +6376,9 @@ class Index {
   constructor(config, table) {
     this.config = { ...config, table };
   }
+}
+function index(name) {
+  return new IndexBuilderOn(name, false);
 }
 function uniqueIndex(name) {
   return new IndexBuilderOn(name, true);
@@ -7195,6 +7208,23 @@ var stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
   type: text("type").notNull(),
   processedAt: integer2("processed_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var backupRuns = sqliteTable("backup_runs", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: ["daily-db", "weekly-full", "manual", "monthly-verify"] }).notNull(),
+  status: text("status", { enum: ["running", "ok", "failed"] }).notNull(),
+  startedAt: integer2("started_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  finishedAt: integer2("finished_at", { mode: "timestamp_ms" }),
+  dbBytes: integer2("db_bytes"),
+  blobBytes: integer2("blob_bytes"),
+  totalBytes: integer2("total_bytes"),
+  filePath: text("file_path"),
+  offsiteSent: integer2("offsite_sent", { mode: "boolean" }).notNull().default(false),
+  integrityOk: integer2("integrity_ok", { mode: "boolean" }),
+  error: text("error"),
+  notes: text("notes")
+}, (table) => [
+  index("idx_backup_runs_started").on(table.startedAt)
+]);
 
 // src/auth-email.ts
 function authCodeClientResult(code, delivery) {
@@ -7221,6 +7251,21 @@ var privileged = definePrivilegedContracts({
     response: object({ delivery: _enum(["sent", "fallback", "failed"]) }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  sendBackupEmail: {
+    request: object({
+      to: string2().email().max(200),
+      subject: string2().min(1).max(200),
+      text: string2().min(1).max(20000),
+      attachments: array(object({
+        filename: string2().min(1).max(240),
+        contentType: string2().min(1).max(120),
+        dataBase64: string2().min(1).max(60000000)
+      })).max(3)
+    }),
+    response: object({ delivery: _enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 60000
   },
   createStripeCheckout: {
     request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200) }),
@@ -7751,6 +7796,317 @@ function workspaceIdentity(ctx) {
   if (!scoped.workspaceCompanyId || !scoped.workspaceUserId)
     throw new Error("Sign in to continue.");
   return scoped;
+}
+var BACKUP_DIR_NAME = "backups";
+var BACKUP_RESEND_LIMIT_BYTES = 40000000;
+var execFileAsync = promisify(execFile);
+function backupConfig() {
+  const int = (value, fallback) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  return {
+    alertEmail: (process.env.BACKUP_ALERT_EMAIL || "").trim(),
+    hour: Math.min(23, Math.max(0, int(process.env.BACKUP_HOUR, 3))),
+    diskCapMB: Math.max(128, int(process.env.BACKUP_DISK_CAP_MB, 1024)),
+    fullSizeAlertMB: Math.max(5, int(process.env.BACKUP_FULL_SIZE_ALERT_MB, 30))
+  };
+}
+function utcStamp(date = new Date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
+}
+function formatBytes(bytes) {
+  if (bytes < 1024)
+    return `${bytes} B`;
+  if (bytes < 1024 * 1024)
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+async function sendBackupAlert(ctx, cfg, subject, text) {
+  if (!cfg.alertEmail) {
+    console.error(`[crewkat][backup] ALERT (no BACKUP_ALERT_EMAIL configured): ${subject}
+${text}`);
+    return;
+  }
+  try {
+    await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments: [] });
+  } catch (error) {
+    console.error("[crewkat][backup] alert email failed:", error);
+  }
+}
+async function pruneBackups(dir, cfg, notes) {
+  let entries = [];
+  try {
+    const names = await readdir(dir);
+    for (const name of names) {
+      if (!/^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(name) && !/^crewkat-full-\d{8}-\d{6}\.tar\.gz$/.test(name))
+        continue;
+      const path = join(dir, name);
+      const st = await stat(path);
+      if (st.isFile())
+        entries.push({ name, path, mtimeMs: st.mtimeMs, size: st.size });
+    }
+  } catch {
+    return;
+  }
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const dailies = entries.filter((e) => e.name.endsWith(".db"));
+  const weeklies = entries.filter((e) => e.name.endsWith(".tar.gz"));
+  const keep = new Set([...dailies.slice(0, 7), ...weeklies.slice(0, 4)].map((e) => e.path));
+  const protectedPaths = new Set([...dailies.slice(0, 1), ...weeklies.slice(0, 1)].map((e) => e.path));
+  const cap = cfg.diskCapMB * 1024 * 1024;
+  let total = entries.filter((e) => keep.has(e.path)).reduce((sum, e) => sum + e.size, 0);
+  const capVictims = entries.filter((e) => keep.has(e.path) && !protectedPaths.has(e.path)).sort((a, b) => a.mtimeMs - b.mtimeMs);
+  for (const victim of capVictims) {
+    if (total <= cap)
+      break;
+    await rm(victim.path, { force: true });
+    keep.delete(victim.path);
+    total -= victim.size;
+    notes.push(`Pruned ${victim.name} (disk cap).`);
+  }
+  for (const entry of entries) {
+    if (keep.has(entry.path))
+      continue;
+    await rm(entry.path, { force: true });
+    notes.push(`Pruned ${entry.name} (retention).`);
+  }
+}
+async function performBackup(ctx, kind, notes = "") {
+  const cfg = backupConfig();
+  const db = ctx.db();
+  const dir = join(ctx.spaceDir, BACKUP_DIR_NAME);
+  const startedAt = new Date;
+  let runId = null;
+  const fail = async (error) => {
+    if (runId) {
+      await db.update(backupRuns).set({ status: "failed", finishedAt: new Date, error: error.slice(0, 2000) }).where(eq(backupRuns.id, runId));
+    }
+    await sendBackupAlert(ctx, cfg, `[Crewkat backup] backup FAILED (${kind})`, `An automated Crewkat backup failed.
+
+Kind: ${kind}
+Time: ${new Date().toISOString()}
+Error: ${error}
+Backup run row: ${runId ?? "n/a"}
+
+Open Crewkat \u2192 Settings \u2192 Backups to retry manually.`);
+    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error };
+  };
+  try {
+    await mkdir(dir, { recursive: true });
+    const claimed = await db.insert(backupRuns).values({ kind, status: "running", startedAt, notes: notes || null }).returning({ id: backupRuns.id });
+    runId = claimed[0]?.id ?? null;
+    if (!runId)
+      throw new Error("Could not claim a backup run row.");
+    const stamp = utcStamp(startedAt);
+    const snapshotName = `app-${stamp}-${crypto.randomUUID().slice(0, 6)}.db`;
+    if (!/^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(snapshotName))
+      throw new Error("Invalid snapshot name.");
+    const snapshotPath = join(dir, snapshotName);
+    const escapedSnapshot = snapshotPath.replace(/'/g, "''");
+    await db.run(sql.raw(`VACUUM INTO '${escapedSnapshot}'`));
+    const dbBytes = (await stat(snapshotPath)).size;
+    let integrityOk = false;
+    await db.run(sql.raw(`ATTACH DATABASE '${escapedSnapshot}' AS __snap`));
+    try {
+      const check = await db.all(sql.raw(`PRAGMA __snap.integrity_check`));
+      integrityOk = (check ?? []).every((row) => String(row.integrity_check).toLowerCase() === "ok");
+      const counts = await db.all(sql.raw(`SELECT 'jobs' AS t, (SELECT count(*) FROM main.jobs) AS live, (SELECT count(*) FROM __snap.jobs) AS snap ` + `UNION ALL SELECT 'invoices', (SELECT count(*) FROM main.invoices), (SELECT count(*) FROM __snap.invoices) ` + `UNION ALL SELECT 'auth_users', (SELECT count(*) FROM main.auth_users), (SELECT count(*) FROM __snap.auth_users)`));
+      const mismatched = (counts ?? []).filter((row) => Number(row.live) !== Number(row.snap));
+      if (!integrityOk)
+        throw new Error("Snapshot integrity_check did not return ok.");
+      if (mismatched.length > 0)
+        throw new Error(`Row-count mismatch in snapshot: ${mismatched.map((row) => String(row.t)).join(", ")}.`);
+    } finally {
+      await db.run(sql.raw(`DETACH DATABASE __snap`));
+    }
+    let totalBytes = dbBytes;
+    let blobBytes = null;
+    let tarPath = null;
+    let filePath = snapshotPath;
+    if (kind === "weekly-full" || kind === "manual") {
+      const tarName = `crewkat-full-${stamp}.tar.gz`;
+      tarPath = join(dir, tarName);
+      await mkdir(join(ctx.spaceDir, "blobs"), { recursive: true });
+      await execFileAsync("tar", ["-czf", tarPath, "-C", dir, snapshotName, "-C", ctx.spaceDir, "blobs"]);
+      totalBytes = (await stat(tarPath)).size;
+      blobBytes = Math.max(0, totalBytes - dbBytes);
+      filePath = tarPath;
+    }
+    const pruneNotes = [];
+    await pruneBackups(dir, cfg, pruneNotes);
+    let offsiteSent = false;
+    const dateLabel = startedAt.toISOString().slice(0, 10);
+    if (cfg.alertEmail) {
+      const attachments = [{
+        filename: snapshotName,
+        contentType: "application/x-sqlite3",
+        dataBase64: (await readFile(snapshotPath)).toString("base64")
+      }];
+      let subject = `[Crewkat backup] ${dateLabel} \u2014 app.db (${formatBytes(dbBytes)}) OK`;
+      let text = `Automated Crewkat backup completed.
+
+` + `Kind: ${kind}
+` + `Snapshot: ${snapshotName} (${formatBytes(dbBytes)})
+` + `Integrity check: ok
+` + `Row counts: jobs / invoices / auth_users match the live database.
+` + `
+Restore: extract the attachment, verify it with PRAGMA integrity_check, and copy it over /data/app.db while the service is suspended. Full procedure: DEPLOY-RUNBOOK.md section 10.`;
+      if (tarPath && totalBytes < BACKUP_RESEND_LIMIT_BYTES) {
+        attachments.push({
+          filename: basename(tarPath),
+          contentType: "application/gzip",
+          dataBase64: (await readFile(tarPath)).toString("base64")
+        });
+        subject = `[Crewkat backup] ${dateLabel} \u2014 full (${formatBytes(totalBytes)}) OK`;
+        text += `
+Full snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) \u2014 database plus all job photos/blobs.`;
+      } else if (tarPath) {
+        text += `
+Full snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) was NOT emailed (over the ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)} email limit) \u2014 it is retained on the server disk.`;
+      }
+      const delivery = await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments });
+      offsiteSent = delivery.delivery === "sent";
+      if (!offsiteSent)
+        pruneNotes.push("Offsite email failed to send.");
+    }
+    if (tarPath && totalBytes >= cfg.fullSizeAlertMB * 1024 * 1024) {
+      await sendBackupAlert(ctx, cfg, `[Crewkat backup] weekly full is ${formatBytes(totalBytes)}`, `The weekly full snapshot has reached ${formatBytes(totalBytes)} (alert threshold ${cfg.fullSizeAlertMB} MB).
+Email offsite stops working at ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)}.
+Set up the S3 offsite option (see dev-briefs/automated-backups.md section 2.5) before then.`);
+      pruneNotes.push(`Size alert sent (${formatBytes(totalBytes)}).`);
+    }
+    await db.update(backupRuns).set({
+      status: "ok",
+      finishedAt: new Date,
+      dbBytes,
+      blobBytes,
+      totalBytes,
+      filePath,
+      offsiteSent,
+      integrityOk: true,
+      notes: pruneNotes.join(" ") || null
+    }).where(eq(backupRuns.id, runId));
+    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null };
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+}
+async function performMonthlyVerify(ctx, cfg) {
+  const db = ctx.db();
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const recent = await db.select({ id: backupRuns.id }).from(backupRuns).where(and(eq(backupRuns.kind, "monthly-verify"), eq(backupRuns.status, "ok"), gte(backupRuns.startedAt, thirtyDaysAgo))).limit(1);
+  if (recent.length > 0)
+    return;
+  const claimed = await db.insert(backupRuns).values({ kind: "monthly-verify", status: "running", startedAt: new Date }).returning({ id: backupRuns.id });
+  const runId = claimed[0]?.id ?? null;
+  const fail = async (error) => {
+    if (runId)
+      await db.update(backupRuns).set({ status: "failed", finishedAt: new Date, error: error.slice(0, 2000) }).where(eq(backupRuns.id, runId));
+    await sendBackupAlert(ctx, cfg, "[Crewkat backup] monthly restore test FAILED", `The automated monthly restore test failed \u2014 backups may not be restorable.
+
+Time: ${new Date().toISOString()}
+Error: ${error}
+
+Investigate before the next weekly run.`);
+  };
+  let workDir = null;
+  try {
+    const latest = await db.select().from(backupRuns).where(and(eq(backupRuns.kind, "weekly-full"), eq(backupRuns.status, "ok"))).orderBy(desc(backupRuns.startedAt)).limit(1);
+    const tarPath = latest[0]?.filePath;
+    if (!tarPath)
+      throw new Error("No successful weekly full backup found to verify.");
+    workDir = await mkdtemp(join(tmpdir(), "crewkat-restore-test-"));
+    await execFileAsync("tar", ["-xzf", tarPath, "-C", workDir]);
+    const dbName = (await readdir(workDir)).find((n) => /^app-\d{8}-\d{6}-[0-9a-f]{6}\.db$/.test(n));
+    if (!dbName)
+      throw new Error("Extracted archive is missing the database snapshot.");
+    const escapedDb = join(workDir, dbName).replace(/'/g, "''");
+    await db.run(sql.raw(`ATTACH DATABASE '${escapedDb}' AS __verify`));
+    try {
+      const check = await db.all(sql.raw(`PRAGMA __verify.integrity_check`));
+      const ok = (check ?? []).every((row) => String(row.integrity_check).toLowerCase() === "ok");
+      if (!ok)
+        throw new Error("Restored snapshot integrity_check failed.");
+      const counts = await db.all(sql.raw(`SELECT 'jobs' AS t, (SELECT count(*) FROM main.jobs) AS live, (SELECT count(*) FROM __verify.jobs) AS snap ` + `UNION ALL SELECT 'invoices', (SELECT count(*) FROM main.invoices), (SELECT count(*) FROM __verify.invoices)`));
+      const mismatched = (counts ?? []).filter((row) => Number(row.live) !== Number(row.snap));
+      if (mismatched.length > 0)
+        throw new Error("Row counts differ between the live DB and the restored snapshot.");
+      const keys = await db.all(sql.raw(`SELECT blob_key AS k FROM main.photos WHERE blob_key IS NOT NULL AND blob_key != '' ORDER BY RANDOM() LIMIT 5`));
+      const missing = [];
+      for (const row of keys ?? []) {
+        const key = String(row.k);
+        if (!key || key.includes(".."))
+          continue;
+        try {
+          await stat(join(workDir, "blobs", key));
+        } catch {
+          missing.push(key);
+        }
+      }
+      if (missing.length > 0)
+        throw new Error(`Restored archive is missing ${missing.length} blob file(s).`);
+    } finally {
+      await db.run(sql.raw(`DETACH DATABASE __verify`));
+    }
+    if (runId) {
+      await db.update(backupRuns).set({ status: "ok", finishedAt: new Date, integrityOk: true, notes: "Monthly restore test passed: latest weekly full extracts, integrity_check ok, row counts match, 5 random blob keys present." }).where(eq(backupRuns.id, runId));
+    }
+  } catch (error) {
+    await fail(error instanceof Error ? error.message : String(error));
+  } finally {
+    if (workDir)
+      await rm(workDir, { recursive: true, force: true });
+  }
+}
+var backupInProgress = false;
+var lastMissedRunAlertAt = 0;
+async function checkMissedRuns(ctx, cfg) {
+  const db = ctx.db();
+  const cutoff = new Date(Date.now() - 48 * 3600 * 1000);
+  const recentOk = await db.select({ id: backupRuns.id }).from(backupRuns).where(and(eq(backupRuns.status, "ok"), gte(backupRuns.startedAt, cutoff))).limit(1);
+  if (recentOk.length === 0 && Date.now() - lastMissedRunAlertAt > 24 * 3600 * 1000) {
+    lastMissedRunAlertAt = Date.now();
+    await sendBackupAlert(ctx, cfg, "[Crewkat backup] no successful backup in 48h", `The backup scheduler is running but no backup has succeeded in the last 48 hours.
+Check Crewkat \u2192 Settings \u2192 Backups for failed runs and investigate.`);
+  }
+}
+async function runScheduledBackup(ctx) {
+  const cfg = backupConfig();
+  if (!cfg.alertEmail) {
+    console.error("[crewkat][backup] BACKUP_ALERT_EMAIL is not set \u2014 automated backups are disabled. Set it in the Render env vars.");
+    return { ran: false };
+  }
+  if (backupInProgress)
+    return { ran: false };
+  const db = ctx.db();
+  const now = new Date;
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const todays = await db.select({ id: backupRuns.id }).from(backupRuns).where(gte(backupRuns.startedAt, dayStart)).limit(1);
+  if (todays.length > 0)
+    return { ran: false };
+  if (now.getUTCHours() < cfg.hour)
+    return { ran: false };
+  backupInProgress = true;
+  try {
+    const kind = now.getUTCDay() === 0 ? "weekly-full" : "daily-db";
+    const result = await performBackup(ctx, kind);
+    if (result.ok && kind === "weekly-full")
+      await performMonthlyVerify(ctx, cfg);
+    await checkMissedRuns(ctx, cfg);
+    return { ran: true, kind, ok: result.ok };
+  } finally {
+    backupInProgress = false;
+  }
+}
+async function recoverStaleBackupRuns(ctx) {
+  const db = ctx.db();
+  const stale = await db.select({ id: backupRuns.id }).from(backupRuns).where(eq(backupRuns.status, "running"));
+  for (const row of stale) {
+    await db.update(backupRuns).set({ status: "failed", finishedAt: new Date, error: "Server restarted mid-run; marked failed at startup." }).where(eq(backupRuns.id, row.id));
+  }
+  return stale.length;
 }
 var BaseActions = {
   getAuthBootstrap: defineAction({
@@ -9988,6 +10344,82 @@ var BaseActions = {
       }
     }
   }),
+  runAutomatedBackup: defineAction({
+    request: object({ note: string2().trim().max(500).default("") }),
+    response: object({
+      ok: boolean2(),
+      runId: number2().nullable(),
+      kind: string2(),
+      filePath: string2().nullable(),
+      totalBytes: number2().nullable(),
+      offsiteSent: boolean2(),
+      integrityOk: boolean2(),
+      error: string2().nullable()
+    }),
+    async handler(ctx, args) {
+      if (backupInProgress)
+        throw new Error("A backup is already running. Try again in a few minutes.");
+      backupInProgress = true;
+      try {
+        const result = await performBackup(ctx, "manual", args.note);
+        if (!result.ok)
+          throw new Error(result.error || "Backup failed.");
+        ctx.invalidateQueries();
+        return {
+          ok: true,
+          runId: result.runId,
+          kind: result.kind,
+          filePath: result.filePath,
+          totalBytes: result.totalBytes,
+          offsiteSent: result.offsiteSent,
+          integrityOk: result.integrityOk,
+          error: null
+        };
+      } finally {
+        backupInProgress = false;
+      }
+    }
+  }),
+  getBackupStatus: defineAction({
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      backupHourUtc: number2(),
+      runs: array(object({
+        id: number2(),
+        kind: string2(),
+        status: string2(),
+        startedAt: string2(),
+        finishedAt: string2().nullable(),
+        totalBytes: number2().nullable(),
+        offsiteSent: boolean2(),
+        integrityOk: boolean2().nullable(),
+        error: string2().nullable(),
+        notes: string2().nullable()
+      }))
+    }),
+    async handler(ctx) {
+      const cfg = backupConfig();
+      const db = ctx.db();
+      const rows = await db.select().from(backupRuns).orderBy(desc(backupRuns.startedAt)).limit(10);
+      return {
+        configured: Boolean(cfg.alertEmail),
+        backupHourUtc: cfg.hour,
+        runs: rows.map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          status: row.status,
+          startedAt: row.startedAt.toISOString(),
+          finishedAt: row.finishedAt?.toISOString() ?? null,
+          totalBytes: row.totalBytes,
+          offsiteSent: row.offsiteSent,
+          integrityOk: row.integrityOk,
+          error: row.error,
+          notes: row.notes
+        }))
+      };
+    }
+  }),
   listMarketplaceListings: defineAction({
     request: object({ search: string2().trim().max(120).default(""), category: marketplaceCategorySchema.nullable().default(null), serviceArea: string2().trim().max(120).default("") }),
     response: object({ listings: array(marketplaceListingSchema) }),
@@ -10427,5 +10859,9 @@ function protectActions(actions) {
 }
 var Actions = protectActions(BaseActions);
 export {
-  Actions
+  Actions,
+  performBackup,
+  performMonthlyVerify,
+  recoverStaleBackupRuns,
+  runScheduledBackup
 };

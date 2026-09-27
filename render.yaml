@@ -36,6 +36,17 @@ services:
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
         sync: false
+      # Automated backups (in-process scheduler; no extra cost).
+      # Daily VACUUM INTO snapshot + Sunday weekly tar.gz (DB + blobs),
+      # offsite via Resend email attachments, failure alerts by email.
+      - key: BACKUP_ALERT_EMAIL
+        sync: false # required: backup reports, failure alerts, offsite copies
+      - key: BACKUP_HOUR
+        sync: false # optional: UTC hour for the daily run (default 3)
+      - key: BACKUP_DISK_CAP_MB
+        sync: false # optional: max MB kept in /data/backups (default 1024)
+      - key: BACKUP_FULL_SIZE_ALERT_MB
+        sync: false # optional: warn when the weekly full exceeds this (default 30)
       - key: STRIPE_PREMIUM_PRICE_ID
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

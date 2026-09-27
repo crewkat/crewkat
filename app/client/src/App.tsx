@@ -3775,6 +3775,56 @@ const SettingsAccordionContext = createContext<{
   setOpenId: (id: string | null) => void;
 } | null>(null);
 
+function AutomaticBackupCard({ lang }: { lang: Lang }) {
+  const queryClient = useQueryClient();
+  const status = useQuery({ queryKey: ["backupStatus"], queryFn: () => api.getBackupStatus({}), refetchInterval: 30000 });
+  const [notice, setNotice] = useState("");
+  const runNow = useMutation({
+    mutationFn: () => api.runAutomatedBackup({ note: "" }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["backupStatus"] });
+      setNotice(lang === "es"
+        ? `Copia del servidor lista${result.offsiteSent ? " y enviada por correo" : ""}.`
+        : `Server backup complete${result.offsiteSent ? " and emailed" : ""}.`);
+    },
+    onError: () => setNotice(lang === "es" ? "No se pudo crear la copia del servidor. Inténtalo de nuevo." : "Couldn't create the server backup. Try again."),
+  });
+  const latest = status.data?.runs[0];
+  const dotClass = !latest ? "" : latest.status === "ok" ? "ok" : latest.status === "failed" ? "failed" : "running";
+  const kindLabel = !latest ? "" : latest.kind === "weekly-full" ? (lang === "es" ? "completa" : "full") : latest.kind === "manual" ? (lang === "es" ? "manual" : "manual") : (lang === "es" ? "diaria" : "daily");
+  const sizeLabel = latest?.totalBytes ? ` · ${(latest.totalBytes / 1048576).toFixed(1)} MB` : "";
+  const line = !status.data
+    ? (lang === "es" ? "Cargando estado…" : "Loading status…")
+    : !status.data.configured
+      ? (lang === "es" ? "Sin configurar: falta BACKUP_ALERT_EMAIL en el servidor." : "Not configured: BACKUP_ALERT_EMAIL is missing on the server.")
+      : !latest
+        ? (lang === "es" ? "Aún no hay copias automáticas. La primera se hará esta noche." : "No automatic backups yet. The first runs tonight.")
+        : latest.status === "running"
+          ? (lang === "es" ? "Creando copia…" : "Backup running…")
+          : latest.status === "failed"
+            ? (lang === "es" ? `Falló la última copia ${kindLabel}. ${latest.error ?? ""}` : `Last ${kindLabel} backup failed. ${latest.error ?? ""}`)
+            : (lang === "es"
+              ? `Última copia ${kindLabel}: ${new Date(latest.startedAt).toLocaleString()}${sizeLabel}${latest.offsiteSent ? " · enviada por correo" : ""}`
+              : `Last ${kindLabel} backup: ${new Date(latest.startedAt).toLocaleString()}${sizeLabel}${latest.offsiteSent ? " · emailed" : ""}`);
+  return (
+    <div className="auto-backup-card">
+      <strong>{lang === "es" ? "Copias automáticas" : "Automatic backups"}</strong>
+      <p className="auto-backup-line"><span className={`backup-dot ${dotClass}`} aria-hidden="true" />{line}</p>
+      <p className="privacy-note">{lang === "es"
+        ? "El servidor guarda una copia diaria y una copia completa con fotos cada domingo, y las envía por correo."
+        : "The server saves a daily snapshot and a full copy with photos every Sunday, and emails them offsite."}</p>
+      <button type="button" className="backup-action" disabled={runNow.isPending} onClick={() => { setNotice(""); runNow.mutate(); }}>
+        <Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon>
+        <span>
+          <strong>{runNow.isPending ? (lang === "es" ? "Creando copia…" : "Creating backup…") : (lang === "es" ? "Hacer copia ahora" : "Back up now")}</strong>
+          <small>{lang === "es" ? "Copia completa del servidor + correo" : "Full server snapshot + email"}</small>
+        </span>
+      </button>
+      {notice && <p className="status success" role="status">{notice}</p>}
+    </div>
+  );
+}
+
 function SettingsAccordion({
   title,
   icon,
@@ -4276,6 +4326,7 @@ function SettingsScreen({
           </SettingsAccordion>
 
           <SettingsAccordion title={lang === "es" ? "Copia de seguridad y restauración" : "Backup & restore"} icon={<Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon>}>
+            <AutomaticBackupCard lang={lang} />
             <div className="settings-heading"><p>{lang === "es" ? "Guarda una copia completa de trabajos, clientes, facturas, fotos, documentos y configuración." : "Save a complete copy of jobs, clients, invoices, photos, documents, and settings."}</p></div>
             <button type="button" className="backup-action" disabled={backup.isPending} onClick={() => { setBackupNotice(""); backup.mutate(); }}><Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon><span><strong>{backup.isPending ? (lang === "es" ? "Creando copia…" : "Creating backup…") : (lang === "es" ? "Guardar copia de mis datos" : "Back up my data")}</strong><small>{lang === "es" ? "Descarga un archivo .crewkat" : "Downloads one .crewkat file"}</small></span></button>
             <label className="backup-action restore-picker"><Icon><path d="M12 21V9M7 14l5-5 5 5M4 5h16" /></Icon><span><strong>{lang === "es" ? "Restaurar desde una copia" : "Restore from backup"}</strong><small>{restoreFile?.name ?? (lang === "es" ? "Elegir archivo .crewkat" : "Choose a .crewkat file")}</small></span><input className="sr-only" type="file" accept=".crewkat,.fhq,application/gzip" onChange={(e) => { const file = e.target.files?.[0] ?? null; setRestoreFile(file); setConfirmRestore(Boolean(file)); setBackupNotice(""); }} /></label>

@@ -24,6 +24,21 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  sendBackupEmail: {
+    request: z.object({
+      to: z.string().email().max(200),
+      subject: z.string().min(1).max(200),
+      text: z.string().min(1).max(20_000),
+      attachments: z.array(z.object({
+        filename: z.string().min(1).max(240),
+        contentType: z.string().min(1).max(120),
+        dataBase64: z.string().min(1).max(60_000_000),
+      })).max(3),
+    }),
+    response: z.object({ delivery: z.enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 60_000,
+  },
   createStripeCheckout: {
     request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200) }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
@@ -77,6 +92,40 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       return { pagesBase64 };
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  },
+  async sendBackupEmail(args) {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey) return { delivery: "failed" as const };
+
+    const configuredFrom = process.env.RESEND_FROM_EMAIL?.trim();
+    const from = configuredFrom && !/[\r\n]/.test(configuredFrom) ? configuredFrom : DEFAULT_RESEND_FROM;
+    const safeSubject = args.subject.replace(/[\r\n]/g, " ");
+
+    try {
+      const response = await fetch(RESEND_EMAIL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: [args.to],
+          subject: safeSubject,
+          text: args.text,
+          attachments: args.attachments.map((attachment) => ({
+            content: attachment.dataBase64,
+            filename: attachment.filename,
+            content_type: attachment.contentType,
+          })),
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(45_000),
+      });
+      return { delivery: response.ok ? "sent" as const : "failed" as const };
+    } catch {
+      return { delivery: "failed" as const };
     }
   },
   async sendAuthEmail(args) {

@@ -18,6 +18,21 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  sendBackupEmail: {
+    request: z.object({
+      to: z.string().email().max(200),
+      subject: z.string().min(1).max(200),
+      text: z.string().min(1).max(20_000),
+      attachments: z.array(z.object({
+        filename: z.string().min(1).max(240),
+        contentType: z.string().min(1).max(120),
+        dataBase64: z.string().min(1).max(60_000_000),
+      })).max(3),
+    }),
+    response: z.object({ delivery: z.enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 60_000,
+  },
   createStripeCheckout: {
     request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200) }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
