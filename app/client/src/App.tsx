@@ -1013,7 +1013,6 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
     { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
     { tab: "marketplace", label: lang === "es" ? "Mercado" : "Marketplace", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon> },
     { tab: "invoices", label: lang === "es" ? "Facturas" : "Invoices", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
-    { tab: "tools", label: lang === "es" ? "Herramientas" : "Tools", icon: <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon> },
   ];
   const quickActions: Array<{ label: string; destination: Screen; icon: ReactNode }> = [
     { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
@@ -1043,6 +1042,7 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
 }
 
 const SettingsNavigationContext = createContext<(() => void) | null>(null);
+const ToolsNavigationContext = createContext<(() => void) | null>(null);
 
 function PageHeader({
   lang,
@@ -1056,6 +1056,7 @@ function PageHeader({
   actions?: ReactNode;
 }) {
   const openSettings = useContext(SettingsNavigationContext);
+  const openTools = useContext(ToolsNavigationContext);
   return (
     <header className="app-header">
       <div className="header-side">
@@ -1079,6 +1080,15 @@ function PageHeader({
       </h1>
       <div className="header-actions">
         {actions}
+        {openTools && (
+          <button
+            className="icon-button"
+            onClick={openTools}
+            aria-label={lang === "es" ? "Abrir herramientas" : "Open tools"}
+          >
+            <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon>
+          </button>
+        )}
         {openSettings && (
           <button
             className="icon-button master-settings-button"
@@ -1769,6 +1779,9 @@ function CrewkatApplication() {
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
     >
+    <ToolsNavigationContext.Provider
+      value={screen.name === "tools" ? null : () => setScreen({ name: "tools" })}
+    >
     <div className="app-shell" ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       {screen.name === "today" && (
@@ -2002,6 +2015,7 @@ function CrewkatApplication() {
       )}
       {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
     </div>
+    </ToolsNavigationContext.Provider>
     </SettingsNavigationContext.Provider>
   );
 }
