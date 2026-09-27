@@ -51,7 +51,9 @@ type DocumentFont = "helvetica" | "times" | "courier" | "palatino";
 type AdjustmentType = "percent" | "fixed";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 type ThemeMode = "light" | "dark" | "system";
-type DocumentDesign = { theme: QuoteTheme; font: DocumentFont; accentColor: string; showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean; showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean };
+type DocumentLabels = { headline: string; billTo: string; description: string; amount: string; subtotal: string; total: string; paid: string; balanceDue: string; number: string; date: string; dueDate: string };
+type DocumentCustomize = { logoSize: "huge" | "big" | "medium" | "small"; removeLogoBackground: boolean; colorMode: "solid" | "gradient"; showQuantityUnitPrice: boolean; showDiscount: boolean; showTax: boolean; showAmount: boolean; showSummaryInfo: boolean; showSubtotal: boolean; showPaidSummary: boolean; showBalanceDue: boolean; showPaidStamp: boolean; showBusinessSignature: boolean; showThankYou: boolean; showBusinessName: boolean; showShortBusinessName: boolean; showLicenseNumber: boolean; showDueDate: boolean; headline: string; dateFormat: "long" | "numeric" | "euro"; termsConditions: string; signatureDataUrl: string; labels: DocumentLabels; fontSize: "s" | "m" | "l" | "xl"; lineSpacing: "compact" | "comfortable" | "roomy"; highContrast: boolean };
+type DocumentDesign = { theme: QuoteTheme; font: DocumentFont; accentColor: string; showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean; showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string };
 type ToolMode =
   | "contract"
   | "change"
@@ -4037,6 +4039,7 @@ function SettingsScreen({
     defaultShowFooterNotes: true,
     defaultShowLogo: true,
     defaultShowCompanyInfo: true,
+    defaultCustomizeJson: "{}",
     defaultFootnote: "",
     warrantyTerms: "",
     hourlyCostRate: "0",
@@ -5450,34 +5453,6 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   );
 }
 
-function ThemePicker({
-  lang,
-  value,
-  onChange,
-}: {
-  lang: Lang;
-  value: QuoteTheme;
-  onChange: (theme: QuoteTheme) => void;
-}) {
-  const t = copy[lang];
-  const themes: QuoteTheme[] = ["classic", "modern", "bold", "minimal"];
-  return (
-    <div className="theme-picker">
-      {themes.map((theme) => (
-        <button
-          type="button"
-          key={theme}
-          className={`theme-swatch ${theme} ${value === theme ? "active" : ""}`}
-          onClick={() => onChange(theme)}
-          aria-pressed={value === theme}
-        >
-          <span />
-          <strong>{t[theme]}</strong>
-        </button>
-      ))}
-    </div>
-  );
-}
 function FontPicker({
   lang,
   value,
@@ -5578,6 +5553,35 @@ function hexRgb(hex: string) {
     Number.parseInt(clean.slice(4, 6), 16) || 74,
   ] as const;
 }
+function defaultDocumentCustomize(kind: "quote" | "invoice", lang: Lang = "en"): DocumentCustomize {
+  return {
+    logoSize: "medium", removeLogoBackground: false, colorMode: "solid",
+    showQuantityUnitPrice: true, showDiscount: true, showTax: true, showAmount: true,
+    showSummaryInfo: true, showSubtotal: true, showPaidSummary: true, showBalanceDue: true,
+    showPaidStamp: true, showBusinessSignature: false, showThankYou: true,
+    showBusinessName: true, showShortBusinessName: false, showLicenseNumber: true, showDueDate: true,
+    headline: kind === "invoice" ? (lang === "es" ? "FACTURA" : "INVOICE") : (lang === "es" ? "COTIZACIÓN" : "ESTIMATE"),
+    dateFormat: "long", termsConditions: "", signatureDataUrl: "",
+    labels: { headline: "", billTo: lang === "es" ? "Facturar a" : "Bill to", description: lang === "es" ? "Descripción" : "Description", amount: lang === "es" ? "Importe" : "Amount", subtotal: lang === "es" ? "Subtotal" : "Subtotal", total: lang === "es" ? "Total" : "Total", paid: lang === "es" ? "Pagado" : "Paid", balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due", number: lang === "es" ? "Número" : "Number", date: lang === "es" ? "Fecha" : "Date", dueDate: lang === "es" ? "Vencimiento" : "Due date" },
+    fontSize: "m", lineSpacing: "comfortable", highContrast: true,
+  };
+}
+function parseDocumentCustomize(value: string | undefined, kind: "quote" | "invoice", lang: Lang): DocumentCustomize {
+  const base = defaultDocumentCustomize(kind, lang);
+  if (!value || value === "{}") return base;
+  try {
+    const parsed = JSON.parse(value) as Partial<DocumentCustomize>;
+    return { ...base, ...parsed, labels: { ...base.labels, ...(parsed.labels ?? {}) } };
+  } catch { return base; }
+}
+function formatDocumentDate(value: string, format: DocumentCustomize["dateFormat"], lang: Lang) {
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  if (format === "numeric") return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "2-digit", day: "2-digit", year: "numeric" }).format(date);
+  if (format === "euro") return new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
 type FinancialDocument = {
   id?: number;
   clientName: string;
@@ -5606,6 +5610,7 @@ type FinancialDocument = {
   showFooterNotes: boolean;
   showLogo: boolean;
   showCompanyInfo: boolean;
+  customizeJson: string;
   paidToDate?: string;
   expiryDate?: string;
   issueDate?: string;
@@ -5619,6 +5624,8 @@ async function buildFinancialPdf(
   kind: "quote" | "invoice",
 ) {
   const t = copy[lang];
+  const custom = parseDocumentCustomize(document.customizeJson, kind, lang);
+  const labels = custom.labels;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const w = doc.internal.pageSize.getWidth();
   const [r, g, b] = hexRgb(
@@ -5627,14 +5634,7 @@ async function buildFinancialPdf(
   const logo = document.showLogo ? await loadImageDataUrl(settings?.logoUrl ?? null) : null;
   const theme = document.theme || "classic";
   const margin = theme === "minimal" ? 56 : 42;
-  const docTitle =
-    kind === "quote"
-      ? lang === "es"
-        ? "COTIZACIÓN"
-        : "ESTIMATE"
-      : lang === "es"
-        ? "FACTURA"
-        : "INVOICE";
+  const docTitle = labels.headline || custom.headline;
   const docNumber = kind === "invoice" && document.invoiceNumber
     ? document.invoiceNumber
     : document.id
@@ -5663,8 +5663,8 @@ async function buildFinancialPdf(
         logo.startsWith("data:image/png") ? "PNG" : "JPEG",
         margin,
         inBand ? 12 : 18,
-        40,
-        25,
+        { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize],
+        { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize],
         undefined,
         "FAST",
       );
@@ -5675,17 +5675,17 @@ async function buildFinancialPdf(
   doc.setFont(font, "bold");
   if (document.showCompanyInfo && inBand) {
     doc.setFontSize(theme === "bold" ? 11 : 9);
-    doc.text(settings?.companyName || "", w - margin, 22, { align: "right" });
+    if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", w - margin, 22, { align: "right" });
     doc.setFont(font, "normal");
     doc.setFontSize(7);
     doc.setTextColor(214, 218, 217);
-    const infoBits = [settings?.phone, settings?.licenseNumber, settings?.website].filter(Boolean);
+    const infoBits = [settings?.phone, custom.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean);
     if (infoBits.length) doc.text(infoBits.join("  ·  "), w - margin, 33, { align: "right" });
     if (settings?.address) doc.text(settings.address, w - margin, 43, { align: "right" });
   } else if (document.showCompanyInfo) {
     doc.setFontSize(11);
     doc.setTextColor(24, 32, 30);
-    doc.text(settings?.companyName || "", logo ? margin + 50 : margin, 30);
+    if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", logo ? margin + 50 : margin, 30);
   }
   const titleY = theme === "bold" ? 58 : inBand ? bandH + 26 : 82;
   doc.setFont(font, "bold");
@@ -5709,7 +5709,7 @@ async function buildFinancialPdf(
   doc.setTextColor(24, 32, 30);
   doc.setFont(font, "bold");
   doc.setFontSize(9);
-  doc.text(`${t.client}: ${document.clientName}`, clientX, infoY);
+  doc.text(`${labels.billTo}: ${document.clientName}`, clientX, infoY);
   doc.setFont(font, "normal");
   doc.setFontSize(8);
   doc.setTextColor(70, 78, 76);
@@ -5726,7 +5726,7 @@ async function buildFinancialPdf(
   doc.setTextColor(24, 32, 30);
   if (docNumber) {
     doc.text(
-      `${lang === "es" ? "NÚMERO" : "NUMBER"}: ${docNumber}`,
+      `${labels.number}: ${docNumber}`,
       rightX,
       ry,
       { align: "right" },
@@ -5735,7 +5735,7 @@ async function buildFinancialPdf(
   }
   if (kind === "invoice" && document.issueDate) {
     doc.setFont(font, "normal");
-    doc.text(`${t.issueDate}: ${formatDate(document.issueDate, lang)}`, rightX, ry, {
+    doc.text(`${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right",
     });
     ry += 13;
@@ -5751,8 +5751,9 @@ async function buildFinancialPdf(
   }
   doc.setFont(font, "bold");
   doc.setFontSize(9);
-  doc.text(t.item, margin + 8, y);
-  doc.text(t.amount, w - margin - 8, y, { align: "right" });
+  doc.text(labels.description, margin + 8, y);
+  if (custom.showQuantityUnitPrice) doc.text(lang === "es" ? "Cant. × Precio" : "Qty × Price", w - margin - 92, y, { align: "right" });
+  if (custom.showAmount) doc.text(labels.amount, w - margin - 8, y, { align: "right" });
   y += 26;
   doc.setTextColor(24, 32, 30);
   doc.setFont(font, "normal");
@@ -5761,12 +5762,12 @@ async function buildFinancialPdf(
     const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
-    const detail = qty !== 1 || item.unit !== "none" || money(item.discount ?? "0") > 0
-      ? `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`
-      : itemLabel;
+    const detail = !custom.showQuantityUnitPrice || (qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0)
+      ? itemLabel
+      : `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
     const lines = doc.splitTextToSize(detail, w - margin * 2 - 130) as string[];
     doc.text(lines, margin + 8, y);
-    doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+    if (custom.showAmount) doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
     y += Math.max(20, lines.length * 11 + 6);
   }
   y += 6;
@@ -5777,24 +5778,23 @@ async function buildFinancialPdf(
     document.taxType,
     document.taxValue,
   );
+  if (custom.showSummaryInfo) {
   doc.setDrawColor(r, g, b);
   doc.line(w - margin - 200, y, w - margin, y);
   y += 16;
   doc.setFontSize(9);
-  doc.text(`${t.subtotal}: ${usd(totals.subtotal)}`, w - margin, y, {
-    align: "right",
-  });
-  if (document.showDiscountLine && totals.discount > 0) {
+  if (custom.showSubtotal) doc.text(`${labels.subtotal}: ${usd(totals.subtotal)}`, w - margin, y, { align: "right" });
+  if (custom.showDiscount && document.showDiscountLine && totals.discount > 0) {
     y += 14;
     doc.text(`${t.discount}: -${usd(totals.discount)}`, w - margin, y, {
       align: "right",
     });
   }
-  if (document.showTaxLine && totals.tax > 0) {
+  if (custom.showTax && document.showTaxLine && totals.tax > 0) {
     y += 14;
     doc.text(`${t.tax}: ${usd(totals.tax)}`, w - margin, y, { align: "right" });
   }
-  if (kind === "invoice" && document.showPaidLine && money(document.paidToDate ?? "0") > 0) {
+  if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && money(document.paidToDate ?? "0") > 0) {
     y += 14;
     doc.text(`${lang === "es" ? "Monto pagado" : "Amount paid"}: -${usd(money(document.paidToDate ?? "0"))}`, w - margin, y, { align: "right" });
   }
@@ -5815,11 +5815,11 @@ async function buildFinancialPdf(
       ? lang === "es"
         ? "Total con cargo"
         : "Total with fee"
-      : t.total;
+      : labels.total;
   const totalValue = usd(
     kind === "invoice" ? money(document.totalWithLateFee ?? document.total) : totals.total,
   );
-  if (theme === "classic") {
+  if (custom.showAmount && theme === "classic") {
     doc.setFillColor(23, 26, 28);
     doc.rect(w - margin - 210, y - 12, 210, 22, "F");
     doc.setTextColor(255, 255, 255);
@@ -5828,7 +5828,7 @@ async function buildFinancialPdf(
     doc.text(`${totalLabel}: ${totalValue}`, w - margin - 8, y + 3, {
       align: "right",
     });
-  } else {
+  } else if (custom.showAmount) {
     doc.setFont(font, "bold");
     doc.setFontSize(12);
     doc.setTextColor(r, g, b);
@@ -5836,15 +5836,16 @@ async function buildFinancialPdf(
       align: "right",
     });
   }
+  }
   y += 24;
   doc.setTextColor(70, 78, 76);
   const dateValue = kind === "quote" ? document.expiryDate : document.dueDate;
-  const dateLabel = kind === "quote" ? t.expiry : t.dueDate;
-  if (dateValue) {
+  const dateLabel = labels.dueDate;
+  if (custom.showDueDate && dateValue) {
     y += 6;
     doc.setFont(font, "normal");
     doc.setFontSize(9);
-    doc.text(`${dateLabel}: ${formatDate(dateValue, lang)}`, margin, y);
+    doc.text(`${dateLabel}: ${formatDocumentDate(dateValue, custom.dateFormat, lang)}`, margin, y);
     y += 8;
   }
   if (document.showFooterNotes && document.footnote) {
@@ -5860,15 +5861,17 @@ async function buildFinancialPdf(
     y += lines.length * 10 + 6;
   }
   if (document.showPaymentTerms && settings?.paymentInstructions) {
-    const paymentLines = doc.splitTextToSize(
-      `${t.paymentInstructions}: ${settings.paymentInstructions}`,
-      w - margin * 2,
-    ) as string[];
-    doc.setFont(font, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(70, 78, 76);
-    doc.text(paymentLines, margin, 700);
+    const paymentLines = doc.splitTextToSize(`${t.paymentInstructions}: ${settings.paymentInstructions}`, w - margin * 2) as string[];
+    doc.setFont(font, "normal"); doc.setFontSize(8); doc.setTextColor(70, 78, 76); doc.text(paymentLines, margin, 680);
   }
+  if (custom.termsConditions) {
+    const terms = doc.splitTextToSize(`${lang === "es" ? "Términos y condiciones" : "Terms and conditions"}: ${custom.termsConditions}`, w - margin * 2) as string[];
+    doc.setFont(font, "normal"); doc.setFontSize(8); doc.setTextColor(70, 78, 76); doc.text(terms.slice(0, 4), margin, 715);
+  }
+  if (custom.showBusinessSignature && custom.signatureDataUrl) {
+    try { doc.addImage(`data:image/png;base64,${custom.signatureDataUrl}`, "PNG", w - margin - 120, 665, 110, 38, undefined, "FAST"); } catch { /* keep PDF usable */ }
+  }
+  if (custom.showThankYou) { doc.setFont(font, "italic"); doc.setFontSize(8); doc.setTextColor(r, g, b); doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 742, { align: "center" }); }
   doc.setFont(font, "normal");
   doc.setFontSize(7);
   doc.setTextColor(90, 98, 96);
@@ -6031,6 +6034,7 @@ function QuoteBuilder({
     showFooterNotes: settings?.defaultShowFooterNotes ?? true,
     showLogo: settings?.defaultShowLogo ?? true,
     showCompanyInfo: settings?.defaultShowCompanyInfo ?? true,
+    customizeJson: settings?.defaultCustomizeJson ?? JSON.stringify(defaultDocumentCustomize("quote", lang)),
     footnote: settings?.defaultFootnote ?? "",
     discountType: "percent" as AdjustmentType,
     discountValue: "0",
@@ -6052,6 +6056,7 @@ function QuoteBuilder({
         showFooterNotes: settings.defaultShowFooterNotes,
         showLogo: settings.defaultShowLogo,
         showCompanyInfo: settings.defaultShowCompanyInfo,
+        customizeJson: settings.defaultCustomizeJson,
         footnote: settings.defaultFootnote,
       }));
       defaultApplied.current = true;
@@ -6386,144 +6391,69 @@ function QuotePaper({
   lang: Lang;
   kind?: "quote" | "invoice";
 }) {
-  const t = copy[lang];
-  const totals = financialTotals(
-    quote.lineItems,
-    quote.discountType,
-    quote.discountValue,
-    quote.taxType,
-    quote.taxValue,
-  );
+  const c = parseDocumentCustomize(quote.customizeJson, kind, lang);
+  const totals = financialTotals(quote.lineItems, quote.discountType, quote.discountValue, quote.taxType, quote.taxValue);
+  const labels = c.labels;
+  const title = labels.headline || c.headline;
+  const companyName = settings?.companyName ?? "";
+  const shortName = companyName.split(/\s+/).filter(Boolean).slice(0, 2).join(" ");
+  const dueValue = kind === "quote" ? quote.expiryDate : quote.dueDate;
+  const paid = money(quote.paidToDate ?? "0");
+  const balance = Math.max(0, money(quote.totalWithLateFee ?? quote.total) - paid);
+  const logoSize = { huge: 74, big: 58, medium: 42, small: 30 }[c.logoSize];
   return (
     <article
-      className={`quote-paper theme-${quote.theme} font-${quote.font}`}
-      style={
-        {
-          "--quote-accent":
-            quote.accentColor || settings?.accentColor || "#1f5a4a",
-        } as CSSProperties
-      }
+      className={`quote-paper theme-${quote.theme} font-${quote.font} customize-font-${c.fontSize} spacing-${c.lineSpacing} ${c.highContrast ? "high-contrast" : "soft-contrast"} ${c.colorMode === "gradient" ? "color-gradient" : "color-solid"}`}
+      style={{ "--quote-accent": quote.accentColor || settings?.accentColor || "#1f5a4a", "--logo-size": `${logoSize}px` } as CSSProperties}
     >
       <header className="quote-paper-band">
         <div className="quote-paper-brand">
-          {quote.showLogo && settings?.logoUrl && (
-            <img src={settings.logoUrl} alt={t.companyLogo} />
-          )}
+          {quote.showLogo && settings?.logoUrl && <span className={`paper-logo ${c.removeLogoBackground ? "transparent" : ""}`}><img src={settings.logoUrl} alt={lang === "es" ? "Logo de la empresa" : "Company logo"} /></span>}
           {quote.showCompanyInfo && <div>
-            <strong>{settings?.companyName}</strong>
-            <small>
-              {[settings?.phone, settings?.licenseNumber]
-                .filter(Boolean)
-                .join(" · ")}
-            </small>
+            {c.showBusinessName && <strong>{c.showShortBusinessName ? shortName : companyName}</strong>}
+            <small>{[settings?.phone, c.showLicenseNumber ? settings?.licenseNumber : ""].filter(Boolean).join(" · ")}</small>
           </div>}
         </div>
-        {quote.showCompanyInfo && settings?.website && (
-          <span className="quote-paper-web">{settings.website}</span>
-        )}
+        {quote.showCompanyInfo && settings?.website && <span className="quote-paper-web">{settings.website}</span>}
       </header>
       <div className="quote-paper-title-row">
-        <h2>
-          {kind === "quote"
-            ? lang === "es"
-              ? "COTIZACIÓN"
-              : "ESTIMATE"
-            : lang === "es"
-              ? "FACTURA"
-              : "INVOICE"}
-        </h2>
-        {quote.id ? (
-          <span className="quote-paper-number">
-            {kind === "quote" ? "EST" : "INV"}
-            {String(quote.id).padStart(4, "0")}
-          </span>
-        ) : null}
+        <h2>{title}</h2>
+        {quote.id ? <span className="quote-paper-number">{labels.number}: {kind === "invoice" && quote.invoiceNumber ? quote.invoiceNumber : `${kind === "quote" ? "EST" : "INV"}${String(quote.id).padStart(4, "0")}`}</span> : null}
       </div>
       <section className="quote-paper-client">
-        <strong>{t.client}: {quote.clientName || "—"}</strong>
-        <span>
-          {[quote.jobType, quote.jobAddress, quote.shippingAddress]
-            .filter((s) => s && s.trim())
-            .join(" · ") || t.address}
-        </span>
-        {kind === "invoice" && quote.issueDate && (
-          <small>{t.issueDate}: {formatDate(quote.issueDate, lang)}</small>
-        )}
+        <strong>{labels.billTo}: {quote.clientName || "—"}</strong>
+        <span>{[quote.jobType, quote.jobAddress, quote.shippingAddress].filter((s) => s && s.trim()).join(" · ") || (lang === "es" ? "Dirección" : "Address")}</span>
+        {kind === "invoice" && quote.issueDate && <small>{labels.date}: {formatDocumentDate(quote.issueDate, c.dateFormat, lang)}</small>}
+        {c.showDueDate && dueValue && <small>{labels.dueDate}: {formatDocumentDate(dueValue, c.dateFormat, lang)}</small>}
       </section>
-      <div className="quote-paper-lines">
-        <div className="quote-line heading">
-          <span>{t.item}</span>
-          <span>{t.amount}</span>
-        </div>
-        {quote.lineItems
-          .filter((i) => i.description)
-          .map((item, i) => (
-            <div className="quote-line" key={i}>
-              <span>{item.description}</span>
-              <strong>{usd(money(item.amount))}</strong>
-            </div>
-          ))}
+      {kind === "invoice" && c.showPaidStamp && quote.status === "paid" && <div className="paid-stamp">{labels.paid.toUpperCase()}</div>}
+      <div className={`quote-paper-lines ${c.showQuantityUnitPrice ? "with-quantity" : ""} ${c.showAmount ? "" : "hide-amount"}`}>
+        <div className="quote-line heading"><span>{labels.description}</span>{c.showQuantityUnitPrice && <span>{lang === "es" ? "Cant. × Precio" : "Qty × Price"}</span>}{c.showAmount && <span>{labels.amount}</span>}</div>
+        {quote.lineItems.filter((i) => i.description || i.name).map((item, i) => {
+          const qty = item.quantity ?? 1;
+          const amount = money(item.amount);
+          const lineTotal = Math.max(0, amount * qty - money(item.discount ?? "0"));
+          return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showQuantityUnitPrice && <span className="line-quantity">{qty} × {usd(amount)}</span>}{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+        })}
       </div>
-      <div className="document-totals">
-        <span>
-          {t.subtotal}
-          <strong>{usd(totals.subtotal)}</strong>
-        </span>
-        {quote.showDiscountLine && totals.discount > 0 && (
-          <span>
-            {t.discount}
-            <strong>-{usd(totals.discount)}</strong>
-          </span>
-        )}
-        {quote.showTaxLine && totals.tax > 0 && (
-          <span>
-            {t.tax}
-            <strong>{usd(totals.tax)}</strong>
-          </span>
-        )}
-        {kind === "invoice" && quote.showPaidLine && money(quote.paidToDate ?? "0") > 0 && (
-          <span>{lang === "es" ? "Monto pagado" : "Amount paid"}<strong>-{usd(money(quote.paidToDate ?? "0"))}</strong></span>
-        )}
-        {kind === "invoice" && money(quote.lateFeeAccrued ?? "0") > 0 && (
-          <span>
-            {lang === "es" ? "Cargo por atraso" : "Late fee"}
-            <strong>{usd(money(quote.lateFeeAccrued ?? "0"))}</strong>
-          </span>
-        )}
-        <span className="grand-total">
-          {kind === "invoice" && money(quote.lateFeeAccrued ?? "0") > 0 ? (lang === "es" ? "Total con cargo" : "Total with fee") : t.total}
-          <strong>{usd(kind === "invoice" ? money(quote.totalWithLateFee ?? quote.total) : totals.total)}</strong>
-        </span>
-      </div>
-      {quote.showFooterNotes && quote.footnote && (
-        <p className="quote-payment">
-          <strong>{t.footnote}</strong>
-          {quote.footnote}
-        </p>
-      )}
-      {quote.showPaymentTerms && settings?.paymentInstructions && (
-        <p className="quote-payment">
-          <strong>{t.paymentInstructions}</strong>
-          {settings.paymentInstructions}
-        </p>
-      )}
-      <footer>
-        <span>
-          {kind === "quote"
-            ? quote.expiryDate
-              ? `${t.expiry}: ${formatDate(quote.expiryDate, lang)}`
-              : ""
-            : quote.dueDate
-              ? `${t.dueDate}: ${formatDate(quote.dueDate, lang)}`
-              : ""}
-        </span>
-        <strong>
-          {t.total}: {usd(totals.total)}
-        </strong>
-      </footer>
+      {c.showSummaryInfo && <div className="document-totals">
+        {c.showSubtotal && <span>{labels.subtotal}<strong>{usd(totals.subtotal)}</strong></span>}
+        {c.showDiscount && quote.showDiscountLine && totals.discount > 0 && <span>{lang === "es" ? "Descuento" : "Discount"}<strong>-{usd(totals.discount)}</strong></span>}
+        {c.showTax && quote.showTaxLine && totals.tax > 0 && <span>{lang === "es" ? "Impuesto" : "Tax"}<strong>{usd(totals.tax)}</strong></span>}
+        {kind === "invoice" && c.showPaidSummary && quote.showPaidLine && paid > 0 && <span>{labels.paid}<strong>-{usd(paid)}</strong></span>}
+        {c.showAmount && <span className="grand-total">{labels.total}<strong>{usd(kind === "invoice" ? money(quote.totalWithLateFee ?? quote.total) : totals.total)}</strong></span>}
+        {kind === "invoice" && c.showBalanceDue && <span className="balance-due">{labels.balanceDue}<strong>{usd(balance)}</strong></span>}
+      </div>}
+      {quote.showFooterNotes && quote.footnote && <p className="quote-payment"><strong>{lang === "es" ? "Notas" : "Notes"}</strong>{quote.footnote}</p>}
+      {quote.showPaymentTerms && settings?.paymentInstructions && <p className="quote-payment"><strong>{lang === "es" ? "Instrucciones de pago" : "Payment instructions"}</strong>{settings.paymentInstructions}</p>}
+      {c.termsConditions && <p className="quote-payment"><strong>{lang === "es" ? "Términos y condiciones" : "Terms and conditions"}</strong>{c.termsConditions}</p>}
+      {c.showBusinessSignature && c.signatureDataUrl && <div className="paper-signature"><img src={`data:image/png;base64,${c.signatureDataUrl}`} alt={lang === "es" ? "Firma de la empresa" : "Business signature"} /><small>{lang === "es" ? "Firma autorizada" : "Authorized signature"}</small></div>}
+      {c.showThankYou && <p className="paper-thank-you">{lang === "es" ? "Gracias por su preferencia" : "Thank you for your business"}</p>}
+      <footer><span>{c.showDueDate && dueValue ? `${labels.dueDate}: ${formatDocumentDate(dueValue, c.dateFormat, lang)}` : ""}</span>{c.showAmount && <strong>{labels.total}: {usd(totals.total)}</strong>}</footer>
     </article>
   );
 }
+
 function PdfFrame({ blob, title }: { blob: Blob | null; title: string }) {
   const [pages, setPages] = useState<string[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -6580,39 +6510,79 @@ function PdfFrame({ blob, title }: { blob: Blob | null; title: string }) {
   );
 }
 function documentDesignOf(document: FinancialDocument): DocumentDesign {
-  return { theme: document.theme, font: document.font, accentColor: document.accentColor, showTaxLine: document.showTaxLine, showDiscountLine: document.showDiscountLine, showPaidLine: document.showPaidLine, showPaymentTerms: document.showPaymentTerms, showFooterNotes: document.showFooterNotes, showLogo: document.showLogo, showCompanyInfo: document.showCompanyInfo };
+  return { theme: document.theme, font: document.font, accentColor: document.accentColor, showTaxLine: document.showTaxLine, showDiscountLine: document.showDiscountLine, showPaidLine: document.showPaidLine, showPaymentTerms: document.showPaymentTerms, showFooterNotes: document.showFooterNotes, showLogo: document.showLogo, showCompanyInfo: document.showCompanyInfo, customizeJson: document.customizeJson || "{}" };
 }
+type CustomizeSheetKind = "summary" | "headline" | "date" | "business" | "signature" | "terms" | "labels";
 function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConfirm }: { lang: Lang; kind: "quote" | "invoice"; document: FinancialDocument; settings: Settings | null; onClose: () => void; onConfirm: (design: DocumentDesign, saveDefault: boolean) => Promise<void> }) {
+  const qc = useQueryClient();
   const [design, setDesign] = useState<DocumentDesign>(() => documentDesignOf(document));
+  const [custom, setCustom] = useState<DocumentCustomize>(() => parseDocumentCustomize(document.customizeJson, kind, lang));
+  const [localSettings, setLocalSettings] = useState<Settings | null>(settings);
+  const [logoPreview, setLogoPreview] = useState(settings?.logoUrl ?? "");
   const [saveDefault, setSaveDefault] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<"template" | "logo" | "color" | "options" | "info">("template");
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
-  const preview = { ...document, ...design };
-  const text = lang === "es" ? {
-    close: "Cerrar", template: "Plantilla", logo: "Logo", color: "Color", options: "Opciones", info: "Info", type: "Tipografía", tax: "Línea de impuesto", discount: "Línea de descuento", paid: "Depósito / monto pagado", terms: "Términos de pago", notes: "Notas al pie", company: "Información de la empresa", save: "Aplicar diseño", saving: "Guardando…", defaults: "Guardar como predeterminado", preview: "Personalizar", custom: "Color personalizado", satisfied: kind === "invoice" ? "¿Satisfecho con esta factura?" : "¿Satisfecho con esta cotización?", thank: "Gracias por tu opinión"
-  } : {
-    close: "Close", template: "Template", logo: "Logo", color: "Color", options: "Options", info: "Info", type: "Typography", tax: "Tax line", discount: "Discount line", paid: "Deposit / amount paid", terms: "Payment terms", notes: "Footer notes", company: "Company information", save: "Apply design", saving: "Saving…", defaults: "Save as default", preview: "Customize", custom: "Custom color", satisfied: kind === "invoice" ? "Satisfied with this invoice?" : "Satisfied with this estimate?", thank: "Thanks for the feedback"
+  const [fullScreen, setFullScreen] = useState(false);
+  const [sheet, setSheet] = useState<CustomizeSheetKind | null>(null);
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const updateCustom = <K extends keyof DocumentCustomize>(key: K, value: DocumentCustomize[K]) => setCustom((current) => ({ ...current, [key]: value }));
+  const previewSettings = localSettings ? { ...localSettings, logoUrl: logoPreview || localSettings.logoUrl } : settings;
+  const preview: FinancialDocument = { ...document, ...design, customizeJson: JSON.stringify(custom) };
+  const closeSheet = async () => {
+    if (sheet === "business" && localSettings) {
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = localSettings;
+      await api.updateSettings(input);
+      await qc.invalidateQueries({ queryKey: ["settings"] });
+    }
+    setSheetClosing(true);
+    window.setTimeout(() => { setSheet(null); setSheetClosing(false); }, 180);
   };
-  const palettes = ["#1f5a4a", "#174f7a", "#9a3412", "#334155", "#a16207"];
-  const toggleRows: Array<[keyof Pick<DocumentDesign,"showTaxLine"|"showDiscountLine"|"showPaidLine"|"showPaymentTerms"|"showFooterNotes">, string]> = [["showTaxLine",text.tax],["showDiscountLine",text.discount],["showPaidLine",text.paid],["showPaymentTerms",text.terms],["showFooterNotes",text.notes]];
-  const tabs = [{id:"template",label:text.template},{id:"logo",label:text.logo},{id:"color",label:text.color},{id:"options",label:text.options},{id:"info",label:text.info}] as const;
-  return <div className="document-overlay customize-overlay" role="dialog" aria-modal="true" aria-label={text.preview}>
-    <header className="document-overlay-head"><button onClick={onClose}><BackIcon />{text.close}</button><strong>{APP_INFO.name} · {text.preview}</strong><span /></header>
-    <div className="document-overlay-body">
-      <section className="document-canvas"><QuotePaper quote={preview} settings={settings} lang={lang} kind={kind} /></section>
-      <aside className="design-panel" aria-label={text.preview}>
-        {tab === "template" && <fieldset><legend>{text.template}</legend><ThemePicker lang={lang} value={design.theme} onChange={(theme) => setDesign({ ...design, theme })} /><label className="design-font"><span>{text.type}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })} /></label></fieldset>}
-        {tab === "logo" && <fieldset><legend>{text.logo}</legend><label className="switch-row"><span>{lang === "es" ? "Mostrar logo" : "Show logo"}</span><input type="checkbox" checked={design.showLogo} onChange={(e) => setDesign({ ...design, showLogo: e.target.checked })} /></label>{settings?.logoUrl ? <img className="customize-logo-preview" src={settings.logoUrl} alt={lang === "es" ? "Logo actual" : "Current logo"} /> : <p className="muted-note">{lang === "es" ? "Agrega un logo en Configuración." : "Add a logo in Settings."}</p>}</fieldset>}
-        {tab === "color" && <fieldset><legend>{text.color}</legend><div className="palette-row">{palettes.map((color) => <button key={color} type="button" className={design.accentColor.toLowerCase() === color ? "active" : ""} style={{ background: color }} aria-label={`${text.color} ${color}`} aria-pressed={design.accentColor.toLowerCase() === color} onClick={() => setDesign({ ...design, accentColor: color })} />)}</div><label className="color-field compact-color"><span>{text.custom}</span><input type="color" value={design.accentColor} onChange={(e) => setDesign({ ...design, accentColor: e.target.value })} /></label></fieldset>}
-        {tab === "options" && <fieldset><legend>{text.options}</legend><div className="design-toggles">{toggleRows.map(([key,label]) => <label key={key}><span>{label}</span><input type="checkbox" checked={design[key]} onChange={(e) => setDesign({ ...design, [key]: e.target.checked })} /></label>)}</div></fieldset>}
-        {tab === "info" && <fieldset><legend>{text.info}</legend><label className="switch-row"><span>{text.company}</span><input type="checkbox" checked={design.showCompanyInfo} onChange={(e) => setDesign({ ...design, showCompanyInfo: e.target.checked })} /></label><div className="company-info-preview"><strong>{settings?.companyName}</strong><small>{companyContact(settings)}</small></div></fieldset>}
-        <label className="default-design"><input type="checkbox" checked={saveDefault} onChange={(e) => setSaveDefault(e.target.checked)} /><span>{text.defaults}</span></label>
-        <div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}>👍</button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}>👎</button></div></div>
-        <button className="primary-button" disabled={saving} onClick={async () => { setSaving(true); try { await onConfirm(design, saveDefault); } finally { setSaving(false); } }}>{saving ? text.saving : text.save}</button>
+  const text = lang === "es" ? {
+    title: "Vista previa y personalizar", back: "Atrás", template: "Plantilla", logo: "Logo", color: "Color", options: "Opciones", info: "Info", typography: "Tipografía", save: "Aplicar diseño", saving: "Guardando…", defaults: "Guardar como predeterminado", custom: "Color personalizado", solid: "Sólido", gradient: "Degradado", satisfied: kind === "invoice" ? "¿Satisfecho con esta factura?" : "¿Satisfecho con esta cotización?", thank: "Gracias por tu opinión", size: "Tamaño", removeBg: "Quitar fondo", huge: "Enorme", big: "Grande", medium: "Mediano", small: "Pequeño", content: "Contenido", summary: "Resumen", header: "Encabezado", showQty: "Mostrar cantidad y precio unitario", showDiscount: "Mostrar descuento", showTax: "Mostrar impuesto", showAmount: "Mostrar importe", summaryInfo: "Mostrar u ocultar resumen", paidStamp: "Mostrar sello PAGADO", businessSignature: "Mostrar firma de la empresa", thankYou: "Mostrar “Gracias por su preferencia”", headline: "Título predeterminado", businessName: "Mostrar nombre de la empresa", shortName: "Mostrar nombre corto", license: "Mostrar número de licencia", dueDate: "Mostrar fecha de vencimiento", dateFormat: "Formato de fecha", businessInfo: "Información y logo de la empresa", terms: "Términos y condiciones", labels: "Etiquetas personalizadas", fontSize: "Tamaño de letra", lineSpacing: "Espaciado de línea", highContrast: "Texto de alto contraste", compact: "Compacto", comfortable: "Cómodo", roomy: "Amplio", done: "Listo", changeLogo: "Cambiar logo", noLogo: "Agrega el logo de tu empresa", expand: "Ampliar vista previa"
+  } : {
+    title: "Preview & Customize", back: "Back", template: "Template", logo: "Logo", color: "Color", options: "Options", info: "Info", typography: "Typography", save: "Apply design", saving: "Saving…", defaults: "Save as default", custom: "Custom color", solid: "Solid", gradient: "Gradient", satisfied: kind === "invoice" ? "Satisfied with this invoice?" : "Satisfied with this estimate?", thank: "Thanks for the feedback", size: "Size", removeBg: "Remove Background", huge: "Huge", big: "Big", medium: "Medium", small: "Small", content: "Content", summary: "Summary", header: "Header", showQty: "Show quantity and unit price", showDiscount: "Show discount", showTax: "Show tax", showAmount: "Show amount", summaryInfo: "Show or Hide Summary info", paidStamp: "Show “PAID” Stamp", businessSignature: "Show business signature", thankYou: "Show “Thank you for your business”", headline: "Default Headline", businessName: "Show business name", shortName: "Show short business name", license: "Show license number", dueDate: "Show due date", dateFormat: "Date format", businessInfo: "Business info & logo", terms: "Terms and conditions", labels: "Custom labels", fontSize: "Font size", lineSpacing: "Line spacing", highContrast: "High-contrast text", compact: "Compact", comfortable: "Comfortable", roomy: "Roomy", done: "Done", changeLogo: "Change logo", noLogo: "Add your company logo", expand: "Expand preview"
+  };
+  const palettes = ["#1f5a4a", "#174f7a", "#2563eb", "#7c3aed", "#9a3412", "#dc2626", "#334155", "#a16207", "#0f766e", "#111827"];
+  const tabIcons = {
+    template: <Icon><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 11h6M9 15h6"/></Icon>,
+    logo: <Icon><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m5 18 5-5 3 3 2-2 4 4"/></Icon>,
+    color: <Icon><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10z"/><circle cx="7.5" cy="9" r=".8"/><circle cx="10" cy="6.5" r=".8"/></Icon>,
+    options: <Icon><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></Icon>,
+    info: <Icon><path d="M7 5h14M7 12h14M7 19h14"/><circle cx="3" cy="5" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="19" r="1"/></Icon>,
+  };
+  const tabs = (["template", "logo", "color", "options", "info"] as const).map((id) => ({ id, label: text[id], icon: tabIcons[id] }));
+  const checkRow = (label: string, checked: boolean, onChange: (value: boolean) => void) => <label className="custom-check-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
+  const navRow = (label: string, target: CustomizeSheetKind, value?: string, previewImage?: string) => <button type="button" className="custom-nav-row" onClick={() => setSheet(target)}><span>{label}</span>{previewImage ? <img src={previewImage} alt="" /> : value ? <small>{value}</small> : null}<BackIcon /></button>;
+  const optionHeading = (label: string, icon: ReactNode) => <h3 className="custom-section-title">{icon}<span>{label}</span></h3>;
+  const renderedSheet = sheet && <div className={`sheet-backdrop customize-sheet-backdrop ${sheetClosing ? "closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) void closeSheet(); }}><section className="customize-sheet" role="dialog" aria-modal="true" aria-label={text.info}><div className="sheet-handle"/><div className="section-title-row"><h2>{sheet === "summary" ? text.summaryInfo : sheet === "headline" ? text.headline : sheet === "date" ? text.dateFormat : sheet === "business" ? text.businessInfo : sheet === "signature" ? text.businessSignature : sheet === "terms" ? text.terms : text.labels}</h2><button type="button" onClick={() => void closeSheet()}>{text.done}</button></div>
+    {sheet === "summary" && <div className="sheet-form">{checkRow(custom.labels.subtotal, custom.showSubtotal, (v) => updateCustom("showSubtotal", v))}{checkRow(custom.labels.paid, custom.showPaidSummary, (v) => updateCustom("showPaidSummary", v))}{checkRow(custom.labels.balanceDue, custom.showBalanceDue, (v) => updateCustom("showBalanceDue", v))}{checkRow(lang === "es" ? "Mostrar términos de pago" : "Show payment terms", design.showPaymentTerms, (v) => setDesign({ ...design, showPaymentTerms: v }))}{checkRow(lang === "es" ? "Mostrar notas al pie" : "Show footer notes", design.showFooterNotes, (v) => setDesign({ ...design, showFooterNotes: v }))}</div>}
+    {sheet === "headline" && <div className="sheet-form"><label><span>{text.headline}</span><input value={custom.headline} maxLength={40} onChange={(e) => updateCustom("headline", e.target.value)} /></label></div>}
+    {sheet === "date" && <div className="sheet-choice-list">{(["long", "numeric", "euro"] as const).map((value) => <button type="button" key={value} className={custom.dateFormat === value ? "active" : ""} onClick={() => updateCustom("dateFormat", value)}><span>{formatDocumentDate("2026-09-27", value, lang)}</span>{custom.dateFormat === value && <CheckIcon />}</button>)}</div>}
+    {sheet === "business" && localSettings && <div className="sheet-form"><label><span>{lang === "es" ? "Nombre de la empresa" : "Company name"}</span><input value={localSettings.companyName} onChange={(e) => setLocalSettings({ ...localSettings, companyName: e.target.value })}/></label><label><span>{lang === "es" ? "Teléfono" : "Phone"}</span><input value={localSettings.phone} onChange={(e) => setLocalSettings({ ...localSettings, phone: e.target.value })}/></label><label><span>{lang === "es" ? "Correo" : "Email"}</span><input type="email" value={localSettings.email} onChange={(e) => setLocalSettings({ ...localSettings, email: e.target.value })}/></label><label><span>{lang === "es" ? "Dirección" : "Address"}</span><input value={localSettings.address} onChange={(e) => setLocalSettings({ ...localSettings, address: e.target.value })}/></label><label><span>{lang === "es" ? "Sitio web" : "Website"}</span><input value={localSettings.website} onChange={(e) => setLocalSettings({ ...localSettings, website: e.target.value })}/></label></div>}
+    {sheet === "signature" && <div className="sheet-form"><SignaturePad label={lang === "es" ? "Firma de la empresa" : "Business signature"} clearLabel={lang === "es" ? "Borrar" : "Clear"} onChange={(value) => updateCustom("signatureDataUrl", value)}/>{custom.signatureDataUrl && <img className="signature-preview" src={`data:image/png;base64,${custom.signatureDataUrl}`} alt={lang === "es" ? "Vista previa de firma" : "Signature preview"}/>}</div>}
+    {sheet === "terms" && <div className="sheet-form"><label><span>{text.terms}</span><textarea rows={7} value={custom.termsConditions} onChange={(e) => updateCustom("termsConditions", e.target.value)}/></label></div>}
+    {sheet === "labels" && <div className="sheet-form label-grid">{(Object.keys(custom.labels) as Array<keyof DocumentLabels>).map((key) => <label key={key}><span>{{ headline: text.headline, billTo: lang === "es" ? "Facturar a" : "Bill to", description: lang === "es" ? "Descripción" : "Description", amount: lang === "es" ? "Importe" : "Amount", subtotal: "Subtotal", total: "Total", paid: lang === "es" ? "Pagado" : "Paid", balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due", number: lang === "es" ? "Número" : "Number", date: lang === "es" ? "Fecha" : "Date", dueDate: text.dueDate }[key]}</span><input value={custom.labels[key]} onChange={(e) => updateCustom("labels", { ...custom.labels, [key]: e.target.value })}/></label>)}</div>}
+  </section></div>;
+  return <div className="document-overlay customize-overlay" role="dialog" aria-modal="true" aria-label={text.title}>
+    <header className="document-overlay-head customize-head"><button type="button" onClick={onClose} aria-label={text.back}><BackIcon /></button><strong>{text.title}</strong><span /></header>
+    <div className="customize-workspace">
+      <section className="customize-preview-wrap"><div className="customize-preview-card"><QuotePaper quote={preview} settings={previewSettings} lang={lang} kind={kind}/><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></div></section>
+      <aside className="design-panel custom-design-panel" aria-live="polite">
+        <div key={tab} className="custom-tab-content">
+          {tab === "template" && <><div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}><Icon><path d="M7 10v11H3V10h4Zm0 9h10a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 10h-5l1-5-2-2-5 7"/></Icon></button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}><Icon><path d="M7 14V3H3v11h4Zm0-9h10a2 2 0 0 1 2 1.6l1 5A2 2 0 0 1 18 14h-5l1 5-2 2-5-7"/></Icon></button></div></div><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><label className="design-font"><span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></>}
+          {tab === "logo" && <div className="logo-custom-grid"><div><strong>{text.logo}</strong><label className="logo-edit-control">{logoPreview ? <img src={logoPreview} alt={text.logo}/> : <span>{text.noLogo}</span>}<i aria-hidden="true"><Icon><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM13.5 7l3.5 3.5"/></Icon></i><input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const data=await fileToBase64(file);await api.uploadLogo({filename:file.name,contentType:file.type as "image/png"|"image/jpeg",dataBase64:data.dataBase64});setLogoPreview(URL.createObjectURL(file));setDesign((current)=>({...current,showLogo:true}));await qc.invalidateQueries({queryKey:["settings"]});}}/></label>{checkRow(lang === "es" ? "Mostrar logo" : "Show logo", design.showLogo, (v) => setDesign({ ...design, showLogo: v }))}</div><div><strong>{text.size}</strong><div className="logo-size-list">{(["huge", "big", "medium", "small"] as const).map((size)=><button type="button" key={size} onClick={()=>updateCustom("logoSize",size)}><span>{text[size]}</span>{custom.logoSize===size&&<CheckIcon/>}</button>)}</div></div><div><strong>{text.removeBg}</strong><input role="switch" aria-label={text.removeBg} type="checkbox" checked={custom.removeLogoBackground} onChange={(e)=>updateCustom("removeLogoBackground",e.target.checked)}/></div></div>}
+          {tab === "color" && <><div className="segmented-control"><button type="button" className={custom.colorMode === "solid" ? "active" : ""} onClick={()=>updateCustom("colorMode","solid")}>{text.solid}</button><button type="button" className={custom.colorMode === "gradient" ? "active" : ""} onClick={()=>updateCustom("colorMode","gradient")}>{text.gradient}</button></div><div className="palette-grid">{palettes.map((color)=><button key={color} type="button" className={design.accentColor.toLowerCase()===color?"active":""} style={{background:color}} aria-label={`${text.color} ${color}`} aria-pressed={design.accentColor.toLowerCase()===color} onClick={()=>setDesign({...design,accentColor:color})}/>)}</div><label className="custom-color-row"><span>{text.custom}</span><input type="color" value={design.accentColor} onChange={(e)=>setDesign({...design,accentColor:e.target.value})}/></label></>}
+          {tab === "options" && <div className="custom-options">{optionHeading(text.content,<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>)}{checkRow(text.showQty,custom.showQuantityUnitPrice,(v)=>updateCustom("showQuantityUnitPrice",v))}{checkRow(text.showDiscount,custom.showDiscount,(v)=>{updateCustom("showDiscount",v);setDesign({...design,showDiscountLine:v});})}{checkRow(text.showTax,custom.showTax,(v)=>{updateCustom("showTax",v);setDesign({...design,showTaxLine:v});})}{checkRow(text.showAmount,custom.showAmount,(v)=>updateCustom("showAmount",v))}{optionHeading(text.summary,<Icon><path d="M5 5h14M5 12h14M12 19h7"/></Icon>)}{navRow(text.summaryInfo,"summary")}{checkRow(text.paidStamp,custom.showPaidStamp,(v)=>updateCustom("showPaidStamp",v))}{checkRow(text.businessSignature,custom.showBusinessSignature,(v)=>updateCustom("showBusinessSignature",v))}{checkRow(text.thankYou,custom.showThankYou,(v)=>updateCustom("showThankYou",v))}{optionHeading(text.header,<Icon><path d="M4 6h16M7 10v9M17 10v9M7 14h10"/></Icon>)}{navRow(text.headline,"headline",custom.headline)}{checkRow(text.businessName,custom.showBusinessName,(v)=>{updateCustom("showBusinessName",v);setDesign({...design,showCompanyInfo:v});})}{checkRow(text.shortName,custom.showShortBusinessName,(v)=>updateCustom("showShortBusinessName",v))}{checkRow(text.license,custom.showLicenseNumber,(v)=>updateCustom("showLicenseNumber",v))}{checkRow(text.dueDate,custom.showDueDate,(v)=>updateCustom("showDueDate",v))}{navRow(text.dateFormat,"date",formatDocumentDate("2026-09-27",custom.dateFormat,lang))}</div>}
+          {tab === "info" && <div className="info-options">{navRow(text.businessInfo,"business",undefined,logoPreview || undefined)}{navRow(text.businessSignature,"signature",undefined,custom.signatureDataUrl?`data:image/png;base64,${custom.signatureDataUrl}`:undefined)}{navRow(text.terms,"terms",custom.termsConditions?`${custom.termsConditions.slice(0,28)}${custom.termsConditions.length>28?"…":""}`:undefined)}{navRow(text.labels,"labels")}<div className="control-row"><span>{text.fontSize}</span><div className="mini-segments">{(["s","m","l","xl"] as const).map(size=><button type="button" key={size} className={custom.fontSize===size?"active":""} onClick={()=>updateCustom("fontSize",size)}>{size.toUpperCase()}</button>)}</div></div><div className="control-row"><span>{text.lineSpacing}</span><div className="density-buttons">{(["compact","comfortable","roomy"] as const).map((space,index)=><button type="button" key={space} className={custom.lineSpacing===space?"active":""} aria-label={text[space]} onClick={()=>updateCustom("lineSpacing",space)}><Icon><path d={index===0?"M5 8h14M5 12h14M5 16h14":index===1?"M5 6h14M5 12h14M5 18h14":"M5 4h14M5 12h14M5 20h14"}/></Icon></button>)}</div></div>{checkRow(text.highContrast,custom.highContrast,(v)=>updateCustom("highContrast",v))}</div>}
+        </div>
+        <label className="default-design"><input type="checkbox" checked={saveDefault} onChange={(e)=>setSaveDefault(e.target.checked)}/><span>{text.defaults}</span></label>
+        <button className="primary-button apply-design" disabled={saving} onClick={async()=>{setSaving(true);try{await onConfirm({...design,customizeJson:JSON.stringify(custom)},saveDefault);}finally{setSaving(false);}}}>{saving?text.saving:text.save}</button>
       </aside>
     </div>
-    <nav className="customize-tabs" aria-label={text.preview}>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}><span>{item.label}</span></button>)}</nav>
+    <nav className="customize-tabs" aria-label={text.title}>{tabs.map((item)=><button type="button" key={item.id} className={tab===item.id?"active":""} aria-current={tab===item.id?"page":undefined} onClick={()=>setTab(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>
+    {fullScreen&&<div className="document-overlay fullscreen-preview customize-fullscreen" role="dialog" aria-modal="true"><header className="document-overlay-head"><button type="button" onClick={()=>setFullScreen(false)}><BackIcon/><span>{text.back}</span></button><strong>{text.title}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={preview} settings={previewSettings} lang={lang} kind={kind}/></div></div>}
+    {renderedSheet}
   </div>;
 }
 
@@ -6867,6 +6837,7 @@ function InvoiceBuilder({
     showDiscountLine: settings?.defaultShowDiscountLine ?? true, showPaidLine: settings?.defaultShowPaidLine ?? true,
     showPaymentTerms: settings?.defaultShowPaymentTerms ?? true, showFooterNotes: settings?.defaultShowFooterNotes ?? true,
     showLogo: settings?.defaultShowLogo ?? true, showCompanyInfo: settings?.defaultShowCompanyInfo ?? true,
+    customizeJson: settings?.defaultCustomizeJson ?? JSON.stringify(defaultDocumentCustomize("invoice", lang)),
     footnote: settings?.defaultFootnote ?? "", discountType: "percent" as AdjustmentType, discountValue: "0",
     taxType: "percent" as AdjustmentType, taxValue: "0",
     lineItems: [{ name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" as "none" | "days" | "hours" }],
@@ -14688,6 +14659,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         showFooterNotes: !!doc.footnote,
         showLogo: !!c.logoUrl,
         showCompanyInfo: true,
+        customizeJson: JSON.stringify(defaultDocumentCustomize(financialKind, lang)),
       }
     : null;
   const previewSettings = {

@@ -116,6 +116,7 @@ export const quotes = sqliteTable("quotes", {
   showFooterNotes: integer("show_footer_notes", { mode: "boolean" }).notNull().default(true),
   showLogo: integer("show_logo", { mode: "boolean" }).notNull().default(true),
   showCompanyInfo: integer("show_company_info", { mode: "boolean" }).notNull().default(true),
+  customizeJson: text("customize_json").notNull().default("{}"),
   jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }),
   seriesId: integer("series_id"),
   parentQuoteId: integer("parent_quote_id"),
@@ -166,6 +167,7 @@ export const invoices = sqliteTable("invoices", {
   showFooterNotes: integer("show_footer_notes", { mode: "boolean" }).notNull().default(true),
   showLogo: integer("show_logo", { mode: "boolean" }).notNull().default(true),
   showCompanyInfo: integer("show_company_info", { mode: "boolean" }).notNull().default(true),
+  customizeJson: text("customize_json").notNull().default("{}"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -244,6 +246,7 @@ export const settings = sqliteTable("settings", {
   defaultShowFooterNotes: integer("default_show_footer_notes", { mode: "boolean" }).notNull().default(true),
   defaultShowLogo: integer("default_show_logo", { mode: "boolean" }).notNull().default(true),
   defaultShowCompanyInfo: integer("default_show_company_info", { mode: "boolean" }).notNull().default(true),
+  defaultCustomizeJson: text("default_customize_json").notNull().default("{}"),
   defaultFootnote: text("default_footnote").notNull().default(""),
   warrantyTerms: text("warranty_terms").notNull().default(""),
   hourlyCostRate: text("hourly_cost_rate").notNull().default("0"),

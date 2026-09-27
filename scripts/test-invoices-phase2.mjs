@@ -43,6 +43,7 @@ const baseInvoice = {
   accentColor: "#f97316",
   showTaxLine: true, showDiscountLine: true, showPaidLine: true, showPaymentTerms: true,
   showFooterNotes: true, showLogo: true, showCompanyInfo: true,
+  customizeJson: "{}",
 };
 
 try {
