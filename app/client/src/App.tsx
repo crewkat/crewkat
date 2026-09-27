@@ -28,7 +28,6 @@ type ReactNode,
 type TouchEvent,
 } from "react";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
-import { AVATAR_COLORS, avatarColorIndex, cleanTagValue, clientInitials, filterClientsByTags, sortClientList, tagCounts, usdShort, type ClientListItem, type ClientSortKey, type SortDirection } from "./clientListUtils";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
@@ -333,6 +332,7 @@ type Screen =
   | { name: "invoiceNew"; jobId?: number }
   | { name: "invoicePreview"; invoiceId: number }
   | { name: "clients" }
+  | { name: "clientNew" }
   | { name: "client"; clientId: number }
   | { name: "followups" }
   | { name: "gallery" }
@@ -371,24 +371,6 @@ const copy = {
     newClient: "New client",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
-    sort: "Sort",
-    filters: "Filters",
-    sortClients: "Sort clients",
-    alphabetically: "Alphabetically",
-    balanceDue: "Balance due",
-    totalPaid: "Total paid",
-    totalInvoices: "Total invoices",
-    ascending: "Ascending",
-    descending: "Descending",
-    reset: "Reset",
-    apply: "Apply",
-    clearAll: "Clear all",
-    applyFilters: "Apply filters",
-    tags: "Tags",
-    addTag: "Add tag",
-    tagPlaceholder: "Type a tag and press Enter",
-    addClient: "Add client",
-    noTags: "No tags yet.",
     clientHistory: "Client history",
     deleteClient: "Delete client",
     jobsAndQuotes: "Jobs & quotes",
@@ -681,24 +663,6 @@ const copy = {
     newClient: "Nuevo cliente",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
-    sort: "Ordenar",
-    filters: "Filtros",
-    sortClients: "Ordenar clientes",
-    alphabetically: "Alfabéticamente",
-    balanceDue: "Saldo pendiente",
-    totalPaid: "Total pagado",
-    totalInvoices: "Total de facturas",
-    ascending: "Ascendente",
-    descending: "Descendente",
-    reset: "Restablecer",
-    apply: "Aplicar",
-    clearAll: "Borrar todo",
-    applyFilters: "Aplicar filtros",
-    tags: "Etiquetas",
-    addTag: "Agregar etiqueta",
-    tagPlaceholder: "Escribe una etiqueta y pulsa Enter",
-    addClient: "Agregar cliente",
-    noTags: "Aún no hay etiquetas.",
     clientHistory: "Historial del cliente",
     deleteClient: "Eliminar cliente",
     jobsAndQuotes: "Trabajos y cotizaciones",
@@ -994,16 +958,6 @@ const BackIcon = () => (
     <path d="m15 18-6-6 6-6" />
   </Icon>
 );
-const SortIcon = () => (
-  <Icon>
-    <path d="M7 4v13M4 14l3 3 3-3M17 20V7M14 10l3-3 3 3" />
-  </Icon>
-);
-const FilterIcon = () => (
-  <Icon>
-    <path d="M4 5h16l-6 8v6l-4 2v-8z" />
-  </Icon>
-);
 const CameraIcon = () => (
   <Icon>
     <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
@@ -1046,7 +1000,7 @@ function rootTabFor(screen: Screen): RootTab {
   if (screen.name === "today") return "today";
   if (["jobs", "new", "detail", "proof", "jobOps", "tool"].includes(screen.name)) return "jobs";
   if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
-  if (["clients", "client"].includes(screen.name)) return "clients";
+  if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
   if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail"].includes(screen.name)) return "marketplace";
   return "tools";
 }
@@ -1642,7 +1596,23 @@ function CrewkatApplication() {
   if (!auth) throw new Error("Authentication context is unavailable.");
   const appShellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(appShellRef);
-  useKeyboardInset();
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateKeyboardOffset = () => {
+      const offset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+      document.documentElement.style.setProperty("--keyboard-offset", `${Math.round(offset)}px`);
+    };
+    updateKeyboardOffset();
+    viewport?.addEventListener("resize", updateKeyboardOffset);
+    viewport?.addEventListener("scroll", updateKeyboardOffset);
+    window.addEventListener("resize", updateKeyboardOffset);
+    return () => {
+      viewport?.removeEventListener("resize", updateKeyboardOffset);
+      viewport?.removeEventListener("scroll", updateKeyboardOffset);
+      window.removeEventListener("resize", updateKeyboardOffset);
+      document.documentElement.style.removeProperty("--keyboard-offset");
+    };
+  }, []);
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
@@ -1909,6 +1879,9 @@ function CrewkatApplication() {
       )}
       {screen.name === "clients" && (
         <ClientsScreen lang={lang} onBack={goBack} setScreen={setScreen} />
+      )}
+      {screen.name === "clientNew" && (
+        <NewClientScreen lang={lang} onBack={goBack} />
       )}
       {screen.name === "client" && (
         <ClientDetail
@@ -7349,166 +7322,6 @@ function InvoicePreview({
   </main>;
 }
 
-// --- Keyboard-aware offset ----------------------------------------------------
-// Keeps sticky bottom buttons above the on-screen keyboard even where
-// `interactive-widget=resizes-content` isn't honored: the visual viewport
-// shrinks when the keyboard opens, and --kb-offset tracks the difference.
-function useKeyboardInset() {
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty("--kb-offset", `${Math.round(kb)}px`);
-    };
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    window.addEventListener("orientationchange", update);
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-      window.removeEventListener("orientationchange", update);
-      document.documentElement.style.setProperty("--kb-offset", "0px");
-    };
-  }, []);
-}
-
-// --- Reusable animated bottom sheet -------------------------------------------
-function FloatingSheet({
-  open,
-  onClose,
-  label,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  label: string;
-  children: ReactNode;
-}) {
-  const [render, setRender] = useState(open);
-  const [closing, setClosing] = useState(false);
-  const timer = useRef<number | null>(null);
-  useEffect(() => {
-    if (open) {
-      if (timer.current) window.clearTimeout(timer.current);
-      setClosing(false);
-      setRender(true);
-    } else if (render && !closing) {
-      setClosing(true);
-      timer.current = window.setTimeout(() => {
-        setRender(false);
-        setClosing(false);
-      }, 200);
-    }
-    return () => {
-      if (timer.current) window.clearTimeout(timer.current);
-    };
-  }, [open, render, closing]);
-  if (!render) return null;
-  return (
-    <div
-      className={`sheet-backdrop${closing ? " is-closing" : ""}`}
-      onClick={onClose}
-      role="presentation"
-    >
-      <section
-        className={`floating-sheet${closing ? " is-closing" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="floating-sheet-handle" aria-hidden="true" />
-        {children}
-      </section>
-    </div>
-  );
-}
-
-// --- Client avatar: colored initials, stable per client name ------------------
-function ClientAvatar({ name, size = 44 }: { name: string; size?: number }) {
-  const [bg, fg] = AVATAR_COLORS[avatarColorIndex(name)] ?? AVATAR_COLORS[0]!;
-  return (
-    <span
-      className="client-avatar"
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: bg,
-        color: fg,
-        fontSize: Math.round(size * 0.38),
-      }}
-      aria-hidden="true"
-    >
-      {clientInitials(name)}
-    </span>
-  );
-}
-
-// --- Tag editor for the client form -------------------------------------------
-function TagsInput({
-  lang,
-  tags,
-  onChange,
-}: {
-  lang: Lang;
-  tags: string[];
-  onChange: (tags: string[]) => void;
-}) {
-  const t = copy[lang];
-  const [draft, setDraft] = useState("");
-  const commit = (raw: string) => {
-    const value = cleanTagValue(raw);
-    setDraft("");
-    if (!value) return;
-    if (tags.some((tag) => tag.toLowerCase() === value.toLowerCase())) return;
-    onChange([...tags, value].slice(0, 12));
-  };
-  return (
-    <label>
-      <span>{t.tags}</span>
-      <div className="tag-editor">
-        {tags.map((tag) => (
-          <span key={tag.toLowerCase()} className="tag-chip">
-            {tag}
-            <button
-              type="button"
-              className="tag-chip-remove"
-              aria-label={`${tag} ×`}
-              onClick={() => onChange(tags.filter((x) => x !== tag))}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        <input
-          value={draft}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (/[,;\n]$/.test(v)) commit(v.slice(0, -1));
-            else setDraft(v);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit(draft);
-            } else if (e.key === "Backspace" && !draft && tags.length > 0) {
-              onChange(tags.slice(0, -1));
-            }
-          }}
-          onBlur={() => {
-            if (draft.trim()) commit(draft);
-          }}
-          placeholder={t.tagPlaceholder}
-          maxLength={40}
-          enterKeyHint="done"
-        />
-      </div>
-    </label>
-  );
-}
-
 const blankClient = {
   id: null as number | null,
   name: "",
@@ -7523,13 +7336,16 @@ function ClientForm({
   lang,
   initial = blankClient,
   onSaved,
+  stickySave = false,
 }: {
   lang: Lang;
   initial?: typeof blankClient;
   onSaved: (id: number) => void;
+  stickySave?: boolean;
 }) {
   const t = copy[lang];
   const [form, setForm] = useState(initial);
+  const [tagDraft, setTagDraft] = useState("");
   const clients = useQuery({
     queryKey: ["clients", ""],
     queryFn: () => api.listClients({ search: "" }),
@@ -7538,6 +7354,12 @@ function ClientForm({
     mutationFn: () => api.saveClient(form),
     onSuccess: (r) => onSaved(r.id),
   });
+  const addTag = () => {
+    const tag = tagDraft.trim();
+    if (!tag || form.tags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase())) return;
+    setForm({ ...form, tags: [...form.tags, tag] });
+    setTagDraft("");
+  };
   return (
     <form
       className="job-form client-form"
@@ -7548,75 +7370,73 @@ function ClientForm({
     >
       <label>
         <span>{t.client} *</span>
-        <input
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
+        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
       </label>
       <label>
         <span>{t.phone}</span>
-        <input
-          type="tel"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
+        <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
       </label>
       <label>
         <span>{t.email}</span>
-        <input
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
+        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       </label>
       <label>
         <span>{t.address}</span>
-        <input
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-        />
+        <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
       </label>
+      <fieldset className="client-tags-field">
+        <legend>{lang === "es" ? "Etiquetas" : "Tags"}</legend>
+        <div className="client-tag-entry">
+          <input
+            value={tagDraft}
+            maxLength={40}
+            placeholder={lang === "es" ? "Ej. Cocina" : "e.g. Kitchen"}
+            aria-label={lang === "es" ? "Nueva etiqueta" : "New tag"}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); }
+            }}
+          />
+          <button type="button" className="secondary-button" onClick={addTag} disabled={!tagDraft.trim()}>{lang === "es" ? "Agregar" : "Add"}</button>
+        </div>
+        {form.tags.length > 0 && <div className="client-tag-chips" aria-label={lang === "es" ? "Etiquetas seleccionadas" : "Selected tags"}>
+          {form.tags.map((tag) => <button type="button" key={tag} onClick={() => setForm({ ...form, tags: form.tags.filter((item) => item !== tag) })} aria-label={`${lang === "es" ? "Quitar" : "Remove"} ${tag}`}>{tag}<span aria-hidden="true">×</span></button>)}
+        </div>}
+      </fieldset>
       <label>
         <span>{t.notes}</span>
-        <textarea
-          rows={3}
-          value={form.notes}
-          onChange={(e) => setForm({ ...form, notes: e.target.value })}
-        />
+        <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       </label>
-      <TagsInput
-        lang={lang}
-        tags={form.tags}
-        onChange={(tags) => setForm({ ...form, tags })}
-      />
       <label>
         <span>{t.referredBy}</span>
-        <select
-          value={form.referredByClientId ?? ""}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              referredByClientId: e.target.value
-                ? Number(e.target.value)
-                : null,
-            })
-          }
-        >
+        <select value={form.referredByClientId ?? ""} onChange={(e) => setForm({ ...form, referredByClientId: e.target.value ? Number(e.target.value) : null })}>
           <option value="">{t.noReferrer}</option>
-          {clients.data?.clients
-            .filter((c) => c.id !== form.id)
-            .map((c) => (
-              <option value={c.id} key={c.id}>
-                {c.name}
-              </option>
-            ))}
+          {clients.data?.clients.filter((c) => c.id !== form.id).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}
         </select>
       </label>
-      <button className="primary-button sticky-submit" disabled={save.isPending}>
+      {save.error && <p className="status error">{actionErrorMessage(save.error)}</p>}
+      <button className={`primary-button${stickySave ? " sticky-submit" : ""}`} disabled={save.isPending}>
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
   );
+}
+
+function NewClientScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const qc = useQueryClient();
+  return <main className="page form-page client-new-page">
+    <PageHeader lang={lang} title={copy[lang].newClient} onBack={onBack} />
+    <ClientForm lang={lang} stickySave onSaved={async () => {
+      await qc.invalidateQueries({ queryKey: ["clients"] });
+      onBack();
+    }} />
+  </main>;
+}
+
+type ClientSort = "alphabetical" | "balance" | "paid" | "invoices";
+type SortDirection = "asc" | "desc";
+function clientInitials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase() || "?";
 }
 function ClientsScreen({
   lang,
@@ -7628,251 +7448,75 @@ function ClientsScreen({
   setScreen: (s: Screen) => void;
 }) {
   const t = copy[lang];
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [sortKey, setSortKey] = useState<ClientSortKey>("name");
-  const [sortDir, setSortDir] = useState<SortDirection>("asc");
-  const [activeTags, setActiveTags] = useState<string[]>([]);
-  const [sortOpen, setSortOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [draftSortKey, setDraftSortKey] = useState<ClientSortKey>("name");
-  const [draftSortDir, setDraftSortDir] = useState<SortDirection>("asc");
+  const [sortBy, setSortBy] = useState<ClientSort>("alphabetical");
+  const [direction, setDirection] = useState<SortDirection>("asc");
+  const [draftSortBy, setDraftSortBy] = useState<ClientSort>("alphabetical");
+  const [draftDirection, setDraftDirection] = useState<SortDirection>("asc");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [draftTags, setDraftTags] = useState<string[]>([]);
-  const query = useQuery({
-    queryKey: ["clients", search],
-    queryFn: () => api.listClients({ search }),
-  });
-  const fetched: ClientListItem[] = query.data?.clients ?? [];
-  const counts = tagCounts(fetched);
-  const visible = sortClientList(
-    filterClientsByTags(fetched, activeTags),
-    sortKey,
-    sortDir,
-  );
-  const openSort = () => {
-    setDraftSortKey(sortKey);
-    setDraftSortDir(sortDir);
-    setSortOpen(true);
+  const [activeSheet, setActiveSheet] = useState<"sort" | "filter" | null>(null);
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const query = useQuery({ queryKey: ["clients", ""], queryFn: () => api.listClients({ search: "" }) });
+  const allClients = query.data?.clients ?? [];
+  const term = search.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
+  const visibleClients = allClients
+    .filter((client) => !term || [client.name, client.phone, client.email, client.address, ...client.tags].some((value) => value.toLocaleLowerCase(lang === "es" ? "es" : "en").includes(term)))
+    .filter((client) => selectedTags.length === 0 || selectedTags.every((tag) => client.tags.includes(tag)))
+    .sort((a, b) => {
+      let value = sortBy === "alphabetical" ? a.name.localeCompare(b.name) : sortBy === "balance" ? a.balanceDue - b.balanceDue : sortBy === "paid" ? a.totalPaid - b.totalPaid : a.invoiceCount - b.invoiceCount;
+      if (value === 0 && sortBy !== "alphabetical") value = a.name.localeCompare(b.name);
+      return direction === "asc" ? value : -value;
+    });
+  const tagCounts = Array.from(new Set(allClients.flatMap((client) => client.tags))).sort((a, b) => a.localeCompare(b)).map((tag) => ({ tag, count: allClients.filter((client) => client.tags.includes(tag)).length }));
+  const openSheet = (sheet: "sort" | "filter") => {
+    setSheetClosing(false);
+    if (sheet === "sort") { setDraftSortBy(sortBy); setDraftDirection(direction); }
+    else setDraftTags(selectedTags);
+    setActiveSheet(sheet);
   };
-  const openFilter = () => {
-    setDraftTags(activeTags);
-    setFilterOpen(true);
+  const closeSheet = () => {
+    setSheetClosing(true);
+    window.setTimeout(() => { setActiveSheet(null); setSheetClosing(false); }, 180);
   };
-  const sortOptions: Array<[ClientSortKey, string]> = [
-    ["name", t.alphabetically],
-    ["balanceDue", t.balanceDue],
-    ["totalPaid", t.totalPaid],
-    ["invoiceCount", t.totalInvoices],
-  ];
   return (
     <main className="page clients-page">
       <PageHeader lang={lang} title={t.clients} onBack={onBack} />
-      {!adding && (
-        <div className="clients-controls">
-          <input
-            className="clients-search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t.searchClients}
-            aria-label={t.searchClients}
-          />
-          <button
-            type="button"
-            className="round-button"
-            aria-label={t.sort}
-            onClick={openSort}
-          >
-            <SortIcon />
-          </button>
-          <button
-            type="button"
-            className={`round-button${activeTags.length > 0 ? " active" : ""}`}
-            aria-label={t.filters}
-            onClick={openFilter}
-          >
-            <FilterIcon />
-            {activeTags.length > 0 && (
-              <span className="round-button-badge">{activeTags.length}</span>
-            )}
-          </button>
-        </div>
-      )}
-      {adding && (
-        <ClientForm
-          lang={lang}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ["clients"] });
-            setAdding(false);
-          }}
-        />
-      )}
-      <section className="client-list">
-        {visible.map((c) => (
-          <button
-            key={c.id}
-            className="client-row"
-            onClick={() => setScreen({ name: "client", clientId: c.id })}
-          >
-            <ClientAvatar name={c.name} />
-            <span className="client-row-main">
-              <strong>{c.name}</strong>
-              <small>
-                {c.invoiceCount} {t.invoices}
-              </small>
-              {c.tags.length > 0 && (
-                <span className="client-row-tags">
-                  {c.tags.slice(0, 3).map((tag) => (
-                    <span key={tag} className="tag-chip tag-chip-static">
-                      {tag}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </span>
-            <span className="client-row-money">
-              <b>{usdShort(c.totalInvoiced)}</b>
-              <small>
-                {c.paymentPercent}% {lang === "es" ? "pagado" : "paid"}
-              </small>
-            </span>
+      <div className="clients-toolbar">
+        <label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchClients} aria-label={t.searchClients} /></label>
+        <button className="client-tool-button" type="button" onClick={() => openSheet("sort")} aria-label={lang === "es" ? "Ordenar clientes" : "Sort clients"}><Icon><path d="M8 6h12M8 12h8M8 18h4M4 4v16M2 18l2 2 2-2"/></Icon></button>
+        <button className={`client-tool-button${selectedTags.length ? " active" : ""}`} type="button" onClick={() => openSheet("filter")} aria-label={lang === "es" ? "Filtrar por etiquetas" : "Filter by tags"}><Icon><path d="M4 5h16l-6 7v6l-4 2v-8z"/></Icon>{selectedTags.length > 0 && <b>{selectedTags.length}</b>}</button>
+      </div>
+      {selectedTags.length > 0 && <div className="active-client-filters">{selectedTags.map((tag) => <button key={tag} onClick={() => setSelectedTags(selectedTags.filter((item) => item !== tag))}>{tag}<span>×</span></button>)}</div>}
+      <section className="client-list" aria-label={lang === "es" ? "Lista de clientes" : "Client list"}>
+        {visibleClients.map((c) => (
+          <button key={c.id} onClick={() => setScreen({ name: "client", clientId: c.id })}>
+            <span className={`client-avatar tone-${c.id % 6}`}>{clientInitials(c.name)}</span>
+            <span className="client-row-copy"><strong>{c.name}</strong><small>{c.invoiceCount} {c.invoiceCount === 1 ? (lang === "es" ? "Factura" : "Invoice") : (lang === "es" ? "Facturas" : "Invoices")}</small></span>
+            <span className="client-row-money"><strong>{usd(c.totalInvoiced)}</strong><small>{c.paymentPercent}% {lang === "es" ? "pagado" : "paid"}</small></span>
           </button>
         ))}
       </section>
-      {visible.length === 0 && (
-        <div className="empty-state">
-          <h2>{t.noClients}</h2>
-        </div>
-      )}
-      {!adding && (
-        <button
-          type="button"
-          className="add-client-pill"
-          onClick={() => setAdding(true)}
-        >
-          <PlusIcon />
-          {t.addClient}
-        </button>
-      )}
-      <FloatingSheet
-        open={sortOpen}
-        onClose={() => setSortOpen(false)}
-        label={t.sortClients}
-      >
-        <h2 className="sheet-title">{t.sortClients}</h2>
-        <div className="sort-options">
-          {sortOptions.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={`sort-option${draftSortKey === key ? " selected" : ""}`}
-              onClick={() => setDraftSortKey(key)}
-            >
-              <span>{label}</span>
-              {draftSortKey === key && (
-                <span className="sort-option-check">
-                  <CheckIcon />
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="sort-direction">
-          <button
-            type="button"
-            className={draftSortDir === "asc" ? "selected" : ""}
-            onClick={() => setDraftSortDir("asc")}
-          >
-            {t.ascending}
-          </button>
-          <button
-            type="button"
-            className={draftSortDir === "desc" ? "selected" : ""}
-            onClick={() => setDraftSortDir("desc")}
-          >
-            {t.descending}
-          </button>
-        </div>
-        <div className="sheet-actions">
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setDraftSortKey("name");
-              setDraftSortDir("asc");
-            }}
-          >
-            {t.reset}
-          </button>
-          <button
-            type="button"
-            className="primary-button sheet-apply"
-            onClick={() => {
-              setSortKey(draftSortKey);
-              setSortDir(draftSortDir);
-              setSortOpen(false);
-            }}
-          >
-            {t.apply}
-          </button>
-        </div>
-      </FloatingSheet>
-      <FloatingSheet
-        open={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        label={t.filters}
-      >
-        <h2 className="sheet-title">{t.filters}</h2>
-        <div className="filter-tags">
-          {counts.map(({ tag, count }) => {
-            const selected = draftTags.some(
-              (x) => x.toLowerCase() === tag.toLowerCase(),
-            );
-            return (
-              <button
-                key={tag}
-                type="button"
-                className={`filter-tag${selected ? " selected" : ""}`}
-                onClick={() =>
-                  setDraftTags(
-                    selected
-                      ? draftTags.filter(
-                          (x) => x.toLowerCase() !== tag.toLowerCase(),
-                        )
-                      : [...draftTags, tag],
-                  )
-                }
-              >
-                <span className="filter-tag-check">
-                  {selected && <CheckIcon />}
-                </span>
-                <span className="filter-tag-name">{tag}</span>
-                <span className="filter-tag-count">{count}</span>
-              </button>
-            );
-          })}
-          {counts.length === 0 && <p className="muted">{t.noTags}</p>}
-        </div>
-        <div className="sheet-actions">
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => setDraftTags([])}
-          >
-            {t.clearAll}
-          </button>
-          <button
-            type="button"
-            className="primary-button sheet-apply"
-            onClick={() => {
-              setActiveTags(draftTags);
-              setFilterOpen(false);
-            }}
-          >
-            {t.applyFilters}
-          </button>
-        </div>
-      </FloatingSheet>
+      {!query.isPending && visibleClients.length === 0 && <div className="empty-state"><h2>{allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")}</h2></div>}
+      <button className="primary-button add-client-fab" onClick={() => setScreen({ name: "clientNew" })}><PlusIcon />{lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT"}</button>
+      {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}>
+        {activeSheet === "sort" ? <section className="client-sheet" role="dialog" aria-modal="true" aria-labelledby="client-sort-title">
+          <div className="sheet-handle"/><header><h2 id="client-sort-title">{lang === "es" ? "Ordenar" : "Sorting"}</h2><button type="button" onClick={() => { setDraftSortBy("alphabetical"); setDraftDirection("asc"); }}>{lang === "es" ? "Restablecer" : "Reset"}</button></header>
+          <fieldset className="sheet-options"><legend>{lang === "es" ? "Ordenar por" : "Sorted by"}</legend>{([
+            ["alphabetical", lang === "es" ? "Orden alfabético" : "Sorted alphabetically"],
+            ["balance", lang === "es" ? "Saldo pendiente" : "Sorted by balance due"],
+            ["paid", lang === "es" ? "Total pagado" : "Sorted by total paid"],
+            ["invoices", lang === "es" ? "Total de facturas" : "Sorted by total invoices"],
+          ] as Array<[ClientSort,string]>).map(([value,label]) => <label key={value}><input type="radio" name="client-sort" value={value} checked={draftSortBy === value} onChange={() => setDraftSortBy(value)} /><span>{label}</span><i>{draftSortBy === value && <CheckIcon/>}</i></label>)}</fieldset>
+          <div className="direction-toggle" role="group" aria-label={lang === "es" ? "Dirección" : "Direction"}><button type="button" className={draftDirection === "asc" ? "active" : ""} onClick={() => setDraftDirection("asc")}>{lang === "es" ? "Ascendente" : "Ascending"}</button><button type="button" className={draftDirection === "desc" ? "active" : ""} onClick={() => setDraftDirection("desc")}>{lang === "es" ? "Descendente" : "Descending"}</button></div>
+          <button className="primary-button sheet-apply" type="button" onClick={() => { setSortBy(draftSortBy); setDirection(draftDirection); closeSheet(); }}>{lang === "es" ? "Aplicar orden" : "Apply sorting"}</button>
+        </section> : <section className="client-sheet" role="dialog" aria-modal="true" aria-labelledby="client-filter-title">
+          <div className="sheet-handle"/><header><h2 id="client-filter-title">{lang === "es" ? "Filtros" : "Filters"}</h2><button type="button" onClick={() => setDraftTags([])}>{lang === "es" ? "Borrar todo" : "Clear all"}</button></header>
+          <p className="sheet-label">{lang === "es" ? "Etiquetas" : "Tags"}</p>
+          {tagCounts.length > 0 ? <div className="filter-tag-grid">{tagCounts.map(({ tag, count }) => <button type="button" key={tag} className={draftTags.includes(tag) ? "active" : ""} onClick={() => setDraftTags(draftTags.includes(tag) ? draftTags.filter((item) => item !== tag) : [...draftTags, tag])}><span>{tag}</span><b>{count}</b></button>)}</div> : <p className="sheet-empty">{lang === "es" ? "Agrega etiquetas al crear o editar un cliente." : "Add tags when creating or editing a client."}</p>}
+          <button className="primary-button sheet-apply" type="button" onClick={() => { setSelectedTags(draftTags); closeSheet(); }}>{lang === "es" ? "Aplicar filtros" : "Apply filters"}</button>
+        </section>}
+      </div>}
     </main>
   );
 }
