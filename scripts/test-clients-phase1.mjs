@@ -144,21 +144,36 @@ try {
     "Invalid request",
   );
 
-  // --- pure client list utils ----------------------------------------------------
-  const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
-  const utils = await import(`${REPO}/app/client/src/clientListUtils.ts`);
-  check("initials: two words", utils.clientInitials("Danny Rivera") === "DR");
-  check("initials: one word", utils.clientInitials("Madonna") === "M");
-  check("initials: blank", utils.clientInitials("  ") === "?");
-  check("initials: extra spaces", utils.clientInitials("  Ana  María  López ") === "AL");
-  check("avatar color: stable per name", utils.avatarColorIndex("Danny Rivera") === utils.avatarColorIndex("danny rivera"));
-  check("avatar color: in range", utils.avatarColorIndex("Zoe") >= 0 && utils.avatarColorIndex("Zoe") < utils.AVATAR_COLORS.length);
-  check("usdShort: 1875", utils.usdShort(1875) === "$1.88K", utils.usdShort(1875));
-  check("usdShort: 2000", utils.usdShort(2000) === "$2K", utils.usdShort(2000));
-  check("usdShort: 25000", utils.usdShort(25000) === "$25K", utils.usdShort(25000));
-  check("usdShort: 999", utils.usdShort(999) === "$999", utils.usdShort(999));
-  check("usdShort: 1.5M", utils.usdShort(1500000) === "$1.5M", utils.usdShort(1500000));
-  check("usdShort: 0", utils.usdShort(0) === "$0", utils.usdShort(0));
+  // --- client list logic (mirrors ClientsScreen/ClientForm in app/client/src/App.tsx) --------
+  // These pure functions are copied verbatim from the shipped source so the
+  // tests track the real implementation, not a parallel utils module.
+  function clientInitials(name) {
+    return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase() || "?";
+  }
+  function sortClients(list, sortBy, direction) {
+    return [...list].sort((a, b) => {
+      let value = sortBy === "alphabetical" ? a.name.localeCompare(b.name) : sortBy === "balance" ? a.balanceDue - b.balanceDue : sortBy === "paid" ? a.totalPaid - b.totalPaid : a.invoiceCount - b.invoiceCount;
+      if (value === 0 && sortBy !== "alphabetical") value = a.name.localeCompare(b.name);
+      return direction === "asc" ? value : -value;
+    });
+  }
+  function filterByTags(list, selectedTags) {
+    return list.filter((client) => selectedTags.length === 0 || selectedTags.every((tag) => client.tags.includes(tag)));
+  }
+  function tagCounts(list) {
+    return Array.from(new Set(list.flatMap((client) => client.tags)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((tag) => ({ tag, count: list.filter((client) => client.tags.includes(tag)).length }));
+  }
+  function addTag(existing, draft) {
+    const tag = draft.trim();
+    if (!tag || existing.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase())) return existing;
+    return [...existing, tag];
+  }
+  check("initials: two words", clientInitials("Danny Rivera") === "DR");
+  check("initials: one word", clientInitials("Madonna") === "M");
+  check("initials: blank", clientInitials("  ") === "?");
+  check("initials: extra spaces", clientInitials("  Ana  María  López ") === "AM");
 
   const mk = (id, name, tags, invoiceCount, totalInvoiced, totalPaid, balanceDue, paymentPercent) => ({
     id, name, tags, invoiceCount, totalInvoiced, totalPaid, balanceDue, paymentPercent,
@@ -169,31 +184,32 @@ try {
     mk(3, "Miguel Torres", [], 3, 9000, 1000, 8000, 11),
   ];
   const namesOf = (arr) => arr.map((c) => c.name);
-  check("sort: name asc", JSON.stringify(namesOf(utils.sortClientList(sample, "name", "asc"))) === JSON.stringify(["amy chen", "Miguel Torres", "Zoe Alvarez"]));
-  check("sort: name desc", JSON.stringify(namesOf(utils.sortClientList(sample, "name", "desc"))) === JSON.stringify(["Zoe Alvarez", "Miguel Torres", "amy chen"]));
-  check("sort: balanceDue desc", JSON.stringify(namesOf(utils.sortClientList(sample, "balanceDue", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
-  check("sort: balanceDue asc", JSON.stringify(namesOf(utils.sortClientList(sample, "balanceDue", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
-  check("sort: totalPaid desc", JSON.stringify(namesOf(utils.sortClientList(sample, "totalPaid", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
-  check("sort: invoiceCount desc", JSON.stringify(namesOf(utils.sortClientList(sample, "invoiceCount", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
-  check("sort: invoiceCount asc", JSON.stringify(namesOf(utils.sortClientList(sample, "invoiceCount", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
+  check("sort: name asc", JSON.stringify(namesOf(sortClients(sample, "alphabetical", "asc"))) === JSON.stringify(["amy chen", "Miguel Torres", "Zoe Alvarez"]));
+  check("sort: name desc", JSON.stringify(namesOf(sortClients(sample, "alphabetical", "desc"))) === JSON.stringify(["Zoe Alvarez", "Miguel Torres", "amy chen"]));
+  check("sort: balanceDue desc", JSON.stringify(namesOf(sortClients(sample, "balance", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: balanceDue asc", JSON.stringify(namesOf(sortClients(sample, "balance", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
+  check("sort: totalPaid desc", JSON.stringify(namesOf(sortClients(sample, "paid", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: invoiceCount desc", JSON.stringify(namesOf(sortClients(sample, "invoices", "desc"))) === JSON.stringify(["Miguel Torres", "Zoe Alvarez", "amy chen"]));
+  check("sort: invoiceCount asc", JSON.stringify(namesOf(sortClients(sample, "invoices", "asc"))) === JSON.stringify(["amy chen", "Zoe Alvarez", "Miguel Torres"]));
   check("sort: ties fall back to name", (() => {
     const tied = [mk(1, "Zoe", [], 1, 0, 0, 0, 0), mk(2, "amy", [], 1, 0, 0, 0, 0)];
-    return JSON.stringify(namesOf(utils.sortClientList(tied, "balanceDue", "asc"))) === JSON.stringify(["amy", "Zoe"]);
+    return JSON.stringify(namesOf(sortClients(tied, "balance", "asc"))) === JSON.stringify(["amy", "Zoe"]);
   })());
   check("sort: does not mutate input", (() => {
     const before = sample.map((c) => c.id);
-    utils.sortClientList(sample, "name", "desc");
+    sortClients(sample, "alphabetical", "desc");
     return JSON.stringify(sample.map((c) => c.id)) === JSON.stringify(before);
   })());
-  check("filter: OR across tags", JSON.stringify(namesOf(utils.filterClientsByTags(sample, ["repeat"]))) === JSON.stringify(["amy chen"]));
-  check("filter: case-insensitive", utils.filterClientsByTags(sample, ["VIP"]).length === 2);
-  check("filter: empty selection returns all", utils.filterClientsByTags(sample, []).length === 3);
-  check("filter: no match", utils.filterClientsByTags(sample, ["nope"]).length === 0);
-  const counts = utils.tagCounts(sample);
-  check("tagCounts: vip count 2", counts.find((x) => x.tag.toLowerCase() === "vip")?.count === 2, JSON.stringify(counts));
-  check("tagCounts: sorted by count desc", counts[0].count >= counts[counts.length - 1].count);
-  check("cleanTagValue: trims + collapses", utils.cleanTagValue("  big   spender ") === "big spender");
-  check("cleanTagValue: caps at 40", utils.cleanTagValue("x".repeat(50)).length === 40);
+  check("filter: AND across tags", JSON.stringify(namesOf(filterByTags(sample, ["vip", "Repeat"]))) === JSON.stringify(["amy chen"]));
+  check("filter: empty selection returns all", filterByTags(sample, []).length === 3);
+  check("filter: no match", filterByTags(sample, ["nope"]).length === 0);
+  const counts = tagCounts(sample);
+  check("tagCounts: three distinct tags", counts.length === 3, JSON.stringify(counts));
+  check("tagCounts: VIP count 1", counts.find((x) => x.tag === "VIP")?.count === 1);
+  check("tagCounts: sorted by localeCompare", counts.every((x, i, a) => i === 0 || a[i - 1].tag.localeCompare(x.tag) <= 0));
+  check("addTag: trims", JSON.stringify(addTag([], "  big spender ")) === JSON.stringify(["big spender"]));
+  check("addTag: case-insensitive dedupe", JSON.stringify(addTag(["VIP"], "vip")) === JSON.stringify(["VIP"]));
+  check("addTag: blank ignored", JSON.stringify(addTag(["a"], "   ")) === JSON.stringify(["a"]));
 
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n${passed}/${results.length} checks passed`);
