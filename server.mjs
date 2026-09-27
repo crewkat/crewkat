@@ -195,7 +195,7 @@ function executePrivileged(contract, args) {
   );
 }
 
-function makeCtx() {
+function makeCtx(reqMeta) {
   return {
     slug: "tradesign",
     invocationId: randomUUID(),
@@ -203,6 +203,12 @@ function makeCtx() {
     db: () => db,
     blobs,
     executePrivileged,
+    // Secure persistent login metadata (attached by the /actions handler):
+    // refreshToken = raw refresh token from the HttpOnly cookie, if present.
+    refreshToken: reqMeta?.refreshToken,
+    userAgent: reqMeta?.userAgent,
+    ipHash: reqMeta?.ipHash,
+    isProdCookie: reqMeta?.isProdCookie,
     agent: {
       run: async () => {
         throw new Error("Agent runtime is unavailable in standalone mode.");
@@ -223,7 +229,7 @@ function makeCtx() {
   };
 }
 
-async function dispatchAction(name, args) {
+async function dispatchAction(name, args, reqMeta) {
   const action = Actions[name];
   if (!action) {
     const error = new Error(`Unknown action: ${name}`);
@@ -238,7 +244,7 @@ async function dispatchAction(name, args) {
   }
   let result;
   try {
-    result = await action.handler(makeCtx(), parsedArgs.data);
+    result = await action.handler(makeCtx(reqMeta), parsedArgs.data);
   } catch (handlerError) {
     // The client surfaces body.error for action failures; keep HTTP 200 so
     // the transport treats it as a completed action call.
@@ -255,6 +261,50 @@ async function dispatchAction(name, args) {
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
+
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const name = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (name && !(name in out)) out[name] = value;
+  }
+  return out;
+}
+
+function clientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length) return forwarded.split(",")[0].trim();
+  return req.socket?.remoteAddress ?? "";
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Buffer.from(digest).toString("hex");
+}
+
+// CSRF guard for POST /actions: browser requests must be same-origin. Clients
+// without Origin/Referer (curl, tests, native apps) pass through.
+function sameOriginRequest(req) {
+  const host = req.headers.host;
+  if (!host) return false;
+  const hostLower = host.toLowerCase();
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  if (!origin && !referer) return true;
+  const matchesHost = (value) => {
+    try {
+      return new URL(value).host.toLowerCase() === hostLower;
+    } catch {
+      return false;
+    }
+  };
+  if (origin) return matchesHost(origin);
+  return matchesHost(referer);
+}
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -285,13 +335,15 @@ function mimeFor(filePath) {
   return MIME_TYPES[ext] || "application/octet-stream";
 }
 
-function jsonResponse(res, status, body) {
+function jsonResponse(res, status, body, setCookies) {
   const payload = JSON.stringify(body);
-  res.writeHead(status, {
+  const headers = {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(payload),
     "x-content-type-options": "nosniff",
-  });
+  };
+  if (setCookies && setCookies.length) headers["set-cookie"] = setCookies;
+  res.writeHead(status, headers);
   res.end(payload);
 }
 
@@ -394,6 +446,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === "/actions" && req.method === "POST") {
+      // CSRF guard: browser POSTs must be same-origin (Origin/Referer check).
+      if (!sameOriginRequest(req)) {
+        jsonResponse(res, 403, { error: "Cross-origin requests are not allowed." });
+        return;
+      }
       let payload;
       try {
         payload = JSON.parse((await readBody(req, { raw: true })) || "{}");
@@ -402,8 +459,26 @@ const server = createServer(async (req, res) => {
         return;
       }
       try {
-        const { status, body } = await dispatchAction(payload.action, payload.args);
-        jsonResponse(res, status, body);
+        const cookies = parseCookies(req.headers.cookie);
+        const refreshToken = cookies["__Host-crewkat_rt"] || cookies["crewkat_rt"];
+        const ipSalt = process.env.SESSION_IP_SALT?.trim();
+        const reqMeta = {
+          refreshToken,
+          userAgent: req.headers["user-agent"] ?? "",
+          ipHash: ipSalt ? await sha256Hex(`${ipSalt}:${clientIp(req)}`) : "",
+          // NOTE: read here (unbundled runtime), not in actions.ts — bun build
+          // inlines process.env.NODE_ENV at build time.
+          isProdCookie: process.env.NODE_ENV === "production",
+        };
+        const { status, body } = await dispatchAction(payload.action, payload.args, reqMeta);
+        const rawSetCookies = body?.data && Array.isArray(body.data.setCookies) ? body.data.setCookies : undefined;
+        if (rawSetCookies) {
+          // Redact refresh-token values from the JSON body: the client only
+          // needs to know THAT a cookie was set, never the secret itself.
+          // The real values travel solely via the HttpOnly Set-Cookie header.
+          body.data.setCookies = rawSetCookies.map((c) => String(c).replace(/=[^;]*/, "=<redacted>"));
+        }
+        jsonResponse(res, status, body, rawSetCookies);
       } catch (error) {
         jsonResponse(res, error.status || 500, { error: error.message || "Action failed." });
       }

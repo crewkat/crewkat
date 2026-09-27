@@ -53,6 +53,7 @@ Render will prompt for the `sync: false` keys. Enter real values; leave
 | `STRIPE_PREMIUM_PRICE_ID` | price for the Premium subscription |
 | `STRIPE_WEBHOOK_SECRET` | created in step 5 below |
 | `CREWKAT_PUBLIC_URL` | `https://<service>.onrender.com` for now |
+| `SESSION_IP_SALT` | random string (e.g. `openssl rand -hex 32`) — salts the IP hashes stored on session rows (theft-detection signal only) |
 
 ## 3. First deploy & data migration
 
@@ -121,8 +122,13 @@ Render will prompt for the `sync: false` keys. Enter real values; leave
 
 ## 8. Known limitations / honest notes
 
-- **Stay-logged-in (30-day token) was NOT shipped** — blocked earlier by a
-  security audit; sessions behave as before. Needs a decision before retry.
+- **Secure persistent login (shipped 2026-09-27)** — sign-in issues a
+  15-minute in-memory session proof plus a 30-day rotating refresh token in
+  an HttpOnly cookie (`__Host-crewkat_rt` in production, `Secure; SameSite=Lax`).
+  Reusing a rotated token revokes the whole token family and emails the
+  account a security alert. Old 30-day localStorage sessions keep working
+  during the transition (dual-mode). **After deploy, Danny should sign out
+  and back in once on each device** so the new cookie is set.
 - **Automated backups are built in (2026-09-27)** — the server takes a
   daily `VACUUM INTO` snapshot and a Sunday weekly `tar.gz` (DB + blobs),
   keeps 7 daily / 4 weekly on the disk, and emails copies offsite through

@@ -47,6 +47,10 @@ services:
         sync: false # optional: max MB kept in /data/backups (default 1024)
       - key: BACKUP_FULL_SIZE_ALERT_MB
         sync: false # optional: warn when the weekly full exceeds this (default 30)
+      # Secure persistent login: salt for hashing client IPs on session rows
+      # (theft-detection signal only, never a hard block).
+      - key: SESSION_IP_SALT
+        sync: false
       - key: STRIPE_PREMIUM_PRICE_ID
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

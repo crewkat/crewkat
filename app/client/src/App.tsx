@@ -27,7 +27,7 @@ type PointerEvent,
 type ReactNode,
 type TouchEvent,
 } from "react";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, setActiveSessionToken, type ApiResponse } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse } from "./api";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
@@ -1436,22 +1436,45 @@ function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking";
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
   const bootstrap = useQuery({ queryKey: ["auth-bootstrap"], queryFn: () => api.getAuthBootstrap({}), retry: false });
-  const [restoring, setRestoring] = useState(() => getStoredSessionToken().length > 0);
-  // Restore a previously saved session (e.g. after the app was closed) so the
-  // owner stays signed in. The server still owns the 30-day sliding expiry: an
-  // expired or revoked token fails here and falls through to the sign-in form.
+  const [restoring, setRestoring] = useState(true);
+  // Restore the previous session so the owner stays signed in across app
+  // restarts: first a legacy pre-cookie token (transition window), otherwise
+  // a silent refresh via the HttpOnly cookie. Falls through to sign-in.
   useEffect(() => {
-    const stored = getStoredSessionToken();
-    if (!stored) { setRestoring(false); return; }
     let cancelled = false;
-    setActiveSessionToken(stored);
-    api.getAuthSession({ _sessionToken: "active" })
-      .then((result) => {
-        if (cancelled) return;
-        if (result.user) onAuthenticated(result.user);
-        else { clearActiveSessionToken(); setRestoring(false); }
-      })
-      .catch(() => { if (!cancelled) { clearActiveSessionToken(); setRestoring(false); } });
+    (async () => {
+      const legacy = getStoredSessionToken();
+      if (legacy) {
+        restoreLegacySessionToken(legacy);
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (cancelled) return;
+          if (result.user) {
+            onAuthenticated(result.user);
+            return;
+          }
+          clearActiveSessionToken();
+        } catch {
+          // A transport/server failure is not an auth verdict: retain the
+          // legacy token and still try the cookie path before showing sign-in.
+        }
+      }
+      const refreshed = await trySilentRefresh(Boolean(legacy)).catch(() => false);
+      if (cancelled) return;
+      if (refreshed) {
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (cancelled) return;
+          if (result.user) {
+            onAuthenticated(result.user);
+            return;
+          }
+        } catch {
+          // Both restoration paths failed; show the sign-in form below.
+        }
+      }
+      setRestoring(false);
+    })();
     return () => { cancelled = true; };
   }, [onAuthenticated]);
   const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset">("login");
@@ -1490,7 +1513,9 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         setMode("login"); setCode(""); setPassword(""); setDevCode(""); setNotice("Password updated. Sign in with your new password.");
       } else {
         const result = await api.login({ email, password });
-        setActiveSessionToken(result.sessionToken); onAuthenticated(result.user);
+        if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
+        else persistLegacySessionToken(result.sessionToken);
+        onAuthenticated(result.user);
       }
     } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
   };
@@ -1534,7 +1559,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {(mode === "forgot" || mode === "reset" || mode === "verify") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
         {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? "Use the new testing code below." : result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a new verification code to ${email}.`); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>Get a new code</button>}
       </div>
-      <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device while you use the app at least once every 30 days — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button></nav></div>
+      <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button></nav></div>
     </section>
   </main>;
 }
@@ -3770,17 +3795,27 @@ function PhotoCard({
     </article>
   );
 }
-const SettingsAccordionContext = createContext<{
-  openId: string | null;
-  setOpenId: (id: string | null) => void;
-} | null>(null);
+
+type AutomatedBackupRun = {
+  status: "ok" | "failed" | "running";
+  kind: "weekly-full" | "manual" | "daily";
+  totalBytes: number | null;
+  startedAt: string;
+  offsiteSent: boolean;
+  error: string | null;
+};
+
+const automatedBackupApi = api as unknown as {
+  getBackupStatus: (args: Record<string, never>) => Promise<{ configured: boolean; runs: AutomatedBackupRun[] }>;
+  runAutomatedBackup: (args: { note: string }) => Promise<{ offsiteSent: boolean }>;
+};
 
 function AutomaticBackupCard({ lang }: { lang: Lang }) {
   const queryClient = useQueryClient();
-  const status = useQuery({ queryKey: ["backupStatus"], queryFn: () => api.getBackupStatus({}), refetchInterval: 30000 });
+  const status = useQuery({ queryKey: ["backupStatus"], queryFn: () => automatedBackupApi.getBackupStatus({}), refetchInterval: 30000 });
   const [notice, setNotice] = useState("");
   const runNow = useMutation({
-    mutationFn: () => api.runAutomatedBackup({ note: "" }),
+    mutationFn: () => automatedBackupApi.runAutomatedBackup({ note: "" }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["backupStatus"] });
       setNotice(lang === "es"
@@ -3824,6 +3859,11 @@ function AutomaticBackupCard({ lang }: { lang: Lang }) {
     </div>
   );
 }
+
+const SettingsAccordionContext = createContext<{
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+} | null>(null);
 
 function SettingsAccordion({
   title,

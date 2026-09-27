@@ -33,6 +33,16 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 60_000,
   },
+  sendSecurityAlert: {
+    request: z.object({
+      to: z.string().email().max(200),
+      subject: z.string().min(1).max(200),
+      text: z.string().min(1).max(20_000),
+    }),
+    response: z.object({ delivery: z.enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   createStripeCheckout: {
     request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200) }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),

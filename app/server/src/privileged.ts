@@ -39,6 +39,16 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 60_000,
   },
+  sendSecurityAlert: {
+    request: z.object({
+      to: z.string().email().max(200),
+      subject: z.string().min(1).max(200),
+      text: z.string().min(1).max(20_000),
+    }),
+    response: z.object({ delivery: z.enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   createStripeCheckout: {
     request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200) }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
@@ -122,6 +132,35 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
         }),
         redirect: "error",
         signal: AbortSignal.timeout(45_000),
+      });
+      return { delivery: response.ok ? "sent" as const : "failed" as const };
+    } catch {
+      return { delivery: "failed" as const };
+    }
+  },
+  async sendSecurityAlert(args) {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey) return { delivery: "failed" as const };
+
+    const configuredFrom = process.env.RESEND_FROM_EMAIL?.trim();
+    const from = configuredFrom && !/[\r\n]/.test(configuredFrom) ? configuredFrom : DEFAULT_RESEND_FROM;
+    const safeSubject = args.subject.replace(/[\r\n]/g, " ");
+
+    try {
+      const response = await fetch(RESEND_EMAIL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: [args.to],
+          subject: safeSubject,
+          text: args.text,
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
       });
       return { delivery: response.ok ? "sent" as const : "failed" as const };
     } catch {

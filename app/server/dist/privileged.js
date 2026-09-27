@@ -4375,6 +4375,16 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 60000
   },
+  sendSecurityAlert: {
+    request: object({
+      to: string2().email().max(200),
+      subject: string2().min(1).max(200),
+      text: string2().min(1).max(20000)
+    }),
+    response: object({ delivery: _enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createStripeCheckout: {
     request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200) }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
@@ -4458,6 +4468,34 @@ var privilegedHandlers = definePrivilegedHandlers(privileged, {
         }),
         redirect: "error",
         signal: AbortSignal.timeout(45000)
+      });
+      return { delivery: response.ok ? "sent" : "failed" };
+    } catch {
+      return { delivery: "failed" };
+    }
+  },
+  async sendSecurityAlert(args) {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey)
+      return { delivery: "failed" };
+    const configuredFrom = process.env.RESEND_FROM_EMAIL?.trim();
+    const from = configuredFrom && !/[\r\n]/.test(configuredFrom) ? configuredFrom : DEFAULT_RESEND_FROM;
+    const safeSubject = args.subject.replace(/[\r\n]/g, " ");
+    try {
+      const response = await fetch(RESEND_EMAIL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from,
+          to: [args.to],
+          subject: safeSubject,
+          text: args.text
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
       });
       return { delivery: response.ok ? "sent" : "failed" };
     } catch {

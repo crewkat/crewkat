@@ -704,6 +704,14 @@ export const authSessions = sqliteTable("auth_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
+  // 'legacy' = pre-cookie 30-day sliding body token (dual-mode transition).
+  // 'proof' = 15-minute in-memory session proof. 'refresh' = HttpOnly cookie token.
+  tokenType: text("token_type", { enum: ["legacy", "proof", "refresh"] }).notNull().default("legacy"),
+  familyId: text("family_id"),
+  replacedBy: text("replaced_by"),
+  absoluteExpiresAt: integer("absolute_expires_at", { mode: "timestamp_ms" }),
+  userAgent: text("user_agent").notNull().default(""),
+  ipHash: text("ip_hash").notNull().default(""),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
   lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),

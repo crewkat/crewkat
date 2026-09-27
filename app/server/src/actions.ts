@@ -242,9 +242,134 @@ async function restoreBackup(ctx: Ctx, backup: BackupPayload) {
 const AUTH_SESSION_DAYS = 30;
 const AUTH_CODE_MINUTES = 30;
 const AUTH_PASSWORD_ITERATIONS = 210_000;
+// Secure persistent login: 15-minute in-memory session proof + 30-day absolute
+// HttpOnly refresh-token cookie with rotation + reuse theft detection.
+const AUTH_PROOF_MINUTES = 15;
+const AUTH_REFRESH_DAYS = 30;
+const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once per hour
+const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
+const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
 const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]) });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
+// The standalone harness (server.mjs) attaches these to the action context:
+// refreshToken = raw refresh token from the HttpOnly cookie (if present).
+type AuthCtx = Ctx & { refreshToken?: string; userAgent?: string; ipHash?: string; isProdCookie?: boolean };
+function authMeta(ctx: Ctx): AuthCtx {
+  return ctx as AuthCtx;
+}
+
+function cookieSecure(ctx: Ctx): boolean {
+  // server.mjs (unbundled, so process.env reads happen at runtime) passes
+  // isProdCookie in the request metadata. NOTE: do NOT read
+  // process.env.NODE_ENV directly here — `bun build` inlines it at build
+  // time, which would bake the wrong cookie mode into the shipped bundle.
+  return authMeta(ctx).isProdCookie === true;
+}
+const REFRESH_COOKIE_NAME_DEV = "crewkat_rt";
+const REFRESH_COOKIE_NAME_PROD = "__Host-crewkat_rt"; // __Host- blocks subdomain cookie tossing
+function refreshCookieName(secure: boolean): string {
+  return secure ? REFRESH_COOKIE_NAME_PROD : REFRESH_COOKIE_NAME_DEV;
+}
+function refreshCookieHeader(secure: boolean, token: string): string {
+  // Secure is omitted outside production so http://localhost dev keeps working.
+  return `${refreshCookieName(secure)}=${token}; Path=/; Max-Age=${AUTH_REFRESH_DAYS * 24 * 60 * 60}; HttpOnly${secure ? "; Secure" : ""}; SameSite=Lax`;
+}
+function clearRefreshCookieHeader(secure: boolean): string {
+  return `${refreshCookieName(secure)}=; Path=/; Max-Age=0; HttpOnly${secure ? "; Secure" : ""}; SameSite=Lax`;
+}
+
+// In-memory sliding-window rate limiter for refreshSession (single instance).
+const refreshAttempts = new Map<string, number[]>();
+function refreshRateLimited(key: string): boolean {
+  const now = Date.now();
+  const windowStart = now - 60_000;
+  const times = (refreshAttempts.get(key) ?? []).filter((t) => t >= windowStart);
+  times.push(now);
+  refreshAttempts.set(key, times);
+  if (refreshAttempts.size > 10_000) refreshAttempts.clear();
+  return times.length > AUTH_REFRESH_RATE_LIMIT;
+}
+
+async function issueSession(ctx: Ctx, userId: number) {
+  const meta = authMeta(ctx);
+  const db = ctx.db<typeof schema>();
+  const now = new Date();
+  const familyId = crypto.randomUUID();
+  // Short-lived proof: returned in the JSON body, kept in client memory only.
+  const proof = randomHex(48);
+  const proofExpiresAt = new Date(now.getTime() + AUTH_PROOF_MINUTES * 60_000);
+  await db.insert(schema.authSessions).values({
+    userId, tokenHash: await sha256(proof), tokenType: "proof", familyId,
+    expiresAt: proofExpiresAt, lastSeenAt: now, createdAt: now,
+    userAgent: (meta.userAgent ?? "").slice(0, 300), ipHash: meta.ipHash ?? "",
+  });
+  // Long-lived refresh token: HttpOnly cookie, 30-day absolute cap.
+  const refreshToken = randomHex(48);
+  const absoluteExpiresAt = new Date(now.getTime() + AUTH_REFRESH_DAYS * 24 * 60 * 60_000);
+  await db.insert(schema.authSessions).values({
+    userId, tokenHash: await sha256(refreshToken), tokenType: "refresh", familyId,
+    absoluteExpiresAt, expiresAt: absoluteExpiresAt, lastSeenAt: now, createdAt: now,
+    userAgent: (meta.userAgent ?? "").slice(0, 300), ipHash: meta.ipHash ?? "",
+  });
+  return { proof, proofExpiresAt, setCookies: [refreshCookieHeader(cookieSecure(ctx), refreshToken)] };
+}
+async function requireSession(ctx: Ctx, token: string) {
+  const db = ctx.db<typeof schema>();
+  const session = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(token))).limit(1))[0];
+  if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) throw new Error("Your session has expired. Sign in again.");
+  // Refresh tokens are never valid as general API credentials (cookie-only).
+  if (session.tokenType === "refresh") throw new Error("Sign in to continue.");
+  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
+  if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+  // Dual-mode: legacy 30-day tokens keep their sliding renewal. Proof tokens
+  // have a hard 15-minute expiry and are never extended.
+  const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60_000;
+  if (stale && session.tokenType === "legacy") {
+    await db.update(schema.authSessions).set({ lastSeenAt: new Date(), expiresAt: new Date(Date.now() + AUTH_SESSION_DAYS * 24 * 60 * 60_000) }).where(eq(schema.authSessions.id, session.id));
+  } else if (stale) {
+    await db.update(schema.authSessions).set({ lastSeenAt: new Date() }).where(eq(schema.authSessions.id, session.id));
+  }
+  return user;
+}
+async function revokeSessionFamily(db: ReturnType<Ctx["db"]>, familyId: string | null, userId: number) {
+  const now = new Date();
+  if (familyId) {
+    await db.update(schema.authSessions).set({ revokedAt: now }).where(and(eq(schema.authSessions.familyId, familyId), isNull(schema.authSessions.revokedAt)));
+  } else {
+    // Legacy rows have no family: revoke the user's legacy rows.
+    await db.update(schema.authSessions).set({ revokedAt: now }).where(and(eq(schema.authSessions.userId, userId), eq(schema.authSessions.tokenType, "legacy"), isNull(schema.authSessions.revokedAt)));
+  }
+}
+async function issueProofForRefresh(
+  ctx: Ctx,
+  db: ReturnType<Ctx["db"]>,
+  refreshRow: typeof schema.authSessions.$inferSelect,
+  rotate: boolean,
+): Promise<{ proof: string; proofExpiresAt: Date; setCookies: string[] }> {
+  const meta = authMeta(ctx);
+  const now = new Date();
+  const proof = randomHex(48);
+  const proofExpiresAt = new Date(now.getTime() + AUTH_PROOF_MINUTES * 60_000);
+  await db.insert(schema.authSessions).values({
+    userId: refreshRow.userId, tokenHash: await sha256(proof), tokenType: "proof",
+    familyId: refreshRow.familyId, expiresAt: proofExpiresAt, lastSeenAt: now, createdAt: now,
+    userAgent: (meta.userAgent ?? "").slice(0, 300), ipHash: meta.ipHash ?? "",
+  });
+  if (!rotate) return { proof, proofExpiresAt, setCookies: [] };
+  const successor = randomHex(48);
+  await db.batch([
+    db.update(schema.authSessions).set({ revokedAt: now, replacedBy: await sha256(successor) }).where(eq(schema.authSessions.id, refreshRow.id)),
+    db.insert(schema.authSessions).values({
+      userId: refreshRow.userId, tokenHash: await sha256(successor), tokenType: "refresh",
+      familyId: refreshRow.familyId, absoluteExpiresAt: refreshRow.absoluteExpiresAt,
+      expiresAt: refreshRow.absoluteExpiresAt ?? new Date(now.getTime() + AUTH_REFRESH_DAYS * 24 * 60 * 60_000),
+      lastSeenAt: now, createdAt: now,
+      userAgent: (meta.userAgent ?? "").slice(0, 300), ipHash: meta.ipHash ?? "",
+    }),
+  ]);
+  return { proof, proofExpiresAt, setCookies: [refreshCookieHeader(cookieSecure(ctx), successor)] };
+}
 
 function normalizedEmail(value: string) {
   return value.trim().toLowerCase();
@@ -283,23 +408,6 @@ async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" |
 async function deliverAuthCode(ctx: Ctx, email: string, code: string, purpose: "verify_email" | "reset_password") {
   const result = await ctx.executePrivileged(privileged.sendAuthEmail, { to: email, code, purpose });
   return authCodeClientResult(code, result.delivery);
-}
-async function issueSession(ctx: Ctx, userId: number) {
-  const db = ctx.db<typeof schema>();
-  const token = randomHex(48);
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + AUTH_SESSION_DAYS * 24 * 60 * 60_000);
-  await db.insert(schema.authSessions).values({ userId, tokenHash: await sha256(token), expiresAt, lastSeenAt: now, createdAt: now });
-  return { token, expiresAt };
-}
-async function requireSession(ctx: Ctx, token: string) {
-  const db = ctx.db<typeof schema>();
-  const session = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(token))).limit(1))[0];
-  if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) throw new Error("Your session has expired. Sign in again.");
-  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
-  if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
-  if (Date.now() - session.lastSeenAt.getTime() > 5 * 60_000) await db.update(schema.authSessions).set({ lastSeenAt: new Date(), expiresAt: new Date(Date.now() + AUTH_SESSION_DAYS * 24 * 60 * 60_000) }).where(eq(schema.authSessions.id, session.id));
-  return user;
 }
 
 type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium" };
@@ -803,7 +911,7 @@ const BaseActions = {
   }),
   login: defineAction({
     request: z.object({ email: z.string().trim().email().max(200), password: z.string().min(1).max(200) }),
-    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema }),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>(); const email = normalizedEmail(args.email); const cutoff = Date.now() - 15 * 60_000;
       const attempts = await db.select().from(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email)).orderBy(desc(schema.authLoginAttempts.attemptedAt));
@@ -814,15 +922,79 @@ const BaseActions = {
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
       const session = await issueSession(ctx, user.id);
-      return { sessionToken: session.token, expiresAt: session.expiresAt.toISOString(), user: authUserShape(user) };
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: session.setCookies };
+    },
+  }),
+  // Exchanges the HttpOnly refresh cookie for a fresh 15-minute proof. Public:
+  // authenticated by the cookie, not the request body.
+  refreshSession: defineAction({
+    request: z.object({}),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
+    async handler(ctx) {
+      const meta = authMeta(ctx);
+      const db = ctx.db<typeof schema>();
+      if (refreshRateLimited(meta.ipHash ?? "unknown")) throw new Error("Too many requests. Try again in a minute.");
+      const presented = meta.refreshToken;
+      if (!presented) throw new Error("Sign in to continue.");
+      const presentedHash = await sha256(presented);
+      const row = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, presentedHash)).limit(1))[0];
+      if (!row || row.tokenType !== "refresh") throw new Error("Sign in to continue.");
+      const now = Date.now();
+      if (row.revokedAt) {
+        if (row.replacedBy && now - row.revokedAt.getTime() <= AUTH_REFRESH_REUSE_GRACE_MS) {
+          // Concurrent refresh race: the successor already exists; rotate from it.
+          const successor = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, row.replacedBy)).limit(1))[0];
+          if (successor && !successor.revokedAt && successor.expiresAt.getTime() > now) {
+            const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, successor.userId)).limit(1))[0];
+            if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+            const issued = await issueProofForRefresh(ctx, db, successor, false);
+            return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
+          }
+        }
+        if (row.replacedBy) {
+          // Reuse of a rotated token outside the grace window: token theft.
+          await revokeSessionFamily(db, row.familyId, row.userId);
+          const user = (await db.select({ id: schema.authUsers.id, email: schema.authUsers.email, name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
+          if (user?.email) {
+            const when = new Date(now).toISOString();
+            try {
+              await ctx.executePrivileged(privileged.sendSecurityAlert, {
+                to: user.email,
+                subject: "Crewkat security alert: signed out everywhere",
+                text: `Hi ${user.name || "there"},\n\nWe spotted activity that looked like a stolen sign-in token for your Crewkat account (${when}). As a precaution we've signed you out on all devices.\n\nIf that was you, just sign in again. If not, we recommend changing your password right away.\n\n— The Crewkat team`,
+              });
+            } catch { /* alert best-effort; family is already revoked */ }
+          }
+          throw new Error("We spotted unusual sign-in activity and signed you out on all devices. Sign in again.");
+        }
+        // Revoked without replacement (logout / password reset): session is over.
+        throw new Error("Sign in to continue.");
+      }
+      if (row.expiresAt.getTime() <= now || (row.absoluteExpiresAt && row.absoluteExpiresAt.getTime() <= now)) throw new Error("Your session has expired. Sign in again.");
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
+      if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+      const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60_000;
+      const issued = await issueProofForRefresh(ctx, db, row, rotate);
+      return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
     },
   }),
   logout: defineAction({
-    request: authEnvelopeSchema,
-    response: z.object({ ok: z.literal(true) }),
-    async handler(ctx, args): Promise<{ ok: true }> {
-      await ctx.db<typeof schema>().update(schema.authSessions).set({ revokedAt: new Date() }).where(eq(schema.authSessions.tokenHash, await sha256(args._sessionToken)));
-      return { ok: true };
+    request: z.object({ _sessionToken: z.string().min(32).max(300).optional() }),
+    response: z.object({ ok: z.literal(true), setCookies: z.array(z.string()) }),
+    async handler(ctx, args): Promise<{ ok: true; setCookies: string[] }> {
+      const db = ctx.db<typeof schema>(); const meta = authMeta(ctx);
+      // Revoke via the cookie refresh token when present (primary), else via
+      // the body proof/legacy token (transition compat).
+      let revoked = false;
+      if (meta.refreshToken) {
+        const row = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(meta.refreshToken))).limit(1))[0];
+        if (row?.tokenType === "refresh") { await revokeSessionFamily(db, row.familyId, row.userId); revoked = true; }
+      }
+      if (!revoked && args._sessionToken) {
+        const row = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(args._sessionToken))).limit(1))[0];
+        if (row) { await revokeSessionFamily(db, row.familyId, row.userId); revoked = true; }
+      }
+      return { ok: true as const, setCookies: [clearRefreshCookieHeader(cookieSecure(ctx))] };
     },
   }),
   getAuthSession: defineAction({
@@ -1719,7 +1891,7 @@ const BaseActions = {
 } satisfies ActionsModule;
 
 const PUBLIC_ACTIONS = new Set([
-  "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
+  "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
   "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "submitDocumentSignature", "submitEstimateRequest",
 ]);
 
