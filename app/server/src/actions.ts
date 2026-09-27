@@ -512,6 +512,7 @@ const GLOBAL_MARKETPLACE_READ_TABLES = new Set<unknown>([
   schema.marketplaceListings,
   schema.marketplaceListingPhotos,
   schema.marketplaceRequests,
+  schema.marketplaceMessages,
 ]);
 
 function wrapScopedQuery(target: any, scope: unknown, state = { applied: false }): any {
@@ -566,8 +567,8 @@ function workspaceDb(rawDb: any, companyId: number): any {
             }
             return (values: Record<string, unknown> | Array<Record<string, unknown>>) => insertTarget.values(
               Array.isArray(values)
-                ? values.map((value) => ({ ...value, companyId }))
-                : { ...values, companyId },
+                ? values.map((value) => ({ companyId, ...value }))
+                : { companyId, ...values },
             );
           },
         });
@@ -1910,13 +1911,14 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db<typeof schema>();
       const [messages, listings] = await Promise.all([
         db.select().from(schema.marketplaceMessages).orderBy(desc(schema.marketplaceMessages.createdAt)),
-        db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName }).from(schema.marketplaceListings),
+        db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings),
       ]);
       const listingById = new Map(listings.map((listing) => [listing.id, listing]));
       const grouped = new Map<number, { listingId: number; listingTitle: string; companyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number }>();
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       for (const message of messages) {
         const listing = listingById.get(message.listingId);
-        if (!listing) continue;
+        if (!listing || listing.companyId !== myCompanyId) continue;
         const existing = grouped.get(message.listingId);
         const unread = message.sender === "other" && message.readAt === null ? 1 : 0;
         if (!existing) {
@@ -1940,7 +1942,11 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ listingId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
-      await ctx.db<typeof schema>().update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other"), isNull(schema.marketplaceMessages.readAt)));
+      const db = ctx.db<typeof schema>();
+      const listing = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (listing && listing.companyId === workspaceIdentity(ctx).workspaceCompanyId) {
+        await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other"), isNull(schema.marketplaceMessages.readAt)));
+      }
       ctx.invalidateQueries();
       return { ok: true };
     },
@@ -1951,12 +1957,14 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args) {
       if (!args.body && !args.image) throw new Error("Write a message or add a photo.");
       const db = ctx.db<typeof schema>();
-      const listing = (await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      const listing = (await db.select({ id: schema.marketplaceListings.id, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) throw new Error("This listing is no longer available.");
+      const isOwner = listing.companyId === workspaceIdentity(ctx).workspaceCompanyId;
+      const sender = isOwner ? "me" : "other";
       const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key) await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
       try {
-        const made = (await db.insert(schema.marketplaceMessages).values({ listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender: args.sender, readAt: args.sender === "me" ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
+        const made = (await db.insert(schema.marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, readAt: isOwner ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
         if (!made) throw new Error("The message could not be saved.");
         ctx.invalidateQueries(); return { id: made.id };
       } catch (error) { if (key) await ctx.blobs.delete(key).catch(() => {}); throw error; }

@@ -7963,7 +7963,8 @@ async function deliverAuthCode(ctx, email, code, purpose) {
 var GLOBAL_MARKETPLACE_READ_TABLES = new Set([
   marketplaceListings,
   marketplaceListingPhotos,
-  marketplaceRequests
+  marketplaceRequests,
+  marketplaceMessages
 ]);
 function wrapScopedQuery(target, scope, state = { applied: false }) {
   return new Proxy(target, {
@@ -8020,7 +8021,7 @@ function workspaceDb(rawDb, companyId) {
                 const value = Reflect.get(insertTarget, insertProperty);
                 return typeof value === "function" ? value.bind(insertTarget) : value;
               }
-              return (values) => insertTarget.values(Array.isArray(values) ? values.map((value) => ({ ...value, companyId })) : { ...values, companyId });
+              return (values) => insertTarget.values(Array.isArray(values) ? values.map((value) => ({ companyId, ...value })) : { companyId, ...values });
             }
           });
         };
@@ -10982,13 +10983,14 @@ If that was you, just sign in again. If not, we recommend changing your password
       const db = ctx.db();
       const [messages, listings] = await Promise.all([
         db.select().from(marketplaceMessages).orderBy(desc(marketplaceMessages.createdAt)),
-        db.select({ id: marketplaceListings.id, title: marketplaceListings.title, companyName: marketplaceListings.companyName }).from(marketplaceListings)
+        db.select({ id: marketplaceListings.id, title: marketplaceListings.title, companyName: marketplaceListings.companyName, companyId: marketplaceListings.companyId }).from(marketplaceListings)
       ]);
       const listingById = new Map(listings.map((listing) => [listing.id, listing]));
       const grouped = new Map;
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       for (const message of messages) {
         const listing = listingById.get(message.listingId);
-        if (!listing)
+        if (!listing || listing.companyId !== myCompanyId)
           continue;
         const existing = grouped.get(message.listingId);
         const unread = message.sender === "other" && message.readAt === null ? 1 : 0;
@@ -11013,7 +11015,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ listingId: number2().int().positive() }),
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
-      await ctx.db().update(marketplaceMessages).set({ readAt: new Date }).where(and(eq(marketplaceMessages.listingId, args.listingId), eq(marketplaceMessages.sender, "other"), isNull(marketplaceMessages.readAt)));
+      const db = ctx.db();
+      const listing = (await db.select({ companyId: marketplaceListings.companyId }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (listing && listing.companyId === workspaceIdentity(ctx).workspaceCompanyId) {
+        await db.update(marketplaceMessages).set({ readAt: new Date }).where(and(eq(marketplaceMessages.listingId, args.listingId), eq(marketplaceMessages.sender, "other"), isNull(marketplaceMessages.readAt)));
+      }
       ctx.invalidateQueries();
       return { ok: true };
     }
@@ -11025,14 +11031,16 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (!args.body && !args.image)
         throw new Error("Write a message or add a photo.");
       const db = ctx.db();
-      const listing = (await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
+      const listing = (await db.select({ id: marketplaceListings.id, companyId: marketplaceListings.companyId }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing)
         throw new Error("This listing is no longer available.");
+      const isOwner = listing.companyId === workspaceIdentity(ctx).workspaceCompanyId;
+      const sender = isOwner ? "me" : "other";
       const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key)
         await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
       try {
-        const made = (await db.insert(marketplaceMessages).values({ listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender: args.sender, readAt: args.sender === "me" ? new Date : null, createdAt: new Date }).returning({ id: marketplaceMessages.id }))[0];
+        const made = (await db.insert(marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, readAt: isOwner ? new Date : null, createdAt: new Date }).returning({ id: marketplaceMessages.id }))[0];
         if (!made)
           throw new Error("The message could not be saved.");
         ctx.invalidateQueries();
