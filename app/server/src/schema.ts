@@ -533,7 +533,27 @@ export const portalTokens = sqliteTable("portal_tokens", {
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+  viewCount: integer("view_count").notNull().default(0),
+  firstViewedAt: integer("first_viewed_at", { mode: "timestamp_ms" }),
+  lastViewedAt: integer("last_viewed_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+export const portalLinkEvents = sqliteTable("portal_link_events", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  linkId: integer("link_id").notNull().references(() => portalTokens.id, { onDelete: "cascade" }),
+  eventType: text("event_type", { enum: ["view", "approve_selection", "reject_selection", "sign"] }).notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+export const rateLimitEvents = sqliteTable("rate_limit_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  scope: text("scope").notNull(),
+  key: text("key").notNull(),
+  occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 export const documentLinks = sqliteTable("document_links", {

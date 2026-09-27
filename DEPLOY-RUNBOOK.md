@@ -142,6 +142,27 @@ Render will prompt for the `sync: false` keys. Enter real values; leave
   the meantime.
 - **At public launch, resurface**
   `~/workspace/goals/tradesign-side-business/files/post-launch-roadmap.md`.
+- **Portal share-link hardening (shipped 2026-09-27)** — client portal links
+  now expire (90 days by default; owner can pick 30/90/365 days or "never"),
+  every view/approval/rejection/signature is logged with a timestamp, and
+  portal endpoints are rate-limited (30 req/min per IP, 120 req/min per
+  token). Pre-existing links were grandfathered to 180 days from creation so
+  nothing broke. The job's Client portal panel shows link hint, expiry, view
+  count, and last-viewed, with **Rotate** (revoke + reissue in one tap) and
+  **Revoke** buttons.
+
+### 8b. Leaked portal link — response playbook
+
+1. A leaked link works until it expires or is revoked — bearer links can't
+   be "unseen". Bounding it is what expiry is for.
+2. **Rotate immediately**: open the job → Client portal panel → **Rotate**.
+   The old token dies instantly (hash lookup fails); you get a fresh link.
+   (Or **Revoke** if the client doesn't need portal access anymore.)
+3. **Check what the leaked token did**: `portal_link_events` rows for the old
+   link id show every view, approval, rejection, and signature with
+   timestamps and user agents — the audit trail for incident response.
+4. A database leak alone does not expose usable tokens: only SHA-256 hashes
+   of 256-bit random values are stored, which are not reversible.
 
 ## 9. Rollback
 

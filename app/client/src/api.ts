@@ -142,7 +142,30 @@ const authenticatedFetch = (async (input: RequestInfo | URL, init?: RequestInit)
   return response;
 }) as typeof globalThis.fetch;
 
-export const api = createActionClient<typeof Actions>({ fetch: authenticatedFetch });
+type BaseApi = ReturnType<typeof createActionClient<typeof Actions>>;
+export type PortalExpiryDays = 30 | 90 | 365 | 0;
+type PortalLinkResult = { token: string; route: string; expiresAt: string | null };
+type PortalLinkInfoResult = {
+  link: {
+    hint: string;
+    expiresAt: string | null;
+    expired: boolean;
+    viewCount: number;
+    firstViewedAt: string | null;
+    lastViewedAt: string | null;
+    createdAt: string;
+  } | null;
+};
+type PortalHardenedApi = Omit<BaseApi, "createPortalLink"> & {
+  createPortalLink: (args: { jobId: number; expiresInDays?: PortalExpiryDays }) => Promise<PortalLinkResult>;
+  getPortalLinkInfo: (args: { jobId: number }) => Promise<PortalLinkInfoResult>;
+  rotatePortalLink: (args: { jobId: number; expiresInDays?: PortalExpiryDays }) => Promise<PortalLinkResult>;
+};
+
+// The hosted Crewkat server has the hardened portal action contracts. They are
+// declared here while this artifact's client remains type-linked to its local
+// action module; requests still cross the normal typed actions boundary.
+export const api = createActionClient<typeof Actions>({ fetch: authenticatedFetch }) as PortalHardenedApi;
 
 // Re-exported for convenience so client code can do
 //

@@ -27,7 +27,7 @@ type PointerEvent,
 type ReactNode,
 type TouchEvent,
 } from "react";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
@@ -14510,63 +14510,237 @@ function SlideshowManager({
 
 function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
   const qc = useQueryClient();
-  const [token, setToken] = useState("");
+  const [expiryDays, setExpiryDays] = useState<PortalExpiryDays>(90);
+  const [neverConfirmed, setNeverConfirmed] = useState(false);
+  const [issuedToken, setIssuedToken] = useState("");
+  const [issuedRoute, setIssuedRoute] = useState("");
+  const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState("");
-  const create = useMutation({
-    mutationFn: () => api.createPortalLink({ jobId }),
-    onSuccess: (r) => {
-      setToken(r.token);
-      setMsg(
-        lang === "es"
-          ? "Enlace nuevo listo. Guarde este código; solo se muestra una vez."
-          : "New link ready. Save this code; it is shown once.",
-      );
-      qc.invalidateQueries({ queryKey: ["portal-link", jobId] });
-    },
+  const t = lang === "es"
+    ? {
+        title: "Portal del cliente",
+        intro: "Comparta un enlace privado para que el cliente vea avances, citas, selecciones y órdenes de cambio.",
+        loading: "Cargando información del enlace…",
+        unavailable: "No se pudo cargar la información del enlace.",
+        noLink: "Este trabajo todavía no tiene un enlace activo.",
+        linkEnding: "Enlace terminado en",
+        expires: "Vence",
+        never: "Nunca — no recomendado",
+        viewed: (count: number) => `Visto ${count} ${count === 1 ? "vez" : "veces"}`,
+        lastViewed: "Última vista",
+        neverViewed: "Nunca",
+        expired: "Vencido — cree un enlace nuevo antes de compartirlo.",
+        expiryLabel: "Vencimiento del próximo enlace",
+        days30: "30 días",
+        days90: "90 días (predeterminado)",
+        days365: "365 días",
+        neverOption: "Nunca",
+        expiryHelp: "Esta opción se usará al crear o rotar el enlace.",
+        neverWarning: "Un enlace sin vencimiento seguirá funcionando hasta que lo revoque. No se recomienda.",
+        neverConfirm: "Entiendo el riesgo y quiero un enlace sin vencimiento.",
+        create: "Crear enlace",
+        creating: "Creando…",
+        copy: "Copiar enlace",
+        copied: "Enlace copiado.",
+        copyUnavailable: "Por seguridad, el enlace completo solo aparece después de crearlo o rotarlo.",
+        rotate: "Rotar",
+        rotating: "Rotando…",
+        revoke: "Revocar",
+        revoking: "Revocando…",
+        code: "Código del portal — se muestra una sola vez",
+        issued: "Enlace nuevo listo. Cópielo ahora; el código solo se muestra una vez.",
+        rotated: "Enlace rotado. El enlace anterior dejó de funcionar; copie el nuevo ahora.",
+        revoked: "Enlace revocado.",
+        failed: "No se pudo actualizar el enlace. Inténtelo de nuevo.",
+      }
+    : {
+        title: "Client portal",
+        intro: "Share a private link so the client can see progress, visits, selections, and change orders.",
+        loading: "Loading link information…",
+        unavailable: "Link information could not be loaded.",
+        noLink: "This job does not have an active link yet.",
+        linkEnding: "Link ending in",
+        expires: "Expires",
+        never: "Never — not recommended",
+        viewed: (count: number) => `Viewed ${count} ${count === 1 ? "time" : "times"}`,
+        lastViewed: "Last viewed",
+        neverViewed: "Never",
+        expired: "Expired — create a new link before sharing it.",
+        expiryLabel: "Next link expiration",
+        days30: "30 days",
+        days90: "90 days (default)",
+        days365: "365 days",
+        neverOption: "Never",
+        expiryHelp: "This choice is used when creating or rotating the link.",
+        neverWarning: "A link with no expiration will work until you revoke it. This is not recommended.",
+        neverConfirm: "I understand the risk and want a link with no expiration.",
+        create: "Create link",
+        creating: "Creating…",
+        copy: "Copy link",
+        copied: "Link copied.",
+        copyUnavailable: "For security, the full link is available only right after creation or rotation.",
+        rotate: "Rotate",
+        rotating: "Rotating…",
+        revoke: "Revoke",
+        revoking: "Revoking…",
+        code: "Portal code — shown once",
+        issued: "New link ready. Copy it now; the code is shown only once.",
+        rotated: "Link rotated. The previous link no longer works; copy the new one now.",
+        revoked: "Link revoked.",
+        failed: "The link could not be updated. Try again.",
+      };
+  const info = useQuery({
+    queryKey: ["portal-link", jobId],
+    queryFn: () => api.getPortalLinkInfo({ jobId }),
+    retry: false,
   });
+  const link = info.data?.link ?? null;
+  const refresh = () => qc.invalidateQueries({ queryKey: ["portal-link", jobId] });
+  const rememberIssuedLink = (result: { token: string; route: string }, message: string) => {
+    setIssuedToken(result.token);
+    setIssuedRoute(result.route);
+    setCopied(false);
+    setMsg(message);
+    void refresh();
+  };
+  const create = useMutation({
+    mutationFn: () => api.createPortalLink({ jobId, expiresInDays: expiryDays }),
+    onSuccess: (result) => rememberIssuedLink(result, t.issued),
+    onError: () => setMsg(t.failed),
+  });
+  const rotate = useMutation({
+    mutationFn: () => api.rotatePortalLink({ jobId, expiresInDays: expiryDays }),
+    onSuccess: (result) => rememberIssuedLink(result, t.rotated),
+    onError: () => setMsg(t.failed),
+  });
+  const revoke = useMutation({
+    mutationFn: () => api.revokePortalLink({ jobId }),
+    onSuccess: () => {
+      setIssuedToken("");
+      setIssuedRoute("");
+      setCopied(false);
+      setMsg(t.revoked);
+      void refresh();
+    },
+    onError: () => setMsg(t.failed),
+  });
+  const requiresNeverConfirmation = expiryDays === 0 && !neverConfirmed;
+  const busy = create.isPending || rotate.isPending || revoke.isPending;
+  const shareUrl = issuedRoute ? `https://crewkat.com/${issuedRoute}` : "";
+  const formatPortalDateTime = (value: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
   return (
     <details className="action-details portal-owner">
-      <summary>
-        {lang === "es" ? "Portal del cliente" : "Client portal"}
-      </summary>
-      <div className="compact-form">
-        <p>
-          {lang === "es"
-            ? "Genere un código privado para que el cliente vea avances, citas, selecciones y órdenes de cambio."
-            : "Generate a private code so the client can see progress, visits, selections, and change orders."}
-        </p>
-        <button
-          className="primary-button"
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-        >
-          {lang === "es"
-            ? "Generar o reemplazar código"
-            : "Generate or replace code"}
-        </button>
-        {token && (
-          <>
-            <label>
-              <span>{lang === "es" ? "Código del portal" : "Portal code"}</span>
-              <input readOnly value={token} />
+      <summary>{t.title}</summary>
+      <div className="compact-form portal-link-panel">
+        <p>{t.intro}</p>
+        {info.isLoading && <p className="dim">{t.loading}</p>}
+        {info.isError && <p className="status error">{t.unavailable}</p>}
+        {!info.isLoading && !info.isError && !link && (
+          <p className="portal-link-empty">{t.noLink}</p>
+        )}
+        {link && (
+          <div className={`portal-link-facts${link.expired ? " is-expired" : ""}`}>
+            {link.expired && <strong className="portal-link-expired">{t.expired}</strong>}
+            <div>
+              <span>{t.linkEnding}</span>
+              <strong className="portal-link-hint">…{link.hint}</strong>
+            </div>
+            <div>
+              <span>{t.expires}</span>
+              <strong>{link.expiresAt ? formatDate(link.expiresAt.slice(0, 10), lang) : t.never}</strong>
+            </div>
+            <div>
+              <span>{t.viewed(link.viewCount)}</span>
+              <strong>{t.lastViewed}: {link.lastViewedAt ? formatPortalDateTime(link.lastViewedAt) : t.neverViewed}</strong>
+            </div>
+          </div>
+        )}
+        <label>
+          <span>{t.expiryLabel}</span>
+          <select
+            value={expiryDays}
+            onChange={(event) => {
+              const value = event.target.value;
+              const next: PortalExpiryDays = value === "30" ? 30 : value === "365" ? 365 : value === "0" ? 0 : 90;
+              setExpiryDays(next);
+              setNeverConfirmed(false);
+            }}
+          >
+            <option value={30}>{t.days30}</option>
+            <option value={90}>{t.days90}</option>
+            <option value={365}>{t.days365}</option>
+            <option value={0}>{t.neverOption}</option>
+          </select>
+          <small>{t.expiryHelp}</small>
+        </label>
+        {expiryDays === 0 && (
+          <div className="portal-never-warning" role="group" aria-label={t.neverWarning}>
+            <strong>{t.neverWarning}</strong>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={neverConfirmed}
+                onChange={(event) => setNeverConfirmed(event.target.checked)}
+              />
+              <span>{t.neverConfirm}</span>
             </label>
-            <small>
-              {lang === "es"
-                ? "Abra la versión compartida de Crewkat con #portal=CÓDIGO al final."
-                : "Open the shared Crewkat app with #portal=CODE at the end."}
-            </small>
+          </div>
+        )}
+        {!link && !info.isLoading && (
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => create.mutate()}
+            disabled={busy || requiresNeverConfirmation}
+          >
+            {create.isPending ? t.creating : t.create}
+          </button>
+        )}
+        {issuedToken && (
+          <label className="portal-issued-code">
+            <span>{t.code}</span>
+            <input readOnly value={issuedToken} onFocus={(event) => event.target.select()} />
+          </label>
+        )}
+        {link && (
+          <div className="portal-link-actions">
             <button
+              type="button"
               className="secondary-button"
+              disabled={!shareUrl || busy}
+              title={shareUrl ? undefined : t.copyUnavailable}
               onClick={async () => {
-                await api.revokePortalLink({ jobId });
-                setToken("");
-                setMsg(lang === "es" ? "Enlace revocado." : "Link revoked.");
+                if (!shareUrl) return;
+                const ok = await copyText(shareUrl);
+                setCopied(ok);
+                if (ok) setMsg(t.copied);
               }}
             >
-              {lang === "es" ? "Revocar enlace" : "Revoke link"}
+              {copied ? `✓ ${t.copy}` : t.copy}
             </button>
-          </>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={busy || requiresNeverConfirmation}
+              onClick={() => rotate.mutate()}
+            >
+              {rotate.isPending ? t.rotating : t.rotate}
+            </button>
+            <button
+              type="button"
+              className="secondary-button danger-button"
+              disabled={busy}
+              onClick={() => revoke.mutate()}
+            >
+              {revoke.isPending ? t.revoking : t.revoke}
+            </button>
+          </div>
         )}
+        {link && !shareUrl && <small className="dim">{t.copyUnavailable}</small>}
         {msg && <p className="status">{msg}</p>}
       </div>
     </details>
@@ -15068,23 +15242,39 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
         <div className="loading-block" />
       </main>
     );
-  if (q.isError || !q.data)
+  if (q.isError || !q.data) {
+    const errorMessage = q.error instanceof Error ? q.error.message : String(q.error ?? "");
+    const expired = errorMessage.toLowerCase().includes("has expired");
     return (
       <main className="page public-page">
         <section className="empty-state">
-          <h1>
-            {lang === "es"
-              ? "Este enlace ya no está activo"
-              : "This link is no longer active"}
-          </h1>
-          <p>
-            {lang === "es"
-              ? "Solicite un enlace nuevo a su contratista."
-              : "Ask your contractor for a new link."}
-          </p>
+          {expired ? (
+            <>
+              <h1>{lang === "es" ? "Enlace expirado" : "Link expired"}</h1>
+              <p>
+                {lang === "es"
+                  ? "Este enlace ha expirado. Solicite un enlace nuevo a su contratista."
+                  : "This link has expired. Ask your contractor for a new one."}
+              </p>
+            </>
+          ) : (
+            <>
+              <h1>
+                {lang === "es"
+                  ? "Este enlace ya no está activo"
+                  : "This link is no longer active"}
+              </h1>
+              <p>
+                {lang === "es"
+                  ? "Solicite un enlace nuevo a su contratista."
+                  : "Ask your contractor for a new link."}
+              </p>
+            </>
+          )}
         </section>
       </main>
     );
+  }
   const d = q.data;
   const stage = (s: string) =>
     s === "before"

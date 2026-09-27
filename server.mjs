@@ -209,6 +209,8 @@ function makeCtx(reqMeta) {
     userAgent: reqMeta?.userAgent,
     ipHash: reqMeta?.ipHash,
     isProdCookie: reqMeta?.isProdCookie,
+    // Portal rate limiting: best-effort client IP (x-forwarded-for first entry).
+    clientIp: reqMeta?.clientIp,
     agent: {
       run: async () => {
         throw new Error("Agent runtime is unavailable in standalone mode.");
@@ -466,6 +468,7 @@ const server = createServer(async (req, res) => {
           refreshToken,
           userAgent: req.headers["user-agent"] ?? "",
           ipHash: ipSalt ? await sha256Hex(`${ipSalt}:${clientIp(req)}`) : "",
+          clientIp: clientIp(req),
           // NOTE: read here (unbundled runtime), not in actions.ts — bun build
           // inlines process.env.NODE_ENV at build time.
           isProdCookie: process.env.NODE_ENV === "production",

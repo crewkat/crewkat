@@ -5035,6 +5035,9 @@ function or(...unfilteredConditions) {
 var gte = (left, right) => {
   return sql`${left} >= ${bindIfParam(right, left)}`;
 };
+var lt = (left, right) => {
+  return sql`${left} < ${bindIfParam(right, left)}`;
+};
 function isNull(value) {
   return sql`${value} is null`;
 }
@@ -6968,7 +6971,25 @@ var portalTokens = sqliteTable("portal_tokens", {
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
   revokedAt: integer2("revoked_at", { mode: "timestamp_ms" }),
+  expiresAt: integer2("expires_at", { mode: "timestamp_ms" }),
+  viewCount: integer2("view_count").notNull().default(0),
+  firstViewedAt: integer2("first_viewed_at", { mode: "timestamp_ms" }),
+  lastViewedAt: integer2("last_viewed_at", { mode: "timestamp_ms" }),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var portalLinkEvents = sqliteTable("portal_link_events", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  linkId: integer2("link_id").notNull().references(() => portalTokens.id, { onDelete: "cascade" }),
+  eventType: text("event_type", { enum: ["view", "approve_selection", "reject_selection", "sign"] }).notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  occurredAt: integer2("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var rateLimitEvents = sqliteTable("rate_limit_events", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  scope: text("scope").notNull(),
+  key: text("key").notNull(),
+  occurredAt: integer2("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var documentLinks = sqliteTable("document_links", {
   companyId: integer2("company_id").notNull().default(1),
@@ -7471,6 +7492,53 @@ async function resolveDocumentLinkToken(ctx, token) {
   if (link.expiresAt.getTime() < Date.now())
     throw new Error("This link has expired. Please ask for a new one.");
   return link;
+}
+var PORTAL_RATE_LIMIT_IP_PER_MIN = 30;
+var PORTAL_RATE_LIMIT_TOKEN_PER_MIN = 120;
+var PORTAL_VIEW_EVENT_THROTTLE_MS = 60 * 60000;
+function portalMeta(ctx) {
+  return ctx;
+}
+async function checkPortalRateLimit(ctx, tokenHash) {
+  const db = ctx.db();
+  const now = Date.now();
+  const ip = (portalMeta(ctx).clientIp ?? "").trim() || "unknown";
+  await db.delete(rateLimitEvents).where(lt(rateLimitEvents.occurredAt, new Date(now - 3600000)));
+  const windowStart = new Date(now - 60000);
+  const [ipHits, tokenHits] = await Promise.all([
+    db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "portal:ip"), eq(rateLimitEvents.key, ip), gte(rateLimitEvents.occurredAt, windowStart))),
+    db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "portal:token"), eq(rateLimitEvents.key, tokenHash), gte(rateLimitEvents.occurredAt, windowStart)))
+  ]);
+  if (ipHits.length >= PORTAL_RATE_LIMIT_IP_PER_MIN || tokenHits.length >= PORTAL_RATE_LIMIT_TOKEN_PER_MIN) {
+    throw new Error("Too many requests. Try again shortly.");
+  }
+  await db.batch([
+    db.insert(rateLimitEvents).values({ scope: "portal:ip", key: ip, occurredAt: new Date }),
+    db.insert(rateLimitEvents).values({ scope: "portal:token", key: tokenHash, occurredAt: new Date })
+  ]);
+}
+async function requirePortalAccess(ctx, token, opts) {
+  const db = ctx.db();
+  const hash = await hashPortalToken(token);
+  await checkPortalRateLimit(ctx, hash);
+  const access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
+  if (!access || access.revokedAt)
+    throw new Error("This portal link is no longer active.");
+  if (access.expiresAt && access.expiresAt.getTime() < Date.now())
+    throw new Error("This portal link has expired. Ask your contractor for a new one.");
+  if (opts.logView) {
+    const now = new Date;
+    await db.update(portalTokens).set({ viewCount: access.viewCount + 1, firstViewedAt: access.firstViewedAt ?? now, lastViewedAt: now }).where(eq(portalTokens.id, access.id));
+    const lastView = (await db.select({ occurredAt: portalLinkEvents.occurredAt }).from(portalLinkEvents).where(and(eq(portalLinkEvents.linkId, access.id), eq(portalLinkEvents.eventType, "view"))).orderBy(desc(portalLinkEvents.occurredAt)).limit(1))[0];
+    if (!lastView || now.getTime() - lastView.occurredAt.getTime() >= PORTAL_VIEW_EVENT_THROTTLE_MS) {
+      await db.insert(portalLinkEvents).values({ linkId: access.id, eventType: "view", userAgent: (portalMeta(ctx).userAgent ?? "").slice(0, 300), occurredAt: now });
+    }
+  }
+  return access;
+}
+async function logPortalEvent(ctx, linkId, eventType) {
+  const db = ctx.db();
+  await db.insert(portalLinkEvents).values({ linkId, eventType, userAgent: (portalMeta(ctx).userAgent ?? "").slice(0, 300), occurredAt: new Date });
 }
 function advanceRecurringDate(value, frequency) {
   const date = new Date(`${value}T12:00:00`);
@@ -9946,7 +10014,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  createPortalLink: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ token: string2(), route: string2() }), async handler(ctx, args) {
+  createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
     if (!job)
@@ -9954,21 +10022,39 @@ If that was you, just sign in again. If not, we recommend changing your password
     const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
     const hash = await hashPortalToken(token);
     await db.update(portalTokens).set({ revokedAt: new Date }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt)));
-    await db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), createdAt: new Date });
+    const expiresAt = args.expiresInDays === 0 ? null : new Date(Date.now() + args.expiresInDays * 86400000);
+    await db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), expiresAt, createdAt: new Date });
     ctx.invalidateQueries();
-    return { token, route: `#portal=${encodeURIComponent(token)}` };
+    return { token, route: `#portal=${encodeURIComponent(token)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
   revokePortalLink: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().update(portalTokens).set({ revokedAt: new Date }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt)));
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  getPortalLinkInfo: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ link: object({ hint: string2(), expiresAt: string2().nullable(), expired: boolean2(), viewCount: number2(), firstViewedAt: string2().nullable(), lastViewedAt: string2().nullable(), createdAt: string2() }).nullable() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const link = (await db.select().from(portalTokens).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt))).orderBy(desc(portalTokens.createdAt)).limit(1))[0];
+    if (!link)
+      return { link: null };
+    return { link: { hint: link.tokenHint, expiresAt: link.expiresAt?.toISOString() ?? null, expired: link.expiresAt ? link.expiresAt.getTime() < Date.now() : false, viewCount: link.viewCount, firstViewedAt: link.firstViewedAt?.toISOString() ?? null, lastViewedAt: link.lastViewedAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() } };
+  } }),
+  rotatePortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+    if (!job)
+      throw new Error("Job not found.");
+    const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+    const hash = await hashPortalToken(token);
+    const now = new Date;
+    const expiresAt = args.expiresInDays === 0 ? null : new Date(now.getTime() + args.expiresInDays * 86400000);
+    await db.batch([db.update(portalTokens).set({ revokedAt: now }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt))), db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), expiresAt, createdAt: now })]);
+    ctx.invalidateQueries();
+    return { token, route: `#portal=${encodeURIComponent(token)}`, expiresAt: expiresAt?.toISOString() ?? null };
+  } }),
   getPortalData: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })) }), async handler(ctx, args) {
     const db = ctx.db();
-    const hash = await hashPortalToken(args.token);
-    const access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
-    if (!access || access.revokedAt)
-      throw new Error("This portal link is no longer active.");
+    const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
@@ -9978,23 +10064,18 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   portalUpdateSelection: defineAction({ request: object({ token: string2().min(32).max(200), selectionId: number2().int().positive(), status: _enum(["approved", "rejected"]) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
-    const hash = await hashPortalToken(args.token);
-    const access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
-    if (!access || access.revokedAt)
-      throw new Error("This portal link is no longer active.");
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
     const selection = (await db.select().from(selections).where(eq(selections.id, args.selectionId)).limit(1))[0];
     if (!selection || selection.jobId !== access.jobId)
       throw new Error("Selection not found.");
     await db.update(selections).set({ approvalStatus: args.status }).where(eq(selections.id, selection.id));
+    await logPortalEvent(ctx, access.id, args.status === "approved" ? "approve_selection" : "reject_selection");
     ctx.invalidateQueries();
     return { ok: true };
   } }),
   portalSignChangeOrder: defineAction({ request: object({ token: string2().min(32).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
-    const hash = await hashPortalToken(args.token);
-    const access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
-    if (!access || access.revokedAt)
-      throw new Error("This portal link is no longer active.");
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
     const document = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
     if (!document || document.jobId !== access.jobId || document.kind !== "change_order")
       throw new Error("Change order not found.");
@@ -10003,6 +10084,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const key = `client-signatures/${access.jobId}/${crypto.randomUUID()}.png`;
     await ctx.blobs.put(key, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
     await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: new Date }).where(eq(documents.id, document.id));
+    await logPortalEvent(ctx, access.id, "sign");
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -11003,6 +11085,8 @@ var PREMIUM_ACTIONS = new Set([
   "updateAdminParameters",
   "createPortalLink",
   "revokePortalLink",
+  "getPortalLinkInfo",
+  "rotatePortalLink",
   "createDocumentLink",
   "getDocumentLinkInfo",
   "revokeDocumentLink",
