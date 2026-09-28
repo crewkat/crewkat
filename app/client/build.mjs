@@ -45,7 +45,15 @@ await cp(join(here, "marketing"), join(here, "dist", "marketing"), { recursive: 
 console.log("[build] marketing site copied to dist/marketing");
 
 // PWA assets for the Play Store TWA wrapper: manifest + icons land at /app/*.
+// NOTE: the <link> tags are injected into the BUILT index.html below, not the
+// source — the SDK bundler tries to resolve absolute hrefs in source HTML at
+// build time and fails. Injecting post-build avoids that.
 for (const f of ["manifest.webmanifest", "icon-192.png", "icon-512.png"]) {
   await cp(join(here, "pwa", f), join(distDir, f));
 }
-console.log("[build] PWA manifest + icons copied to dist/");
+html = html.replace(
+  '<link rel="icon" href="data:," />',
+  `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`
+);
+await writeFile(indexHtmlPath, html);
+console.log("[build] PWA manifest + icons copied to dist/, links injected");
