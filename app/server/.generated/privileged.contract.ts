@@ -64,4 +64,21 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  listStripeCharges: {
+    request: z.object({ customerId: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(10) }),
+    response: z.object({
+      charges: z.array(z.object({
+        id: z.string(), amount: z.number().int(), amountRefunded: z.number().int(),
+        currency: z.string(), created: z.number().int(), status: z.string(), description: z.string().nullable(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  issueStripeRefund: {
+    request: z.object({ chargeId: z.string().min(1).max(200), amountCents: z.number().int().positive().max(10_000_000).optional(), reason: z.string().trim().max(500).default("") }),
+    response: z.object({ id: z.string(), amount: z.number().int(), currency: z.string(), status: z.string() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
 });

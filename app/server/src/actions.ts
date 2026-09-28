@@ -9,6 +9,8 @@ import { promisify } from "node:util";
 import * as schema from "./schema";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
+import { scanListingText } from "./moderation";
+import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 
 const stageSchema = z.enum(["before", "during", "after"]);
 const languageSchema = z.enum(["en", "es"]);
@@ -92,8 +94,10 @@ const dailyLogSchema = z.object({ id: z.number(), jobId: z.number(), logDate: z.
 const internalNoteSchema = z.object({ id: z.number(), jobId: z.number().nullable(), clientId: z.number().nullable(), note: z.string(), reminderDate: z.string(), completed: z.boolean(), createdAt: z.string() });
 const milestoneSchema = z.object({ id: z.number(), jobId: z.number(), invoiceId: z.number().nullable(), label: z.string(), amount: z.string(), percentage: z.string(), dueDate: z.string(), status: z.enum(["pending", "paid"]), createdAt: z.string() });
 const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"]);
+const moderationStatusSchema = z.enum(["active", "auto_rejected", "pending_review", "removed"]);
+type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), isMine: z.boolean(), photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), listingId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), sender: z.enum(["me", "other"]), senderName: z.string(), isRead: z.boolean(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ listingId: z.number(), listingTitle: z.string(), companyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
@@ -232,7 +236,7 @@ function quoteShape(q: typeof schema.quotes.$inferSelect) { return { id: q.id, c
 function invoiceShape(row: typeof schema.invoices.$inferSelect, paymentRows: Array<typeof schema.payments.$inferSelect> = [], fee: {type:"flat"|"percent";value:number;graceDays:number} = {type:"flat",value:0,graceDays:0}) { const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(row.total.replace(/[^0-9.-]/g, "") || 0); const due=row.dueDate?new Date(`${row.dueDate}T12:00:00`).getTime():0; const daysLate=due?Math.floor((Date.now()-due)/86400000)-fee.graceDays:0; const monthsLate=Math.max(0,Math.ceil(daysLate/30)); const lateFee=row.status!=="paid"&&monthsLate>0?(fee.type==="percent"?total*fee.value/100*monthsLate:fee.value):0; return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson) as Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee:(total+lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }; }
 async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>) {
   const photos = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function marketplaceRequestShape(row: typeof schema.marketplaceRequests.$inferSelect) {
   return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -347,7 +351,7 @@ const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once p
 const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
-const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]) });
+const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable() });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
 // refreshToken = raw refresh token from the HttpOnly cookie (if present).
@@ -419,6 +423,7 @@ async function requireSession(ctx: Ctx, token: string) {
   if (session.tokenType === "refresh") throw new Error("Sign in to continue.");
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
   if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+  if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
   // Dual-mode: legacy 30-day tokens keep their sliding renewal. Proof tokens
   // have a hard 15-minute expiry and are never extended.
   const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60_000;
@@ -490,7 +495,7 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 function authUserShape(row: typeof schema.authUsers.$inferSelect) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
   const db = ctx.db<typeof schema>();
@@ -599,6 +604,37 @@ function workspaceIdentity(ctx: Ctx) {
   const scoped = ctx as WorkspaceCtx;
   if (!scoped.workspaceCompanyId || !scoped.workspaceUserId) throw new Error("Sign in to continue.");
   return scoped;
+}
+
+// ---------------------------------------------------------------------------
+// Platform admin (Danny): guard + audit log + platform settings.
+// ---------------------------------------------------------------------------
+
+async function requirePlatformAdmin(ctx: Ctx) {
+  const identity = workspaceIdentity(ctx);
+  const db = ctx.db<typeof schema>();
+  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user?.isPlatformAdmin) throw new Error("Platform admin access required.");
+  return { identity, admin: user };
+}
+
+async function logAdminAction(db: ReturnType<Ctx["db"]>, adminUserId: number, action: string, targetType: string, targetId: string, details: string) {
+  await db.insert(schema.adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date() });
+}
+
+async function getPlatformSetting(db: ReturnType<Ctx["db"]>, key: string, fallback: string): Promise<string> {
+  const row = (await db.select().from(schema.platformSettings).where(eq(schema.platformSettings.key, key)).limit(1))[0];
+  return row?.value ?? fallback;
+}
+
+async function getFlagThreshold(db: ReturnType<Ctx["db"]>): Promise<number> {
+  const raw = await getPlatformSetting(db, "flag_threshold", "3");
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 1 && parsed <= 10 ? parsed : 3;
+}
+
+async function isAutoModerationEnabled(db: ReturnType<Ctx["db"]>): Promise<boolean> {
+  return (await getPlatformSetting(db, "auto_moderation_enabled", "1")) === "1";
 }
 
 // ---------------------------------------------------------------------------
@@ -942,6 +978,13 @@ export async function recoverStaleBackupRuns(ctx: Ctx): Promise<number> {
   return stale.length;
 }
 
+const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
+
+async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
+  if (!(await isAutoModerationEnabled(db))) return { clean: true, reasons: [] as string[] };
+  return scanListingText(input);
+}
+
 const BaseActions = {
   getAuthBootstrap: defineAction({
     request: z.object({}),
@@ -959,7 +1002,7 @@ const BaseActions = {
     },
   }),
   signUp: defineAction({
-    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200) }),
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }) }),
     response: z.object({ ok: z.literal(true), email: z.string(), verificationCode: z.string().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: z.boolean() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
@@ -973,7 +1016,7 @@ const BaseActions = {
       const firstAccount = users.length === 0;
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
       const counts = firstAccount ? await Promise.all([db.select({ id: schema.jobs.id }).from(schema.jobs), db.select({ id: schema.clients.id }).from(schema.clients), db.select({ id: schema.invoices.id }).from(schema.invoices)]) : [[], [], []];
-      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
+      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
       const code = await issueAuthCode(ctx, made.id, "verify_email");
       const delivery = await deliverAuthCode(ctx, email, code, "verify_email");
@@ -1018,6 +1061,7 @@ const BaseActions = {
       const valid = user ? (await derivePassword(args.password, user.passwordSalt, user.passwordIterations)) === user.passwordHash : false;
       if (!user || !valid) { await db.insert(schema.authLoginAttempts).values({ email, attemptedAt: new Date() }); throw new Error("Email or password is incorrect."); }
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
+      if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: session.setCookies };
@@ -1045,6 +1089,7 @@ const BaseActions = {
           if (successor && !successor.revokedAt && successor.expiresAt.getTime() > now) {
             const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, successor.userId)).limit(1))[0];
             if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+            if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
             return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
           }
@@ -1071,6 +1116,7 @@ const BaseActions = {
       if (row.expiresAt.getTime() <= now || (row.absoluteExpiresAt && row.absoluteExpiresAt.getTime() <= now)) throw new Error("Your session has expired. Sign in again.");
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
       if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
+      if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60_000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
       return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
@@ -1105,6 +1151,21 @@ const BaseActions = {
       } catch {
         return { user: null };
       }
+    },
+  }),
+  // Records acceptance of the Marketplace Terms of Use. Existing users who
+  // signed up before the terms existed accept here; the client shows a
+  // blocking screen until acceptedAt is set and the version is current.
+  acceptMarketplaceTerms: defineAction({
+    request: z.object({ version: z.string().trim().min(1).max(20) }),
+    response: z.object({ ok: z.literal(true), acceptedAt: z.string(), version: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; acceptedAt: string; version: string }> {
+      if (args.version !== MARKETPLACE_TERMS_VERSION) throw new Error("These Marketplace Terms are out of date. Please review the latest version.");
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const identity = workspaceIdentity(ctx);
+      await db.update(schema.authUsers).set({ marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, updatedAt: now }).where(eq(schema.authUsers.id, identity.workspaceUserId));
+      ctx.invalidateQueries();
+      return { ok: true, acceptedAt: now.toISOString(), version: MARKETPLACE_TERMS_VERSION };
     },
   }),
   getSubscription: defineAction({
@@ -1783,7 +1844,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const search = args.search.toLowerCase();
       const area = args.serviceArea.toLowerCase();
       const categoryTerms: Record<z.infer<typeof marketplaceCategorySchema>, string> = { kitchens: "kitchen cabinet carpenter", bathrooms: "bathroom shower", plumbing: "plumbing plumber", electrical: "electrical electrician", hvac: "hvac air conditioning", roofing: "roof roofers roofing", tile_flooring: "tile flooring floor installer", painting: "painting painter", concrete: "concrete masonry", landscaping: "landscaping lawn", handyman: "handyman repair", equipment: "equipment trailer rental", materials: "materials supplies", other: "other" };
-      const filtered = rows.filter((row) => (!args.category || row.category === args.category) && (!search || [row.title, row.description, row.companyName, row.serviceArea, categoryTerms[row.category]].some((value) => value.toLowerCase().includes(search))) && (!area || row.serviceArea.toLowerCase().includes(area)));
+      const filtered = rows.filter((row) => row.moderationStatus === "active" && (!args.category || row.category === args.category) && (!search || [row.title, row.description, row.companyName, row.serviceArea, categoryTerms[row.category]].some((value) => value.toLowerCase().includes(search))) && (!area || row.serviceArea.toLowerCase().includes(area)));
       return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows))) };
     },
   }),
@@ -1794,6 +1855,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db<typeof schema>();
       const row = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.id)).limit(1))[0];
       if (!row) return { listing: null };
+      // Non-active listings are only visible to their owner (so the owner can
+      // see the "under review" state); everyone else gets a not-found.
+      if (row.moderationStatus !== "active" && row.companyId !== workspaceIdentity(ctx).workspaceCompanyId) return { listing: null };
       const photoRows = await db.select().from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, row.id)).orderBy(schema.marketplaceListingPhotos.sortOrder);
       return { listing: await marketplaceListingShape(ctx, row, photoRows) };
     },
@@ -1808,7 +1872,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       bookable: z.boolean().default(false), dailyRate: z.string().trim().max(80).default(""),
       photos: z.array(z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) })).max(8),
     }),
-    response: z.object({ id: z.number() }),
+    response: z.object({ id: z.number(), moderation: listingModerationResultSchema }),
     async handler(ctx, args) {
       if (args.priceKind === "amount" && !args.price.trim()) throw new Error("Enter a price or choose Contact for price.");
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
@@ -1818,7 +1882,10 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId));
         if (mine.length >= 5) throw new Error("Your free plan includes 5 Marketplace listings. Upgrade to Premium for more.");
       }
-      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
+      const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
+      const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
+      const moderationReason = scan.clean ? "" : scan.reasons.join("; ");
+      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
       if (!made) throw new Error("The listing could not be saved.");
       const storedKeys: string[] = [];
       try {
@@ -1834,7 +1901,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         throw error;
       }
       ctx.invalidateQueries();
-      return { id: made.id };
+      return { id: made.id, moderation: { flagged: !scan.clean, status: moderationStatus, reasons: scan.reasons } };
     },
   }),
   updateMarketplaceListing: defineAction({
@@ -1849,13 +1916,18 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       replacePhotos: z.boolean().default(false),
       photos: z.array(z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) })).max(8),
     }),
-    response: z.object({ id: z.number() }),
+    response: z.object({ id: z.number(), moderation: listingModerationResultSchema }),
     async handler(ctx, args) {
       if (args.priceKind === "amount" && !args.price.trim()) throw new Error("Enter a price or choose Contact for price.");
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
       const db = ctx.db<typeof schema>();
       const existing = (await db.select().from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.id, args.id), eq(schema.marketplaceListings.companyId, workspaceIdentity(ctx).workspaceCompanyId))).limit(1))[0];
       if (!existing) throw new Error("You can only edit your own listings.");
+      // Re-scan on every edit. Flagged edits go to auto_rejected; clean edits
+      // never self-promote a listing out of review — only an admin can do that.
+      const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
+      const moderationStatus: ModerationStatus = scan.clean ? (existing.moderationStatus as ModerationStatus) : "auto_rejected";
+      const moderationReason = scan.clean ? existing.moderationReason : scan.reasons.join("; ");
       const oldPhotos = args.replacePhotos ? await db.select().from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id)) : [];
       const now = new Date();
       const newPhotos: Array<{ blobKey: string; filename: string; contentType: "image/jpeg" | "image/png" | "image/webp"; sortOrder: number }> = [];
@@ -1867,7 +1939,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             newPhotos.push({ blobKey: key, filename: photo.filename, contentType: photo.contentType, sortOrder: index });
           }
         }
-        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
+        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
         if (args.replacePhotos) {
           await db.delete(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id));
           for (const photo of newPhotos) await db.insert(schema.marketplaceListingPhotos).values({ listingId: args.id, ...photo, createdAt: now });
@@ -1878,7 +1950,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         throw error;
       }
       ctx.invalidateQueries();
-      return { id: args.id };
+      return { id: args.id, moderation: { flagged: !scan.clean, status: moderationStatus, reasons: scan.reasons } };
     },
   }),
   deleteMarketplaceListing: defineAction({
@@ -1894,6 +1966,38 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       await Promise.all([...photos.map((item) => item.blobKey), ...messages.map((item) => item.blobKey).filter((key): key is string => Boolean(key))].map((key) => ctx.blobs.delete(key).catch(() => {})));
       ctx.invalidateQueries();
       return { ok: true };
+    },
+  }),
+  marketplaceListingFlag: defineAction({
+    request: z.object({
+      listingId: z.number().int().positive(),
+      reason: z.enum(["spam", "explicit", "illegal", "scam", "misleading", "other"]),
+      details: z.string().trim().max(1000).default(""),
+    }),
+    response: z.object({ ok: z.literal(true), status: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; status: string }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing) throw new Error("This listing could not be found.");
+      if (listing.moderationStatus === "removed") throw new Error("This listing is no longer available.");
+      if (listing.companyId === identity.workspaceCompanyId) throw new Error("You can't report your own listing.");
+      const existing = (await db.select({ id: schema.marketplaceFlags.id }).from(schema.marketplaceFlags).where(and(eq(schema.marketplaceFlags.listingId, args.listingId), eq(schema.marketplaceFlags.reporterUserId, identity.workspaceUserId))).limit(1))[0];
+      if (existing) throw new Error("You've already reported this listing. Our team will review it.");
+      const dayAgo = new Date(now.getTime() - 24 * 60 * 60_000);
+      const recentFlags = await db.select({ id: schema.marketplaceFlags.id }).from(schema.marketplaceFlags).where(and(eq(schema.marketplaceFlags.reporterUserId, identity.workspaceUserId), gte(schema.marketplaceFlags.createdAt, dayAgo)));
+      if (recentFlags.length >= 10) throw new Error("You've reached the daily report limit. Try again tomorrow.");
+      await db.insert(schema.marketplaceFlags).values({ listingId: args.listingId, reporterCompanyId: identity.workspaceCompanyId, reporterUserId: identity.workspaceUserId, reason: args.reason, details: args.details, status: "open", createdAt: now });
+      await db.update(schema.marketplaceListings).set({ flagCount: sql`flag_count + 1`, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.listingId));
+      const updated = (await db.select({ flagCount: schema.marketplaceListings.flagCount, moderationStatus: schema.marketplaceListings.moderationStatus }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      let status = updated?.moderationStatus ?? "active";
+      const threshold = await getFlagThreshold(db);
+      if (status === "active" && (updated?.flagCount ?? 0) >= threshold) {
+        await db.update(schema.marketplaceListings).set({ moderationStatus: "pending_review", updatedAt: now }).where(eq(schema.marketplaceListings.id, args.listingId));
+        status = "pending_review";
+      }
+      ctx.invalidateQueries();
+      return { ok: true, status };
     },
   }),
   listMarketplaceMessages: defineAction({
@@ -2031,6 +2135,216 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args) { const now = new Date(); const made = (await ctx.db<typeof schema>().insert(schema.marketplaceRequests).values({ ...args, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceRequests.id }))[0]; if (!made) throw new Error("The request could not be saved."); ctx.invalidateQueries(); return { id: made.id }; },
   }),
 
+  // -------------------------------------------------------------------------
+  // Platform admin (Danny): moderation queue, users, refunds, settings, audit.
+  // Every action below requires is_platform_admin on the caller's auth user.
+  // -------------------------------------------------------------------------
+  adminModerationQueue: defineAction({
+    request: z.object({}),
+    response: z.object({
+      queue: z.array(z.object({
+        listing: z.object({ id: z.number(), title: z.string(), description: z.string(), category: z.string(), companyName: z.string(), companyPhone: z.string(), serviceArea: z.string(), moderationStatus: z.string(), moderationReason: z.string(), flagCount: z.number(), createdAt: z.string(), updatedAt: z.string() }),
+        flags: z.array(z.object({ id: z.number(), reason: z.string(), details: z.string(), status: z.string(), reporterCompanyName: z.string(), createdAt: z.string() })),
+      })),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.marketplaceListings).where(inArray(schema.marketplaceListings.moderationStatus, ["auto_rejected", "pending_review"])).orderBy(desc(schema.marketplaceListings.createdAt));
+      const listingIds = rows.map((row) => row.id);
+      const flagRows = listingIds.length ? await db.select().from(schema.marketplaceFlags).where(inArray(schema.marketplaceFlags.listingId, listingIds)).orderBy(desc(schema.marketplaceFlags.createdAt)) : [];
+      const companyIds = new Set<number>();
+      for (const row of rows) companyIds.add(row.companyId);
+      for (const flag of flagRows) companyIds.add(flag.reporterCompanyId);
+      const settingsRows = companyIds.size ? await db.select({ companyId: schema.settings.companyId, companyName: schema.settings.companyName }).from(schema.settings).where(inArray(schema.settings.companyId, [...companyIds])) : [];
+      const companyNameById = new Map(settingsRows.map((row) => [row.companyId, row.companyName]));
+      const flagsByListing = new Map<number, typeof flagRows>();
+      for (const flag of flagRows) {
+        const list = flagsByListing.get(flag.listingId) ?? [];
+        list.push(flag);
+        flagsByListing.set(flag.listingId, list);
+      }
+      return {
+        queue: rows.map((row) => ({
+          listing: {
+            id: row.id, title: row.title, description: row.description, category: row.category,
+            companyName: companyNameById.get(row.companyId) || row.companyName, companyPhone: row.companyPhone,
+            serviceArea: row.serviceArea, moderationStatus: row.moderationStatus,
+            moderationReason: row.moderationReason, flagCount: row.flagCount,
+            createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+          },
+          flags: (flagsByListing.get(row.id) ?? []).map((flag) => ({
+            id: flag.id, reason: flag.reason, details: flag.details, status: flag.status,
+            reporterCompanyName: companyNameById.get(flag.reporterCompanyId) || `Company ${flag.reporterCompanyId}`,
+            createdAt: flag.createdAt.toISOString(),
+          })),
+        })),
+      };
+    },
+  }),
+  adminListingDecision: defineAction({
+    request: z.object({ listingId: z.number().int().positive(), decision: z.enum(["approve", "remove"]), note: z.string().trim().max(500).default("") }),
+    response: z.object({ ok: z.literal(true), status: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; status: string }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing) throw new Error("This listing could not be found.");
+      const status = args.decision === "approve" ? "active" : "removed";
+      await db.update(schema.marketplaceListings).set({
+        moderationStatus: status,
+        moderationReason: args.decision === "approve" ? "" : (args.note || "Removed by platform admin."),
+        updatedAt: now,
+      }).where(eq(schema.marketplaceListings.id, args.listingId));
+      await db.update(schema.marketplaceFlags).set({ status: args.decision === "approve" ? "reviewed_ok" : "reviewed_removed" }).where(and(eq(schema.marketplaceFlags.listingId, args.listingId), eq(schema.marketplaceFlags.status, "open")));
+      await logAdminAction(db, admin.id, args.decision === "approve" ? "listing.approve" : "listing.remove", "marketplace_listing", String(args.listingId), args.note || `${listing.title}`);
+      ctx.invalidateQueries();
+      return { ok: true, status };
+    },
+  }),
+  adminUsersList: defineAction({
+    request: z.object({ search: z.string().trim().max(120).default(""), page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(20) }),
+    response: z.object({
+      users: z.array(z.object({ id: z.number(), name: z.string(), email: z.string(), tier: z.string(), subscriptionStatus: z.string(), companyId: z.number(), companyName: z.string(), createdAt: z.string(), suspended: z.boolean(), isPlatformAdmin: z.boolean() })),
+      total: z.number(), page: z.number(), pageSize: z.number(),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const term = `%${args.search}%`;
+      const whereClause = args.search ? or(like(schema.authUsers.name, term), like(schema.authUsers.email, term)) : undefined;
+      const all = await db.select().from(schema.authUsers).where(whereClause).orderBy(desc(schema.authUsers.createdAt));
+      const total = all.length;
+      const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
+      const companyIds = [...new Set(page.map((row) => row.companyId))];
+      const settingsRows = companyIds.length ? await db.select({ companyId: schema.settings.companyId, companyName: schema.settings.companyName }).from(schema.settings).where(inArray(schema.settings.companyId, companyIds)) : [];
+      const companyNameById = new Map(settingsRows.map((row) => [row.companyId, row.companyName]));
+      return {
+        users: page.map((row) => ({
+          id: row.id, name: row.name, email: row.email, tier: row.tier, subscriptionStatus: row.subscriptionStatus,
+          companyId: row.companyId, companyName: companyNameById.get(row.companyId) || "",
+          createdAt: row.createdAt.toISOString(), suspended: Boolean(row.suspendedAt), isPlatformAdmin: row.isPlatformAdmin,
+        })),
+        total, page: args.page, pageSize: args.pageSize,
+      };
+    },
+  }),
+  adminUserSuspend: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!user) throw new Error("User not found.");
+      if (user.id === admin.id) throw new Error("You can't suspend your own account.");
+      await db.update(schema.authUsers).set({ suspendedAt: now, updatedAt: now }).where(eq(schema.authUsers.id, user.id));
+      // Terminate all existing sessions immediately.
+      await db.update(schema.authSessions).set({ revokedAt: now }).where(and(eq(schema.authSessions.userId, user.id), isNull(schema.authSessions.revokedAt)));
+      await logAdminAction(db, admin.id, "user.suspend", "auth_user", String(user.id), `${user.name} <${user.email}>`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  adminUserUnsuspend: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!user) throw new Error("User not found.");
+      await db.update(schema.authUsers).set({ suspendedAt: null, updatedAt: now }).where(eq(schema.authUsers.id, user.id));
+      await logAdminAction(db, admin.id, "user.unsuspend", "auth_user", String(user.id), `${user.name} <${user.email}>`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  adminRefundPreview: defineAction({
+    request: z.object({ email: z.string().trim().email().max(200) }),
+    response: z.object({
+      user: z.object({ id: z.number(), name: z.string(), email: z.string(), stripeCustomerId: z.string().nullable() }).nullable(),
+      charges: z.array(z.object({ id: z.string(), amount: z.number(), amountRefunded: z.number(), currency: z.string(), created: z.number(), status: z.string(), description: z.string().nullable() })),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, normalizedEmail(args.email))).limit(1))[0];
+      if (!user) return { user: null, charges: [] };
+      const payload = { id: user.id, name: user.name, email: user.email, stripeCustomerId: user.stripeCustomerId };
+      if (!user.stripeCustomerId) return { user: payload, charges: [] };
+      const result = await ctx.executePrivileged(privileged.listStripeCharges, { customerId: user.stripeCustomerId, limit: 10 });
+      return { user: payload, charges: result.charges };
+    },
+  }),
+  adminRefund: defineAction({
+    request: z.object({ chargeId: z.string().trim().min(1).max(200), amountCents: z.number().int().positive().max(10_000_000).optional(), reason: z.string().trim().max(500).default("") }),
+    response: z.object({ id: z.string(), amount: z.number(), currency: z.string(), status: z.string() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const refund = await ctx.executePrivileged(privileged.issueStripeRefund, { chargeId: args.chargeId, amountCents: args.amountCents, reason: args.reason });
+      await logAdminAction(db, admin.id, "stripe.refund", "stripe_charge", args.chargeId, `Refund ${refund.id}: ${(refund.amount / 100).toFixed(2)} ${refund.currency.toUpperCase()}${args.reason ? ` — ${args.reason}` : ""}`);
+      ctx.invalidateQueries();
+      return refund;
+    },
+  }),
+  adminSettingsGet: defineAction({
+    request: z.object({}),
+    response: z.object({ settings: z.record(z.string(), z.string()) }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.platformSettings);
+      const settings: Record<string, string> = {};
+      for (const row of rows) settings[row.key] = row.value;
+      return { settings };
+    },
+  }),
+  adminSettingsSet: defineAction({
+    request: z.object({ key: z.enum(["auto_moderation_enabled", "flag_threshold"]), value: z.string().trim().max(50) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      if (args.key === "auto_moderation_enabled" && args.value !== "0" && args.value !== "1") throw new Error("auto_moderation_enabled must be 0 or 1.");
+      if (args.key === "flag_threshold") {
+        const parsed = Number.parseInt(args.value, 10);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) throw new Error("flag_threshold must be a whole number from 1 to 10.");
+      }
+      const existing = (await db.select({ key: schema.platformSettings.key }).from(schema.platformSettings).where(eq(schema.platformSettings.key, args.key)).limit(1))[0];
+      if (existing) await db.update(schema.platformSettings).set({ value: args.value, updatedAt: now }).where(eq(schema.platformSettings.key, args.key));
+      else await db.insert(schema.platformSettings).values({ key: args.key, value: args.value, updatedAt: now });
+      await logAdminAction(db, admin.id, "settings.update", "platform_setting", args.key, `${args.key} = ${args.value}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  adminAuditLog: defineAction({
+    request: z.object({ page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(25) }),
+    response: z.object({
+      entries: z.array(z.object({ id: z.number(), adminUserId: z.number(), adminName: z.string(), action: z.string(), targetType: z.string(), targetId: z.string(), details: z.string(), createdAt: z.string() })),
+      total: z.number(), page: z.number(), pageSize: z.number(),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = ctx.db<typeof schema>();
+      const all = await db.select().from(schema.adminAuditLog).orderBy(desc(schema.adminAuditLog.createdAt));
+      const total = all.length;
+      const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
+      const adminIds = [...new Set(page.map((row) => row.adminUserId))];
+      const admins = adminIds.length ? await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, adminIds)) : [];
+      const nameById = new Map(admins.map((row) => [row.id, row.name]));
+      return {
+        entries: page.map((row) => ({
+          id: row.id, adminUserId: row.adminUserId, adminName: nameById.get(row.adminUserId) || `User ${row.adminUserId}`,
+          action: row.action, targetType: row.targetType, targetId: row.targetId, details: row.details,
+          createdAt: row.createdAt.toISOString(),
+        })),
+        total, page: args.page, pageSize: args.pageSize,
+      };
+    },
+  }),
   submitSupportReport: defineAction({ request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }), response: z.object({ id: z.number(), sentAt: z.string() }), async handler(ctx, args) { const now = new Date(); const rows = await ctx.db<typeof schema>().insert(schema.supportReports).values({ ...args, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.supportReports.id }); const made = rows[0]; if (!made) throw new Error("The report could not be saved."); ctx.invalidateQueries(); return { id: made.id, sentAt: now.toISOString() }; }}),
 
   getSettings: defineAction({ request: z.object({}), response: settingsSchema, async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const row = rows[0]; if (!row) return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en" as const, accentColor: "#1f5a4a", defaultQuoteTheme: "classic" as const, defaultDocumentFont: "helvetica" as const, defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent" as const, lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date" as const, addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null }; return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null }; }}),

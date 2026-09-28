@@ -4405,6 +4405,28 @@ var privileged = definePrivilegedContracts({
     }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  listStripeCharges: {
+    request: object({ customerId: string2().min(1).max(200), limit: number2().int().min(1).max(25).default(10) }),
+    response: object({
+      charges: array(object({
+        id: string2(),
+        amount: number2().int(),
+        amountRefunded: number2().int(),
+        currency: string2(),
+        created: number2().int(),
+        status: string2(),
+        description: string2().nullable()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  issueStripeRefund: {
+    request: object({ chargeId: string2().min(1).max(200), amountCents: number2().int().positive().max(1e7).optional(), reason: string2().trim().max(500).default("") }),
+    response: object({ id: string2(), amount: number2().int(), currency: string2(), status: string2() }),
+    capabilities: [],
+    timeoutMs: 20000
   }
 });
 var privilegedHandlers = definePrivilegedHandlers(privileged, {
@@ -4619,6 +4641,79 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       subscriptionStatus,
       currentPeriodEnd,
       cancelAtPeriodEnd: object2.cancel_at_period_end === true
+    };
+  },
+  async listStripeCharges(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey)
+      throw new Error("Stripe is not configured.");
+    const params = new URLSearchParams({ customer: args.customerId, limit: String(args.limit) });
+    const response = await fetch(`https://api.stripe.com/v1/charges?${params}`, {
+      method: "GET",
+      headers: { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe charges.");
+    const result = await response.json();
+    const charges = (result.data ?? []).map((charge) => ({
+      id: typeof charge.id === "string" ? charge.id : "",
+      amount: typeof charge.amount === "number" ? Math.round(charge.amount) : 0,
+      amountRefunded: typeof charge.amount_refunded === "number" ? Math.round(charge.amount_refunded) : 0,
+      currency: typeof charge.currency === "string" ? charge.currency : "usd",
+      created: typeof charge.created === "number" ? Math.round(charge.created) : 0,
+      status: typeof charge.status === "string" ? charge.status : "unknown",
+      description: typeof charge.description === "string" ? charge.description : null
+    })).filter((charge) => charge.id);
+    return { charges };
+  },
+  async issueStripeRefund(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey)
+      throw new Error("Stripe is not configured.");
+    const authHeader = { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
+    const chargeResponse = await fetch(`https://api.stripe.com/v1/charges/${encodeURIComponent(args.chargeId)}`, {
+      method: "GET",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!chargeResponse.ok)
+      throw new Error("Stripe could not find that charge.");
+    const charge = await chargeResponse.json();
+    const refundable = (typeof charge.amount === "number" ? Math.round(charge.amount) : 0) - (typeof charge.amount_refunded === "number" ? Math.round(charge.amount_refunded) : 0);
+    if (args.amountCents && args.amountCents > refundable)
+      throw new Error(`Only ${(refundable / 100).toFixed(2)} is refundable on this charge.`);
+    const body = new URLSearchParams({ charge: args.chargeId });
+    if (args.amountCents)
+      body.set("amount", String(args.amountCents));
+    if (args.reason)
+      body.set("metadata[reason]", args.reason.slice(0, 500));
+    const response = await fetch("https://api.stripe.com/v1/refunds", {
+      method: "POST",
+      headers: { ...authHeader, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      let detail = "Stripe could not issue this refund.";
+      try {
+        const err = await response.json();
+        if (typeof err.error?.message === "string")
+          detail = err.error.message;
+      } catch {}
+      throw new Error(detail);
+    }
+    const result = await response.json();
+    if (typeof result.id !== "string" || typeof result.amount !== "number")
+      throw new Error("Stripe did not return a valid refund.");
+    return {
+      id: result.id,
+      amount: Math.round(result.amount),
+      currency: typeof result.currency === "string" ? result.currency : "usd",
+      status: typeof result.status === "string" ? result.status : "unknown"
     };
   }
 });

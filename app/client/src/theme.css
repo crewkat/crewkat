@@ -644,6 +644,8 @@ fieldset { padding: 0; border: 0; }
 .legal-section p { margin:9px 0 0; color:var(--text); line-height:1.65; }
 .legal-section ul { margin:10px 0 0; padding-left:22px; }
 .legal-section li { margin:7px 0; padding-left:3px; line-height:1.55; }
+.terms-gate-footer { position:sticky; bottom:0; display:grid; gap:10px; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg) 32%); }
+.terms-gate-footer .primary-button { min-height:52px; }
 .legal-section a { color:var(--green); font-weight:800; overflow-wrap:anywhere; }
 @media (max-width: 390px) {
   .appearance-picker { grid-template-columns: 1fr; }

@@ -649,6 +649,9 @@ export const marketplaceListings = sqliteTable("marketplace_listings", {
   bookable: integer("bookable", { mode: "boolean" }).notNull().default(false),
   dailyRate: text("daily_rate").notNull().default(""),
   promoted: integer("promoted", { mode: "boolean" }).notNull().default(false),
+  moderationStatus: text("moderation_status").notNull().default("active"),
+  moderationReason: text("moderation_reason").notNull().default(""),
+  flagCount: integer("flag_count").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -661,6 +664,18 @@ export const marketplaceListingPhotos = sqliteTable("marketplace_listing_photos"
   filename: text("filename").notNull(),
   contentType: text("content_type").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+export const marketplaceFlags = sqliteTable("marketplace_flags", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  reporterCompanyId: integer("reporter_company_id").notNull().default(1),
+  reporterUserId: integer("reporter_user_id").notNull(),
+  reason: text("reason", { enum: ["spam", "explicit", "illegal", "scam", "misleading", "other"] }).notNull().default("other"),
+  details: text("details").notNull().default(""),
+  status: text("status", { enum: ["open", "reviewed_ok", "reviewed_removed"] }).notNull().default("open"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -678,8 +693,7 @@ export const marketplaceMessages = sqliteTable("marketplace_messages", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
-export const marketplaceBookingRequests = sqliteTable("marketplace_booking_requests", {
-  companyId: integer("company_id").notNull().default(1),
+export const marketplaceBookingRequests = sqliteTable("marketplace_booking_requests", {  companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
   startDate: text("start_date").notNull(),
@@ -722,6 +736,10 @@ export const authUsers = sqliteTable("auth_users", {
   subscriptionCurrentPeriodEnd: integer("subscription_current_period_end", { mode: "timestamp_ms" }),
   cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
   dataClaimedAt: integer("data_claimed_at", { mode: "timestamp_ms" }),
+  isPlatformAdmin: integer("is_platform_admin", { mode: "boolean" }).notNull().default(false),
+  suspendedAt: integer("suspended_at", { mode: "timestamp_ms" }),
+  marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
+  marketplaceTermsVersion: text("marketplace_terms_version"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -783,3 +801,19 @@ export const backupRuns = sqliteTable("backup_runs", {
 }, (table) => [
   index("idx_backup_runs_started").on(table.startedAt),
 ]);
+
+export const platformSettings = sqliteTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+export const adminAuditLog = sqliteTable("admin_audit_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  adminUserId: integer("admin_user_id").notNull(),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull().default(""),
+  targetId: text("target_id").notNull().default(""),
+  details: text("details").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});

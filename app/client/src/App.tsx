@@ -30,6 +30,7 @@ type TouchEvent,
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
+import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
 
 type Lang = "en" | "es";
@@ -1517,6 +1518,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   const [code, setCode] = useState("");
   const [devCode, setDevCode] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedMarketplaceTerms, setAcceptedMarketplaceTerms] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocumentKind | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1529,7 +1531,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
     try {
       if (mode === "signup") {
         if (!acceptedTerms) { setError("You must agree to the Terms of Service and Privacy Policy to create an account."); return; }
-        const result = await api.signUp({ name, email, password });
+        if (!acceptedMarketplaceTerms) { setError("You must agree to the Marketplace Terms of Use to create an account."); return; }
+        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true });
         setEmail(result.email); setDevCode(result.verificationCode ?? ""); setMode("verify"); setPassword("");
         if (result.emailDelivery === "sent") setNotice(`We emailed a verification code to ${result.email}.`);
         else if (result.emailDelivery === "failed") setNotice("Your account was created, but the email could not be sent. Use Get a new code to try again.");
@@ -1580,10 +1583,11 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} /><small>{mode !== "login" ? "Use at least 10 characters." : ""}</small></label>}
         {(mode === "verify" || mode === "reset") && <label><span>6-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>Terms of Service</button> and acknowledge the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button>.</span></div>}
+        {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Marketplace Terms of Use" type="checkbox" checked={acceptedMarketplaceTerms} onChange={(event) => setAcceptedMarketplaceTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms of Use</button>.</span></div>}
         {devCode && <div className="dev-code" role="status"><strong>Testing code</strong><code>{devCode}</code><small>No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.</small></div>}
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
-        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && !acceptedTerms)}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
+        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
       <div className="auth-links">
         {mode === "login" && <button type="button" onClick={() => move("forgot")}>Forgot password?</button>}
@@ -1592,9 +1596,47 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {(mode === "forgot" || mode === "reset" || mode === "verify") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
         {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? "Use the new testing code below." : result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a new verification code to ${email}.`); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>Get a new code</button>}
       </div>
-      <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button></nav></div>
+      <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button><button type="button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms</button></nav></div>
     </section>
   </main>;
+}
+
+// Blocking screen for users who have not accepted the current Marketplace
+// Terms of Use (signed up before the terms existed, or the version changed).
+function MarketplaceTermsGate({ onAccepted }: { onAccepted: (acceptedAt: string, version: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const accept = async () => {
+    setBusy(true); setError("");
+    try {
+      const result = await api.acceptMarketplaceTerms({ version: MARKETPLACE_TERMS_VERSION });
+      onAccepted(result.acceptedAt, result.version);
+    } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
+  };
+  return (
+    <main className="page legal-page">
+      <SafeAreaTopScrim backgroundColor="var(--bg)" />
+      <header className="app-header legal-header">
+        <div className="header-side" />
+        <h1>Marketplace Terms of Use</h1>
+        <div className="header-actions" />
+      </header>
+      <article className="legal-document">
+        <p className="legal-effective"><strong>Effective:</strong> {MARKETPLACE_TERMS_EFFECTIVE_DATE}</p>
+        <p className="legal-intro">We've added terms for the Crewkat Marketplace. Please read and accept them to continue using Crewkat.</p>
+        {MARKETPLACE_TERMS_SECTIONS.map((section) => (
+          <section key={section.heading} className="legal-section">
+            <h2>{section.heading}</h2>
+            {section.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          </section>
+        ))}
+      </article>
+      <div className="terms-gate-footer">
+        {error && <p className="status error">{error}</p>}
+        <button type="button" className="primary-button" onClick={accept} disabled={busy}>{busy ? "Saving…" : "I agree to the Marketplace Terms of Use"}</button>
+      </div>
+    </main>
+  );
 }
 
 export function App() {
@@ -1616,6 +1658,11 @@ export function App() {
   if (portalToken) return <PublicEntry kind="portal" token={portalToken} />;
   if (params.has("booking")) return <PublicEntry kind="booking" token="" />;
   if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  // Existing users who signed up before the Marketplace Terms existed (or a
+  // newer version shipped) must accept before they can use the app.
+  if (!user.marketplaceTermsAcceptedAt || user.marketplaceTermsVersion !== MARKETPLACE_TERMS_VERSION) {
+    return <MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} />;
+  }
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); setUser(null); }
   };
@@ -2273,6 +2320,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <button className="market-menu-row profile-menu-row" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil de empresa" : "Edit company profile"}</strong><small>{lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { setSearch(""); setCategory("all"); setLocation(""); setView("mine"); }}><span className="market-category-icon"><Icon><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 11h8M8 15h5"/></Icon></span><span><strong>{text.myListings}</strong><small>{text.myListingsNote}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { setSavedOnly(true); setCategory("all"); setView("explore"); }}><span className="market-category-icon"><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></span><span><strong>{text.saved}</strong><small>{text.savedNote}</small></span><BackIcon/></button>
+      <button className="market-menu-row" onClick={() => setScreen({ name: "legal", document: "marketplace" })}><span className="market-category-icon"><Icon><path d="M6 3h15v18H6zM9 7h7M9 11h7M9 15h5"/></Icon></span><span><strong>{lang === "es" ? "Términos del Marketplace" : "Marketplace Terms of Use"}</strong><small>{lang === "es" ? "Reglas para publicar y enviar mensajes" : "Posting and messaging rules"}</small></span><BackIcon/></button>
       <h2>{text.top}</h2>{MARKETPLACE_CATEGORIES.slice(0, 6).map((item) => <button className="market-menu-row" key={`top-${item.value}`} onClick={() => chooseCategory(item.value)}><span className="market-category-icon">{item.icon}</span><strong>{item[lang]}</strong><BackIcon/></button>)}
       <h2>{text.categories}</h2>{MARKETPLACE_CATEGORIES.map((item) => <button className="market-menu-row" key={item.value} onClick={() => chooseCategory(item.value)}><span className="market-category-icon">{item.icon}</span><strong>{item[lang]}</strong><BackIcon/></button>)}
     </section>}
@@ -4648,6 +4696,7 @@ function SettingsScreen({
               <nav className="legal-nav-list" aria-label={lang === "es" ? "Documentos legales" : "Legal documents"}>
                 <button type="button" onClick={() => setScreen({ name: "legal", document: "terms" })}><span>{lang === "es" ? "Términos de servicio" : "Terms of Service"}</span><BackIcon /></button>
                 <button type="button" onClick={() => setScreen({ name: "legal", document: "privacy" })}><span>{lang === "es" ? "Política de privacidad" : "Privacy Policy"}</span><BackIcon /></button>
+                <button type="button" onClick={() => setScreen({ name: "legal", document: "marketplace" })}><span>{lang === "es" ? "Términos del Marketplace" : "Marketplace Terms of Use"}</span><BackIcon /></button>
               </nav>
             </div>
           </SettingsAccordion>

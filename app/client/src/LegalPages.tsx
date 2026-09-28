@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS } from "../../server/src/marketplace-terms";
 
-export type LegalDocumentKind = "terms" | "privacy";
+export type LegalDocumentKind = "terms" | "privacy" | "marketplace";
 
 const EFFECTIVE_DATE = "September 26, 2026";
 const CONTACT_EMAIL = "stallionsconstructioncompany@gmail.com";
@@ -175,8 +176,27 @@ function PrivacyContent() {
   );
 }
 
+function MarketplaceTermsContent() {
+  return (
+    <>
+      {MARKETPLACE_TERMS_SECTIONS.map((section) => (
+        <LegalSection key={section.heading} title={section.heading}>
+          {section.paragraphs.map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+        </LegalSection>
+      ))}
+    </>
+  );
+}
+
 export function LegalDocumentPage({ kind, onBack }: { kind: LegalDocumentKind; onBack: () => void }) {
   const isTerms = kind === "terms";
+  const isMarketplace = kind === "marketplace";
+  const title = isMarketplace ? "Marketplace Terms of Use" : isTerms ? "Terms of Service" : "Privacy Policy";
+  const intro = isMarketplace
+    ? "Rules for posting and messaging in the Crewkat Marketplace. Please read them before listing."
+    : isTerms ? "Please read these terms carefully before using Crewkat." : "Your business records may include information about clients, workers, and projects. This policy explains how that information is handled.";
   return (
     <main className="page legal-page">
       <header className="app-header legal-header">
@@ -185,13 +205,13 @@ export function LegalDocumentPage({ kind, onBack }: { kind: LegalDocumentKind; o
             <BackArrow />
           </button>
         </div>
-        <h1>{isTerms ? "Terms of Service" : "Privacy Policy"}</h1>
+        <h1>{title}</h1>
         <div className="header-actions" />
       </header>
       <article className="legal-document">
-        <p className="legal-effective"><strong>Effective:</strong> {EFFECTIVE_DATE}</p>
-        <p className="legal-intro">{isTerms ? "Please read these terms carefully before using Crewkat." : "Your business records may include information about clients, workers, and projects. This policy explains how that information is handled."}</p>
-        {isTerms ? <TermsContent /> : <PrivacyContent />}
+        <p className="legal-effective"><strong>Effective:</strong> {isMarketplace ? MARKETPLACE_TERMS_EFFECTIVE_DATE : EFFECTIVE_DATE}</p>
+        <p className="legal-intro">{intro}</p>
+        {isMarketplace ? <MarketplaceTermsContent /> : isTerms ? <TermsContent /> : <PrivacyContent />}
       </article>
     </main>
   );
