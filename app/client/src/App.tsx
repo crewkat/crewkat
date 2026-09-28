@@ -18,6 +18,7 @@ createContext,
 useContext,
 useEffect,
 useLayoutEffect,
+useMemo,
 useRef,
 useState,
 type ChangeEvent,
@@ -27,7 +28,8 @@ type PointerEvent,
 type ReactNode,
 type TouchEvent,
 } from "react";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, type PushStatus } from "./push";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
@@ -936,6 +938,58 @@ const copy = {
   },
 } as const;
 
+// ---------------------------------------------------------------------------
+// Chunk D: offline mode v1 — banner + cached-list "last updated" note.
+// ---------------------------------------------------------------------------
+
+/** Returns true when the browser thinks the network is down. */
+function useIsOffline(): boolean {
+  const [offline, setOffline] = useState(typeof navigator !== "undefined" && navigator.onLine === false);
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return offline;
+}
+
+/** Slim banner shown at the top of the app while offline. */
+function OfflineBanner({ lang }: { lang: Lang }) {
+  const offline = useIsOffline();
+  if (!offline) return null;
+  return (
+    <div className="offline-banner" role="status">
+      {lang === "es"
+        ? "Sin conexión — estás viendo la información guardada en este teléfono."
+        : "You're offline — showing what's saved on this phone."}
+    </div>
+  );
+}
+
+/** "Last updated …" note rendered under a list served from the offline cache. */
+function OfflineCacheNote({ lang, action, isLoading }: { lang: Lang; action: "listJobs" | "listClients" | "listInvoices" | "listQuotes"; isLoading: boolean }) {
+  const offline = useIsOffline();
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    if (!isLoading) forceRender((n) => n + 1);
+  }, [isLoading]);
+  const at = offlineCacheTimestamp(action);
+  if (offline || at == null) return null;
+  const when = new Date(at);
+  const stamp = when.toLocaleString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return (
+    <p className="offline-note" role="status">
+      <span className="dot" aria-hidden="true" />
+      {lang === "es" ? `Datos guardados — última actualización: ${stamp}` : `Saved data — last updated ${stamp}`}
+    </p>
+  );
+}
+
 function Icon({ children, size = 20 }: { children: ReactNode; size?: number }) {
   return (
     <svg
@@ -1012,7 +1066,9 @@ function rootTabFor(screen: Screen): RootTab {
 function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void; onNavigate: (screen: Screen) => void }) {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
-  const unreadMarketplace = inboxQuery.data?.unreadCount ?? 0;
+  const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
+  // Chunk D: the Marketplace badge covers both unread messages and notifications.
+  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
   const items: Array<{ tab: RootTab; label: string; icon: ReactNode; badge?: number }> = [
     { tab: "today", label: lang === "es" ? "Inicio" : "Home", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
     { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
@@ -1534,6 +1590,13 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Chunk D: referral links land here as ?ref=CODE — keep it for signup.
+  const referralCode = useMemo(() => {
+    try {
+      const value = new URLSearchParams(window.location.search).get("ref");
+      return value && /^[A-Za-z0-9]{4,12}$/.test(value) ? value : "";
+    } catch { return ""; }
+  }, []);
   const hasAccount = bootstrap.data?.hasAccount ?? true;
   useEffect(() => { if (bootstrap.data && !bootstrap.data.hasAccount) setMode("signup"); }, [bootstrap.data]);
   const move = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); setCode(""); setDevCode(""); };
@@ -1543,7 +1606,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       if (mode === "signup") {
         if (!acceptedTerms) { setError("You must agree to the Terms of Service and Privacy Policy to create an account."); return; }
         if (!acceptedMarketplaceTerms) { setError("You must agree to the Marketplace Terms of Use to create an account."); return; }
-        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true });
+        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true, referralCode: referralCode || undefined });
         setEmail(result.email); setDevCode(result.verificationCode ?? ""); setMode("verify"); setPassword("");
         if (result.emailDelivery === "sent") setNotice(`We emailed a verification code to ${result.email}.`);
         else if (result.emailDelivery === "failed") setNotice("Your account was created, but the email could not be sent. Use Get a new code to try again.");
@@ -1588,6 +1651,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       <h1>{title}</h1>
       <p className="auth-intro">{mode === "login" ? "Sign in to manage your jobs, invoices, and clients." : mode === "signup" ? "Create a secure owner account and an empty company workspace." : mode === "verify" ? `Enter the 6-digit code for ${email}.` : "Use a one-time code to choose a new password."}</p>
       {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>Your existing workspace is ready</strong><span>{bootstrap.data.recordCounts.jobs} jobs · {bootstrap.data.recordCounts.clients} clients · {bootstrap.data.recordCounts.invoices} invoices</span><small>These records will stay intact and attach to the owner account.</small></div>}
+      {mode === "signup" && referralCode && <div className="auth-claim"><strong>Invited by a friend</strong><span>You were invited with code {referralCode} — your friend earns bonus Marketplace listings when you join.</span></div>}
       <form className="auth-form" onSubmit={submit}>
         {mode === "signup" && <label><span>Name</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
         <label><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset"} /></label>
@@ -1661,6 +1725,15 @@ export function App() {
     window.addEventListener(AUTH_SESSION_INVALID_EVENT, handleInvalidSession);
     return () => window.removeEventListener(AUTH_SESSION_INVALID_EVENT, handleInvalidSession);
   }, [queryClient]);
+  // Chunk D: register the app service worker (offline mode + web push).
+  useEffect(() => {
+    void registerAppServiceWorker();
+  }, []);
+  // Chunk D: keep the push subscription current once signed in. Never prompts —
+  // if permission isn't already granted the user enables it from Settings.
+  useEffect(() => {
+    if (user) void ensurePushSubscription();
+  }, [user]);
   const params = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
   const hash = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const docToken = hash.get("doc") ?? "";
@@ -2008,6 +2081,7 @@ function CrewkatApplication() {
         </div>
       )}
       <OnboardingTour lang={lang} />
+      <OfflineBanner lang={lang} />
       {screen.name === "today" && (
         <TodayScreen
           lang={lang}
@@ -2282,7 +2356,7 @@ function savedMarketplaceIds() {
   } catch { return []; }
 }
 
-type MarketplaceView = "explore" | "looking" | "more" | "mine" | "inbox";
+type MarketplaceView = "explore" | "looking" | "more" | "mine" | "inbox" | "alerts";
 type MarketplaceUiState = {
   view: MarketplaceView;
   search: string;
@@ -2303,6 +2377,122 @@ let marketplaceUiStateCache: MarketplaceUiState = {
   locationOpen: false,
   savedOnly: false,
 };
+
+// ---------------------------------------------------------------------------
+// Chunk D: keyword alerts + in-app notifications.
+// ---------------------------------------------------------------------------
+
+function AlertsView({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const qc = useQueryClient();
+  const alerts = useQuery({ queryKey: ["marketplace-alerts"], queryFn: () => api.listMarketplaceAlerts({}) });
+  const notifications = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
+  const [form, setForm] = useState({ keyword: "", category: "any", serviceArea: "" });
+  const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Opening this view marks everything read so the badge clears.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await api.markNotificationsRead({ ids: [] });
+        if (!cancelled) await qc.invalidateQueries({ queryKey: ["marketplace-notifications"] });
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [qc]);
+
+  const save = useMutation({
+    mutationFn: () => api.saveMarketplaceAlert({
+      keyword: form.keyword.trim(),
+      category: form.category === "any" ? null : (form.category as MarketplaceCategory),
+      serviceArea: form.serviceArea.trim(),
+    }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["marketplace-alerts"] });
+      setForm({ keyword: "", category: "any", serviceArea: "" });
+      setError("");
+    },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteMarketplaceAlert({ id }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["marketplace-alerts"] });
+      setDeletingId(null);
+    },
+  });
+
+  const openNotification = async (notification: { id: number; link: string }) => {
+    try { await api.markNotificationsRead({ ids: [notification.id] }); } catch { /* best-effort */ }
+    await qc.invalidateQueries({ queryKey: ["marketplace-notifications"] });
+    const match = /^marketplace:(\d+)$/.exec(notification.link);
+    if (match) setScreen({ name: "marketplaceDetail", listingId: Number(match[1]) });
+  };
+
+  const t = lang === "es" ? {
+    title: "Alertas", intro: "Te avisamos cuando se publique algo que buscas: aquí, por push y por correo.",
+    keyword: "Palabra clave", keywordPlaceholder: "p. ej. drywall, ayudante, pintura",
+    category: "Categoría (opcional)", anyCategory: "Cualquiera",
+    area: "Área (opcional)", areaPlaceholder: "p. ej. Tampa",
+    add: "Crear alerta", adding: "Guardando…",
+    yourAlerts: "Tus alertas", none: "Aún no tienes alertas.", noneBody: "Crea una y te avisaremos cuando aparezca algo.",
+    delete: "Eliminar", deleting: "Eliminando…",
+    notificationsTitle: "Notificaciones",
+    noNotifications: "Sin notificaciones todavía.",
+  } : {
+    title: "Alerts", intro: "We'll notify you when something you want gets posted — here, by push, and by email.",
+    keyword: "Keyword", keywordPlaceholder: "e.g. drywall, helper, painting",
+    category: "Category (optional)", anyCategory: "Any",
+    area: "Area (optional)", areaPlaceholder: "e.g. Tampa",
+    add: "Create alert", adding: "Saving…",
+    yourAlerts: "Your alerts", none: "No alerts yet.", noneBody: "Create one and we'll notify you when something shows up.",
+    delete: "Delete", deleting: "Deleting…",
+    notificationsTitle: "Notifications",
+    noNotifications: "No notifications yet.",
+  };
+
+  return (
+    <section className="market-alerts">
+      <div className="market-section-heading"><div><h2>{t.title}</h2><p>{t.intro}</p></div></div>
+      <form className="wanted-form" onSubmit={(event) => { event.preventDefault(); setError(""); if (form.keyword.trim().length >= 2) save.mutate(); }}>
+        <label><span>{t.keyword}</span><input required minLength={2} maxLength={80} value={form.keyword} onChange={(event) => setForm({ ...form, keyword: event.target.value })} placeholder={t.keywordPlaceholder} /></label>
+        <label><span>{t.category}</span><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="any">{t.anyCategory}</option>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>
+        <label><span>{t.area}</span><input maxLength={120} value={form.serviceArea} onChange={(event) => setForm({ ...form, serviceArea: event.target.value })} placeholder={t.areaPlaceholder} /></label>
+        {error && <p className="status error">{error}</p>}
+        <button type="submit" className="primary-button" disabled={save.isPending}>{save.isPending ? t.adding : t.add}</button>
+      </form>
+      <h3 className="market-inbox-subheading">{t.yourAlerts}</h3>
+      {alerts.isLoading ? <div className="loading-block" /> : (alerts.data?.alerts.length ?? 0) === 0 ? (
+        <div className="market-empty compact"><h2>{t.none}</h2><p>{t.noneBody}</p></div>
+      ) : (
+        <ul className="alerts-list">
+          {alerts.data?.alerts.map((alert) => (
+            <li key={alert.id}>
+              <span><strong>{alert.keyword}</strong><small>{alert.category ? marketplaceCategoryLabel(alert.category as MarketplaceCategory, lang) : t.anyCategory}{alert.serviceArea ? ` · ${alert.serviceArea}` : ""}</small></span>
+              <button type="button" className="danger" disabled={remove.isPending} onClick={() => { setDeletingId(alert.id); remove.mutate(alert.id); }}>{deletingId === alert.id && remove.isPending ? t.deleting : t.delete}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <h3 className="market-inbox-subheading">{t.notificationsTitle}</h3>
+      {notifications.isLoading ? <div className="loading-block" /> : (notifications.data?.notifications.length ?? 0) === 0 ? (
+        <p className="privacy-note">{t.noNotifications}</p>
+      ) : (
+        <ul className="alerts-list notifications-list">
+          {notifications.data?.notifications.map((notification) => (
+            <li key={notification.id} className={notification.isRead ? "" : "unread"}>
+              <button type="button" onClick={() => openNotification(notification)}>
+                <strong>{lang === "es" ? notification.titleEs : notification.titleEn}</strong>
+                <small>{new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(notification.createdAt))}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings: Settings | null; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
@@ -2339,6 +2529,9 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const requests = useQuery({ queryKey: ["marketplace-requests"], queryFn: () => api.listMarketplaceRequests({}) });
   const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  // Chunk D: saved keyword alerts + in-app notifications (polled for freshness).
+  const alerts = useQuery({ queryKey: ["marketplace-alerts"], queryFn: () => api.listMarketplaceAlerts({}) });
+  const notifications = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   const removeListing = useMutation({ mutationFn: (id: number) => api.deleteMarketplaceListing({ id }), onSuccess: async (_, id) => { setSavedIds((current) => { const next = current.filter((value) => value !== id); window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); return next; }); setDeleteTarget(null); await qc.invalidateQueries({ queryKey: ["marketplace-listings"] }); } });
   const visibleListings = (listings.data?.listings ?? []).filter((listing) => (!savedOnly || savedIds.includes(listing.id)) && (listingType === "all" || listing.listingType === listingType));
   const myListings = (listings.data?.listings ?? []).filter((listing) => listing.isMine);
@@ -2447,7 +2640,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     </div>}
     <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} actions={<>
       <button className="icon-button" type="button" aria-label={text.marketplaceSearch} onClick={openSearch}><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon></button>
-      <button className="icon-button marketplace-inbox-button" type="button" aria-label={lang === "es" ? "Abrir bandeja de mensajes" : "Open message inbox"} onClick={() => setView("inbox")}><Icon><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></Icon>{(inbox.data?.unreadCount ?? 0) > 0 && <b>{Math.min(inbox.data?.unreadCount ?? 0, 99)}</b>}</button>
+      <button className="icon-button marketplace-inbox-button" type="button" aria-label={lang === "es" ? "Abrir bandeja de mensajes" : "Open message inbox"} onClick={() => setView("inbox")}><Icon><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></Icon>{((inbox.data?.unreadCount ?? 0) + (notifications.data?.unreadCount ?? 0)) > 0 && <b>{Math.min((inbox.data?.unreadCount ?? 0) + (notifications.data?.unreadCount ?? 0), 99)}</b>}</button>
       <button className={`icon-button${locationOpen ? " active" : ""}`} type="button" aria-label={text.areaFilter} onClick={() => setLocationOpen((open) => !open)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon></button>
     </>} />
     {(searchOpen || view === "explore") && <label className={`market-search${searchOpen ? " emphasized" : ""}`}><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
@@ -2493,13 +2686,14 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       })()}
       <p className="market-inbox-note">{lang === "es" ? "Las notificaciones push llegarán con las cuentas públicas en el lanzamiento." : "Push notifications arrive with public accounts at launch."}</p>
     </section>}
+    {view === "alerts" && <AlertsView lang={lang} setScreen={setScreen} />}
     {deleteTarget && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteTarget(null)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="delete-listing-title">{text.removeTitle}</h2><strong>{deleteTarget.title}</strong><p>{text.removeBody}</p>{removeListing.isError && <p className="status error">{text.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteTarget(null)}>{text.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate(deleteTarget.id)}>{removeListing.isPending ? text.deleting : text.remove}</button></div></section></div>}
     {promotionOpen && <div className="sheet-backdrop" onClick={() => setPromotionOpen(false)}><section className="more-sheet market-launch-sheet" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="launch-badge">{text.launch}</span><h2>{text.promote}</h2><div className="launch-option"><Icon><path d="M12 3v18M5 10l7-7 7 7"/></Icon><strong>{text.topPlacement}</strong></div><div className="launch-option"><Icon><path d="m12 3 3 6 6 .8-4.5 4.4 1.1 6.3L12 17.5l-5.6 3 1.1-6.3L3 9.8 9 9z"/></Icon><strong>{text.categoryFeature}</strong></div><p>{lang === "es" ? "Los pagos y la promoción pública se activarán cuando se lance la red." : "Payments and public promotion turn on when the network launches."}</p><button className="primary-button" onClick={() => setPromotionOpen(false)}>{text.close}</button></section></div>}
     {view === "more" && <section className="market-more">
       <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { setView("explore"); setSavedOnly(false); } }} placeholder={text.search} aria-label={text.search}/></label>
       <button className="market-menu-row" onClick={() => openNewListing("job")}><span className="market-category-icon"><Icon><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></Icon></span><span><strong>{text.list}</strong><small>{lang === "es" ? "Contrata a un empleado" : "Hire an employee"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => openNewListing("project")}><span className="market-category-icon"><Icon><path d="M4 20h16M6 20V9l6-5 6 5v11M9 20v-6h6v6"/></Icon></span><span><strong>{text.listProject}</strong><small>{lang === "es" ? "Busca un subcontratista para una tarea específica" : "Find a subcontractor for one specific task"}</small></span><BackIcon/></button>
-      <button className="market-menu-row" onClick={() => setView("inbox")}><span className="market-category-icon"><Icon><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></Icon></span><span><strong>{lang === "es" ? "Bandeja" : "Inbox"}{(inbox.data?.unreadCount ?? 0) > 0 ? ` · ${inbox.data?.unreadCount}` : ""}</strong><small>{lang === "es" ? "Conversaciones sobre publicaciones" : "Listing conversations"}</small></span><BackIcon/></button>
+      <button className="market-menu-row" onClick={() => setView("alerts")}><span className="market-category-icon"><Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon></span><span><strong>{lang === "es" ? "Alertas" : "Alerts"}{(alerts.data?.alerts.length ?? 0) > 0 ? ` · ${alerts.data?.alerts.length}` : ""}</strong><small>{lang === "es" ? "Avisos cuando se publique lo que buscas" : "Get notified when what you want gets posted"}</small></span><BackIcon/></button>
       <button className="market-menu-row profile-menu-row" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil de empresa" : "Edit company profile"}</strong><small>{lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { setSearch(""); setCategory("all"); setLocation(""); setView("mine"); }}><span className="market-category-icon"><Icon><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 11h8M8 15h5"/></Icon></span><span><strong>{text.myListings}</strong><small>{text.myListingsNote}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { setSavedOnly(true); setCategory("all"); setView("explore"); }}><span className="market-category-icon"><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></span><span><strong>{text.saved}</strong><small>{text.savedNote}</small></span><BackIcon/></button>
@@ -3012,6 +3206,7 @@ function JobsScreen({
           </>
         }
       />
+      <OfflineCacheNote lang={lang} action="listJobs" isLoading={jobs.isLoading} />
       <section className="jobs-tools">
         <button
           className="primary-button new-job-button"
@@ -4035,6 +4230,113 @@ const SettingsAccordionContext = createContext<{
   setOpenId: (id: string | null) => void;
 } | null>(null);
 
+// Chunk D: web push opt-in toggle. The toggle itself must be a user gesture
+// because the browser permission prompt requires one.
+function PushToggle({ lang }: { lang: Lang }) {
+  const [status, setStatus] = useState<PushStatus | "checking">("checking");
+  const [supported, setSupported] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        if (!cancelled) { setSupported(false); setStatus("unavailable"); }
+        return;
+      }
+      const next = await ensurePushSubscription();
+      if (!cancelled) setStatus(next);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const toggle = async () => {
+    if (status === "subscribed") {
+      setStatus("checking");
+      await disablePushSubscription();
+      setStatus("needs-permission");
+    } else {
+      setStatus("checking");
+      const next = await requestPushPermissionAndSubscribe();
+      setStatus(next);
+    }
+  };
+  if (!supported) return null;
+  const enabled = status === "subscribed";
+  const hint = status === "denied"
+    ? (lang === "es" ? "Bloqueadas en el navegador — actívalas en los ajustes del sitio." : "Blocked in the browser — enable them in site settings.")
+    : status === "unavailable"
+      ? (lang === "es" ? "No disponible en este dispositivo o navegador." : "Not available on this device or browser.")
+      : status === "needs-permission"
+        ? (lang === "es" ? "Recibe avisos cuando un cliente vea tu portal, pague una factura o te escriba en el Marketplace." : "Get alerts when a client views your portal, pays an invoice, or messages you on Marketplace.")
+        : status === "checking"
+          ? (lang === "es" ? "Comprobando…" : "Checking…")
+          : status === "error"
+            ? (lang === "es" ? "No se pudo activar. Inténtalo de nuevo." : "Couldn't enable. Try again.")
+            : (lang === "es" ? "Activadas en este dispositivo." : "On for this device.");
+  return (
+    <label className="switch-row">
+      <span>{lang === "es" ? "Notificaciones push" : "Push notifications"}<small>{hint}</small></span>
+      <input type="checkbox" role="switch" checked={enabled} disabled={status === "checking" || status === "unavailable"} onChange={toggle} />
+    </label>
+  );
+}
+// Chunk D: referral loop panel — invite friends, earn bonus Marketplace listings.
+function ReferralPanel({ lang }: { lang: Lang }) {
+  const stats = useQuery({ queryKey: ["referral-stats"], queryFn: () => api.getReferralStats({}) });
+  const [copied, setCopied] = useState(false);
+  const data = stats.data;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const link = data ? `${origin}/app/?ref=${data.referralCode}` : "";
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = link;
+      document.body.appendChild(field);
+      field.select();
+      document.execCommand("copy");
+      document.body.removeChild(field);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+  const share = async () => {
+    if (!link) return;
+    const text = lang === "es"
+      ? `Prueba Crewkat, la app para contratistas: ${link}`
+      : `Try Crewkat, the contractor app: ${link}`;
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      try { await (navigator as Navigator & { share: (data: { title: string; text: string; url: string }) => Promise<void> }).share({ title: "Crewkat", text, url: link }); return; } catch { /* fell through to copy */ }
+    }
+    await copy();
+  };
+  return (
+    <div className="settings-heading">
+      <p>
+        {lang === "es"
+          ? "Invita a otros contratistas. Por cada amigo que se una y verifique su correo, tu compañía gana 5 listados extra gratis en el Marketplace."
+          : "Invite other contractors. For each friend who joins and verifies their email, your company earns 5 extra free Marketplace listings."}
+      </p>
+      {stats.isLoading && <div className="loading-block" />}
+      {stats.isError && <p className="status error">{lang === "es" ? "No se pudo cargar tu enlace." : "Couldn't load your invite link."}</p>}
+      {data && (
+        <>
+          <div className="referral-link-row">
+            <input readOnly value={link} aria-label={lang === "es" ? "Enlace de invitación" : "Invite link"} onFocus={(e) => e.target.select()} />
+            <button type="button" className="secondary-button" onClick={copy}>{copied ? (lang === "es" ? "¡Copiado!" : "Copied!") : (lang === "es" ? "Copiar" : "Copy")}</button>
+          </div>
+          <button type="button" className="primary-button" onClick={share}>{lang === "es" ? "Invitar a un amigo" : "Invite a friend"}</button>
+          <p className="privacy-note">
+            {lang === "es"
+              ? `Amigos que se unieron: ${data.joinedCount} · Listados extra ganados: ${data.bonusListings} (límite actual: ${data.effectiveLimit})`
+              : `Friends joined: ${data.joinedCount} · Bonus listings earned: ${data.bonusListings} (current limit: ${data.effectiveLimit})`}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsAccordion({
   title,
   icon,
@@ -4532,7 +4834,7 @@ function SettingsScreen({
               </section>
               <section className="more-options-section"><h3>{lang === "es" ? "Otros" : "Other"}</h3>
                 <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "notifications" ? null : "notifications")} aria-expanded={morePanel === "notifications"}><span className="option-row-icon notification"><Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></Icon></span><span>{lang === "es" ? "Notificaciones" : "Notifications"}</span><BackIcon /></button>
-                {morePanel === "notifications" && <div className="more-option-detail"><label className="switch-row"><span>{lang === "es" ? "Mostrar avisos y seguimientos" : "Show alerts and follow-ups"}</span><input type="checkbox" role="switch" checked={form.notificationsEnabled} onChange={(e) => setForm({ ...form, notificationsEnabled: e.target.checked })} /></label></div>}
+                {morePanel === "notifications" && <div className="more-option-detail"><label className="switch-row"><span>{lang === "es" ? "Mostrar avisos y seguimientos" : "Show alerts and follow-ups"}</span><input type="checkbox" role="switch" checked={form.notificationsEnabled} onChange={(e) => setForm({ ...form, notificationsEnabled: e.target.checked })} /></label><PushToggle lang={lang} /></div>}
                 <button type="button" className="more-option-row danger-row" onClick={() => setMorePanel(morePanel === "trash" ? null : "trash")} aria-expanded={morePanel === "trash"}><span className="option-row-icon trash"><TrashIcon /></span><span>{lang === "es" ? "Papelera" : "Trash"}</span><BackIcon /></button>
                 {morePanel === "trash" && <div className="more-option-detail"><p>{lang === "es" ? "Los elementos eliminados se quitan de inmediato. Haz una copia de seguridad antes de borrar registros importantes." : "Deleted items are removed immediately. Make a backup before deleting important records."}</p></div>}
               </section>
@@ -4894,6 +5196,13 @@ function SettingsScreen({
             icon={<ShareIcon />}
           >
             <p className="privacy-note">{lang === "es" ? "Usa el botón Compartir de Muse para invitar a alguien sin exponer información privada del negocio." : "Use Muse’s Share control to invite someone without exposing private business information."}</p>
+          </SettingsAccordion>
+
+          <SettingsAccordion
+            title={lang === "es" ? "Invitar y ganar" : "Invite & earn"}
+            icon={<Icon><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7c-1.7 0-3-1.3-3-3h6c0 1.7-1.3 3-3 3z" /></Icon>}
+          >
+            <ReferralPanel lang={lang} />
           </SettingsAccordion>
 
           <h2 className="settings-group-title">{lang === "es" ? "Otros" : "Others"}</h2>
@@ -7326,6 +7635,9 @@ function InvoicesScreen({
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} />
+      {tab === "invoices"
+        ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
+        : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
       <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? "Cotizado este mes" : "Estimated this month")}</span><strong>{usd(tab === "invoices" ? invoicedMonth : estimatedMonth)}</strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
       <div className="page-actions document-create">
@@ -7731,6 +8043,7 @@ function ClientsScreen({
   return (
     <main className="page clients-page">
       <PageHeader lang={lang} title={t.clients} onBack={onBack} />
+      <OfflineCacheNote lang={lang} action="listClients" isLoading={query.isLoading} />
       <div className="clients-toolbar">
         <label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchClients} aria-label={t.searchClients} /></label>
         <button className="client-tool-button" type="button" onClick={() => openSheet("sort")} aria-label={lang === "es" ? "Ordenar clientes" : "Sort clients"}><Icon><path d="M8 6h12M8 12h8M8 18h4M4 4v16M2 18l2 2 2-2"/></Icon></button>
@@ -10620,6 +10933,7 @@ function TodayScreen({
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: () => api.listAppointments({}) });
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  const notificationsHomeQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
   const pinnedTools = pinsQuery.data?.tools ?? [];
   const unpinMutation = useMutation({
@@ -10752,7 +11066,8 @@ function TodayScreen({
   const activeThisWeek = activeThisWeekIds.size || openJobs.length;
   const recentJobs = openJobs.slice(0, 2);
   const latestInvoice = invoicesQuery.data?.invoices[0] ?? null;
-  const unreadMarketplace = inboxQuery.data?.unreadCount ?? 0;
+  // Chunk D: the Home Marketplace link badge covers messages + notifications.
+  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsHomeQuery.data?.unreadCount ?? 0);
   const hour = now.getHours();
   const greeting = lang === "es"
     ? hour < 12 ? "Buenos días" : hour < 18 ? "Buenas tardes" : "Buenas noches"

@@ -48,12 +48,12 @@ console.log("[build] marketing site copied to dist/marketing");
 // NOTE: the <link> tags are injected into the BUILT index.html below, not the
 // source — the SDK bundler tries to resolve absolute hrefs in source HTML at
 // build time and fails. Injecting post-build avoids that.
-for (const f of ["manifest.webmanifest", "icon-192.png", "icon-512.png"]) {
+for (const f of ["manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "sw.js"]) {
   await cp(join(here, "pwa", f), join(distDir, f));
 }
 html = html.replace(
   '<link rel="icon" href="data:," />',
-  `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`
+  `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`
 );
 await writeFile(indexHtmlPath, html);
 console.log("[build] PWA manifest + icons copied to dist/, links injected");

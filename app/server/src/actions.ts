@@ -2,6 +2,7 @@ import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } 
 import { and, desc, eq, gte, inArray, isNull, like, lt, lte, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { execFile } from "node:child_process";
+import { randomInt } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -11,6 +12,7 @@ import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
+import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
 
 const stageSchema = z.enum(["before", "during", "after"]);
 const languageSchema = z.enum(["en", "es"]);
@@ -205,6 +207,17 @@ async function requirePortalAccess(ctx: Ctx, token: string, opts: { logView: boo
     const lastView = (await db.select({ occurredAt: schema.portalLinkEvents.occurredAt }).from(schema.portalLinkEvents).where(and(eq(schema.portalLinkEvents.linkId, access.id), eq(schema.portalLinkEvents.eventType, "view"))).orderBy(desc(schema.portalLinkEvents.occurredAt)).limit(1))[0];
     if (!lastView || now.getTime() - lastView.occurredAt.getTime() >= PORTAL_VIEW_EVENT_THROTTLE_MS) {
       await db.insert(schema.portalLinkEvents).values({ linkId: access.id, eventType: "view", userAgent: (portalMeta(ctx).userAgent ?? "").slice(0, 300), occurredAt: now });
+      // Chunk D push: a client viewed the portal (throttled to 1/hour per link).
+      try {
+        const job = (await db.select({ companyId: schema.jobs.companyId, jobType: schema.jobs.jobType, jobAddress: schema.jobs.jobAddress }).from(schema.jobs).where(eq(schema.jobs.id, access.jobId)).limit(1))[0];
+        if (job) {
+          await sendPushToCompany(db, job.companyId, {
+            titleEn: "Client viewed your portal", titleEs: "Un cliente vio tu portal",
+            bodyEn: `${job.jobType} — ${job.jobAddress}`, bodyEs: `${job.jobType} — ${job.jobAddress}`,
+            url: "/app/",
+          });
+        }
+      } catch { /* push is best-effort */ }
     }
   }
   return access;
@@ -510,6 +523,51 @@ async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" |
 async function deliverAuthCode(ctx: Ctx, email: string, code: string, purpose: "verify_email" | "reset_password") {
   const result = await ctx.executePrivileged(privileged.sendAuthEmail, { to: email, code, purpose });
   return authCodeClientResult(code, result.delivery);
+}
+
+// ---------------------------------------------------------------------------
+// Chunk D: referral loop. Each user gets an 8-char referral code; when a
+// referred user completes email verification, the referrer's company earns
+// +5 bonus marketplace listings (settings.listing_bonus, added on top of
+// the free_listing_limit platform setting).
+// ---------------------------------------------------------------------------
+
+const REFERRAL_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+function makeReferralCode(): string {
+  let code = "";
+  for (let i = 0; i < 8; i++) code += REFERRAL_CODE_ALPHABET[randomInt(REFERRAL_CODE_ALPHABET.length)];
+  return code;
+}
+
+async function uniqueReferralCode(db: ReturnType<Ctx["db"]>): Promise<string> {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const code = makeReferralCode();
+    const existing = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.referralCode, code)).limit(1))[0];
+    if (!existing) return code;
+  }
+  throw new Error("Could not generate a referral code. Try again.");
+}
+
+function normalizeReferralCode(raw: string | undefined): string | null {
+  const code = (raw ?? "").trim().toUpperCase();
+  return /^[A-Z0-9]{8}$/.test(code) ? code : null;
+}
+
+async function getCompanyListingBonus(db: ReturnType<Ctx["db"]>): Promise<number> {
+  const row = (await db.select({ listingBonus: schema.settings.listingBonus }).from(schema.settings).limit(1))[0];
+  return row?.listingBonus ?? 0;
+}
+
+async function getEffectiveListingLimit(db: ReturnType<Ctx["db"]>): Promise<{ base: number; bonus: number; effective: number }> {
+  const base = await getIntPlatformSetting(db, "free_listing_limit");
+  const bonus = await getCompanyListingBonus(db);
+  return { base, bonus, effective: base + bonus };
+}
+
+function appPublicUrl(): string {
+  const configured = (process.env.CREWKAT_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+  return configured || "https://crewkat.com";
 }
 
 type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; unscopedDb?: () => ReturnType<Ctx["db"]> };
@@ -1168,6 +1226,76 @@ function shiftDateByTemplateOffset(templateDue: string, templateIssue: string, n
   return new Date(new Date(`${newIssue}T12:00:00`).getTime() + offsetMs).toISOString().slice(0, 10);
 }
 
+// ---------------------------------------------------------------------------
+// Chunk D: marketplace alerts, in-app notifications, web push triggers.
+// ---------------------------------------------------------------------------
+
+interface AlertListingInfo {
+  id: number;
+  title: string;
+  description: string;
+  category: string;
+  serviceArea: string;
+  authorUserId: number;
+}
+
+/** True when an alert matches a listing (keyword substring, case-insensitive). */
+export function alertMatchesListing(alert: { keyword: string; category: string | null; serviceArea: string | null }, listing: { title: string; description: string; category: string; serviceArea: string }): boolean {
+  const keyword = alert.keyword.trim().toLowerCase();
+  if (!keyword) return false;
+  const haystack = `${listing.title}\n${listing.description}`.toLowerCase();
+  if (!haystack.includes(keyword)) return false;
+  if (alert.category && alert.category !== listing.category) return false;
+  if (alert.serviceArea && !listing.serviceArea.toLowerCase().includes(alert.serviceArea.trim().toLowerCase())) return false;
+  return true;
+}
+
+async function createUserNotification(db: ReturnType<Ctx["db"]>, userId: number, kind: string, titleEn: string, titleEs: string, link: string): Promise<number | null> {
+  const existing = (await db.select({ id: schema.userNotifications.id }).from(schema.userNotifications)
+    .where(and(eq(schema.userNotifications.userId, userId), eq(schema.userNotifications.kind, kind), eq(schema.userNotifications.link, link))).limit(1))[0];
+  if (existing) return null;
+  const rows = await db.insert(schema.userNotifications).values({ userId, kind, titleEn, titleEs, link, isRead: false, createdAt: new Date() }).returning({ id: schema.userNotifications.id });
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Matches a newly-visible listing against every user's saved alerts and
+ * notifies matches: in-app notification + web push + Resend email.
+ * Only `approved`/visible listings trigger — callers gate on that.
+ * Best-effort: never throws.
+ */
+export async function notifyAlertMatches(ctx: Ctx, listing: AlertListingInfo): Promise<void> {
+  try {
+    const db = ctx.db<typeof schema>();
+    const alerts = await db.select().from(schema.marketplaceAlerts);
+    const matched = alerts.filter((alert) => alert.userId !== listing.authorUserId && alertMatchesListing(alert, listing));
+    if (!matched.length) return;
+    const link = `marketplace:${listing.id}`;
+    const userIds = [...new Set(matched.map((alert) => alert.userId))];
+    for (const userId of userIds) {
+      try {
+        const titleEn = `New match: ${listing.title}`;
+        const titleEs = `Nueva coincidencia: ${listing.title}`;
+        const created = await createUserNotification(db, userId, "alert_match", titleEn, titleEs, link);
+        if (!created) continue;
+        await sendPushToUser(db, userId, {
+          titleEn, titleEs,
+          bodyEn: listing.serviceArea, bodyEs: listing.serviceArea,
+          url: "/app/", listingId: listing.id,
+        });
+        const user = (await db.select({ email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).limit(1))[0];
+        if (user?.email) {
+          await ctx.executePrivileged(privileged.sendSecurityAlert, {
+            to: user.email,
+            subject: titleEn,
+            text: `${titleEn}\n${titleEs}\n\n${listing.title}\n${listing.serviceArea}\n\nView it in Crewkat: ${appPublicUrl()}/app`,
+          });
+        }
+      } catch { /* per-user notification is best-effort */ }
+    }
+  } catch { /* alert matching never fails the listing flow */ }
+}
+
 export const BaseActions = {
   getAuthBootstrap: defineAction({
     request: z.object({}),
@@ -1185,7 +1313,7 @@ export const BaseActions = {
     },
   }),
   signUp: defineAction({
-    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }) }),
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: z.string().trim().max(16).optional() }),
     response: z.object({ ok: z.literal(true), email: z.string(), verificationCode: z.string().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: z.boolean() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
@@ -1200,8 +1328,20 @@ export const BaseActions = {
       const firstAccount = users.length === 0;
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
       const counts = firstAccount ? await Promise.all([db.select({ id: schema.jobs.id }).from(schema.jobs), db.select({ id: schema.clients.id }).from(schema.clients), db.select({ id: schema.invoices.id }).from(schema.invoices)]) : [[], [], []];
-      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
+      // Referral loop: record the event now (rewarded=false); the +5 listing
+      // bonus lands when the referred user completes email verification.
+      const referrerCode = normalizeReferralCode(args.referralCode);
+      if (referrerCode) {
+        try {
+          const referrer = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.referralCode, referrerCode)).limit(1))[0];
+          if (referrer && referrer.id !== made.id) {
+            await db.insert(schema.referralEvents).values({ referrerUserId: referrer.id, referredUserId: made.id, rewarded: false, createdAt: now });
+          }
+        } catch { /* referral tracking is best-effort; never fail signup */ }
+      }
       const code = await issueAuthCode(ctx, made.id, "verify_email");
       const delivery = await deliverAuthCode(ctx, email, code, "verify_email");
       return { ok: true, email, verificationCode: delivery.displayCode, emailDelivery: delivery.emailDelivery, existingDataClaimed: counts.some((rows) => rows.length > 0) };
@@ -1218,6 +1358,23 @@ export const BaseActions = {
       if (!token || token.expiresAt.getTime() <= Date.now() || token.tokenHash !== await sha256(args.code)) throw new Error("That verification code is invalid or expired.");
       const now = new Date();
       await db.batch([db.update(schema.authTokens).set({ consumedAt: now }).where(eq(schema.authTokens.id, token.id)), db.update(schema.authUsers).set({ emailVerifiedAt: now, dataClaimedAt: now, updatedAt: now }).where(eq(schema.authUsers.id, user.id))]);
+      // Referral reward: the account is now active, so credit the referrer's
+      // company with +5 bonus marketplace listings (once per referred user).
+      try {
+        const event = (await db.select().from(schema.referralEvents).where(and(eq(schema.referralEvents.referredUserId, user.id), eq(schema.referralEvents.rewarded, false))).limit(1))[0];
+        if (event) {
+          const referrer = (await db.select({ companyId: schema.authUsers.companyId }).from(schema.authUsers).where(eq(schema.authUsers.id, event.referrerUserId)).limit(1))[0];
+          if (referrer) {
+            const row = (await db.select({ id: schema.settings.id }).from(schema.settings).where(eq(schema.settings.companyId, referrer.companyId)).limit(1))[0];
+            if (row) {
+              await db.update(schema.settings).set({ listingBonus: sql`${schema.settings.listingBonus} + 5`, updatedAt: now }).where(eq(schema.settings.id, row.id));
+            } else {
+              await db.insert(schema.settings).values({ companyId: referrer.companyId, companyName: "", listingBonus: 5, updatedAt: now });
+            }
+          }
+          await db.update(schema.referralEvents).set({ rewarded: true }).where(eq(schema.referralEvents.id, event.id));
+        }
+      } catch { /* referral reward is best-effort; never fail verification */ }
       return { ok: true };
     },
   }),
@@ -1515,7 +1672,19 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   cancelRecurringSchedule: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const companyId = workspaceIdentity(ctx).workspaceCompanyId; await db.update(schema.recurringInvoiceSchedules).set({ active: false }).where(and(eq(schema.recurringInvoiceSchedules.id, args.id), eq(schema.recurringInvoiceSchedules.companyId, companyId))); ctx.invalidateQueries(); return { ok: true }; }}),
   // Daily job log: one entry per job per day (upsert on (job_id, log_date)).
       updateInvoiceStatus: defineAction({ request: z.object({ id: z.number().int().positive(), status: invoiceStatusSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().update(schema.invoices).set({ status: args.status, updatedAt: new Date() }).where(eq(schema.invoices.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
-  toggleInvoicePaid: defineAction({ request: z.object({ id: z.number().int().positive(), paid: z.boolean() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const row=(await db.select().from(schema.invoices).where(eq(schema.invoices.id,args.id)).limit(1))[0];if(!row)throw new Error("Invoice not found.");const auto=(await db.select().from(schema.payments).where(eq(schema.payments.invoiceId,args.id))).filter(p=>p.note==="__paid_toggle__");if(args.paid){if(!auto.length){const all=await db.select().from(schema.payments).where(eq(schema.payments.invoiceId,args.id));const paid=all.reduce((sum,p)=>sum+Number(p.amount||0),0);const balance=Math.max(0,Number(row.total||0)-paid);if(balance>0)await db.insert(schema.payments).values({invoiceId:args.id,amount:balance.toFixed(2),paymentDate:new Date().toISOString().slice(0,10),method:"Marked paid",note:"__paid_toggle__",createdAt:new Date()});}await db.update(schema.invoices).set({status:"paid",updatedAt:new Date()}).where(eq(schema.invoices.id,args.id));}else{for(const payment of auto)await db.delete(schema.payments).where(eq(schema.payments.id,payment.id));await db.update(schema.invoices).set({status:"draft",updatedAt:new Date()}).where(eq(schema.invoices.id,args.id));}ctx.invalidateQueries();return{ok:true};} }),
+  toggleInvoicePaid: defineAction({ request: z.object({ id: z.number().int().positive(), paid: z.boolean() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const row=(await db.select().from(schema.invoices).where(eq(schema.invoices.id,args.id)).limit(1))[0];if(!row)throw new Error("Invoice not found.");const auto=(await db.select().from(schema.payments).where(eq(schema.payments.invoiceId,args.id))).filter(p=>p.note==="__paid_toggle__");if(args.paid){if(!auto.length){const all=await db.select().from(schema.payments).where(eq(schema.payments.invoiceId,args.id));const paid=all.reduce((sum,p)=>sum+Number(p.amount||0),0);const balance=Math.max(0,Number(row.total||0)-paid);if(balance>0)await db.insert(schema.payments).values({invoiceId:args.id,amount:balance.toFixed(2),paymentDate:new Date().toISOString().slice(0,10),method:"Marked paid",note:"__paid_toggle__",createdAt:new Date()});}await db.update(schema.invoices).set({status:"paid",updatedAt:new Date()}).where(eq(schema.invoices.id,args.id));
+      // Chunk D push: invoice marked paid.
+      if (row.status !== "paid") {
+        try {
+          const label = row.invoiceNumber || `INV-${row.id}`;
+          await sendPushToCompany(db, row.companyId, {
+            titleEn: `Invoice ${label} paid`, titleEs: `Factura ${label} pagada`,
+            bodyEn: `${row.clientName}`, bodyEs: `${row.clientName}`,
+            url: "/app/",
+          });
+        } catch { /* push is best-effort */ }
+      }
+    }else{for(const payment of auto)await db.delete(schema.payments).where(eq(schema.payments.id,payment.id));await db.update(schema.invoices).set({status:"draft",updatedAt:new Date()}).where(eq(schema.invoices.id,args.id));}ctx.invalidateQueries();return{ok:true};} }),
   duplicateInvoice: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const row=(await db.select().from(schema.invoices).where(eq(schema.invoices.id,args.id)).limit(1))[0];if(!row)throw new Error("Invoice not found.");const now=new Date();const made=await db.insert(schema.invoices).values({...row,id:undefined,quoteId:null,status:"draft",issueDate:now.toISOString().slice(0,10),dueDate:"",recurringFrequency:"none",nextDueDate:"",seriesId:null,parentInvoiceId:row.id,recurringEndDate:"",recurringCancelled:false,createdAt:now,updatedAt:now}).returning({id:schema.invoices.id});const next=made[0];if(!next)throw new Error("Could not duplicate invoice.");ctx.invalidateQueries();return{id:next.id};} }),
   duplicateQuote: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const row=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!row)throw new Error("Estimate not found.");const now=new Date();const made=await db.insert(schema.quotes).values({...row,id:undefined,jobId:null,seriesId:null,parentQuoteId:row.id,versionNumber:1,superseded:false,accepted:false,sentAt:"",automationStatus:"awaiting",lostReason:null,lostNote:"",createdAt:now,updatedAt:now}).returning({id:schema.quotes.id});const next=made[0];if(!next)throw new Error("Could not duplicate estimate.");ctx.invalidateQueries();return{id:next.id};} }),
   updateInvoiceDocument: defineAction({ request:z.object({id:z.number().int().positive(),invoiceNumber:z.string().trim().min(1).max(40).optional(),issueDate:z.string().max(10).optional(),dueDate:z.string().max(10).optional(),lineItems:z.array(invoiceItemSchema).min(1).max(50),discountType:adjustmentTypeSchema,discountValue:z.string().max(80),taxType:adjustmentTypeSchema,taxValue:z.string().max(80),subtotal:z.string().max(80),total:z.string().max(80),footnote:z.string().max(3000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const {id,...values}=args;await ctx.db<typeof schema>().update(schema.invoices).set({...values,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),subtotal:normalizeMoney(args.subtotal,"0.00"),discountValue:normalizeMoney(args.discountValue,"0.00"),taxValue:normalizeMoney(args.taxValue,"0.00"),total:normalizeMoney(args.total,"0.00"),updatedAt:new Date()}).where(eq(schema.invoices.id,id));ctx.invalidateQueries();return{ok:true};} }),
@@ -1538,7 +1707,20 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   deleteCrewTask: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().delete(schema.crewTasks).where(eq(schema.crewTasks.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   addVoiceNote: defineAction({ request: z.object({ jobId: z.number().int().positive(), title: z.string().trim().max(160), filename: z.string().min(1).max(240), contentType: z.string().min(1).max(100), durationSeconds: z.number().int().min(0).max(3600), dataBase64: z.string().min(1).max(20_000_000) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const key = `voice/${args.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); const rows = await ctx.db<typeof schema>().insert(schema.voiceNotes).values({ jobId: args.jobId, title: args.title, blobKey: key, filename: args.filename, contentType: args.contentType, durationSeconds: args.durationSeconds, createdAt: new Date() }).returning({ id: schema.voiceNotes.id }); const made = rows[0]; if (!made) throw new Error("Could not save voice note."); ctx.invalidateQueries(); return { id: made.id }; }}),
   deleteVoiceNote: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.voiceNotes).where(eq(schema.voiceNotes.id, args.id)).limit(1); const row = rows[0]; if (row) { await db.delete(schema.voiceNotes).where(eq(schema.voiceNotes.id, args.id)); await ctx.blobs.delete(row.blobKey); } ctx.invalidateQueries(); return { ok: true }; }}),
-  addPayment: defineAction({ request: z.object({ invoiceId: z.number().int().positive(), amount: z.string().trim().min(1).max(80), paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), method: z.string().trim().max(80), note: z.string().trim().max(500) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.insert(schema.payments).values({ ...args, amount: normalizeMoney(args.amount, "0.00"), createdAt: new Date() }).returning({ id: schema.payments.id }); const made = rows[0]; if (!made) throw new Error("Could not save payment."); const invoiceRows = await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1); const inv = invoiceRows[0]; if (inv) { const payments = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, inv.id)); const paid = payments.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(inv.total.replace(/[^0-9.-]/g, "") || 0); if (paid >= total && total > 0) await db.update(schema.invoices).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.invoices.id, inv.id)); } ctx.invalidateQueries(); return { id: made.id }; }}),
+  addPayment: defineAction({ request: z.object({ invoiceId: z.number().int().positive(), amount: z.string().trim().min(1).max(80), paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), method: z.string().trim().max(80), note: z.string().trim().max(500) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.insert(schema.payments).values({ ...args, amount: normalizeMoney(args.amount, "0.00"), createdAt: new Date() }).returning({ id: schema.payments.id }); const made = rows[0]; if (!made) throw new Error("Could not save payment."); const invoiceRows = await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1); const inv = invoiceRows[0]; if (inv) { const wasPaid = inv.status === "paid"; const payments = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, inv.id)); const paid = payments.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(inv.total.replace(/[^0-9.-]/g, "") || 0); const nowPaid = paid >= total && total > 0; if (nowPaid) await db.update(schema.invoices).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.invoices.id, inv.id));
+      // Chunk D push: invoice just paid in full.
+      if (nowPaid && !wasPaid) {
+        try {
+          const label = inv.invoiceNumber || `INV-${inv.id}`;
+          const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total);
+          await sendPushToCompany(db, inv.companyId, {
+            titleEn: `Invoice ${label} paid`, titleEs: `Factura ${label} pagada`,
+            bodyEn: `${inv.clientName} — ${amount}`, bodyEs: `${inv.clientName} — ${amount}`,
+            url: "/app/",
+          });
+        } catch { /* push is best-effort */ }
+      }
+    } ctx.invalidateQueries(); return { id: made.id }; }}),
   deletePayment: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().delete(schema.payments).where(eq(schema.payments.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   updateInvoiceRecurrence: defineAction({ request: z.object({ id: z.number().int().positive(), recurringFrequency: z.enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: z.string().max(10), recurringEndDate: z.string().max(10).default("") }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db=ctx.db<typeof schema>(); const row=(await db.select().from(schema.invoices).where(eq(schema.invoices.id,args.id)).limit(1))[0]; if(!row)throw new Error("Invoice not found."); await db.update(schema.invoices).set({ recurringFrequency: args.recurringFrequency, nextDueDate: args.recurringFrequency === "none" ? "" : args.nextDueDate, recurringEndDate: args.recurringFrequency === "none" ? "" : args.recurringEndDate, recurringCancelled: args.recurringFrequency === "none", seriesId: row.seriesId ?? row.id, parentInvoiceId: null, updatedAt: new Date() }).where(eq(schema.invoices.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   cancelRecurringInvoice: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.invoices).set({recurringCancelled:true,recurringFrequency:"none",nextDueDate:"",updatedAt:new Date()}).where(eq(schema.invoices.id,args.id));ctx.invalidateQueries();return{ok:true};}}),
@@ -2042,14 +2224,14 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // can show the right notice instead of an error.
   marketplaceGate: defineAction({
     request: z.object({}),
-    response: z.object({ enabled: z.boolean(), freeListingLimit: z.number(), myActiveListingCount: z.number() }),
+    response: z.object({ enabled: z.boolean(), freeListingLimit: z.number(), bonusListings: z.number(), effectiveListingLimit: z.number(), myActiveListingCount: z.number() }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
       const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
-      const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+      const { base, bonus, effective } = await getEffectiveListingLimit(db);
       const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
-      return { enabled, freeListingLimit, myActiveListingCount: mine.length };
+      return { enabled, freeListingLimit: base, bonusListings: bonus, effectiveListingLimit: effective, myActiveListingCount: mine.length };
     },
   }),
 
@@ -2101,9 +2283,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db<typeof schema>(); const now = new Date();
       await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
-        const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+        const { effective, bonus } = await getEffectiveListingLimit(db);
         const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
-        if (mine.length >= freeListingLimit) throw new Error(`Your free plan includes ${freeListingLimit} active Marketplace listing${freeListingLimit === 1 ? "" : "s"}. Upgrade to Premium for unlimited listings.`);
+        if (mine.length >= effective) throw new Error(`Your free plan includes ${effective} active Marketplace listing${effective === 1 ? "" : "s"}${bonus > 0 ? ` (${bonus} bonus from referrals)` : ""}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
@@ -2124,8 +2306,13 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         throw error;
       }
       ctx.invalidateQueries();
+      // Chunk D: only approved/visible listings trigger saved-search alerts.
+      if (moderationStatus === "active") {
+        await notifyAlertMatches(ctx, { id: made.id, title: args.title, description: args.description, category: args.category, serviceArea: args.serviceArea, authorUserId: identity.workspaceUserId });
+      }
       return { id: made.id, moderation: { flagged: !scan.clean, status: moderationStatus, reasons: scan.reasons } };
     },
+    privileged: [privileged.sendSecurityAlert],
   }),
   updateMarketplaceListing: defineAction({
     request: z.object({
@@ -2323,16 +2510,32 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args) {
       if (!args.body && !args.image) throw new Error("Write a message or add a photo.");
       const db = ctx.db<typeof schema>();
-      const listing = (await db.select({ id: schema.marketplaceListings.id, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      const listing = (await db.select({ id: schema.marketplaceListings.id, companyId: schema.marketplaceListings.companyId, title: schema.marketplaceListings.title }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) throw new Error("This listing is no longer available.");
-      const isOwner = listing.companyId === workspaceIdentity(ctx).workspaceCompanyId;
+      const identity = workspaceIdentity(ctx);
+      const isOwner = listing.companyId === identity.workspaceCompanyId;
       const sender = isOwner ? "me" : "other";
-      const senderCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const senderCompanyId = identity.workspaceCompanyId;
       const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key) await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
       try {
         const made = (await db.insert(schema.marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, senderCompanyId, readAt: isOwner ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
         if (!made) throw new Error("The message could not be saved.");
+        // Chunk D push: new marketplace inquiry / reply.
+        try {
+          const titleEn = sender === "other" ? `New inquiry: ${listing.title}` : `New reply: ${listing.title}`;
+          const titleEs = sender === "other" ? `Nueva consulta: ${listing.title}` : `Nueva respuesta: ${listing.title}`;
+          const preview = args.body.length > 120 ? `${args.body.slice(0, 120)}…` : args.body;
+          if (sender === "other") {
+            await sendPushToCompany(db, listing.companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+          } else {
+            const others = await db.select({ senderCompanyId: schema.marketplaceMessages.senderCompanyId }).from(schema.marketplaceMessages).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other")));
+            const companies = [...new Set(others.map((row) => row.senderCompanyId).filter((value): value is number => typeof value === "number" && value !== identity.workspaceCompanyId))];
+            for (const companyId of companies) {
+              await sendPushToCompany(db, companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+            }
+          }
+        } catch { /* push is best-effort */ }
         ctx.invalidateQueries(); return { id: made.id };
       } catch (error) { if (key) await ctx.blobs.delete(key).catch(() => {}); throw error; }
     },
@@ -2359,6 +2562,136 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160), neededBy: z.string().trim().max(80), companyName: z.string().trim().min(1).max(180), companyPhone: z.string().trim().max(80) }),
     response: z.object({ id: z.number() }),
     async handler(ctx, args) { const now = new Date(); const made = (await ctx.db<typeof schema>().insert(schema.marketplaceRequests).values({ ...args, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceRequests.id }))[0]; if (!made) throw new Error("The request could not be saved."); ctx.invalidateQueries(); return { id: made.id }; },
+  }),
+
+  // -------------------------------------------------------------------------
+  // Chunk D: referral loop, marketplace alerts, notifications, web push.
+  // -------------------------------------------------------------------------
+
+  getReferralStats: defineAction({
+    request: z.object({}),
+    response: z.object({ referralCode: z.string(), joinedCount: z.number(), bonusListings: z.number(), baseLimit: z.number(), effectiveLimit: z.number() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      let code = (await db.select({ referralCode: schema.authUsers.referralCode }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0]?.referralCode ?? null;
+      if (!code) {
+        code = await uniqueReferralCode(db);
+        await db.update(schema.authUsers).set({ referralCode: code, updatedAt: new Date() }).where(eq(schema.authUsers.id, identity.workspaceUserId));
+      }
+      const events = await db.select({ id: schema.referralEvents.id }).from(schema.referralEvents).where(eq(schema.referralEvents.referrerUserId, identity.workspaceUserId));
+      const { base, bonus, effective } = await getEffectiveListingLimit(db);
+      return { referralCode: code, joinedCount: events.length, bonusListings: bonus, baseLimit: base, effectiveLimit: effective };
+    },
+  }),
+
+  saveMarketplaceAlert: defineAction({
+    request: z.object({ keyword: z.string().trim().min(2).max(80), category: marketplaceCategorySchema.nullable().default(null), serviceArea: z.string().trim().max(120).default("") }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
+      const existing = await db.select({ id: schema.marketplaceAlerts.id }).from(schema.marketplaceAlerts).where(eq(schema.marketplaceAlerts.userId, identity.workspaceUserId));
+      if (existing.length >= 20) throw new Error("You can save up to 20 alerts.");
+      const duplicate = (await db.select({ id: schema.marketplaceAlerts.id }).from(schema.marketplaceAlerts).where(and(
+        eq(schema.marketplaceAlerts.userId, identity.workspaceUserId),
+        eq(schema.marketplaceAlerts.keyword, args.keyword),
+      )).limit(1))[0];
+      if (duplicate) throw new Error("You already have an alert for that keyword.");
+      const made = (await db.insert(schema.marketplaceAlerts).values({
+        userId: identity.workspaceUserId,
+        keyword: args.keyword,
+        category: args.category,
+        serviceArea: args.serviceArea.trim() || null,
+        createdAt: new Date(),
+      }).returning({ id: schema.marketplaceAlerts.id }))[0];
+      if (!made) throw new Error("The alert could not be saved.");
+      return { id: made.id };
+    },
+  }),
+
+  listMarketplaceAlerts: defineAction({
+    request: z.object({}),
+    response: z.object({ alerts: z.array(z.object({ id: z.number(), keyword: z.string(), category: z.string().nullable(), serviceArea: z.string().nullable(), createdAt: z.string() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.marketplaceAlerts).where(eq(schema.marketplaceAlerts.userId, identity.workspaceUserId)).orderBy(desc(schema.marketplaceAlerts.createdAt));
+      return { alerts: rows.map((row) => ({ id: row.id, keyword: row.keyword, category: row.category, serviceArea: row.serviceArea, createdAt: row.createdAt.toISOString() })) };
+    },
+  }),
+
+  deleteMarketplaceAlert: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      await ctx.db<typeof schema>().delete(schema.marketplaceAlerts).where(and(eq(schema.marketplaceAlerts.id, args.id), eq(schema.marketplaceAlerts.userId, identity.workspaceUserId)));
+      return { ok: true };
+    },
+  }),
+
+  listNotifications: defineAction({
+    request: z.object({}),
+    response: z.object({ unreadCount: z.number(), notifications: z.array(z.object({ id: z.number(), kind: z.string(), titleEn: z.string(), titleEs: z.string(), link: z.string(), isRead: z.boolean(), createdAt: z.string() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.userNotifications).where(eq(schema.userNotifications.userId, identity.workspaceUserId)).orderBy(desc(schema.userNotifications.createdAt)).limit(50);
+      return {
+        unreadCount: rows.filter((row) => !row.isRead).length,
+        notifications: rows.map((row) => ({ id: row.id, kind: row.kind, titleEn: row.titleEn, titleEs: row.titleEs, link: row.link, isRead: row.isRead, createdAt: row.createdAt.toISOString() })),
+      };
+    },
+  }),
+
+  markNotificationsRead: defineAction({
+    request: z.object({ ids: z.array(z.number().int().positive()).max(100).default([]) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const condition = args.ids.length
+        ? and(eq(schema.userNotifications.userId, identity.workspaceUserId), inArray(schema.userNotifications.id, args.ids))
+        : eq(schema.userNotifications.userId, identity.workspaceUserId);
+      await db.update(schema.userNotifications).set({ isRead: true }).where(condition);
+      return { ok: true };
+    },
+  }),
+
+  getVapidPublicKey: defineAction({
+    request: z.object({}),
+    response: z.object({ publicKey: z.string().nullable() }),
+    async handler() {
+      return { publicKey: getVapidPublicKey() };
+    },
+  }),
+
+  savePushSubscription: defineAction({
+    request: z.object({ endpoint: z.string().url().max(500), p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(200) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const existing = (await db.select({ id: schema.pushSubscriptions.id }).from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.endpoint, args.endpoint)).limit(1))[0];
+      if (existing) {
+        await db.update(schema.pushSubscriptions).set({ userId: identity.workspaceUserId, p256dh: args.p256dh, auth: args.auth }).where(eq(schema.pushSubscriptions.id, existing.id));
+      } else {
+        await db.insert(schema.pushSubscriptions).values({ userId: identity.workspaceUserId, endpoint: args.endpoint, p256dh: args.p256dh, auth: args.auth, createdAt: new Date() });
+      }
+      return { ok: true };
+    },
+  }),
+
+  removePushSubscription: defineAction({
+    request: z.object({ endpoint: z.string().trim().max(500) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      await ctx.db<typeof schema>().delete(schema.pushSubscriptions).where(and(eq(schema.pushSubscriptions.endpoint, args.endpoint), eq(schema.pushSubscriptions.userId, identity.workspaceUserId)));
+      return { ok: true };
+    },
   }),
 
   // -------------------------------------------------------------------------
@@ -2424,9 +2757,15 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       }).where(eq(schema.marketplaceListings.id, args.listingId));
       await db.update(schema.marketplaceFlags).set({ status: args.decision === "approve" ? "reviewed_ok" : "reviewed_removed" }).where(and(eq(schema.marketplaceFlags.listingId, args.listingId), eq(schema.marketplaceFlags.status, "open")));
       await logAdminAction(db, admin.id, args.decision === "approve" ? "listing.approve" : "listing.remove", "marketplace_listing", String(args.listingId), args.note || `${listing.title}`);
+      // Chunk D: an approved listing becomes visible, so it triggers alerts.
+      if (status === "active") {
+        const ownerUser = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.companyId, listing.companyId)).limit(1))[0];
+        await notifyAlertMatches(ctx, { id: listing.id, title: listing.title, description: listing.description, category: listing.category, serviceArea: listing.serviceArea, authorUserId: ownerUser?.id ?? -1 });
+      }
       ctx.invalidateQueries();
       return { ok: true, status };
     },
+    privileged: [privileged.sendSecurityAlert],
   }),
   adminUsersList: defineAction({
     request: z.object({ search: z.string().trim().max(120).default(""), page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(20) }),

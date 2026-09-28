@@ -61,6 +61,10 @@
 }
 * { box-sizing: border-box; }
 html, body, #root, [data-generated-space-root], .hatch-space-root { margin: 0; width: 100%; height: 100%; min-height: 0; overflow: hidden; overscroll-behavior: none; background: var(--bg); color: var(--text); }
+html { -webkit-tap-highlight-color: transparent; }
+/* iOS Safari zooms any focused input smaller than 16px; keep all form fields
+   at 16px+ so the layout stays put when the keyboard opens. */
+input, textarea, select { font-size: 16px; }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
@@ -2176,3 +2180,36 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
   .home-quick-access > button { grid-template-columns: 34px minmax(0,1fr); gap: 8px; padding-inline: 10px; }
   .home-access-icon { width: 34px; height: 34px; }
 }
+
+/* Chunk D: offline mode banner + "last updated" note. */
+.offline-banner {
+  position: sticky; top: 0; z-index: 60;
+  background: #8a5a00; color: #fff;
+  font-size: 13px; font-weight: 600; text-align: center;
+  padding: 8px 12px calc(8px + env(safe-area-inset-top));
+  margin: calc(-1 * env(safe-area-inset-top)) -12px 0;
+}
+.offline-note {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12px; color: var(--dim); padding: 6px 12px;
+}
+.offline-note .dot { width: 7px; height: 7px; border-radius: 50%; background: #c98a00; flex: none; }
+
+/* Chunk D: referral panel + push toggle hint. */
+.referral-link-row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.referral-link-row input { flex: 1; min-width: 0; }
+.switch-row span small { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
+
+/* Chunk D: marketplace alerts + notifications. */
+.market-alerts .wanted-form { margin-bottom: 16px; }
+.alerts-list { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.alerts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.alerts-list li.unread { border-color: var(--accent); }
+.alerts-list li span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alerts-list li strong { font-size: 14px; }
+.alerts-list li small { font-size: 12px; color: var(--dim); }
+.alerts-list li .danger { flex: none; background: none; border: 0; color: var(--danger, #c0392b); font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px; }
+.notifications-list li { padding: 0; }
+.notifications-list li button { all: unset; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 12px; cursor: pointer; box-sizing: border-box; }
+.notifications-list li strong { font-size: 14px; }
+.notifications-list li small { font-size: 12px; color: var(--dim); }

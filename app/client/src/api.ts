@@ -165,7 +165,57 @@ type PortalHardenedApi = Omit<BaseApi, "createPortalLink"> & {
 // The hosted Crewkat server has the hardened portal action contracts. They are
 // declared here while this artifact's client remains type-linked to its local
 // action module; requests still cross the normal typed actions boundary.
-export const api = createActionClient<typeof Actions>({ fetch: authenticatedFetch, endpoint: "/actions" }) as PortalHardenedApi;
+const baseApi = createActionClient<typeof Actions>({ fetch: authenticatedFetch, endpoint: "/actions" }) as PortalHardenedApi;
+
+// Chunk D offline mode v1: the last successful Jobs/Clients/Invoices/Estimates
+// list responses are cached in localStorage. When the network fails (fetch
+// throws TypeError), the cached list is served instead and its timestamp is
+// recorded so screens can render a "last updated" note. Mutations are NOT
+// queued — they fail loudly while offline.
+const OFFLINE_CACHED_ACTIONS: ReadonlySet<string> = new Set(["listJobs", "listClients", "listInvoices", "listQuotes"]);
+const offlineServedAt: Record<string, number> = {};
+
+/** Unix-ms timestamp when `action` last served its list from the offline cache, or null. */
+export function offlineCacheTimestamp(action: string): number | null {
+  return offlineServedAt[action] ?? null;
+}
+
+function offlineCacheKey(action: string): string {
+  return `crewkat-offline-cache:${action}`;
+}
+
+export const api: PortalHardenedApi = new Proxy(baseApi, {
+  get(target: PortalHardenedApi, property: string | symbol, receiver: unknown) {
+    const value = Reflect.get(target as object, property, receiver);
+    if (typeof property !== "string" || !OFFLINE_CACHED_ACTIONS.has(property) || typeof value !== "function") return value;
+    const action = value as (...args: unknown[]) => Promise<unknown>;
+    return async (...callArgs: unknown[]) => {
+      try {
+        const result = await action.apply(target, callArgs);
+        try {
+          window.localStorage.setItem(offlineCacheKey(property), JSON.stringify({ at: Date.now(), data: result }));
+          delete offlineServedAt[property];
+        } catch { /* storage unavailable */ }
+        return result;
+      } catch (error) {
+        // fetch() throws TypeError on network failure. Anything else (a real
+        // action error from the server) must propagate normally.
+        if (!(error instanceof TypeError)) throw error;
+        try {
+          const raw = window.localStorage.getItem(offlineCacheKey(property));
+          if (raw) {
+            const parsed = JSON.parse(raw) as { at: number; data: unknown };
+            if (parsed && typeof parsed.at === "number" && parsed.data) {
+              offlineServedAt[property] = parsed.at;
+              return parsed.data;
+            }
+          }
+        } catch { /* fall through to the original error */ }
+        throw error;
+      }
+    };
+  },
+});
 
 // Re-exported for convenience so client code can do
 //

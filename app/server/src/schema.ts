@@ -267,6 +267,7 @@ export const settings = sqliteTable("settings", {
   simpleMode: integer("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
+  listingBonus: integer("listing_bonus").notNull().default(0),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -737,8 +738,50 @@ export const authUsers = sqliteTable("auth_users", {
   suspendedAt: integer("suspended_at", { mode: "timestamp_ms" }),
   marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
+  referralCode: text("referral_code"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Chunk D: referral loop — one row per successful referred signup.
+export const referralEvents = sqliteTable("referral_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  referrerUserId: integer("referrer_user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  referredUserId: integer("referred_user_id").notNull().unique().references(() => authUsers.id, { onDelete: "cascade" }),
+  rewarded: integer("rewarded", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Chunk D: marketplace saved-search alerts (per user).
+export const marketplaceAlerts = sqliteTable("marketplace_alerts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  keyword: text("keyword").notNull(),
+  category: text("category"),
+  serviceArea: text("service_area"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Chunk D: in-app notifications (alert matches, etc.).
+export const userNotifications = sqliteTable("user_notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("alert_match"),
+  titleEn: text("title_en").notNull().default(""),
+  titleEs: text("title_es").notNull().default(""),
+  link: text("link").notNull().default(""),
+  isRead: integer("is_read", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Chunk D: web push subscriptions (VAPID).
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 export const authSessions = sqliteTable("auth_sessions", {

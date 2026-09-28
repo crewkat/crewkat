@@ -6000,6 +6000,7 @@ function strFromU8(dat, latin1) {
 
 // src/actions.ts
 import { execFile } from "child_process";
+import { randomInt } from "crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import { basename, join } from "path";
@@ -6842,6 +6843,7 @@ var settings = sqliteTable("settings", {
   simpleMode: integer2("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
+  listingBonus: integer2("listing_bonus").notNull().default(0),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var timeEntries = sqliteTable("time_entries", {
@@ -7420,8 +7422,42 @@ var authUsers = sqliteTable("auth_users", {
   suspendedAt: integer2("suspended_at", { mode: "timestamp_ms" }),
   marketplaceTermsAcceptedAt: integer2("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
+  referralCode: text("referral_code"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var referralEvents = sqliteTable("referral_events", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  referrerUserId: integer2("referrer_user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  referredUserId: integer2("referred_user_id").notNull().unique().references(() => authUsers.id, { onDelete: "cascade" }),
+  rewarded: integer2("rewarded", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var marketplaceAlerts = sqliteTable("marketplace_alerts", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  keyword: text("keyword").notNull(),
+  category: text("category"),
+  serviceArea: text("service_area"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var userNotifications = sqliteTable("user_notifications", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("alert_match"),
+  titleEn: text("title_en").notNull().default(""),
+  titleEs: text("title_es").notNull().default(""),
+  link: text("link").notNull().default(""),
+  isRead: integer2("is_read", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var authSessions = sqliteTable("auth_sessions", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -7736,6 +7772,181 @@ ${section.paragraphs.join(`
 
 `);
 
+// src/push.ts
+import { createCipheriv, createECDH, createHmac, createPrivateKey, createSign, randomBytes } from "crypto";
+function b64urlEncode(data) {
+  return Buffer.from(data).toString("base64url");
+}
+function b64urlDecode(value) {
+  return Buffer.from(value, "base64url");
+}
+function getVapidConfig() {
+  const subject = (process.env.VAPID_SUBJECT ?? "").trim() || "mailto:support@crewkat.com";
+  const rawPrivate = (process.env.VAPID_PRIVATE_KEY ?? "").trim();
+  const rawPublic = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
+  if (!rawPrivate || !rawPublic)
+    return null;
+  try {
+    let d;
+    if (rawPrivate.startsWith("{")) {
+      const jwk = JSON.parse(rawPrivate);
+      if (typeof jwk.d !== "string")
+        return null;
+      d = b64urlDecode(jwk.d);
+    } else {
+      d = b64urlDecode(rawPrivate);
+    }
+    if (d.length !== 32)
+      return null;
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(d);
+    const publicUncompressed = ecdh.getPublicKey();
+    if (publicUncompressed.length !== 65 || publicUncompressed[0] !== 4)
+      return null;
+    const x = publicUncompressed.subarray(1, 33);
+    const y = publicUncompressed.subarray(33, 65);
+    return {
+      subject,
+      privateJwk: { kty: "EC", crv: "P-256", x: b64urlEncode(x), y: b64urlEncode(y), d: b64urlEncode(d) },
+      publicUncompressed
+    };
+  } catch {
+    return null;
+  }
+}
+function getVapidPublicKey() {
+  const key = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
+  return key || null;
+}
+function hkdfExpand(prk, info, length) {
+  const n = Math.ceil(length / 32);
+  let t = Buffer.alloc(0);
+  let okm = Buffer.alloc(0);
+  for (let i = 1;i <= n; i++) {
+    t = createHmac("sha256", prk).update(Buffer.concat([t, info, Buffer.from([i])])).digest();
+    okm = Buffer.concat([okm, t]);
+  }
+  return okm.subarray(0, length);
+}
+function encryptAes128Gcm(receiverPublicKey, authSecret, plaintext) {
+  if (receiverPublicKey.length !== 65 || receiverPublicKey[0] !== 4)
+    throw new Error("Invalid receiver public key.");
+  if (authSecret.length !== 16)
+    throw new Error("Invalid auth secret.");
+  const server = createECDH("prime256v1");
+  server.generateKeys();
+  const serverPublicKey = server.getPublicKey();
+  const sharedSecret = server.computeSecret(receiverPublicKey);
+  const prk = createHmac("sha256", authSecret).update(sharedSecret).digest();
+  const lenPrefixed = (key) => Buffer.concat([Buffer.from([key.length >> 8 & 255, key.length & 255]), key]);
+  const context = Buffer.concat([Buffer.from("P-256\x00", "utf8"), lenPrefixed(receiverPublicKey), lenPrefixed(serverPublicKey)]);
+  const cekInfo = Buffer.concat([Buffer.from("Content-Encoding: aes128gcm\x00", "utf8"), context]);
+  const nonceInfo = Buffer.concat([Buffer.from("Content-Encoding: nonce\x00", "utf8"), context]);
+  const cek = hkdfExpand(prk, cekInfo, 16);
+  const nonce = hkdfExpand(prk, nonceInfo, 12);
+  const cipher = createCipheriv("aes-128-gcm", cek, nonce);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  return { salt: randomBytes(16), serverPublicKey, ciphertext };
+}
+function createVapidJwt(config, endpoint) {
+  const audience = new URL(endpoint).origin;
+  const header = b64urlEncode(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" }), "utf8"));
+  const payload = b64urlEncode(Buffer.from(JSON.stringify({
+    aud: audience,
+    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
+    sub: config.subject
+  }), "utf8"));
+  const unsignedToken = `${header}.${payload}`;
+  const signer = createSign("sha256");
+  signer.update(unsignedToken);
+  signer.end();
+  const signature = signer.sign({
+    key: createPrivateKey({ key: config.privateJwk, format: "jwk" }),
+    dsaEncoding: "ieee-p1363"
+  });
+  return `${unsignedToken}.${b64urlEncode(signature)}`;
+}
+async function sendPushToUser(db, userId, message) {
+  const config = getVapidConfig();
+  if (!config)
+    return { sent: 0, removed: 0, skipped: true };
+  let subs;
+  try {
+    subs = await db.select({
+      id: pushSubscriptions.id,
+      endpoint: pushSubscriptions.endpoint,
+      p256dh: pushSubscriptions.p256dh,
+      auth: pushSubscriptions.auth
+    }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  } catch {
+    return { sent: 0, removed: 0, skipped: true };
+  }
+  if (!subs.length)
+    return { sent: 0, removed: 0, skipped: false };
+  const plaintext = Buffer.from(JSON.stringify({
+    titleEn: message.titleEn,
+    titleEs: message.titleEs,
+    bodyEn: message.bodyEn,
+    bodyEs: message.bodyEs,
+    url: message.url ?? "/app/",
+    listingId: message.listingId ?? null
+  }), "utf8");
+  let sent = 0;
+  let removed = 0;
+  await Promise.all(subs.map(async (sub) => {
+    try {
+      const receiverKey = b64urlDecode(sub.p256dh);
+      const authSecret = b64urlDecode(sub.auth);
+      const { salt, serverPublicKey, ciphertext } = encryptAes128Gcm(receiverKey, authSecret, Buffer.concat([plaintext, Buffer.from([2])]));
+      const record = Buffer.concat([
+        salt,
+        Buffer.from([0, 0, 16, 0]),
+        Buffer.from([serverPublicKey.length]),
+        serverPublicKey,
+        ciphertext
+      ]);
+      const jwt = createVapidJwt(config, sub.endpoint);
+      const response = await fetch(sub.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `vapid t=${jwt}, k=${b64urlEncode(config.publicUncompressed)}`,
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "aes128gcm",
+          TTL: "2419200",
+          Urgency: "normal"
+        },
+        body: record,
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.status === 404 || response.status === 410) {
+        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+        removed++;
+      } else if (response.ok) {
+        sent++;
+      }
+    } catch {}
+  }));
+  return { sent, removed, skipped: false };
+}
+async function sendPushToCompany(db, companyId, message, excludeUserId) {
+  let users;
+  try {
+    users = await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, companyId));
+  } catch {
+    return { sent: 0, removed: 0, skipped: true };
+  }
+  const total = { sent: 0, removed: 0, skipped: false };
+  for (const user of users) {
+    if (excludeUserId !== undefined && user.id === excludeUserId)
+      continue;
+    const result = await sendPushToUser(db, user.id, message);
+    total.sent += result.sent;
+    total.removed += result.removed;
+  }
+  return total;
+}
+
 // src/actions.ts
 var stageSchema = _enum(["before", "during", "after"]);
 var languageSchema = _enum(["en", "es"]);
@@ -7998,6 +8209,18 @@ async function requirePortalAccess(ctx, token, opts) {
     const lastView = (await db.select({ occurredAt: portalLinkEvents.occurredAt }).from(portalLinkEvents).where(and(eq(portalLinkEvents.linkId, access.id), eq(portalLinkEvents.eventType, "view"))).orderBy(desc(portalLinkEvents.occurredAt)).limit(1))[0];
     if (!lastView || now.getTime() - lastView.occurredAt.getTime() >= PORTAL_VIEW_EVENT_THROTTLE_MS) {
       await db.insert(portalLinkEvents).values({ linkId: access.id, eventType: "view", userAgent: (portalMeta(ctx).userAgent ?? "").slice(0, 300), occurredAt: now });
+      try {
+        const job = (await db.select({ companyId: jobs.companyId, jobType: jobs.jobType, jobAddress: jobs.jobAddress }).from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
+        if (job) {
+          await sendPushToCompany(db, job.companyId, {
+            titleEn: "Client viewed your portal",
+            titleEs: "Un cliente vio tu portal",
+            bodyEn: `${job.jobType} \u2014 ${job.jobAddress}`,
+            bodyEs: `${job.jobType} \u2014 ${job.jobAddress}`,
+            url: "/app/"
+          });
+        }
+      } catch {}
     }
   }
   return access;
@@ -8366,6 +8589,39 @@ async function issueAuthCode(ctx, userId, purpose) {
 async function deliverAuthCode(ctx, email, code, purpose) {
   const result = await ctx.executePrivileged(privileged.sendAuthEmail, { to: email, code, purpose });
   return authCodeClientResult(code, result.delivery);
+}
+var REFERRAL_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function makeReferralCode() {
+  let code = "";
+  for (let i = 0;i < 8; i++)
+    code += REFERRAL_CODE_ALPHABET[randomInt(REFERRAL_CODE_ALPHABET.length)];
+  return code;
+}
+async function uniqueReferralCode(db) {
+  for (let attempt = 0;attempt < 25; attempt++) {
+    const code = makeReferralCode();
+    const existing = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.referralCode, code)).limit(1))[0];
+    if (!existing)
+      return code;
+  }
+  throw new Error("Could not generate a referral code. Try again.");
+}
+function normalizeReferralCode(raw) {
+  const code = (raw ?? "").trim().toUpperCase();
+  return /^[A-Z0-9]{8}$/.test(code) ? code : null;
+}
+async function getCompanyListingBonus(db) {
+  const row = (await db.select({ listingBonus: settings.listingBonus }).from(settings).limit(1))[0];
+  return row?.listingBonus ?? 0;
+}
+async function getEffectiveListingLimit(db) {
+  const base = await getIntPlatformSetting(db, "free_listing_limit");
+  const bonus = await getCompanyListingBonus(db);
+  return { base, bonus, effective: base + bonus };
+}
+function appPublicUrl() {
+  const configured = (process.env.CREWKAT_PUBLIC_URL ?? "").trim().replace(/\/$/, "");
+  return configured || "https://crewkat.com";
 }
 var GLOBAL_MARKETPLACE_READ_TABLES = new Set([
   marketplaceListings,
@@ -8978,6 +9234,69 @@ function shiftDateByTemplateOffset(templateDue, templateIssue, newIssue) {
     return "";
   return new Date(new Date(`${newIssue}T12:00:00`).getTime() + offsetMs).toISOString().slice(0, 10);
 }
+function alertMatchesListing(alert, listing) {
+  const keyword = alert.keyword.trim().toLowerCase();
+  if (!keyword)
+    return false;
+  const haystack = `${listing.title}
+${listing.description}`.toLowerCase();
+  if (!haystack.includes(keyword))
+    return false;
+  if (alert.category && alert.category !== listing.category)
+    return false;
+  if (alert.serviceArea && !listing.serviceArea.toLowerCase().includes(alert.serviceArea.trim().toLowerCase()))
+    return false;
+  return true;
+}
+async function createUserNotification(db, userId, kind, titleEn, titleEs, link) {
+  const existing = (await db.select({ id: userNotifications.id }).from(userNotifications).where(and(eq(userNotifications.userId, userId), eq(userNotifications.kind, kind), eq(userNotifications.link, link))).limit(1))[0];
+  if (existing)
+    return null;
+  const rows = await db.insert(userNotifications).values({ userId, kind, titleEn, titleEs, link, isRead: false, createdAt: new Date }).returning({ id: userNotifications.id });
+  return rows[0]?.id ?? null;
+}
+async function notifyAlertMatches(ctx, listing) {
+  try {
+    const db = ctx.db();
+    const alerts = await db.select().from(marketplaceAlerts);
+    const matched = alerts.filter((alert) => alert.userId !== listing.authorUserId && alertMatchesListing(alert, listing));
+    if (!matched.length)
+      return;
+    const link = `marketplace:${listing.id}`;
+    const userIds = [...new Set(matched.map((alert) => alert.userId))];
+    for (const userId of userIds) {
+      try {
+        const titleEn = `New match: ${listing.title}`;
+        const titleEs = `Nueva coincidencia: ${listing.title}`;
+        const created = await createUserNotification(db, userId, "alert_match", titleEn, titleEs, link);
+        if (!created)
+          continue;
+        await sendPushToUser(db, userId, {
+          titleEn,
+          titleEs,
+          bodyEn: listing.serviceArea,
+          bodyEs: listing.serviceArea,
+          url: "/app/",
+          listingId: listing.id
+        });
+        const user = (await db.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, userId)).limit(1))[0];
+        if (user?.email) {
+          await ctx.executePrivileged(privileged.sendSecurityAlert, {
+            to: user.email,
+            subject: titleEn,
+            text: `${titleEn}
+${titleEs}
+
+${listing.title}
+${listing.serviceArea}
+
+View it in Crewkat: ${appPublicUrl()}/app`
+          });
+        }
+      } catch {}
+    }
+  } catch {}
+}
 var BaseActions = {
   getAuthBootstrap: defineAction({
     request: object({}),
@@ -8996,7 +9315,7 @@ var BaseActions = {
     }
   }),
   signUp: defineAction({
-    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }) }),
+    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: string2().trim().max(16).optional() }),
     response: object({ ok: literal(true), email: string2(), verificationCode: string2().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: boolean2() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args) {
@@ -9013,9 +9332,19 @@ var BaseActions = {
       const firstAccount = users.length === 0;
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
       const counts = firstAccount ? await Promise.all([db.select({ id: jobs.id }).from(jobs), db.select({ id: clients.id }).from(clients), db.select({ id: invoices.id }).from(invoices)]) : [[], [], []];
-      const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
       if (!made)
         throw new Error("The account could not be created.");
+      const referrerCode = normalizeReferralCode(args.referralCode);
+      if (referrerCode) {
+        try {
+          const referrer = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.referralCode, referrerCode)).limit(1))[0];
+          if (referrer && referrer.id !== made.id) {
+            await db.insert(referralEvents).values({ referrerUserId: referrer.id, referredUserId: made.id, rewarded: false, createdAt: now });
+          }
+        } catch {}
+      }
       const code = await issueAuthCode(ctx, made.id, "verify_email");
       const delivery = await deliverAuthCode(ctx, email, code, "verify_email");
       return { ok: true, email, verificationCode: delivery.displayCode, emailDelivery: delivery.emailDelivery, existingDataClaimed: counts.some((rows) => rows.length > 0) };
@@ -9035,6 +9364,21 @@ var BaseActions = {
         throw new Error("That verification code is invalid or expired.");
       const now = new Date;
       await db.batch([db.update(authTokens).set({ consumedAt: now }).where(eq(authTokens.id, token.id)), db.update(authUsers).set({ emailVerifiedAt: now, dataClaimedAt: now, updatedAt: now }).where(eq(authUsers.id, user.id))]);
+      try {
+        const event = (await db.select().from(referralEvents).where(and(eq(referralEvents.referredUserId, user.id), eq(referralEvents.rewarded, false))).limit(1))[0];
+        if (event) {
+          const referrer = (await db.select({ companyId: authUsers.companyId }).from(authUsers).where(eq(authUsers.id, event.referrerUserId)).limit(1))[0];
+          if (referrer) {
+            const row = (await db.select({ id: settings.id }).from(settings).where(eq(settings.companyId, referrer.companyId)).limit(1))[0];
+            if (row) {
+              await db.update(settings).set({ listingBonus: sql`${settings.listingBonus} + 5`, updatedAt: now }).where(eq(settings.id, row.id));
+            } else {
+              await db.insert(settings).values({ companyId: referrer.companyId, companyName: "", listingBonus: 5, updatedAt: now });
+            }
+          }
+          await db.update(referralEvents).set({ rewarded: true }).where(eq(referralEvents.id, event.id));
+        }
+      } catch {}
       return { ok: true };
     }
   }),
@@ -9713,6 +10057,18 @@ If that was you, just sign in again. If not, we recommend changing your password
           await db.insert(payments).values({ invoiceId: args.id, amount: balance.toFixed(2), paymentDate: new Date().toISOString().slice(0, 10), method: "Marked paid", note: "__paid_toggle__", createdAt: new Date });
       }
       await db.update(invoices).set({ status: "paid", updatedAt: new Date }).where(eq(invoices.id, args.id));
+      if (row.status !== "paid") {
+        try {
+          const label = row.invoiceNumber || `INV-${row.id}`;
+          await sendPushToCompany(db, row.companyId, {
+            titleEn: `Invoice ${label} paid`,
+            titleEs: `Factura ${label} pagada`,
+            bodyEn: `${row.clientName}`,
+            bodyEs: `${row.clientName}`,
+            url: "/app/"
+          });
+        } catch {}
+      }
     } else {
       for (const payment of auto)
         await db.delete(payments).where(eq(payments.id, payment.id));
@@ -9916,11 +10272,26 @@ If that was you, just sign in again. If not, we recommend changing your password
     const invoiceRows = await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1);
     const inv = invoiceRows[0];
     if (inv) {
+      const wasPaid = inv.status === "paid";
       const payments2 = await db.select().from(payments).where(eq(payments.invoiceId, inv.id));
       const paid = payments2.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(inv.total.replace(/[^0-9.-]/g, "") || 0);
-      if (paid >= total && total > 0)
+      const nowPaid = paid >= total && total > 0;
+      if (nowPaid)
         await db.update(invoices).set({ status: "paid", updatedAt: new Date }).where(eq(invoices.id, inv.id));
+      if (nowPaid && !wasPaid) {
+        try {
+          const label = inv.invoiceNumber || `INV-${inv.id}`;
+          const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total);
+          await sendPushToCompany(db, inv.companyId, {
+            titleEn: `Invoice ${label} paid`,
+            titleEs: `Factura ${label} pagada`,
+            bodyEn: `${inv.clientName} \u2014 ${amount}`,
+            bodyEs: `${inv.clientName} \u2014 ${amount}`,
+            url: "/app/"
+          });
+        } catch {}
+      }
     }
     ctx.invalidateQueries();
     return { id: made.id };
@@ -11535,14 +11906,14 @@ If that was you, just sign in again. If not, we recommend changing your password
   }),
   marketplaceGate: defineAction({
     request: object({}),
-    response: object({ enabled: boolean2(), freeListingLimit: number2(), myActiveListingCount: number2() }),
+    response: object({ enabled: boolean2(), freeListingLimit: number2(), bonusListings: number2(), effectiveListingLimit: number2(), myActiveListingCount: number2() }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
       const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
-      const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+      const { base, bonus, effective } = await getEffectiveListingLimit(db);
       const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
-      return { enabled, freeListingLimit, myActiveListingCount: mine.length };
+      return { enabled, freeListingLimit: base, bonusListings: bonus, effectiveListingLimit: effective, myActiveListingCount: mine.length };
     }
   }),
   listMarketplaceListings: defineAction({
@@ -11604,10 +11975,10 @@ If that was you, just sign in again. If not, we recommend changing your password
       const now = new Date;
       await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
-        const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+        const { effective, bonus } = await getEffectiveListingLimit(db);
         const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
-        if (mine.length >= freeListingLimit)
-          throw new Error(`Your free plan includes ${freeListingLimit} active Marketplace listing${freeListingLimit === 1 ? "" : "s"}. Upgrade to Premium for unlimited listings.`);
+        if (mine.length >= effective)
+          throw new Error(`Your free plan includes ${effective} active Marketplace listing${effective === 1 ? "" : "s"}${bonus > 0 ? ` (${bonus} bonus from referrals)` : ""}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus = scan.clean ? "active" : "auto_rejected";
@@ -11629,8 +12000,12 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw error;
       }
       ctx.invalidateQueries();
+      if (moderationStatus === "active") {
+        await notifyAlertMatches(ctx, { id: made.id, title: args.title, description: args.description, category: args.category, serviceArea: args.serviceArea, authorUserId: identity.workspaceUserId });
+      }
       return { id: made.id, moderation: { flagged: !scan.clean, status: moderationStatus, reasons: scan.reasons } };
-    }
+    },
+    privileged: [privileged.sendSecurityAlert]
   }),
   updateMarketplaceListing: defineAction({
     request: object({
@@ -11843,12 +12218,13 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (!args.body && !args.image)
         throw new Error("Write a message or add a photo.");
       const db = ctx.db();
-      const listing = (await db.select({ id: marketplaceListings.id, companyId: marketplaceListings.companyId }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
+      const listing = (await db.select({ id: marketplaceListings.id, companyId: marketplaceListings.companyId, title: marketplaceListings.title }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing)
         throw new Error("This listing is no longer available.");
-      const isOwner = listing.companyId === workspaceIdentity(ctx).workspaceCompanyId;
+      const identity = workspaceIdentity(ctx);
+      const isOwner = listing.companyId === identity.workspaceCompanyId;
       const sender = isOwner ? "me" : "other";
-      const senderCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const senderCompanyId = identity.workspaceCompanyId;
       const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key)
         await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
@@ -11856,6 +12232,20 @@ If that was you, just sign in again. If not, we recommend changing your password
         const made = (await db.insert(marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, senderCompanyId, readAt: isOwner ? new Date : null, createdAt: new Date }).returning({ id: marketplaceMessages.id }))[0];
         if (!made)
           throw new Error("The message could not be saved.");
+        try {
+          const titleEn = sender === "other" ? `New inquiry: ${listing.title}` : `New reply: ${listing.title}`;
+          const titleEs = sender === "other" ? `Nueva consulta: ${listing.title}` : `Nueva respuesta: ${listing.title}`;
+          const preview = args.body.length > 120 ? `${args.body.slice(0, 120)}\u2026` : args.body;
+          if (sender === "other") {
+            await sendPushToCompany(db, listing.companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+          } else {
+            const others = await db.select({ senderCompanyId: marketplaceMessages.senderCompanyId }).from(marketplaceMessages).where(and(eq(marketplaceMessages.listingId, args.listingId), eq(marketplaceMessages.sender, "other")));
+            const companies = [...new Set(others.map((row) => row.senderCompanyId).filter((value) => typeof value === "number" && value !== identity.workspaceCompanyId))];
+            for (const companyId of companies) {
+              await sendPushToCompany(db, companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+            }
+          }
+        } catch {}
         ctx.invalidateQueries();
         return { id: made.id };
       } catch (error) {
@@ -11904,6 +12294,121 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("The request could not be saved.");
       ctx.invalidateQueries();
       return { id: made.id };
+    }
+  }),
+  getReferralStats: defineAction({
+    request: object({}),
+    response: object({ referralCode: string2(), joinedCount: number2(), bonusListings: number2(), baseLimit: number2(), effectiveLimit: number2() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      let code = (await db.select({ referralCode: authUsers.referralCode }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0]?.referralCode ?? null;
+      if (!code) {
+        code = await uniqueReferralCode(db);
+        await db.update(authUsers).set({ referralCode: code, updatedAt: new Date }).where(eq(authUsers.id, identity.workspaceUserId));
+      }
+      const events = await db.select({ id: referralEvents.id }).from(referralEvents).where(eq(referralEvents.referrerUserId, identity.workspaceUserId));
+      const { base, bonus, effective } = await getEffectiveListingLimit(db);
+      return { referralCode: code, joinedCount: events.length, bonusListings: bonus, baseLimit: base, effectiveLimit: effective };
+    }
+  }),
+  saveMarketplaceAlert: defineAction({
+    request: object({ keyword: string2().trim().min(2).max(80), category: marketplaceCategorySchema.nullable().default(null), serviceArea: string2().trim().max(120).default("") }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      await requireMarketplaceEnabled(db);
+      const existing = await db.select({ id: marketplaceAlerts.id }).from(marketplaceAlerts).where(eq(marketplaceAlerts.userId, identity.workspaceUserId));
+      if (existing.length >= 20)
+        throw new Error("You can save up to 20 alerts.");
+      const duplicate = (await db.select({ id: marketplaceAlerts.id }).from(marketplaceAlerts).where(and(eq(marketplaceAlerts.userId, identity.workspaceUserId), eq(marketplaceAlerts.keyword, args.keyword))).limit(1))[0];
+      if (duplicate)
+        throw new Error("You already have an alert for that keyword.");
+      const made = (await db.insert(marketplaceAlerts).values({
+        userId: identity.workspaceUserId,
+        keyword: args.keyword,
+        category: args.category,
+        serviceArea: args.serviceArea.trim() || null,
+        createdAt: new Date
+      }).returning({ id: marketplaceAlerts.id }))[0];
+      if (!made)
+        throw new Error("The alert could not be saved.");
+      return { id: made.id };
+    }
+  }),
+  listMarketplaceAlerts: defineAction({
+    request: object({}),
+    response: object({ alerts: array(object({ id: number2(), keyword: string2(), category: string2().nullable(), serviceArea: string2().nullable(), createdAt: string2() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const rows = await db.select().from(marketplaceAlerts).where(eq(marketplaceAlerts.userId, identity.workspaceUserId)).orderBy(desc(marketplaceAlerts.createdAt));
+      return { alerts: rows.map((row) => ({ id: row.id, keyword: row.keyword, category: row.category, serviceArea: row.serviceArea, createdAt: row.createdAt.toISOString() })) };
+    }
+  }),
+  deleteMarketplaceAlert: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      await ctx.db().delete(marketplaceAlerts).where(and(eq(marketplaceAlerts.id, args.id), eq(marketplaceAlerts.userId, identity.workspaceUserId)));
+      return { ok: true };
+    }
+  }),
+  listNotifications: defineAction({
+    request: object({}),
+    response: object({ unreadCount: number2(), notifications: array(object({ id: number2(), kind: string2(), titleEn: string2(), titleEs: string2(), link: string2(), isRead: boolean2(), createdAt: string2() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const rows = await db.select().from(userNotifications).where(eq(userNotifications.userId, identity.workspaceUserId)).orderBy(desc(userNotifications.createdAt)).limit(50);
+      return {
+        unreadCount: rows.filter((row) => !row.isRead).length,
+        notifications: rows.map((row) => ({ id: row.id, kind: row.kind, titleEn: row.titleEn, titleEs: row.titleEs, link: row.link, isRead: row.isRead, createdAt: row.createdAt.toISOString() }))
+      };
+    }
+  }),
+  markNotificationsRead: defineAction({
+    request: object({ ids: array(number2().int().positive()).max(100).default([]) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const condition = args.ids.length ? and(eq(userNotifications.userId, identity.workspaceUserId), inArray(userNotifications.id, args.ids)) : eq(userNotifications.userId, identity.workspaceUserId);
+      await db.update(userNotifications).set({ isRead: true }).where(condition);
+      return { ok: true };
+    }
+  }),
+  getVapidPublicKey: defineAction({
+    request: object({}),
+    response: object({ publicKey: string2().nullable() }),
+    async handler() {
+      return { publicKey: getVapidPublicKey() };
+    }
+  }),
+  savePushSubscription: defineAction({
+    request: object({ endpoint: string2().url().max(500), p256dh: string2().min(1).max(200), auth: string2().min(1).max(200) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const existing = (await db.select({ id: pushSubscriptions.id }).from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, args.endpoint)).limit(1))[0];
+      if (existing) {
+        await db.update(pushSubscriptions).set({ userId: identity.workspaceUserId, p256dh: args.p256dh, auth: args.auth }).where(eq(pushSubscriptions.id, existing.id));
+      } else {
+        await db.insert(pushSubscriptions).values({ userId: identity.workspaceUserId, endpoint: args.endpoint, p256dh: args.p256dh, auth: args.auth, createdAt: new Date });
+      }
+      return { ok: true };
+    }
+  }),
+  removePushSubscription: defineAction({
+    request: object({ endpoint: string2().trim().max(500) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      await ctx.db().delete(pushSubscriptions).where(and(eq(pushSubscriptions.endpoint, args.endpoint), eq(pushSubscriptions.userId, identity.workspaceUserId)));
+      return { ok: true };
     }
   }),
   adminModerationQueue: defineAction({
@@ -11979,9 +12484,14 @@ If that was you, just sign in again. If not, we recommend changing your password
       }).where(eq(marketplaceListings.id, args.listingId));
       await db.update(marketplaceFlags).set({ status: args.decision === "approve" ? "reviewed_ok" : "reviewed_removed" }).where(and(eq(marketplaceFlags.listingId, args.listingId), eq(marketplaceFlags.status, "open")));
       await logAdminAction(db, admin.id, args.decision === "approve" ? "listing.approve" : "listing.remove", "marketplace_listing", String(args.listingId), args.note || `${listing.title}`);
+      if (status === "active") {
+        const ownerUser = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, listing.companyId)).limit(1))[0];
+        await notifyAlertMatches(ctx, { id: listing.id, title: listing.title, description: listing.description, category: listing.category, serviceArea: listing.serviceArea, authorUserId: ownerUser?.id ?? -1 });
+      }
       ctx.invalidateQueries();
       return { ok: true, status };
-    }
+    },
+    privileged: [privileged.sendSecurityAlert]
   }),
   adminUsersList: defineAction({
     request: object({ search: string2().trim().max(120).default(""), page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(20) }),
@@ -12509,6 +13019,8 @@ var Actions = protectActions(BaseActions);
 export {
   Actions,
   BaseActions,
+  alertMatchesListing,
+  notifyAlertMatches,
   performBackup,
   performMonthlyVerify,
   recoverStaleBackupRuns,

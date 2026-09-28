@@ -403,6 +403,8 @@ async function serveStatic(res, urlPath) {
   }
   if (urlPath === "/app" || urlPath.startsWith("/app/")) {
     const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
+    // Known PWA files that must 404 instead of falling through to the SPA shell.
+    const KNOWN_PWA_STATIC = new Set(["/manifest.webmanifest", "/sw.js", "/icon-180.png", "/icon-192.png", "/icon-512.png"]);
     const filePath = safeJoin(CLIENT_DIST, relative);
     if (!filePath) {
       res.writeHead(403);
@@ -418,7 +420,9 @@ async function serveStatic(res, urlPath) {
     if (!fileStat || !fileStat.isFile()) {
       // SPA fallback: client-side routes resolve to the app index. A missing
       // file under /app/assets/ is a genuine 404 so broken asset URLs fail loudly.
-      if (relative.startsWith("/assets/")) {
+      // Chunk D: same for the known PWA files — a missing manifest, service
+      // worker, or icon must never serve HTML by accident.
+      if (relative.startsWith("/assets/") || KNOWN_PWA_STATIC.has(relative)) {
         res.writeHead(404, { "x-content-type-options": "nosniff" });
         res.end();
         return;
