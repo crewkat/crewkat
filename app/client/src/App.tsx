@@ -344,7 +344,8 @@ type Screen =
   | { name: "reports" }
   | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" | "analysis" }
   | { name: "admin" }
-  | { name: "platformAdmin" }
+  | { name: "platformAdmin"; tab?: PlatformAdminTab; refundEmail?: string }
+  | { name: "platformAdminUser"; userId: number }
   | { name: "jobOps"; jobId: number }
   | { name: "tool"; jobId: number; mode: ToolMode; photoId?: number };
 
@@ -1458,6 +1459,15 @@ function actionErrorMessage(error: unknown) {
   return message.replace(/^action [^ ]+ error:\s*/i, "");
 }
 
+// Maps machine-readable server sentinels to localized, user-friendly text.
+// Any other server message passes through untouched.
+function friendlyActionMessage(error: unknown, lang: Lang) {
+  const message = actionErrorMessage(error);
+  if (message === "MARKETPLACE_DISABLED") return lang === "es" ? "El Marketplace está temporalmente desactivado. Vuelve a intentarlo más tarde." : "The Marketplace is temporarily disabled. Please check back later.";
+  if (message === "REGISTRATIONS_CLOSED") return "Registrations are temporarily closed. / El registro está temporalmente cerrado.";
+  return message;
+}
+
 function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking"; token: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(shellRef);
@@ -1554,7 +1564,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         else persistLegacySessionToken(result.sessionToken);
         onAuthenticated(result.user);
       }
-    } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
+    } catch (caught) { setError(friendlyActionMessage(caught, "en")); } finally { setBusy(false); }
   };
   const title = mode === "signup" ? "Set up your owner account" : mode === "verify" ? "Verify your email" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Enter your reset code" : "Welcome back";
   if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} onBack={() => setLegalDocument(null)} /></div>;
@@ -1694,6 +1704,7 @@ function CrewkatApplication() {
     };
   }, []);
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
+  const [dismissedBanner, setDismissedBanner] = useState(() => window.localStorage.getItem("crewkat-banner-dismissed") ?? "");
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
   const [scrollNavigationKey, setScrollNavigationKey] = useState(1);
@@ -1834,6 +1845,12 @@ function CrewkatApplication() {
     >
     <div className="app-shell" ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
+      {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
+        <div className="announcement-banner" role="status">
+          <p>{auth.user.announcementBanner.trim()}</p>
+          <button type="button" aria-label={lang === "es" ? "Cerrar anuncio" : "Dismiss announcement"} onClick={() => { const v = auth.user.announcementBanner.trim(); setDismissedBanner(v); window.localStorage.setItem("crewkat-banner-dismissed", v); }}>×</button>
+        </div>
+      )}
       {screen.name === "today" && (
         <TodayScreen
           lang={lang}
@@ -2027,7 +2044,8 @@ function CrewkatApplication() {
         <BusinessToolsScreen lang={lang} onBack={goBack} initialTab={screen.tab} />
       )}
       {screen.name === "admin" && <AdminScreen lang={lang} onBack={goBack} />}
-      {screen.name === "platformAdmin" && <PlatformAdminScreen lang={lang} onBack={goBack} />}
+      {screen.name === "platformAdmin" && <PlatformAdminScreen lang={lang} onBack={goBack} setScreen={setScreen} initialTab={screen.tab} initialRefundEmail={screen.refundEmail} />}
+      {screen.name === "platformAdminUser" && <PAUserDetailScreen lang={lang} userId={screen.userId} onBack={goBack} setScreen={setScreen} />}
       {screen.name === "expansion" && (
         <ExpansionSuiteScreen
           lang={lang}
@@ -2161,13 +2179,16 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     };
   }, [view, search, category, listingType, location, searchOpen, locationOpen, savedOnly]);
   const listings = useQuery({ queryKey: ["marketplace-listings", search, category, location], queryFn: () => api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: location }) });
+  const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const requests = useQuery({ queryKey: ["marketplace-requests"], queryFn: () => api.listMarketplaceRequests({}) });
   const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
   const removeListing = useMutation({ mutationFn: (id: number) => api.deleteMarketplaceListing({ id }), onSuccess: async (_, id) => { setSavedIds((current) => { const next = current.filter((value) => value !== id); window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); return next; }); setDeleteTarget(null); await qc.invalidateQueries({ queryKey: ["marketplace-listings"] }); } });
   const visibleListings = (listings.data?.listings ?? []).filter((listing) => (!savedOnly || savedIds.includes(listing.id)) && (listingType === "all" || listing.listingType === listingType));
   const myListings = (listings.data?.listings ?? []).filter((listing) => listing.isMine);
   const openNewListing = (type: "job" | "project") => {
-    if (auth?.user.tier === "free" && myListings.length >= 5) setScreen({ name: "upgrade" });
+    const limit = gate.data?.freeListingLimit ?? 3;
+    const mine = gate.data?.myActiveListingCount ?? myListings.length;
+    if (auth?.user.tier === "free" && mine >= limit) setScreen({ name: "upgrade" });
     else setScreen({ name: "marketplaceNew", listingType: type });
   };
   const openPromotion = () => {
@@ -2259,6 +2280,9 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   } : {
     list: "List a job", listProject: "List a project", explore: "Explore", looking: "Looking for", more: "More", search: "What service do you need?", location: "Service area or ZIP", all: "All", saved: "Saved items", savedNote: "Listings you bookmarked", top: "Top categories", categories: "All categories", emptyTitle: savedOnly ? "No saved listings yet" : "No listings yet", emptyBody: savedOnly ? "Tap the bookmark on a listing to keep it here." : "Listings will appear here as companies join. You can add the first one now.", emptyWanted: "No requests yet", emptyWantedBody: "Requests for help will appear here as companies join.", postRequest: "Post a request", clear: "Clear filters", just: "Just listed", marketplaceSearch: "Search Marketplace", areaFilter: "Filter by service area", myListings: "My listings", myListingsNote: "Manage your quota and promotions", quota: "free listings used", promote: "Promote", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", moreSlots: "Get more listing slots", launch: "Available at launch", topPlacement: "Top of Marketplace for 7 days", categoryFeature: "Featured in category", close: "Close", promoted: "Promoted", pull: "Pull to refresh", release: "Release to refresh", refreshing: "Refreshing listings…",
   };
+  if (gate.data && !gate.data.enabled) {
+    return <main className="page marketplace-page"><div className="market-empty"><span><Icon size={32}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon></span><h2>{lang === "es" ? "Marketplace pausado" : "Marketplace paused"}</h2><p>{lang === "es" ? "El Marketplace está temporalmente desactivado. Vuelve a intentarlo más tarde." : "The Marketplace is temporarily disabled. Please check back later."}</p></div></main>;
+  }
   return <main className="page marketplace-page" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
     {canPullToRefresh && <div className={`market-pull-indicator${refreshing ? " refreshing" : ""}`} style={{ height: `${pullDistance}px`, opacity: refreshing ? 1 : Math.min(1, pullDistance / 36) }} role="status" aria-live="polite">
       <span className="market-refresh-spinner" aria-hidden="true"/>
@@ -2290,7 +2314,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     </section>}
     {view === "looking" && <MarketplaceRequestsView lang={lang} settings={settings} requests={requests.data?.requests ?? []} loading={requests.isLoading} />}
     {view === "mine" && <section className="market-mine">
-      <div className="market-quota"><div><strong>{auth?.user.tier === "premium" ? `${myListings.length} · Unlimited` : `${Math.min(myListings.length, 5)} of 5`}</strong><span>{auth?.user.tier === "premium" ? (lang === "es" ? "publicaciones Premium" : "Premium listings") : text.quota}</span></div>{auth?.user.tier === "free" && <div className="quota-track"><i style={{ width: `${Math.min(100, (myListings.length / 5) * 100)}%` }}/></div>}</div>
+      <div className="market-quota"><div><strong>{auth?.user.tier === "premium" ? `${myListings.length} · Unlimited` : `${Math.min(gate.data?.myActiveListingCount ?? myListings.length, gate.data?.freeListingLimit ?? 3)} of ${gate.data?.freeListingLimit ?? 3}`}</strong><span>{auth?.user.tier === "premium" ? (lang === "es" ? "publicaciones Premium" : "Premium listings") : text.quota}</span></div>{auth?.user.tier === "free" && <div className="quota-track"><i style={{ width: `${Math.min(100, ((gate.data?.myActiveListingCount ?? myListings.length) / (gate.data?.freeListingLimit ?? 3)) * 100)}%` }}/></div>}</div>
       {myListings.length ? <div className="my-listing-list">{myListings.map((listing) => <article key={listing.id}><button onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })}><strong>{listing.title}</strong><small><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span> · {marketplaceCategoryLabel(listing.category, lang)} · {listing.serviceArea}</small></button><div className="listing-manage-actions"><button onClick={() => setScreen({ name: "marketplaceEdit", listingId: listing.id })}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{text.edit}</button><button className="danger" onClick={() => setDeleteTarget(listing)}><TrashIcon/>{text.remove}</button><button className="secondary-button" onClick={openPromotion}>{text.promote}</button></div></article>)}</div> : <div className="market-empty compact"><h2>{text.emptyTitle}</h2><p>{text.emptyBody}</p></div>}
       <button className="market-upsell" onClick={openPromotion}><PlusIcon/><span><strong>{text.moreSlots}</strong><small>{text.launch}</small></span></button>
     </section>}
@@ -2373,7 +2397,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     const encoded = await Promise.all(photos.map(async (file) => ({ filename: file.name, contentType: file.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(file)).dataBase64 })));
     if (listingId) return api.updateMarketplaceListing({ id: listingId, ...form, replacePhotos: photos.length > 0, photos: encoded });
     return api.createMarketplaceListing({ ...form, photos: encoded });
-  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else onSaved(result.id); }, onError: () => setError(lang === "es" ? "No se pudo guardar. Revisa los campos e inténtalo de nuevo." : "The listing could not be saved. Check the fields and try again.") });
+  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else onSaved(result.id); }, onError: (caught) => setError(friendlyActionMessage(caught, lang)) });
   const t = lang === "es" ? { heading: listingId ? "Editar publicación" : form.listingType === "project" ? "Publicar un proyecto" : "Publicar un empleo", listingType: "Tipo de publicación", job: "Empleo", jobHelp: "Contratar a un empleado", project: "Proyecto", projectHelp: "Un subcontratista para una tarea", employment: "Condiciones de empleo", fullTime: "Tiempo completo", partTime: "Medio tiempo", temporary: "Temporal", payUnit: "Tipo de pago", hourly: "Por hora", salary: "Salario", title: "Título", titleHint: "Ej. Instalación de gabinetes disponible", category: "Categoría", priceType: "Precio", amount: "Precio actual", original: "Precio original (opcional)", fixed: "Precio fijo", free: "Gratis", contact: "Consultar precio", photos: "Fotos", photoHint: "Hasta 8 fotos JPG, PNG o WebP", keepPhotos: "Tus fotos actuales se conservarán. Elige nuevas fotos solo si quieres reemplazarlas.", replacePhotos: "Las fotos nuevas reemplazarán las actuales.", description: "Descripción", area: "Área de servicio o código postal", company: "Nombre de la empresa", phone: "Teléfono de contacto (opcional)", bookable: "Permitir reservas", bookableHelp: "Para alquileres de remolques, equipos u otros artículos por día", dailyRate: "Precio por día", publish: listingId ? "Guardar cambios" : "Publicar", required: "Agrega un título, área de servicio y empresa.", loading: "Cargando publicación…", notFound: "No se encontró esta publicación." } : { heading: listingId ? "Edit listing" : form.listingType === "project" ? "List a project" : "List a job", listingType: "Listing type", job: "Job", jobHelp: "Hiring an employee", project: "Project", projectHelp: "A subcontractor for one task", employment: "Employment terms", fullTime: "Full-time", partTime: "Part-time", temporary: "Temporary", payUnit: "Pay type", hourly: "Hourly", salary: "Salary", title: "Title", titleHint: "e.g. Cabinet installation available", category: "Trade category", priceType: "Price", amount: "Current price", original: "Original price (optional)", fixed: "Set a price", free: "Free", contact: "Contact for price", photos: "Photos", photoHint: "Up to 8 JPG, PNG, or WebP images", keepPhotos: "Your current photos will stay. Choose new photos only if you want to replace them.", replacePhotos: "New photos will replace the current ones.", description: "Description", area: "Service area or ZIP", company: "Company name", phone: "Contact phone (optional)", bookable: "Allow bookings", bookableHelp: "For trailers, equipment, or other items rented by the day", dailyRate: "Price per day", publish: listingId ? "Save changes" : "Publish listing", required: "Add a title, service area, and company name.", loading: "Loading listing…", notFound: "This listing could not be found." };
   if (listingId && existing.isLoading) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="loading-block" aria-label={t.loading}/></main>;
   if (listingId && !existing.data?.listing) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty"><h2>{t.notFound}</h2></div></main>;
@@ -2481,6 +2505,18 @@ function isProToolScreen(screen?: Screen) {
   return screen.name === "proWorkspace" || screen.name === "businessTools" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
 }
 
+// Tool ids for Home-screen pinning: `<screenName>` or `<screenName>:<tab>`,
+// matching the server TOOL_REGISTRY in app/server/src/actions.ts.
+function toolIdForTile(tile: ToolTile): string | null {
+  if (!tile.screen) return null;
+  const tab = "tab" in tile.screen ? tile.screen.tab : undefined;
+  return tab ? `${tile.screen.name}:${tab}` : tile.screen.name;
+}
+const PIN_ICON_PATH = "M9 4h6l1 8 3 3v2H5v-2l3-3zM12 16v5";
+function pinnedScreenTarget(pin: { screen: string; tab: string | null }): Screen {
+  return { name: pin.screen, ...(pin.tab ? { tab: pin.tab } : {}) } as Screen;
+}
+
 function ToolStatus({ lang, comingSoon }: { lang: Lang; comingSoon?: string }) {
   return (
     <span className={`tool-status${comingSoon ? " coming" : " ready"}`}>
@@ -2541,6 +2577,16 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
   const isPremium = auth?.user.tier === "premium";
   const [soon, setSoon] = useState<ToolTile | null>(null);
   const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
+  const qc = useQueryClient();
+  const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
+  const pinnedIds = new Set((pinsQuery.data?.tools ?? []).map((t) => t.toolId));
+  const pinMutation = useMutation({
+    mutationFn: async (toolId: string) => {
+      if (pinnedIds.has(toolId)) await api.unpinTool({ toolId });
+      else await api.pinTool({ toolId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
+  });
   const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
   const estimating: ToolTile[] = lang === "es" ? [
     { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
@@ -2614,11 +2660,23 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     <section className="tool-group everyday-tool-group">
       <div className="tool-group-heading"><h2>{title}</h2></div>
       <div className="tool-directory">
-        {tiles.map((tile) => (
-          <button key={tile.title} type="button" onClick={() => openTool(tile)}>
-            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span><span className="tool-row-end">{!isPremium && (tile.pro || isProToolScreen(tile.screen)) && <b className="pro-row-badge">PRO</b>}{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
-          </button>
-        ))}
+        {tiles.map((tile) => {
+          const toolId = toolIdForTile(tile);
+          const pinned = toolId ? pinnedIds.has(toolId) : false;
+          const pinLabel = pinned ? (lang === "es" ? "Quitar" : "Unpin") : (lang === "es" ? "Fijar al inicio" : "Pin to Home");
+          return (
+            <div key={toolId ?? tile.title} className="tool-row">
+              <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
+                {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span><span className="tool-row-end">{!isPremium && (tile.pro || isProToolScreen(tile.screen)) && <b className="pro-row-badge">PRO</b>}{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
+              </button>
+              {toolId && (
+                <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
+                  <Icon size={18}><path d={PIN_ICON_PATH} /></Icon>
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -4807,9 +4865,12 @@ const ADMIN_DEFAULTS: AdminParameters = {
 
 type PlatformAdminTab = "queue" | "users" | "refunds" | "settings" | "audit";
 
-function PlatformAdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefundEmail }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void; initialTab?: PlatformAdminTab; initialRefundEmail?: string }) {
   const auth = useContext(AuthContext);
-  const [tab, setTab] = useState<PlatformAdminTab>("queue");
+  const [tab, setTab] = useState<PlatformAdminTab>(initialTab ?? "queue");
+  const [refundEmail, setRefundEmail] = useState(initialRefundEmail ?? "");
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
+  useEffect(() => { if (initialRefundEmail !== undefined) setRefundEmail(initialRefundEmail); }, [initialRefundEmail]);
   const t = lang === "es"
     ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
     : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
@@ -4824,8 +4885,8 @@ function PlatformAdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void 
       ))}
     </nav>
     {tab === "queue" && <PAQueueTab lang={lang} />}
-    {tab === "users" && <PAUsersTab lang={lang} />}
-    {tab === "refunds" && <PARefundsTab lang={lang} />}
+    {tab === "users" && <PAUsersTab lang={lang} setScreen={setScreen} />}
+    {tab === "refunds" && <PARefundsTab lang={lang} initialEmail={refundEmail} />}
     {tab === "settings" && <PASettingsTab lang={lang} />}
     {tab === "audit" && <PAAuditTab lang={lang} />}
   </main>;
@@ -4843,9 +4904,10 @@ function PAQueueTab({ lang }: { lang: Lang }) {
     onError: (caught) => setError(actionErrorMessage(caught)),
   });
   const t = lang === "es"
-    ? { loading: "Cargando…", empty: "No hay publicaciones por revisar.", emptyBody: "Las publicaciones rechazadas automáticamente o reportadas aparecerán aquí.", note: "Nota (opcional)", approve: "Aprobar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se ocultará del Marketplace y no podrá volver a publicarse sin revisión.", cancel: "Cancelar", confirmRemove: "Eliminar publicación", reports: "reportes", autoRejected: "Rechazo automático", pendingReview: "En revisión", by: "por" }
-    : { loading: "Loading…", empty: "Nothing to review.", emptyBody: "Auto-rejected or reported listings will appear here.", note: "Note (optional)", approve: "Approve", remove: "Remove", removeTitle: "Remove this listing?", removeBody: "It will be hidden from the Marketplace.", cancel: "Cancel", confirmRemove: "Remove listing", reports: "reports", autoRejected: "Auto-rejected", pendingReview: "Pending review", by: "by" };
+    ? { loading: "Cargando…", empty: "No hay publicaciones por revisar.", emptyBody: "Las publicaciones rechazadas automáticamente o reportadas aparecerán aquí.", loadError: "No se pudo cargar la cola de moderación.", retry: "Reintentar", note: "Nota (opcional)", approve: "Aprobar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se ocultará del Marketplace y no podrá volver a publicarse sin revisión.", cancel: "Cancelar", confirmRemove: "Eliminar publicación", reports: "reportes", autoRejected: "Rechazo automático", pendingReview: "En revisión", by: "por" }
+    : { loading: "Loading…", empty: "Nothing to review.", emptyBody: "Auto-rejected or reported listings will appear here.", loadError: "Could not load the moderation queue.", retry: "Retry", note: "Note (optional)", approve: "Approve", remove: "Remove", removeTitle: "Remove this listing?", removeBody: "It will be hidden from the Marketplace.", cancel: "Cancel", confirmRemove: "Remove listing", reports: "reports", autoRejected: "Auto-rejected", pendingReview: "Pending review", by: "by" };
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
   const items = query.data?.queue ?? [];
   if (!items.length) return <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>;
   return <div className="pa-list">
@@ -4875,7 +4937,7 @@ function PAQueueTab({ lang }: { lang: Lang }) {
   </div>;
 }
 
-function PAUsersTab({ lang }: { lang: Lang }) {
+function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -4890,22 +4952,22 @@ function PAUsersTab({ lang }: { lang: Lang }) {
     onError: (caught) => setError(actionErrorMessage(caught)),
   });
   const t = lang === "es"
-    ? { search: "Buscar por nombre o correo…", loading: "Cargando…", empty: "Sin resultados.", suspended: "Suspendido", admin: "Admin", active: "Activo", suspend: "Suspender", unsuspend: "Reactivar", suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.", cancel: "Cancelar", confirmSuspend: "Suspender cuenta", confirmUnsuspend: "Reactivar cuenta", prev: "Anterior", next: "Siguiente", of: "de" }
-    : { search: "Search by name or email…", loading: "Loading…", empty: "No results.", suspended: "Suspended", admin: "Admin", active: "Active", suspend: "Suspend", unsuspend: "Unsuspend", suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.", cancel: "Cancel", confirmSuspend: "Suspend account", confirmUnsuspend: "Unsuspend account", prev: "Previous", next: "Next", of: "of" };
+    ? { search: "Buscar por nombre o correo…", loading: "Cargando…", empty: "Sin resultados.", loadError: "No se pudieron cargar los usuarios.", retry: "Reintentar", suspended: "Suspendido", admin: "Admin", active: "Activo", suspend: "Suspender", unsuspend: "Reactivar", suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.", cancel: "Cancelar", confirmSuspend: "Suspender cuenta", confirmUnsuspend: "Reactivar cuenta", prev: "Anterior", next: "Siguiente", of: "de", open: "Abrir ficha del usuario" }
+    : { search: "Search by name or email…", loading: "Loading…", empty: "No results.", loadError: "Could not load users.", retry: "Retry", suspended: "Suspended", admin: "Admin", active: "Active", suspend: "Suspend", unsuspend: "Unsuspend", suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.", cancel: "Cancel", confirmSuspend: "Suspend account", confirmUnsuspend: "Unsuspend account", prev: "Previous", next: "Next", of: "of", open: "Open user details" };
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   return <div className="pa-list">
     <label className="pa-search"><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
     {error && <p className="status error">{error}</p>}
-    {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : !data?.users.length ? <div className="market-empty"><h2>{t.empty}</h2></div> : <>
+    {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : query.isError ? <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div> : !data?.users.length ? <div className="market-empty"><h2>{t.empty}</h2></div> : <>
       {data.users.map((user) => (
-        <article key={user.id} className="pa-card pa-user">
+        <article key={user.id} className="pa-card pa-user pa-user-clickable" onClick={() => setScreen({ name: "platformAdminUser", userId: user.id })} role="button" tabIndex={0} aria-label={`${t.open}: ${user.name}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setScreen({ name: "platformAdminUser", userId: user.id }); } }}>
           <div className="pa-card-head"><div><h3>{user.name}</h3><small>{user.email}</small><small>{user.companyName} · {user.tier}{user.subscriptionStatus !== "inactive" ? ` · ${user.subscriptionStatus}` : ""}</small></div>
             <span className={`pa-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? t.suspended : t.active}</span></div>
           {user.isPlatformAdmin && <p className="pa-reason"><strong>{t.admin}</strong></p>}
           {!user.isPlatformAdmin && (user.suspended
-            ? <div className="pa-actions"><button type="button" className="primary-button" disabled={toggle.isPending} onClick={() => setConfirm({ id: user.id, name: user.name, email: user.email, suspend: false })}>{t.unsuspend}</button></div>
-            : <div className="pa-actions"><button type="button" className="danger-button" disabled={toggle.isPending} onClick={() => setConfirm({ id: user.id, name: user.name, email: user.email, suspend: true })}>{t.suspend}</button></div>)}
+            ? <div className="pa-actions"><button type="button" className="primary-button" disabled={toggle.isPending} onClick={(event) => { event.stopPropagation(); setConfirm({ id: user.id, name: user.name, email: user.email, suspend: false }); }}>{t.unsuspend}</button></div>
+            : <div className="pa-actions"><button type="button" className="danger-button" disabled={toggle.isPending} onClick={(event) => { event.stopPropagation(); setConfirm({ id: user.id, name: user.name, email: user.email, suspend: true }); }}>{t.suspend}</button></div>)}
         </article>
       ))}
       <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>
@@ -4917,8 +4979,136 @@ function PAUsersTab({ lang }: { lang: Lang }) {
   </div>;
 }
 
-function PARefundsTab({ lang }: { lang: Lang }) {
-  const [email, setEmail] = useState("");
+function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; userId: number; onBack: () => void; setScreen: (screen: Screen) => void }) {
+  const auth = useContext(AuthContext);
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-user-detail", userId], queryFn: () => api.adminUserDetail({ userId }) });
+  const [confirm, setConfirm] = useState<null | { kind: "suspend" } | { kind: "revokeSessions" } | { kind: "tier"; to: "free" | "premium" }>(null);
+  const [error, setError] = useState("");
+  const runAction = useMutation({
+    mutationFn: async (kind: NonNullable<typeof confirm>) => {
+      if (!kind) return;
+      if (kind.kind === "suspend") {
+        const u = query.data?.user;
+        if (u?.suspended) await api.adminUserUnsuspend({ userId });
+        else await api.adminUserSuspend({ userId });
+      } else if (kind.kind === "revokeSessions") await api.adminUserRevokeSessions({ userId });
+      else await api.adminUserSetTier({ userId, tier: kind.to });
+    },
+    onSuccess: async () => { setConfirm(null); setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-user-detail", userId] }), qc.invalidateQueries({ queryKey: ["pa-users"] })]); },
+    onError: (caught) => { setConfirm(null); setError(actionErrorMessage(caught)); },
+  });
+  const t = lang === "es"
+    ? { title: "Ficha del usuario", loading: "Cargando…", loadError: "No se pudo cargar el usuario.", retry: "Reintentar", notAdmin: "No disponible", notAdminBody: "Esta área es solo para administradores de la plataforma.",
+        account: "Cuenta", subscription: "Suscripción", sessions: "Sesiones activas", listings: "Publicaciones", flagsFiled: "Reportes enviados", history: "Historial de administración",
+        id: "ID", name: "Nombre", email: "Correo", company: "Empresa", companyId: "ID de empresa", created: "Creado", updated: "Actualizado",
+        emailVerified: "Correo verificado", yes: "Sí", no: "No", terms: "Términos del Marketplace", termsNone: "No aceptados",
+        tier: "Plan", status: "Estado de suscripción", stripeCustomer: "Cliente de Stripe", stripeSub: "Suscripción de Stripe", periodEnd: "Fin del período actual", cancelAtEnd: "Se cancela al final del período", none: "—",
+        suspended: "Suspendido", active: "Activo", suspendedAt: "Suspendido el", admin: "Admin de plataforma", platformAdmin: "Administrador de plataforma",
+        suspend: "Suspender", unsuspend: "Reactivar", revokeSessions: "Cerrar sesiones", makePremium: "Dar Premium", revokePremium: "Quitar Premium", issueRefund: "Emitir reembolso",
+        suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.",
+        revokeTitle: "¿Cerrar todas las sesiones?", revokeBody: "El usuario tendrá que volver a iniciar sesión en todos sus dispositivos.",
+        tierTitle: "¿Cambiar el plan?", tierToPremiumBody: "El usuario tendrá Premium sin pasar por Stripe. Quedará registrado en la auditoría.", tierToFreeBody: "El usuario volverá al plan gratis. Si tiene una suscripción de Stripe activa, cancélala en Stripe para no seguir cobrando.",
+        stripeWarning: "Tiene suscripción de Stripe: cambia el plan en Stripe para no seguir cobrando.",
+        cancel: "Cancelar", confirmBtn: "Confirmar", lastSeen: "Última actividad", noSessions: "Sin sesiones activas.", noListings: "Sin publicaciones.", noFlags: "No ha enviado reportes.", noHistory: "Sin actividad registrada.", flags: "reportes", premium: "Premium", free: "Gratis" }
+    : { title: "User details", loading: "Loading…", loadError: "Could not load the user.", retry: "Retry", notAdmin: "Not available", notAdminBody: "This area is for platform administrators only.",
+        account: "Account", subscription: "Subscription", sessions: "Active sessions", listings: "Listings", flagsFiled: "Reports filed", history: "Admin history",
+        id: "ID", name: "Name", email: "Email", company: "Company", companyId: "Company ID", created: "Created", updated: "Updated",
+        emailVerified: "Email verified", yes: "Yes", no: "No", terms: "Marketplace Terms", termsNone: "Not accepted",
+        tier: "Plan", status: "Subscription status", stripeCustomer: "Stripe customer", stripeSub: "Stripe subscription", periodEnd: "Current period ends", cancelAtEnd: "Cancels at period end", none: "—",
+        suspended: "Suspended", active: "Active", suspendedAt: "Suspended at", admin: "Platform admin", platformAdmin: "Platform administrator",
+        suspend: "Suspend", unsuspend: "Unsuspend", revokeSessions: "Revoke sessions", makePremium: "Grant Premium", revokePremium: "Revoke Premium", issueRefund: "Issue refund",
+        suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.",
+        revokeTitle: "Revoke all sessions?", revokeBody: "The user will have to sign in again on all their devices.",
+        tierTitle: "Change plan?", tierToPremiumBody: "The user will get Premium without going through Stripe. This is recorded in the audit log.", tierToFreeBody: "The user will go back to the free plan. If they have an active Stripe subscription, cancel it in Stripe so billing stops.",
+        stripeWarning: "Has an active Stripe subscription — change the plan in Stripe so billing stops.",
+        cancel: "Cancel", confirmBtn: "Confirm", lastSeen: "Last seen", noSessions: "No active sessions.", noListings: "No listings.", noFlags: "No reports filed.", noHistory: "No recorded activity.", flags: "flags", premium: "Premium", free: "Free" };
+  if (!auth?.user.isPlatformAdmin) {
+    return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.notAdmin}</h2><p>{t.notAdminBody}</p></div></main>;
+  }
+  const fmtDate = (iso: string) => new Date(iso).toLocaleString(lang === "es" ? "es-US" : "en-US");
+  const confirmTitle = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendTitle : t.suspendTitle) : confirm.kind === "revokeSessions" ? t.revokeTitle : t.tierTitle;
+  const confirmBody = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendBody : t.suspendBody) : confirm.kind === "revokeSessions" ? t.revokeBody : confirm.to === "premium" ? t.tierToPremiumBody : t.tierToFreeBody;
+  return <main className="page pa-page pa-user-detail">
+    <PageHeader lang={lang} title={t.title} onBack={onBack} />
+    <div className="pa-list">
+      {error && <p className="status error">{error}</p>}
+      {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : query.isError || !query.data ? <div className="market-empty"><h2>{t.loadError}</h2><p>{query.isError ? actionErrorMessage(query.error) : ""}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div> : (() => {
+        const { user, listings, flagsFiled, sessions, audit } = query.data;
+        const isSelf = auth.user.id === user.id;
+        return <>
+          <article className="pa-card">
+            <div className="pa-card-head"><div><h3>{user.name}</h3><small>{user.email}</small></div>
+              <span className={`pa-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? t.suspended : t.active}</span></div>
+            <div className="pa-badges-row">{user.isPlatformAdmin && <span className="pa-badge admin">{t.platformAdmin}</span>}<span className={`pa-badge ${user.tier === "premium" ? "premium" : ""}`}>{user.tier === "premium" ? t.premium : t.free}</span></div>
+            {!isSelf && <div className="pa-actions">
+              {user.suspended
+                ? <button type="button" className="primary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "suspend" })}>{t.unsuspend}</button>
+                : <button type="button" className="danger-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "suspend" })}>{t.suspend}</button>}
+              <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "revokeSessions" })}>{t.revokeSessions}</button>
+              {user.tier === "premium"
+                ? <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "tier", to: "free" })}>{t.revokePremium}</button>
+                : <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "tier", to: "premium" })}>{t.makePremium}</button>}
+              <button type="button" className="secondary-button" onClick={() => setScreen({ name: "platformAdmin", tab: "refunds", refundEmail: user.email })}>{t.issueRefund}</button>
+            </div>}
+          </article>
+          <article className="pa-card"><h3>{t.account}</h3>
+            <dl className="pa-dl">
+              <div><dt>{t.id}</dt><dd>{user.id}</dd></div>
+              <div><dt>{t.name}</dt><dd>{user.name}</dd></div>
+              <div><dt>{t.email}</dt><dd>{user.email}</dd></div>
+              <div><dt>{t.company}</dt><dd>{user.companyName || t.none} ({t.companyId} {user.companyId})</dd></div>
+              <div><dt>{t.created}</dt><dd>{fmtDate(user.createdAt)}</dd></div>
+              <div><dt>{t.updated}</dt><dd>{fmtDate(user.updatedAt)}</dd></div>
+              <div><dt>{t.emailVerified}</dt><dd>{user.emailVerifiedAt ? fmtDate(user.emailVerifiedAt) : t.no}</dd></div>
+              <div><dt>{t.terms}</dt><dd>{user.marketplaceTermsAcceptedAt ? `${user.marketplaceTermsVersion ?? ""} · ${fmtDate(user.marketplaceTermsAcceptedAt)}` : t.termsNone}</dd></div>
+              {user.suspendedAt && <div><dt>{t.suspendedAt}</dt><dd>{fmtDate(user.suspendedAt)}</dd></div>}
+            </dl>
+          </article>
+          <article className="pa-card"><h3>{t.subscription}</h3>
+            <dl className="pa-dl">
+              <div><dt>{t.tier}</dt><dd>{user.tier === "premium" ? t.premium : t.free}</dd></div>
+              <div><dt>{t.status}</dt><dd>{user.subscriptionStatus}</dd></div>
+              {user.subscriptionCurrentPeriodEnd && <div><dt>{t.periodEnd}</dt><dd>{fmtDate(user.subscriptionCurrentPeriodEnd)}</dd></div>}
+              {user.cancelAtPeriodEnd && <div><dt>{t.cancelAtEnd}</dt><dd>{t.yes}</dd></div>}
+              <div><dt>{t.stripeCustomer}</dt><dd className="mono">{user.stripeCustomerId ?? t.none}</dd></div>
+              <div><dt>{t.stripeSub}</dt><dd className="mono">{user.stripeSubscriptionId ?? t.none}</dd></div>
+            </dl>
+            {user.stripeSubscriptionId && <p className="status error">{t.stripeWarning}</p>}
+          </article>
+          <article className="pa-card"><h3>{t.sessions} ({sessions.length})</h3>
+            {sessions.length ? sessions.map((s) => (
+              <div key={s.id} className="pa-row"><div><strong>#{s.id}</strong><small>{s.userAgent || t.none}</small></div><small>{t.lastSeen}: {fmtDate(s.lastSeenAt)}</small></div>
+            )) : <p className="pa-desc">{t.noSessions}</p>}
+          </article>
+          <article className="pa-card"><h3>{t.listings} ({listings.length})</h3>
+            {listings.length ? listings.map((l) => (
+              <div key={l.id} className="pa-row"><div><strong>#{l.id} {l.title}</strong><small>{l.moderationStatus}{l.flagCount > 0 ? ` · ${l.flagCount} ${t.flags}` : ""}</small></div><small>{fmtDate(l.createdAt)}</small></div>
+            )) : <p className="pa-desc">{t.noListings}</p>}
+          </article>
+          <article className="pa-card"><h3>{t.flagsFiled} ({flagsFiled.count})</h3>
+            {flagsFiled.recent.length ? flagsFiled.recent.map((f) => (
+              <div key={f.id} className="pa-row"><div><strong>#{f.listingId} {f.listingTitle}</strong><small>{f.reason} · {fmtDate(f.createdAt)}</small></div></div>
+            )) : <p className="pa-desc">{t.noFlags}</p>}
+          </article>
+          <article className="pa-card"><h3>{t.history}</h3>
+            {audit.length ? audit.map((a) => (
+              <div key={a.id} className="pa-row"><div><strong>{a.action}</strong><small>{a.adminName} · {fmtDate(a.createdAt)}</small>{a.details && <small>{a.details}</small>}</div></div>
+            )) : <p className="pa-desc">{t.noHistory}</p>}
+          </article>
+        </>;
+      })()}
+    </div>
+    {confirm && <div className="sheet-backdrop" onClick={() => !runAction.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{confirmTitle}</h2><p>{confirmBody}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={runAction.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirm.kind === "suspend" && !query.data?.user.suspended ? "danger-button" : "primary-button"} disabled={runAction.isPending} onClick={() => runAction.mutate(confirm)}>{t.confirmBtn}</button></div>
+    </section></div>}
+  </main>;
+}
+
+function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: string }) {
+  const [email, setEmail] = useState(initialEmail ?? "");
+  useEffect(() => { if (initialEmail !== undefined) setEmail(initialEmail); }, [initialEmail]);
   const [result, setResult] = useState<ApiResponse<typeof api, "adminRefundPreview"> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -4971,37 +5161,69 @@ function PARefundsTab({ lang }: { lang: Lang }) {
 function PASettingsTab({ lang }: { lang: Lang }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-settings"], queryFn: () => api.adminSettingsGet({}) });
-  const [autoMod, setAutoMod] = useState(true);
-  const [threshold, setThreshold] = useState("3");
+  const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   useEffect(() => {
-    const s = query.data?.settings;
-    if (s) { setAutoMod(s.auto_moderation_enabled !== "0"); setThreshold(s.flag_threshold ?? "3"); }
+    const d = query.data;
+    if (d) {
+      const next: Record<string, string> = {};
+      for (const def of d.defs) next[def.key] = d.settings[def.key] ?? "";
+      setValues(next);
+    }
   }, [query.data]);
   const save = useMutation({
     mutationFn: async () => {
-      const parsed = Number.parseInt(threshold, 10);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) throw new Error(lang === "es" ? "El umbral debe ser un número del 1 al 10." : "Threshold must be a whole number from 1 to 10.");
-      await api.adminSettingsSet({ key: "auto_moderation_enabled", value: autoMod ? "1" : "0" });
-      await api.adminSettingsSet({ key: "flag_threshold", value: String(parsed) });
+      const d = query.data;
+      if (!d) throw new Error("Settings are still loading.");
+      for (const def of d.defs) {
+        const value = values[def.key] ?? "";
+        if (def.type === "int") {
+          const parsed = Number.parseInt(value.trim(), 10);
+          if (!Number.isInteger(parsed) || (def.min !== undefined && parsed < def.min) || (def.max !== undefined && parsed > def.max))
+            throw new Error(lang === "es" ? `${def.labelEs}: ingresa un número del ${def.min} al ${def.max}.` : `${def.labelEn}: enter a whole number from ${def.min} to ${def.max}.`);
+        }
+        if (def.type === "text" && def.maxLength !== undefined && value.trim().length > def.maxLength)
+          throw new Error(lang === "es" ? `${def.labelEs}: máximo ${def.maxLength} caracteres.` : `${def.labelEn}: keep it under ${def.maxLength} characters.`);
+        await api.adminSettingsSet({ key: def.key, value });
+      }
     },
     onSuccess: async () => { setError(""); setSaved(true); window.setTimeout(() => setSaved(false), 2500); await qc.invalidateQueries({ queryKey: ["pa-settings"] }); },
     onError: (caught) => { setError(actionErrorMessage(caught)); setSaved(false); },
   });
+  const help: Record<string, { en: string; es: string }> = {
+    registration_enabled: { en: "When off, nobody can create a new account.", es: "Si está apagado, nadie puede crear una cuenta nueva." },
+    marketplace_enabled: { en: "When off, the Marketplace is hidden and all listing actions are blocked.", es: "Si está apagado, el Marketplace se oculta y todas las acciones se bloquean." },
+    announcement_banner: { en: "Shown to every signed-in user at the top of the app. Empty = no banner.", es: "Se muestra a todos los usuarios al inicio de la app. Vacío = sin anuncio." },
+    auto_moderation_enabled: { en: "Screen listing text on create and update. Violations are auto-rejected.", es: "Revisar el texto de las publicaciones al crearlas o editarlas. Las que violen las reglas se rechazan automáticamente." },
+    flag_threshold: { en: "Reports needed to send a listing to review.", es: "Reportes necesarios para enviar una publicación a revisión." },
+    free_listing_limit: { en: "Max active Marketplace listings per company on the free plan. Premium is unlimited.", es: "Máximo de publicaciones activas por empresa en el plan gratis. Premium es ilimitado." },
+  };
+  const order = ["registration_enabled", "marketplace_enabled", "announcement_banner", "auto_moderation_enabled", "flag_threshold", "free_listing_limit"];
   const t = lang === "es"
-    ? { loading: "Cargando…", autoMod: "Moderación automática", autoModHelp: "Revisar el texto de las publicaciones al crearlas o editarlas. Las que violen las reglas se rechazan automáticamente.", threshold: "Umbral de reportes", thresholdHelp: "Reportes necesarios para enviar una publicación a revisión.", save: "Guardar ajustes", saving: "Guardando…", saved: "Ajustes guardados." }
-    : { loading: "Loading…", autoMod: "Automatic moderation", autoModHelp: "Screen listing text on create and update. Violations are auto-rejected.", threshold: "Flag threshold", thresholdHelp: "Reports needed to send a listing to review.", save: "Save settings", saving: "Saving…", saved: "Settings saved." };
+    ? { loading: "Cargando…", loadError: "No se pudieron cargar los ajustes.", retry: "Reintentar", save: "Guardar ajustes", saving: "Guardando…", saved: "Ajustes guardados.", on: "Activado", off: "Apagado", bannerPlaceholder: "Escribe el anuncio…" }
+    : { loading: "Loading…", loadError: "Could not load settings.", retry: "Retry", save: "Save settings", saving: "Saving…", saved: "Settings saved.", on: "On", off: "Off", bannerPlaceholder: "Type the announcement…" };
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><p>{query.isError ? actionErrorMessage(query.error) : ""}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  const defs = query.data.defs.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   return <div className="pa-list">
     {error && <p className="status error">{error}</p>}
     {saved && <p className="status auth-success">{t.saved}</p>}
-    <div className="pa-card">
-      <label className="pa-switch"><span><strong>{t.autoMod}</strong><small>{t.autoModHelp}</small></span><input type="checkbox" role="switch" checked={autoMod} onChange={(event) => setAutoMod(event.target.checked)} /></label>
-    </div>
-    <div className="pa-card">
-      <label className="pa-field"><span><strong>{t.threshold}</strong><small>{t.thresholdHelp}</small></span><input inputMode="numeric" value={threshold} onChange={(event) => setThreshold(event.target.value.replace(/\D/g, "").slice(0, 2))} /></label>
-    </div>
+    {defs.map((def) => {
+      const label = lang === "es" ? def.labelEs : def.labelEn;
+      const hintEntry = help[def.key];
+      const hint = hintEntry ? (lang === "es" ? hintEntry.es : hintEntry.en) : "";
+      const value = values[def.key] ?? "";
+      return <div className="pa-card" key={def.key}>
+        {def.type === "boolean" ? (
+          <label className="pa-switch"><span><strong>{label}</strong>{hint && <small>{hint}</small>}</span><input type="checkbox" role="switch" checked={value === "1"} onChange={(event) => setValues((current) => ({ ...current, [def.key]: event.target.checked ? "1" : "0" }))} /></label>
+        ) : def.type === "int" ? (
+          <label className="pa-field"><span><strong>{label}</strong>{hint && <small>{hint}</small>}</span><input inputMode="numeric" value={value} onChange={(event) => setValues((current) => ({ ...current, [def.key]: event.target.value.replace(/\D/g, "").slice(0, 3) }))} /></label>
+        ) : (
+          <label className="pa-field"><span><strong>{label}</strong>{hint && <small>{hint}</small>}</span><input value={value} maxLength={def.maxLength ?? 300} placeholder={t.bannerPlaceholder} onChange={(event) => setValues((current) => ({ ...current, [def.key]: event.target.value }))} /></label>
+        )}
+      </div>;
+    })}
     <button type="button" className="primary-button" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
   </div>;
 }
@@ -5010,11 +5232,12 @@ function PAAuditTab({ lang }: { lang: Lang }) {
   const [page, setPage] = useState(1);
   const query = useQuery({ queryKey: ["pa-audit", page], queryFn: () => api.adminAuditLog({ page, pageSize: 25 }) });
   const t = lang === "es"
-    ? { loading: "Cargando…", empty: "Sin actividad registrada.", prev: "Anterior", next: "Siguiente", of: "de" }
-    : { loading: "Loading…", empty: "No admin activity yet.", prev: "Previous", next: "Next", of: "of" };
+    ? { loading: "Cargando…", empty: "Sin actividad registrada.", loadError: "No se pudo cargar el registro.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", of: "de" }
+    : { loading: "Loading…", empty: "No admin activity yet.", loadError: "Could not load the audit log.", retry: "Retry", prev: "Previous", next: "Next", of: "of" };
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
   if (!data?.entries.length) return <div className="market-empty"><h2>{t.empty}</h2></div>;
   return <div className="pa-list">
     {data.entries.map((entry) => (
@@ -10050,6 +10273,17 @@ function TodayScreen({
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: () => api.listAppointments({}) });
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
+  const pinnedTools = pinsQuery.data?.tools ?? [];
+  const unpinMutation = useMutation({
+    mutationFn: (toolId: string) => api.unpinTool({ toolId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
+  });
+  const openPinnedTool = (pin: { screen: string; tab: string | null }) => {
+    const target = pinnedScreenTarget(pin);
+    if (auth?.user.tier !== "premium" && isProToolScreen(target)) setScreen({ name: "tools" });
+    else setScreen(target);
+  };
   const d = query.data;
   const fieldIntel = useQuery({
     queryKey: ["field-intelligence-today", today],
@@ -10245,6 +10479,25 @@ function TodayScreen({
         <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon alternate"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
         <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
+      {pinnedTools.length > 0 && (
+        <section className="home-pinned" aria-label={lang === "es" ? "Fijados" : "Pinned"}>
+          <header>
+            <h2>{lang === "es" ? "Fijados" : "Pinned"}</h2>
+            <button type="button" onClick={() => setScreen({ name: "tools" })}>{lang === "es" ? "Todas las herramientas" : "All tools"}</button>
+          </header>
+          <div className="home-pinned-grid">
+            {pinnedTools.map((pin) => (
+              <div key={pin.toolId} className="home-pin-tile">
+                <button type="button" className="home-pin-open" onClick={() => openPinnedTool(pin)}>
+                  <span className="home-pin-icon"><Icon><path d={pin.iconPath} /></Icon></span>
+                  <strong>{lang === "es" ? pin.titleEs : pin.titleEn}</strong>
+                </button>
+                <button type="button" className="home-pin-remove" aria-label={lang === "es" ? "Quitar" : "Unpin"} title={lang === "es" ? "Quitar" : "Unpin"} disabled={unpinMutation.isPending} onClick={() => unpinMutation.mutate(pin.toolId)}>×</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <button type="button" className="home-attention-card" onClick={() => { const target = document.querySelector(".automation-group, .today-clear, .today-field-strip"); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
         <span><strong>{actionCount}</strong><small>{lang === "es" ? "acciones que merecen atención" : "actions worth your attention"}</small></span><BackIcon />
       </button>

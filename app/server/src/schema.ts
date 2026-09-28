@@ -817,3 +817,14 @@ export const adminAuditLog = sqliteTable("admin_audit_log", {
   details: text("details").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+export const userHomePins = sqliteTable("user_home_pins", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  toolId: text("tool_id").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("user_home_pins_user_tool_unique").on(table.userId, table.toolId),
+  index("user_home_pins_user_idx").on(table.userId, table.position),
+]);

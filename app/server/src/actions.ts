@@ -351,7 +351,7 @@ const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once p
 const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
-const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable() });
+const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string() });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
 // refreshToken = raw refresh token from the HttpOnly cookie (if present).
@@ -494,8 +494,8 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, material, 256);
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
-function authUserShape(row: typeof schema.authUsers.$inferSelect) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion };
+function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
   const db = ctx.db<typeof schema>();
@@ -512,7 +512,7 @@ async function deliverAuthCode(ctx: Ctx, email: string, code: string, purpose: "
   return authCodeClientResult(code, result.delivery);
 }
 
-type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium" };
+type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; unscopedDb?: () => ReturnType<Ctx["db"]> };
 const GLOBAL_MARKETPLACE_READ_TABLES = new Set<unknown>([
   schema.marketplaceListings,
   schema.marketplaceListingPhotos,
@@ -591,8 +591,10 @@ function workspaceDb(rawDb: any, companyId: number): any {
 
 function withWorkspace(ctx: Ctx, user: typeof schema.authUsers.$inferSelect): WorkspaceCtx {
   const scoped = Object.create(ctx) as WorkspaceCtx;
+  const rawDb = () => ctx.db<typeof schema>();
   Object.defineProperties(scoped, {
-    db: { value: () => workspaceDb(ctx.db<typeof schema>(), user.companyId) },
+    db: { value: () => workspaceDb(rawDb(), user.companyId) },
+    unscopedDb: { value: rawDb },
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
     workspaceTier: { value: user.tier },
@@ -618,6 +620,16 @@ async function requirePlatformAdmin(ctx: Ctx) {
   return { identity, admin: user };
 }
 
+// Platform-admin actions must see and change rows across ALL companies.
+// The workspace ctx's `db` proxy auto-filters every table that has a
+// company_id column down to the admin's own company, so admin handlers
+// use this unscoped db instead.
+function platformDb(ctx: Ctx): ReturnType<Ctx["db"]> {
+  const scoped = ctx as WorkspaceCtx;
+  if (typeof scoped.unscopedDb === "function") return scoped.unscopedDb();
+  return ctx.db<typeof schema>();
+}
+
 async function logAdminAction(db: ReturnType<Ctx["db"]>, adminUserId: number, action: string, targetType: string, targetId: string, details: string) {
   await db.insert(schema.adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date() });
 }
@@ -631,6 +643,54 @@ async function getFlagThreshold(db: ReturnType<Ctx["db"]>): Promise<number> {
   const raw = await getPlatformSetting(db, "flag_threshold", "3");
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed >= 1 && parsed <= 10 ? parsed : 3;
+}
+
+type PlatformSettingType = "boolean" | "int" | "text";
+interface PlatformSettingDef { type: PlatformSettingType; labelEn: string; labelEs: string; min?: number; max?: number; maxLength?: number; fallback: string }
+const PLATFORM_SETTING_DEFS: Record<string, PlatformSettingDef> = {
+  auto_moderation_enabled: { type: "boolean", labelEn: "Automatic listing moderation", labelEs: "Moderación automática de publicaciones", fallback: "1" },
+  flag_threshold: { type: "int", labelEn: "Flags before review", labelEs: "Reportes antes de revisión", min: 1, max: 10, fallback: "3" },
+  registration_enabled: { type: "boolean", labelEn: "New registrations", labelEs: "Nuevos registros", fallback: "1" },
+  marketplace_enabled: { type: "boolean", labelEn: "Marketplace", labelEs: "Marketplace", fallback: "1" },
+  free_listing_limit: { type: "int", labelEn: "Free plan active listings", labelEs: "Publicaciones activas del plan gratis", min: 1, max: 100, fallback: "3" },
+  announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" },
+};
+
+function normalizePlatformSetting(key: string, raw: string): string {
+  const def = PLATFORM_SETTING_DEFS[key];
+  if (!def) throw new Error(`Unknown platform setting: ${key}`);
+  if (def.type === "boolean") {
+    if (raw !== "0" && raw !== "1") throw new Error(`Invalid value for ${key}: expected 0 or 1.`);
+    return raw;
+  }
+  if (def.type === "int") {
+    const trimmed = raw.trim();
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed) || String(parsed) !== trimmed) throw new Error(`Invalid value for ${key}: expected a whole number.`);
+    if (parsed < (def.min ?? 0) || parsed > (def.max ?? Number.MAX_SAFE_INTEGER)) throw new Error(`Invalid value for ${key}: expected ${def.min}–${def.max}.`);
+    return String(parsed);
+  }
+  const text = raw.trim();
+  if (text.length > (def.maxLength ?? 1000)) throw new Error(`Invalid value for ${key}: keep it under ${def.maxLength} characters.`);
+  return text;
+}
+
+async function getBooleanPlatformSetting(db: ReturnType<Ctx["db"]>, key: string): Promise<boolean> {
+  return (await getPlatformSetting(db, key, PLATFORM_SETTING_DEFS[key]?.fallback ?? "0")) === "1";
+}
+
+async function getIntPlatformSetting(db: ReturnType<Ctx["db"]>, key: string): Promise<number> {
+  const fallback = Number.parseInt(PLATFORM_SETTING_DEFS[key]?.fallback ?? "0", 10);
+  const parsed = Number.parseInt(await getPlatformSetting(db, key, String(fallback)), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  const def = PLATFORM_SETTING_DEFS[key];
+  if (def?.min !== undefined && parsed < def.min) return def.min;
+  if (def?.max !== undefined && parsed > def.max) return def.max;
+  return parsed;
+}
+
+async function requireMarketplaceEnabled(db: ReturnType<Ctx["db"]>): Promise<void> {
+  if (!(await getBooleanPlatformSetting(db, "marketplace_enabled"))) throw new Error("MARKETPLACE_DISABLED");
 }
 
 async function isAutoModerationEnabled(db: ReturnType<Ctx["db"]>): Promise<boolean> {
@@ -985,6 +1045,43 @@ async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { titl
   return scanListingText(input);
 }
 
+// ---------------------------------------------------------------------------
+// Pinnable tools registry: tool ids match the Tools screen directory
+// (ToolsHomeScreen). toolId format is `<screenName>` or `<screenName>:<tab>`.
+// ---------------------------------------------------------------------------
+
+type ToolRegistryEntry = { screen: string; tab: string | null; titleEn: string; titleEs: string; iconPath: string };
+
+const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
+  "toolbox:loan": { screen: "toolbox", tab: "loan", titleEn: "Loan payment", titleEs: "Pago de préstamo", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "toolbox:materials": { screen: "toolbox", tab: "materials", titleEn: "Material guide", titleEs: "Guía de materiales", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  "toolbox:angle": { screen: "toolbox", tab: "angle", titleEn: "Angles", titleEs: "Ángulos", iconPath: "M4 19h16L4 5zM8 15h5" },
+  "toolbox:convert": { screen: "toolbox", tab: "convert", titleEn: "Unit converter", titleEs: "Convertidor de unidades", iconPath: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
+  "toolbox:area": { screen: "toolbox", tab: "area", titleEn: "Measurements", titleEs: "Medidas", iconPath: "M4 4h16v16H4zM8 4v16M4 10h16" },
+  "toolbox:yards": { screen: "toolbox", tab: "yards", titleEn: "Concrete", titleEs: "Concreto", iconPath: "M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" },
+  "toolbox:board": { screen: "toolbox", tab: "board", titleEn: "Lumber", titleEs: "Madera", iconPath: "M4 7h16v10H4zM8 7v10M13 7v10" },
+  "toolbox:drywall": { screen: "toolbox", tab: "drywall", titleEn: "Drywall sheets", titleEs: "Paneles de yeso", iconPath: "M5 4h14v16H5zM9 4v16M5 10h14" },
+  "toolbox:roofing": { screen: "toolbox", tab: "roofing", titleEn: "Roofing squares", titleEs: "Techos", iconPath: "M3 13 12 4l9 9M6 11v9h12v-9" },
+  "toolbox:tile": { screen: "toolbox", tab: "tile", titleEn: "Tile boxes", titleEs: "Cajas de loseta", iconPath: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" },
+  "toolbox:margin": { screen: "toolbox", tab: "margin", titleEn: "Markup & margin", titleEs: "Margen y recargo", iconPath: "M6 18 18 6M7 7h.01M17 17h.01" },
+  "businessTools:price": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M5 5h14v14H5zM8 9h8M8 13h5" },
+  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Quote templates", titleEs: "Plantillas de presupuestos", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "businessTools:mileage": { screen: "businessTools", tab: "mileage", titleEn: "Mileage", titleEs: "Millaje", iconPath: "M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" },
+  "businessTools:expenses": { screen: "businessTools", tab: "expenses", titleEn: "Expenses & receipts", titleEs: "Gastos y recibos", iconPath: "M4 6h16v14H4zM8 3v6M16 3v6" },
+  "expansion:warranties": { screen: "expansion", tab: "warranties", titleEn: "Warranties", titleEs: "Garantías", iconPath: "M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" },
+  "expansion:scanner": { screen: "expansion", tab: "scanner", titleEn: "Document scanner", titleEs: "Escáner de documentos", iconPath: "M6 3h12v18H6zM9 7h6M4 16h16" },
+  "reports": { screen: "reports", tab: null, titleEn: "Reports", titleEs: "Informes", iconPath: "M4 20V10M10 20V4M16 20v-7M22 20V7" },
+  "operations:calendar": { screen: "operations", tab: "calendar", titleEn: "Schedule", titleEs: "Calendario", iconPath: "M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" },
+  "followups": { screen: "followups", tab: null, titleEn: "Collections & follow-ups", titleEs: "Cobros y seguimientos", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
+  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders waiting on suppliers", titleEs: "Pedidos esperando proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  "fieldIntelligence:equipment": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" },
+  "expansion:plans": { screen: "expansion", tab: "plans", titleEn: "Equipment upkeep", titleEs: "Cuidado del equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
+  "fieldIntelligence:safety": { screen: "fieldIntelligence", tab: "safety", titleEn: "Safety & incidents", titleEs: "Seguridad e incidentes", iconPath: "M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" },
+  "fieldIntelligence:credentials": { screen: "fieldIntelligence", tab: "credentials", titleEn: "Licenses & certificates", titleEs: "Licencias y certificados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Payroll", titleEs: "Nómina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
+  "expansion:crew": { screen: "expansion", tab: "crew", titleEn: "Crew hours", titleEs: "Horas del equipo", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
+};
+
 const BaseActions = {
   getAuthBootstrap: defineAction({
     request: z.object({}),
@@ -1007,6 +1104,7 @@ const BaseActions = {
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
       const db = ctx.db<typeof schema>();
+      if (!(await getBooleanPlatformSetting(db, "registration_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
       const users = await db.select({ id: schema.authUsers.id, companyId: schema.authUsers.companyId }).from(schema.authUsers);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.email, email)).limit(1))[0];
@@ -1064,7 +1162,7 @@ const BaseActions = {
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
       const session = await issueSession(ctx, user.id);
-      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: session.setCookies };
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     },
   }),
   // Exchanges the HttpOnly refresh cookie for a fresh 15-minute proof. Public:
@@ -1091,7 +1189,7 @@ const BaseActions = {
             if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
             if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
-            return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
+            return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
         }
         if (row.replacedBy) {
@@ -1119,7 +1217,7 @@ const BaseActions = {
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60_000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
-      return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
+      return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
     },
   }),
   logout: defineAction({
@@ -1147,7 +1245,7 @@ const BaseActions = {
     async handler(ctx, args) {
       try {
         const user = await requireSession(ctx, args._sessionToken);
-        return { user: authUserShape(user) };
+        return { user: authUserShape(user, await getPlatformSetting(ctx.db(), "announcement_banner", "")) };
       } catch {
         return { user: null };
       }
@@ -1834,11 +1932,29 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     },
   }),
 
+  // Lightweight gate for the marketplace UI: whether the marketplace is
+  // enabled, the current free-plan active-listing limit, and this company's
+  // active listing count. Always available (even when disabled) so the client
+  // can show the right notice instead of an error.
+  marketplaceGate: defineAction({
+    request: z.object({}),
+    response: z.object({ enabled: z.boolean(), freeListingLimit: z.number(), myActiveListingCount: z.number() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
+      const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+      const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
+      return { enabled, freeListingLimit, myActiveListingCount: mine.length };
+    },
+  }),
+
   listMarketplaceListings: defineAction({
     request: z.object({ search: z.string().trim().max(120).default(""), category: marketplaceCategorySchema.nullable().default(null), serviceArea: z.string().trim().max(120).default("") }),
     response: z.object({ listings: z.array(marketplaceListingSchema) }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
       const rows = await db.select().from(schema.marketplaceListings).orderBy(desc(schema.marketplaceListings.promoted), desc(schema.marketplaceListings.createdAt));
       const photoRows = await db.select().from(schema.marketplaceListingPhotos).orderBy(schema.marketplaceListingPhotos.sortOrder);
       const search = args.search.toLowerCase();
@@ -1853,6 +1969,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ listing: marketplaceListingSchema.nullable() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
       const row = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.id)).limit(1))[0];
       if (!row) return { listing: null };
       // Non-active listings are only visible to their owner (so the owner can
@@ -1878,9 +1995,11 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>(); const now = new Date();
+      await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
-        const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId));
-        if (mine.length >= 5) throw new Error("Your free plan includes 5 Marketplace listings. Upgrade to Premium for more.");
+        const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+        const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
+        if (mine.length >= freeListingLimit) throw new Error(`Your free plan includes ${freeListingLimit} active Marketplace listing${freeListingLimit === 1 ? "" : "s"}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
@@ -1921,6 +2040,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (args.priceKind === "amount" && !args.price.trim()) throw new Error("Enter a price or choose Contact for price.");
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
       const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
       const existing = (await db.select().from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.id, args.id), eq(schema.marketplaceListings.companyId, workspaceIdentity(ctx).workspaceCompanyId))).limit(1))[0];
       if (!existing) throw new Error("You can only edit your own listings.");
       // Re-scan on every edit. Flagged edits go to auto_rejected; clean edits
@@ -1958,6 +2078,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
       const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
       const listing = (await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.id, args.id), eq(schema.marketplaceListings.companyId, workspaceIdentity(ctx).workspaceCompanyId))).limit(1))[0];
       if (!listing) throw new Error("You can only delete your own listings.");
       const photos = await db.select({ blobKey: schema.marketplaceListingPhotos.blobKey }).from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id));
@@ -1978,6 +2099,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args): Promise<{ ok: true; status: string }> {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>(); const now = new Date();
+      await requireMarketplaceEnabled(db);
       const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) throw new Error("This listing could not be found.");
       if (listing.moderationStatus === "removed") throw new Error("This listing is no longer available.");
@@ -2149,7 +2271,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     }),
     async handler(ctx) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const rows = await db.select().from(schema.marketplaceListings).where(inArray(schema.marketplaceListings.moderationStatus, ["auto_rejected", "pending_review"])).orderBy(desc(schema.marketplaceListings.createdAt));
       const listingIds = rows.map((row) => row.id);
       const flagRows = listingIds.length ? await db.select().from(schema.marketplaceFlags).where(inArray(schema.marketplaceFlags.listingId, listingIds)).orderBy(desc(schema.marketplaceFlags.createdAt)) : [];
@@ -2187,7 +2309,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ ok: z.literal(true), status: z.string() }),
     async handler(ctx, args): Promise<{ ok: true; status: string }> {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>(); const now = new Date();
+      const db = platformDb(ctx); const now = new Date();
       const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) throw new Error("This listing could not be found.");
       const status = args.decision === "approve" ? "active" : "removed";
@@ -2210,7 +2332,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const term = `%${args.search}%`;
       const whereClause = args.search ? or(like(schema.authUsers.name, term), like(schema.authUsers.email, term)) : undefined;
       const all = await db.select().from(schema.authUsers).where(whereClause).orderBy(desc(schema.authUsers.createdAt));
@@ -2229,12 +2351,117 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       };
     },
   }),
+  adminUserDetail: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({
+      user: z.object({
+        id: z.number(), name: z.string(), email: z.string(),
+        tier: z.string(), subscriptionStatus: z.string(),
+        stripeCustomerId: z.string().nullable(), stripeSubscriptionId: z.string().nullable(),
+        cancelAtPeriodEnd: z.boolean(), subscriptionCurrentPeriodEnd: z.string().nullable(),
+        emailVerified: z.boolean(), emailVerifiedAt: z.string().nullable(),
+        marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(),
+        createdAt: z.string(), updatedAt: z.string(),
+        suspendedAt: z.string().nullable(), suspended: z.boolean(), isPlatformAdmin: z.boolean(),
+        companyId: z.number(), companyName: z.string(), activeSessionCount: z.number(),
+      }),
+      listings: z.array(z.object({ id: z.number(), title: z.string(), moderationStatus: z.string(), flagCount: z.number(), createdAt: z.string() })),
+      flagsFiled: z.object({ count: z.number(), recent: z.array(z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), reason: z.string(), createdAt: z.string() })) }),
+      sessions: z.array(z.object({ id: z.number(), userAgent: z.string().nullable(), lastSeenAt: z.string(), createdAt: z.string() })),
+      audit: z.array(z.object({ id: z.number(), action: z.string(), adminName: z.string(), details: z.string(), createdAt: z.string() })),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!user) throw new Error("User not found.");
+      const companyRow = (await db.select({ companyName: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.companyId, user.companyId)).limit(1))[0];
+      const companyName = companyRow?.companyName || "";
+      const listingRows = await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.companyId, user.companyId)).orderBy(desc(schema.marketplaceListings.createdAt));
+      const listingIds = listingRows.map((row) => row.id);
+      const flagRows = listingIds.length
+        ? await db.select({ listingId: schema.marketplaceFlags.listingId }).from(schema.marketplaceFlags).where(inArray(schema.marketplaceFlags.listingId, listingIds))
+        : [];
+      const flagCounts = new Map<number, number>();
+      for (const row of flagRows) flagCounts.set(row.listingId, (flagCounts.get(row.listingId) ?? 0) + 1);
+      const filedRecent = await db.select({ id: schema.marketplaceFlags.id, listingId: schema.marketplaceFlags.listingId, listingTitle: schema.marketplaceListings.title, reason: schema.marketplaceFlags.reason, createdAt: schema.marketplaceFlags.createdAt })
+        .from(schema.marketplaceFlags)
+        .innerJoin(schema.marketplaceListings, eq(schema.marketplaceFlags.listingId, schema.marketplaceListings.id))
+        .where(eq(schema.marketplaceFlags.reporterUserId, user.id))
+        .orderBy(desc(schema.marketplaceFlags.createdAt)).limit(10);
+      const filedCount = (await db.select({ n: sql<number>`count(*)` }).from(schema.marketplaceFlags).where(eq(schema.marketplaceFlags.reporterUserId, user.id)))[0]?.n ?? 0;
+      // Active sessions only; token hashes never leave the server.
+      const sessionRows = await db.select({ id: schema.authSessions.id, userAgent: schema.authSessions.userAgent, lastSeenAt: schema.authSessions.lastSeenAt, createdAt: schema.authSessions.createdAt })
+        .from(schema.authSessions)
+        .where(and(eq(schema.authSessions.userId, user.id), isNull(schema.authSessions.revokedAt)))
+        .orderBy(desc(schema.authSessions.lastSeenAt));
+      const auditRows = await db.select({ id: schema.adminAuditLog.id, action: schema.adminAuditLog.action, adminName: schema.authUsers.name, details: schema.adminAuditLog.details, createdAt: schema.adminAuditLog.createdAt })
+        .from(schema.adminAuditLog)
+        .leftJoin(schema.authUsers, eq(schema.adminAuditLog.adminUserId, schema.authUsers.id))
+        .where(and(eq(schema.adminAuditLog.targetType, "auth_user"), eq(schema.adminAuditLog.targetId, String(user.id))))
+        .orderBy(desc(schema.adminAuditLog.createdAt)).limit(20);
+      return {
+        user: {
+          id: user.id, name: user.name, email: user.email,
+          tier: user.tier, subscriptionStatus: user.subscriptionStatus,
+          stripeCustomerId: user.stripeCustomerId, stripeSubscriptionId: user.stripeSubscriptionId,
+          cancelAtPeriodEnd: !!user.cancelAtPeriodEnd,
+          subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd ? user.subscriptionCurrentPeriodEnd.toISOString() : null,
+          emailVerified: !!user.emailVerifiedAt,
+          emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
+          marketplaceTermsAcceptedAt: user.marketplaceTermsAcceptedAt ? user.marketplaceTermsAcceptedAt.toISOString() : null,
+          marketplaceTermsVersion: user.marketplaceTermsVersion,
+          createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString(),
+          suspendedAt: user.suspendedAt ? user.suspendedAt.toISOString() : null,
+          suspended: !!user.suspendedAt, isPlatformAdmin: user.isPlatformAdmin,
+          companyId: user.companyId, companyName, activeSessionCount: sessionRows.length,
+        },
+        listings: listingRows.map((row) => ({ id: row.id, title: row.title, moderationStatus: row.moderationStatus, flagCount: flagCounts.get(row.id) ?? 0, createdAt: row.createdAt.toISOString() })),
+        flagsFiled: { count: filedCount, recent: filedRecent.map((row) => ({ id: row.id, listingId: row.listingId, listingTitle: row.listingTitle, reason: row.reason, createdAt: row.createdAt.toISOString() })) },
+        sessions: sessionRows.map((row) => ({ id: row.id, userAgent: row.userAgent, lastSeenAt: row.lastSeenAt.toISOString(), createdAt: row.createdAt.toISOString() })),
+        audit: auditRows.map((row) => ({ id: row.id, action: row.action, adminName: row.adminName ?? "System", details: row.details, createdAt: row.createdAt.toISOString() })),
+      };
+    },
+  }),
+  adminUserSetTier: defineAction({
+    request: z.object({ userId: z.number().int().positive(), tier: z.enum(["free", "premium"]) }),
+    response: z.object({ ok: z.literal(true), tier: z.string(), subscriptionStatus: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; tier: string; subscriptionStatus: string }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx); const now = new Date();
+      const user = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!user) throw new Error("User not found.");
+      // Manual grant: "manual" marks it as admin-granted so it is never
+      // confused with a Stripe-managed subscription. Stripe itself is untouched.
+      const subscriptionStatus = args.tier === "premium" ? "manual" : "inactive";
+      await db.update(schema.authUsers).set({ tier: args.tier, subscriptionStatus, cancelAtPeriodEnd: false, updatedAt: now }).where(eq(schema.authUsers.id, args.userId));
+      await logAdminAction(db, admin.id, args.tier === "premium" ? "user.tier_grant_premium" : "user.tier_revoke_premium", "auth_user", String(user.id), `${user.name} <${user.email}> → ${args.tier}`);
+      ctx.invalidateQueries();
+      return { ok: true, tier: args.tier, subscriptionStatus };
+    },
+  }),
+  adminUserRevokeSessions: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true), revoked: z.number() }),
+    async handler(ctx, args): Promise<{ ok: true; revoked: number }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx); const now = new Date();
+      if (admin.id === args.userId) throw new Error("You cannot revoke your own sessions from here.");
+      const user = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!user) throw new Error("User not found.");
+      const active = await db.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(eq(schema.authSessions.userId, args.userId), isNull(schema.authSessions.revokedAt)));
+      if (active.length) await db.update(schema.authSessions).set({ revokedAt: now }).where(and(eq(schema.authSessions.userId, args.userId), isNull(schema.authSessions.revokedAt)));
+      await logAdminAction(db, admin.id, "user.sessions_revoked", "auth_user", String(user.id), `${user.name} <${user.email}> — ${active.length} session${active.length === 1 ? "" : "s"} revoked`);
+      ctx.invalidateQueries();
+      return { ok: true, revoked: active.length };
+    },
+  }),
   adminUserSuspend: defineAction({
     request: z.object({ userId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>(); const now = new Date();
+      const db = platformDb(ctx); const now = new Date();
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
       if (!user) throw new Error("User not found.");
       if (user.id === admin.id) throw new Error("You can't suspend your own account.");
@@ -2251,7 +2478,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>(); const now = new Date();
+      const db = platformDb(ctx); const now = new Date();
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
       if (!user) throw new Error("User not found.");
       await db.update(schema.authUsers).set({ suspendedAt: null, updatedAt: now }).where(eq(schema.authUsers.id, user.id));
@@ -2268,7 +2495,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, normalizedEmail(args.email))).limit(1))[0];
       if (!user) return { user: null, charges: [] };
       const payload = { id: user.id, name: user.name, email: user.email, stripeCustomerId: user.stripeCustomerId };
@@ -2282,7 +2509,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ id: z.string(), amount: z.number(), currency: z.string(), status: z.string() }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const refund = await ctx.executePrivileged(privileged.issueStripeRefund, { chargeId: args.chargeId, amountCents: args.amountCents, reason: args.reason });
       await logAdminAction(db, admin.id, "stripe.refund", "stripe_charge", args.chargeId, `Refund ${refund.id}: ${(refund.amount / 100).toFixed(2)} ${refund.currency.toUpperCase()}${args.reason ? ` — ${args.reason}` : ""}`);
       ctx.invalidateQueries();
@@ -2291,33 +2518,38 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   }),
   adminSettingsGet: defineAction({
     request: z.object({}),
-    response: z.object({ settings: z.record(z.string(), z.string()) }),
+    response: z.object({
+      settings: z.record(z.string(), z.string()),
+      defs: z.array(z.object({ key: z.string(), type: z.enum(["boolean", "int", "text"]), labelEn: z.string(), labelEs: z.string(), min: z.number().optional(), max: z.number().optional(), maxLength: z.number().optional() })),
+    }),
     async handler(ctx) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const rows = await db.select().from(schema.platformSettings);
       const settings: Record<string, string> = {};
       for (const row of rows) settings[row.key] = row.value;
-      return { settings };
+      const defs = Object.entries(PLATFORM_SETTING_DEFS).map(([key, def]) => ({
+        key, type: def.type as "boolean" | "int" | "text", labelEn: def.labelEn, labelEs: def.labelEs,
+        ...(def.min !== undefined ? { min: def.min } : {}),
+        ...(def.max !== undefined ? { max: def.max } : {}),
+        ...(def.maxLength !== undefined ? { maxLength: def.maxLength } : {}),
+      }));
+      return { settings, defs };
     },
   }),
   adminSettingsSet: defineAction({
-    request: z.object({ key: z.enum(["auto_moderation_enabled", "flag_threshold"]), value: z.string().trim().max(50) }),
-    response: z.object({ ok: z.literal(true) }),
-    async handler(ctx, args): Promise<{ ok: true }> {
+    request: z.object({ key: z.enum(Object.keys(PLATFORM_SETTING_DEFS) as [string, ...string[]]), value: z.string().trim().max(2000) }),
+    response: z.object({ ok: z.literal(true), key: z.string(), value: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; key: string; value: string }> {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>(); const now = new Date();
-      if (args.key === "auto_moderation_enabled" && args.value !== "0" && args.value !== "1") throw new Error("auto_moderation_enabled must be 0 or 1.");
-      if (args.key === "flag_threshold") {
-        const parsed = Number.parseInt(args.value, 10);
-        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) throw new Error("flag_threshold must be a whole number from 1 to 10.");
-      }
+      const db = platformDb(ctx); const now = new Date();
+      const value = normalizePlatformSetting(args.key, args.value);
       const existing = (await db.select({ key: schema.platformSettings.key }).from(schema.platformSettings).where(eq(schema.platformSettings.key, args.key)).limit(1))[0];
-      if (existing) await db.update(schema.platformSettings).set({ value: args.value, updatedAt: now }).where(eq(schema.platformSettings.key, args.key));
-      else await db.insert(schema.platformSettings).values({ key: args.key, value: args.value, updatedAt: now });
-      await logAdminAction(db, admin.id, "settings.update", "platform_setting", args.key, `${args.key} = ${args.value}`);
+      if (existing) await db.update(schema.platformSettings).set({ value, updatedAt: now }).where(eq(schema.platformSettings.key, args.key));
+      else await db.insert(schema.platformSettings).values({ key: args.key, value, updatedAt: now });
+      await logAdminAction(db, admin.id, "settings.update", "platform_setting", args.key, `${args.key} = ${value}`);
       ctx.invalidateQueries();
-      return { ok: true };
+      return { ok: true, key: args.key, value };
     },
   }),
   adminAuditLog: defineAction({
@@ -2328,7 +2560,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db<typeof schema>();
+      const db = platformDb(ctx);
       const all = await db.select().from(schema.adminAuditLog).orderBy(desc(schema.adminAuditLog.createdAt));
       const total = all.length;
       const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
@@ -2348,9 +2580,56 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   submitSupportReport: defineAction({ request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }), response: z.object({ id: z.number(), sentAt: z.string() }), async handler(ctx, args) { const now = new Date(); const rows = await ctx.db<typeof schema>().insert(schema.supportReports).values({ ...args, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.supportReports.id }); const made = rows[0]; if (!made) throw new Error("The report could not be saved."); ctx.invalidateQueries(); return { id: made.id, sentAt: now.toISOString() }; }}),
 
   getSettings: defineAction({ request: z.object({}), response: settingsSchema, async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const row = rows[0]; if (!row) return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en" as const, accentColor: "#1f5a4a", defaultQuoteTheme: "classic" as const, defaultDocumentFont: "helvetica" as const, defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent" as const, lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date" as const, addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null }; return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null }; }}),
-  updateSettings: defineAction({ request: settingsInputSchema, response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select({ id: schema.settings.id }).from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); if (rows[0]) await db.update(schema.settings).set({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }); ctx.invalidateQueries(); return { ok: true }; }}),
-  uploadLogo: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(10_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ logoBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", logoBlobKey: key, updatedAt: new Date() }); if (old?.logoBlobKey) await ctx.blobs.delete(old.logoBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),
-  uploadCompanyCover: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(14_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/covers/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ coverBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", coverBlobKey: key, updatedAt: new Date() }); if (old?.coverBlobKey) await ctx.blobs.delete(old.coverBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),
+  updateSettings: defineAction({ request: settingsInputSchema, response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select({ id: schema.settings.id }).from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); if (rows[0]) await db.update(schema.settings).set({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }); ctx.invalidateQueries(); return { ok: true }; }}),
+  uploadLogo: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(10_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ logoBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", logoBlobKey: key, updatedAt: new Date() }); if (old?.logoBlobKey) await ctx.blobs.delete(old.logoBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),
+  uploadCompanyCover: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(14_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/covers/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ coverBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", coverBlobKey: key, updatedAt: new Date() }); if (old?.coverBlobKey) await ctx.blobs.delete(old.coverBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),
+  // ---------------------------------------------------------------------------
+  // Pinned tools on the Home screen (per-user, auth-gated).
+  // ---------------------------------------------------------------------------
+  pinTool: defineAction({
+    request: z.object({ toolId: z.string().trim().min(1).max(80) }),
+    response: z.object({ ok: z.literal(true), toolId: z.string(), position: z.number() }),
+    async handler(ctx, args): Promise<{ ok: true; toolId: string; position: number }> {
+      const identity = workspaceIdentity(ctx);
+      const entry = TOOL_REGISTRY[args.toolId];
+      if (!entry) throw new Error("That tool cannot be pinned.");
+      const db = ctx.db<typeof schema>();
+      const existing = (await db.select({ position: schema.userHomePins.position }).from(schema.userHomePins).where(and(eq(schema.userHomePins.userId, identity.workspaceUserId), eq(schema.userHomePins.toolId, args.toolId))).limit(1))[0];
+      if (existing) return { ok: true, toolId: args.toolId, position: existing.position };
+      const maxRow = (await db.select({ maxPosition: sql<number | null>`max(${schema.userHomePins.position})` }).from(schema.userHomePins).where(eq(schema.userHomePins.userId, identity.workspaceUserId)))[0];
+      const position = (maxRow?.maxPosition ?? -1) + 1;
+      await db.insert(schema.userHomePins).values({ userId: identity.workspaceUserId, toolId: args.toolId, position });
+      ctx.invalidateQueries();
+      return { ok: true, toolId: args.toolId, position };
+    },
+  }),
+  unpinTool: defineAction({
+    request: z.object({ toolId: z.string().trim().min(1).max(80) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      await db.delete(schema.userHomePins).where(and(eq(schema.userHomePins.userId, identity.workspaceUserId), eq(schema.userHomePins.toolId, args.toolId)));
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  listPinnedTools: defineAction({
+    request: z.object({}),
+    response: z.object({ tools: z.array(z.object({ toolId: z.string(), position: z.number(), screen: z.string(), tab: z.string().nullable(), titleEn: z.string(), titleEs: z.string(), iconPath: z.string() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.userHomePins).where(eq(schema.userHomePins.userId, identity.workspaceUserId)).orderBy(schema.userHomePins.position, schema.userHomePins.id);
+      const tools = [];
+      for (const row of rows) {
+        const entry = TOOL_REGISTRY[row.toolId];
+        if (!entry) continue;
+        tools.push({ toolId: row.toolId, position: row.position, screen: entry.screen, tab: entry.tab, titleEn: entry.titleEn, titleEs: entry.titleEs, iconPath: entry.iconPath });
+      }
+      return { tools };
+    },
+  }),
 } satisfies ActionsModule;
 
 const PUBLIC_ACTIONS = new Set([

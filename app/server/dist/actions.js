@@ -7484,6 +7484,16 @@ var adminAuditLog = sqliteTable("admin_audit_log", {
   details: text("details").notNull().default(""),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var userHomePins = sqliteTable("user_home_pins", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  toolId: text("tool_id").notNull(),
+  position: integer2("position").notNull().default(0),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("user_home_pins_user_tool_unique").on(table.userId, table.toolId),
+  index("user_home_pins_user_idx").on(table.userId, table.position)
+]);
 
 // src/auth-email.ts
 function authCodeClientResult(code, delivery) {
@@ -8174,7 +8184,7 @@ var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
 var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
-var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable() });
+var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2() });
 var authCodeDeliverySchema = _enum(["sent", "fallback", "failed"]);
 function authMeta(ctx) {
   return ctx;
@@ -8323,8 +8333,8 @@ async function derivePassword(password, saltHex, iterations) {
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, material, 256);
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
-function authUserShape(row) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion };
+function authUserShape(row, announcementBanner) {
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner };
 }
 async function issueAuthCode(ctx, userId, purpose) {
   const db = ctx.db();
@@ -8419,8 +8429,10 @@ function workspaceDb(rawDb, companyId) {
 }
 function withWorkspace(ctx, user) {
   const scoped = Object.create(ctx);
+  const rawDb = () => ctx.db();
   Object.defineProperties(scoped, {
-    db: { value: () => workspaceDb(ctx.db(), user.companyId) },
+    db: { value: () => workspaceDb(rawDb(), user.companyId) },
+    unscopedDb: { value: rawDb },
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
     workspaceTier: { value: user.tier }
@@ -8441,6 +8453,12 @@ async function requirePlatformAdmin(ctx) {
     throw new Error("Platform admin access required.");
   return { identity, admin: user };
 }
+function platformDb(ctx) {
+  const scoped = ctx;
+  if (typeof scoped.unscopedDb === "function")
+    return scoped.unscopedDb();
+  return ctx.db();
+}
 async function logAdminAction(db, adminUserId, action, targetType, targetId, details) {
   await db.insert(adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date });
 }
@@ -8452,6 +8470,56 @@ async function getFlagThreshold(db) {
   const raw = await getPlatformSetting(db, "flag_threshold", "3");
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed >= 1 && parsed <= 10 ? parsed : 3;
+}
+var PLATFORM_SETTING_DEFS = {
+  auto_moderation_enabled: { type: "boolean", labelEn: "Automatic listing moderation", labelEs: "Moderaci\xF3n autom\xE1tica de publicaciones", fallback: "1" },
+  flag_threshold: { type: "int", labelEn: "Flags before review", labelEs: "Reportes antes de revisi\xF3n", min: 1, max: 10, fallback: "3" },
+  registration_enabled: { type: "boolean", labelEn: "New registrations", labelEs: "Nuevos registros", fallback: "1" },
+  marketplace_enabled: { type: "boolean", labelEn: "Marketplace", labelEs: "Marketplace", fallback: "1" },
+  free_listing_limit: { type: "int", labelEn: "Free plan active listings", labelEs: "Publicaciones activas del plan gratis", min: 1, max: 100, fallback: "3" },
+  announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" }
+};
+function normalizePlatformSetting(key, raw) {
+  const def = PLATFORM_SETTING_DEFS[key];
+  if (!def)
+    throw new Error(`Unknown platform setting: ${key}`);
+  if (def.type === "boolean") {
+    if (raw !== "0" && raw !== "1")
+      throw new Error(`Invalid value for ${key}: expected 0 or 1.`);
+    return raw;
+  }
+  if (def.type === "int") {
+    const trimmed = raw.trim();
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed) || String(parsed) !== trimmed)
+      throw new Error(`Invalid value for ${key}: expected a whole number.`);
+    if (parsed < (def.min ?? 0) || parsed > (def.max ?? Number.MAX_SAFE_INTEGER))
+      throw new Error(`Invalid value for ${key}: expected ${def.min}\u2013${def.max}.`);
+    return String(parsed);
+  }
+  const text = raw.trim();
+  if (text.length > (def.maxLength ?? 1000))
+    throw new Error(`Invalid value for ${key}: keep it under ${def.maxLength} characters.`);
+  return text;
+}
+async function getBooleanPlatformSetting(db, key) {
+  return await getPlatformSetting(db, key, PLATFORM_SETTING_DEFS[key]?.fallback ?? "0") === "1";
+}
+async function getIntPlatformSetting(db, key) {
+  const fallback = Number.parseInt(PLATFORM_SETTING_DEFS[key]?.fallback ?? "0", 10);
+  const parsed = Number.parseInt(await getPlatformSetting(db, key, String(fallback)), 10);
+  if (!Number.isFinite(parsed))
+    return fallback;
+  const def = PLATFORM_SETTING_DEFS[key];
+  if (def?.min !== undefined && parsed < def.min)
+    return def.min;
+  if (def?.max !== undefined && parsed > def.max)
+    return def.max;
+  return parsed;
+}
+async function requireMarketplaceEnabled(db) {
+  if (!await getBooleanPlatformSetting(db, "marketplace_enabled"))
+    throw new Error("MARKETPLACE_DISABLED");
 }
 async function isAutoModerationEnabled(db) {
   return await getPlatformSetting(db, "auto_moderation_enabled", "1") === "1";
@@ -8773,6 +8841,35 @@ async function scanListingForModeration(db, input) {
     return { clean: true, reasons: [] };
   return scanListingText(input);
 }
+var TOOL_REGISTRY = {
+  "toolbox:loan": { screen: "toolbox", tab: "loan", titleEn: "Loan payment", titleEs: "Pago de pr\xE9stamo", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "toolbox:materials": { screen: "toolbox", tab: "materials", titleEn: "Material guide", titleEs: "Gu\xEDa de materiales", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  "toolbox:angle": { screen: "toolbox", tab: "angle", titleEn: "Angles", titleEs: "\xC1ngulos", iconPath: "M4 19h16L4 5zM8 15h5" },
+  "toolbox:convert": { screen: "toolbox", tab: "convert", titleEn: "Unit converter", titleEs: "Convertidor de unidades", iconPath: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
+  "toolbox:area": { screen: "toolbox", tab: "area", titleEn: "Measurements", titleEs: "Medidas", iconPath: "M4 4h16v16H4zM8 4v16M4 10h16" },
+  "toolbox:yards": { screen: "toolbox", tab: "yards", titleEn: "Concrete", titleEs: "Concreto", iconPath: "M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" },
+  "toolbox:board": { screen: "toolbox", tab: "board", titleEn: "Lumber", titleEs: "Madera", iconPath: "M4 7h16v10H4zM8 7v10M13 7v10" },
+  "toolbox:drywall": { screen: "toolbox", tab: "drywall", titleEn: "Drywall sheets", titleEs: "Paneles de yeso", iconPath: "M5 4h14v16H5zM9 4v16M5 10h14" },
+  "toolbox:roofing": { screen: "toolbox", tab: "roofing", titleEn: "Roofing squares", titleEs: "Techos", iconPath: "M3 13 12 4l9 9M6 11v9h12v-9" },
+  "toolbox:tile": { screen: "toolbox", tab: "tile", titleEn: "Tile boxes", titleEs: "Cajas de loseta", iconPath: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" },
+  "toolbox:margin": { screen: "toolbox", tab: "margin", titleEn: "Markup & margin", titleEs: "Margen y recargo", iconPath: "M6 18 18 6M7 7h.01M17 17h.01" },
+  "businessTools:price": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M5 5h14v14H5zM8 9h8M8 13h5" },
+  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Quote templates", titleEs: "Plantillas de presupuestos", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "businessTools:mileage": { screen: "businessTools", tab: "mileage", titleEn: "Mileage", titleEs: "Millaje", iconPath: "M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" },
+  "businessTools:expenses": { screen: "businessTools", tab: "expenses", titleEn: "Expenses & receipts", titleEs: "Gastos y recibos", iconPath: "M4 6h16v14H4zM8 3v6M16 3v6" },
+  "expansion:warranties": { screen: "expansion", tab: "warranties", titleEn: "Warranties", titleEs: "Garant\xEDas", iconPath: "M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" },
+  "expansion:scanner": { screen: "expansion", tab: "scanner", titleEn: "Document scanner", titleEs: "Esc\xE1ner de documentos", iconPath: "M6 3h12v18H6zM9 7h6M4 16h16" },
+  reports: { screen: "reports", tab: null, titleEn: "Reports", titleEs: "Informes", iconPath: "M4 20V10M10 20V4M16 20v-7M22 20V7" },
+  "operations:calendar": { screen: "operations", tab: "calendar", titleEn: "Schedule", titleEs: "Calendario", iconPath: "M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" },
+  followups: { screen: "followups", tab: null, titleEn: "Collections & follow-ups", titleEs: "Cobros y seguimientos", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
+  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders waiting on suppliers", titleEs: "Pedidos esperando proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  "fieldIntelligence:equipment": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" },
+  "expansion:plans": { screen: "expansion", tab: "plans", titleEn: "Equipment upkeep", titleEs: "Cuidado del equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
+  "fieldIntelligence:safety": { screen: "fieldIntelligence", tab: "safety", titleEn: "Safety & incidents", titleEs: "Seguridad e incidentes", iconPath: "M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" },
+  "fieldIntelligence:credentials": { screen: "fieldIntelligence", tab: "credentials", titleEn: "Licenses & certificates", titleEs: "Licencias y certificados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Payroll", titleEs: "N\xF3mina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
+  "expansion:crew": { screen: "expansion", tab: "crew", titleEn: "Crew hours", titleEs: "Horas del equipo", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" }
+};
 var BaseActions = {
   getAuthBootstrap: defineAction({
     request: object({}),
@@ -8796,6 +8893,8 @@ var BaseActions = {
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args) {
       const db = ctx.db();
+      if (!await getBooleanPlatformSetting(db, "registration_enabled"))
+        throw new Error("REGISTRATIONS_CLOSED");
       const users = await db.select({ id: authUsers.id, companyId: authUsers.companyId }).from(authUsers);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email)).limit(1))[0];
@@ -8867,7 +8966,7 @@ var BaseActions = {
         throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(authLoginAttempts).where(eq(authLoginAttempts.email, email));
       const session = await issueSession(ctx, user.id);
-      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: session.setCookies };
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     }
   }),
   refreshSession: defineAction({
@@ -8896,7 +8995,7 @@ var BaseActions = {
             if (user.suspendedAt)
               throw new Error("This account has been suspended. Contact support for help.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
-            return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
+            return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
         }
         if (row.replacedBy) {
@@ -8931,7 +9030,7 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("This account has been suspended. Contact support for help.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
-      return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user), setCookies: issued.setCookies };
+      return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
     }
   }),
   logout: defineAction({
@@ -8964,7 +9063,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx, args) {
       try {
         const user = await requireSession(ctx, args._sessionToken);
-        return { user: authUserShape(user) };
+        return { user: authUserShape(user, await getPlatformSetting(ctx.db(), "announcement_banner", "")) };
       } catch {
         return { user: null };
       }
@@ -11248,11 +11347,24 @@ If that was you, just sign in again. If not, we recommend changing your password
       };
     }
   }),
+  marketplaceGate: defineAction({
+    request: object({}),
+    response: object({ enabled: boolean2(), freeListingLimit: number2(), myActiveListingCount: number2() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
+      const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+      const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
+      return { enabled, freeListingLimit, myActiveListingCount: mine.length };
+    }
+  }),
   listMarketplaceListings: defineAction({
     request: object({ search: string2().trim().max(120).default(""), category: marketplaceCategorySchema.nullable().default(null), serviceArea: string2().trim().max(120).default("") }),
     response: object({ listings: array(marketplaceListingSchema) }),
     async handler(ctx, args) {
       const db = ctx.db();
+      await requireMarketplaceEnabled(db);
       const rows = await db.select().from(marketplaceListings).orderBy(desc(marketplaceListings.promoted), desc(marketplaceListings.createdAt));
       const photoRows = await db.select().from(marketplaceListingPhotos).orderBy(marketplaceListingPhotos.sortOrder);
       const search = args.search.toLowerCase();
@@ -11267,6 +11379,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({ listing: marketplaceListingSchema.nullable() }),
     async handler(ctx, args) {
       const db = ctx.db();
+      await requireMarketplaceEnabled(db);
       const row = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, args.id)).limit(1))[0];
       if (!row)
         return { listing: null };
@@ -11303,10 +11416,12 @@ If that was you, just sign in again. If not, we recommend changing your password
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
       const now = new Date;
+      await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
-        const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(eq(marketplaceListings.companyId, identity.workspaceCompanyId));
-        if (mine.length >= 5)
-          throw new Error("Your free plan includes 5 Marketplace listings. Upgrade to Premium for more.");
+        const freeListingLimit = await getIntPlatformSetting(db, "free_listing_limit");
+        const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
+        if (mine.length >= freeListingLimit)
+          throw new Error(`Your free plan includes ${freeListingLimit} active Marketplace listing${freeListingLimit === 1 ? "" : "s"}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus = scan.clean ? "active" : "auto_rejected";
@@ -11358,6 +11473,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (args.bookable && !args.dailyRate.trim())
         throw new Error("Enter a daily rate for this bookable listing.");
       const db = ctx.db();
+      await requireMarketplaceEnabled(db);
       const existing = (await db.select().from(marketplaceListings).where(and(eq(marketplaceListings.id, args.id), eq(marketplaceListings.companyId, workspaceIdentity(ctx).workspaceCompanyId))).limit(1))[0];
       if (!existing)
         throw new Error("You can only edit your own listings.");
@@ -11395,6 +11511,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
       const db = ctx.db();
+      await requireMarketplaceEnabled(db);
       const listing = (await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.id, args.id), eq(marketplaceListings.companyId, workspaceIdentity(ctx).workspaceCompanyId))).limit(1))[0];
       if (!listing)
         throw new Error("You can only delete your own listings.");
@@ -11417,6 +11534,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
       const now = new Date;
+      await requireMarketplaceEnabled(db);
       const listing = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing)
         throw new Error("This listing could not be found.");
@@ -11612,7 +11730,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }),
     async handler(ctx) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const rows = await db.select().from(marketplaceListings).where(inArray(marketplaceListings.moderationStatus, ["auto_rejected", "pending_review"])).orderBy(desc(marketplaceListings.createdAt));
       const listingIds = rows.map((row) => row.id);
       const flagRows = listingIds.length ? await db.select().from(marketplaceFlags).where(inArray(marketplaceFlags.listingId, listingIds)).orderBy(desc(marketplaceFlags.createdAt)) : [];
@@ -11662,7 +11780,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({ ok: literal(true), status: string2() }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const now = new Date;
       const listing = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing)
@@ -11689,7 +11807,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const term = `%${args.search}%`;
       const whereClause = args.search ? or(like(authUsers.name, term), like(authUsers.email, term)) : undefined;
       const all = await db.select().from(authUsers).where(whereClause).orderBy(desc(authUsers.createdAt));
@@ -11717,12 +11835,129 @@ If that was you, just sign in again. If not, we recommend changing your password
       };
     }
   }),
+  adminUserDetail: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({
+      user: object({
+        id: number2(),
+        name: string2(),
+        email: string2(),
+        tier: string2(),
+        subscriptionStatus: string2(),
+        stripeCustomerId: string2().nullable(),
+        stripeSubscriptionId: string2().nullable(),
+        cancelAtPeriodEnd: boolean2(),
+        subscriptionCurrentPeriodEnd: string2().nullable(),
+        emailVerified: boolean2(),
+        emailVerifiedAt: string2().nullable(),
+        marketplaceTermsAcceptedAt: string2().nullable(),
+        marketplaceTermsVersion: string2().nullable(),
+        createdAt: string2(),
+        updatedAt: string2(),
+        suspendedAt: string2().nullable(),
+        suspended: boolean2(),
+        isPlatformAdmin: boolean2(),
+        companyId: number2(),
+        companyName: string2(),
+        activeSessionCount: number2()
+      }),
+      listings: array(object({ id: number2(), title: string2(), moderationStatus: string2(), flagCount: number2(), createdAt: string2() })),
+      flagsFiled: object({ count: number2(), recent: array(object({ id: number2(), listingId: number2(), listingTitle: string2(), reason: string2(), createdAt: string2() })) }),
+      sessions: array(object({ id: number2(), userAgent: string2().nullable(), lastSeenAt: string2(), createdAt: string2() })),
+      audit: array(object({ id: number2(), action: string2(), adminName: string2(), details: string2(), createdAt: string2() }))
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!user)
+        throw new Error("User not found.");
+      const companyRow = (await db.select({ companyName: settings.companyName }).from(settings).where(eq(settings.companyId, user.companyId)).limit(1))[0];
+      const companyName = companyRow?.companyName || "";
+      const listingRows = await db.select().from(marketplaceListings).where(eq(marketplaceListings.companyId, user.companyId)).orderBy(desc(marketplaceListings.createdAt));
+      const listingIds = listingRows.map((row) => row.id);
+      const flagRows = listingIds.length ? await db.select({ listingId: marketplaceFlags.listingId }).from(marketplaceFlags).where(inArray(marketplaceFlags.listingId, listingIds)) : [];
+      const flagCounts = new Map;
+      for (const row of flagRows)
+        flagCounts.set(row.listingId, (flagCounts.get(row.listingId) ?? 0) + 1);
+      const filedRecent = await db.select({ id: marketplaceFlags.id, listingId: marketplaceFlags.listingId, listingTitle: marketplaceListings.title, reason: marketplaceFlags.reason, createdAt: marketplaceFlags.createdAt }).from(marketplaceFlags).innerJoin(marketplaceListings, eq(marketplaceFlags.listingId, marketplaceListings.id)).where(eq(marketplaceFlags.reporterUserId, user.id)).orderBy(desc(marketplaceFlags.createdAt)).limit(10);
+      const filedCount = (await db.select({ n: sql`count(*)` }).from(marketplaceFlags).where(eq(marketplaceFlags.reporterUserId, user.id)))[0]?.n ?? 0;
+      const sessionRows = await db.select({ id: authSessions.id, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, createdAt: authSessions.createdAt }).from(authSessions).where(and(eq(authSessions.userId, user.id), isNull(authSessions.revokedAt))).orderBy(desc(authSessions.lastSeenAt));
+      const auditRows = await db.select({ id: adminAuditLog.id, action: adminAuditLog.action, adminName: authUsers.name, details: adminAuditLog.details, createdAt: adminAuditLog.createdAt }).from(adminAuditLog).leftJoin(authUsers, eq(adminAuditLog.adminUserId, authUsers.id)).where(and(eq(adminAuditLog.targetType, "auth_user"), eq(adminAuditLog.targetId, String(user.id)))).orderBy(desc(adminAuditLog.createdAt)).limit(20);
+      return {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          tier: user.tier,
+          subscriptionStatus: user.subscriptionStatus,
+          stripeCustomerId: user.stripeCustomerId,
+          stripeSubscriptionId: user.stripeSubscriptionId,
+          cancelAtPeriodEnd: !!user.cancelAtPeriodEnd,
+          subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd ? user.subscriptionCurrentPeriodEnd.toISOString() : null,
+          emailVerified: !!user.emailVerifiedAt,
+          emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
+          marketplaceTermsAcceptedAt: user.marketplaceTermsAcceptedAt ? user.marketplaceTermsAcceptedAt.toISOString() : null,
+          marketplaceTermsVersion: user.marketplaceTermsVersion,
+          createdAt: user.createdAt.toISOString(),
+          updatedAt: user.updatedAt.toISOString(),
+          suspendedAt: user.suspendedAt ? user.suspendedAt.toISOString() : null,
+          suspended: !!user.suspendedAt,
+          isPlatformAdmin: user.isPlatformAdmin,
+          companyId: user.companyId,
+          companyName,
+          activeSessionCount: sessionRows.length
+        },
+        listings: listingRows.map((row) => ({ id: row.id, title: row.title, moderationStatus: row.moderationStatus, flagCount: flagCounts.get(row.id) ?? 0, createdAt: row.createdAt.toISOString() })),
+        flagsFiled: { count: filedCount, recent: filedRecent.map((row) => ({ id: row.id, listingId: row.listingId, listingTitle: row.listingTitle, reason: row.reason, createdAt: row.createdAt.toISOString() })) },
+        sessions: sessionRows.map((row) => ({ id: row.id, userAgent: row.userAgent, lastSeenAt: row.lastSeenAt.toISOString(), createdAt: row.createdAt.toISOString() })),
+        audit: auditRows.map((row) => ({ id: row.id, action: row.action, adminName: row.adminName ?? "System", details: row.details, createdAt: row.createdAt.toISOString() }))
+      };
+    }
+  }),
+  adminUserSetTier: defineAction({
+    request: object({ userId: number2().int().positive(), tier: _enum(["free", "premium"]) }),
+    response: object({ ok: literal(true), tier: string2(), subscriptionStatus: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const user = (await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!user)
+        throw new Error("User not found.");
+      const subscriptionStatus = args.tier === "premium" ? "manual" : "inactive";
+      await db.update(authUsers).set({ tier: args.tier, subscriptionStatus, cancelAtPeriodEnd: false, updatedAt: now }).where(eq(authUsers.id, args.userId));
+      await logAdminAction(db, admin.id, args.tier === "premium" ? "user.tier_grant_premium" : "user.tier_revoke_premium", "auth_user", String(user.id), `${user.name} <${user.email}> \u2192 ${args.tier}`);
+      ctx.invalidateQueries();
+      return { ok: true, tier: args.tier, subscriptionStatus };
+    }
+  }),
+  adminUserRevokeSessions: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ ok: literal(true), revoked: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      if (admin.id === args.userId)
+        throw new Error("You cannot revoke your own sessions from here.");
+      const user = (await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!user)
+        throw new Error("User not found.");
+      const active = await db.select({ id: authSessions.id }).from(authSessions).where(and(eq(authSessions.userId, args.userId), isNull(authSessions.revokedAt)));
+      if (active.length)
+        await db.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, args.userId), isNull(authSessions.revokedAt)));
+      await logAdminAction(db, admin.id, "user.sessions_revoked", "auth_user", String(user.id), `${user.name} <${user.email}> \u2014 ${active.length} session${active.length === 1 ? "" : "s"} revoked`);
+      ctx.invalidateQueries();
+      return { ok: true, revoked: active.length };
+    }
+  }),
   adminUserSuspend: defineAction({
     request: object({ userId: number2().int().positive() }),
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const now = new Date;
       const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
       if (!user)
@@ -11741,7 +11976,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const now = new Date;
       const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
       if (!user)
@@ -11760,7 +11995,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const user = (await db.select().from(authUsers).where(eq(authUsers.email, normalizedEmail(args.email))).limit(1))[0];
       if (!user)
         return { user: null, charges: [] };
@@ -11776,7 +12011,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({ id: string2(), amount: number2(), currency: string2(), status: string2() }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const refund = await ctx.executePrivileged(privileged.issueStripeRefund, { chargeId: args.chargeId, amountCents: args.amountCents, reason: args.reason });
       await logAdminAction(db, admin.id, "stripe.refund", "stripe_charge", args.chargeId, `Refund ${refund.id}: ${(refund.amount / 100).toFixed(2)} ${refund.currency.toUpperCase()}${args.reason ? ` \u2014 ${args.reason}` : ""}`);
       ctx.invalidateQueries();
@@ -11785,39 +12020,45 @@ If that was you, just sign in again. If not, we recommend changing your password
   }),
   adminSettingsGet: defineAction({
     request: object({}),
-    response: object({ settings: record(string2(), string2()) }),
+    response: object({
+      settings: record(string2(), string2()),
+      defs: array(object({ key: string2(), type: _enum(["boolean", "int", "text"]), labelEn: string2(), labelEs: string2(), min: number2().optional(), max: number2().optional(), maxLength: number2().optional() }))
+    }),
     async handler(ctx) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const rows = await db.select().from(platformSettings);
       const settings2 = {};
       for (const row of rows)
         settings2[row.key] = row.value;
-      return { settings: settings2 };
+      const defs = Object.entries(PLATFORM_SETTING_DEFS).map(([key, def]) => ({
+        key,
+        type: def.type,
+        labelEn: def.labelEn,
+        labelEs: def.labelEs,
+        ...def.min !== undefined ? { min: def.min } : {},
+        ...def.max !== undefined ? { max: def.max } : {},
+        ...def.maxLength !== undefined ? { maxLength: def.maxLength } : {}
+      }));
+      return { settings: settings2, defs };
     }
   }),
   adminSettingsSet: defineAction({
-    request: object({ key: _enum(["auto_moderation_enabled", "flag_threshold"]), value: string2().trim().max(50) }),
-    response: object({ ok: literal(true) }),
+    request: object({ key: _enum(Object.keys(PLATFORM_SETTING_DEFS)), value: string2().trim().max(2000) }),
+    response: object({ ok: literal(true), key: string2(), value: string2() }),
     async handler(ctx, args) {
       const { admin } = await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const now = new Date;
-      if (args.key === "auto_moderation_enabled" && args.value !== "0" && args.value !== "1")
-        throw new Error("auto_moderation_enabled must be 0 or 1.");
-      if (args.key === "flag_threshold") {
-        const parsed = Number.parseInt(args.value, 10);
-        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10)
-          throw new Error("flag_threshold must be a whole number from 1 to 10.");
-      }
+      const value = normalizePlatformSetting(args.key, args.value);
       const existing = (await db.select({ key: platformSettings.key }).from(platformSettings).where(eq(platformSettings.key, args.key)).limit(1))[0];
       if (existing)
-        await db.update(platformSettings).set({ value: args.value, updatedAt: now }).where(eq(platformSettings.key, args.key));
+        await db.update(platformSettings).set({ value, updatedAt: now }).where(eq(platformSettings.key, args.key));
       else
-        await db.insert(platformSettings).values({ key: args.key, value: args.value, updatedAt: now });
-      await logAdminAction(db, admin.id, "settings.update", "platform_setting", args.key, `${args.key} = ${args.value}`);
+        await db.insert(platformSettings).values({ key: args.key, value, updatedAt: now });
+      await logAdminAction(db, admin.id, "settings.update", "platform_setting", args.key, `${args.key} = ${value}`);
       ctx.invalidateQueries();
-      return { ok: true };
+      return { ok: true, key: args.key, value };
     }
   }),
   adminAuditLog: defineAction({
@@ -11830,7 +12071,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }),
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
-      const db = ctx.db();
+      const db = platformDb(ctx);
       const all = await db.select().from(adminAuditLog).orderBy(desc(adminAuditLog.createdAt));
       const total = all.length;
       const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
@@ -11871,7 +12112,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
-    const db = ctx.db();
+    const db = platformDb(ctx);
     const rows = await db.select({ id: settings.id }).from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     if (rows[0])
       await db.update(settings).set({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date }).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId));
@@ -11881,7 +12122,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { ok: true };
   } }),
   uploadLogo: defineAction({ request: object({ filename: string2().min(1).max(240), contentType: _enum(["image/jpeg", "image/png"]), dataBase64: string2().min(1).max(1e7) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    const db = ctx.db();
+    const db = platformDb(ctx);
     const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const old = rows[0];
     const key = `branding/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
@@ -11896,7 +12137,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { ok: true };
   } }),
   uploadCompanyCover: defineAction({ request: object({ filename: string2().min(1).max(240), contentType: _enum(["image/jpeg", "image/png"]), dataBase64: string2().min(1).max(14000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    const db = ctx.db();
+    const db = platformDb(ctx);
     const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const old = rows[0];
     const key = `branding/covers/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
@@ -11909,7 +12150,54 @@ If that was you, just sign in again. If not, we recommend changing your password
       await ctx.blobs.delete(old.coverBlobKey);
     ctx.invalidateQueries();
     return { ok: true };
-  } })
+  } }),
+  pinTool: defineAction({
+    request: object({ toolId: string2().trim().min(1).max(80) }),
+    response: object({ ok: literal(true), toolId: string2(), position: number2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const entry = TOOL_REGISTRY[args.toolId];
+      if (!entry)
+        throw new Error("That tool cannot be pinned.");
+      const db = ctx.db();
+      const existing = (await db.select({ position: userHomePins.position }).from(userHomePins).where(and(eq(userHomePins.userId, identity.workspaceUserId), eq(userHomePins.toolId, args.toolId))).limit(1))[0];
+      if (existing)
+        return { ok: true, toolId: args.toolId, position: existing.position };
+      const maxRow = (await db.select({ maxPosition: sql`max(${userHomePins.position})` }).from(userHomePins).where(eq(userHomePins.userId, identity.workspaceUserId)))[0];
+      const position = (maxRow?.maxPosition ?? -1) + 1;
+      await db.insert(userHomePins).values({ userId: identity.workspaceUserId, toolId: args.toolId, position });
+      ctx.invalidateQueries();
+      return { ok: true, toolId: args.toolId, position };
+    }
+  }),
+  unpinTool: defineAction({
+    request: object({ toolId: string2().trim().min(1).max(80) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      await db.delete(userHomePins).where(and(eq(userHomePins.userId, identity.workspaceUserId), eq(userHomePins.toolId, args.toolId)));
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  listPinnedTools: defineAction({
+    request: object({}),
+    response: object({ tools: array(object({ toolId: string2(), position: number2(), screen: string2(), tab: string2().nullable(), titleEn: string2(), titleEs: string2(), iconPath: string2() })) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const rows = await db.select().from(userHomePins).where(eq(userHomePins.userId, identity.workspaceUserId)).orderBy(userHomePins.position, userHomePins.id);
+      const tools = [];
+      for (const row of rows) {
+        const entry = TOOL_REGISTRY[row.toolId];
+        if (!entry)
+          continue;
+        tools.push({ toolId: row.toolId, position: row.position, screen: entry.screen, tab: entry.tab, titleEn: entry.titleEn, titleEs: entry.titleEs, iconPath: entry.iconPath });
+      }
+      return { tools };
+    }
+  })
 };
 var PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap",
