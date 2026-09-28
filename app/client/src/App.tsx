@@ -318,7 +318,7 @@ type Screen =
   | { name: "tools" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
-  | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" }
+  | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" | "paint" | "flooring" | "fence" | "block" | "gravel" | "stairs" | "insulation" | "gutter" | "rate" | "punchlist" }
   | { name: "jobs" }
   | { name: "new" }
   | { name: "expansion"; tab?: "losses" | "warranties" | "videos" | "crew" | "scanner" | "tax" | "suppliers" | "plans" }
@@ -2600,6 +2600,16 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Techos", description: "Cuadrados, desperdicio y paquetes", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
     { title: "Cajas de loseta", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
     { title: "Margen y recargo", description: "Convierte costo, margen y recargo", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
+    { title: "Estimador de pintura", description: "Galones según área y manos", screen: { name: "toolbox", tab: "paint" }, icon: toolIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
+    { title: "Cajas de piso", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "flooring" }, icon: toolIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
+    { title: "Cerca y deck", description: "Estacas, postes y rieles", screen: { name: "toolbox", tab: "fence" }, icon: toolIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
+    { title: "Bloques y adoquines", description: "Bloques y adoquines por área", screen: { name: "toolbox", tab: "block" }, icon: toolIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
+    { title: "Grava y tierra", description: "Yardas cúbicas y toneladas", screen: { name: "toolbox", tab: "gravel" }, icon: toolIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
+    { title: "Zanca de escalera", description: "Contrahuellas, huellas y trazado", screen: { name: "toolbox", tab: "stairs" }, icon: toolIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
+    { title: "Aislante en rollos", description: "Rollos según área de pared o ático", screen: { name: "toolbox", tab: "insulation" }, icon: toolIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
+    { title: "Canalones y bajantes", description: "Pies de canalón, bajantes y codos", screen: { name: "toolbox", tab: "gutter" }, icon: toolIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
+    { title: "Tarifa facturable", description: "Calcula tu tarifa por hora", screen: { name: "toolbox", tab: "rate" }, icon: toolIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
+    { title: "Lista de pendientes", description: "Pendientes por trabajo con estados", screen: { name: "toolbox", tab: "punchlist" }, icon: toolIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
   ] : [
     { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
     { title: "Material guide", description: "Check common sizes and references", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
@@ -2612,6 +2622,16 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Roofing squares", description: "Squares, waste, and bundles", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
     { title: "Tile boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
     { title: "Markup & margin", description: "Convert cost, margin, and markup", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
+    { title: "Paint estimator", description: "Gallons from wall area and coats", screen: { name: "toolbox", tab: "paint" }, icon: toolIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
+    { title: "Flooring boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "flooring" }, icon: toolIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
+    { title: "Fence & deck", description: "Pickets, posts, and rails", screen: { name: "toolbox", tab: "fence" }, icon: toolIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
+    { title: "Block & pavers", description: "Blocks and pavers by area", screen: { name: "toolbox", tab: "block" }, icon: toolIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
+    { title: "Gravel & soil", description: "Cubic yards and tons", screen: { name: "toolbox", tab: "gravel" }, icon: toolIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
+    { title: "Stair stringer", description: "Risers, treads, and layout", screen: { name: "toolbox", tab: "stairs" }, icon: toolIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
+    { title: "Insulation batts", description: "Batts by wall or attic area", screen: { name: "toolbox", tab: "insulation" }, icon: toolIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
+    { title: "Gutter & downspouts", description: "Gutter feet, downspouts, and elbows", screen: { name: "toolbox", tab: "gutter" }, icon: toolIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
+    { title: "Billable rate", description: "Build your hourly rate", screen: { name: "toolbox", tab: "rate" }, icon: toolIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
+    { title: "Punch list", description: "Per-job open-items checklist", screen: { name: "toolbox", tab: "punchlist" }, icon: toolIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
   ];
   const office: ToolTile[] = lang === "es" ? [
     { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
@@ -15715,7 +15735,7 @@ function BookingRequestScreen({ lang }: { lang: Lang }) {
 }
 
 type ToolboxTab =
-  "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin";
+  "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" | "paint" | "flooring" | "fence" | "block" | "gravel" | "stairs" | "insulation" | "gutter" | "rate" | "punchlist";
 type ToolHistoryEntry = { id: number; value: string };
 
 function useToolHistory(key: ToolboxTab) {
@@ -15791,6 +15811,16 @@ function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () =>
     roofing: lang === "es" ? "Techos" : "Roofing squares",
     tile: lang === "es" ? "Cajas de loseta" : "Tile boxes",
     margin: lang === "es" ? "Margen y recargo" : "Markup & margin",
+    paint: lang === "es" ? "Estimador de pintura" : "Paint estimator",
+    flooring: lang === "es" ? "Cajas de piso" : "Flooring boxes",
+    fence: lang === "es" ? "Cerca y deck" : "Fence & deck",
+    block: lang === "es" ? "Bloques y adoquines" : "Block & pavers",
+    gravel: lang === "es" ? "Grava y tierra" : "Gravel & soil",
+    stairs: lang === "es" ? "Zanca de escalera" : "Stair stringer",
+    insulation: lang === "es" ? "Aislante en rollos" : "Insulation batts",
+    gutter: lang === "es" ? "Canalones y bajantes" : "Gutter & downspouts",
+    rate: lang === "es" ? "Tarifa facturable" : "Billable rate",
+    punchlist: lang === "es" ? "Lista de pendientes" : "Punch list",
   };
   return <div className="toolbox-modal-backdrop" role="presentation" onClick={onBack}>
     <section className="toolbox-window" role="dialog" aria-modal="true" aria-labelledby="toolbox-title" onClick={(event) => event.stopPropagation()}>
@@ -15807,6 +15837,16 @@ function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () =>
         {tab === "roofing" && <RoofingCalculator lang={lang} />}
         {tab === "tile" && <TileCalculator lang={lang} />}
         {tab === "margin" && <MarginCalculator lang={lang} />}
+        {tab === "paint" && <PaintCalculator lang={lang} />}
+        {tab === "flooring" && <FlooringCalculator lang={lang} />}
+        {tab === "fence" && <FenceCalculator lang={lang} />}
+        {tab === "block" && <BlockCalculator lang={lang} />}
+        {tab === "gravel" && <GravelCalculator lang={lang} />}
+        {tab === "stairs" && <StairCalculator lang={lang} />}
+        {tab === "insulation" && <InsulationCalculator lang={lang} />}
+        {tab === "gutter" && <GutterCalculator lang={lang} />}
+        {tab === "rate" && <RateBuilderCalculator lang={lang} />}
+        {tab === "punchlist" && <PunchListPanel lang={lang} />}
       </div>
     </section>
   </div>;
@@ -16549,6 +16589,113 @@ function MarginCalculator({ lang }: { lang: Lang }) {
   const actualMargin = price ? profit / price * 100 : 0;
   const result = `${lang === "es" ? "Precio" : "Price"}: ${usd(price)} · ${lang === "es" ? "Ganancia" : "Profit"}: ${usd(profit)} · ${lang === "es" ? "Margen" : "Margin"}: ${actualMargin.toFixed(1)}%`;
   return <section className="calculator-panel"><h2>{lang === "es" ? "Margen y recargo" : "Markup & margin"}</h2><div className="segmented-control" role="group" aria-label={lang === "es" ? "Método" : "Method"}><button type="button" className={mode === "markup" ? "active" : ""} onClick={()=>setMode("markup")}>{lang === "es" ? "Recargo" : "Markup"}</button><button type="button" className={mode === "margin" ? "active" : ""} onClick={()=>setMode("margin")}>{lang === "es" ? "Margen" : "Margin"}</button></div><div className="field-pair"><NumInput label={lang === "es" ? "Costo" : "Cost"} value={cost} onChange={setCost}/><NumInput label={`${mode === "markup" ? (lang === "es" ? "Recargo" : "Markup") : (lang === "es" ? "Margen" : "Margin")} %`} value={percent} onChange={setPercent}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Precio de venta" : "Selling price"}</span><strong>{usd(price)}</strong></div><div><span>{lang === "es" ? "Ganancia" : "Profit"}</span><strong>{usd(profit)}</strong></div><div><span>{lang === "es" ? "Margen real" : "Actual margin"}</span><strong>{actualMargin.toFixed(1)}%</strong></div></div><ResultHistory lang={lang} tool="margin" value={result}/></section>;
+}
+
+function PaintCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("1000"), [coats, setCoats] = useState("2"), [coverage, setCoverage] = useState("350");
+  const gallons = (money(area) * Math.max(1, Math.round(money(coats)))) / Math.max(1, money(coverage));
+  const buy = Math.ceil(gallons);
+  const result = `${buy} gal`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Estimador de pintura" : "Paint estimator"}</h2><p>{lang === "es" ? "Calcula galones según el área y las manos de pintura." : "Estimate gallons from wall area and coats."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área de pared (ft²)" : "Wall area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Manos de pintura" : "Coats"} value={coats} onChange={setCoats} step="1"/><NumInput label={lang === "es" ? "Cobertura por galón (ft²)" : "Coverage per gallon (ft²)"} value={coverage} onChange={setCoverage}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Galones calculados" : "Calculated gallons"}</span><strong>{gallons.toFixed(2)} gal</strong></div><div><span>{lang === "es" ? "Comprar (redondeado)" : "Buy (rounded up)"}</span><strong>{buy} gal</strong></div></div><ResultHistory lang={lang} tool="paint" value={`${area} ft² × ${coats} ${lang === "es" ? "manos" : "coats"} = ${result}`}/></section>;
+}
+
+function FlooringCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("500"), [perBox, setPerBox] = useState("20"), [waste, setWaste] = useState("10");
+  const needed = money(area) * (1 + money(waste) / 100);
+  const boxes = needed > 0 && money(perBox) > 0 ? Math.ceil(needed / money(perBox)) : 0;
+  const result = `${boxes} ${lang === "es" ? "cajas" : "boxes"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Cajas de piso" : "Flooring box estimator"}</h2><p>{lang === "es" ? "Calcula cajas incluyendo desperdicio." : "Estimate boxes including waste."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área del piso (ft²)" : "Floor area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Cobertura por caja (ft²)" : "Coverage per box (ft²)"} value={perBox} onChange={setPerBox}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Área con desperdicio" : "Area with waste"}</span><strong>{needed.toFixed(1)} ft²</strong></div><div><span>{lang === "es" ? "Cajas" : "Boxes"}</span><strong>{boxes}</strong></div></div><ResultHistory lang={lang} tool="flooring" value={`${area} ft², ${waste}% ${lang === "es" ? "desperdicio" : "waste"} = ${result}`}/></section>;
+}
+
+function FenceCalculator({ lang }: { lang: Lang }) {
+  const [feet, setFeet] = useState("100"), [picketW, setPicketW] = useState("5.5"), [gap, setGap] = useState("0.5"), [spacing, setSpacing] = useState("8"), [rails, setRails] = useState("2");
+  const totalIn = money(feet) * 12;
+  const pickets = totalIn > 0 && money(picketW) + money(gap) > 0 ? Math.ceil(totalIn / (money(picketW) + money(gap))) : 0;
+  const spans = money(spacing) > 0 ? Math.floor(money(feet) / money(spacing)) : 0;
+  const posts = money(feet) > 0 ? spans + 1 : 0;
+  const railsTotal = spans * Math.max(0, Math.round(money(rails)));
+  const result = `${pickets} ${lang === "es" ? "estacas" : "pickets"} · ${posts} ${lang === "es" ? "postes" : "posts"} · ${railsTotal} ${lang === "es" ? "rieles" : "rails"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Cerca y deck" : "Fence & deck estimator"}</h2><p>{lang === "es" ? "Estacas, postes y rieles para cercas." : "Pickets, posts, and rails for fences."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Largo total (ft)" : "Total length (ft)"} value={feet} onChange={setFeet}/><NumInput label={lang === "es" ? "Ancho de estaca (in)" : "Picket width (in)"} value={picketW} onChange={setPicketW}/><NumInput label={lang === "es" ? "Espacio entre estacas (in)" : "Gap between pickets (in)"} value={gap} onChange={setGap}/><NumInput label={lang === "es" ? "Separación de postes (ft)" : "Post spacing (ft)"} value={spacing} onChange={setSpacing}/><NumInput label={lang === "es" ? "Rieles por tramo" : "Rails per span"} value={rails} onChange={setRails} step="1"/></div><div className="calculator-results"><div><span>{lang === "es" ? "Estacas" : "Pickets"}</span><strong>{pickets}</strong></div><div><span>{lang === "es" ? "Postes" : "Posts"}</span><strong>{posts}</strong></div><div><span>{lang === "es" ? "Rieles" : "Rails"}</span><strong>{railsTotal}</strong></div></div><ResultHistory lang={lang} tool="fence" value={`${feet} ft = ${result}`}/></section>;
+}
+
+function BlockCalculator({ lang }: { lang: Lang }) {
+  const [mode, setMode] = useState<"wall" | "patio">("wall");
+  const [area, setArea] = useState("100"), [l, setL] = useState("16"), [w, setW] = useState("8"), [waste, setWaste] = useState("5");
+  const face = money(l) * money(w);
+  const count = face > 0 && money(area) > 0 ? Math.ceil((money(area) * 144) / face * (1 + money(waste) / 100)) : 0;
+  const unit = mode === "wall" ? (lang === "es" ? "bloques" : "blocks") : (lang === "es" ? "adoquines" : "pavers");
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Bloques y adoquines" : "Block & paver estimator"}</h2><div className="segmented-control" role="group" aria-label={lang === "es" ? "Modo" : "Mode"}><button type="button" className={mode === "wall" ? "active" : ""} onClick={()=>setMode("wall")}>{lang === "es" ? "Bloque de muro" : "Wall block"}</button><button type="button" className={mode === "patio" ? "active" : ""} onClick={()=>setMode("patio")}>{lang === "es" ? "Patio de adoquines" : "Patio pavers"}</button></div><div className="field-pair"><NumInput label={lang === "es" ? "Área (ft²)" : "Area (ft²)"} value={area} onChange={setArea}/><NumInput label={mode === "wall" ? (lang === "es" ? "Largo del bloque (in)" : "Block length (in)") : (lang === "es" ? "Largo del adoquín (in)" : "Paver length (in)")} value={l} onChange={setL}/><NumInput label={mode === "wall" ? (lang === "es" ? "Alto del bloque (in)" : "Block height (in)") : (lang === "es" ? "Ancho del adoquín (in)" : "Paver width (in)")} value={w} onChange={setW}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/></div><p className="result-callout">{lang === "es" ? "Necesitas" : "You need"}:{" "}<strong>{count} {unit}</strong></p><ResultHistory lang={lang} tool="block" value={`${area} ft² (${mode === "wall" ? (lang === "es" ? "muro" : "wall") : (lang === "es" ? "patio" : "patio")}) = ${count} ${unit}`}/></section>;
+}
+
+function GravelCalculator({ lang }: { lang: Lang }) {
+  const [l, setL] = useState("10"), [w, setW] = useState("10"), [depth, setDepth] = useState("4"), [waste, setWaste] = useState("5"), [tonsPerYard, setTonsPerYard] = useState("1.4");
+  const yards = (money(l) * money(w) * (money(depth) / 12)) / 27;
+  const yardsWithWaste = yards * (1 + money(waste) / 100);
+  const tons = yardsWithWaste * money(tonsPerYard);
+  const result = `${yardsWithWaste.toFixed(2)} yd³ · ${tons.toFixed(2)} ${lang === "es" ? "ton" : "tons"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Grava y tierra" : "Gravel & soil estimator"}</h2><p>{lang === "es" ? "Yardas cúbicas y toneladas por dimensiones." : "Cubic yards and tons from dimensions."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Largo (ft)" : "Length (ft)"} value={l} onChange={setL}/><NumInput label={lang === "es" ? "Ancho (ft)" : "Width (ft)"} value={w} onChange={setW}/><NumInput label={lang === "es" ? "Profundidad (in)" : "Depth (in)"} value={depth} onChange={setDepth}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/><NumInput label={lang === "es" ? "Toneladas por yarda³" : "Tons per yd³"} value={tonsPerYard} onChange={setTonsPerYard}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Yardas cúbicas" : "Cubic yards"}</span><strong>{yardsWithWaste.toFixed(2)} yd³</strong></div><div><span>{lang === "es" ? "Toneladas" : "Tons"}</span><strong>{tons.toFixed(2)}</strong></div></div><ResultHistory lang={lang} tool="gravel" value={`${l}×${w} ft × ${depth} in = ${result}`}/></section>;
+}
+
+function StairCalculator({ lang }: { lang: Lang }) {
+  const [rise, setRise] = useState("36"), [run, setRun] = useState("48");
+  const risers = Math.max(1, Math.round(money(rise) / 7.5));
+  const riserH = money(rise) / risers;
+  const treadD = money(run) / risers;
+  const result = `${risers} @ ${riserH.toFixed(2)} in ${lang === "es" ? "contrahuellas" : "risers"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Zanca de escalera" : "Stair stringer layout"}</h2><p>{lang === "es" ? "Calcula contrahuellas y huellas (ideal: 7.5 in de contrahuella)." : "Lay out risers and treads (target: 7.5 in riser)."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Altura total (in)" : "Total rise (in)"} value={rise} onChange={setRise}/><NumInput label={lang === "es" ? "Largo total (in)" : "Total run (in)"} value={run} onChange={setRun}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Contrahuellas" : "Risers"}</span><strong>{risers}</strong></div><div><span>{lang === "es" ? "Altura de contrahuella" : "Riser height"}</span><strong>{riserH.toFixed(2)} in</strong></div><div><span>{lang === "es" ? "Profundidad de huella" : "Tread depth"}</span><strong>{treadD.toFixed(2)} in</strong></div></div><ResultHistory lang={lang} tool="stairs" value={`${rise} in ${lang === "es" ? "subida" : "rise"} = ${result}`}/></section>;
+}
+
+function InsulationCalculator({ lang }: { lang: Lang }) {
+  const [area, setArea] = useState("500"), [coverage, setCoverage] = useState("10.67"), [waste, setWaste] = useState("5");
+  const batts = money(coverage) > 0 ? Math.ceil((money(area) * (1 + money(waste) / 100)) / money(coverage)) : 0;
+  const result = `${batts} ${lang === "es" ? "rollos" : "batts"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Aislante en rollos" : "Insulation batt estimator"}</h2><p>{lang === "es" ? "Rollos según área de pared o ático." : "Batts for wall or attic area."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Área (ft²)" : "Area (ft²)"} value={area} onChange={setArea}/><NumInput label={lang === "es" ? "Cobertura por rollo (ft²)" : "Coverage per batt (ft²)"} value={coverage} onChange={setCoverage}/><NumInput label={lang === "es" ? "Desperdicio %" : "Waste %"} value={waste} onChange={setWaste}/></div><p className="result-callout">{lang === "es" ? "Necesitas" : "You need"}:{" "}<strong>{result}</strong></p><ResultHistory lang={lang} tool="insulation" value={`${area} ft² = ${result}`}/></section>;
+}
+
+function GutterCalculator({ lang }: { lang: Lang }) {
+  const [feet, setFeet] = useState("100"), [spacing, setSpacing] = useState("40"), [elbows, setElbows] = useState("2");
+  const downspouts = money(feet) > 0 && money(spacing) > 0 ? Math.max(2, Math.ceil(money(feet) / money(spacing))) : 0;
+  const elbowsTotal = downspouts * Math.max(0, Math.round(money(elbows)));
+  const result = `${money(feet)} ft ${lang === "es" ? "canalón" : "gutter"} · ${downspouts} ${lang === "es" ? "bajantes" : "downspouts"} · ${elbowsTotal} ${lang === "es" ? "codos" : "elbows"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Canalones y bajantes" : "Gutter & downspout estimator"}</h2><p>{lang === "es" ? "Pies de canalón, bajantes y codos por pies de alero." : "Gutter feet, downspouts, and elbows by eave length."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Pies de alero (ft)" : "Eave length (ft)"} value={feet} onChange={setFeet}/><NumInput label={lang === "es" ? "Separación de bajantes (ft)" : "Downspout spacing (ft)"} value={spacing} onChange={setSpacing}/><NumInput label={lang === "es" ? "Codos por bajante" : "Elbows per downspout"} value={elbows} onChange={setElbows} step="1"/></div><div className="calculator-results"><div><span>{lang === "es" ? "Canalón" : "Gutter"}</span><strong>{money(feet)} ft</strong></div><div><span>{lang === "es" ? "Bajantes" : "Downspouts"}</span><strong>{downspouts}</strong></div><div><span>{lang === "es" ? "Codos" : "Elbows"}</span><strong>{elbowsTotal}</strong></div></div><ResultHistory lang={lang} tool="gutter" value={result}/></section>;
+}
+
+function RateBuilderCalculator({ lang }: { lang: Lang }) {
+  const [wages, setWages] = useState("25"), [burden, setBurden] = useState("25"), [overhead, setOverhead] = useState("15"), [profit, setProfit] = useState("20");
+  const trueCost = money(wages) * (1 + money(burden) / 100) + money(overhead);
+  const profitPct = Math.min(99, Math.max(0, money(profit))) / 100;
+  const rate = trueCost / Math.max(0.01, 1 - profitPct);
+  const profitPerHr = rate - trueCost;
+  const result = `${usd(rate)}/${lang === "es" ? "hora" : "hr"}`;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Tarifa facturable" : "Billable rate builder"}</h2><p>{lang === "es" ? "Convierte salarios y gastos en tarifa por hora." : "Turn wages and costs into an hourly rate."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Salario por hora ($)" : "Hourly wage ($)"} value={wages} onChange={setWages}/><NumInput label={lang === "es" ? "Cargas laborales %" : "Labor burden %"} value={burden} onChange={setBurden}/><NumInput label={lang === "es" ? "Gastos generales por hora ($)" : "Overhead per hour ($)"} value={overhead} onChange={setOverhead}/><NumInput label={lang === "es" ? "Ganancia %" : "Profit %"} value={profit} onChange={setProfit}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Costo real por hora" : "True cost per hour"}</span><strong>{usd(trueCost)}</strong></div><div><span>{lang === "es" ? "Tarifa facturable" : "Billable rate"}</span><strong>{usd(rate)}</strong></div><div><span>{lang === "es" ? "Ganancia por hora" : "Profit per hour"}</span><strong>{usd(profitPerHr)}</strong></div></div><ResultHistory lang={lang} tool="rate" value={`${lang === "es" ? "Tarifa" : "Rate"}: ${result}`}/></section>;
+}
+
+function PunchListPanel({ lang }: { lang: Lang }) {
+  const client = useQueryClient();
+  const [jobId, setJobId] = useState("");
+  const [text, setText] = useState("");
+  const jobsQuery = useQuery({ queryKey: ["jobs", "punchlist-picker"], queryFn: () => api.listJobs({ search: "" }) });
+  const itemsQuery = useQuery({
+    queryKey: ["punch-items", jobId],
+    queryFn: () => api.listPunchItems({ jobId: Number(jobId) }),
+    enabled: !!jobId,
+  });
+  const invalidate = () => client.invalidateQueries({ queryKey: ["punch-items", jobId] });
+  const add = useMutation({
+    mutationFn: () => api.addPunchItem({ jobId: Number(jobId), text }),
+    onSuccess: () => { setText(""); invalidate(); },
+  });
+  const toggle = useMutation({
+    mutationFn: ({ id, completed }: { id: number; completed: boolean }) => api.togglePunchItem({ id, completed }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deletePunchItem({ id }),
+    onSuccess: invalidate,
+  });
+  const items = itemsQuery.data?.items ?? [];
+  const doneCount = items.filter((i) => i.completed).length;
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Lista de pendientes" : "Punch list"}</h2><p>{lang === "es" ? "Elige un trabajo y lleva la cuenta de los pendientes." : "Pick a job and track its punch items."}</p><div className="field-pair"><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>{jobsQuery.data?.jobs.map((j) => <option key={j.id} value={j.id}>{j.clientName} · {j.jobType}</option>)}</select></label></div>{jobId && <><div className="punch-add"><input value={text} onChange={(e) => setText(e.target.value)} placeholder={lang === "es" ? "Agregar pendiente…" : "Add a punch item…"} maxLength={500}/><button type="button" className="primary-button" disabled={!text.trim() || add.isPending} onClick={() => add.mutate()}><PlusIcon />{lang === "es" ? "Agregar" : "Add"}</button></div><p className="result-callout">{doneCount} / {items.length} {lang === "es" ? "completados" : "done"}</p><div className="punch-list">{items.map((item) => <article key={item.id} className={item.completed ? "punch-done" : ""}><button type="button" aria-label={item.completed ? (lang === "es" ? "Marcar pendiente" : "Mark open") : (lang === "es" ? "Marcar completado" : "Mark done")} onClick={() => toggle.mutate({ id: item.id, completed: !item.completed })}><CheckIcon /></button><span>{item.text}</span><button type="button" aria-label={lang === "es" ? "Eliminar pendiente" : "Delete punch item"} onClick={() => remove.mutate(item.id)}><TrashIcon /></button></article>)}</div>{items.length === 0 && <p>{lang === "es" ? "No hay pendientes todavía. Agrega el primero arriba." : "No punch items yet. Add the first one above."}</p>}</>}<ResultHistory lang={lang} tool="punchlist" value={`${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"}`}/></section>;
 }
 
 function CrewClockPanel({ lang }: { lang: Lang }) {
