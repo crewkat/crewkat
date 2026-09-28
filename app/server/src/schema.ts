@@ -123,6 +123,7 @@ export const quotes = sqliteTable("quotes", {
   versionNumber: integer("version_number").notNull().default(1),
   superseded: integer("superseded", { mode: "boolean" }).notNull().default(false),
   accepted: integer("accepted", { mode: "boolean" }).notNull().default(false),
+  convertedToInvoiceId: integer("converted_to_invoice_id"), // FK to invoices.id in SQL migration (plain here to avoid a quotes<->invoices circular type inference)
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -268,7 +269,6 @@ export const settings = sqliteTable("settings", {
   coverBlobKey: text("cover_blob_key"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
-
 
 export const timeEntries = sqliteTable("time_entries", {
   companyId: integer("company_id").notNull().default(1),
@@ -433,7 +433,6 @@ export const paymentMilestones = sqliteTable("payment_milestones", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
-
 export const automationLogs = sqliteTable("automation_logs", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -597,7 +596,6 @@ export const materialCostItems = sqliteTable("material_cost_items", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
-
 export const supplierQuotes = sqliteTable("supplier_quotes", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }), supplierId: integer("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }), jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }), title: text("title").notNull(), lineItemsJson: text("line_items_json").notNull(), total: text("total").notNull().default("0.00"), selected: integer("selected", { mode: "boolean" }).notNull().default(false), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
@@ -718,7 +716,6 @@ export const marketplaceRequests = sqliteTable("marketplace_requests", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
-
 export const authUsers = sqliteTable("auth_users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -828,3 +825,17 @@ export const userHomePins = sqliteTable("user_home_pins", {
   uniqueIndex("user_home_pins_user_tool_unique").on(table.userId, table.toolId),
   index("user_home_pins_user_idx").on(table.userId, table.position),
 ]);
+
+export const recurringInvoiceSchedules = sqliteTable("recurring_invoice_schedules", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  frequency: text("frequency", { enum: ["weekly", "monthly"] }).notNull(),
+  nextRunDate: text("next_run_date").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  lastGeneratedInvoiceId: integer("last_generated_invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("recurring_invoice_schedules_due_idx").on(table.active, table.nextRunDate),
+]);
+

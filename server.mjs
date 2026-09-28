@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions, runScheduledBackup, recoverStaleBackupRuns } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -632,6 +632,28 @@ if (!process.env.BACKUP_ALERT_EMAIL) {
   setTimeout(tick, 60 * 1000); // catch up shortly after boot in case the hour already passed
   setInterval(tick, BACKUP_TICK_MS).unref();
   console.log(`[crewkat][backup] scheduler armed (hour ${process.env.BACKUP_HOUR || "3"} UTC, tick every ${BACKUP_TICK_MS / 60000} min).`);
+}
+
+// ---------------------------------------------------------------------------
+// Recurring invoices: in-process scheduler (single Render instance)
+// ---------------------------------------------------------------------------
+// Independent of the backup scheduler (not gated on BACKUP_ALERT_EMAIL).
+// Ticks every 30 minutes; the tick itself only generates for schedules whose
+// next_run_date is due, so frequent ticks are cheap and safe.
+
+{
+  const RECURRING_TICK_MS = 30 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runRecurringInvoiceTick(makeCtx());
+      if (result.ran) console.log(`[crewkat][recurring] generated invoice(s): ${result.generated.join(", ")}.`);
+    } catch (error) {
+      console.error("[crewkat][recurring] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 2 * 60 * 1000); // catch up shortly after boot
+  setInterval(tick, RECURRING_TICK_MS).unref();
+  console.log(`[crewkat][recurring] scheduler armed (tick every ${RECURRING_TICK_MS / 60000} min).`);
 }
 
 function shutdown(signal) {

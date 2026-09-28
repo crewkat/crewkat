@@ -1680,6 +1680,162 @@ export function App() {
   return <AuthContext.Provider value={{ user, signOut }}><CrewkatApplication /></AuthContext.Provider>;
 }
 
+function SampleDataButton({
+  lang,
+  onLoaded,
+}: {
+  lang: Lang;
+  onLoaded?: () => void;
+}) {
+  const client = useQueryClient();
+  const [error, setError] = useState("");
+  const load = useMutation({
+    mutationFn: () => api.loadSampleData({}),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["jobs"] });
+      await client.invalidateQueries({ queryKey: ["clients"] });
+      await client.invalidateQueries({ queryKey: ["quotes"] });
+      onLoaded?.();
+    },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  return (
+    <div className="sample-data-block">
+      <button
+        type="button"
+        className="secondary-button"
+        disabled={load.isPending}
+        onClick={() => {
+          setError("");
+          load.mutate();
+        }}
+      >
+        {load.isPending
+          ? lang === "es" ? "Cargando\u2026" : "Loading\u2026"
+          : lang === "es" ? "Cargar datos de ejemplo" : "Load sample data"}
+      </button>
+      <p className="privacy-note">
+        {lang === "es"
+          ? "Agrega un cliente, un trabajo y un presupuesto de ejemplo para explorar. Puedes eliminarlos cuando quieras."
+          : "Adds a sample client, job, and estimate so you can explore. You can delete them anytime."}
+      </p>
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
+function OnboardingTour({ lang }: { lang: Lang }) {
+  const auth = useContext(AuthContext);
+  const userId = auth?.user.id ?? 0;
+  const [dismissed, setDismissed] = useState(
+    () => window.localStorage.getItem(`crewkat-onboarding-${userId}`) === "done",
+  );
+  const [step, setStep] = useState(0);
+  const jobsQuery = useQuery({
+    queryKey: ["jobs", ""],
+    queryFn: () => api.listJobs({ search: "" }),
+  });
+  const dismiss = () => {
+    window.localStorage.setItem(`crewkat-onboarding-${userId}`, "done");
+    setDismissed(true);
+  };
+  const createdAtMs = auth?.user.createdAt ? Date.parse(auth.user.createdAt) : NaN;
+  const accountAgeDays = Number.isFinite(createdAtMs) ? (Date.now() - createdAtMs) / 86400000 : 99;
+  // While jobs are loading, treat as non-empty so the tour never flashes.
+  const jobCount = jobsQuery.data ? jobsQuery.data.jobs.length : 1;
+  const eligible = !dismissed && accountAgeDays < 7 && jobCount === 0;
+  const steps = [
+    {
+      icon: (
+        <Icon>
+          <path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" />
+        </Icon>
+      ),
+      title: lang === "es" ? "Bienvenido a Crewkat" : "Welcome to Crewkat",
+      body:
+        lang === "es"
+          ? "Tus trabajos, presupuestos, facturas y herramientas de cuadrilla en un solo lugar."
+          : "Your jobs, estimates, invoices, and crew tools in one place.",
+    },
+    {
+      icon: (
+        <Icon>
+          <path d="M4 7h16v13H4zM4 7l2-3h12l2 3M9 11h6" />
+        </Icon>
+      ),
+      title: lang === "es" ? "Controla cada trabajo" : "Track every job",
+      body:
+        lang === "es"
+          ? "Fotos, registro diario, listas de pendientes y documentos organizados por trabajo."
+          : "Photos, daily log, punch lists, and documents stay organized per job.",
+    },
+    {
+      icon: (
+        <Icon>
+          <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />
+        </Icon>
+      ),
+      title:
+        lang === "es"
+          ? "Del presupuesto a la factura en un toque"
+          : "Estimates to invoices in one tap",
+      body:
+        lang === "es"
+          ? "Convierte un presupuesto aceptado en factura al instante, y programa facturas recurrentes autom\u00e1ticas."
+          : "Convert an accepted estimate into an invoice instantly, and set invoices to repeat automatically.",
+    },
+    {
+      icon: (
+        <Icon>
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21a8 8 0 0 1 16 0" />
+        </Icon>
+      ),
+      title: lang === "es" ? "Explora con datos de ejemplo" : "Explore with sample data",
+      body:
+        lang === "es"
+          ? "Carga un ejemplo para ver c\u00f3mo funciona todo, o empieza creando tu primer trabajo."
+          : "Load a sample to see how everything works, or start by creating your first job.",
+    },
+  ];
+  if (!eligible) return null;
+  const current = steps[Math.min(step, steps.length - 1)] as (typeof steps)[number];
+  return (
+    <div className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label={current.title}>
+      <section className="onboarding-card">
+        <button type="button" className="onboarding-skip" onClick={dismiss}>
+          {lang === "es" ? "Omitir" : "Skip"}
+        </button>
+        <div className="onboarding-icon">{current.icon}</div>
+        <h2>{current.title}</h2>
+        <p>{current.body}</p>
+        {step === steps.length - 1 && <SampleDataButton lang={lang} onLoaded={dismiss} />}
+        <div className="onboarding-dots" aria-hidden="true">
+          {steps.map((_, i) => (
+            <span key={i} className={i === step ? "active" : ""} />
+          ))}
+        </div>
+        <div className="onboarding-nav">
+          {step > 0 && (
+            <button type="button" className="secondary-button" onClick={() => setStep(step - 1)}>
+              {lang === "es" ? "Atr\u00e1s" : "Back"}
+            </button>
+          )}
+          {step < steps.length - 1 ? (
+            <button type="button" className="primary-button" onClick={() => setStep(step + 1)}>
+              {lang === "es" ? "Siguiente" : "Next"}
+            </button>
+          ) : (
+            <button type="button" className="primary-button" onClick={dismiss}>
+              {lang === "es" ? "Comenzar" : "Get started"}
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CrewkatApplication() {
   const client = useQueryClient();
   const auth = useContext(AuthContext);
@@ -1851,6 +2007,7 @@ function CrewkatApplication() {
           <button type="button" aria-label={lang === "es" ? "Cerrar anuncio" : "Dismiss announcement"} onClick={() => { const v = auth.user.announcementBanner.trim(); setDismissedBanner(v); window.localStorage.setItem("crewkat-banner-dismissed", v); }}>×</button>
         </div>
       )}
+      <OnboardingTour lang={lang} />
       {screen.name === "today" && (
         <TodayScreen
           lang={lang}
@@ -3738,6 +3895,11 @@ function PhotoCard({
         src={photo.url}
         alt={photo.caption || `${t[photo.stage]} ${t.photo}`}
       />
+      {photo.annotatedFromId != null && (
+        <span className="markup-badge">
+          {lang === "es" ? "Con anotaciones" : "Marked up"}
+        </span>
+      )}
       <div className="photo-fields">
         <input
           value={caption}
@@ -4184,6 +4346,9 @@ function SettingsScreen({
                 <button type="button" className="secondary-button" onClick={() => setScreen({ name: "upgrade" })}>{lang === "es" ? "Ver plan" : "View plan"}</button>
                 <button type="button" className="secondary-button account-signout" onClick={() => void auth.signOut()}>{lang === "es" ? "Cerrar sesión" : "Sign out"}</button>
               </div>
+            </SettingsAccordion>
+            <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<Icon><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></Icon>}>
+              <SampleDataButton lang={lang} />
             </SettingsAccordion>
           </>}
           <SettingsAccordion
@@ -6333,7 +6498,7 @@ function QuotesScreen({
     },
   });
   const invoice = useMutation({
-    mutationFn: (id: number) => api.convertQuoteToInvoice({ id }),
+    mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id }),
     onSuccess: (r) => {
       client.invalidateQueries({ queryKey: ["invoices"] });
       setScreen({ name: "invoicePreview", invoiceId: r.invoiceId });
@@ -7079,7 +7244,8 @@ function QuotePreview({
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => { if (quote) void buildQuotePdf(quote, settings, lang).then(setBlob); }, [quote, settings, lang]);
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);}});
-  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});onOpenInvoice(r.invoiceId);}});
+  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);}});
+  const [confirmConvert, setConfirmConvert] = useState(false);
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
   if (!quote) return <main className="page"><PageHeader lang={lang} title={lang === "es" ? "Cotización" : "Estimate"} onBack={onBack}/><div className="loading-block"/></main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
@@ -7097,7 +7263,7 @@ function QuotePreview({
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="quote" id={quote.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","quote",quoteId]});setSignatureOpen(false);}}/>}
-    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de cotización":"Estimate options"}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button onClick={()=>convert.mutate()}><FileIcon/><span>{lang==="es"?"Convertir en factura":"Convert estimate to invoice"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate")}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar cotización":"Duplicate estimate"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar cotización":"Delete estimate"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de cotización":"Estimate options"}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?"Convertir en factura":"Convert estimate to invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate")}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar cotización":"Duplicate estimate"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar cotización":"Delete estimate"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
   </main>;
 }
 
@@ -7115,6 +7281,10 @@ function InvoicesScreen({
   const t = copy[lang];
   const qc = useQueryClient();
   const [tab, setTab] = useState<"invoices" | "estimates">("invoices");
+  const [confirmConvertQuoteId, setConfirmConvertQuoteId] = useState<number | null>(null);
+  const schedulesQuery = useQuery({ queryKey: ["recurring-schedules"], queryFn: () => api.listRecurringSchedules({}) });
+  const cancelSchedule = useMutation({ mutationFn: (id: number) => api.cancelRecurringSchedule({ id }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recurring-schedules"] }); } });
+  const activeSchedules = (schedulesQuery.data?.schedules ?? []).filter((s) => s.active);
   const query = useQuery({
     queryKey: ["invoices"],
     queryFn: () => api.listInvoices({}),
@@ -7129,7 +7299,7 @@ function InvoicesScreen({
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
   const estimateWord = settings?.convertToQuote ? (lang === "es" ? "Cotizaciones" : "Quotes") : (lang === "es" ? "Presupuestos" : "Estimates");
   const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
-  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ id }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); } });
+  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); } });
   const status = useMutation({
     mutationFn: ({ id, status }: { id: number; status: InvoiceStatus }) =>
       api.updateInvoiceStatus({ id, status }),
@@ -7185,6 +7355,34 @@ function InvoicesScreen({
           ))}
         </section>
       )}
+      {tab === "invoices" && activeSchedules.length > 0 && (
+        <section className="recurring-panel">
+          <h2>{lang === "es" ? "Facturas recurrentes activas" : "Active recurring invoices"}</h2>
+          {activeSchedules.map((s) => (
+            <article key={s.id}>
+              <span>
+                <strong>{s.clientName}</strong>
+                <small>
+                  {s.frequency === "weekly" ? (lang === "es" ? "Semanal" : "Weekly") : (lang === "es" ? "Mensual" : "Monthly")} · {lang === "es" ? "Próxima" : "Next"}: {formatDate(s.nextRunDate, lang)} · {usd(money(s.total))}
+                </small>
+              </span>
+              <button
+                className="small-button"
+                onClick={() => setScreen({ name: "invoicePreview", invoiceId: s.invoiceId })}
+              >
+                {lang === "es" ? "Ver" : "View"}
+              </button>
+              <button
+                className="small-button danger-button"
+                disabled={cancelSchedule.isPending}
+                onClick={() => cancelSchedule.mutate(s.id)}
+              >
+                {lang === "es" ? "Cancelar" : "Cancel"}
+              </button>
+            </article>
+          ))}
+        </section>
+      )}
       {tab === "invoices" ? <section className="quote-list document-list">
         {sortedInvoices.map((invoice) => (
           <article key={invoice.id}>
@@ -7208,7 +7406,7 @@ function InvoicesScreen({
               <span className={`status-chip ${quote.accepted || quote.automationStatus === "won" ? "paid" : quote.automationStatus === "lost" ? "overdue" : "sent"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
               <h2>{quote.clientName}</h2><p>{quote.jobType || t.quoteBuilder} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
             </div>
-            <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button><button onClick={() => quoteInvoice.mutate(quote.id)}>{t.convertInvoice}</button>{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
+            <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
           </article>
         ))}
         {quotes.data?.quotes.length === 0 && <div className="empty-state"><h2>{t.quoteEmpty}</h2></div>}
@@ -7348,6 +7546,11 @@ function InvoicePreview({
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["invoices"]});};
   const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);}});
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
+  const schedulesQuery=useQuery({queryKey:["recurring-schedules"],queryFn:()=>api.listRecurringSchedules({})});
+  const [scheduleFrequency,setScheduleFrequency]=useState<"weekly"|"monthly">("monthly");
+  const startSchedule=useMutation({mutationFn:()=>api.createRecurringSchedule({invoiceId,frequency:scheduleFrequency}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
+  const cancelSchedule=useMutation({mutationFn:(id:number)=>api.cancelRecurringSchedule({id}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
+  const invoiceSchedules=(schedulesQuery.data?.schedules??[]).filter((s)=>s.invoiceId===invoiceId&&s.active);
   if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/><div className="loading-block"/></main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
@@ -7358,6 +7561,7 @@ function InvoicePreview({
     <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);}}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
     {settings?.simpleMode !== true && (<details className="action-details document-details"><summary>{t.partialPayments} · {t.recurring}</summary><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>{invoice.payments.map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)} · {payment.method}</small></span></div>)}<div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></details>)}
+    <details className="action-details document-details"><summary>{lang==="es"?"Factura recurrente automática":"Automatic recurring invoice"}</summary><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></details>
     <div className="document-action-bar" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={async()=>{await api.toggleInvoicePaid({id:invoice.id,paid:invoice.status!=="paid"});await refresh();}}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
@@ -8679,6 +8883,8 @@ function ProgressUpdate({
   );
 }
 
+const MARKUP_COLORS = ["#ef3d2f", "#ffc400", "#ffffff"] as const;
+
 function PhotoAnnotator({
   lang,
   data,
@@ -8693,10 +8899,15 @@ function PhotoAnnotator({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const baseRef = useRef<HTMLImageElement | null>(null);
   const client = useQueryClient();
-  const [mode, setMode] = useState<"pen" | "circle" | "arrow">("pen");
+  const [mode, setMode] = useState<"pen" | "circle" | "arrow" | "text">("pen");
+  const [color, setColor] = useState<(typeof MARKUP_COLORS)[number]>("#ef3d2f");
+  const [textAnchor, setTextAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [textDraft, setTextDraft] = useState("");
+  const [canUndo, setCanUndo] = useState(false);
   const drawing = useRef(false);
   const start = useRef({ x: 0, y: 0 });
   const snapshot = useRef<ImageData | null>(null);
+  const history = useRef<ImageData[]>([]);
   useEffect(() => {
     if (!photo) return;
     const img = new Image();
@@ -8708,6 +8919,8 @@ function PhotoAnnotator({
       c.width = img.naturalWidth;
       c.height = img.naturalHeight;
       c.getContext("2d")?.drawImage(img, 0, 0);
+      history.current = [];
+      setCanUndo(false);
     };
     img.src = photo.url;
   }, [photo]);
@@ -8720,11 +8933,43 @@ function PhotoAnnotator({
       y: ((e.clientY - r.top) * c.height) / r.height,
     };
   };
+  const pushHistory = () => {
+    const c = canvasRef.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    history.current.push(ctx.getImageData(0, 0, c.width, c.height));
+    if (history.current.length > 25) history.current.shift();
+    setCanUndo(true);
+  };
+  const undo = () => {
+    const c = canvasRef.current;
+    const ctx = c?.getContext("2d");
+    const prev = history.current.pop();
+    if (!c || !ctx) return;
+    if (prev) ctx.putImageData(prev, 0, 0);
+    setCanUndo(history.current.length > 0);
+  };
+  const clearAll = () => {
+    const c = canvasRef.current;
+    const img = baseRef.current;
+    if (!c || !img) return;
+    history.current = [];
+    setCanUndo(false);
+    c.getContext("2d")?.drawImage(img, 0, 0);
+    setTextAnchor(null);
+    setTextDraft("");
+  };
   const down = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (mode === "text") {
+      setTextAnchor(point(e));
+      setTextDraft("");
+      return;
+    }
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     drawing.current = true;
+    pushHistory();
     start.current = point(e);
     snapshot.current = ctx.getImageData(0, 0, c.width, c.height);
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -8754,12 +8999,12 @@ function PhotoAnnotator({
     ctx.stroke();
   };
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current) return;
+    if (!drawing.current || mode === "text") return;
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     const p = point(e);
-    ctx.strokeStyle = "#ef3d2f";
+    ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(5, c.width / 180);
     ctx.lineCap = "round";
     if (mode !== "pen" && snapshot.current)
@@ -8784,26 +9029,44 @@ function PhotoAnnotator({
       ctx.stroke();
     } else drawArrow(ctx, start.current.x, start.current.y, p.x, p.y);
   };
+  const commitText = () => {
+    const c = canvasRef.current;
+    const ctx = c?.getContext("2d");
+    const anchor = textAnchor;
+    const value = textDraft.trim();
+    setTextAnchor(null);
+    setTextDraft("");
+    if (!c || !ctx || !anchor || !value) return;
+    pushHistory();
+    const size = Math.max(28, c.width / 18);
+    ctx.font = `700 ${size}px system-ui, sans-serif`;
+    ctx.textBaseline = "bottom";
+    ctx.lineWidth = Math.max(2, size / 12);
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.fillStyle = color;
+    ctx.strokeText(value, anchor.x, anchor.y);
+    ctx.fillText(value, anchor.x, anchor.y);
+  };
   const save = useMutation({
     mutationFn: async () => {
       if (!photo) throw new Error();
       const c = canvasRef.current;
       if (!c) throw new Error();
       const blob = await new Promise<Blob>((resolve) =>
-        c.toBlob((b) => resolve(b ?? new Blob()), "image/jpeg", 0.92),
+        c.toBlob((b) => resolve(b ?? new Blob()), "image/png"),
       );
       const file = new File(
         [blob],
-        `annotated-${photo.filename.replace(/\.[^.]+$/, "")}.jpg`,
-        { type: "image/jpeg" },
+        `markup-${photo.filename.replace(/\.[^.]+$/, "")}.png`,
+        { type: "image/png" },
       );
       const data64 = await fileToBase64(file);
       return api.addPhoto({
         jobId: photo.jobId,
         stage: photo.stage,
-        caption: `${photo.caption}${photo.caption ? " — " : ""}Annotated`,
+        caption: `${photo.caption}${photo.caption ? " \u2014 " : ""}${lang === "es" ? "Con anotaciones" : "Marked up"}`,
         filename: file.name,
-        contentType: "image/jpeg",
+        contentType: "image/png",
         capturedAt: new Date().toISOString(),
         dataBase64: data64.dataBase64,
         annotatedFromId: photo.id,
@@ -8839,6 +9102,29 @@ function PhotoAnnotator({
         >
           {t.arrow}
         </button>
+        <button
+          className={mode === "text" ? "active" : ""}
+          onClick={() => setMode("text")}
+        >
+          {lang === "es" ? "Texto" : "Text"}
+        </button>
+      </div>
+      <div className="annotation-colors" role="group" aria-label={lang === "es" ? "Color" : "Color"}>
+        {MARKUP_COLORS.map((swatch) => (
+          <button
+            key={swatch}
+            className={`color-swatch${color === swatch ? " active" : ""}`}
+            style={{ background: swatch }}
+            aria-label={swatch}
+            onClick={() => setColor(swatch)}
+          />
+        ))}
+        <button className="secondary-button" disabled={!canUndo} onClick={undo}>
+          {lang === "es" ? "Deshacer" : "Undo"}
+        </button>
+        <button className="secondary-button" onClick={clearAll}>
+          {lang === "es" ? "Borrar todo" : "Clear"}
+        </button>
       </div>
       <div className="annotation-stage">
         <canvas
@@ -8852,6 +9138,47 @@ function PhotoAnnotator({
             drawing.current = false;
           }}
         />
+        {textAnchor && canvasRef.current && (
+          <form
+            className="annotation-text-input"
+            style={{
+              left: `${(textAnchor.x / canvasRef.current.width) * 100}%`,
+              top: `${(textAnchor.y / canvasRef.current.height) * 100}%`,
+            }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              commitText();
+            }}
+          >
+            <input
+              autoFocus
+              value={textDraft}
+              maxLength={80}
+              placeholder={lang === "es" ? "Escribe el texto" : "Type text"}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setTextAnchor(null);
+                  setTextDraft("");
+                }
+              }}
+            />
+            <div>
+              <button type="submit" className="primary-button">
+                {lang === "es" ? "Agregar" : "Add"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTextAnchor(null);
+                  setTextDraft("");
+                }}
+              >
+                {lang === "es" ? "Cancelar" : "Cancel"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
       <button
         className="primary-button full-button"

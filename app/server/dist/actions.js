@@ -5223,6 +5223,9 @@ var gte = (left, right) => {
 var lt = (left, right) => {
   return sql`${left} < ${bindIfParam(right, left)}`;
 };
+var lte = (left, right) => {
+  return sql`${left} <= ${bindIfParam(right, left)}`;
+};
 function inArray(column, values) {
   if (Array.isArray(values)) {
     if (values.length === 0) {
@@ -6701,6 +6704,7 @@ var quotes = sqliteTable("quotes", {
   versionNumber: integer2("version_number").notNull().default(1),
   superseded: integer2("superseded", { mode: "boolean" }).notNull().default(false),
   accepted: integer2("accepted", { mode: "boolean" }).notNull().default(false),
+  convertedToInvoiceId: integer2("converted_to_invoice_id"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -7494,6 +7498,18 @@ var userHomePins = sqliteTable("user_home_pins", {
   uniqueIndex("user_home_pins_user_tool_unique").on(table.userId, table.toolId),
   index("user_home_pins_user_idx").on(table.userId, table.position)
 ]);
+var recurringInvoiceSchedules = sqliteTable("recurring_invoice_schedules", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer2("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  frequency: text("frequency", { enum: ["weekly", "monthly"] }).notNull(),
+  nextRunDate: text("next_run_date").notNull(),
+  active: integer2("active", { mode: "boolean" }).notNull().default(true),
+  lastGeneratedInvoiceId: integer2("last_generated_invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("recurring_invoice_schedules_due_idx").on(table.active, table.nextRunDate)
+]);
 
 // src/auth-email.ts
 function authCodeClientResult(code, delivery) {
@@ -7805,7 +7821,7 @@ var customizeJsonSchema = string2().max(5000000).refine((value) => {
   }
 }, "Invalid document customization.");
 var financialFieldsSchema = object({ subtotal: string2(), discountType: adjustmentTypeSchema, discountValue: string2(), taxType: adjustmentTypeSchema, taxValue: string2(), total: string2(), footnote: string2(), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape);
-var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
+var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var paymentSchema = object({ id: number2(), invoiceId: number2(), amount: string2(), paymentDate: string2(), method: string2(), note: string2(), createdAt: string2() });
 var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var timeEntrySchema = object({ id: number2(), jobId: number2(), crewMember: string2(), startedAt: string2(), endedAt: string2().nullable(), note: string2(), durationSeconds: number2() });
@@ -8016,7 +8032,7 @@ function quoteDiff(previous, next) {
   return { added, removed, priceChanges, totalChange: (Number(next.total) - Number(previous.total)).toFixed(2) };
 }
 function quoteShape(q) {
-  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
+  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
 }
 function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, graceDays: 0 }) {
   const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -8184,7 +8200,7 @@ var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
 var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
-var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2() });
+var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2(), createdAt: string2() });
 var authCodeDeliverySchema = _enum(["sent", "fallback", "failed"]);
 function authMeta(ctx) {
   return ctx;
@@ -8334,7 +8350,7 @@ async function derivePassword(password, saltHex, iterations) {
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 function authUserShape(row, announcementBanner) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
 }
 async function issueAuthCode(ctx, userId, purpose) {
   const db = ctx.db();
@@ -8835,6 +8851,76 @@ async function recoverStaleBackupRuns(ctx) {
   }
   return stale.length;
 }
+async function runRecurringInvoiceTick(ctx) {
+  const db = ctx.db();
+  const today = new Date().toISOString().slice(0, 10);
+  const due = await db.select().from(recurringInvoiceSchedules).where(and(eq(recurringInvoiceSchedules.active, true), lte(recurringInvoiceSchedules.nextRunDate, today)));
+  const generated = [];
+  for (const schedule of due) {
+    try {
+      const template = (await db.select().from(invoices).where(eq(invoices.id, schedule.invoiceId)).limit(1))[0];
+      if (!template) {
+        await db.update(recurringInvoiceSchedules).set({ active: false }).where(eq(recurringInvoiceSchedules.id, schedule.id));
+        console.error(`[crewkat][recurring] schedule ${schedule.id}: template invoice ${schedule.invoiceId} missing; deactivating.`);
+        continue;
+      }
+      const now = new Date;
+      const invoiceNumber = await nextInvoiceNumber(db);
+      const issueDate = schedule.nextRunDate;
+      const dueDate = shiftDateByTemplateOffset(template.dueDate, template.issueDate, issueDate);
+      const madeRows = await db.insert(invoices).values({
+        quoteId: template.quoteId,
+        jobId: template.jobId,
+        clientId: template.clientId,
+        clientName: template.clientName,
+        clientPhone: template.clientPhone,
+        clientEmail: template.clientEmail,
+        jobAddress: template.jobAddress,
+        shippingAddress: template.shippingAddress,
+        jobType: template.jobType,
+        lineItemsJson: template.lineItemsJson,
+        subtotal: template.subtotal,
+        discountType: template.discountType,
+        discountValue: template.discountValue,
+        taxType: template.taxType,
+        taxValue: template.taxValue,
+        total: template.total,
+        footnote: template.footnote,
+        invoiceNumber,
+        issueDate,
+        dueDate,
+        status: "draft",
+        parentInvoiceId: template.id,
+        seriesId: template.seriesId ?? template.id,
+        theme: template.theme,
+        font: template.font,
+        accentColor: template.accentColor,
+        showTaxLine: template.showTaxLine,
+        showDiscountLine: template.showDiscountLine,
+        showPaidLine: template.showPaidLine,
+        showPaymentTerms: template.showPaymentTerms,
+        showFooterNotes: template.showFooterNotes,
+        showLogo: template.showLogo,
+        showCompanyInfo: template.showCompanyInfo,
+        customizeJson: template.customizeJson,
+        createdAt: now,
+        updatedAt: now
+      }).returning({ id: invoices.id });
+      const made = madeRows[0];
+      if (!made)
+        continue;
+      await db.update(recurringInvoiceSchedules).set({
+        nextRunDate: advanceRecurringDate(schedule.nextRunDate, schedule.frequency),
+        lastGeneratedInvoiceId: made.id
+      }).where(eq(recurringInvoiceSchedules.id, schedule.id));
+      generated.push(made.id);
+      console.log(`[crewkat][recurring] schedule ${schedule.id}: generated invoice ${made.id} (${invoiceNumber}) for company ${schedule.companyId}.`);
+    } catch (error) {
+      console.error(`[crewkat][recurring] schedule ${schedule.id} failed:`, error);
+    }
+  }
+  return { ran: generated.length > 0, generated };
+}
 var listingModerationResultSchema = object({ flagged: boolean2(), status: moderationStatusSchema, reasons: array(string2()) });
 async function scanListingForModeration(db, input) {
   if (!await isAutoModerationEnabled(db))
@@ -8853,6 +8939,16 @@ var TOOL_REGISTRY = {
   "toolbox:roofing": { screen: "toolbox", tab: "roofing", titleEn: "Roofing squares", titleEs: "Techos", iconPath: "M3 13 12 4l9 9M6 11v9h12v-9" },
   "toolbox:tile": { screen: "toolbox", tab: "tile", titleEn: "Tile boxes", titleEs: "Cajas de loseta", iconPath: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" },
   "toolbox:margin": { screen: "toolbox", tab: "margin", titleEn: "Markup & margin", titleEs: "Margen y recargo", iconPath: "M6 18 18 6M7 7h.01M17 17h.01" },
+  "toolbox:paint": { screen: "toolbox", tab: "paint", titleEn: "Paint estimator", titleEs: "Estimador de pintura", iconPath: "M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" },
+  "toolbox:flooring": { screen: "toolbox", tab: "flooring", titleEn: "Flooring boxes", titleEs: "Cajas de piso", iconPath: "M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" },
+  "toolbox:fence": { screen: "toolbox", tab: "fence", titleEn: "Fence & deck", titleEs: "Cerca y deck", iconPath: "M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" },
+  "toolbox:block": { screen: "toolbox", tab: "block", titleEn: "Block & pavers", titleEs: "Bloques y adoquines", iconPath: "M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" },
+  "toolbox:gravel": { screen: "toolbox", tab: "gravel", titleEn: "Gravel & soil", titleEs: "Grava y tierra", iconPath: "M4 15 9 6l5 6 3-4 3 7zM4 20h16" },
+  "toolbox:stairs": { screen: "toolbox", tab: "stairs", titleEn: "Stair stringer", titleEs: "Zanca de escalera", iconPath: "M4 20h4v-4h4v-4h4V8h4V4" },
+  "toolbox:insulation": { screen: "toolbox", tab: "insulation", titleEn: "Insulation batts", titleEs: "Aislante en rollos", iconPath: "M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" },
+  "toolbox:gutter": { screen: "toolbox", tab: "gutter", titleEn: "Gutter & downspouts", titleEs: "Canalones y bajantes", iconPath: "M4 6h16v4H4zM17 10v8h-4M17 18H6" },
+  "toolbox:rate": { screen: "toolbox", tab: "rate", titleEn: "Billable rate", titleEs: "Tarifa facturable", iconPath: "M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" },
+  "toolbox:punchlist": { screen: "toolbox", tab: "punchlist", titleEn: "Punch list", titleEs: "Lista de pendientes", iconPath: "M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" },
   "businessTools:price": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M5 5h14v14H5zM8 9h8M8 13h5" },
   "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Quote templates", titleEs: "Plantillas de presupuestos", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
   "businessTools:mileage": { screen: "businessTools", tab: "mileage", titleEn: "Mileage", titleEs: "Millaje", iconPath: "M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" },
@@ -8870,6 +8966,18 @@ var TOOL_REGISTRY = {
   "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Payroll", titleEs: "N\xF3mina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
   "expansion:crew": { screen: "expansion", tab: "crew", titleEn: "Crew hours", titleEs: "Horas del equipo", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" }
 };
+async function nextInvoiceNumber(db) {
+  const existing = await db.select({ id: invoices.id }).from(invoices);
+  return `INV-${String(Math.max(0, ...existing.map((row) => row.id)) + 1).padStart(4, "0")}`;
+}
+function shiftDateByTemplateOffset(templateDue, templateIssue, newIssue) {
+  if (!templateDue || !templateIssue)
+    return "";
+  const offsetMs = new Date(`${templateDue}T12:00:00`).getTime() - new Date(`${templateIssue}T12:00:00`).getTime();
+  if (!Number.isFinite(offsetMs))
+    return "";
+  return new Date(new Date(`${newIssue}T12:00:00`).getTime() + offsetMs).toISOString().slice(0, 10);
+}
 var BaseActions = {
   getAuthBootstrap: defineAction({
     request: object({}),
@@ -9403,6 +9511,12 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  listPunchItems: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ items: array(punchItemSchema) }), async handler(ctx, args) {
+    workspaceIdentity(ctx);
+    const db = ctx.db();
+    const rows = await db.select().from(punchItems).where(eq(punchItems.jobId, args.jobId)).orderBy(punchItems.id);
+    return { items: rows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })) };
+  } }),
   savePunchSignoff: defineAction({ request: object({ jobId: number2().int().positive(), customerName: string2().trim().min(1).max(160), customerSignatureDataBase64: string2().min(1).max(5000000), contractorName: string2().trim().min(1).max(160), contractorSignatureDataBase64: string2().min(1).max(5000000), signedAt: string2().datetime() }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const customerKey = `punch/${args.jobId}/${crypto.randomUUID()}-customer.png`;
@@ -9484,8 +9598,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const now = new Date;
     const db = ctx.db();
     const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress });
-    const existing = await db.select({ id: invoices.id }).from(invoices);
-    const nextNumber = `INV-${String(Math.max(0, ...existing.map((row) => row.id)) + 1).padStart(4, "0")}`;
+    const nextNumber = await nextInvoiceNumber(db);
     const rows = await db.insert(invoices).values({ ...args, invoiceNumber: args.invoiceNumber || nextNumber, clientId, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
     if (!made)
@@ -9493,26 +9606,92 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
-  convertQuoteToInvoice: defineAction({ request: object({ id: number2().int().positive() }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
+  convertQuoteToInvoice: defineAction({ request: object({ quoteId: number2().int().positive() }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
-    const requested = (await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
+    const requested = (await db.select().from(quotes).where(eq(quotes.id, args.quoteId)).limit(1))[0];
     if (!requested)
       throw new Error("Quote not found.");
+    if (requested.convertedToInvoiceId)
+      return { invoiceId: requested.convertedToInvoiceId };
     const seriesId = requested.seriesId ?? requested.id;
     const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
     const q = [...versions].filter((v) => v.accepted).sort((a, b) => b.versionNumber - a.versionNumber)[0] ?? [...versions].sort((a, b) => b.versionNumber - a.versionNumber)[0];
     if (!q)
       throw new Error("Quote not found.");
+    if (q.convertedToInvoiceId)
+      return { invoiceId: q.convertedToInvoiceId };
     const prior = (await db.select().from(invoices).where(eq(invoices.quoteId, q.id)).limit(1))[0];
-    if (prior)
-      return { invoiceId: prior.id };
     const now = new Date;
-    const madeRows = await db.insert(invoices).values({ quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, issueDate: now.toISOString().slice(0, 10), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    if (prior) {
+      await db.update(quotes).set({ convertedToInvoiceId: prior.id, updatedAt: now }).where(eq(quotes.id, q.id));
+      return { invoiceId: prior.id };
+    }
+    const invoiceNumber = await nextInvoiceNumber(db);
+    const madeRows = await db.insert(invoices).values({ quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: now.toISOString().slice(0, 10), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not create invoice.");
+    await db.update(quotes).set({ convertedToInvoiceId: made.id, updatedAt: now }).where(eq(quotes.id, q.id));
     ctx.invalidateQueries();
     return { invoiceId: made.id };
+  } }),
+  loadSampleData: defineAction({ request: object({}), response: object({ clientId: number2(), jobId: number2(), quoteId: number2() }), async handler(ctx) {
+    const db = ctx.db();
+    const existingJobs = await db.select({ id: jobs.id }).from(jobs).limit(1);
+    if (existingJobs.length > 0)
+      throw new Error("Sample data can only be loaded into an empty account. Delete your existing jobs first (sample records included) to reload it.");
+    const now = new Date;
+    const today = now.toISOString().slice(0, 10);
+    const marker = "[SAMPLE]";
+    const clientRows = await db.insert(clients).values({ name: `${marker} Maria Garcia`, phone: "(555) 010-2233", email: "sample.client@example.com", address: "123 Sample St, Tampa, FL 33601", notes: "Sample client created by the onboarding tour. Safe to delete.", tags: JSON.stringify(["sample"]), createdAt: now, updatedAt: now }).returning({ id: clients.id });
+    const clientId = clientRows[0]?.id;
+    if (!clientId)
+      throw new Error("Could not create the sample client.");
+    const jobRows = await db.insert(jobs).values({ clientId, clientName: `${marker} Maria Garcia`, clientPhone: "(555) 010-2233", clientEmail: "sample.client@example.com", jobAddress: "123 Sample St, Tampa, FL 33601", jobType: `${marker} Kitchen remodel`, notes: "Sample job created by the onboarding tour. Safe to delete.", jobDate: today, createdAt: now, updatedAt: now }).returning({ id: jobs.id });
+    const jobId = jobRows[0]?.id;
+    if (!jobId)
+      throw new Error("Could not create the sample job.");
+    const lineItems = [{ description: `${marker} Cabinet and hardware installation`, amount: "4800.00" }, { description: `${marker} Countertop replacement`, amount: "2200.00" }];
+    const quoteRows = await db.insert(quotes).values({ clientId, clientName: `${marker} Maria Garcia`, clientPhone: "(555) 010-2233", clientEmail: "sample.client@example.com", jobAddress: "123 Sample St, Tampa, FL 33601", jobType: `${marker} Kitchen remodel`, jobId, lineItemsJson: JSON.stringify(lineItems), subtotal: "7000.00", discountType: "percent", discountValue: "0", taxType: "percent", taxValue: "0", total: "7000.00", footnote: "Sample estimate created by the onboarding tour. Safe to delete.", createdAt: now, updatedAt: now }).returning({ id: quotes.id });
+    const quoteId = quoteRows[0]?.id;
+    if (!quoteId)
+      throw new Error("Could not create the sample estimate.");
+    ctx.invalidateQueries();
+    return { clientId, jobId, quoteId };
+  } }),
+  createRecurringSchedule: defineAction({ request: object({ invoiceId: number2().int().positive(), frequency: _enum(["weekly", "monthly"]) }), response: object({ id: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const template = (await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1))[0];
+    if (!template)
+      throw new Error("Invoice not found.");
+    const active = (await db.select().from(recurringInvoiceSchedules).where(and(eq(recurringInvoiceSchedules.invoiceId, args.invoiceId), eq(recurringInvoiceSchedules.active, true))).limit(1))[0];
+    if (active)
+      throw new Error("This invoice already has an active recurring schedule.");
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await db.insert(recurringInvoiceSchedules).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, invoiceId: args.invoiceId, frequency: args.frequency, nextRunDate: advanceRecurringDate(today, args.frequency), active: true, createdAt: new Date }).returning({ id: recurringInvoiceSchedules.id });
+    const made = rows[0];
+    if (!made)
+      throw new Error("Could not create the recurring schedule.");
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  listRecurringSchedules: defineAction({ request: object({}), response: object({ schedules: array(object({ id: number2(), invoiceId: number2(), invoiceNumber: string2(), clientName: string2(), total: string2(), frequency: _enum(["weekly", "monthly"]), nextRunDate: string2(), active: boolean2(), lastGeneratedInvoiceId: number2().nullable(), createdAt: string2() })) }), async handler(ctx) {
+    const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    const rows = await db.select().from(recurringInvoiceSchedules).where(eq(recurringInvoiceSchedules.companyId, companyId)).orderBy(desc(recurringInvoiceSchedules.nextRunDate));
+    const invoices2 = await db.select().from(invoices);
+    const byId = new Map(invoices2.map((row) => [row.id, row]));
+    return { schedules: rows.map((s) => {
+      const template = byId.get(s.invoiceId);
+      return { id: s.id, invoiceId: s.invoiceId, invoiceNumber: template?.invoiceNumber || `INV-${String(s.invoiceId).padStart(4, "0")}`, clientName: template?.clientName ?? "", total: template?.total ?? "0", frequency: s.frequency, nextRunDate: s.nextRunDate, active: s.active, lastGeneratedInvoiceId: s.lastGeneratedInvoiceId, createdAt: s.createdAt.toISOString() };
+    }) };
+  } }),
+  cancelRecurringSchedule: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    await db.update(recurringInvoiceSchedules).set({ active: false }).where(and(eq(recurringInvoiceSchedules.id, args.id), eq(recurringInvoiceSchedules.companyId, companyId)));
+    ctx.invalidateQueries();
+    return { ok: true };
   } }),
   updateInvoiceStatus: defineAction({ request: object({ id: number2().int().positive(), status: invoiceStatusSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().update(invoices).set({ status: args.status, updatedAt: new Date }).where(eq(invoices.id, args.id));
@@ -9931,7 +10110,14 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { ok: true };
   } }),
   saveDailyLog: defineAction({ request: object({ jobId: number2().int().positive(), logDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), crew: string2().trim().max(1000), hours: string2().trim().max(80), photoIds: array(number2().int().positive()).max(24), notes: string2().trim().max(5000) }), response: object({ id: number2() }), async handler(ctx, args) {
-    const rows = await ctx.db().insert(dailyLogs).values({ jobId: args.jobId, logDate: args.logDate, crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, createdAt: new Date, updatedAt: new Date }).returning({ id: dailyLogs.id });
+    const db = ctx.db();
+    const existing = (await db.select({ id: dailyLogs.id }).from(dailyLogs).where(and(eq(dailyLogs.jobId, args.jobId), eq(dailyLogs.logDate, args.logDate))).limit(1))[0];
+    if (existing) {
+      await db.update(dailyLogs).set({ crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, updatedAt: new Date }).where(eq(dailyLogs.id, existing.id));
+      ctx.invalidateQueries();
+      return { id: existing.id };
+    }
+    const rows = await db.insert(dailyLogs).values({ jobId: args.jobId, logDate: args.logDate, crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, createdAt: new Date, updatedAt: new Date }).returning({ id: dailyLogs.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save daily log.");
@@ -12322,8 +12508,10 @@ function protectActions(actions) {
 var Actions = protectActions(BaseActions);
 export {
   Actions,
+  BaseActions,
   performBackup,
   performMonthlyVerify,
   recoverStaleBackupRuns,
+  runRecurringInvoiceTick,
   runScheduledBackup
 };
