@@ -344,6 +344,7 @@ type Screen =
   | { name: "reports" }
   | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" | "analysis" }
   | { name: "admin" }
+  | { name: "platformAdmin" }
   | { name: "jobOps"; jobId: number }
   | { name: "tool"; jobId: number; mode: ToolMode; photoId?: number };
 
@@ -2026,6 +2027,7 @@ function CrewkatApplication() {
         <BusinessToolsScreen lang={lang} onBack={goBack} initialTab={screen.tab} />
       )}
       {screen.name === "admin" && <AdminScreen lang={lang} onBack={goBack} />}
+      {screen.name === "platformAdmin" && <PlatformAdminScreen lang={lang} onBack={goBack} />}
       {screen.name === "expansion" && (
         <ExpansionSuiteScreen
           lang={lang}
@@ -2358,6 +2360,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
   const [form, setForm] = useState({ title: "", category: "other" as MarketplaceCategory, listingType: initialListingType, employmentType: "full_time" as "full_time" | "part_time" | "temporary", payUnit: "hourly" as "hourly" | "salary", priceKind: "contact" as "amount" | "free" | "contact", price: "", originalPrice: "", description: "", serviceArea: "", companyName: settings?.companyName ?? "", companyPhone: settings?.phone ?? "", bookable: false, dailyRate: "" });
   const [photos, setPhotos] = useState<File[]>([]);
   const [error, setError] = useState("");
+  const [moderationNotice, setModerationNotice] = useState<{ id: number; reasons: string[] } | null>(null);
   const initializedListing = useRef<number | null>(null);
   useEffect(() => setForm((current) => ({ ...current, companyName: current.companyName || settings?.companyName || "", companyPhone: current.companyPhone || settings?.phone || "" })), [settings]);
   useEffect(() => {
@@ -2370,10 +2373,17 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     const encoded = await Promise.all(photos.map(async (file) => ({ filename: file.name, contentType: file.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(file)).dataBase64 })));
     if (listingId) return api.updateMarketplaceListing({ id: listingId, ...form, replacePhotos: photos.length > 0, photos: encoded });
     return api.createMarketplaceListing({ ...form, photos: encoded });
-  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); onSaved(result.id); }, onError: () => setError(lang === "es" ? "No se pudo guardar. Revisa los campos e inténtalo de nuevo." : "The listing could not be saved. Check the fields and try again.") });
+  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else onSaved(result.id); }, onError: () => setError(lang === "es" ? "No se pudo guardar. Revisa los campos e inténtalo de nuevo." : "The listing could not be saved. Check the fields and try again.") });
   const t = lang === "es" ? { heading: listingId ? "Editar publicación" : form.listingType === "project" ? "Publicar un proyecto" : "Publicar un empleo", listingType: "Tipo de publicación", job: "Empleo", jobHelp: "Contratar a un empleado", project: "Proyecto", projectHelp: "Un subcontratista para una tarea", employment: "Condiciones de empleo", fullTime: "Tiempo completo", partTime: "Medio tiempo", temporary: "Temporal", payUnit: "Tipo de pago", hourly: "Por hora", salary: "Salario", title: "Título", titleHint: "Ej. Instalación de gabinetes disponible", category: "Categoría", priceType: "Precio", amount: "Precio actual", original: "Precio original (opcional)", fixed: "Precio fijo", free: "Gratis", contact: "Consultar precio", photos: "Fotos", photoHint: "Hasta 8 fotos JPG, PNG o WebP", keepPhotos: "Tus fotos actuales se conservarán. Elige nuevas fotos solo si quieres reemplazarlas.", replacePhotos: "Las fotos nuevas reemplazarán las actuales.", description: "Descripción", area: "Área de servicio o código postal", company: "Nombre de la empresa", phone: "Teléfono de contacto (opcional)", bookable: "Permitir reservas", bookableHelp: "Para alquileres de remolques, equipos u otros artículos por día", dailyRate: "Precio por día", publish: listingId ? "Guardar cambios" : "Publicar", required: "Agrega un título, área de servicio y empresa.", loading: "Cargando publicación…", notFound: "No se encontró esta publicación." } : { heading: listingId ? "Edit listing" : form.listingType === "project" ? "List a project" : "List a job", listingType: "Listing type", job: "Job", jobHelp: "Hiring an employee", project: "Project", projectHelp: "A subcontractor for one task", employment: "Employment terms", fullTime: "Full-time", partTime: "Part-time", temporary: "Temporary", payUnit: "Pay type", hourly: "Hourly", salary: "Salary", title: "Title", titleHint: "e.g. Cabinet installation available", category: "Trade category", priceType: "Price", amount: "Current price", original: "Original price (optional)", fixed: "Set a price", free: "Free", contact: "Contact for price", photos: "Photos", photoHint: "Up to 8 JPG, PNG, or WebP images", keepPhotos: "Your current photos will stay. Choose new photos only if you want to replace them.", replacePhotos: "New photos will replace the current ones.", description: "Description", area: "Service area or ZIP", company: "Company name", phone: "Contact phone (optional)", bookable: "Allow bookings", bookableHelp: "For trailers, equipment, or other items rented by the day", dailyRate: "Price per day", publish: listingId ? "Save changes" : "Publish listing", required: "Add a title, service area, and company name.", loading: "Loading listing…", notFound: "This listing could not be found." };
   if (listingId && existing.isLoading) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="loading-block" aria-label={t.loading}/></main>;
   if (listingId && !existing.data?.listing) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty"><h2>{t.notFound}</h2></div></main>;
+  if (moderationNotice) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty moderation-notice">
+    <span className="pa-badge pending_review">{lang === "es" ? "En revisión" : "Under review"}</span>
+    <h2>{lang === "es" ? "Tu publicación fue marcada automáticamente y está en revisión." : "Your listing was automatically flagged and is under review."}</h2>
+    <p>{lang === "es" ? "Se guardó, pero no será visible hasta que nuestro equipo la revise." : "It was saved, but it won't be visible until our team reviews it."}</p>
+    {moderationNotice.reasons.length > 0 && <ul className="moderation-reasons">{moderationNotice.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul>}
+    <button type="button" className="primary-button" onClick={() => onSaved(moderationNotice.id)}>{lang === "es" ? "Continuar" : "Continue"}</button>
+  </div></main>;
   const currentPhotos = existing.data?.listing?.photos ?? [];
   return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><form className="job-form marketplace-form" onSubmit={(event) => { event.preventDefault(); setError(""); if (!form.title.trim() || !form.serviceArea.trim() || !form.companyName.trim()) { setError(t.required); return; } save.mutate(); }}>
     <fieldset className="listing-type-choice"><legend>{t.listingType}</legend><button type="button" className={form.listingType === "job" ? "active job" : "job"} onClick={() => setForm({ ...form, listingType: "job", priceKind: form.priceKind === "free" ? "contact" : form.priceKind, bookable: false, dailyRate: "" })}><Icon><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></Icon><span><strong>{t.job}</strong><small>{t.jobHelp}</small></span></button><button type="button" className={form.listingType === "project" ? "active project" : "project"} onClick={() => setForm({ ...form, listingType: "project" })}><Icon><path d="M4 20h16M6 20V9l6-5 6 5v11"/></Icon><span><strong>{t.project}</strong><small>{t.projectHelp}</small></span></button></fieldset>
@@ -2394,6 +2404,15 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
   </form></main>;
 }
 
+const MARKETPLACE_REPORT_REASONS: { value: "spam" | "explicit" | "illegal" | "scam" | "misleading" | "other"; en: string; es: string }[] = [
+  { value: "spam", en: "Spam or duplicate listing", es: "Spam o publicación duplicada" },
+  { value: "explicit", en: "Sexually explicit content", es: "Contenido sexual explícito" },
+  { value: "illegal", en: "Illegal goods or services", es: "Bienes o servicios ilegales" },
+  { value: "scam", en: "Scam or fraud", es: "Estafa o fraude" },
+  { value: "misleading", en: "Misleading listing", es: "Publicación engañosa" },
+  { value: "other", en: "Something else", es: "Otro motivo" },
+];
+
 function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false, onBack, onEdit, onDeleted }: { lang: Lang; listingId: number; initialMessageOpen?: boolean; onBack: () => void; onEdit: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["marketplace-listing", listingId], queryFn: () => api.getMarketplaceListing({ id: listingId }) });
@@ -2406,6 +2425,17 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
   const [booking, setBooking] = useState({ startDate: "", endDate: "", note: "" });
   const [sentBooking, setSentBooking] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportConfirm, setReportConfirm] = useState(false);
+  const [reportReason, setReportReason] = useState<"spam" | "explicit" | "illegal" | "scam" | "misleading" | "other">("spam");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [reportDone, setReportDone] = useState(false);
+  const reportListing = useMutation({
+    mutationFn: () => api.marketplaceListingFlag({ listingId, reason: reportReason, details: reportDetails }),
+    onSuccess: () => { setReportConfirm(false); setReportDone(true); setReportError(""); },
+    onError: (caught) => setReportError(actionErrorMessage(caught)),
+  });
   const messages = useQuery({ queryKey: ["marketplace-messages", listingId], queryFn: () => api.listMarketplaceMessages({ listingId }), enabled: messageOpen, refetchInterval: messageOpen ? 5000 : false });
   const markRead = useMutation({ mutationFn: () => api.markMarketplaceThreadRead({ listingId }), onSuccess: async () => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-inbox"] }), qc.invalidateQueries({ queryKey: ["marketplace-messages", listingId] })]); } });
   useEffect(() => { if (messageOpen) markRead.mutate(); }, [messageOpen, listingId]);
@@ -2413,7 +2443,7 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
   const requestBooking = useMutation({ mutationFn: () => api.createMarketplaceBooking({ listingId, ...booking }), onSuccess: () => setSentBooking(true) });
   const removeListing = useMutation({ mutationFn: () => api.deleteMarketplaceListing({ id: listingId }), onSuccess: async () => { const next = savedMarketplaceIds().filter((id) => id !== listingId); window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); await qc.invalidateQueries({ queryKey: ["marketplace-listings"] }); onDeleted(); } });
   const listing = query.data?.listing;
-  const t = lang === "es" ? { notFound: "No se encontró esta publicación.", just: "Recién publicado", about: "Detalles", company: "Publicado por", contact: "Ver teléfono", noPhone: "Esta empresa no agregó un teléfono.", save: "Guardar", saved: "Guardado", preview: "Vista previa local", message: "Mensaje", book: "Reservar", conversation: "Conversación", messageIntro: "Este hilo se guarda en tu vista previa. Las conversaciones con otras empresas se activan al lanzar.", write: "Escribe un mensaje", addPhoto: "Agregar foto", send: "Enviar", bookingTitle: "Solicitar reserva", start: "Fecha de inicio", end: "Fecha final", note: "Nota para el propietario", submit: "Enviar solicitud", bookingSent: "Solicitud guardada", bookingSentBody: "La solicitud se guardó en esta vista previa. Los pagos y confirmaciones llegan al lanzar.", close: "Cerrar", perDay: "por día", noMessages: "Inicia la conversación sobre esta publicación.", manage: "Administrar publicación", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo." } : { notFound: "This listing could not be found.", just: "Just listed", about: "About this listing", company: "Listed by", contact: "Show phone number", noPhone: "This company did not add a phone number.", save: "Save", saved: "Saved", preview: "Local preview", message: "Message", book: "Book", conversation: "Conversation", messageIntro: "This thread is saved in your preview. Conversations with other companies turn on at launch.", write: "Write a message", addPhoto: "Add photo", send: "Send", bookingTitle: "Request booking", start: "Start date", end: "End date", note: "Note for the owner", submit: "Send request", bookingSent: "Request saved", bookingSentBody: "The request is saved in this preview. Payments and confirmations arrive at launch.", close: "Close", perDay: "per day", noMessages: "Start the conversation about this listing.", manage: "Manage listing", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again." };
+  const t = lang === "es" ? { notFound: "No se encontró esta publicación.", just: "Recién publicado", about: "Detalles", company: "Publicado por", contact: "Ver teléfono", noPhone: "Esta empresa no agregó un teléfono.", save: "Guardar", saved: "Guardado", preview: "Vista previa local", message: "Mensaje", book: "Reservar", conversation: "Conversación", messageIntro: "Este hilo se guarda en tu vista previa. Las conversaciones con otras empresas se activan al lanzar.", write: "Escribe un mensaje", addPhoto: "Agregar foto", send: "Enviar", bookingTitle: "Solicitar reserva", start: "Fecha de inicio", end: "Fecha final", note: "Nota para el propietario", submit: "Enviar solicitud", bookingSent: "Solicitud guardada", bookingSentBody: "La solicitud se guardó en esta vista previa. Los pagos y confirmaciones llegan al lanzar.", close: "Cerrar", perDay: "por día", noMessages: "Inicia la conversación sobre esta publicación.", manage: "Administrar publicación", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", report: "Reportar esta publicación", reportTitle: "Reportar publicación", reportReason: "Motivo", reportDetails: "Detalles (opcional)", reportSubmit: "Continuar", reportConfirmTitle: "¿Reportar esta publicación?", reportConfirmBody: "Nuestro equipo revisará esta publicación. Los reportes falsos pueden afectar tu cuenta.", reportConfirmYes: "Sí, reportar", reportThanks: "Gracias por tu reporte.", reportThanksBody: "Nuestro equipo revisará esta publicación pronto." } : { notFound: "This listing could not be found.", just: "Just listed", about: "About this listing", company: "Listed by", contact: "Show phone number", noPhone: "This company did not add a phone number.", save: "Save", saved: "Saved", preview: "Local preview", message: "Message", book: "Book", conversation: "Conversation", messageIntro: "This thread is saved in your preview. Conversations with other companies turn on at launch.", write: "Write a message", addPhoto: "Add photo", send: "Send", bookingTitle: "Request booking", start: "Start date", end: "End date", note: "Note for the owner", submit: "Send request", bookingSent: "Request saved", bookingSentBody: "The request is saved in this preview. Payments and confirmations arrive at launch.", close: "Close", perDay: "per day", noMessages: "Start the conversation about this listing.", manage: "Manage listing", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", report: "Report this listing", reportTitle: "Report listing", reportReason: "Reason", reportDetails: "Details (optional)", reportSubmit: "Continue", reportConfirmTitle: "Report this listing?", reportConfirmBody: "Our team will review this listing. False reports can affect your account.", reportConfirmYes: "Yes, report it", reportThanks: "Thanks for the report.", reportThanksBody: "Our team will review this listing soon." };
   const toggle = () => { const ids = savedMarketplaceIds(); const next = ids.includes(listingId) ? ids.filter((id) => id !== listingId) : [...ids, listingId]; window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); setSaved(next.includes(listingId)); };
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack} actions={<span className="preview-badge">{t.preview}</span>}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <img key={photo.id} className={index === 0 ? "primary" : ""} src={photo.url} alt={`${listing.title} ${index + 1}`}/>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
@@ -2421,7 +2451,17 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
     <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" onClick={() => setMessageOpen(true)}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
     <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2><strong>{listing.companyName}</strong>{listing.companyPhone ? <>{showPhone ? <p className="market-phone">{listing.companyPhone}</p> : <button className="primary-button" onClick={() => setShowPhone(true)}>{t.contact}</button>}</> : <p className="muted-note">{t.noPhone}</p>}</section>
+    {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
     {deleteOpen && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
+    {reportOpen && <div className="sheet-backdrop" onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle"/><div className="sheet-title-row"><h2 id="report-listing-title">{t.reportTitle}</h2><button aria-label={t.close} onClick={() => setReportOpen(false)}>×</button></div>
+      {reportDone ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.reportThanks}</h3><p>{t.reportThanksBody}</p><button className="primary-button" onClick={() => setReportOpen(false)}>{t.close}</button></div>
+      : reportConfirm ? <><p>{t.reportConfirmBody}</p><strong>{listing.title}</strong>{reportError && <p className="status error">{reportError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={reportListing.isPending} onClick={() => setReportConfirm(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={reportListing.isPending} onClick={() => reportListing.mutate()}>{reportListing.isPending ? (lang === "es" ? "Enviando…" : "Sending…") : t.reportConfirmYes}</button></div></>
+      : <><fieldset className="report-reasons"><legend>{t.reportReason}</legend>{MARKETPLACE_REPORT_REASONS.map((option) => <label key={option.value} className={reportReason === option.value ? "active" : ""}><input type="radio" name="report-reason" checked={reportReason === option.value} onChange={() => setReportReason(option.value)} /><span>{lang === "es" ? option.es : option.en}</span></label>)}</fieldset>
+      <label className="report-details"><span>{t.reportDetails}</span><textarea rows={3} value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} maxLength={1000} /></label>
+      {reportError && <p className="status error">{reportError}</p>}
+      <div className="delete-sheet-actions"><button type="button" onClick={() => setReportOpen(false)}>{t.cancel}</button><button type="button" className="primary-button" onClick={() => { setReportError(""); setReportConfirm(true); }}>{t.reportSubmit}</button></div></>}
+    </section></div>}
     {messageOpen && <div className="sheet-backdrop"><section className="more-sheet conversation-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.conversation}</h2><button aria-label={t.close} onClick={() => setMessageOpen(false)}>×</button></div><p className="sheet-note">{t.messageIntro}</p><div className="message-thread">{(messages.data?.messages ?? []).length ? messages.data?.messages.map((item) => { const outgoing = (listing?.isMine ?? true) ? item.sender === "me" : item.sender === "other"; return <article key={item.id} className={outgoing ? "outgoing" : "incoming"}>{!outgoing && <span className="message-sender">{item.senderName}</span>}{item.imageUrl && <img src={item.imageUrl} alt={item.imageFilename || (lang === "es" ? "Foto adjunta" : "Attached photo")}/>} {item.body && <p>{item.body}</p>}<time>{new Date(item.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</time></article>; }) : <p className="thread-empty">{t.noMessages}</p>}</div><form className="message-composer" onSubmit={(event) => { event.preventDefault(); if (message.trim() || messageImage) send.mutate(); }}><textarea rows={2} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t.write} aria-label={t.write}/><label><Icon><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon>{messageImage?.name || t.addPhoto}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setMessageImage(event.target.files?.[0] ?? null)}/></label><button className="primary-button" disabled={send.isPending || (!message.trim() && !messageImage)}>{t.send}</button></form></section></div>}
     {bookingOpen && <div className="sheet-backdrop"><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
   </>}</main>;
@@ -4652,6 +4692,42 @@ function SettingsScreen({
               <BackIcon />
             </button>
           </SettingsAccordion>
+          {auth?.user.isPlatformAdmin && (
+            <SettingsAccordion
+              title={lang === "es" ? "Administración de la plataforma" : "Platform admin"}
+              icon={
+                <Icon>
+                  <path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z" />
+                  <path d="m9 12 2 2 4-4" />
+                </Icon>
+              }
+            >
+              <div className="settings-heading">
+                <p>
+                  {lang === "es"
+                    ? "Moderación del Marketplace, usuarios, reembolsos y configuración de la plataforma."
+                    : "Marketplace moderation, users, refunds, and platform settings."}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="admin-launch"
+                onClick={() => setScreen({ name: "platformAdmin" })}
+              >
+                <span>
+                  <strong>
+                    {lang === "es" ? "Abrir administración" : "Open platform admin"}
+                  </strong>
+                  <small>
+                    {lang === "es"
+                      ? "Solo administradores de la plataforma"
+                      : "Platform administrators only"}
+                  </small>
+                </span>
+                <BackIcon />
+              </button>
+            </SettingsAccordion>
+          )}
 
           <SettingsAccordion
             title={lang === "es" ? "Acerca de" : "About"}
@@ -4728,6 +4804,229 @@ const ADMIN_DEFAULTS: AdminParameters = {
   defaultTaxRate: "0",
   hourlyLaborCost: "0",
 };
+
+type PlatformAdminTab = "queue" | "users" | "refunds" | "settings" | "audit";
+
+function PlatformAdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const auth = useContext(AuthContext);
+  const [tab, setTab] = useState<PlatformAdminTab>("queue");
+  const t = lang === "es"
+    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
+    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
+  if (!auth?.user.isPlatformAdmin) {
+    return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.denied}</h2><p>{t.deniedBody}</p></div></main>;
+  }
+  return <main className="page pa-page">
+    <PageHeader lang={lang} title={t.title} onBack={onBack} />
+    <nav className="pa-tabs" aria-label={t.title}>
+      {(["queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
+        <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}</button>
+      ))}
+    </nav>
+    {tab === "queue" && <PAQueueTab lang={lang} />}
+    {tab === "users" && <PAUsersTab lang={lang} />}
+    {tab === "refunds" && <PARefundsTab lang={lang} />}
+    {tab === "settings" && <PASettingsTab lang={lang} />}
+    {tab === "audit" && <PAAuditTab lang={lang} />}
+  </main>;
+}
+
+function PAQueueTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-queue"], queryFn: () => api.adminModerationQueue({}) });
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [confirm, setConfirm] = useState<{ id: number; title: string } | null>(null);
+  const [error, setError] = useState("");
+  const decide = useMutation({
+    mutationFn: (args: { listingId: number; decision: "approve" | "remove"; note: string }) => api.adminListingDecision(args),
+    onSuccess: async () => { setConfirm(null); setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-queue"] }), qc.invalidateQueries({ queryKey: ["marketplace-listings"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { loading: "Cargando…", empty: "No hay publicaciones por revisar.", emptyBody: "Las publicaciones rechazadas automáticamente o reportadas aparecerán aquí.", note: "Nota (opcional)", approve: "Aprobar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se ocultará del Marketplace y no podrá volver a publicarse sin revisión.", cancel: "Cancelar", confirmRemove: "Eliminar publicación", reports: "reportes", autoRejected: "Rechazo automático", pendingReview: "En revisión", by: "por" }
+    : { loading: "Loading…", empty: "Nothing to review.", emptyBody: "Auto-rejected or reported listings will appear here.", note: "Note (optional)", approve: "Approve", remove: "Remove", removeTitle: "Remove this listing?", removeBody: "It will be hidden from the Marketplace.", cancel: "Cancel", confirmRemove: "Remove listing", reports: "reports", autoRejected: "Auto-rejected", pendingReview: "Pending review", by: "by" };
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  const items = query.data?.queue ?? [];
+  if (!items.length) return <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>;
+  return <div className="pa-list">
+    {error && <p className="status error">{error}</p>}
+    {items.map(({ listing, flags }) => (
+      <article key={listing.id} className="pa-card">
+        <div className="pa-card-head">
+          <div><h3>{listing.title}</h3><small>{t.by} {listing.companyName} · {new Date(listing.createdAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</small></div>
+          <span className={`pa-badge ${listing.moderationStatus}`}>{listing.moderationStatus === "auto_rejected" ? t.autoRejected : t.pendingReview}</span>
+        </div>
+        {listing.description && <p className="pa-desc">{listing.description}</p>}
+        {listing.moderationReason && <p className="pa-reason"><strong>{lang === "es" ? "Motivo:" : "Reason:"}</strong> {listing.moderationReason}</p>}
+        {flags.length > 0 && <div className="pa-flags"><strong>{flags.length} {t.reports}</strong>{flags.map((flag) => (
+          <div key={flag.id} className="pa-flag"><span className="pa-flag-reason">{flag.reason}</span><span>{flag.reporterCompanyName} · {new Date(flag.createdAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</span>{flag.details && <p>{flag.details}</p>}</div>
+        ))}</div>}
+        <label className="pa-note"><span>{t.note}</span><input value={notes[listing.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [listing.id]: event.target.value }))} maxLength={500} /></label>
+        <div className="pa-actions">
+          <button type="button" className="primary-button" disabled={decide.isPending} onClick={() => decide.mutate({ listingId: listing.id, decision: "approve", note: notes[listing.id] ?? "" })}>{t.approve}</button>
+          <button type="button" className="danger-button" disabled={decide.isPending} onClick={() => setConfirm({ id: listing.id, title: listing.title })}>{t.remove}</button>
+        </div>
+      </article>
+    ))}
+    {confirm && <div className="sheet-backdrop" onClick={() => !decide.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{t.removeTitle}</h2><strong>{confirm.title}</strong><p>{t.removeBody}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={decide.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={decide.isPending} onClick={() => decide.mutate({ listingId: confirm.id, decision: "remove", note: notes[confirm.id] ?? "" })}>{t.confirmRemove}</button></div>
+    </section></div>}
+  </div>;
+}
+
+function PAUsersTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  useEffect(() => { const timer = window.setTimeout(() => { setSearch(searchInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [searchInput]);
+  const query = useQuery({ queryKey: ["pa-users", search, page], queryFn: () => api.adminUsersList({ search, page, pageSize: 20 }) });
+  const [confirm, setConfirm] = useState<{ id: number; name: string; email: string; suspend: boolean } | null>(null);
+  const [error, setError] = useState("");
+  const toggle = useMutation({
+    mutationFn: (args: { id: number; suspend: boolean }) => args.suspend ? api.adminUserSuspend({ userId: args.id }) : api.adminUserUnsuspend({ userId: args.id }),
+    onSuccess: async () => { setConfirm(null); setError(""); await qc.invalidateQueries({ queryKey: ["pa-users"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { search: "Buscar por nombre o correo…", loading: "Cargando…", empty: "Sin resultados.", suspended: "Suspendido", admin: "Admin", active: "Activo", suspend: "Suspender", unsuspend: "Reactivar", suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.", cancel: "Cancelar", confirmSuspend: "Suspender cuenta", confirmUnsuspend: "Reactivar cuenta", prev: "Anterior", next: "Siguiente", of: "de" }
+    : { search: "Search by name or email…", loading: "Loading…", empty: "No results.", suspended: "Suspended", admin: "Admin", active: "Active", suspend: "Suspend", unsuspend: "Unsuspend", suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.", cancel: "Cancel", confirmSuspend: "Suspend account", confirmUnsuspend: "Unsuspend account", prev: "Previous", next: "Next", of: "of" };
+  const data = query.data;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  return <div className="pa-list">
+    <label className="pa-search"><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
+    {error && <p className="status error">{error}</p>}
+    {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : !data?.users.length ? <div className="market-empty"><h2>{t.empty}</h2></div> : <>
+      {data.users.map((user) => (
+        <article key={user.id} className="pa-card pa-user">
+          <div className="pa-card-head"><div><h3>{user.name}</h3><small>{user.email}</small><small>{user.companyName} · {user.tier}{user.subscriptionStatus !== "inactive" ? ` · ${user.subscriptionStatus}` : ""}</small></div>
+            <span className={`pa-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? t.suspended : t.active}</span></div>
+          {user.isPlatformAdmin && <p className="pa-reason"><strong>{t.admin}</strong></p>}
+          {!user.isPlatformAdmin && (user.suspended
+            ? <div className="pa-actions"><button type="button" className="primary-button" disabled={toggle.isPending} onClick={() => setConfirm({ id: user.id, name: user.name, email: user.email, suspend: false })}>{t.unsuspend}</button></div>
+            : <div className="pa-actions"><button type="button" className="danger-button" disabled={toggle.isPending} onClick={() => setConfirm({ id: user.id, name: user.name, email: user.email, suspend: true })}>{t.suspend}</button></div>)}
+        </article>
+      ))}
+      <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>
+    </>}
+    {confirm && <div className="sheet-backdrop" onClick={() => !toggle.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{confirm.suspend ? t.suspendTitle : t.unsuspendTitle}</h2><strong>{confirm.name}</strong><p>{confirm.email}</p><p>{confirm.suspend ? t.suspendBody : t.unsuspendBody}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={toggle.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirm.suspend ? "danger-button" : "primary-button"} disabled={toggle.isPending} onClick={() => toggle.mutate({ id: confirm.id, suspend: confirm.suspend })}>{confirm.suspend ? t.confirmSuspend : t.confirmUnsuspend}</button></div>
+    </section></div>}
+  </div>;
+}
+
+function PARefundsTab({ lang }: { lang: Lang }) {
+  const [email, setEmail] = useState("");
+  const [result, setResult] = useState<ApiResponse<typeof api, "adminRefundPreview"> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [confirm, setConfirm] = useState<{ chargeId: string; amountCents?: number; label: string } | null>(null);
+  const [done, setDone] = useState("");
+  const lookup = async () => {
+    setBusy(true); setError(""); setDone(""); setResult(null);
+    try { setResult(await api.adminRefundPreview({ email })); }
+    catch (caught) { setError(actionErrorMessage(caught)); }
+    finally { setBusy(false); }
+  };
+  const refund = useMutation({
+    mutationFn: (args: { chargeId: string; amountCents?: number; reason: string }) => api.adminRefund(args),
+    onSuccess: async (data) => { setConfirm(null); setDone(`${(data.amount / 100).toFixed(2)} ${data.currency.toUpperCase()} — ${data.status}`); setError(""); await lookup(); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { email: "Correo del cliente", lookup: "Buscar cargos", looking: "Buscando…", noUser: "No hay cuenta con ese correo.", noCharges: "Sin cargos en Stripe para este cliente.", amount: "Monto USD (vacío = total)", refund: "Reembolsar", refundTitle: "¿Emitir reembolso?", cancel: "Cancelar", confirmRefund: "Emitir reembolso", refunded: "Restante por reembolsar", done: "Reembolso emitido:" }
+    : { email: "Customer email", lookup: "Look up charges", looking: "Looking up…", noUser: "No account found with that email.", noCharges: "No Stripe charges for this customer.", amount: "Amount USD (blank = full)", refund: "Refund", refundTitle: "Issue refund?", cancel: "Cancel", confirmRefund: "Issue refund", refunded: "Refundable left", done: "Refund issued:" };
+  const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  return <div className="pa-list">
+    <div className="pa-search-row"><label><span>{t.email}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") lookup(); }} /></label><button type="button" className="primary-button" disabled={busy || !email.trim()} onClick={lookup}>{busy ? t.looking : t.lookup}</button></div>
+    {error && <p className="status error">{error}</p>}
+    {done && <p className="status auth-success">{t.done} {done}</p>}
+    {result && !result.user && <div className="market-empty"><h2>{t.noUser}</h2></div>}
+    {result?.user && !result.charges.length && <div className="market-empty"><h2>{t.noCharges}</h2><p>{result.user.name} · {result.user.email}</p></div>}
+    {(result?.charges.length ?? 0) > 0 && result?.user && <p className="pa-customer">{result.user.name} · {result.user.email}</p>}
+    {result?.charges.map((charge) => {
+      const refundable = charge.amount - charge.amountRefunded;
+      const amountInput = (amounts[charge.id] ?? "").trim();
+      const amountCents = amountInput ? Math.round(Number(amountInput) * 100) : undefined;
+      return <article key={charge.id} className="pa-card">
+        <div className="pa-card-head"><div><h3>{money(charge.amount)} {charge.currency.toUpperCase()}</h3><small>{new Date(charge.created * 1000).toLocaleDateString(lang === "es" ? "es-US" : "en-US")} · {charge.status}{charge.description ? ` · ${charge.description}` : ""}</small><small className="mono">{charge.id}</small></div></div>
+        <p className="pa-reason">{t.refunded}: <strong>{money(refundable)}</strong></p>
+        {refundable > 0 && <div className="pa-refund-row"><label><span>{t.amount}</span><input inputMode="decimal" placeholder={money(refundable)} value={amounts[charge.id] ?? ""} onChange={(event) => setAmounts((current) => ({ ...current, [charge.id]: event.target.value }))} /></label>
+        <button type="button" className="danger-button" disabled={refund.isPending} onClick={() => {
+          if (amountCents !== undefined && (!Number.isFinite(amountCents) || amountCents <= 0)) { setError(lang === "es" ? "Monto inválido." : "Invalid amount."); return; }
+          setConfirm({ chargeId: charge.id, amountCents, label: amountCents ? `${money(amountCents)} ${charge.currency.toUpperCase()}` : `${money(refundable)} ${charge.currency.toUpperCase()} (full)` });
+        }}>{t.refund}</button></div>}
+      </article>;
+    })}
+    {confirm && <div className="sheet-backdrop" onClick={() => !refund.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{t.refundTitle}</h2><strong>{confirm.label}</strong><p className="mono">{confirm.chargeId}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={refund.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={refund.isPending} onClick={() => refund.mutate({ chargeId: confirm.chargeId, amountCents: confirm.amountCents, reason: "" })}>{t.confirmRefund}</button></div>
+    </section></div>}
+  </div>;
+}
+
+function PASettingsTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-settings"], queryFn: () => api.adminSettingsGet({}) });
+  const [autoMod, setAutoMod] = useState(true);
+  const [threshold, setThreshold] = useState("3");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    const s = query.data?.settings;
+    if (s) { setAutoMod(s.auto_moderation_enabled !== "0"); setThreshold(s.flag_threshold ?? "3"); }
+  }, [query.data]);
+  const save = useMutation({
+    mutationFn: async () => {
+      const parsed = Number.parseInt(threshold, 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) throw new Error(lang === "es" ? "El umbral debe ser un número del 1 al 10." : "Threshold must be a whole number from 1 to 10.");
+      await api.adminSettingsSet({ key: "auto_moderation_enabled", value: autoMod ? "1" : "0" });
+      await api.adminSettingsSet({ key: "flag_threshold", value: String(parsed) });
+    },
+    onSuccess: async () => { setError(""); setSaved(true); window.setTimeout(() => setSaved(false), 2500); await qc.invalidateQueries({ queryKey: ["pa-settings"] }); },
+    onError: (caught) => { setError(actionErrorMessage(caught)); setSaved(false); },
+  });
+  const t = lang === "es"
+    ? { loading: "Cargando…", autoMod: "Moderación automática", autoModHelp: "Revisar el texto de las publicaciones al crearlas o editarlas. Las que violen las reglas se rechazan automáticamente.", threshold: "Umbral de reportes", thresholdHelp: "Reportes necesarios para enviar una publicación a revisión.", save: "Guardar ajustes", saving: "Guardando…", saved: "Ajustes guardados." }
+    : { loading: "Loading…", autoMod: "Automatic moderation", autoModHelp: "Screen listing text on create and update. Violations are auto-rejected.", threshold: "Flag threshold", thresholdHelp: "Reports needed to send a listing to review.", save: "Save settings", saving: "Saving…", saved: "Settings saved." };
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  return <div className="pa-list">
+    {error && <p className="status error">{error}</p>}
+    {saved && <p className="status auth-success">{t.saved}</p>}
+    <div className="pa-card">
+      <label className="pa-switch"><span><strong>{t.autoMod}</strong><small>{t.autoModHelp}</small></span><input type="checkbox" role="switch" checked={autoMod} onChange={(event) => setAutoMod(event.target.checked)} /></label>
+    </div>
+    <div className="pa-card">
+      <label className="pa-field"><span><strong>{t.threshold}</strong><small>{t.thresholdHelp}</small></span><input inputMode="numeric" value={threshold} onChange={(event) => setThreshold(event.target.value.replace(/\D/g, "").slice(0, 2))} /></label>
+    </div>
+    <button type="button" className="primary-button" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
+  </div>;
+}
+
+function PAAuditTab({ lang }: { lang: Lang }) {
+  const [page, setPage] = useState(1);
+  const query = useQuery({ queryKey: ["pa-audit", page], queryFn: () => api.adminAuditLog({ page, pageSize: 25 }) });
+  const t = lang === "es"
+    ? { loading: "Cargando…", empty: "Sin actividad registrada.", prev: "Anterior", next: "Siguiente", of: "de" }
+    : { loading: "Loading…", empty: "No admin activity yet.", prev: "Previous", next: "Next", of: "of" };
+  const data = query.data;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (!data?.entries.length) return <div className="market-empty"><h2>{t.empty}</h2></div>;
+  return <div className="pa-list">
+    {data.entries.map((entry) => (
+      <article key={entry.id} className="pa-card pa-audit">
+        <div className="pa-card-head"><div><h3>{entry.action}</h3><small>{entry.adminName} · {new Date(entry.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</small></div></div>
+        {(entry.targetType || entry.targetId) && <p className="pa-reason mono">{entry.targetType}{entry.targetId ? ` #${entry.targetId}` : ""}</p>}
+        {entry.details && <p className="pa-desc">{entry.details}</p>}
+      </article>
+    ))}
+    <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>
+  </div>;
+}
 
 function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const qc = useQueryClient();
