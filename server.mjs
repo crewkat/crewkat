@@ -381,10 +381,25 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/" || urlPath === "") {
     return sendFile(res, join(MARKETING_DIST, "index.html"));
   }
+  if (urlPath === "/privacy" || urlPath === "/privacy/") {
+    return sendFile(res, join(MARKETING_DIST, "privacy.html"));
+  }
   // Crawler + browser well-known files live at the root.
   if (urlPath === "/robots.txt" || urlPath === "/sitemap.xml" || urlPath === "/favicon.ico") {
     const name = urlPath === "/favicon.ico" ? "favicon.png" : urlPath.slice(1);
     return sendFile(res, join(MARKETING_DIST, name));
+  }
+  // Digital Asset Links for the Play Store TWA (Trusted Web Activity).
+  // Must be served with Content-Type: application/json.
+  if (urlPath === "/.well-known/assetlinks.json") {
+    const bytes = await readFile(join(MARKETING_DIST, ".well-known", "assetlinks.json"));
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "content-length": bytes.length,
+      "cache-control": "public, max-age=3600",
+    });
+    res.end(bytes);
+    return;
   }
   if (urlPath === "/app" || urlPath.startsWith("/app/")) {
     const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
