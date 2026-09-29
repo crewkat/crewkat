@@ -22,6 +22,12 @@
         if (ckTheme === "light" || ckTheme === "dark") document.documentElement.setAttribute("data-theme", ckTheme);
         var ckAccent = window.localStorage.getItem("crewkat-accent");
         if (ckAccent === "orange" || ckAccent === "blue" || ckAccent === "green" || ckAccent === "purple" || ckAccent === "rose") document.documentElement.setAttribute("data-accent", ckAccent);
+        // Keep the color-scheme meta in sync with the saved theme so browsers
+        // don't force-darken a light page on load.
+        if (ckTheme === "light" || ckTheme === "dark") {
+          var ckMeta = document.querySelector('meta[name="color-scheme"]');
+          if (ckMeta) ckMeta.setAttribute("content", ckTheme);
+        }
       } catch (e) {}
     </script>
     <script src="./src/main.tsx" type="module"></script>

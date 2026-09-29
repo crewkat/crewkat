@@ -2144,6 +2144,16 @@ function CrewkatApplication() {
       document.documentElement.removeAttribute("data-theme");
     else document.documentElement.dataset.theme = themeMode;
     window.localStorage.setItem("crewkat-theme", themeMode);
+    // Tell the browser which color schemes this page supports right now so it
+    // doesn't force-darken a light page (some Android browsers/TWAs darken
+    // web content when the meta still advertises "dark").
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) {
+      meta.setAttribute(
+        "content",
+        themeMode === "light" ? "light" : themeMode === "dark" ? "dark" : "light dark"
+      );
+    }
   }, [themeMode]);
   // Build 2: separate accent-color choice (orange/blue/green/purple/rose) so
   // the theme colors are genuinely distinct in preview and in the app.

@@ -17,7 +17,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />
     <link rel="apple-touch-icon" href="/app/icon-192.png" />
     <title>Crewkat</title>
-    <script>window.__CREWKAT_BUILD_ID__ = "dd8aeec";</script>
+    <script>window.__CREWKAT_BUILD_ID__ = "0cc97f7";</script>
     <!-- Apply the saved appearance before React boots: no theme flash on load,
          and the right theme is set even before the app hydrates. React takes
          over (and may apply the account-synced appearance) afterwards. -->
@@ -27,10 +27,16 @@
         if (ckTheme === "light" || ckTheme === "dark") document.documentElement.setAttribute("data-theme", ckTheme);
         var ckAccent = window.localStorage.getItem("crewkat-accent");
         if (ckAccent === "orange" || ckAccent === "blue" || ckAccent === "green" || ckAccent === "purple" || ckAccent === "rose") document.documentElement.setAttribute("data-accent", ckAccent);
+        // Keep the color-scheme meta in sync with the saved theme so browsers
+        // don't force-darken a light page on load.
+        if (ckTheme === "light" || ckTheme === "dark") {
+          var ckMeta = document.querySelector('meta[name="color-scheme"]');
+          if (ckMeta) ckMeta.setAttribute("content", ckTheme);
+        }
       } catch (e) {}
     </script>
     
-  <link rel="stylesheet" crossorigin href="/app/assets/index-vm3sfs84.css"><script type="module" crossorigin src="/app/assets/index-z92dep79.js"></script></head>
+  <link rel="stylesheet" crossorigin href="/app/assets/index-vm3sfs84.css"><script type="module" crossorigin src="/app/assets/index-zpmrq2vh.js"></script></head>
   <body>
     <div
       data-generated-space-root=""
