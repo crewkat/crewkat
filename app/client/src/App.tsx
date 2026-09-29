@@ -15,6 +15,7 @@ YAxis,
 } from "recharts";
 import {
 createContext,
+Fragment,
 useContext,
 useEffect,
 useLayoutEffect,
@@ -29,7 +30,7 @@ type ReactNode,
 type TouchEvent,
 } from "react";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
-import { disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, type PushStatus } from "./push";
+import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
@@ -339,7 +340,7 @@ type Screen =
   | { name: "legal"; document: LegalDocumentKind }
   | { name: "companyProfile" }
   | { name: "quotes" }
-  | { name: "quoteNew"; clientId?: number }
+  | { name: "quoteNew"; clientId?: number; jobId?: number }
   | { name: "quotePreview"; quoteId: number }
   | { name: "invoices" }
   | { name: "invoiceNew"; jobId?: number }
@@ -1089,9 +1090,21 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
     { label: lang === "es" ? "Nueva factura" : "New invoice", destination: { name: "invoiceNew" }, icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon> },
     { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7M19 4v6M16 7h6"/></Icon> },
   ];
-  const selectDestination = (destination: Screen) => {
-    setQuickCreateOpen(false);
-    onNavigate(destination);
+  // Build 3: the + sheet suggests the most relevant action for the current tab first.
+  const quickOrder: Record<RootTab, number[]> = {
+    today: [0, 2, 3, 1],
+    jobs: [0, 1, 2, 3],
+    invoices: [2, 1, 0, 3],
+    clients: [3, 0, 2, 1],
+    marketplace: [3, 0, 2, 1],
+    tools: [0, 2, 1, 3],
+  };
+  const orderedQuickActions = (quickOrder[active] ?? [0, 1, 2, 3]).map((i) => quickActions[i]);
+  const activeTabLabel = items.find((item) => item.tab === active)?.label ?? "";
+  const goQuick = (close: () => void, destination: Screen) => {
+    buzz(8);
+    close();
+    window.setTimeout(() => onNavigate(destination), 200);
   };
   return <>
     <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
@@ -1099,14 +1112,14 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
       <button type="button" className="bottom-nav-add" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><span aria-hidden="true">+</span></button>
       {items.slice(2).map((item) => <button type="button" key={item.tab} className={active === item.tab ? "active" : ""} aria-current={active === item.tab ? "page" : undefined} onClick={() => onSelect(item.tab)}><span className="bottom-nav-icon">{item.icon}{(item.badge ?? 0) > 0 && <span className="nav-unread-badge">{Math.min(item.badge ?? 0, 99)}</span>}</span><span>{item.label}</span></button>)}
     </nav>
-    {quickCreateOpen && <div className="quick-create-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuickCreateOpen(false); }}>
-      <section className="quick-create-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-create-title">
-        <header><div><span>{lang === "es" ? "Acceso rápido" : "Quick create"}</span><h2 id="quick-create-title">{lang === "es" ? "¿Qué deseas crear?" : "What would you like to create?"}</h2></div><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setQuickCreateOpen(false)}><Icon><path d="m6 6 12 12M18 6 6 18" /></Icon></button></header>
+    {quickCreateOpen && <BottomSheet lang={lang} title={lang === "es" ? "¿Qué deseas crear?" : "What would you like to create?"} onClose={() => setQuickCreateOpen(false)}>
+      {(close) => (<>
+        <p className="quick-create-suggest">{lang === "es" ? `Sugerido en ${activeTabLabel}` : `Suggested for ${activeTabLabel}`} · {orderedQuickActions[0]?.label ?? ""}</p>
         <div className="quick-create-grid">
-          {quickActions.map((action) => <button type="button" key={action.destination.name} onClick={() => selectDestination(action.destination)}><span>{action.icon}</span><strong>{action.label}</strong><BackIcon /></button>)}
+          {orderedQuickActions.map((action, i) => <button type="button" key={action?.destination.name ?? i} className={i === 0 ? "suggested" : ""} onClick={() => { if (action) goQuick(close, action.destination); }}><span>{action?.icon}</span><strong>{action?.label}</strong><BackIcon /></button>)}
         </div>
-      </section>
-    </div>}
+      </>)}
+    </BottomSheet>}
   </>;
 }
 
@@ -1946,6 +1959,13 @@ function CrewkatApplication() {
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
   const [scrollNavigationKey, setScrollNavigationKey] = useState(1);
   const [lang, setLang] = useState<Lang>("en");
+  // Build 3: service-worker update toast — a new build took control.
+  const [swUpdateAvailable, setSwUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const onSwUpdate = () => setSwUpdateAvailable(true);
+    window.addEventListener(SW_UPDATE_AVAILABLE_EVENT, onSwUpdate);
+    return () => window.removeEventListener(SW_UPDATE_AVAILABLE_EVENT, onSwUpdate);
+  }, []);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") return "system";
     const saved = window.localStorage.getItem("crewkat-theme") ?? window.localStorage.getItem("tradesign-theme");
@@ -2163,7 +2183,7 @@ function CrewkatApplication() {
           onAccentChange={setAccent}
           onBack={goBack}
           setScreen={setScreen}
-          onSave={(v) => saveSettings.mutate(v, { onSuccess: goBack })}
+          onSave={(v, onDone) => saveSettings.mutate(v, { onSuccess: () => { onDone?.(); } })}
         />
       )}
       {screen.name === "legal" && <LegalDocumentPage kind={screen.document} onBack={goBack} />}
@@ -2189,6 +2209,7 @@ function CrewkatApplication() {
           lang={lang}
           settings={appSettings}
           clientId={screen.clientId}
+          jobId={screen.jobId}
           onBack={goBack}
         />
       )}
@@ -2335,6 +2356,18 @@ function CrewkatApplication() {
         />
       )}
       {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
+      {/* Build 3: a new app version took over in the background — offer a refresh. */}
+      {swUpdateAvailable && (
+        <div className="update-toast" role="status">
+          <span>{lang === "es" ? "Actualización disponible" : "Update available"}</span>
+          <button type="button" onClick={() => { activateWaitingServiceWorker(); window.setTimeout(() => window.location.reload(), 350); }}>
+            {lang === "es" ? "Actualizar" : "Refresh"}
+          </button>
+          <button type="button" className="update-toast-dismiss" onClick={() => setSwUpdateAvailable(false)} aria-label={lang === "es" ? "Descartar" : "Dismiss"}>
+            <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>
+          </button>
+        </div>
+      )}
     </div>
     </ToolsNavigationContext.Provider>
     </SettingsNavigationContext.Provider>
@@ -2549,6 +2582,257 @@ function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: str
   </div>;
 }
 
+// ---------------------------------------------------------------------------
+// Build 3: shared UX kit — haptic helper, FlowStepper (Job→Estimate→Invoice→
+// Payment chain), BottomSheet, SkeletonList, SwipeRow, EmptyState, CountUp.
+// ---------------------------------------------------------------------------
+
+/** Tiny haptic tap on key confirmations; silent when reduced-motion is set. */
+function buzz(pattern: number | number[] = 12) {
+  try {
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    navigator.vibrate?.(pattern);
+  } catch { /* haptics unavailable */ }
+}
+
+type FlowStepState = "done" | "current" | "todo";
+function FlowStepper({
+  lang,
+  steps,
+}: {
+  lang: Lang;
+  steps: Array<{ key: string; label: string; state: FlowStepState; onTap?: () => void }>;
+}) {
+  return (
+    <nav className="flow-stepper" aria-label={lang === "es" ? "Progreso del trabajo" : "Job progress"}>
+      {steps.map((step, i) => (
+        <Fragment key={step.key}>
+          {i > 0 && <span className={`flow-link${steps[i - 1]?.state === "done" ? " done" : ""}`} aria-hidden="true" />}
+          <button
+            type="button"
+            className={`flow-step ${step.state}`}
+            onClick={step.onTap}
+            disabled={!step.onTap}
+            aria-current={step.state === "current" ? "step" : undefined}
+          >
+            <span className="flow-dot">{step.state === "done" ? <CheckIcon /> : <i>{i + 1}</i>}</span>
+            <span className="flow-label">{step.label}</span>
+          </button>
+        </Fragment>
+      ))}
+    </nav>
+  );
+}
+
+function BottomSheet({
+  lang,
+  title,
+  onClose,
+  children,
+}: {
+  lang: Lang;
+  title: string;
+  onClose: () => void;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [closing, setClosing] = useState(false);
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(onClose, 190);
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closing]);
+  return (
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <section className="more-sheet bottom-sheet" role="dialog" aria-modal="true" aria-label={title}>
+        <span className="sheet-handle" aria-hidden="true" />
+        <header className="bottom-sheet-head">
+          <h2>{title}</h2>
+          <button type="button" className="icon-button" onClick={close} aria-label={lang === "es" ? "Cerrar" : "Close"}><Icon><path d="m6 6 12 12M18 6 6 18" /></Icon></button>
+        </header>
+        <div className="bottom-sheet-body">{children(close)}</div>
+      </section>
+    </div>
+  );
+}
+
+function SkeletonList({ rows = 4, className = "" }: { rows?: number; className?: string }) {
+  return (
+    <div className={`skeleton-list ${className}`} role="status" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, i) => <div key={i} />)}
+    </div>
+  );
+}
+
+/** Touch swipe-to-reveal row actions (e.g. Mark paid, Call). Desktop: actions stay hidden; use the row tap. */
+function SwipeRow({
+  actions,
+  children,
+}: {
+  actions: Array<{ label: string; icon?: ReactNode; kind?: "primary" | "danger"; onTap: () => void }>;
+  children: ReactNode;
+}) {
+  const [offset, setOffset] = useState(0);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const tracking = useRef(false);
+  const actionWidth = 76 * Math.min(actions.length, 2);
+  const onTouchStart = (event: React.TouchEvent) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    start.current = { x: touch.clientX, y: touch.clientY };
+    tracking.current = true;
+  };
+  const onTouchMove = (event: React.TouchEvent) => {
+    if (!tracking.current || !start.current) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.current.x;
+    const dy = touch.clientY - start.current.y;
+    if (Math.abs(dy) > Math.abs(dx) * 1.2) { tracking.current = false; return; } // vertical scroll wins
+    if (dx < 0) setOffset(Math.max(dx, -actionWidth));
+    else if (offset !== 0 && dx > 8) setOffset(0);
+  };
+  const onTouchEnd = () => {
+    tracking.current = false;
+    setOffset((current) => (current < -56 ? -actionWidth : 0));
+  };
+  return (
+    <div className="swipe-row" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div className="swipe-actions" aria-hidden={offset === 0}>
+        {actions.slice(0, 2).map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            tabIndex={offset === 0 ? -1 : 0}
+            className={`swipe-action ${action.kind ?? "primary"}`}
+            onClick={(event) => { event.stopPropagation(); setOffset(0); buzz(10); action.onTap(); }}
+            aria-label={action.label}
+          >
+            {action.icon}<span>{action.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="swipe-content" style={{ transform: offset ? `translateX(${offset}px)` : undefined }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  body,
+  actionLabel,
+  onAction,
+}: {
+  lang: Lang;
+  icon: ReactNode;
+  title: string;
+  body: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="empty-state">
+      <span className="empty-state-icon" aria-hidden="true">{icon}</span>
+      <h2>{title}</h2>
+      <p>{body}</p>
+      {actionLabel && onAction && <button type="button" className="primary-button" onClick={() => { buzz(8); onAction(); }}>{actionLabel}</button>}
+    </div>
+  );
+}
+
+/** Animated number for dashboard figures; instant when reduced-motion is set. */
+function CountUp({ value, format }: { value: number; format: (n: number) => string }) {
+  const [display, setDisplay] = useState(value);
+  const previous = useRef(value);
+  useEffect(() => {
+    const from = previous.current;
+    previous.current = value;
+    if (from === value) return;
+    if (typeof window === "undefined" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setDisplay(value);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const duration = 650;
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(from + (value - from) * eased);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{format(display)}</>;
+}
+
+/* Build 3: global search — one entry point, grouped deep links. */
+function GlobalSearchBody({ lang, close, setScreen }: { lang: Lang; close: () => void; setScreen: (screen: Screen) => void }) {
+  const [term, setTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(term.trim()), 220);
+    return () => window.clearTimeout(id);
+  }, [term]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const query = useQuery({
+    queryKey: ["globalSearch", debounced],
+    queryFn: () => api.globalSearch({ term: debounced }),
+    enabled: debounced.length >= 2,
+    staleTime: 30_000,
+  });
+  const go = (screen: Screen) => { buzz(8); close(); window.setTimeout(() => setScreen(screen), 200); };
+  const data = query.data;
+  const groups: Array<{ key: string; label: string; rows: Array<{ id: number; title: string; detail: string }>; screen: (id: number) => Screen; icon: ReactNode }> = [
+    { key: "clients", label: lang === "es" ? "Clientes" : "Clients", rows: data?.clients ?? [], screen: (id) => ({ name: "client", clientId: id }), icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon> },
+    { key: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", rows: data?.jobs ?? [], screen: (id) => ({ name: "detail", jobId: id }), icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
+    { key: "quotes", label: lang === "es" ? "Estimados" : "Estimates", rows: data?.quotes ?? [], screen: (id) => ({ name: "quotePreview", quoteId: id }), icon: <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon> },
+    { key: "invoices", label: lang === "es" ? "Facturas" : "Invoices", rows: data?.invoices ?? [], screen: (id) => ({ name: "invoicePreview", invoiceId: id }), icon: <FileIcon /> },
+  ];
+  const total = groups.reduce((sum, g) => sum + g.rows.length, 0);
+  return (<>
+    <div className="global-search-input">
+      <Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon>
+      <input
+        ref={inputRef}
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+        placeholder={lang === "es" ? "Buscar clientes, trabajos, facturas…" : "Search clients, jobs, invoices…"}
+        aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}
+        autoComplete="off"
+      />
+    </div>
+    {query.isFetching && <SkeletonList rows={3} />}
+    {!query.isFetching && debounced.length >= 2 && total === 0 && (
+      <EmptyState lang={lang} icon={<Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon>} title={lang === "es" ? "Sin resultados" : "No results"} body={lang === "es" ? `Nada coincide con "${debounced}".` : `Nothing matches "${debounced}".`} />
+    )}
+    {!query.isFetching && debounced.length >= 2 && groups.filter((g) => g.rows.length > 0).map((g) => (
+      <section key={g.key} className="global-search-group" aria-label={g.label}>
+        <h3>{g.label} ({g.rows.length})</h3>
+        {g.rows.map((row) => (
+          <button type="button" key={row.id} onClick={() => go(g.screen(row.id))}>
+            {g.icon}
+            <span><strong>{row.title}</strong><small>{row.detail}</small></span>
+          </button>
+        ))}
+      </section>
+    ))}
+    {debounced.length < 2 && (
+      <p className="privacy-note">{lang === "es" ? "Escribe al menos 2 letras para buscar en clientes, trabajos, estimados y facturas." : "Type at least 2 letters to search clients, jobs, estimates, and invoices."}</p>
+    )}
+  </>);
+}
+
 function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings: Settings | null; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
@@ -2715,7 +2999,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} />
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-pills" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
-      <button className="list-pill" onClick={() => openNewListing("job")}><PlusIcon/><span className="pill-label">{text.list}</span></button>
+      <button className="list-pill" onClick={() => openNewListing(listingType === "project" ? "project" : "job")}><PlusIcon/><span className="pill-label">{listingType === "project" ? text.listProject : text.list}</span></button>
       <button className={view === "explore" ? "active" : ""} onClick={() => { setView("explore"); setSavedOnly(false); }}><span className="pill-label">{text.explore}</span></button>
       <button className={view === "looking" ? "active" : ""} onClick={() => setView("looking")}><span className="pill-label">{text.looking}</span></button>
       <button className="more-pill" onClick={() => setMoreOpen(true)}><span className="pill-label">{text.more}</span>{unreadMarketplaceCount > 0 && <b className="pill-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}</button>
@@ -3350,23 +3634,14 @@ function JobsScreen({
           </button>
         ))}
         {!jobs.isPending && visibleJobs.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-mark">
-              <CameraIcon />
-            </div>
-            <h2>{search ? t.noResults : t.noJobs}</h2>
-            {!search && (
-              <>
-                <p>{t.firstHint}</p>
-                <button
-                  className="text-button"
-                  onClick={() => setScreen({ name: "new" })}
-                >
-                  {t.newJob}
-                </button>
-              </>
-            )}
-          </div>
+          <EmptyState
+            lang={lang}
+            icon={<CameraIcon />}
+            title={search ? t.noResults : t.noJobs}
+            body={search ? (lang === "es" ? "Prueba con otro nombre o dirección." : "Try a different name or address.") : t.firstHint}
+            actionLabel={search ? undefined : t.newJob}
+            onAction={search ? undefined : () => setScreen({ name: "new" })}
+          />
         )}
       </section>
     </main>
@@ -3698,6 +3973,32 @@ function JobDetail({
   const saveJobInfo = useMutation({ mutationFn: () => api.updateJobInfo({ jobId, ...detailDraft }), onSuccess: refreshJob });
   const linkInvoice = useMutation({ mutationFn: ({ invoiceId, linkedJobId }: { invoiceId: number; linkedJobId: number | null }) => api.linkInvoiceToJob({ invoiceId, jobId: linkedJobId }), onSuccess: refreshJob });
   const linkDocument = useMutation({ mutationFn: (documentId: number) => api.linkDocumentToJob({ documentId, jobId }), onSuccess: refreshJob });
+  // Build 3: guided Job → Estimate → Invoice → Payment chain.
+  const convertFlowQuote = useMutation({
+    mutationFn: (quoteId: number) => api.convertQuoteToInvoice({ quoteId }),
+    onSuccess: async (r) => {
+      buzz(20);
+      await client.invalidateQueries({ queryKey: ["quotes"] });
+      await client.invalidateQueries({ queryKey: ["invoices"] });
+      setScreen({ name: "invoicePreview", invoiceId: r.invoiceId });
+    },
+  });
+  const flowQuote = (quotesQuery.data?.quotes ?? []).find((q) => q.jobId === jobId) ?? null;
+  const flowInvoice = (invoicesQuery.data?.invoices ?? []).find((i) => i.jobId === jobId) ?? null;
+  const flowSteps = job ? [
+    { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "current" as FlowStepState },
+    flowQuote
+      ? { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: flowQuote.id }) }
+      : { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "current" as FlowStepState, onTap: () => setScreen({ name: "quoteNew", jobId }) },
+    flowInvoice
+      ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "done" as FlowStepState, onTap: () => setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }) }
+      : flowQuote
+        ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState, onTap: () => convertFlowQuote.mutate(flowQuote.id) }
+        : { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState },
+    flowInvoice?.status === "paid"
+      ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
+      : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
+  ] : [];
   const closeJobSheet = (save = false) => {
     if (save && activeJobSheet && ["dates", "payment", "deposit"].includes(activeJobSheet)) saveJobInfo.mutate();
     setJobSheetClosing(true);
@@ -3855,6 +4156,19 @@ function JobDetail({
           </button>
         }
       />
+      <FlowStepper lang={lang} steps={flowSteps} />
+      {!flowQuote && (
+        <button type="button" className="primary-button flow-next-step" onClick={() => { buzz(8); setScreen({ name: "quoteNew", jobId }); }}>
+          <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon>
+          {lang === "es" ? "Crear estimado para este trabajo" : "Create estimate for this job"}
+        </button>
+      )}
+      {flowQuote && !flowInvoice && (
+        <button type="button" className="primary-button flow-next-step" disabled={convertFlowQuote.isPending} onClick={() => convertFlowQuote.mutate(flowQuote.id)}>
+          <FileIcon />
+          {convertFlowQuote.isPending ? (lang === "es" ? "Creando…" : "Creating…") : (lang === "es" ? "Convertir estimado en factura" : "Convert estimate to invoice")}
+        </button>
+      )}
       <section className="job-client-selector">
         <span>{lang === "es" ? "Cliente" : "Client"}</span>
         <button type="button" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }}>
@@ -4536,7 +4850,7 @@ function SettingsScreen({
   onAccentChange: (accent: AccentChoice) => void;
   onBack: () => void;
   setScreen: (screen: Screen) => void;
-  onSave: (v: SettingsInput) => void;
+  onSave: (v: SettingsInput, onDone?: () => void) => void;
 }) {
   const t = copy[lang];
   const help = HELP_CONTENT[lang];
@@ -4597,6 +4911,9 @@ function SettingsScreen({
   };
   const [form, setForm] = useState<Settings>(value ?? fallback);
   const [openSettingsSection, setOpenSettingsSection] = useState<string | null>(settingsOpenSectionCache);
+  // Build 3: after saving we stay in Settings and the button confirms "Saved";
+  // any new change flips it back to "Save".
+  const [justSaved, setJustSaved] = useState(false);
   const [helpSearch, setHelpSearch] = useState("");
   const [supportForm, setSupportForm] = useState({
     kind: "support" as "support" | "problem" | "question" | "general",
@@ -4718,10 +5035,11 @@ function SettingsScreen({
       <PageHeader lang={lang} title={t.settings} onBack={onBack} />
       <form
         className="job-form settings-form"
+        onChange={() => setJustSaved(false)}
         onSubmit={(e) => {
           e.preventDefault();
           const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = form;
-          onSave(input);
+          onSave(input, () => setJustSaved(true));
         }}
       >
         <SettingsAccordionContext.Provider value={{ openId: openSettingsSection, setOpenId: setOpenSettingsSection }}>
@@ -5439,10 +5757,10 @@ function SettingsScreen({
         </div>
         </SettingsAccordionContext.Provider>
         <button
-          className="primary-button sticky-submit"
+          className={`primary-button sticky-submit${justSaved ? " saved-confirm" : ""}`}
           disabled={saving || logo.isPending}
         >
-          {saving || logo.isPending ? t.saving : t.save}
+          {saving || logo.isPending ? t.saving : justSaved ? (lang === "es" ? "✓ Guardado" : "✓ Saved") : t.save}
         </button>
       </form>
     </main>
@@ -6934,6 +7252,7 @@ function QuotesScreen({
         </button>
       </div>
       <section className="quote-list">
+        {query.isLoading && <SkeletonList rows={5} />}
         {query.data?.quotes.map((q) => (
           <article key={q.id}>
             <div>
@@ -6969,10 +7288,8 @@ function QuotesScreen({
             </div>
           </article>
         ))}
-        {query.data?.quotes.length === 0 && (
-          <div className="empty-state">
-            <h2>{t.quoteEmpty}</h2>
-          </div>
+        {query.data?.quotes.length === 0 && !query.isLoading && (
+          <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? "Crea tu primer estimado y conviértelo en factura con un toque." : "Create your first estimate and convert it to an invoice in one tap."} actionLabel={t.newQuote} onAction={() => setScreen({ name: "quoteNew" })} />
         )}
       </section>
     </main>
@@ -6982,11 +7299,13 @@ function QuoteBuilder({
   lang,
   settings,
   clientId,
+  jobId,
   onBack,
 }: {
   lang: Lang;
   settings: Settings | null;
   clientId?: number;
+  jobId?: number;
   onBack: () => void;
 }) {
   const t = copy[lang];
@@ -7004,10 +7323,17 @@ function QuoteBuilder({
     enabled: Boolean(clientId),
     queryFn: () => api.getClient({ id: clientId ?? 0 }),
   });
+  // Build 3: prefill from a job when launched from the guided Job → Estimate flow.
+  const leadJob = useQuery({
+    queryKey: ["job", jobId],
+    enabled: Boolean(jobId),
+    queryFn: () => api.getJob({ id: jobId ?? 0 }),
+  });
   const defaultApplied = useRef(false);
   const taxApplied = useRef(false);
   const [form, setForm] = useState({
     clientId: null as number | null,
+    jobId: null as number | null,
     clientName: "",
     clientPhone: "",
     clientEmail: "",
@@ -7075,6 +7401,20 @@ function QuoteBuilder({
         jobAddress: c.address,
       }));
   }, [leadClient.data, form.clientName]);
+  useEffect(() => {
+    const j = leadJob.data?.job;
+    if (j && jobId && !form.jobId)
+      setForm((current) => ({
+        ...current,
+        jobId,
+        clientId: j.clientId ?? current.clientId,
+        clientName: current.clientName || j.clientName,
+        clientPhone: current.clientPhone || j.clientPhone,
+        clientEmail: current.clientEmail || j.clientEmail,
+        jobAddress: current.jobAddress || j.jobAddress,
+        jobType: current.jobType || j.jobType,
+      }));
+  }, [leadJob.data, jobId, form.jobId]);
   const totals = financialTotals(
     form.lineItems,
     form.discountType,
@@ -7650,6 +7990,8 @@ function QuotePreview({
   const t = copy[lang], qc = useQueryClient();
   const query = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const quote = query.data?.quotes.find((q) => q.id === quoteId);
+  // Build 3: guided flow needs the converted invoice's payment state.
+  const invoicesForFlow = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const signature = useQuery({ queryKey:["financial-signature","quote",quoteId], queryFn:()=>api.getFinancialSignature({kind:"quote",id:quoteId}) });
   const versions = useQuery({ queryKey:["quote-versions",quoteId], queryFn:()=>api.getQuoteVersions({id:quoteId}) });
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -7670,12 +8012,24 @@ function QuotePreview({
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
   return <main className="page financial-detail-page">
     <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <FlowStepper lang={lang} steps={[
+      quote.jobId
+        ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: quote.jobId as number }) }
+        : { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "todo" as FlowStepState },
+      { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "current" as FlowStepState },
+      quote.convertedToInvoiceId
+        ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "done" as FlowStepState, onTap: () => onOpenInvoice(quote.convertedToInvoiceId as number) }
+        : { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState, onTap: () => { setConfirmConvert(true); setMoreOpen(true); } },
+      (quote.convertedToInvoiceId && invoicesForFlow.data?.invoices.find((i) => i.id === quote.convertedToInvoiceId)?.status === "paid")
+        ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
+        : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
+    ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={quote} settings={settings} lang={lang}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${quote.accepted?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate");}}><ShareIcon/>{lang==="es"?"Enviar cotización":"Send estimate"}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
-    <div className="document-action-bar" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{buzz(12);await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={quote} settings={settings} lang={lang}/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -7747,7 +8101,7 @@ function InvoicesScreen({
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
-      <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? "Cotizado este mes" : "Estimated this month")}</span><strong>{usd(tab === "invoices" ? invoicedMonth : estimatedMonth)}</strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
+      <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? "Cotizado este mes" : "Estimated this month")}</span><strong><CountUp value={tab === "invoices" ? invoicedMonth : estimatedMonth} format={(n) => usd(n)} /></strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
       <div className="page-actions document-create">
         <button className="primary-button" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><PlusIcon />{tab === "invoices" ? (lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE") : (lang === "es" ? `CREAR ${estimateWord.toUpperCase()}` : `CREATE ${estimateWord.toUpperCase()}`)}</button>
       </div>
@@ -7804,8 +8158,10 @@ function InvoicesScreen({
         </section>
       )}
       {tab === "invoices" ? <section className="quote-list document-list">
+        {query.isLoading && <SkeletonList rows={5} />}
         {sortedInvoices.map((invoice) => (
-          <article key={invoice.id}>
+          <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
+          <article>
             <div className="document-row-copy">
               <span className={`status-chip ${invoice.status}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : t.sent}</span>
               <h2>{invoice.clientName}</h2>
@@ -7817,19 +8173,23 @@ function InvoicesScreen({
               <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>{t.viewDocument}</button>
             </div>
           </article>
+          </SwipeRow>
         ))}
-        {query.data?.invoices.length === 0 && <div className="empty-state"><h2>{t.invoiceEmpty}</h2></div>}
+        {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE"} onAction={() => setScreen({ name: "invoiceNew" })} />}
       </section> : <section className="quote-list document-list">
+        {quotes.isLoading && <SkeletonList rows={5} />}
         {sortedQuotes.map((quote) => (
-          <article key={quote.id}>
+          <SwipeRow key={quote.id} actions={quote.convertedToInvoiceId ? [] : [{ label: lang === "es" ? "Convertir" : "Convert", kind: "primary", onTap: () => setConfirmConvertQuoteId(quote.id) }]}>
+          <article>
             <div className="document-row-copy">
               <span className={`status-chip ${quote.accepted || quote.automationStatus === "won" ? "paid" : quote.automationStatus === "lost" ? "overdue" : "sent"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
               <h2>{quote.clientName}</h2><p>{quote.jobType || t.quoteBuilder} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
             </div>
             <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
           </article>
+          </SwipeRow>
         ))}
-        {quotes.data?.quotes.length === 0 && <div className="empty-state"><h2>{t.quoteEmpty}</h2></div>}
+        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? "Crea tu primer estimado y conviértelo en factura con un toque." : "Create your first estimate and convert it to an invoice in one tap."} actionLabel={lang === "es" ? "CREAR ESTIMADO" : "CREATE ESTIMATE"} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
   );
@@ -7974,15 +8334,30 @@ function InvoicePreview({
   if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/><div className="loading-block"/></main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
+  // Build 3: guided flow — payment is the final step, tappable to record it.
+  const togglePaid=async()=>{buzz(15);await api.toggleInvoicePaid({id:invoice.id,paid:invoice.status!=="paid"});await refresh();};
+  const sendInvoice=async()=>{buzz(8);if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);};
   return <main className="page financial-detail-page">
     <PageHeader lang={lang} title={`INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <FlowStepper lang={lang} steps={[
+      invoice.jobId
+        ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: invoice.jobId as number }) }
+        : { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "todo" as FlowStepState },
+      invoice.quoteId
+        ? { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: invoice.quoteId as number }) }
+        : { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "todo" as FlowStepState },
+      { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "current" as FlowStepState },
+      invoice.status === "paid"
+        ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
+        : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState, onTap: () => void togglePaid() },
+    ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(invoice.totalWithLateFee))}</strong></div><span className={`status-chip ${invoice.status}`}>{statusLabel}</span><ViewedBadge lang={lang} kind="invoice" id={invoice.id} /><div className="record-links"><button onClick={() => invoice.clientId ? setScreen({ name: "client", clientId: invoice.clientId }) : setScreen({ name: "clients" })}>{invoice.clientName}</button>{invoice.jobId && <button onClick={() => setScreen({ name: "detail", jobId: invoice.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
-    <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);}}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
+    <button className="primary-button send-document" disabled={!blob} onClick={sendInvoice}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
     {settings?.simpleMode !== true && (<details className="action-details document-details"><summary>{t.partialPayments} · {t.recurring}</summary><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>{invoice.payments.map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)} · {payment.method}</small></span></div>)}<div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></details>)}
     <details className="action-details document-details"><summary>{lang==="es"?"Factura recurrente automática":"Automatic recurring invoice"}</summary><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></details>
-    <div className="document-action-bar" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={async()=>{await api.toggleInvoicePaid({id:invoice.id,paid:invoice.status!=="paid"});await refresh();}}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={togglePaid}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -8159,15 +8534,21 @@ function ClientsScreen({
       </div>
       {selectedTags.length > 0 && <div className="active-client-filters">{selectedTags.map((tag) => <button key={tag} onClick={() => setSelectedTags(selectedTags.filter((item) => item !== tag))}>{tag}<span>×</span></button>)}</div>}
       <section className="client-list" aria-label={lang === "es" ? "Lista de clientes" : "Client list"}>
+        {query.isPending && <SkeletonList rows={6} />}
         {visibleClients.map((c) => (
-          <button key={c.id} onClick={() => setScreen({ name: "client", clientId: c.id })}>
+          <SwipeRow key={c.id} actions={[
+            ...(c.phone.trim() ? [{ label: lang === "es" ? "Llamar" : "Call", kind: "primary" as const, onTap: () => { window.location.href = `tel:${c.phone}`; } }] : []),
+            ...(c.phone.trim() ? [{ label: lang === "es" ? "Texto" : "Text", kind: "primary" as const, onTap: () => { window.location.href = `sms:${c.phone}`; } }] : []),
+          ]}>
+          <button onClick={() => setScreen({ name: "client", clientId: c.id })}>
             <span className={`client-avatar tone-${c.id % 6}`}>{clientInitials(c.name)}</span>
             <span className="client-row-copy"><strong>{c.name}</strong><small>{c.invoiceCount} {c.invoiceCount === 1 ? (lang === "es" ? "Factura" : "Invoice") : (lang === "es" ? "Facturas" : "Invoices")}</small></span>
             <span className="client-row-money"><strong>{usd(c.totalInvoiced)}</strong><small>{c.paymentPercent}% {lang === "es" ? "pagado" : "paid"}</small></span>
           </button>
+          </SwipeRow>
         ))}
       </section>
-      {!query.isPending && visibleClients.length === 0 && <div className="empty-state"><h2>{allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")}</h2></div>}
+      {!query.isPending && visibleClients.length === 0 && <EmptyState lang={lang} icon={<Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>} title={allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")} body={allClients.length === 0 ? (lang === "es" ? "Agrega tu primer cliente para empezar a cotizar." : "Add your first client to start estimating.") : (lang === "es" ? "Prueba con otro nombre." : "Try a different name.")} actionLabel={allClients.length === 0 ? (lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT") : undefined} onAction={allClients.length === 0 ? () => setScreen({ name: "clientNew" }) : undefined} />}
       <button className="primary-button add-client-fab" onClick={() => setScreen({ name: "clientNew" })}><PlusIcon />{lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT"}</button>
       {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}>
         {activeSheet === "sort" ? <section className="client-sheet" role="dialog" aria-modal="true" aria-labelledby="client-sort-title">
@@ -8222,7 +8603,7 @@ function ClientDetail({
     return (
       <main className="page">
         <PageHeader lang={lang} title={t.clients} onBack={onBack} />
-        <div className="loading-block" />
+        <SkeletonList rows={6} />
       </main>
     );
   return (
@@ -8249,6 +8630,8 @@ function ClientDetail({
       />
       <section className="client-history">
         <h2>{t.clientHistory}</h2>
+        {/* Build 3: deep links grouped by record type. */}
+        {(query.data?.jobs.length ?? 0) > 0 && <h3 className="client-history-sub">{t.jobs} ({query.data?.jobs.length})</h3>}
         {query.data?.jobs.map((j) => (
           <button
             key={`j-${j.id}`}
@@ -8263,9 +8646,7 @@ function ClientDetail({
             <BackIcon />
           </button>
         ))}
-        {clientInvoices.map((invoice) => (
-          <button key={`i-${invoice.id}`} onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{t.invoices} #{invoice.id} · {usd(money(invoice.totalWithLateFee))}</strong><small>{lang === "es" ? "Saldo" : "Balance"}: {usd(Number(invoice.balanceRemaining))}</small></span><BackIcon /></button>
-        ))}
+        {(query.data?.quotes.length ?? 0) > 0 && <h3 className="client-history-sub">{lang === "es" ? "Estimados" : "Estimates"} ({query.data?.quotes.length})</h3>}
         {query.data?.quotes.map((q) => (
           <button
             key={`q-${q.id}`}
@@ -8280,6 +8661,13 @@ function ClientDetail({
             <BackIcon />
           </button>
         ))}
+        {clientInvoices.length > 0 && <h3 className="client-history-sub">{t.invoices} ({clientInvoices.length})</h3>}
+        {clientInvoices.map((invoice) => (
+          <button key={`i-${invoice.id}`} onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{t.invoices} #{invoice.id} · {usd(money(invoice.totalWithLateFee))}</strong><small>{lang === "es" ? "Saldo" : "Balance"}: {usd(Number(invoice.balanceRemaining))}</small></span><BackIcon /></button>
+        ))}
+        {(query.data?.jobs.length ?? 0) === 0 && (query.data?.quotes.length ?? 0) === 0 && clientInvoices.length === 0 && (
+          <p className="privacy-note">{lang === "es" ? "Aún no hay trabajos, estimados ni facturas para este cliente." : "No jobs, estimates, or invoices for this client yet."}</p>
+        )}
       </section>
       <button
         className="danger-button"
@@ -11033,6 +11421,8 @@ function TodayScreen({
   const auth = useContext(AuthContext);
   const now = new Date();
   const today = now.toLocaleDateString("en-CA");
+  // Build 3: global search entry point lives on the Home header.
+  const [searchOpen, setSearchOpen] = useState(false);
   const query = useQuery({
     queryKey: ["automation-center", today],
     queryFn: () => api.getAutomationCenter({ today }),
@@ -11218,15 +11608,40 @@ function TodayScreen({
           <strong>{greeting}</strong>
         </div>
         <div className="home-header-actions">
+          <button className="icon-button" type="button" onClick={() => { buzz(8); setSearchOpen(true); }} aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}><Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon></button>
           <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
           <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
         </div>
       </header>
       <section className="home-summary-card" aria-label={lang === "es" ? "Resumen de trabajos" : "Job summary"}>
         <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
-        <strong>{openJobs.length}</strong>
+        <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
       </section>
+      {/* Build 3: "at a glance" — what needs attention right now, tappable. */}
+      {(() => {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
+        const upcomingJobs = openJobs.filter((job) => job.jobDate === today || job.jobDate === tomorrowStr);
+        const awaitingQuotes = d?.quoteChase ?? [];
+        return (
+          <section className="glance-strip" aria-label={lang === "es" ? "De un vistazo" : "At a glance"}>
+            <button type="button" className={`glance-card${paymentEscalations.length > 0 ? " alert" : ""}`} onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
+              <strong><CountUp value={paymentEscalations.length} format={(n) => String(Math.round(n))} /></strong>
+              <small>{lang === "es" ? "Facturas vencidas" : "Overdue invoices"}</small>
+            </button>
+            <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen(upcomingJobs[0] ? { name: "detail", jobId: upcomingJobs[0].id } : { name: "jobs" }); }}>
+              <strong><CountUp value={upcomingJobs.length} format={(n) => String(Math.round(n))} /></strong>
+              <small>{lang === "es" ? "Trabajos hoy y mañana" : "Jobs today & tomorrow"}</small>
+            </button>
+            <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
+              <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
+              <small>{lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval"}</small>
+            </button>
+          </section>
+        );
+      })()}
       <section className="home-jobs-section">
         <header><h2>{lang === "es" ? "Trabajos" : "Jobs"}</h2><button type="button" onClick={() => setScreen({ name: "jobs" })}>{lang === "es" ? "Ver todo" : "View all"}</button></header>
         <div className="home-job-list">
@@ -11778,6 +12193,9 @@ function TodayScreen({
           </form>
         </div>
       )}
+      {searchOpen && <BottomSheet lang={lang} title={lang === "es" ? "Buscar" : "Search"} onClose={() => setSearchOpen(false)}>
+        {(close) => <GlobalSearchBody lang={lang} close={close} setScreen={setScreen} />}
+      </BottomSheet>}
     </main>
   );
 }

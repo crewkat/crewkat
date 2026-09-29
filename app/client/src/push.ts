@@ -25,14 +25,38 @@ function pushSupported(): boolean {
   );
 }
 
+/** Fired on window when a freshly deployed service worker takes control. */
+export const SW_UPDATE_AVAILABLE_EVENT = "crewkat:sw-update";
+
 /** Registers the app service worker (also powers offline mode). Safe to call repeatedly. */
 export async function registerAppServiceWorker(): Promise<boolean> {
   if (!("serviceWorker" in navigator)) return false;
   try {
     await navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" });
+    // Build 3: when a new worker (new build id) takes control, tell the app
+    // so it can show the "Update available — refresh" toast. This fires once
+    // per update; the toast only offers a manual refresh, so no reload loops.
+    // (The first install also fires controllerchange via clients.claim() —
+    // that is not an update, so it is ignored.)
+    let hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController) window.dispatchEvent(new CustomEvent(SW_UPDATE_AVAILABLE_EVENT));
+      hadController = true;
+    });
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Tell the waiting service worker to activate now (update toast's Refresh button). */
+export function activateWaitingServiceWorker(): void {
+  try {
+    void navigator.serviceWorker
+      .getRegistration("/app/")
+      .then((reg) => reg?.waiting?.postMessage({ type: "SKIP_WAITING" }));
+  } catch {
+    /* best-effort */
   }
 }
 

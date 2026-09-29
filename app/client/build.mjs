@@ -9,6 +9,7 @@ import { buildClient } from "@hatch/space-sdk/build";
 import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 await buildClient();
 
@@ -51,6 +52,21 @@ console.log("[build] marketing site copied to dist/marketing");
 for (const f of ["manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "sw.js"]) {
   await cp(join(here, "pwa", f), join(distDir, f));
 }
+// Build 3: stamp the service worker with a per-build ID so EVERY deploy
+// produces a byte-different sw.js. Browsers only auto-install a new worker
+// when its bytes change — without this, the old cache-first shell could
+// linger for weeks in the installed Play app.
+let buildId;
+try {
+  buildId = execSync("git rev-parse --short HEAD", { cwd: join(here, "..") }).toString().trim();
+} catch {
+  buildId = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+}
+const swPath = join(distDir, "sw.js");
+let swText = await readFile(swPath, "utf8");
+swText = swText.split("__BUILD_ID__").join(buildId);
+await writeFile(swPath, swText);
+console.log(`[build] sw.js stamped with build id ${buildId}`);
 html = html.replace(
   '<link rel="icon" href="data:," />',
   `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`

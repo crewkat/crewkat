@@ -117,6 +117,8 @@ fieldset { padding: 0; border: 0; }
 .language-choice button { min-height: 50px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); font-weight: 700; }
 .language-choice button.active { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
 .sticky-submit { position: fixed; left: 16px; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); z-index: 90; width: calc(100% - 32px); max-width: 608px; margin-inline: auto; box-shadow:0 8px 26px rgba(0,0,0,.24); transition:bottom .14s ease-out; }
+/* Build 3: "Saved" confirmation state on the settings save button. */
+.primary-button.saved-confirm { background: var(--green); border-color: var(--green); color: #fff; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
 .status.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
 .social-notice { margin: -8px 0 22px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-weight: 700; line-height: 1.45; }
@@ -380,8 +382,8 @@ fieldset { padding: 0; border: 0; }
 .clients-toolbar { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 10px; padding: 18px 0; }
 .clients-toolbar .primary-button { min-height: 48px; }
 .client-list { display: grid; border-top: 1px solid var(--border); }
-.client-list > button { display: grid; grid-template-columns: 46px minmax(0,1fr) 20px; align-items: center; gap: 12px; min-height: 78px; padding: 11px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; }
-.client-list > button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.client-list > button, .client-list .swipe-row .swipe-content > button { display: grid; grid-template-columns: 46px minmax(0,1fr) 20px; align-items: center; gap: 12px; min-height: 78px; padding: 11px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; }
+.client-list > button > span:nth-child(2), .client-list .swipe-row .swipe-content > button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .client-list small { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .client-avatar { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--green) 15%, var(--surface)); color: var(--green); font-weight: 900; }
 .client-form { padding-bottom: 22px; }
@@ -1106,6 +1108,9 @@ fieldset { padding: 0; border: 0; }
 .editor-grand-total { padding-top: 12px; border-top: 2px solid var(--text); font-size: 21px; }
 .editor-grand-total strong { font-size: 28px; }
 .switch-row { min-height: 46px; display: flex !important; align-items: center; justify-content: space-between; gap: 12px; }
+/* Build 3: keep long toggle labels inside the box on narrow phones. */
+.switch-row > span { min-width: 0; flex: 1 1 auto; overflow-wrap: break-word; }
+.switch-row input { flex: none; }
 .switch-row input { width: 23px !important; height: 23px; accent-color: var(--accent); }
 .muted-note { color: var(--dim); line-height: 1.4; }
 .editor-delete { justify-self: stretch; }
@@ -1678,8 +1683,8 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 .active-client-filters button,.client-tag-chips button { min-height:34px; display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border:0; border-radius:999px; background:color-mix(in srgb,var(--green) 14%,var(--surface)); color:var(--green); font-size:13px; font-weight:800; }
 .active-client-filters span,.client-tag-chips span { font-size:18px; line-height:1; }
 .client-list { overflow:hidden; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
-.client-list > button { grid-template-columns:50px minmax(0,1fr) auto; min-height:82px; padding:12px 14px; background:var(--surface); }
-.client-list > button:active { background:var(--surface-2); }
+.client-list > button, .client-list .swipe-row .swipe-content > button { grid-template-columns:50px minmax(0,1fr) auto; min-height:82px; padding:12px 14px; background:var(--surface); }
+.client-list > button:active, .client-list .swipe-row .swipe-content > button:active { background:var(--surface-2); }
 .client-avatar { width:48px; height:48px; background:#d8e7e0; color:#174b3f; font-size:16px; letter-spacing:.02em; }
 .client-avatar.tone-0 { background:#d9e8df; color:#1f5a4a; }
 .client-avatar.tone-1 { background:#e9dfd3; color:#74451f; }
@@ -1728,7 +1733,7 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 @keyframes client-backdrop-in { from { background:rgba(9,13,12,0); } to { background:rgba(9,13,12,.56); } }
 @keyframes client-backdrop-out { from { background:rgba(9,13,12,.56); } to { background:rgba(9,13,12,0); } }
 @media (min-width:720px) { .add-client-fab { right:max(28px,calc((100vw - 920px)/2 + 28px)); } }
-@media (max-width:390px) { .clients-toolbar { grid-template-columns:minmax(0,1fr) 46px 46px; } .client-list > button { grid-template-columns:44px minmax(0,1fr) auto; gap:10px; padding-inline:10px; } .client-avatar { width:44px; height:44px; } .client-row-money strong { font-size:15px; } }
+@media (max-width:390px) { .clients-toolbar { grid-template-columns:minmax(0,1fr) 46px 46px; } .client-list > button, .client-list .swipe-row .swipe-content > button { grid-template-columns:44px minmax(0,1fr) auto; gap:10px; padding-inline:10px; } .client-avatar { width:44px; height:44px; } .client-row-money strong { font-size:15px; } }
 @media (prefers-reduced-motion:reduce) { .client-sheet-backdrop,.client-sheet-backdrop.closing,.client-sheet,.client-sheet-backdrop.closing .client-sheet { animation:none!important; } .sticky-submit { transition:none; } }
 
 /* Invoice editor — phone-first, field-ready */
@@ -2289,6 +2294,9 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 :root[data-theme="dark"] .marketplace-page.project-mode { --accent: #38bdf8; --accent-ink: #082f49; }
 .marketplace-page.project-mode .listing-type-filters .project.active { border-color: #0284c7; background: color-mix(in srgb, #0284c7 14%, var(--surface)); color: #0369a1; box-shadow: none; }
 :root[data-theme="dark"] .marketplace-page.project-mode .listing-type-filters .project.active { color: #7dd3fc; }
+/* Build 3: in project mode the listing badges read blue to match the accent. */
+.marketplace-page.project-mode .listing-type-badge.project { background: #0284c7; }
+:root[data-theme="dark"] .marketplace-page.project-mode .listing-type-badge.project { background: #0369a1; }
 
 /* ---- 7. Accent color themes: genuinely distinct palettes ---- */
 :root[data-accent="blue"] { --accent: #2563eb; --accent-ink: #ffffff; }
@@ -2312,3 +2320,141 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
   .float-popup-backdrop, .float-popup-backdrop.closing, .float-popup, .float-popup-backdrop.closing .float-popup,
   .more-sheet, .signature-sheet, .sheet-backdrop { animation: none !important; }
 }
+
+/* ============================================================
+   Build 3 — seamless-flow UX kit
+   ============================================================ */
+
+/* ---- 4. Guided Job → Estimate → Invoice → Payment stepper ---- */
+.flow-stepper { display: flex; align-items: flex-start; gap: 0; padding: 12px 4px 4px; margin: 0 0 4px; }
+.flow-step { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--dim); padding: 0; cursor: pointer; }
+.flow-step:disabled { cursor: default; }
+.flow-dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); border: 2px solid var(--border); transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.flow-dot i { font-style: normal; font-size: 13px; font-weight: 800; }
+.flow-dot svg { width: 15px; height: 15px; }
+.flow-step.done .flow-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.flow-step.current .flow-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #fff); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+.flow-step.current .flow-label { color: var(--text); font-weight: 800; }
+.flow-step.done .flow-label { color: var(--text); }
+.flow-step:active:not(:disabled) .flow-dot { transform: scale(.88); }
+.flow-label { font-size: 10.5px; font-weight: 700; letter-spacing: .02em; text-align: center; line-height: 1.25; }
+.flow-link { flex: 0 0 22px; height: 2px; margin-top: 14px; border-radius: 2px; background: var(--border); }
+.flow-link.done { background: var(--green); }
+
+/* ---- 8. BottomSheet slide-up ---- */
+.sheet-backdrop { animation: sheet-backdrop-in .2s ease-out both; }
+.sheet-backdrop.closing { animation: sheet-backdrop-out .18s ease-in both; }
+@keyframes sheet-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+.more-sheet.bottom-sheet { animation: bottom-sheet-up .26s cubic-bezier(.32,.9,.35,1) both; }
+.sheet-backdrop.closing .more-sheet.bottom-sheet { animation: bottom-sheet-down .18s ease-in both; }
+@keyframes bottom-sheet-up { from { transform: translateY(48px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
+@keyframes bottom-sheet-down { from { transform: translateY(0); opacity: 1; } to { transform: translateY(48px); opacity: 0; } }
+.bottom-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px 8px; }
+.bottom-sheet-head h2 { margin: 0; font-size: 19px; }
+.bottom-sheet-body { display: grid; gap: 4px; padding-bottom: 6px; }
+.bottom-sheet-body > button { min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-weight: 700; font-size: 15px; cursor: pointer; }
+.bottom-sheet-body > button:last-child { border-bottom: 0; }
+.bottom-sheet-body > button svg { width: 22px; height: 22px; color: var(--accent); flex: none; }
+
+/* ---- 10. Swipe-to-reveal rows ---- */
+.swipe-row { position: relative; overflow: hidden; border-radius: 14px; }
+.swipe-actions { position: absolute; inset: 0 0 0 auto; display: flex; align-items: stretch; }
+.swipe-action { width: 76px; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; }
+.swipe-action svg { width: 20px; height: 20px; }
+.swipe-action.primary { background: var(--accent); }
+.swipe-action.danger { background: var(--danger, #c0392b); }
+.swipe-content { position: relative; background: var(--bg); transition: transform .18s ease-out; }
+.swipe-row .swipe-content > button { border-radius: 0; }
+
+/* ---- 15. Empty states ---- */
+.empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 36px 24px; }
+.empty-state-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); margin-bottom: 4px; }
+.empty-state-icon svg { width: 30px; height: 30px; }
+.empty-state h2 { margin: 0; font-size: 18px; }
+.empty-state p { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.5; max-width: 300px; }
+.empty-state .primary-button { margin-top: 8px; min-width: 200px; }
+
+/* ---- 11. Softer cards: larger radius, gentle shadows, breathing room ---- */
+.job-list { gap: 0; background: transparent; border: 0; }
+.job-row { border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(15,23,42,.06); padding: 14px 12px; margin-bottom: 10px; }
+.job-row:active { background: var(--surface-2); transform: scale(.99); }
+.client-list { display: grid; gap: 10px; border: 0; border-top: 0; background: transparent; overflow: visible; }
+.client-list > button, .client-list .swipe-row .swipe-content > button { border-radius: 16px; background: var(--surface); border: 1px solid var(--border); border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+.market-card-main { border-radius: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(15,23,42,.07); }
+.market-card-photo { border-radius: 0; }
+.alerts-list li, .client-history button { border-radius: 14px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
+.home-job-card, .home-summary-card, .invoice-line-card { border-radius: 16px; box-shadow: 0 1px 4px rgba(15,23,42,.06); }
+
+/* ---- 12. Micro-interactions: press feedback ---- */
+button { -webkit-tap-highlight-color: transparent; }
+.primary-button, .secondary-button { transition: transform .12s ease, filter .12s ease, background .15s ease; }
+.primary-button:active:not(:disabled), .secondary-button:active:not(:disabled) { transform: scale(.96); filter: brightness(.96); }
+.icon-button { transition: transform .12s ease, background .15s ease; }
+.icon-button:active { transform: scale(.88); }
+.bottom-nav button:active .bottom-nav-icon { transform: scale(.85); }
+.bottom-nav-icon { transition: transform .12s ease; }
+.switch-row input[role="switch"] { transition: background .2s ease; }
+.switch-row input[role="switch"]::before { transition: transform .2s cubic-bezier(.34,1.4,.64,1); }
+
+/* ---- 16. App-update toast ---- */
+.update-toast { position: fixed; left: 16px; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 400; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--text); color: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.3); animation: update-toast-in .3s cubic-bezier(.32,.9,.35,1) both; }
+.update-toast span { flex: 1 1 auto; font-size: 14px; font-weight: 700; }
+.update-toast button { border: 0; border-radius: 10px; padding: 9px 14px; background: var(--accent); color: var(--accent-ink, #fff); font-weight: 800; cursor: pointer; }
+@keyframes update-toast-in { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ---- 5. Today "at a glance" strip ---- */
+.glance-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 4px 0 14px; }
+.glance-card { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 4px rgba(15,23,42,.06); padding: 12px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer; text-align: left; color: var(--text); }
+.glance-card strong { font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.glance-card small { font-size: 11.5px; color: var(--dim); font-weight: 700; line-height: 1.3; }
+.glance-card.alert strong { color: var(--danger, #c0392b); }
+.glance-card:active { transform: scale(.97); }
+
+/* ---- 14. Global search ---- */
+.global-search-backdrop { z-index: 300; }
+.global-search-sheet { width: min(100%, 640px); max-height: min(88vh, 760px); }
+.global-search-input { display: flex; align-items: center; gap: 10px; padding: 0 4px 10px; }
+.global-search-input svg { width: 20px; height: 20px; color: var(--dim); flex: none; }
+.global-search-input input { flex: 1 1 auto; min-height: 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font-size: 16px; padding: 10px 12px; }
+.global-search-group { margin: 6px 0 2px; }
+.global-search-group > h3 { margin: 8px 4px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.global-search-group button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 6px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.global-search-group button:last-child { border-bottom: 0; }
+.global-search-group button svg { width: 20px; height: 20px; color: var(--accent); flex: none; }
+.global-search-group button span { min-width: 0; }
+.global-search-group button strong { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.global-search-group button small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 7. Quick-create suggested first ---- */
+.quick-create-suggest { margin: 0 0 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+
+/* ---- Reduced motion: kill the new motion too ---- */
+@media (prefers-reduced-motion: reduce) {
+  .flow-dot, .flow-step:active:not(:disabled) .flow-dot,
+  .primary-button, .secondary-button, .icon-button, .bottom-nav-icon,
+  .switch-row input[role="switch"], .switch-row input[role="switch"]::before,
+  .swipe-content, .glance-card { transition: none !important; }
+  .flow-step:active:not(:disabled) .flow-dot, .primary-button:active:not(:disabled),
+  .secondary-button:active:not(:disabled), .icon-button:active, .glance-card:active { transform: none !important; }
+  .more-sheet.bottom-sheet, .sheet-backdrop, .sheet-backdrop.closing,
+  .sheet-backdrop.closing .more-sheet.bottom-sheet, .update-toast { animation: none !important; }
+}
+
+/* Build 3: guided-flow next-step CTA sits under the stepper. */
+.flow-next-step { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 2px 0 12px; }
+.flow-next-step svg { width: 20px; height: 20px; }
+
+/* Build 3: four-slot sticky action bar (Edit / primary / primary / More). */
+.document-action-bar.four { grid-template-columns: repeat(4, minmax(0,1fr)); }
+
+/* Build 3: grouped deep links on the client record. */
+.client-history-sub { margin: 14px 2px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.client-history-sub:first-of-type { margin-top: 4px; }
+
+/* Build 3: highlight the suggested quick-create action. */
+.quick-create-grid button.suggested { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+
+/* Build 3: update-toast dismiss affordance. */
+.update-toast-dismiss { background: transparent !important; color: inherit !important; padding: 6px !important; box-shadow: none !important; }
+.update-toast-dismiss svg { width: 16px; height: 16px; display: block; }

@@ -50,7 +50,7 @@ check("journal when values are non-decreasing", nonDecreasing);
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration (0048) when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
-check("newest migration tag is 0048_push_subscriptions", last.tag === "0048_push_subscriptions", last.tag);
+check("newest migration tag is 0049_notification_preferences", last.tag === "0049_notification_preferences", last.tag);
 check("0046_referral_loop and 0047_marketplace_alerts are journaled in order",
   entries.some((e) => e.tag === "0046_referral_loop") && entries.some((e) => e.tag === "0047_marketplace_alerts"));
 
@@ -231,14 +231,34 @@ check("api caches listQuotes for offline", apiClient.includes('"listQuotes"'));
 check("api exposes offlineCacheTimestamp", apiClient.includes("offlineCacheTimestamp"));
 const swSource = await readFile("client/pwa/sw.js", "utf8");
 check("service worker handles push events", swSource.includes('addEventListener("push"'));
-check("service worker caches the app shell", swSource.includes("crewkat-shell-v1"));
+check("service worker uses versioned shell/runtime caches", swSource.includes("crewkat-shell-") && swSource.includes("BUILD_ID") && swSource.includes("crewkat-runtime-"));
+check("service worker fetches navigations network-first", swSource.includes("networkFirst") && swSource.includes('isNavigation(request)'));
+check("service worker activates immediately and claims clients", swSource.includes("skipWaiting()") && swSource.includes("clients.claim()"));
+check("service worker keeps the offline API fallback", swSource.includes("OFFLINE"));
 const appClient = await readFile("client/src/App.tsx", "utf8");
 check("App registers the service worker on launch", appClient.includes("registerAppServiceWorker()"));
+check("App shows the service-worker update toast", appClient.includes("SW_UPDATE_AVAILABLE_EVENT") && appClient.includes("update-toast"));
 check("App renders the offline banner", appClient.includes("<OfflineBanner"));
 check("signup passes the referral code through", appClient.includes("referralCode: referralCode || undefined"));
 check("iOS meta tags present in source index.html", (await readFile("client/index.html", "utf8")).includes("apple-mobile-web-app-capable"));
 const icon180 = await readFile("client/pwa/icon-180.png").catch(() => null);
 check("180x180 apple touch icon exists", icon180 !== null && icon180.length > 1000, icon180 ? `${icon180.length} bytes` : "missing");
+
+// --- 10. Build 3: globalSearch groups clients/jobs/estimates/invoices --------
+await db.insert(schema.clients).values({ name: "Search Test Client", phone: "555-0100" });
+await db.insert(schema.jobs).values({ clientName: "Search Test Client", jobAddress: "1 Test Way", jobType: "Bathroom remodel", jobDate: "2026-09-28" });
+await db.insert(schema.quotes).values({ clientName: "Search Test Client", jobType: "Bathroom remodel", lineItemsJson: "[]", total: "1200.00" });
+await db.insert(schema.invoices).values({ clientName: "Search Test Client", jobType: "Bathroom remodel", lineItemsJson: "[]", total: "1200.00" });
+const searchHit = await (BaseActions.globalSearch as any).handler(ctx, { term: "bathroom" });
+check("globalSearch finds the job by type", searchHit.jobs.length === 1 && searchHit.jobs[0].title.includes("Bathroom remodel"), JSON.stringify(searchHit.jobs));
+check("globalSearch finds the estimate by type", searchHit.quotes.length === 1, JSON.stringify(searchHit.quotes));
+check("globalSearch finds the invoice by type", searchHit.invoices.length === 1, JSON.stringify(searchHit.invoices));
+const searchName = await (BaseActions.globalSearch as any).handler(ctx, { term: "search test" });
+check("globalSearch finds the client by name", searchName.clients.length === 1 && searchName.clients[0].title === "Search Test Client", JSON.stringify(searchName.clients));
+const searchMiss = await (BaseActions.globalSearch as any).handler(ctx, { term: "zzz-no-match" });
+check("globalSearch returns empty groups on no match", searchMiss.clients.length === 0 && searchMiss.jobs.length === 0 && searchMiss.quotes.length === 0 && searchMiss.invoices.length === 0);
+const searchBlank = await (BaseActions.globalSearch as any).handler(ctx, { term: "   " });
+check("globalSearch returns empty groups on blank term", searchBlank.clients.length === 0 && searchBlank.jobs.length === 0);
 
 await rm(dir, { recursive: true, force: true });
 

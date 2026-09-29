@@ -1,15 +1,21 @@
-// Chunk D: Crewkat app service worker — offline mode v1 + web push.
-// Served at /app/sw.js (scope /app/). Copied into dist/ by client/build.mjs.
+// Crewkat app service worker — offline mode + web push.
+// Served at /app/sw.js (scope /app/). build.mjs stamps __BUILD_ID__ with the
+// git commit (or a build timestamp) so EVERY deploy produces a new worker and
+// the browser installs it immediately instead of serving a stale shell.
 //
 // Caching strategy:
-// - App shell + bundled assets: cache-first (works offline after first visit).
-// - API (POST /actions): network-first with an offline 503 JSON fallback so
-//   the client can fall back to its cached lists; never served stale.
-// - Everything else same-origin: cache-first with network fallback, and the
-//   app shell as the last-resort fallback for navigation requests.
+// - App shell (/, /app/index.html, manifest, icons): network-first for
+//   navigations/HTML — a fresh deploy is never hidden behind stale HTML.
+// - Versioned bundle assets (/app/assets/*, hashed at build): cache-first,
+//   safe because the filenames change with every build.
+// - API (/actions): network-only with an offline 503 JSON fallback the
+//   client understands; never served stale.
+// - Everything else same-origin: network-first with cache fallback.
 
-const CACHE = "crewkat-shell-v1";
-const SHELL = [
+const BUILD_ID = "__BUILD_ID__";
+const SHELL_CACHE = `crewkat-shell-${BUILD_ID}`;
+const RUNTIME_CACHE = `crewkat-runtime-${BUILD_ID}`;
+const PRECACHE = [
   "/app/",
   "/app/index.html",
   "/app/manifest.webmanifest",
@@ -20,20 +26,50 @@ const SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()).catch(() => self.skipWaiting())
+    caches
+      .open(SHELL_CACHE)
+      .then((cache) => cache.addAll(PRECACHE))
+      .catch(() => undefined)
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("crewkat-") && key !== SHELL_CACHE && key !== RUNTIME_CACHE)
+            .map((key) => caches.delete(key))
+        )
+      )
       .then(() => self.clients.claim())
   );
 });
 
+// The update toast's Refresh button tells the waiting worker to take over now.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 function isNavigation(request) {
   return request.mode === "navigate" || (request.headers.get("accept") || "").includes("text/html");
+}
+
+async function networkFirst(request, cacheName, fallback) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    const cached = await caches.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    if (fallback) return fallback();
+    throw new Error("offline");
+  }
 }
 
 self.addEventListener("fetch", (event) => {
@@ -42,7 +78,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // API calls: network-first; offline -> 503 JSON the client understands.
+  // API: network only; offline -> 503 JSON the client understands.
   if (url.pathname === "/actions" || url.pathname.startsWith("/actions/")) {
     event.respondWith(
       fetch(request).catch(
@@ -52,30 +88,40 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request, { ignoreSearch: true }).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        // Cache the app shell pieces and versioned bundle assets as they load.
-        const cacheable =
-          response.ok &&
-          (url.pathname === "/app/" ||
-            url.pathname === "/app/index.html" ||
-            url.pathname.startsWith("/app/assets/") ||
-            url.pathname === "/app/manifest.webmanifest" ||
-            /^\/app\/icon-\d+\.png$/.test(url.pathname));
-        if (cacheable) {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(request, copy));
-        }
-        return response;
-      }).catch(() => {
-        // Offline and not cached: navigations fall back to the app shell.
-        if (isNavigation(request)) return caches.match("/app/index.html");
-        throw new Error("offline");
-      });
-    })
-  );
+  // Navigations + HTML: NETWORK-FIRST — never serve a stale app shell after a deploy.
+  if (isNavigation(request) || url.pathname === "/app/" || url.pathname === "/app/index.html") {
+    event.respondWith(networkFirst(request, SHELL_CACHE, () => caches.match("/app/index.html")));
+    return;
+  }
+
+  // Versioned bundle assets (hashed filenames): cache-first, then network.
+  if (
+    url.pathname.startsWith("/app/assets/") ||
+    url.pathname === "/app/manifest.webmanifest" ||
+    /^\/app\/icon-\d+\.png$/.test(url.pathname)
+  ) {
+    event.respondWith(
+      caches
+        .match(request, { ignoreSearch: true })
+        .then((cached) => {
+          if (cached) return cached;
+          return fetch(request).then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          });
+        })
+        .catch(() => {
+          throw new Error("offline");
+        })
+    );
+    return;
+  }
+
+  // Everything else same-origin: network-first with cache fallback.
+  event.respondWith(networkFirst(request, RUNTIME_CACHE));
 });
 
 // --- Web Push ----------------------------------------------------------------
