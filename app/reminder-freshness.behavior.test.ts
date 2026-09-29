@@ -275,6 +275,29 @@ describe("Home pull-to-refresh", () => {
     expect(ptr).toContain('contains("app-shell")');
   });
 
+  test("touchstart always resets the armed flag (stale flag wedges scrolling)", () => {
+    // Regression 2026-09-29: the old onTouchStart only ever SET active=true
+    // inside the arm condition and never reset it, and there was no
+    // touchcancel handler. A stale armed flag + stale startY made dy bogus on
+    // later scrolls, so preventDefault() fired on ordinary scroll gestures
+    // and Home could not be scrolled at all until reload.
+    expect(ptr).toContain("active.current = el.scrollTop <= 0 && chainAtTop();");
+    expect(ptr).not.toContain("if (el.scrollTop <= 0 && chainAtTop()) { active.current = true;");
+  });
+
+  test("touchcancel ends the gesture like touchend", () => {
+    expect(ptr).toContain('addEventListener("touchcancel", endTouch)');
+    expect(ptr).toContain('removeEventListener("touchcancel", endTouch)');
+  });
+
+  test("listeners subscribe once (no per-render / per-pull churn)", () => {
+    // The gesture reads the latest callback/distance through refs so the
+    // effect does not re-subscribe listeners on every render or pull update.
+    expect(ptr).toContain("onRefreshRef");
+    expect(ptr).toContain("pullRef");
+    expect(ptr).toContain("}, [reduced]);");
+  });
+
   test("host/browser pull-to-refresh is blocked at the app shell", () => {
     expect(APP).toContain("useBlockHostPullToRefresh(");
   });

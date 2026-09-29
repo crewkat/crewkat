@@ -3180,6 +3180,12 @@ function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: (
   const [pull, setPull] = useState(0);
   const startY = useRef(0);
   const active = useRef(false);
+  // The touch listeners subscribe once, so they read the latest callback and
+  // pull distance through refs instead of effect deps (re-subscribing on
+  // every render/pull change churns listeners mid-gesture).
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+  const pullRef = useRef(0);
   const THRESHOLD = 72;
   useEffect(() => {
     const el = ref.current;
@@ -3198,7 +3204,12 @@ function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: (
       return true;
     };
     const onTouchStart = (e: globalThis.TouchEvent) => {
-      if (el.scrollTop <= 0 && chainAtTop()) { active.current = true; startY.current = e.touches[0]?.clientY ?? 0; }
+      // Always reset first: a previous gesture can end without touchend
+      // (touchcancel). A stale armed flag plus a stale startY makes dy bogus
+      // on the next scroll and preventDefault() wedges the page so it can't
+      // scroll at all until reloaded.
+      active.current = el.scrollTop <= 0 && chainAtTop();
+      startY.current = e.touches[0]?.clientY ?? 0;
     };
     const onTouchMove = (e: globalThis.TouchEvent) => {
       if (!active.current) return;
@@ -3206,27 +3217,36 @@ function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: (
       if (dy > 0) {
         // Rubber band: resistance grows with distance.
         const damped = THRESHOLD * (1 - Math.exp(-dy / (THRESHOLD * 1.6)));
+        pullRef.current = damped;
         setPull(damped);
         if (dy > 8) e.preventDefault();
-      } else setPull(0);
+      } else {
+        pullRef.current = 0;
+        setPull(0);
+      }
     };
-    const onTouchEnd = () => {
+    const endTouch = () => {
       if (!active.current) return;
       active.current = false;
-      if (pull >= THRESHOLD * 0.85) {
+      if (pullRef.current >= THRESHOLD * 0.85) {
         buzz(10);
-        void Promise.resolve(onRefresh()).finally(() => setPull(0));
-      } else setPull(0);
+        void Promise.resolve(onRefreshRef.current()).finally(() => { pullRef.current = 0; setPull(0); });
+      } else {
+        pullRef.current = 0;
+        setPull(0);
+      }
     };
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchend", endTouch);
+    el.addEventListener("touchcancel", endTouch);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchend", endTouch);
+      el.removeEventListener("touchcancel", endTouch);
     };
-  }, [onRefresh, pull, reduced]);
+  }, [reduced]);
   const shown = refreshing ? THRESHOLD : pull;
   return (
     <div ref={ref} style={{ overflowY: "auto", height: "100%", overscrollBehaviorY: "contain" }}>
