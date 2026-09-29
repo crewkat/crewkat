@@ -6840,6 +6840,10 @@ var settings = sqliteTable("settings", {
   addJobSiteAddress: integer2("add_job_site_address", { mode: "boolean" }).notNull().default(true),
   convertToQuote: integer2("convert_to_quote", { mode: "boolean" }).notNull().default(false),
   notificationsEnabled: integer2("notifications_enabled", { mode: "boolean" }).notNull().default(true),
+  notifyNewMessage: integer2("notify_new_message", { mode: "boolean" }).notNull().default(true),
+  notifyDocSigned: integer2("notify_doc_signed", { mode: "boolean" }).notNull().default(true),
+  notifyInvoiceViewed: integer2("notify_invoice_viewed", { mode: "boolean" }).notNull().default(true),
+  notifyEstimateViewed: integer2("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
   simpleMode: integer2("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
@@ -8040,7 +8044,7 @@ var receiptSchema = object({ id: number2(), jobId: number2(), vendor: string2(),
 var crewTaskSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2(), createdAt: string2(), updatedAt: string2() });
 var voiceNoteSchema = object({ id: number2(), jobId: number2(), title: string2(), url: string2(), durationSeconds: number2(), createdAt: string2() });
 var certificateSchema = object({ id: number2(), jobId: number2(), completionDate: string2(), warrantyTerms: string2(), createdAt: string2(), updatedAt: string2() });
-var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), simpleMode: boolean2() });
+var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), simpleMode: boolean2() });
 var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable() });
 var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
 function normalizeClientTags(tags) {
@@ -9254,6 +9258,31 @@ async function createUserNotification(db, userId, kind, titleEn, titleEs, link) 
     return null;
   const rows = await db.insert(userNotifications).values({ userId, kind, titleEn, titleEs, link, isRead: false, createdAt: new Date }).returning({ id: userNotifications.id });
   return rows[0]?.id ?? null;
+}
+async function getNotifyPrefs(db, companyId) {
+  const row = (await db.select().from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+  return {
+    notifyNewMessage: row?.notifyNewMessage ?? true,
+    notifyDocSigned: row?.notifyDocSigned ?? true,
+    notifyInvoiceViewed: row?.notifyInvoiceViewed ?? true,
+    notifyEstimateViewed: row?.notifyEstimateViewed ?? true,
+    language: row?.language === "es" ? "es" : "en"
+  };
+}
+async function notifyCompanyEvent(ctx, companyId, pref, kind, titleEn, titleEs, link) {
+  try {
+    const db = ctx.db();
+    const prefs = await getNotifyPrefs(db, companyId);
+    if (!prefs[pref])
+      return;
+    const users = await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, companyId));
+    for (const user of users) {
+      try {
+        await createUserNotification(db, user.id, kind, titleEn, titleEs, link);
+      } catch {}
+    }
+    await sendPushToCompany(db, companyId, { titleEn: "Crewkat", titleEs: "Crewkat", bodyEn: titleEn, bodyEs: titleEs, url: "/" });
+  } catch {}
 }
 async function notifyAlertMatches(ctx, listing) {
   try {
@@ -11286,6 +11315,9 @@ If that was you, just sign in again. If not, we recommend changing your password
     await ctx.blobs.put(key, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
     await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: new Date }).where(eq(documents.id, document.id));
     await logPortalEvent(ctx, access.id, "sign");
+    const jobCompany = (await db.select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, document.jobId)).limit(1))[0];
+    if (jobCompany)
+      await notifyCompanyEvent(ctx, jobCompany.companyId, "notifyDocSigned", "document-signed", `Client signed "${document.title}"`, "Un cliente firm\xF3 tu documento", `doc-signed:${document.id}`);
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -11317,6 +11349,9 @@ If that was you, just sign in again. If not, we recommend changing your password
     const db = ctx.db();
     const link = await resolveDocumentLinkToken(ctx, args.token);
     const now = new Date;
+    const dayAgo = new Date(now.getTime() - 24 * 3600000);
+    const recentView = (await db.select({ id: documentLinkEvents.id }).from(documentLinkEvents).where(and(eq(documentLinkEvents.linkId, link.id), eq(documentLinkEvents.eventType, "view"), gte(documentLinkEvents.occurredAt, dayAgo))).limit(1))[0];
+    const notifyView = !recentView && (link.documentKind === "invoice" || link.documentKind === "quote");
     await db.update(documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(documentLinks.id, link.id));
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
     const settings2 = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
@@ -11326,12 +11361,16 @@ If that was you, just sign in again. If not, we recommend changing your password
       const row = (await db.select().from(invoices).where(eq(invoices.id, link.documentId)).limit(1))[0];
       if (!row)
         throw new Error("This document is no longer available.");
+      if (notifyView)
+        await notifyCompanyEvent(ctx, link.companyId, "notifyInvoiceViewed", "document-viewed", `Client viewed invoice #${row.id}`, "Un cliente vio tu factura", `invoice:${row.id}`);
       return { ...base, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote };
     }
     if (link.documentKind === "quote") {
       const row = (await db.select().from(quotes).where(eq(quotes.id, link.documentId)).limit(1))[0];
       if (!row)
         throw new Error("This document is no longer available.");
+      if (notifyView)
+        await notifyCompanyEvent(ctx, link.companyId, "notifyEstimateViewed", "document-viewed", `Client viewed estimate #${row.id}`, "Un cliente vio tu estimado", `quote:${row.id}`);
       return { ...base, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote };
     }
     const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
@@ -11362,6 +11401,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     await ctx.blobs.put(pdfKey, pdfBytes, { contentType: "application/pdf" });
     await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: sigKey, clientSignedAt: now, clientSignedPdfBlobKey: pdfKey, clientSignatureHash: hash, clientSignedUserAgent: args.userAgent.slice(0, 300) }).where(eq(documents.id, doc.id));
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "sign", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    await notifyCompanyEvent(ctx, link.companyId, "notifyDocSigned", "document-signed", `Client signed "${doc.title}"`, "Un cliente firm\xF3 tu documento", `doc-signed:${doc.id}`);
     ctx.invalidateQueries();
     return { ok: true, signedAt: now.toISOString() };
   } }),
@@ -12237,11 +12277,15 @@ If that was you, just sign in again. If not, we recommend changing your password
           const titleEs = sender === "other" ? `Nueva consulta: ${listing.title}` : `Nueva respuesta: ${listing.title}`;
           const preview = args.body.length > 120 ? `${args.body.slice(0, 120)}\u2026` : args.body;
           if (sender === "other") {
-            await sendPushToCompany(db, listing.companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+            if ((await getNotifyPrefs(db, listing.companyId)).notifyNewMessage) {
+              await sendPushToCompany(db, listing.companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
+            }
           } else {
             const others = await db.select({ senderCompanyId: marketplaceMessages.senderCompanyId }).from(marketplaceMessages).where(and(eq(marketplaceMessages.listingId, args.listingId), eq(marketplaceMessages.sender, "other")));
             const companies = [...new Set(others.map((row) => row.senderCompanyId).filter((value) => typeof value === "number" && value !== identity.workspaceCompanyId))];
             for (const companyId of companies) {
+              if (!(await getNotifyPrefs(db, companyId)).notifyNewMessage)
+                continue;
               await sendPushToCompany(db, companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
             }
           }
@@ -12804,8 +12848,8 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const row = rows[0];
     if (!row)
-      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
-    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
+      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, simpleMode: true, logoUrl: null, coverUrl: null };
+    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = platformDb(ctx);
