@@ -59,13 +59,13 @@ type DocumentFont = "helvetica" | "times" | "courier" | "palatino";
 type AdjustmentType = "percent" | "fixed";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 type ThemeMode = "light" | "dark" | "system";
-type AccentChoice = "orange" | "blue" | "green" | "purple" | "rose";
+type AccentChoice = "orange" | "blue" | "green" | "purple" | "red";
 const ACCENT_CHOICES: Array<{ value: AccentChoice; color: string; en: string; es: string }> = [
   { value: "orange", color: "#f97316", en: "Orange", es: "Naranja" },
   { value: "blue", color: "#2563eb", en: "Blue", es: "Azul" },
   { value: "green", color: "#16a34a", en: "Green", es: "Verde" },
   { value: "purple", color: "#9333ea", en: "Purple", es: "Morado" },
-  { value: "rose", color: "#f43f5e", en: "Rose", es: "Rosa" },
+  { value: "red", color: "#dc2626", en: "Red", es: "Rojo" },
 ];
 type DocumentDesign = { theme: QuoteTheme; font: DocumentFont; accentColor: string; showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean; showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string };
 type ToolMode =
@@ -2155,12 +2155,13 @@ function CrewkatApplication() {
       );
     }
   }, [themeMode]);
-  // Build 2: separate accent-color choice (orange/blue/green/purple/rose) so
+  // Build 2: separate accent-color choice (orange/blue/green/purple/red) so
   // the theme colors are genuinely distinct in preview and in the app.
   const [accent, setAccent] = useState<AccentChoice>(() => {
     if (typeof window === "undefined") return "orange";
     const saved = window.localStorage.getItem("crewkat-accent");
-    return saved === "blue" || saved === "green" || saved === "purple" || saved === "rose" ? saved : "orange";
+    if (saved === "rose") return "red"; // migrated from rose
+    return saved === "blue" || saved === "green" || saved === "purple" || saved === "red" ? saved : "orange";
   });
   useEffect(() => {
     document.documentElement.dataset.accent = accent;
@@ -2189,7 +2190,7 @@ function CrewkatApplication() {
   });
   useEffect(() => {
     const serverTheme = settings.data?.themeMode;
-    const serverAccent = settings.data?.uiAccent;
+    const serverAccent = settings.data?.uiAccent === "rose" ? "red" : settings.data?.uiAccent;
     if (!serverTheme || !serverAccent) return;
     const intent = appearanceIntentRef.current;
     if (intent) {

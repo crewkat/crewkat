@@ -2334,11 +2334,11 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 :root[data-accent="blue"] { --accent: #2563eb; --accent-ink: #ffffff; }
 :root[data-accent="green"] { --accent: #16a34a; --accent-ink: #ffffff; }
 :root[data-accent="purple"] { --accent: #9333ea; --accent-ink: #ffffff; }
-:root[data-accent="rose"] { --accent: #f43f5e; --accent-ink: #ffffff; }
+:root[data-accent="red"] { --accent: #dc2626; --accent-ink: #ffffff; }
 :root[data-theme="dark"][data-accent="blue"] { --accent: #60a5fa; --accent-ink: #0b1f4d; }
 :root[data-theme="dark"][data-accent="green"] { --accent: #4ade80; --accent-ink: #052e16; }
 :root[data-theme="dark"][data-accent="purple"] { --accent: #c084fc; --accent-ink: #2e1065; }
-:root[data-theme="dark"][data-accent="rose"] { --accent: #fb7185; --accent-ink: #4c0519; }
+:root[data-theme="dark"][data-accent="red"] { --accent: #f87171; --accent-ink: #450a0a; }
 .accent-picker { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; margin: 2px 0 14px; }
 .accent-picker button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border: 2px solid var(--border); border-radius: 14px; background: var(--surface); cursor: pointer; }
 .accent-picker button.active { border-color: var(--swatch); box-shadow: 0 0 0 1px var(--swatch); }

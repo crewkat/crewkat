@@ -12,7 +12,7 @@
 //     light-theme CSS variables, cross-device note copy.
 //  6. Intent-race fix — the user's own optimistic change is never reverted
 //     while its save is in flight (onMutate records the intent; the effect
-//     yields until the server confirms); orange/rose accents are visually
+//     yields until the server confirms); orange/red accents are visually
 //     distinct.
 //
 // Run from app/:  bun appearance-sync.behavior.test.ts
@@ -100,13 +100,13 @@ const updateAppearance = BaseActions.updateAppearance as any;
 // Schema rejects out-of-enum values.
 check("request schema rejects bad themeMode", !updateAppearance.request.safeParse({ themeMode: "neon", uiAccent: "orange" }).success);
 check("request schema rejects bad uiAccent", !updateAppearance.request.safeParse({ themeMode: "light", uiAccent: "teal" }).success);
-check("request schema accepts light/rose", updateAppearance.request.safeParse({ themeMode: "light", uiAccent: "rose" }).success);
+check("request schema accepts light/red", updateAppearance.request.safeParse({ themeMode: "light", uiAccent: "red" }).success);
 
-const saveRes = await updateAppearance.handler(ctx, { themeMode: "light", uiAccent: "rose" });
+const saveRes = await updateAppearance.handler(ctx, { themeMode: "light", uiAccent: "red" });
 check("updateAppearance returns ok", saveRes?.ok === true);
 row = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, 1)).limit(1))[0]!;
 check("updateAppearance persists themeMode", (row as any).themeMode === "light");
-check("updateAppearance persists uiAccent", (row as any).uiAccent === "rose");
+check("updateAppearance persists uiAccent", (row as any).uiAccent === "red");
 
 // Second save overwrites (last write wins across devices).
 await updateAppearance.handler(ctx, { themeMode: "dark", uiAccent: "blue" });
@@ -158,8 +158,8 @@ check("Settings About flags a waiting update", appSrc.includes("Update ready") &
 
 check("light theme sets light background", cssSrc.includes('[data-theme="light"]') && cssSrc.includes("--bg: #f4f2ed"));
 check("orange accent is a true orange", cssSrc.includes("--accent: #f97316"));
-check("rose accent is pink-distinct from orange", cssSrc.includes('--accent: #f43f5e'));
-check("accent swatches match the theme colors", appSrc.includes('{ value: "orange", color: "#f97316"') && appSrc.includes('{ value: "rose", color: "#f43f5e"'));
+check("red accent is distinct from orange", cssSrc.includes('--accent: #dc2626'));
+check("accent swatches match the theme colors", appSrc.includes('{ value: "orange", color: "#f97316"') && appSrc.includes('{ value: "red", color: "#dc2626"'));
 
 // --- summary ----------------------------------------------------------------------
 if (failures > 0) {
