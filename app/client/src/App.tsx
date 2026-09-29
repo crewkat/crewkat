@@ -1193,6 +1193,26 @@ function formatDate(value: string, lang: Lang) {
     year: "numeric",
   }).format(new Date(`${value}T12:00:00`));
 }
+// The user's calendar day in their own timezone (YYYY-MM-DD). Pass as `today`
+// to server actions that stamp user-visible dates so they never use UTC.
+function localToday(): string {
+  return new Date().toLocaleDateString("en-CA");
+}
+
+// Estimate/Quote terminology — follows the Settings "Convert to Quote" toggle
+// so every user-facing label for quotes uses the same word the user chose.
+type EstimateTerms = { singular: string; plural: string; newDoc: string; saveDoc: string };
+function estimateTerms(lang: Lang, settings: Settings | null): EstimateTerms {
+  const useQuote = settings?.convertToQuote === true;
+  if (lang === "es")
+    return useQuote
+      ? { singular: "cotización", plural: "cotizaciones", newDoc: "Nueva cotización", saveDoc: "Guardar cotización" }
+      : { singular: "estimado", plural: "estimados", newDoc: "Nuevo estimado", saveDoc: "Guardar estimado" };
+  return useQuote
+    ? { singular: "quote", plural: "quotes", newDoc: "New quote", saveDoc: "Save quote" }
+    : { singular: "estimate", plural: "estimates", newDoc: "New estimate", saveDoc: "Save estimate" };
+}
+function capFirst(s: string): string { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function safeName(value: string) {
   return (
     value
@@ -1613,6 +1633,14 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Verify-recovery: offered after a login attempt fails because the email
+  // was never verified (e.g. the user navigated away mid-signup), plus a
+  // persistent "Verify email / resend code" link on the sign-in form.
+  const [verifyRecovery, setVerifyRecovery] = useState(false);
+  // Chrome renders fake autofill dots in an untouched password field while
+  // the real value is still empty; keep the field read-only until focused so
+  // the dots it shows are always real.
+  const [pwEditable, setPwEditable] = useState(false);
   // Chunk D: referral links land here as ?ref=CODE — keep it for signup.
   const referralCode = useMemo(() => {
     try {
@@ -1622,7 +1650,18 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   }, []);
   const hasAccount = bootstrap.data?.hasAccount ?? true;
   useEffect(() => { if (bootstrap.data && !bootstrap.data.hasAccount) setMode("signup"); }, [bootstrap.data]);
-  const move = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); setCode(""); setDevCode(""); };
+  const move = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false); setPwEditable(false); };
+  const startEmailVerify = async (emailValue: string) => {
+    const target = emailValue.trim();
+    if (!target) { setError("Enter your email above first, then verify it."); return; }
+    setEmail(target); setMode("verify"); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false);
+    setBusy(true);
+    try {
+      const result = await api.resendVerification({ email: target });
+      setDevCode(result.verificationCode ?? "");
+      setNotice(result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a verification code to ${target}.`);
+    } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
@@ -1650,7 +1689,11 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         else persistLegacySessionToken(result.sessionToken);
         onAuthenticated(result.user);
       }
-    } catch (caught) { setError(friendlyActionMessage(caught, "en")); } finally { setBusy(false); }
+    } catch (caught) {
+      const friendly = friendlyActionMessage(caught, "en");
+      setError(friendly);
+      setVerifyRecovery(mode === "login" && /verify your email/i.test(friendly));
+    } finally { setBusy(false); }
   };
   const title = mode === "signup" ? "Set up your owner account" : mode === "verify" ? "Verify your email" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Enter your reset code" : "Welcome back";
   if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} onBack={() => setLegalDocument(null)} /></div>;
@@ -1678,17 +1721,19 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       <form className="auth-form" onSubmit={submit}>
         {mode === "signup" && <label><span>Name</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
         <label><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset"} /></label>
-        {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} /><small>{mode !== "login" ? "Use at least 10 characters." : ""}</small></label>}
+        {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} readOnly={!pwEditable} onFocus={() => setPwEditable(true)} /><small>{mode !== "login" ? "Use at least 10 characters." : ""}</small></label>}
         {(mode === "verify" || mode === "reset") && <label><span>6-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>Terms of Service</button> and acknowledge the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button>.</span></div>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Marketplace Terms of Use" type="checkbox" checked={acceptedMarketplaceTerms} onChange={(event) => setAcceptedMarketplaceTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms of Use</button>.</span></div>}
         {devCode && <div className="dev-code" role="status"><strong>Testing code</strong><code>{devCode}</code><small>No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.</small></div>}
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
+        {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>Verify my email instead</button>}
         <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
       <div className="auth-links">
         {mode === "login" && <button type="button" onClick={() => move("forgot")}>Forgot password?</button>}
+        {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>Verify email / resend code</button>}
         {mode === "login" && <button type="button" onClick={() => move("signup")}>Create a company account</button>}
         {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>Already have an account? Sign in</button>}
         {(mode === "forgot" || mode === "reset" || mode === "verify") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
@@ -2187,7 +2232,7 @@ function CrewkatApplication() {
     <ToolsNavigationContext.Provider
       value={screen.name === "tools" ? null : () => setScreen({ name: "tools" })}
     >
-    <div className="app-shell" ref={appShellRef}>
+    <div className={`app-shell${screen.name !== "legal" ? " has-bottom-nav" : ""}`} ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
         <div className="announcement-banner" role="status">
@@ -2640,6 +2685,17 @@ function AlertsView({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
 // sort-by, and location buttons — the same floating-window language as the
 // other sheets in the app, in a compact centered card.
 // ---------------------------------------------------------------------------
+// Shared hook: close any open overlay with Escape (desktop keyboards and
+// remote-control back keys that map to Escape). Does nothing while closed.
+function useEscapeToClose(open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, close]);
+}
+
 function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: string; onClose: () => void; children: (close: () => void) => ReactNode }) {
   const [closing, setClosing] = useState(false);
   const close = () => {
@@ -3184,6 +3240,8 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const [savedIds, setSavedIds] = useState<number[]>(savedMarketplaceIds);
   const [promotionOpen, setPromotionOpen] = useState(false);
   const [promoteListingId, setPromoteListingId] = useState<number | null>(null);
+  useEscapeToClose(promotionOpen, () => setPromotionOpen(false));
+  useEscapeToClose(mapPreviewOpen, () => setMapPreviewOpen(false));
   // Build 4: Stripe bump success return (?bump=success) → celebration banner.
   const [bumpJustPaid, setBumpJustPaid] = useState(false);
   useEffect(() => {
@@ -3200,6 +3258,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     }
   }, []);
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceListing | null>(null);
+  useEscapeToClose(deleteTarget !== null, () => setDeleteTarget(null));
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const pullGestureRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
@@ -3519,6 +3578,10 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
   const [sentBooking, setSentBooking] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  useEscapeToClose(deleteOpen, () => setDeleteOpen(false));
+  useEscapeToClose(reportOpen, () => setReportOpen(false));
+  useEscapeToClose(messageOpen, () => setMessageOpen(false));
+  useEscapeToClose(bookingOpen, () => setBookingOpen(false));
   const [reportConfirm, setReportConfirm] = useState(false);
   const [reportReason, setReportReason] = useState<"spam" | "explicit" | "illegal" | "scam" | "misleading" | "other">("spam");
   const [reportDetails, setReportDetails] = useState("");
@@ -3586,16 +3649,21 @@ function pinnedScreenTarget(pin: { screen: string; tab: string | null }): Screen
   return { name: pin.screen, ...(pin.tab ? { tab: pin.tab } : {}) } as Screen;
 }
 
-function ToolStatus({ lang, comingSoon }: { lang: Lang; comingSoon?: string }) {
+function ToolStatus({ lang, comingSoon, pro }: { lang: Lang; comingSoon?: string; pro?: boolean }) {
+  const state = comingSoon ? "coming" : pro ? "pro" : "ready";
   return (
-    <span className={`tool-status${comingSoon ? " coming" : " ready"}`}>
+    <span className={`tool-status ${state}`}>
       {comingSoon
         ? lang === "es"
           ? "Próximamente"
           : "Coming soon"
-        : lang === "es"
-          ? "Funciona ahora"
-          : "Works now"}
+        : pro
+          ? lang === "es"
+            ? "Herramienta Premium"
+            : "Premium tool"
+          : lang === "es"
+            ? "Funciona ahora"
+            : "Works now"}
     </span>
   );
 }
@@ -3609,6 +3677,7 @@ function ComingSoonSheet({
   tool: ToolTile;
   onClose: () => void;
 }) {
+  useEscapeToClose(true, onClose);
   return (
     <div className="sheet-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -3619,7 +3688,7 @@ function ComingSoonSheet({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="sheet-handle" />
-        <ToolStatus lang={lang} comingSoon={tool.comingSoon} />
+        <ToolStatus lang={lang} comingSoon={tool.comingSoon} pro={tool.pro} />
         <h2 id="tool-coming-title">{tool.title}</h2>
         <p>{tool.comingSoon}</p>
         <button className="primary-button" type="button" onClick={onClose}>
@@ -3631,6 +3700,7 @@ function ComingSoonSheet({
 }
 
 function UpgradeGateSheet({ lang, tool, onClose, onUpgrade }: { lang: Lang; tool: ToolTile; onClose: () => void; onUpgrade: () => void }) {
+  useEscapeToClose(true, onClose);
   return <div className="client-sheet-backdrop" role="presentation" onClick={onClose}>
     <section className="client-sheet pro-gate-sheet" role="dialog" aria-modal="true" aria-labelledby="pro-gate-title" onClick={(event) => event.stopPropagation()}>
       <div className="sheet-handle" />
@@ -3659,7 +3729,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
   const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
   const estimating: ToolTile[] = lang === "es" ? [
     { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Guía de materiales", description: "Consulta medidas y referencias comunes", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
+    { title: "Precios de materiales", description: "Guarda nombres, unidades y precios de materiales", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
     { title: "Ángulos", description: "Calcula ángulos y pendientes", screen: { name: "toolbox", tab: "angle" }, icon: toolIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
     { title: "Convertidor de unidades", description: "Convierte medidas de obra", screen: { name: "toolbox", tab: "convert" }, icon: toolIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
     { title: "Medidas", description: "Suma áreas y estima pintura", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
@@ -3681,7 +3751,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Lista de pendientes", description: "Pendientes por trabajo con estados", screen: { name: "toolbox", tab: "punchlist" }, icon: toolIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
   ] : [
     { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Material guide", description: "Check common sizes and references", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
+    { title: "Material prices", description: "Save your material names, units, and prices", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
     { title: "Angles", description: "Calculate angles and slopes", screen: { name: "toolbox", tab: "angle" }, icon: toolIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
     { title: "Unit converter", description: "Convert job-site measurements", screen: { name: "toolbox", tab: "convert" }, icon: toolIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
     { title: "Measurements", description: "Add areas and estimate paint", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
@@ -3756,7 +3826,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
           return (
             <div key={toolId ?? tile.title} className="tool-row">
               <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
-                {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span><span className="tool-row-end">{!isPremium && (tile.pro || isProToolScreen(tile.screen)) && <b className="pro-row-badge">PRO</b>}{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
+                {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro={!isPremium && (tile.pro || isProToolScreen(tile.screen))} /></span><span className="tool-row-end">{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
               </button>
               {toolId && (
                 <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
@@ -3893,7 +3963,7 @@ function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: (
       <div className="pro-directory">
         {tiles.map((tile) => (
           <button key={tile.title} type="button" onClick={() => openTool(tile)}>
-            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
+            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
           </button>
         ))}
       </div>
@@ -4277,6 +4347,7 @@ function JobDetail({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
+  const estTerms = estimateTerms(lang, settings);
   const [stage, setStage] = useState<Stage>("before");
   const [editing, setEditing] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
@@ -4284,6 +4355,7 @@ function JobDetail({
   const [socialNoticeError, setSocialNoticeError] = useState(false);
   const [activeJobSheet, setActiveJobSheet] = useState<"client" | "dates" | "invoices" | "contracts" | "payment" | "deposit" | "address" | null>(null);
   const [jobSheetClosing, setJobSheetClosing] = useState(false);
+  useEscapeToClose(activeJobSheet !== null, () => closeJobSheet(true));
   const [linkTab, setLinkTab] = useState<"new" | "existing">("new");
   const [clientSearch, setClientSearch] = useState("");
   const [detailDraft, setDetailDraft] = useState({ notes: "", jobDate: "", appointmentAt: "", depositAmount: "", paymentNotes: "" });
@@ -4350,7 +4422,7 @@ function JobDetail({
   const linkDocument = useMutation({ mutationFn: (documentId: number) => api.linkDocumentToJob({ documentId, jobId }), onSuccess: refreshJob });
   // Build 3: guided Job → Estimate → Invoice → Payment chain.
   const convertFlowQuote = useMutation({
-    mutationFn: (quoteId: number) => api.convertQuoteToInvoice({ quoteId }),
+    mutationFn: (quoteId: number) => api.convertQuoteToInvoice({ quoteId, today: localToday() }),
     onSuccess: async (r) => {
       buzz(20);
       await client.invalidateQueries({ queryKey: ["quotes"] });
@@ -4363,8 +4435,8 @@ function JobDetail({
   const flowSteps = job ? [
     { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "current" as FlowStepState },
     flowQuote
-      ? { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: flowQuote.id }) }
-      : { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "current" as FlowStepState, onTap: () => setScreen({ name: "quoteNew", jobId }) },
+      ? { key: "estimate", label: capFirst(estTerms.singular), state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: flowQuote.id }) }
+      : { key: "estimate", label: capFirst(estTerms.singular), state: "current" as FlowStepState, onTap: () => setScreen({ name: "quoteNew", jobId }) },
     flowInvoice
       ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "done" as FlowStepState, onTap: () => setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }) }
       : flowQuote
@@ -6201,6 +6273,7 @@ function PAQueueTab({ lang }: { lang: Lang }) {
   const query = useQuery({ queryKey: ["pa-queue"], queryFn: () => api.adminModerationQueue({}) });
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [confirm, setConfirm] = useState<{ id: number; title: string } | null>(null);
+  useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const decide = useMutation({
     mutationFn: (args: { listingId: number; decision: "approve" | "remove"; note: string }) => api.adminListingDecision(args),
@@ -6249,6 +6322,7 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   useEffect(() => { const timer = window.setTimeout(() => { setSearch(searchInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [searchInput]);
   const query = useQuery({ queryKey: ["pa-users", search, page], queryFn: () => api.adminUsersList({ search, page, pageSize: 20 }) });
   const [confirm, setConfirm] = useState<{ id: number; name: string; email: string; suspend: boolean } | null>(null);
+  useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const toggle = useMutation({
     mutationFn: (args: { id: number; suspend: boolean }) => args.suspend ? api.adminUserSuspend({ userId: args.id }) : api.adminUserUnsuspend({ userId: args.id }),
@@ -6288,6 +6362,7 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-user-detail", userId], queryFn: () => api.adminUserDetail({ userId }) });
   const [confirm, setConfirm] = useState<null | { kind: "suspend" } | { kind: "revokeSessions" } | { kind: "tier"; to: "free" | "premium" }>(null);
+  useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const runAction = useMutation({
     mutationFn: async (kind: NonNullable<typeof confirm>) => {
@@ -6418,6 +6493,7 @@ function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
   const [error, setError] = useState("");
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<{ chargeId: string; amountCents?: number; label: string } | null>(null);
+  useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [done, setDone] = useState("");
   const lookup = async () => {
     setBusy(true); setError(""); setDone(""); setResult(null);
@@ -6562,6 +6638,7 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("open");
   const [opened, setOpened] = useState<number | null>(null);
+  useEscapeToClose(opened !== null, () => setOpened(null));
   const [newUser, setNewUser] = useState({
     name: "",
     role: "crew" as "owner" | "crew",
@@ -7594,7 +7671,7 @@ async function buildInvoicePdf(
 }
 function QuotesScreen({
   lang,
-  settings: _settings,
+  settings,
   onBack,
   setScreen,
 }: {
@@ -7605,19 +7682,20 @@ function QuotesScreen({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
+  const estTerms = estimateTerms(lang, settings);
   const query = useQuery({
     queryKey: ["quotes"],
     queryFn: () => api.listQuotes({}),
   });
   const convert = useMutation({
-    mutationFn: (id: number) => api.convertQuoteToJob({ id }),
+    mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["quotes"] });
       client.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
   const invoice = useMutation({
-    mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id }),
+    mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id, today: localToday() }),
     onSuccess: (r) => {
       client.invalidateQueries({ queryKey: ["invoices"] });
       setScreen({ name: "invoicePreview", invoiceId: r.invoiceId });
@@ -7632,7 +7710,7 @@ function QuotesScreen({
           onClick={() => setScreen({ name: "quoteNew" })}
         >
           <PlusIcon />
-          {t.newQuote}
+          {estTerms.newDoc}
         </button>
       </div>
       <section className="quote-list">
@@ -7673,7 +7751,7 @@ function QuotesScreen({
           </article>
         ))}
         {query.data?.quotes.length === 0 && !query.isLoading && (
-          <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? "Crea tu primer estimado y conviértelo en factura con un toque." : "Create your first estimate and convert it to an invoice in one tap."} actionLabel={t.newQuote} onAction={() => setScreen({ name: "quoteNew" })} />
+          <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />
         )}
       </section>
     </main>
@@ -7694,6 +7772,7 @@ function QuoteBuilder({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
+  const estTerms = estimateTerms(lang, settings);
   const growth = useQuery({
     queryKey: ["growth-toolkit"],
     queryFn: () => api.getGrowthToolkit({}),
@@ -8088,7 +8167,7 @@ function QuoteBuilder({
           className="primary-button sticky-submit"
           disabled={save.isPending}
         >
-          {save.isPending ? t.saving : t.saveQuote}
+          {save.isPending ? t.saving : estTerms.saveDoc}
         </button>
       </form>
       {previewOpen && <DocumentDesignOverlay lang={lang} kind="quote" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
@@ -8240,8 +8319,10 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
   const [tab, setTab] = useState<"template" | "logo" | "color" | "options" | "info">("template");
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
+  useEscapeToClose(fullScreen, () => setFullScreen(false));
   const [sheet, setSheet] = useState<CustomizeSheetKind | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
+  useEscapeToClose(sheet !== null, () => { void closeSheet(); });
   const updateCustom = <K extends keyof DocumentCustomize>(key: K, value: DocumentCustomize[K]) => setCustom((current) => ({ ...current, [key]: value }));
   const previewSettings = localSettings ? { ...localSettings, logoUrl: logoPreview || localSettings.logoUrl } : settings;
   const preview: FinancialDocument = { ...document, ...design, customizeJson: JSON.stringify(custom) };
@@ -8323,8 +8404,9 @@ function buildPaymentReceipt(invoice: Invoice, settings: Settings | null, lang: 
 }
 
 type EditableFinancial = Pick<FinancialDocument, "lineItems" | "discountType" | "discountValue" | "taxType" | "taxValue" | "footnote">;
-function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: { lang: Lang; kind: "invoice" | "quote"; document: FinancialDocument & { id: number }; onCancel: () => void; onSaved: () => void; onDelete: () => void }) {
+function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, settings }: { lang: Lang; kind: "invoice" | "quote"; document: FinancialDocument & { id: number }; onCancel: () => void; onSaved: () => void; onDelete: () => void; settings?: Settings | null }) {
   const t = copy[lang];
+  const estTerms = estimateTerms(lang, settings ?? null);
   const [form, setForm] = useState<EditableFinancial>({ lineItems: document.lineItems.map((item) => ({...item})), discountType: document.discountType, discountValue: document.discountValue, taxType: document.taxType, taxValue: document.taxValue, footnote: document.footnote });
   const [showDiscount, setShowDiscount] = useState(money(document.discountValue) > 0);
   const [showTax, setShowTax] = useState(money(document.taxValue) > 0);
@@ -8339,11 +8421,11 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: 
   const move = (index: number, direction: -1 | 1) => { const next = [...form.lineItems]; const target = index + direction; if (target < 0 || target >= next.length) return; const current = next[index]; const other = next[target]; if (!current || !other) return; next[index] = other; next[target] = current; setForm({...form,lineItems:next}); };
   const save = async () => { const items=form.lineItems.filter((item)=>item.description.trim()).map((item)=>({description:item.description,amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const})); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   return <div className="document-overlay editor-overlay" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
-    <header className="document-overlay-head"><button onClick={onCancel}><BackIcon />{t.close}</button><strong>{kind === "invoice" ? t.invoices : (lang === "es" ? "Cotización" : "Estimate")}</strong><button className="small-button" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
+    <header className="document-overlay-head"><button onClick={onCancel}><BackIcon />{t.close}</button><strong>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</strong><button className="small-button" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
     <div className="financial-editor">
       <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className="editor-line-item" key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><input aria-label={`${t.item} ${index+1}`} value={item.description} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><small>1 × {usd(money(item.amount))}</small></div><input className="amount-input" aria-label={`${t.amount} ${index+1}`} inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
-      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:new Date().toISOString().slice(0,10),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
+      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
@@ -8351,7 +8433,9 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: 
 }
 
 function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice"|"quote";id:number;onClose:()=>void;onSaved:()=>void}){
- const [name,setName]=useState("");const [signature,setSignature]=useState("");const [saving,setSaving]=useState(false);return <div className="sheet-backdrop" role="presentation"><section className="signature-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Firma del cliente":"Client signature"}><div className="sheet-handle"/><div className="section-title-row"><h2>{lang==="es"?"Firma del cliente":"Client signature"}</h2><button onClick={onClose}>{copy[lang].close}</button></div><label><span>{lang==="es"?"Nombre del firmante":"Signer name"}</span><input value={name} onChange={(e)=>setName(e.target.value)}/></label><SignaturePad label={copy[lang].signature} clearLabel={copy[lang].clear} onChange={setSignature}/><button className="primary-button" disabled={!name.trim()||!signature||saving} onClick={async()=>{setSaving(true);try{await api.saveFinancialSignature({kind,id,signerName:name,signatureDataBase64:signature});onSaved();}finally{setSaving(false);}}}>{saving?copy[lang].saving:(lang==="es"?"Guardar firma":"Save signature")}</button></section></div>;
+ const [name,setName]=useState("");const [signature,setSignature]=useState("");const [saving,setSaving]=useState(false);
+ useEscapeToClose(true,()=>{if(!saving)onClose();});
+ return <div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget&&!saving)onClose();}}><section className="signature-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Firma del cliente":"Client signature"}><div className="sheet-handle"/><div className="section-title-row"><h2>{lang==="es"?"Firma del cliente":"Client signature"}</h2><button onClick={onClose}>{copy[lang].close}</button></div><label><span>{lang==="es"?"Nombre del firmante":"Signer name"}</span><input value={name} onChange={(e)=>setName(e.target.value)}/></label><SignaturePad label={copy[lang].signature} clearLabel={copy[lang].clear} onChange={setSignature}/><button className="primary-button" disabled={!name.trim()||!signature||saving} onClick={async()=>{setSaving(true);try{await api.saveFinancialSignature({kind,id,signerName:name,signatureDataBase64:signature});onSaved();}finally{setSaving(false);}}}>{saving?copy[lang].saving:(lang==="es"?"Guardar firma":"Save signature")}</button></section></div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -8423,6 +8507,7 @@ function QuotePreview({
   onOpenInvoice: (id: number) => void;
 }) {
   const t = copy[lang], qc = useQueryClient();
+  const estTerms = estimateTerms(lang, settings);
   const query = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const quote = query.data?.quotes.find((q) => q.id === quoteId);
   // Build 3: guided flow needs the converted invoice's payment state.
@@ -8433,15 +8518,17 @@ function QuotePreview({
   const [designOpen, setDesignOpen] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  useEscapeToClose(fullScreen, () => setFullScreen(false));
+  useEscapeToClose(moreOpen, () => setMoreOpen(false));
   const [editing, setEditing] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => { if (quote) void buildQuotePdf(quote, settings, lang).then(setBlob); }, [quote, settings, lang]);
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);}});
-  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);}});
+  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);}});
   const [confirmConvert, setConfirmConvert] = useState(false);
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
-  if (!quote) return <main className="page"><PageHeader lang={lang} title={lang === "es" ? "Cotización" : "Estimate"} onBack={onBack}/><div className="loading-block"/></main>;
+  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/><div className="loading-block"/></main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const status = quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Abierta" : "Opened") : (lang === "es" ? "Borrador" : "Draft");
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
@@ -8451,7 +8538,7 @@ function QuotePreview({
       quote.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: quote.jobId as number }) }
         : { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "todo" as FlowStepState },
-      { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "current" as FlowStepState },
+      { key: "estimate", label: capFirst(estTerms.singular), state: "current" as FlowStepState },
       quote.convertedToInvoiceId
         ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "done" as FlowStepState, onTap: () => onOpenInvoice(quote.convertedToInvoiceId as number) }
         : { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState, onTap: () => { setConfirmConvert(true); setMoreOpen(true); } },
@@ -8461,7 +8548,7 @@ function QuotePreview({
     ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={quote} settings={settings} lang={lang}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${quote.accepted?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
-    <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate");}}><ShareIcon/>{lang==="es"?"Enviar cotización":"Send estimate"}</button>
+    <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,capFirst(estTerms.singular));}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     {/* Build 4: auto-generated checkable materials list from the estimate's
         line items. Check state persists on-device per estimate. */}
@@ -8469,10 +8556,10 @@ function QuotePreview({
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
     <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{buzz(12);await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});if(!quote.accepted)celebrate(lang==="es"?"Presupuesto aceptado":"Estimate accepted");await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={quote} settings={settings} lang={lang}/></div></div>}
-    {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
+    {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="quote" id={quote.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","quote",quoteId]});setSignatureOpen(false);}}/>}
-    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de cotización":"Estimate options"}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?"Convertir en factura":"Convert estimate to invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate")}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar cotización":"Duplicate estimate"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar cotización":"Delete estimate"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?`Opciones de ${estTerms.singular}`:`${capFirst(estTerms.singular)} options`}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?`Convertir ${estTerms.singular} en factura`:`Convert ${estTerms.singular} to invoice`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,capFirst(estTerms.singular))}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?`Duplicar ${estTerms.singular}`:`Duplicate ${estTerms.singular}`}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?`Eliminar ${estTerms.singular}`:`Delete ${estTerms.singular}`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
   </main>;
 }
 
@@ -8506,9 +8593,9 @@ function InvoicesScreen({
   });
   const sortedInvoices = sortDocuments(query.data?.invoices ?? []);
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
-  const estimateWord = settings?.convertToQuote ? (lang === "es" ? "Cotizaciones" : "Quotes") : (lang === "es" ? "Presupuestos" : "Estimates");
-  const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
-  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); } });
+  const estTerms = estimateTerms(lang, settings); const estimateWord = capFirst(estTerms.plural);
+  const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
+  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id, today: localToday() }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); } });
   const status = useMutation({
     mutationFn: ({ id, status }: { id: number; status: InvoiceStatus }) =>
       api.updateInvoiceStatus({ id, status }),
@@ -8627,7 +8714,7 @@ function InvoicesScreen({
           </article>
           </SwipeRow>
         ))}
-        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? "Crea tu primer estimado y conviértelo en factura con un toque." : "Create your first estimate and convert it to an invoice in one tap."} actionLabel={lang === "es" ? "CREAR ESTIMADO" : "CREATE ESTIMATE"} onAction={() => setScreen({ name: "quoteNew" })} />}
+        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
   );
@@ -8649,6 +8736,7 @@ function InvoiceBuilder({
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const [activeSheet, setActiveSheet] = useState<"details" | "discount" | "tax" | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
+  useEscapeToClose(activeSheet !== null, () => closeSheet());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState("");
   const [discountEnabled, setDiscountEnabled] = useState(false);
@@ -8731,6 +8819,119 @@ function InvoiceBuilder({
     {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }}/>} 
   </main>;
 }
+// Bug-fix: payment sheet — recording a payment now collects amount, date,
+// method and note, always shows totals + history (even in Simple Mode), and
+// keeps an explicit "mark paid in full" action instead of a silent toggle.
+function PaymentSheet({
+  lang,
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  lang: Lang;
+  invoice: {
+    id: number;
+    totalWithLateFee: string;
+    paidToDate: string | number | null;
+    balanceRemaining: string | number | null;
+    status: string;
+    payments: Array<{ id: number; amount: string; paymentDate: string; method: string; note: string }>;
+  };
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const t = copy[lang];
+  useEscapeToClose(true, onClose);
+  const total = money(invoice.totalWithLateFee);
+  const paid = Number(invoice.paidToDate ?? 0);
+  const balance = Math.max(0, total - paid);
+  const [amount, setAmount] = useState(balance > 0 ? balance.toFixed(2) : "");
+  const [paymentDate, setPaymentDate] = useState(localToday());
+  const [method, setMethod] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const methodChips = lang === "es" ? ["Efectivo", "Tarjeta", "Cheque", "Transferencia"] : ["Cash", "Card", "Check", "Transfer"];
+  const record = async (full: boolean) => {
+    buzz(15);
+    setBusy(true);
+    setError("");
+    try {
+      if (full) {
+        await api.toggleInvoicePaid({ id: invoice.id, paid: true, today: localToday() });
+      } else {
+        const amt = money(amount);
+        if (amt <= 0) {
+          setError(lang === "es" ? "Ingresa un monto mayor a cero." : "Enter an amount greater than zero.");
+          setBusy(false);
+          return;
+        }
+        await api.addPayment({ invoiceId: invoice.id, amount: amt.toFixed(2), paymentDate: paymentDate || localToday(), method: method.trim(), note: note.trim() });
+        celebrate(lang === "es" ? "Pago registrado" : "Payment recorded");
+      }
+      await onSaved();
+      onClose();
+    } catch (caught) {
+      setError(friendlyActionMessage(caught, lang));
+      setBusy(false);
+    }
+  };
+  const unmark = async () => {
+    buzz(15);
+    setBusy(true);
+    try {
+      await api.toggleInvoicePaid({ id: invoice.id, paid: false, today: localToday() });
+      await onSaved();
+      onClose();
+    } catch (caught) {
+      setError(friendlyActionMessage(caught, lang));
+      setBusy(false);
+    }
+  };
+  const visiblePayments = invoice.payments.filter((p) => p.note !== "__paid_toggle__");
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="more-sheet payment-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Registrar pago" : "Record payment"}>
+        <div className="sheet-handle" />
+        <header className="sheet-header-row"><h2>{lang === "es" ? "Registrar pago" : "Record payment"}</h2><button type="button" className="icon-button" onClick={onClose} aria-label={t.close}>×</button></header>
+        <div className="payment-summary">
+          <div><span>{t.total}</span><strong>{usd(total)}</strong></div>
+          <div><span>{t.paidToDate}</span><strong>{usd(paid)}</strong></div>
+          <div><span>{t.balanceRemaining}</span><strong>{usd(balance)}</strong></div>
+        </div>
+        {visiblePayments.length > 0 && (
+          <div className="payment-history">
+            <h3>{lang === "es" ? "Historial de pagos" : "Payment history"}</h3>
+            {visiblePayments.map((p) => (
+              <div className="payment-row" key={p.id}>
+                <span><strong>{usd(money(p.amount))}</strong><small>{formatDate(p.paymentDate, lang)}{p.method ? ` · ${p.method}` : ""}{p.note ? ` · ${p.note}` : ""}</small></span>
+              </div>
+            ))}
+          </div>
+        )}
+        {invoice.status !== "paid" ? (
+          <div className="compact-form payment-form">
+            <label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+            <label><span>{lang === "es" ? "Fecha de pago" : "Payment date"}</span><input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></label>
+            <div className="method-chips" role="group" aria-label={t.method ?? (lang === "es" ? "Método" : "Method")}>
+              {methodChips.map((m) => <button key={m} type="button" className={method === m ? "active" : ""} onClick={() => setMethod(method === m ? "" : m)}>{m}</button>)}
+            </div>
+            <label><span>{t.notes}</span><input value={note} onChange={(e) => setNote(e.target.value)} placeholder={lang === "es" ? "Opcional" : "Optional"} /></label>
+            {error && <p className="status error">{error}</p>}
+            <button type="button" className="primary-button" disabled={busy} onClick={() => void record(false)}>{t.recordPayment}</button>
+            {balance > 0 && <button type="button" className="secondary-button" disabled={busy} onClick={() => void record(true)}>{lang === "es" ? `Marcar pagada en su totalidad (${usd(balance)})` : `Mark paid in full (${usd(balance)})`}</button>}
+          </div>
+        ) : (
+          <div className="compact-form payment-form">
+            {error && <p className="status error">{error}</p>}
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => void unmark()}>{lang === "es" ? "Marcar como no pagada" : "Mark as unpaid"}</button>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function InvoicePreview({
   lang,
   invoiceId,
@@ -8747,6 +8948,7 @@ function InvoicePreview({
   onOpenInvoice: (id: number) => void;
 }) {
   const t=copy[lang],qc=useQueryClient();
+  const estTerms=estimateTerms(lang,settings);
   const query=useQuery({queryKey:["invoices"],queryFn:()=>api.listInvoices({})});
   const invoice=query.data?.invoices.find((row)=>row.id===invoiceId);
   const signature=useQuery({queryKey:["financial-signature","invoice",invoiceId],queryFn:()=>api.getFinancialSignature({kind:"invoice",id:invoiceId})});
@@ -8754,9 +8956,13 @@ function InvoicePreview({
   const [designOpen,setDesignOpen]=useState(false);
   const [fullScreen,setFullScreen]=useState(false);
   const [moreOpen,setMoreOpen]=useState(false);
+  useEscapeToClose(fullScreen,()=>setFullScreen(false));
+  useEscapeToClose(moreOpen,()=>setMoreOpen(false));
   const [editing,setEditing]=useState(false);
   const [signatureOpen,setSignatureOpen]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [paymentSheetOpen,setPaymentSheetOpen]=useState(false);
+  const openPaymentSheet=()=>{buzz(15);setPaymentSheetOpen(true);};
   const [frequency,setFrequency]=useState<"none"|"daily"|"weekly"|"monthly"|"quarterly">("none");
   const [nextDue,setNextDue]=useState("");
   const [recurringEnd,setRecurringEnd]=useState("");
@@ -8766,14 +8972,13 @@ function InvoicePreview({
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
   const schedulesQuery=useQuery({queryKey:["recurring-schedules"],queryFn:()=>api.listRecurringSchedules({})});
   const [scheduleFrequency,setScheduleFrequency]=useState<"weekly"|"monthly">("monthly");
-  const startSchedule=useMutation({mutationFn:()=>api.createRecurringSchedule({invoiceId,frequency:scheduleFrequency}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
+  const startSchedule=useMutation({mutationFn:()=>api.createRecurringSchedule({invoiceId,frequency:scheduleFrequency,today:localToday()}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const cancelSchedule=useMutation({mutationFn:(id:number)=>api.cancelRecurringSchedule({id}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const invoiceSchedules=(schedulesQuery.data?.schedules??[]).filter((s)=>s.invoiceId===invoiceId&&s.active);
   if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/><div className="loading-block"/></main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
-  // Build 3: guided flow — payment is the final step, tappable to record it.
-  const togglePaid=async()=>{buzz(15);await api.toggleInvoicePaid({id:invoice.id,paid:invoice.status!=="paid"});await refresh();};
+  // Payment actions now go through the payment sheet (details + history).
   const sendInvoice=async()=>{buzz(8);if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);};
   return <main className="page financial-detail-page">
     <PageHeader lang={lang} title={`INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
@@ -8782,25 +8987,31 @@ function InvoicePreview({
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: invoice.jobId as number }) }
         : { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "todo" as FlowStepState },
       invoice.quoteId
-        ? { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: invoice.quoteId as number }) }
-        : { key: "estimate", label: lang === "es" ? "Estimado" : "Estimate", state: "todo" as FlowStepState },
+        ? { key: "estimate", label: capFirst(estTerms.singular), state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: invoice.quoteId as number }) }
+        : { key: "estimate", label: capFirst(estTerms.singular), state: "todo" as FlowStepState },
       { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "current" as FlowStepState },
       invoice.status === "paid"
-        ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
-        : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState, onTap: () => void togglePaid() },
+        ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState, onTap: openPaymentSheet }
+        : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState, onTap: openPaymentSheet },
     ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(invoice.totalWithLateFee))}</strong></div><span className={`status-chip ${invoice.status}`}>{statusLabel}</span><ViewedBadge lang={lang} kind="invoice" id={invoice.id} /><div className="record-links"><button onClick={() => invoice.clientId ? setScreen({ name: "client", clientId: invoice.clientId }) : setScreen({ name: "clients" })}>{invoice.clientName}</button>{invoice.jobId && <button onClick={() => setScreen({ name: "detail", jobId: invoice.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={sendInvoice}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
-    {settings?.simpleMode !== true && (<details className="action-details document-details"><summary>{t.partialPayments} · {t.recurring}</summary><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>{invoice.payments.map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)} · {payment.method}</small></span></div>)}<div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></details>)}
+    <section className="payment-section" aria-label={t.partialPayments}>
+      <div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>
+      {invoice.payments.filter((payment)=>payment.note!=="__paid_toggle__").map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)}{payment.method?` · ${payment.method}`:""}</small></span></div>)}
+      <button className="secondary-button payment-record-button" onClick={openPaymentSheet}>{t.recordPayment}</button>
+    </section>
+    <details className="action-details document-details"><summary>{t.recurring}</summary><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></details>
     <details className="action-details document-details"><summary>{lang==="es"?"Factura recurrente automática":"Automatic recurring invoice"}</summary><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></details>
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={togglePaid}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/></div></div>}
-    {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
+    {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="invoice" id={invoice.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","invoice",invoiceId]});setSignatureOpen(false);}}/>}
     {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{const receipt=buildPaymentReceipt(invoice,settings,lang);void nativeShare(receipt,`${safeName(invoice.clientName)}-receipt-${invoice.id}.pdf`,lang==="es"?"Recibo de pago":"Payment receipt");}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+{paymentSheetOpen&&invoice&&<PaymentSheet lang={lang} invoice={invoice} onClose={()=>setPaymentSheetOpen(false)} onSaved={async()=>{await refresh();}}/>}
   </main>;
 }
 
@@ -8939,6 +9150,7 @@ function ClientsScreen({
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [activeSheet, setActiveSheet] = useState<"sort" | "filter" | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
+  useEscapeToClose(activeSheet !== null, () => closeSheet());
   const query = useQuery({ queryKey: ["clients", ""], queryFn: () => api.listClients({ search: "" }) });
   const allClients = query.data?.clients ?? [];
   const term = search.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
@@ -9465,6 +9677,7 @@ function DocumentSigner({
     filename: string;
     title: string;
   } | null>(null);
+  useEscapeToClose(preview !== null, () => setPreview(null));
   const save = useMutation({
     mutationFn: async () => {
       let originalDataBase64 = "";
@@ -11891,6 +12104,13 @@ function TodayScreen({
   const notificationsHomeQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
   const pinnedTools = pinsQuery.data?.tools ?? [];
+  // Home must never sit on an endless spinner: if the automation query fails,
+  // render the full Home shell with empty activity data plus a retry banner.
+  type AutomationCenterData = NonNullable<typeof query.data>;
+  const EMPTY_AUTOMATION_CENTER: AutomationCenterData = {
+    appointments: [], quoteChase: [], paymentEscalations: [], materials: [],
+    quoteExpiry: [], reviews: [], reengagement: [], reminders: [], crew: [],
+  };
   const unpinMutation = useMutation({
     mutationFn: (toolId: string) => api.unpinTool({ toolId }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
@@ -11900,7 +12120,8 @@ function TodayScreen({
     if (auth?.user.tier !== "premium" && isProToolScreen(target)) setScreen({ name: "tools" });
     else setScreen(target);
   };
-  const d = query.data;
+  const d = query.data ?? EMPTY_AUTOMATION_CENTER;
+  const homeFailed = query.isError && !query.data;
   const fieldIntel = useQuery({
     queryKey: ["field-intelligence-today", today],
     queryFn: () => api.getFieldIntelligence({ today, periodStart: today, periodEnd: today }),
@@ -11912,6 +12133,7 @@ function TodayScreen({
     enabled: settings !== null && settings.simpleMode !== true,
   }).data;
   const [lostQuote, setLostQuote] = useState<number | null>(null);
+  useEscapeToClose(lostQuote !== null, () => setLostQuote(null));
   const [lossReason, setLossReason] = useState<
     "price" | "timing" | "competitor" | "no_response" | "other"
   >("price");
@@ -12043,7 +12265,7 @@ function TodayScreen({
       : status === "sent"
         ? (lang === "es" ? "Enviada" : "Sent")
         : (lang === "es" ? "Borrador" : "Draft");
-  if (!d)
+  if (!query.data && !homeFailed)
     return (
       <main className="page today-page" aria-busy="true">
         <header className="home-header">
@@ -12070,6 +12292,15 @@ function TodayScreen({
           <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
         </div>
       </header>
+      {homeFailed && (
+        <div className="home-error-banner" role="alert">
+          <div>
+            <strong>{lang === "es" ? "No se pudo cargar la actividad" : "Couldn't load activity"}</strong>
+            <p>{lang === "es" ? "Tus datos están a salvo. Revisa tu conexión e inténtalo de nuevo." : "Your data is safe. Check your connection and try again."}</p>
+          </div>
+          <button type="button" className="secondary-button" onClick={() => { buzz(8); void query.refetch(); }}>{lang === "es" ? "Reintentar" : "Retry"}</button>
+        </div>
+      )}
       <section className="home-summary-card" aria-label={lang === "es" ? "Resumen de trabajos" : "Job summary"}>
         <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
@@ -15047,7 +15278,7 @@ function JobOperationsScreen({
                   ) : (
                     <button
                       onClick={async () => {
-                        const r = await api.invoiceMilestone({ id: m.id });
+                        const r = await api.invoiceMilestone({ id: m.id, today: localToday() });
                         refresh();
                         setScreen({
                           name: "invoicePreview",
@@ -17265,7 +17496,7 @@ const PUBLIC_TOOL_ORDER: ToolboxTab[] = [
 
 const PUBLIC_TOOL_META: Record<ToolboxTab, { en: string; es: string; blurbEn: string; blurbEs: string; icon: string }> = {
   loan: { en: "Loan payment", es: "Pago de préstamo", blurbEn: "Monthly payment, interest & payoff schedule.", blurbEs: "Pago mensual, interés y tabla de pagos.", icon: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
-  materials: { en: "Material guide", es: "Guía de materiales", blurbEn: "Quick reference for common materials.", blurbEs: "Referencia rápida de materiales comunes.", icon: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  materials: { en: "Material prices", es: "Precios de materiales", blurbEn: "Your saved material names, units, and prices.", blurbEs: "Tus nombres, unidades y precios de materiales guardados.", icon: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
   angle: { en: "Angles", es: "Ángulos", blurbEn: "Miter and bevel angle math.", blurbEs: "Cálculos de ángulos de inglete y bisel.", icon: "M4 19h16L4 5zM8 15h5" },
   convert: { en: "Unit converter", es: "Convertidor de unidades", blurbEn: "Feet, meters, inches, and more.", blurbEs: "Pies, metros, pulgadas y más.", icon: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
   area: { en: "Measurements", es: "Medidas", blurbEn: "Area and perimeter for any room.", blurbEs: "Área y perímetro de cualquier cuarto.", icon: "M4 4h16v16H4zM8 4v16M4 10h16" },
@@ -17647,10 +17878,11 @@ function NumInput({
   );
 }
 function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () => void; initialTab?: ToolboxTab }) {
+  useEscapeToClose(true, onBack);
   const tab = initialTab ?? "loan";
   const labels: Record<ToolboxTab, string> = {
     loan: lang === "es" ? "Préstamo" : "Loan payment",
-    materials: lang === "es" ? "Materiales" : "Material guide",
+    materials: lang === "es" ? "Precios de materiales" : "Material prices",
     angle: lang === "es" ? "Ángulos" : "Angles",
     convert: lang === "es" ? "Convertir" : "Unit converter",
     area: lang === "es" ? "Medidas" : "Measurements",
@@ -18330,6 +18562,9 @@ function BoardFeetCalculator({ lang }: { lang: Lang }) {
     [qty, setQty] = useState("1"),
     [rows, setRows] = useState<BoardRow[]>([]);
   const each = (money(t) * money(w) * money(l)) / 12;
+  const entryQty = Math.max(1, Math.round(money(qty)));
+  const entryTotal = each * entryQty;
+  const savedTotal = rows.reduce((s, r) => s + r.bf, 0);
   return (
     <section className="calculator-panel">
       <h2>{lang === "es" ? "Pies tabla" : "Board feet"}</h2>
@@ -18359,6 +18594,10 @@ function BoardFeetCalculator({ lang }: { lang: Lang }) {
       <p className="result-callout">
         {lang === "es" ? "Por pieza" : "Per piece"}:{" "}
         <strong>{each.toFixed(2)} BF</strong>
+      </p>
+      <p className="result-callout live-total">
+        {lang === "es" ? "Esta entrada" : "This entry"} ({entryQty} ×):{" "}
+        <strong>{entryTotal.toFixed(2)} BF</strong>
       </p>
       <button
         className="primary-button"
@@ -18396,8 +18635,8 @@ function BoardFeetCalculator({ lang }: { lang: Lang }) {
         ))}
       </div>
       <p className="result-callout">
-        {lang === "es" ? "Total" : "Total"}:{" "}
-        <strong>{rows.reduce((s, r) => s + r.bf, 0).toFixed(2)} BF</strong>
+        {lang === "es" ? "Total guardado" : "Saved takeoff total"}:{" "}
+        <strong>{savedTotal.toFixed(2)} BF</strong>
       </p>
       <ResultHistory lang={lang} tool="board" value={`${Math.max(1, Math.round(money(qty)))} × ${t} × ${w} × ${l} = ${(each * Math.max(1, Math.round(money(qty)))).toFixed(2)} BF`} />
     </section>

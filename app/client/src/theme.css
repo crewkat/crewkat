@@ -70,6 +70,9 @@ button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 .app-shell { height: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: none; -webkit-overflow-scrolling: touch; touch-action: pan-y; background: var(--bg); overflow-anchor: none; }
 .page { width: min(100%, 920px); min-height: 100%; margin: 0 auto; padding: 0 16px 36px; }
+/* Screens with the fixed bottom nav (and the fixed Settings save bar) need
+   enough bottom clearance that the last row can scroll fully into view. */
+.app-shell.has-bottom-nav .page { padding-bottom: calc(152px + env(safe-area-inset-bottom)); }
 .app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 64px; padding-top: max(6px, env(safe-area-inset-top)); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
 .app-header h1 { margin: 0; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
@@ -531,6 +534,19 @@ fieldset { padding: 0; border: 0; }
 .payment-summary div { min-width:0; display:grid; gap:4px; padding:12px 8px; background:var(--surface); border-radius:9px; }
 .payment-summary span { color:var(--dim); font-size:11px; font-weight:750; }
 .payment-summary strong { overflow:hidden; text-overflow:ellipsis; font-size:15px; }
+.payment-section { margin: 18px 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--card, transparent); }
+.payment-section .payment-summary { margin: 0 0 12px; }
+.payment-section .payment-row { min-height: 0; padding: 10px 2px; }
+.payment-record-button { width: 100%; margin-top: 8px; }
+.payment-sheet .payment-summary { margin: 4px 0 14px; }
+.payment-history { margin: 0 0 14px; }
+.payment-history h3 { margin: 0 0 4px; font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+.payment-form { display: grid; gap: 10px; }
+.method-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.method-chips button { padding: 9px 14px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: inherit; font-size: 13px; font-weight: 600; }
+.method-chips button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.sheet-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.sheet-header-row h2 { margin: 0; font-size: 19px; }
 .action-details { margin:10px 0; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
 .action-details summary { min-height:52px; padding:15px; font-weight:850; cursor:pointer; }
 .action-details .compact-form { border:0; border-top:1px solid var(--border); border-radius:0; }
@@ -822,6 +838,7 @@ fieldset { padding: 0; border: 0; }
 .settings-accordion-trigger:active { background:var(--surface-2); }
 .settings-accordion.open .accordion-chevron { transform:rotate(180deg); }
 .settings-accordion-panel { display:grid; gap:15px; padding:16px 14px 18px; border-top:1px solid var(--border); background:color-mix(in srgb,var(--bg) 34%,var(--surface)); }
+.settings-accordion-panel .privacy-note { overflow:visible; white-space:normal; text-overflow:clip; }
 .settings-accordion-panel > label,.settings-accordion-panel fieldset:not(.support-form) { display:grid; gap:7px; }
 .settings-accordion-panel > label > span,.settings-accordion-panel fieldset > legend { color:var(--dim); font-size:13px; font-weight:800; }
 .settings-accordion-panel input,.settings-accordion-panel textarea,.settings-accordion-panel select { min-height:50px; padding:11px 13px; }
@@ -871,7 +888,7 @@ fieldset { padding: 0; border: 0; }
 @media(prefers-color-scheme:dark){.kind-problem{background:#4b2423;color:#ffb9b3}.kind-feature{background:#193d32;color:#8dd4bd}.kind-support{background:#1d304b;color:#aac7f0}}
 
 /* Launch workflows and job-site toolbox */
-.public-page,.toolbox-page{padding-bottom:calc(32px + env(safe-area-inset-bottom))}.public-hero{padding:28px 20px 22px;border-bottom:1px solid var(--border);background:var(--surface)}.public-hero h1{font-size:clamp(1.75rem,7vw,2.5rem);line-height:1.05;margin:4px 0 8px}.public-hero p,.public-hero span{color:var(--dim)}.portal-section{padding:20px;border-bottom:1px solid var(--border)}.portal-section>h2{margin:0 0 14px}.portal-section>div>h3{font-size:.85rem;color:var(--dim);margin:14px 0 8px}.portal-section figure{margin:0}.portal-section figcaption{font-size:.8rem;margin-top:5px}.honeypot{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}.portal-owner{margin:12px 16px}.toolbox-tabs{margin:0 16px 16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}.toolbox-tabs button{min-width:0;padding:9px 5px;font-size:.78rem;white-space:normal}.calculator-panel{margin:0 16px 24px}.calculator-panel>h2{margin:0 0 6px}.calculator-panel>p{color:var(--dim)}.calculator-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin:16px 0;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.calculator-results>div{background:var(--surface);padding:12px 10px}.calculator-results span,.calculator-results strong{display:block}.calculator-results span{font-size:.75rem;color:var(--dim);min-height:2.2em}.calculator-results strong{font-size:1.08rem;margin-top:5px}.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius)}.table-wrap table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.table-wrap th,.table-wrap td{padding:9px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}.table-wrap th:first-child,.table-wrap td:first-child{text-align:left}.updated-stamp{font-size:.8rem}.material-list{display:grid;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.material-list .tool-record{margin:0;border:0;border-radius:0;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;background:var(--surface)}.material-list .tool-record span,.material-list .tool-record small{display:block}.quick-reference{display:grid;gap:5px;padding:14px;margin-top:16px;background:var(--surface-strong,#e9efec);border-radius:var(--radius)}.quick-reference span{line-height:1.55;color:var(--dim)}.result-callout{padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-variant-numeric:tabular-nums}.converter-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.takeoff-list{display:grid;gap:1px;background:var(--border);margin:14px 0}.takeoff-list article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:10px;background:var(--surface)}.takeoff-list button{padding:6px}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.section-heading h2{margin:0}.section-heading p{color:var(--dim);margin:5px 0 12px}.crew-clock-panel{margin:0 16px 14px}
+.public-page,.toolbox-page{padding-bottom:calc(32px + env(safe-area-inset-bottom))}.public-hero{padding:28px 20px 22px;border-bottom:1px solid var(--border);background:var(--surface)}.public-hero h1{font-size:clamp(1.75rem,7vw,2.5rem);line-height:1.05;margin:4px 0 8px}.public-hero p,.public-hero span{color:var(--dim)}.portal-section{padding:20px;border-bottom:1px solid var(--border)}.portal-section>h2{margin:0 0 14px}.portal-section>div>h3{font-size:.85rem;color:var(--dim);margin:14px 0 8px}.portal-section figure{margin:0}.portal-section figcaption{font-size:.8rem;margin-top:5px}.honeypot{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}.portal-owner{margin:12px 16px}.toolbox-tabs{margin:0 16px 16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}.toolbox-tabs button{min-width:0;padding:9px 5px;font-size:.78rem;white-space:normal}.calculator-panel{margin:0 16px 24px}.calculator-panel>h2{margin:0 0 6px}.calculator-panel>p{color:var(--dim)}.calculator-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin:16px 0;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.calculator-results>div{background:var(--surface);padding:12px 10px}.calculator-results span,.calculator-results strong{display:block}.calculator-results span{font-size:.75rem;color:var(--dim);min-height:2.2em}.calculator-results strong{font-size:1.08rem;margin-top:5px}.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius)}.table-wrap table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}.table-wrap th,.table-wrap td{padding:9px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}.table-wrap th:first-child,.table-wrap td:first-child{text-align:left}.updated-stamp{font-size:.8rem}.material-list{display:grid;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.material-list .tool-record{margin:0;border:0;border-radius:0;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;background:var(--surface)}.material-list .tool-record span,.material-list .tool-record small{display:block}.quick-reference{display:grid;gap:5px;padding:14px;margin-top:16px;background:var(--surface-strong,#e9efec);border-radius:var(--radius)}.quick-reference span{line-height:1.55;color:var(--dim)}.result-callout{padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-variant-numeric:tabular-nums}.result-callout.live-total{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 8%,var(--surface))}.result-callout.live-total strong{color:var(--accent)}.converter-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.takeoff-list{display:grid;gap:1px;background:var(--border);margin:14px 0}.takeoff-list article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:10px;background:var(--surface)}.takeoff-list button{padding:6px}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.section-heading h2{margin:0}.section-heading p{color:var(--dim);margin:5px 0 12px}.crew-clock-panel{margin:0 16px 14px}
 @media(max-width:520px){.calculator-results{grid-template-columns:1fr}.calculator-results span{min-height:0}.converter-row{grid-template-columns:1fr}.material-list .tool-record{grid-template-columns:minmax(0,1fr) auto}.material-list .tool-record .row-actions{grid-column:1/-1}.section-heading{align-items:center}}
 
 /* Field intelligence */
@@ -1498,6 +1515,7 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 .tool-status { width: max-content; display: inline-flex; align-items: center; min-height: 22px; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 10px !important; font-weight: 800; letter-spacing: .01em; }
 .tool-status.ready { color: #17613a !important; background: #dff4e8; }
 .tool-status.coming { color: #77540a !important; background: #fff0c2; }
+.tool-status.pro { color: #fff !important; background: #17211d; }
 .soon-dot { width: 9px; height: 9px; justify-self: center; border-radius: 999px; background: #d89b1d; box-shadow: 0 0 0 4px color-mix(in srgb, #d89b1d 18%, transparent); }
 .tool-coming-sheet { gap: 12px; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
 .tool-coming-sheet .tool-status { margin-top: 2px; }
@@ -1507,6 +1525,7 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 @media (prefers-color-scheme: dark) {
   .tool-status.ready { color: #a6e8c1 !important; background: #173d2a; }
   .tool-status.coming { color: #ffd980 !important; background: #493815; }
+  .tool-status.pro { color: #ffd580 !important; background: #3a2c14; }
 }
 
 /* Marketplace inbox */
@@ -1617,6 +1636,7 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 .auth-form input { min-height:54px; padding:12px 14px; font-size:17px; }
 .auth-form label small { min-height:16px; color:var(--dim); font-size:12px; }
 .auth-submit { width:100%; margin-top:4px; }
+.auth-verify-recovery { width: 100%; margin: 2px 0 10px; }
 .auth-links { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 16px; margin-top:18px; }
 .auth-links button { min-height:40px; padding:5px 0; border:0; background:transparent; color:var(--green); font-weight:800; cursor:pointer; }
 .auth-security { margin:28px 0 0; padding-top:18px; border-top:1px solid var(--border); color:var(--dim); font-size:12px; line-height:1.5; }
@@ -2116,6 +2136,10 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 .home-summary-card { display: grid; gap: 3px; margin: 4px 0 22px; padding: 20px; border-radius: 18px; background: #1a2433; color: #fff; box-shadow: 0 12px 30px rgba(26,36,51,.18); }
 .home-summary-card > span, .home-summary-card > small { color: #aeb6c2; font-size: 12px; font-weight: 700; }
 .home-summary-card > strong { margin: 2px 0; color: var(--accent); font: 850 42px/.95 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.04em; }
+.home-error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, #c0392b 9%, var(--surface)); }
+.home-error-banner strong { display: block; font-size: 15px; }
+.home-error-banner p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+.home-error-banner .secondary-button { flex: none; }
 .home-summary-loading { min-height: 128px; }
 .home-jobs-section { margin-bottom: 16px; }
 .home-jobs-section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 2px 9px; }

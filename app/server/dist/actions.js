@@ -8158,6 +8158,21 @@ function normalizeMoney(value, emptyValue = "") {
     throw new Error("Enter a valid amount.");
   return amount.toFixed(2);
 }
+function safeText(value) {
+  return value == null ? "" : String(value);
+}
+function safeMoney(value) {
+  const n = Number(safeText(value).replace(/[^0-9.-]/g, "") || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+function dateOnlyString(value) {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(safeText(value));
+  return m?.[1] ?? "";
+}
+var clientTodaySchema = string2().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
+function clientToday(args) {
+  return args.today ?? new Date().toISOString().slice(0, 10);
+}
 function normalizeLineItems(items) {
   return items.map((item) => ({
     name: item.name?.trim() ?? "",
@@ -10056,7 +10071,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
-  convertQuoteToJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ jobId: number2() }), async handler(ctx, args) {
+  convertQuoteToJob: defineAction({ request: object({ id: number2().int().positive(), today: clientTodaySchema }), response: object({ jobId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const rows = await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1);
     const q = rows[0];
@@ -10065,7 +10080,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     if (q.jobId)
       return { jobId: q.jobId };
     const now = new Date;
-    const madeRows = await db.insert(jobs).values({ clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress || "Address pending", jobType: q.jobType || "Quoted work", notes: `Converted from quote #${q.id}`, jobDate: now.toISOString().slice(0, 10), amountDue: q.total, createdAt: now, updatedAt: now }).returning({ id: jobs.id });
+    const madeRows = await db.insert(jobs).values({ clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress || "Address pending", jobType: q.jobType || "Quoted work", notes: `Converted from quote #${q.id}`, jobDate: clientToday(args), amountDue: q.total, createdAt: now, updatedAt: now }).returning({ id: jobs.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not create job.");
@@ -10110,7 +10125,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
-  convertQuoteToInvoice: defineAction({ request: object({ quoteId: number2().int().positive() }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
+  convertQuoteToInvoice: defineAction({ request: object({ quoteId: number2().int().positive(), today: clientTodaySchema }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const requested = (await db.select().from(quotes).where(eq(quotes.id, args.quoteId)).limit(1))[0];
     if (!requested)
@@ -10131,7 +10146,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       return { invoiceId: prior.id };
     }
     const invoiceNumber = await nextInvoiceNumber(db);
-    const madeRows = await db.insert(invoices).values({ quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: now.toISOString().slice(0, 10), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const madeRows = await db.insert(invoices).values({ quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: clientToday(args), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -10163,7 +10178,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { clientId, jobId, quoteId };
   } }),
-  createRecurringSchedule: defineAction({ request: object({ invoiceId: number2().int().positive(), frequency: _enum(["weekly", "monthly"]) }), response: object({ id: number2() }), async handler(ctx, args) {
+  createRecurringSchedule: defineAction({ request: object({ invoiceId: number2().int().positive(), frequency: _enum(["weekly", "monthly"]), today: clientTodaySchema }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const template = (await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1))[0];
     if (!template)
@@ -10171,7 +10186,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const active = (await db.select().from(recurringInvoiceSchedules).where(and(eq(recurringInvoiceSchedules.invoiceId, args.invoiceId), eq(recurringInvoiceSchedules.active, true))).limit(1))[0];
     if (active)
       throw new Error("This invoice already has an active recurring schedule.");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = clientToday(args);
     const rows = await db.insert(recurringInvoiceSchedules).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, invoiceId: args.invoiceId, frequency: args.frequency, nextRunDate: advanceRecurringDate(today, args.frequency), active: true, createdAt: new Date }).returning({ id: recurringInvoiceSchedules.id });
     const made = rows[0];
     if (!made)
@@ -10202,7 +10217,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  toggleInvoicePaid: defineAction({ request: object({ id: number2().int().positive(), paid: boolean2() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+  toggleInvoicePaid: defineAction({ request: object({ id: number2().int().positive(), paid: boolean2(), today: clientTodaySchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const row = (await db.select().from(invoices).where(eq(invoices.id, args.id)).limit(1))[0];
     if (!row)
@@ -10214,7 +10229,7 @@ If that was you, just sign in again. If not, we recommend changing your password
         const paid = all.reduce((sum, p) => sum + Number(p.amount || 0), 0);
         const balance = Math.max(0, Number(row.total || 0) - paid);
         if (balance > 0)
-          await db.insert(payments).values({ invoiceId: args.id, amount: balance.toFixed(2), paymentDate: new Date().toISOString().slice(0, 10), method: "Marked paid", note: "__paid_toggle__", createdAt: new Date });
+          await db.insert(payments).values({ invoiceId: args.id, amount: balance.toFixed(2), paymentDate: clientToday(args), method: "Marked paid", note: "__paid_toggle__", createdAt: new Date });
       }
       await db.update(invoices).set({ status: "paid", updatedAt: new Date }).where(eq(invoices.id, args.id));
       if (row.status !== "paid") {
@@ -10681,7 +10696,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  invoiceMilestone: defineAction({ request: object({ id: number2().int().positive() }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
+  invoiceMilestone: defineAction({ request: object({ id: number2().int().positive(), today: clientTodaySchema }), response: object({ invoiceId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const milestones = await db.select().from(paymentMilestones).where(eq(paymentMilestones.id, args.id)).limit(1);
     const milestone = milestones[0];
@@ -10697,7 +10712,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const setting = settingRows[0];
     const amount = milestone.amount || "0";
     const now = new Date;
-    const rows = await db.insert(invoices).values({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: now.toISOString().slice(0, 10), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const rows = await db.insert(invoices).values({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: clientToday(args), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -10767,83 +10782,109 @@ If that was you, just sign in again. If not, we recommend changing your password
       crew: array(object({ jobId: number2(), clientName: string2(), jobType: string2(), jobAddress: string2(), startsAt: string2(), tasks: array(string2()) }))
     }),
     async handler(ctx, args) {
-      const db = ctx.db();
-      const [appointmentRows, quoteRows, invoiceRows, paymentRows, selectionRows, jobRows, certificateRows, noteRows, crewRows, logRows, parameterRows] = await Promise.all([
-        db.select().from(appointments),
-        db.select().from(quotes),
-        db.select().from(invoices),
-        db.select().from(payments),
-        db.select().from(selections),
-        db.select().from(jobs),
-        db.select().from(completionCertificates),
-        db.select().from(internalNotes),
-        db.select().from(crewTasks),
-        db.select().from(automationLogs),
-        db.select().from(adminParameters).where(eq(adminParameters.id, 1)).limit(1)
-      ]);
-      const parameter = parameterRows[0];
-      const paymentDay1 = parameter?.paymentDay1 ?? 3;
-      const paymentDay2 = parameter?.paymentDay2 ?? 14;
-      const paymentDay3 = parameter?.paymentDay3 ?? 30;
-      const reviewDelay = parameter?.reviewDelayDays ?? 1;
-      const reengagementMonths = [parameter?.reengagementMonth1 ?? 6, parameter?.reengagementMonth2 ?? 12];
-      const expiryWarning = parameter?.quoteExpiryWarningDays ?? 3;
-      const defaultLeadTime = parameter?.materialLeadTimeDays ?? 14;
-      const base = new Date(`${args.today}T12:00:00`);
-      const dayMs = 86400000;
-      const dayDiff = (date) => Math.floor((new Date(`${date}T12:00:00`).getTime() - base.getTime()) / dayMs);
-      const addMonths = (date, months) => {
-        const d = new Date(`${date}T12:00:00`);
-        d.setMonth(d.getMonth() + months);
-        return d.toISOString().slice(0, 10);
-      };
-      const wasSent = (kind, entityId, stage) => logRows.some((l) => l.kind === kind && l.entityId === entityId && l.stage === stage);
-      const quoteChase = quoteRows.filter((q) => q.automationStatus === "awaiting" && Boolean(q.sentAt)).map((q) => {
-        const days = Math.max(0, -dayDiff(q.sentAt));
-        return { id: q.id, clientName: q.clientName, clientPhone: q.clientPhone, total: q.total, daysWaiting: days, score: Number(q.total.replace(/[^0-9.-]/g, "") || 0) * days, expiryDate: q.expiryDate };
-      }).filter((q) => q.daysWaiting > 0).sort((a, b) => b.score - a.score);
-      const paymentEscalations = invoiceRows.filter((i) => i.status !== "paid" && Boolean(i.dueDate) && dayDiff(i.dueDate) <= -paymentDay1).map((i) => {
-        const paid = paymentRows.filter((p) => p.invoiceId === i.id).reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
-        const days = -dayDiff(i.dueDate);
-        const stage = days >= paymentDay3 ? paymentDay3 : days >= paymentDay2 ? paymentDay2 : paymentDay1;
-        const latest = logRows.filter((l) => l.kind === "payment" && l.entityId === i.id && l.stage === String(stage)).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
-        return { id: i.id, clientName: i.clientName, clientPhone: i.clientPhone, balance: Math.max(0, Number(i.total.replace(/[^0-9.-]/g, "") || 0) - paid), dueDate: i.dueDate, daysOverdue: days, stage, lastSentAt: latest?.sentAt.toISOString() ?? null };
-      }).filter((i) => i.balance > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
-      const materials = selectionRows.map((s) => {
-        const job = jobRows.find((j) => j.id === s.jobId);
-        if (!job)
-          return null;
-        const leadTimeDays = s.leadTimeDays > 0 ? s.leadTimeDays : defaultLeadTime;
-        const order = new Date(`${job.jobDate}T12:00:00`);
-        order.setDate(order.getDate() - leadTimeDays);
-        const orderByDate = order.toISOString().slice(0, 10);
-        return { selectionId: s.id, jobId: s.jobId, clientName: job.clientName, category: s.category, item: s.item, jobDate: job.jobDate, orderByDate, daysUntil: dayDiff(orderByDate), leadTimeDays };
-      }).filter((v) => v !== null).filter((v) => v.daysUntil <= 14).sort((a, b) => a.daysUntil - b.daysUntil);
-      const quoteExpiry = quoteRows.filter((q) => q.automationStatus === "awaiting" && Boolean(q.expiryDate)).map((q) => ({ id: q.id, clientName: q.clientName, clientPhone: q.clientPhone, total: q.total, expiryDate: q.expiryDate, daysUntil: dayDiff(q.expiryDate) })).filter((q) => q.daysUntil <= expiryWarning).sort((a, b) => a.daysUntil - b.daysUntil);
-      const reviews = certificateRows.map((c) => {
-        const job = jobRows.find((j) => j.id === c.jobId);
-        if (!job)
-          return null;
-        const d = new Date(`${c.completionDate}T12:00:00`);
-        d.setDate(d.getDate() + reviewDelay);
-        const dueDate = d.toISOString().slice(0, 10);
-        return { jobId: job.id, clientName: job.clientName, clientPhone: job.clientPhone, jobType: job.jobType, dueDate };
-      }).filter((v) => v !== null).filter((v) => v.dueDate <= args.today && !wasSent("review", v.jobId, "next_day"));
-      const reengagement = certificateRows.flatMap((c) => {
-        const job = jobRows.find((j) => j.id === c.jobId);
-        if (!job)
-          return [];
-        return reengagementMonths.map((months) => ({ jobId: job.id, clientName: job.clientName, clientPhone: job.clientPhone, jobType: job.jobType, months, dueDate: addMonths(c.completionDate, months) }));
-      }).filter((v) => v.dueDate <= args.today && !wasSent("reengagement", v.jobId, String(v.months)));
-      const appointments2 = appointmentRows.filter((a) => a.startsAt.slice(0, 10) === args.today).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: a.clientName, clientPhone: a.clientPhone, startsAt: a.startsAt, notes: a.notes, exteriorWork: a.exteriorWork }));
-      const crew = appointments2.flatMap((a) => {
-        const job = jobRows.find((j) => j.id === a.jobId);
-        if (!job)
-          return [];
-        return [{ jobId: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress, startsAt: a.startsAt, tasks: crewRows.filter((t) => t.jobId === job.id && !t.completed).map((t) => t.text) }];
-      });
-      const reminders = noteRows.filter((n) => !n.completed && Boolean(n.reminderDate) && n.reminderDate <= args.today).map((n) => ({ id: n.id, jobId: n.jobId, clientId: n.clientId, note: n.note, reminderDate: n.reminderDate, completed: n.completed, createdAt: n.createdAt.toISOString() }));
-      return { appointments: appointments2, quoteChase, paymentEscalations, materials, quoteExpiry, reviews, reengagement, reminders, crew };
+      try {
+        const db = ctx.db();
+        const [appointmentRows, quoteRows, invoiceRows, paymentRows, selectionRows, jobRows, certificateRows, noteRows, crewRows, logRows, parameterRows] = await Promise.all([
+          db.select().from(appointments),
+          db.select().from(quotes),
+          db.select().from(invoices),
+          db.select().from(payments),
+          db.select().from(selections),
+          db.select().from(jobs),
+          db.select().from(completionCertificates),
+          db.select().from(internalNotes),
+          db.select().from(crewTasks),
+          db.select().from(automationLogs),
+          db.select().from(adminParameters).where(eq(adminParameters.id, 1)).limit(1)
+        ]);
+        const parameter = parameterRows[0];
+        const paymentDay1 = parameter?.paymentDay1 ?? 3;
+        const paymentDay2 = parameter?.paymentDay2 ?? 14;
+        const paymentDay3 = parameter?.paymentDay3 ?? 30;
+        const reviewDelay = parameter?.reviewDelayDays ?? 1;
+        const reengagementMonths = [parameter?.reengagementMonth1 ?? 6, parameter?.reengagementMonth2 ?? 12];
+        const expiryWarning = parameter?.quoteExpiryWarningDays ?? 3;
+        const defaultLeadTime = parameter?.materialLeadTimeDays ?? 14;
+        const base = new Date(`${args.today}T12:00:00`).getTime();
+        const dayMs = 86400000;
+        const dayDiff = (date) => {
+          const d = dateOnlyString(date);
+          if (!d)
+            return Number.NaN;
+          return Math.floor((new Date(`${d}T12:00:00`).getTime() - base) / dayMs);
+        };
+        const addMonths = (date, months) => {
+          const d = dateOnlyString(date);
+          if (!d)
+            return "";
+          const dt = new Date(`${d}T12:00:00`);
+          dt.setMonth(dt.getMonth() + months);
+          return dt.toISOString().slice(0, 10);
+        };
+        const wasSent = (kind, entityId, stage) => logRows.some((l) => l.kind === kind && l.entityId === entityId && l.stage === stage);
+        const quoteChase = quoteRows.filter((q) => q.automationStatus === "awaiting" && Boolean(dateOnlyString(q.sentAt))).map((q) => {
+          const diff = dayDiff(q.sentAt);
+          const days = Number.isFinite(diff) ? Math.max(0, -diff) : 0;
+          return { id: q.id, clientName: safeText(q.clientName), clientPhone: safeText(q.clientPhone), total: safeText(q.total), daysWaiting: days, score: safeMoney(q.total) * days, expiryDate: dateOnlyString(q.expiryDate) };
+        }).filter((q) => q.daysWaiting > 0).sort((a, b) => b.score - a.score);
+        const paymentEscalations = invoiceRows.filter((i) => {
+          const diff = dayDiff(i.dueDate);
+          return i.status !== "paid" && Boolean(dateOnlyString(i.dueDate)) && Number.isFinite(diff) && diff <= -paymentDay1;
+        }).map((i) => {
+          const paid = paymentRows.filter((p) => p.invoiceId === i.id).reduce((sum, p) => sum + safeMoney(p.amount), 0);
+          const days = -dayDiff(i.dueDate);
+          const stage = days >= paymentDay3 ? paymentDay3 : days >= paymentDay2 ? paymentDay2 : paymentDay1;
+          const latest = logRows.filter((l) => l.kind === "payment" && l.entityId === i.id && l.stage === String(stage)).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
+          return { id: i.id, clientName: safeText(i.clientName), clientPhone: safeText(i.clientPhone), balance: Math.max(0, safeMoney(i.total) - paid), dueDate: dateOnlyString(i.dueDate), daysOverdue: days, stage, lastSentAt: latest?.sentAt?.toISOString?.() ?? null };
+        }).filter((i) => i.balance > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+        const materials = selectionRows.map((s) => {
+          const job = jobRows.find((j) => j.id === s.jobId);
+          if (!job)
+            return null;
+          const jobDate = dateOnlyString(job.jobDate);
+          if (!jobDate)
+            return null;
+          const leadTimeDays = s.leadTimeDays > 0 ? s.leadTimeDays : defaultLeadTime;
+          const order = new Date(`${jobDate}T12:00:00`);
+          order.setDate(order.getDate() - leadTimeDays);
+          const orderByDate = order.toISOString().slice(0, 10);
+          const daysUntil = dayDiff(orderByDate);
+          if (!Number.isFinite(daysUntil))
+            return null;
+          return { selectionId: s.id, jobId: s.jobId, clientName: safeText(job.clientName), category: safeText(s.category), item: safeText(s.item), jobDate, orderByDate, daysUntil, leadTimeDays };
+        }).filter((v) => v !== null).filter((v) => v.daysUntil <= 14).sort((a, b) => a.daysUntil - b.daysUntil);
+        const quoteExpiry = quoteRows.filter((q) => q.automationStatus === "awaiting" && Boolean(dateOnlyString(q.expiryDate))).map((q) => ({ id: q.id, clientName: safeText(q.clientName), clientPhone: safeText(q.clientPhone), total: safeText(q.total), expiryDate: dateOnlyString(q.expiryDate), daysUntil: dayDiff(q.expiryDate) })).filter((q) => Number.isFinite(q.daysUntil) && q.daysUntil <= expiryWarning).sort((a, b) => a.daysUntil - b.daysUntil);
+        const reviews = certificateRows.map((c) => {
+          const job = jobRows.find((j) => j.id === c.jobId);
+          if (!job)
+            return null;
+          const completion = dateOnlyString(c.completionDate);
+          if (!completion)
+            return null;
+          const d = new Date(`${completion}T12:00:00`);
+          d.setDate(d.getDate() + reviewDelay);
+          const dueDate = d.toISOString().slice(0, 10);
+          return { jobId: job.id, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), dueDate };
+        }).filter((v) => v !== null).filter((v) => v.dueDate <= args.today && !wasSent("review", v.jobId, "next_day"));
+        const reengagement = certificateRows.flatMap((c) => {
+          const job = jobRows.find((j) => j.id === c.jobId);
+          if (!job)
+            return [];
+          return reengagementMonths.map((months) => ({ jobId: job.id, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
+        }).filter((v) => v.dueDate !== "" && v.dueDate <= args.today && !wasSent("reengagement", v.jobId, String(v.months)));
+        const appointments2 = appointmentRows.filter((a) => dateOnlyString(a.startsAt) === args.today).sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt))).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork) }));
+        const crew = appointments2.flatMap((a) => {
+          const job = jobRows.find((j) => j.id === a.jobId);
+          if (!job)
+            return [];
+          return [{ jobId: job.id, clientName: safeText(job.clientName), jobType: safeText(job.jobType), jobAddress: safeText(job.jobAddress), startsAt: a.startsAt, tasks: crewRows.filter((t) => t.jobId === job.id && !t.completed).map((t) => safeText(t.text)) }];
+        });
+        const reminders = noteRows.filter((n) => !n.completed && Boolean(n.reminderDate) && safeText(n.reminderDate) <= args.today).map((n) => ({ id: n.id, jobId: n.jobId, clientId: n.clientId, note: safeText(n.note), reminderDate: safeText(n.reminderDate), completed: Boolean(n.completed), createdAt: n.createdAt?.toISOString?.() ?? "" }));
+        return { appointments: appointments2, quoteChase, paymentEscalations, materials, quoteExpiry, reviews, reengagement, reminders, crew };
+      } catch (error) {
+        console.error("getAutomationCenter failed; returning empty payload so Home can render:", error);
+        return { appointments: [], quoteChase: [], paymentEscalations: [], materials: [], quoteExpiry: [], reviews: [], reengagement: [], reminders: [], crew: [] };
+      }
     }
   }),
   logAutomationSend: defineAction({ request: object({ kind: _enum(["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew"]), entityId: number2().int().positive(), stage: string2().max(40) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
