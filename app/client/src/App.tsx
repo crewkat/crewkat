@@ -2161,6 +2161,7 @@ function CrewkatApplication() {
       ...stack.slice(0, -1),
       { name: "detail", jobId },
     ]);
+    client.invalidateQueries({ queryKey: ["automation-center"] });
     requestNavigationScroll({ mode: "top" });
   };
   const publicParams =
@@ -3183,8 +3184,21 @@ function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: (
   useEffect(() => {
     const el = ref.current;
     if (!el || reduced) return;
+    // Only arm the gesture when the whole scroll chain (this wrapper plus any
+    // scrolled ancestor up to the .app-shell) is at the top. On long screens
+    // like Home the shell does the scrolling, so a downward drag mid-content
+    // must keep scrolling instead of triggering a refresh.
+    const chainAtTop = () => {
+      let node: HTMLElement | null = el;
+      while (node) {
+        if (node.scrollTop > 0.5) return false;
+        if (node.classList?.contains("app-shell")) break;
+        node = node.parentElement;
+      }
+      return true;
+    };
     const onTouchStart = (e: globalThis.TouchEvent) => {
-      if (el.scrollTop <= 0) { active.current = true; startY.current = e.touches[0]?.clientY ?? 0; }
+      if (el.scrollTop <= 0 && chainAtTop()) { active.current = true; startY.current = e.touches[0]?.clientY ?? 0; }
     };
     const onTouchMove = (e: globalThis.TouchEvent) => {
       if (!active.current) return;
@@ -5722,6 +5736,7 @@ function JobDetail({
       client.invalidateQueries({ queryKey: ["jobs"] }),
       client.invalidateQueries({ queryKey: ["invoices"] }),
       client.invalidateQueries({ queryKey: ["documents"] }),
+      client.invalidateQueries({ queryKey: ["automation-center"] }),
     ]);
   };
   const setJobClient = useMutation({ mutationFn: (clientId: number | null) => api.setJobClient({ jobId, clientId }), onSuccess: refreshJob });
@@ -6067,6 +6082,7 @@ function JobDetail({
           onDone={() => {
             setEditing(false);
             client.invalidateQueries({ queryKey: ["job", jobId] });
+            client.invalidateQueries({ queryKey: ["automation-center"] });
           }}
         />
       )}
@@ -10248,6 +10264,7 @@ function NewClientScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     <PageHeader lang={lang} title={copy[lang].newClient} onBack={onBack} />
     <ClientForm lang={lang} stickySave onSaved={async () => {
       await qc.invalidateQueries({ queryKey: ["clients"] });
+      await qc.invalidateQueries({ queryKey: ["automation-center"] });
       onBack();
     }} />
   </main>;
@@ -10400,9 +10417,12 @@ function ClientDetail({
           tags: c.tags,
           referredByClientId: c.referredByClientId,
         }}
-        onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["client", clientId] });
-          qc.invalidateQueries({ queryKey: ["clients"] });
+        onSaved={async () => {
+          await qc.invalidateQueries({ queryKey: ["client", clientId] });
+          await qc.invalidateQueries({ queryKey: ["clients"] });
+          await qc.invalidateQueries({ queryKey: ["automation-center"] });
+          celebrate(lang === "es" ? "Cliente guardado" : "Client saved");
+          onBack();
         }}
       />
       <section className="client-history">
@@ -13269,6 +13289,22 @@ function TodayScreen({
     qc.invalidateQueries({ queryKey: ["automation-center"] });
     qc.invalidateQueries({ queryKey: ["quotes"] });
   };
+  // Pull-to-refresh on Home: refetch everything the Home screen renders —
+  // reminders, money stats, jobs today, appointments, pins, intelligence.
+  const refreshAll = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["automation-center"] }),
+      qc.invalidateQueries({ queryKey: ["quotes"] }),
+      qc.invalidateQueries({ queryKey: ["jobs"] }),
+      qc.invalidateQueries({ queryKey: ["invoices"] }),
+      qc.invalidateQueries({ queryKey: ["dashboard"] }),
+      qc.invalidateQueries({ queryKey: ["appointments"] }),
+      qc.invalidateQueries({ queryKey: ["home-pins"] }),
+      qc.invalidateQueries({ queryKey: ["field-intelligence-today"] }),
+      qc.invalidateQueries({ queryKey: ["expansion-suite"] }),
+    ]);
+  };
+  const homeRefreshing = query.isFetching || jobsQuery.isFetching || invoicesQuery.isFetching || appointmentsQuery.isFetching;
   const log = (
     kind:
       | "quote_chase"
@@ -13412,6 +13448,7 @@ function TodayScreen({
     );
   return (
     <main className="page today-page">
+      <PullToRefresh lang={lang} refreshing={homeRefreshing} onRefresh={refreshAll}>
       <header className="home-header">
         <div>
           <span>{dateHeading}</span>
@@ -14110,6 +14147,7 @@ function TodayScreen({
       {searchOpen && <BottomSheet lang={lang} title={lang === "es" ? "Buscar" : "Search"} onClose={() => setSearchOpen(false)}>
         {(close) => <GlobalSearchBody lang={lang} close={close} setScreen={setScreen} />}
       </BottomSheet>}
+      </PullToRefresh>
     </main>
   );
 }

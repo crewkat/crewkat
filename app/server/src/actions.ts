@@ -2123,9 +2123,20 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // endless "Loading home" spinner with no retry.
       try {
         const db = ctx.db<typeof schema>();
-        const [appointmentRows, quoteRows, invoiceRows, paymentRows, selectionRows, jobRows, certificateRows, noteRows, crewRows, logRows, parameterRows] = await Promise.all([
-          db.select().from(schema.appointments), db.select().from(schema.quotes), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.selections), db.select().from(schema.jobs), db.select().from(schema.completionCertificates), db.select().from(schema.internalNotes), db.select().from(schema.crewTasks), db.select().from(schema.automationLogs), db.select().from(schema.adminParameters).where(eq(schema.adminParameters.id, 1)).limit(1),
+        const [appointmentRows, quoteRows, invoiceRows, paymentRows, selectionRows, jobRows, certificateRows, noteRows, crewRows, logRows, parameterRows, clientRows] = await Promise.all([
+          db.select().from(schema.appointments), db.select().from(schema.quotes), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.selections), db.select().from(schema.jobs), db.select().from(schema.completionCertificates), db.select().from(schema.internalNotes), db.select().from(schema.crewTasks), db.select().from(schema.automationLogs), db.select().from(schema.adminParameters).where(eq(schema.adminParameters.id, 1)).limit(1), db.select().from(schema.clients),
         ]);
+        // Review/re-engagement cards deep-link to the client record to add a
+        // missing phone number. The job row carries a snapshot that can lag
+        // behind the client record, so fall back to the live client phone —
+        // otherwise the card keeps saying "add the phone" after it was added.
+        const liveClientPhone = new Map<number, string>();
+        for (const c of clientRows) {
+          const phone = safeText((c as { phone?: unknown }).phone);
+          if (phone) liveClientPhone.set((c as { id: number }).id, phone);
+        }
+        const jobClientPhone = (job: { clientId?: number | null; clientPhone?: unknown }) =>
+          safeText(job.clientPhone) || (job.clientId != null ? (liveClientPhone.get(job.clientId) ?? "") : "");
         const parameter = parameterRows[0];
         const paymentDay1 = parameter?.paymentDay1 ?? 3; const paymentDay2 = parameter?.paymentDay2 ?? 14; const paymentDay3 = parameter?.paymentDay3 ?? 30;
         const reviewDelay = parameter?.reviewDelayDays ?? 1;
@@ -2201,7 +2212,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             const d = new Date(`${completion}T12:00:00`);
             d.setDate(d.getDate() + reviewDelay);
             const dueDate = d.toISOString().slice(0, 10);
-            return { jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), dueDate };
+            return { jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: jobClientPhone(job), jobType: safeText(job.jobType), dueDate };
           })
           .filter((v): v is NonNullable<typeof v> => v !== null)
           .filter((v) => v.dueDate <= args.today && !wasSent("review", v.jobId, "next_day"));
@@ -2209,7 +2220,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           .flatMap((c) => {
             const job = jobRows.find((j) => j.id === c.jobId);
             if (!job) return [];
-            return reengagementMonths.map((months) => ({ jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
+            return reengagementMonths.map((months) => ({ jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: jobClientPhone(job), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
           })
           .filter((v) => v.dueDate !== "" && v.dueDate <= args.today && !wasSent("reengagement", v.jobId, String(v.months)));
         const appointments = appointmentRows
