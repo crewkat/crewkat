@@ -17,8 +17,20 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />
     <link rel="apple-touch-icon" href="/app/icon-192.png" />
     <title>Crewkat</title>
+    <script>window.__CREWKAT_BUILD_ID__ = "536226f";</script>
+    <!-- Apply the saved appearance before React boots: no theme flash on load,
+         and the right theme is set even before the app hydrates. React takes
+         over (and may apply the account-synced appearance) afterwards. -->
+    <script>
+      try {
+        var ckTheme = window.localStorage.getItem("crewkat-theme") || window.localStorage.getItem("tradesign-theme");
+        if (ckTheme === "light" || ckTheme === "dark") document.documentElement.setAttribute("data-theme", ckTheme);
+        var ckAccent = window.localStorage.getItem("crewkat-accent");
+        if (ckAccent === "orange" || ckAccent === "blue" || ckAccent === "green" || ckAccent === "purple" || ckAccent === "rose") document.documentElement.setAttribute("data-accent", ckAccent);
+      } catch (e) {}
+    </script>
     
-  <link rel="stylesheet" crossorigin href="/app/assets/index-he6e9b4s.css"><script type="module" crossorigin src="/app/assets/index-zawycb02.js"></script></head>
+  <link rel="stylesheet" crossorigin href="/app/assets/index-59wyrmsw.css"><script type="module" crossorigin src="/app/assets/index-ftqq9kwd.js"></script></head>
   <body>
     <div
       data-generated-space-root=""
