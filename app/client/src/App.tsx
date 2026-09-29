@@ -10147,7 +10147,7 @@ function InvoicePreview({
   // Payment actions now go through the payment sheet (details + history).
   const sendInvoice=async()=>{buzz(8);if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);};
   return <main className="page financial-detail-page">
-    <PageHeader lang={lang} title={`INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
       invoice.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: invoice.jobId as number }) }
