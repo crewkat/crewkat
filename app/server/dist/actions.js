@@ -6934,6 +6934,11 @@ var appointments = sqliteTable("appointments", {
   startsAt: text("starts_at").notNull(),
   notes: text("notes").notNull().default(""),
   exteriorWork: integer2("exterior_work", { mode: "boolean" }).notNull().default(false),
+  status: text("status", { enum: ["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"] }).notNull().default("scheduled"),
+  crewMember: text("crew_member").notNull().default(""),
+  etaMinutes: integer2("eta_minutes"),
+  shareTokenHash: text("share_token_hash").unique(),
+  shareTokenHint: text("share_token_hint").notNull().default(""),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -6969,6 +6974,8 @@ var selections = sqliteTable("selections", {
   photoContentType: text("photo_content_type").notNull().default(""),
   approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
   leadTimeDays: integer2("lead_time_days").notNull().default(0),
+  estimatedCost: text("estimated_cost").notNull().default("0"),
+  actualCost: text("actual_cost").notNull().default("0"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -8279,7 +8286,7 @@ function clientBalanceDue(totalInvoiced, totalPaid) {
   return Math.max(0, Math.round((totalInvoiced - totalPaid) * 100) / 100);
 }
 var leadStageSchema = _enum(["new", "contacted", "quoted", "won", "lost"]);
-var appointmentSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), startsAt: string2(), notes: string2(), exteriorWork: boolean2() });
+var appointmentSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), startsAt: string2(), notes: string2(), exteriorWork: boolean2(), status: _enum(["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"]), crewMember: string2(), etaMinutes: number2().nullable(), hasShareLink: boolean2() });
 var priceBookSchema = object({ id: number2(), name: string2(), description: string2(), unitPrice: string2(), createdAt: string2() });
 var templateSchema = object({ id: number2(), name: string2(), lineItems: array(quoteItemSchema), isStarter: boolean2(), createdAt: string2() });
 var mileageSchema = object({ id: number2(), tripDate: string2(), fromLocation: string2(), toLocation: string2(), miles: string2(), jobId: number2().nullable(), jobName: string2().nullable(), purpose: string2(), createdAt: string2() });
@@ -8287,7 +8294,7 @@ var expenseSchema = object({ id: number2(), expenseDate: string2(), vendor: stri
 var subcontractorSchema = object({ id: number2(), jobId: number2(), name: string2(), trade: string2(), phone: string2(), agreedAmount: string2(), paidToDate: string2(), balance: number2(), createdAt: string2() });
 var shareImageSchema = object({ id: number2(), jobId: number2(), beforePhotoId: number2(), afterPhotoId: number2(), branded: boolean2(), filename: string2(), url: string2(), createdAt: string2() });
 var leadSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), serviceType: string2(), preferredContactTime: string2(), source: string2(), notes: string2(), stage: leadStageSchema, projectSize: _enum(["small", "medium", "large"]), engagement: _enum(["slow", "normal", "fast"]), score: number2(), clientId: number2().nullable(), quoteId: number2().nullable(), createdAt: string2() });
-var selectionSchema = object({ id: number2(), jobId: number2(), category: string2(), item: string2(), vendor: string2(), photoUrl: string2().nullable(), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2(), createdAt: string2() });
+var selectionSchema = object({ id: number2(), jobId: number2(), category: string2(), item: string2(), vendor: string2(), photoUrl: string2().nullable(), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2(), estimatedCost: string2(), actualCost: string2(), createdAt: string2() });
 var dailyLogSchema = object({ id: number2(), jobId: number2(), logDate: string2(), crew: string2(), hours: string2(), photoIds: array(number2()), notes: string2(), blockers: string2(), clientSummary: string2(), sharedWithClient: boolean2(), createdAt: string2() });
 var internalNoteSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), note: string2(), reminderDate: string2(), completed: boolean2(), createdAt: string2() });
 var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: number2().nullable(), label: string2(), amount: string2(), percentage: string2(), dueDate: string2(), status: _enum(["pending", "paid"]), createdAt: string2() });
@@ -10866,17 +10873,21 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   listAppointments: defineAction({ request: object({}), response: object({ appointments: array(appointmentSchema) }), async handler(ctx) {
     const rows = await ctx.db().select().from(appointments).where(eq(appointments.companyId, workspaceIdentity(ctx).workspaceCompanyId)).orderBy(appointments.startsAt);
-    return { appointments: rows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork })) };
+    return { appointments: rows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork, status: row.status, crewMember: row.crewMember, etaMinutes: row.etaMinutes, hasShareLink: !!row.shareTokenHash })) };
   } }),
-  saveAppointment: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), startsAt: string2().min(1).max(40), notes: string2().trim().max(2000), exteriorWork: boolean2().default(false) }), response: object({ id: number2() }), async handler(ctx, args) {
+  saveAppointment: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), startsAt: string2().min(1).max(40), notes: string2().trim().max(2000), exteriorWork: boolean2().default(false), status: _enum(["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"]).default("scheduled"), crewMember: string2().trim().max(120).default(""), etaMinutes: number2().int().min(1).max(480).nullable().default(null) }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
     const now = new Date;
     if (args.id) {
-      await db.update(appointments).set({ jobId: args.jobId, clientId: args.clientId, clientName: args.clientName, clientPhone: args.clientPhone, startsAt: args.startsAt, notes: args.notes, exteriorWork: args.exteriorWork, updatedAt: now }).where(eq(appointments.id, args.id));
+      const existing = (await db.select().from(appointments).where(and(eq(appointments.id, args.id), eq(appointments.companyId, companyId))).limit(1))[0];
+      if (!existing)
+        throw new Error("Appointment not found.");
+      await db.update(appointments).set({ jobId: args.jobId, clientId: args.clientId, clientName: args.clientName, clientPhone: args.clientPhone, startsAt: args.startsAt, notes: args.notes, exteriorWork: args.exteriorWork, status: args.status, crewMember: args.crewMember, etaMinutes: args.etaMinutes, updatedAt: now }).where(eq(appointments.id, args.id));
       ctx.invalidateQueries();
       return { id: args.id };
     }
-    const rows = await db.insert(appointments).values({ jobId: args.jobId, clientId: args.clientId, clientName: args.clientName, clientPhone: args.clientPhone, startsAt: args.startsAt, notes: args.notes, exteriorWork: args.exteriorWork, createdAt: now, updatedAt: now }).returning({ id: appointments.id });
+    const rows = await db.insert(appointments).values({ companyId, jobId: args.jobId, clientId: args.clientId, clientName: args.clientName, clientPhone: args.clientPhone, startsAt: args.startsAt, notes: args.notes, exteriorWork: args.exteriorWork, status: args.status, crewMember: args.crewMember, etaMinutes: args.etaMinutes, createdAt: now, updatedAt: now }).returning({ id: appointments.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save appointment.");
@@ -10884,7 +10895,51 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { id: made.id };
   } }),
   deleteAppointment: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    await ctx.db().delete(appointments).where(eq(appointments.id, args.id));
+    await ctx.db().delete(appointments).where(and(eq(appointments.id, args.id), eq(appointments.companyId, workspaceIdentity(ctx).workspaceCompanyId)));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  shareOnMyWay: defineAction({ request: object({ appointmentId: number2().int().positive() }), response: object({ token: string2(), route: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    const appt = (await db.select().from(appointments).where(and(eq(appointments.id, args.appointmentId), eq(appointments.companyId, companyId))).limit(1))[0];
+    if (!appt)
+      throw new Error("Appointment not found.");
+    const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+    const hash = await hashPortalToken(token);
+    await db.update(appointments).set({ shareTokenHash: hash, shareTokenHint: token.slice(-6), updatedAt: new Date }).where(eq(appointments.id, appt.id));
+    ctx.invalidateQueries();
+    return { token, route: `#onmyway=${encodeURIComponent(token)}` };
+  } }),
+  revokeOnMyWay: defineAction({ request: object({ appointmentId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    await db.update(appointments).set({ shareTokenHash: null, shareTokenHint: "", updatedAt: new Date }).where(and(eq(appointments.id, args.appointmentId), eq(appointments.companyId, companyId)));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  getOnMyWayStatus: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ clientName: string2(), jobType: string2(), jobAddress: string2(), status: string2(), etaMinutes: number2().nullable(), crewMember: string2(), updatedAt: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const hash = await hashPortalToken(args.token);
+    const appt = (await db.select().from(appointments).where(eq(appointments.shareTokenHash, hash)).limit(1))[0];
+    if (!appt)
+      throw new Error("This link is no longer active.");
+    const job = appt.jobId ? (await db.select({ jobType: jobs.jobType, jobAddress: jobs.jobAddress }).from(jobs).where(eq(jobs.id, appt.jobId)).limit(1))[0] : null;
+    return { clientName: appt.clientName, jobType: job?.jobType ?? "", jobAddress: job?.jobAddress ?? "", status: appt.status, etaMinutes: appt.etaMinutes, crewMember: appt.crewMember, updatedAt: appt.updatedAt.toISOString() };
+  } }),
+  updateOnMyWay: defineAction({ request: object({ appointmentId: number2().int().positive(), status: _enum(["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"]), etaMinutes: number2().int().min(1).max(480).nullable().default(null) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    const appt = (await db.select().from(appointments).where(and(eq(appointments.id, args.appointmentId), eq(appointments.companyId, companyId))).limit(1))[0];
+    if (!appt)
+      throw new Error("Appointment not found.");
+    await db.update(appointments).set({ status: args.status, etaMinutes: args.etaMinutes, updatedAt: new Date }).where(eq(appointments.id, appt.id));
+    if (appt.jobId && (args.status === "on_my_way" || args.status === "arrived")) {
+      const etaText = args.etaMinutes ? ` (~${args.etaMinutes} min)` : "";
+      const en = args.status === "on_my_way" ? `On the way${etaText}` : "Arrived on site";
+      const es = args.status === "on_my_way" ? `En camino${etaText}` : "Lleg\xF3 al sitio";
+      await logJobSystemMessage(db, appt.jobId, en, es);
+    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -10923,11 +10978,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { clientId };
   } }),
-  getJobOperations: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ selections: array(selectionSchema), dailyLogs: array(dailyLogSchema), internalNotes: array(internalNoteSchema), milestones: array(milestoneSchema), profitability: object({ quoted: number2(), invoiced: number2(), variance: number2(), variancePercent: number2().nullable(), materials: number2(), expenses: number2(), subcontractors: number2(), laborHours: number2(), laborCost: number2(), profit: number2(), margin: number2() }) }), async handler(ctx, args) {
+  getJobOperations: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ selections: array(selectionSchema), dailyLogs: array(dailyLogSchema), internalNotes: array(internalNoteSchema), milestones: array(milestoneSchema), profitability: object({ quoted: number2(), invoiced: number2(), variance: number2(), variancePercent: number2().nullable(), materials: number2(), expenses: number2(), subcontractors: number2(), laborHours: number2(), laborCost: number2(), profit: number2(), margin: number2(), changeOrdersTotal: number2(), selectionBudget: number2(), selectionActual: number2(), budgetTotal: number2() }) }), async handler(ctx, args) {
     const db = ctx.db();
     const { job } = await requireJobCompany(ctx, db, args.jobId);
     const jobId = job.id;
-    const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows] = await Promise.all([db.select().from(selections).where(eq(selections.jobId, jobId)).orderBy(desc(selections.createdAt)), db.select().from(dailyLogs).where(eq(dailyLogs.jobId, jobId)).orderBy(desc(dailyLogs.logDate)), db.select().from(internalNotes).where(eq(internalNotes.jobId, jobId)).orderBy(desc(internalNotes.createdAt)), db.select().from(paymentMilestones).where(eq(paymentMilestones.jobId, jobId)).orderBy(paymentMilestones.id), db.select().from(invoices).where(eq(invoices.jobId, jobId)), db.select().from(receipts).where(eq(receipts.jobId, jobId)), db.select().from(timeEntries).where(eq(timeEntries.jobId, jobId)), db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(businessExpenses).where(eq(businessExpenses.jobId, jobId)), db.select().from(subcontractors).where(eq(subcontractors.jobId, jobId)), db.select().from(quotes).where(eq(quotes.jobId, jobId))]);
+    const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows, documentRows] = await Promise.all([db.select().from(selections).where(eq(selections.jobId, jobId)).orderBy(desc(selections.createdAt)), db.select().from(dailyLogs).where(eq(dailyLogs.jobId, jobId)).orderBy(desc(dailyLogs.logDate)), db.select().from(internalNotes).where(eq(internalNotes.jobId, jobId)).orderBy(desc(internalNotes.createdAt)), db.select().from(paymentMilestones).where(eq(paymentMilestones.jobId, jobId)).orderBy(paymentMilestones.id), db.select().from(invoices).where(eq(invoices.jobId, jobId)), db.select().from(receipts).where(eq(receipts.jobId, jobId)), db.select().from(timeEntries).where(eq(timeEntries.jobId, jobId)), db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(businessExpenses).where(eq(businessExpenses.jobId, jobId)), db.select().from(subcontractors).where(eq(subcontractors.jobId, jobId)), db.select().from(quotes).where(eq(quotes.jobId, jobId)), db.select().from(documents).where(and(eq(documents.jobId, jobId), eq(documents.kind, "change_order")))]);
     const now = Date.now();
     const invoiced = invoiceRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0);
     const quoted = jobQuoteRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -10937,15 +10992,28 @@ If that was you, just sign in again. If not, we recommend changing your password
     const expenses = expenseRows.reduce((sum, row) => sum + Number(row.amount.replace(/[^0-9.-]/g, "") || 0), 0);
     const subcontractors2 = subcontractorRows.reduce((sum, row) => sum + Number(row.agreedAmount.replace(/[^0-9.-]/g, "") || 0), 0);
     const profit = invoiced - materials - laborCost - expenses - subcontractors2;
-    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => ({ id: row.id, jobId: row.jobId, invoiceId: row.invoiceId, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() })), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0 } };
+    const changeOrdersTotal = documentRows.reduce((sum, row) => sum + Number(String(row.amount).replace(/[^0-9.-]/g, "") || 0), 0);
+    const selectionBudget = selectionRows.reduce((sum, row) => sum + Number(String(row.estimatedCost).replace(/[^0-9.-]/g, "") || 0), 0);
+    const selectionActual = selectionRows.reduce((sum, row) => sum + Number(String(row.actualCost).replace(/[^0-9.-]/g, "") || 0), 0);
+    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, estimatedCost: row.estimatedCost, actualCost: row.actualCost, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => ({ id: row.id, jobId: row.jobId, invoiceId: row.invoiceId, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() })), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0, changeOrdersTotal, selectionBudget, selectionActual, budgetTotal: quoted + changeOrdersTotal } };
   } }),
-  saveSelection: defineAction({ request: object({ jobId: number2().int().positive(), category: string2().trim().min(1).max(160), item: string2().trim().min(1).max(300), vendor: string2().trim().max(160), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2().int().min(0).max(730).default(0), photoFilename: string2().max(240).default(""), photoContentType: _enum(["", "image/jpeg", "image/png", "image/webp"]), photoDataBase64: string2().max(20000000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
+  saveSelection: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), jobId: number2().int().positive(), category: string2().trim().min(1).max(160), item: string2().trim().min(1).max(300), vendor: string2().trim().max(160), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2().int().min(0).max(730).default(0), estimatedCost: string2().trim().max(80).default("0"), actualCost: string2().trim().max(80).default("0"), photoFilename: string2().max(240).default(""), photoContentType: _enum(["", "image/jpeg", "image/png", "image/webp"]), photoDataBase64: string2().max(20000000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
     let photoBlobKey = null;
     if (args.photoDataBase64 && args.photoContentType) {
-      photoBlobKey = `selections/${args.jobId}/${crypto.randomUUID()}`;
+      photoBlobKey = `selections/${job.id}/${crypto.randomUUID()}`;
       await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType });
     }
-    const rows = await ctx.db().insert(selections).values({ jobId: args.jobId, category: args.category, item: args.item, vendor: args.vendor, approvalStatus: args.approvalStatus, leadTimeDays: args.leadTimeDays, photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType, createdAt: new Date, updatedAt: new Date }).returning({ id: selections.id });
+    if (args.id) {
+      const existing = (await db.select().from(selections).where(and(eq(selections.id, args.id), eq(selections.jobId, job.id))).limit(1))[0];
+      if (!existing)
+        throw new Error("Selection not found.");
+      await db.update(selections).set({ category: args.category, item: args.item, vendor: args.vendor, approvalStatus: args.approvalStatus, leadTimeDays: args.leadTimeDays, estimatedCost: normalizeMoney(args.estimatedCost), actualCost: normalizeMoney(args.actualCost), ...photoBlobKey ? { photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType } : {}, updatedAt: new Date }).where(eq(selections.id, args.id));
+      ctx.invalidateQueries();
+      return { id: args.id };
+    }
+    const rows = await db.insert(selections).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, jobId: job.id, category: args.category, item: args.item, vendor: args.vendor, approvalStatus: args.approvalStatus, leadTimeDays: args.leadTimeDays, estimatedCost: normalizeMoney(args.estimatedCost), actualCost: normalizeMoney(args.actualCost), photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType, createdAt: new Date, updatedAt: new Date }).returning({ id: selections.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save selection.");
@@ -11068,7 +11136,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const today = now.toISOString().slice(0, 10);
     const followDays = settingRows[0]?.quoteFollowUpDays ?? 3;
     const quoteFollowupCount = quoteRows.filter((q) => !q.jobId && q.sentAt && Math.floor((now.getTime() - new Date(`${q.sentAt}T00:00:00`).getTime()) / 86400000) >= followDays).length;
-    return { revenueMonth, expensesMonth, actualProfitMonth: revenueMonth - expensesMonth, outstanding, hoursWeek, winRate, appointments: appointmentRows.filter((row) => row.startsAt.slice(0, 10) >= today).slice(0, 6).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork })), overdueCount: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).length, quoteFollowupCount, reminders: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })) };
+    return { revenueMonth, expensesMonth, actualProfitMonth: revenueMonth - expensesMonth, outstanding, hoursWeek, winRate, appointments: appointmentRows.filter((row) => row.startsAt.slice(0, 10) >= today).slice(0, 6).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork, status: row.status, crewMember: row.crewMember, etaMinutes: row.etaMinutes, hasShareLink: !!row.shareTokenHash })), overdueCount: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).length, quoteFollowupCount, reminders: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })) };
   } }),
   getAutomationCenter: defineAction({
     request: object({ today: string2().regex(/^\d{4}-\d{2}-\d{2}$/) }),
@@ -11078,8 +11146,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       paymentEscalations: array(object({ id: number2(), clientName: string2(), clientPhone: string2(), balance: number2(), dueDate: string2(), daysOverdue: number2(), stage: number2(), lastSentAt: string2().nullable() })),
       materials: array(object({ selectionId: number2(), jobId: number2(), clientName: string2(), category: string2(), item: string2(), jobDate: string2(), orderByDate: string2(), daysUntil: number2(), leadTimeDays: number2() })),
       quoteExpiry: array(object({ id: number2(), clientName: string2(), clientPhone: string2(), total: string2(), expiryDate: string2(), daysUntil: number2() })),
-      reviews: array(object({ jobId: number2(), clientName: string2(), clientPhone: string2(), jobType: string2(), dueDate: string2() })),
-      reengagement: array(object({ jobId: number2(), clientName: string2(), clientPhone: string2(), jobType: string2(), months: number2(), dueDate: string2() })),
+      reviews: array(object({ jobId: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), jobType: string2(), dueDate: string2() })),
+      reengagement: array(object({ jobId: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), jobType: string2(), months: number2(), dueDate: string2() })),
       reminders: array(internalNoteSchema),
       crew: array(object({ jobId: number2(), clientName: string2(), jobType: string2(), jobAddress: string2(), startsAt: string2(), tasks: array(string2()) }))
     }),
@@ -11166,15 +11234,15 @@ If that was you, just sign in again. If not, we recommend changing your password
           const d = new Date(`${completion}T12:00:00`);
           d.setDate(d.getDate() + reviewDelay);
           const dueDate = d.toISOString().slice(0, 10);
-          return { jobId: job.id, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), dueDate };
+          return { jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), dueDate };
         }).filter((v) => v !== null).filter((v) => v.dueDate <= args.today && !wasSent("review", v.jobId, "next_day"));
         const reengagement = certificateRows.flatMap((c) => {
           const job = jobRows.find((j) => j.id === c.jobId);
           if (!job)
             return [];
-          return reengagementMonths.map((months) => ({ jobId: job.id, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
+          return reengagementMonths.map((months) => ({ jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: safeText(job.clientPhone), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
         }).filter((v) => v.dueDate !== "" && v.dueDate <= args.today && !wasSent("reengagement", v.jobId, String(v.months)));
-        const appointments2 = appointmentRows.filter((a) => dateOnlyString(a.startsAt) === args.today).sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt))).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork) }));
+        const appointments2 = appointmentRows.filter((a) => dateOnlyString(a.startsAt) === args.today).sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt))).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: a.status, crewMember: safeText(a.crewMember), etaMinutes: a.etaMinutes, hasShareLink: !!a.shareTokenHash }));
         const crew = appointments2.flatMap((a) => {
           const job = jobRows.find((j) => j.id === a.jobId);
           if (!job)
@@ -11399,7 +11467,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   getExpansionSuite: defineAction({ request: object({ today: string2().regex(/^\d{4}-\d{2}-\d{2}$/) }), response: object({
     jobs: array(object({ id: number2(), label: string2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2() })),
     clients: array(object({ id: number2(), name: string2(), phone: string2() })),
-    warranties: array(object({ id: number2(), jobId: number2(), jobLabel: string2(), clientName: string2(), clientPhone: string2(), terms: string2(), startDate: string2(), durationMonths: number2(), expiryDate: string2(), status: _enum(["active", "expiring", "expired"]) })),
+    warranties: array(object({ id: number2(), jobId: number2(), clientId: number2().nullable(), jobLabel: string2(), clientName: string2(), clientPhone: string2(), terms: string2(), startDate: string2(), durationMonths: number2(), expiryDate: string2(), status: _enum(["active", "expiring", "expired"]) })),
     lossReport: array(object({ reason: string2(), count: number2(), value: number2() })),
     crewHours: array(object({ crewMember: string2(), jobId: number2(), jobLabel: string2(), hours: number2() })),
     suppliers: array(object({ id: number2(), name: string2(), category: string2(), phone: string2(), email: string2(), notes: string2(), orderCount: number2(), orderTotal: number2() })),
@@ -11421,7 +11489,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { jobs: jobRows.map((j) => ({ id: j.id, label: jobLabel(j.id), clientId: j.clientId, clientName: j.clientName, clientPhone: j.clientPhone })), clients: clientRows.map((c) => ({ id: c.id, name: c.name, phone: c.phone })), warranties: warrantyRows.map((w) => {
       const j = jobRows.find((x) => x.id === w.jobId);
       const days = Math.ceil((new Date(`${w.expiryDate}T12:00:00`).getTime() - today) / 86400000);
-      return { id: w.id, jobId: w.jobId, jobLabel: jobLabel(w.jobId), clientName: j?.clientName ?? "", clientPhone: j?.clientPhone ?? "", terms: w.terms, startDate: w.startDate, durationMonths: w.durationMonths, expiryDate: w.expiryDate, status: days < 0 ? "expired" : days <= 60 ? "expiring" : "active" };
+      return { id: w.id, jobId: w.jobId, clientId: w.clientId ?? null, jobLabel: jobLabel(w.jobId), clientName: j?.clientName ?? "", clientPhone: j?.clientPhone ?? "", terms: w.terms, startDate: w.startDate, durationMonths: w.durationMonths, expiryDate: w.expiryDate, status: days < 0 ? "expired" : days <= 60 ? "expiring" : "active" };
     }), lossReport: lossKeys.map((reason) => {
       const rows = quoteRows.filter((q) => q.automationStatus === "lost" && q.lostReason === reason);
       return { reason, count: rows.length, value: rows.reduce((s, q) => s + Number(q.total.replace(/[^0-9.-]/g, "") || 0), 0) };
@@ -11792,7 +11860,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Job not found.");
     const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments)]);
     const today = new Date().toISOString();
-    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
+    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
       const paid = payments2.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
       return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2) };

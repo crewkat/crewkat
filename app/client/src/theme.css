@@ -590,6 +590,10 @@ fieldset { padding: 0; border: 0; }
 .automation-group > div { display: grid; gap: .6rem; }
 .automation-card { position: relative; padding: .9rem; background: var(--surface); border: 1px solid var(--border); border-radius: calc(var(--radius) * .72); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent); }
 .automation-card.top-pick { border: 2px solid var(--accent); padding-top: 2.2rem; }
+.automation-card.tap-target { cursor: pointer; padding-right: 2.4rem; }
+.automation-card.tap-target::after { content: "›"; position: absolute; top: .6rem; right: .8rem; font-size: 1.4rem; line-height: 1; color: var(--dim); opacity: .55; pointer-events: none; }
+.automation-card.tap-target:active { transform: scale(.99); }
+@media (prefers-reduced-motion: reduce) { .automation-card.tap-target:active { transform: none; } }
 .automation-card h3 { margin: 0 0 .25rem; font-size: 1rem; }
 .automation-card p { margin: 0 0 .55rem; color: var(--dim); line-height: 1.35; }
 .automation-card > strong { display: block; margin: .25rem 0 .65rem; font-size: .92rem; line-height: 1.35; }
@@ -3030,3 +3034,29 @@ button { -webkit-tap-highlight-color: transparent; }
 .client-list > button, .client-list .swipe-row .swipe-content > button { min-height: 68px; grid-template-columns: 38px minmax(0, 1fr) 20px; gap: 10px; padding: 9px 2px; }
 .client-avatar { width: 38px; height: 38px; font-size: 14px; }
 .client-tool-button { width: 44px; height: 44px; border-radius: 10px; }
+
+/* Danny 2026-09-29: smaller invoice/estimate buttons, tappable document cards, smaller Tools buttons */
+/* 1. Compact invoice/estimate buttons (all touch targets stay >= 40px) */
+.page-actions.document-create .primary-button { min-height: 42px; font-size: 13px; padding: 0 14px; }
+.document-list .row-actions button { min-height: 40px; padding: 6px 10px; font-size: 12.5px; border-radius: 7px; }
+.document-list .row-actions select { min-height: 40px; padding: 4px 8px; font-size: 12.5px; border-radius: 7px; }
+.document-action-bar { min-height: 54px; }
+.document-action-bar button { font-size: 9.5px; gap: 1px; }
+.document-action-bar svg { width: 17px; height: 17px; }
+.invoice-builder-page .sticky-submit, .form-page .sticky-submit { min-height: 44px; font-size: 14px; }
+
+/* 2. Tappable invoice/estimate cards: chevron + press affordance, same pattern as reminder TapArticle */
+.document-list .tap-target { position: relative; cursor: pointer; }
+.document-list .tap-target .document-row-copy { padding-right: 1.2rem; }
+.document-list .tap-target::after { content: "›"; position: absolute; top: .7rem; right: .6rem; font-size: 1.35rem; line-height: 1; color: var(--dim); opacity: .5; pointer-events: none; }
+.document-list .tap-target:active { transform: scale(.995); }
+@media (prefers-reduced-motion: reduce) { .document-list .tap-target:active { transform: none; } }
+
+/* 3. Smaller Tools screen buttons */
+.tools-featured-panels .pro-feature-card { min-height: 58px; grid-template-columns: 34px minmax(0,1fr) auto; gap: 10px; padding: 10px; border-radius: 10px; }
+.tools-featured-panels .action-details summary { min-height: 44px; padding: 10px 12px; font-size: 14px; }
+.tools-home .tool-row { grid-template-columns: minmax(0,1fr) 40px; }
+.tools-home .tool-row-main { min-height: 56px; grid-template-columns: 34px minmax(0,1fr) 16px; gap: 10px; padding: 6px 4px; }
+.tools-home .tool-tile-icon { width: 32px; height: 32px; border-radius: 8px; }
+.tools-home .tool-tile-icon svg { width: 17px; height: 17px; }
+.tools-home .tool-pin-toggle { height: 40px; }

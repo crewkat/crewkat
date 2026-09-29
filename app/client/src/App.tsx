@@ -25,6 +25,8 @@ useState,
 type ChangeEvent,
 type CSSProperties,
 type FormEvent,
+type KeyboardEvent as ReactKeyboardEvent,
+type MouseEvent as ReactMouseEvent,
 type PointerEvent,
 type ReactNode,
 type TouchEvent,
@@ -5793,6 +5795,34 @@ function JobDetail({
         await upload.mutateAsync({ file });
     e.target.value = "";
   };
+  // Build 4: shared-element entrance from the tapped job row.
+  const [heroRect] = useState<DOMRect | null>(() => consumeDetailHeroRect());
+  // Phase 2: unified workspace tab + unread client-message badge. The badge
+  // counts client messages newer than the last time the Messages tab was
+  // opened (tracked per job in localStorage).
+  const [wsTab, setWsTab] = useState<WorkspaceTab>("overview");
+  const [lastSeenMsg, setLastSeenMsg] = useState<number>(() =>
+    Number(window.localStorage.getItem(`crewkat-job-msg-seen:${jobId}`) ?? 0),
+  );
+  const wsMessages = useQuery({
+    queryKey: ["job-messages", jobId],
+    queryFn: () => api.listJobMessages({ jobId }),
+    refetchInterval: 15000,
+  });
+  useEffect(() => {
+    if (wsTab === "messages") {
+      const ids = (wsMessages.data?.messages ?? []).map((m) => m.id);
+      const max = Math.max(0, ...ids);
+      if (max > lastSeenMsg) {
+        setLastSeenMsg(max);
+        window.localStorage.setItem(`crewkat-job-msg-seen:${jobId}`, String(max));
+      }
+    }
+  }, [wsTab, wsMessages.data, jobId, lastSeenMsg]);
+  const wsUnread = (wsMessages.data?.messages ?? []).filter(
+    (m) => m.sender === "client" && m.id > lastSeenMsg,
+  ).length;
+
   if (!job || !query.data)
     return (
       <main className="page">
@@ -5893,33 +5923,6 @@ function JobDetail({
     query.data.crewTasks.length +
     query.data.voiceNotes.length +
     query.data.punchItems.length;
-  // Build 4: shared-element entrance from the tapped job row.
-  const [heroRect] = useState<DOMRect | null>(() => consumeDetailHeroRect());
-  // Phase 2: unified workspace tab + unread client-message badge. The badge
-  // counts client messages newer than the last time the Messages tab was
-  // opened (tracked per job in localStorage).
-  const [wsTab, setWsTab] = useState<WorkspaceTab>("overview");
-  const [lastSeenMsg, setLastSeenMsg] = useState<number>(() =>
-    Number(window.localStorage.getItem(`crewkat-job-msg-seen:${jobId}`) ?? 0),
-  );
-  const wsMessages = useQuery({
-    queryKey: ["job-messages", jobId],
-    queryFn: () => api.listJobMessages({ jobId }),
-    refetchInterval: 15000,
-  });
-  useEffect(() => {
-    if (wsTab === "messages") {
-      const ids = (wsMessages.data?.messages ?? []).map((m) => m.id);
-      const max = Math.max(0, ...ids);
-      if (max > lastSeenMsg) {
-        setLastSeenMsg(max);
-        window.localStorage.setItem(`crewkat-job-msg-seen:${jobId}`, String(max));
-      }
-    }
-  }, [wsTab, wsMessages.data, jobId, lastSeenMsg]);
-  const wsUnread = (wsMessages.data?.messages ?? []).filter(
-    (m) => m.sender === "client" && m.id > lastSeenMsg,
-  ).length;
   return (
     <DetailHero fromRect={heroRect}>
     <main className="page detail-page">
@@ -9808,7 +9811,7 @@ function InvoicesScreen({
         {query.isLoading && <SkeletonList rows={5} />}
         {sortedInvoices.map((invoice) => (
           <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
-          <article>
+          <TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
             <div className="document-row-copy">
               <span className={`status-chip ${invoice.status}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : t.sent}</span>
               <h2>{invoice.clientName}</h2>
@@ -9819,7 +9822,7 @@ function InvoicesScreen({
               <select value={invoice.status} onChange={(e) => status.mutate({ id: invoice.id, status: e.target.value as InvoiceStatus })} aria-label={`${t.invoiceStatus} #${invoice.id}`}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select>
               <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>{t.viewDocument}</button>
             </div>
-          </article>
+          </TapArticle>
           </SwipeRow>
         ))}
         {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE"} onAction={() => setScreen({ name: "invoiceNew" })} />}
@@ -9827,13 +9830,13 @@ function InvoicesScreen({
         {quotes.isLoading && <SkeletonList rows={5} />}
         {sortedQuotes.map((quote) => (
           <SwipeRow key={quote.id} actions={quote.convertedToInvoiceId ? [] : [{ label: lang === "es" ? "Convertir" : "Convert", kind: "primary", onTap: () => setConfirmConvertQuoteId(quote.id) }]}>
-          <article>
+          <TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
             <div className="document-row-copy">
               <span className={`status-chip ${quote.accepted || quote.automationStatus === "won" ? "paid" : quote.automationStatus === "lost" ? "overdue" : "sent"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
               <h2>{quote.clientName}</h2><p>{quote.jobType || t.quoteBuilder} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
             </div>
             <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
-          </article>
+          </TapArticle>
           </SwipeRow>
         ))}
         {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
@@ -13310,6 +13313,10 @@ function TodayScreen({
     lang === "es"
       ? `Hola ${r.clientName}, han pasado ${r.months} meses desde su ${r.jobType}. Solo quería saber cómo está todo y si podemos ayudarle con algo más. — ${sig}`
       : `Hi ${r.clientName}, it’s been ${r.months} months since your ${r.jobType}. Just checking in to see how everything is holding up and whether we can help with anything else. — ${sig}`;
+  const warrantyMessage = (w: { clientName: string; expiryDate: string }) =>
+    lang === "es"
+      ? `Hola ${w.clientName}, solo quería revisar cómo está todo antes de que venza su garantía el ${formatDate(w.expiryDate, lang)}.`
+      : `Hi ${w.clientName}, just checking how everything is holding up before your warranty expires on ${formatDate(w.expiryDate, lang)}.`;
   const crewText = () => {
     const lines = (d?.crew ?? []).flatMap((c) => [
       `${new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(c.startsAt))} — ${c.jobType}, ${c.jobAddress}`,
@@ -13543,7 +13550,10 @@ function TodayScreen({
           tone="danger"
         >
           {paymentEscalations.map((i) => (
-            <article className="automation-card" key={i.id}>
+            <TapArticle
+              key={i.id}
+              onTap={() => setScreen({ name: "invoicePreview", invoiceId: i.id })}
+            >
               <div className="urgency-badge">
                 {lang === "es" ? `Día ${i.stage}` : `Day ${i.stage}`}
               </div>
@@ -13577,7 +13587,7 @@ function TodayScreen({
                   {lang === "es" ? "Factura" : "Invoice"}
                 </button>
               </div>
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13590,7 +13600,10 @@ function TodayScreen({
           tone="warning"
         >
           {d.materials.map((m) => (
-            <article className="automation-card" key={m.selectionId}>
+            <TapArticle
+              key={m.selectionId}
+              onTap={() => setScreen({ name: "jobOps", jobId: m.jobId })}
+            >
               <div className="urgency-badge">
                 {m.daysUntil < 0
                   ? lang === "es"
@@ -13616,7 +13629,7 @@ function TodayScreen({
               >
                 {lang === "es" ? "Abrir selección" : "Open selection"}
               </button>
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13626,7 +13639,17 @@ function TodayScreen({
           count={d.appointments.length}
         >
           {d.appointments.map((a) => (
-            <article className="automation-card" key={a.id}>
+            <TapArticle
+              key={a.id}
+              onTap={
+                a.jobId
+                  ? () => setScreen({ name: "detail", jobId: a.jobId as number })
+                  : a.clientId
+                    ? () =>
+                        setScreen({ name: "client", clientId: a.clientId as number })
+                    : null
+              }
+            >
               <time>
                 {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
                   hour: "numeric",
@@ -13663,7 +13686,7 @@ function TodayScreen({
                   </button>
                 )}
               </div>
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13676,7 +13699,10 @@ function TodayScreen({
           tone="warning"
         >
           {d.quoteExpiry.map((q) => (
-            <article className="automation-card" key={q.id}>
+            <TapArticle
+              key={q.id}
+              onTap={() => setScreen({ name: "quotePreview", quoteId: q.id })}
+            >
               <div className="urgency-badge">
                 {q.daysUntil < 0
                   ? lang === "es"
@@ -13720,7 +13746,7 @@ function TodayScreen({
                   {lang === "es" ? "Ver" : "View"}
                 </button>
               </div>
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13730,9 +13756,10 @@ function TodayScreen({
           count={quoteChase.length}
         >
           {quoteChase.map((q, index) => (
-            <article
-              className={`automation-card${index === 0 ? " top-pick" : ""}`}
+            <TapArticle
+              className={index === 0 ? "top-pick" : ""}
               key={q.id}
+              onTap={() => setScreen({ name: "quotePreview", quoteId: q.id })}
             >
               {index === 0 && (
                 <div className="text-first">
@@ -13782,7 +13809,7 @@ function TodayScreen({
                   {lang === "es" ? "Ver presupuesto" : "View estimate"}
                 </button>
               </div>
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13792,7 +13819,17 @@ function TodayScreen({
           count={d.reminders.length + d.reviews.length + d.reengagement.length}
         >
           {d.reminders.map((r) => (
-            <article className="automation-card" key={`n${r.id}`}>
+            <TapArticle
+              key={`n${r.id}`}
+              onTap={
+                r.jobId
+                  ? () => setScreen({ name: "detail", jobId: r.jobId as number })
+                  : r.clientId
+                    ? () =>
+                        setScreen({ name: "client", clientId: r.clientId as number })
+                    : null
+              }
+            >
               <h3>{r.note}</h3>
               <p>{formatDate(r.reminderDate, lang)}</p>
               {r.jobId && (
@@ -13804,10 +13841,29 @@ function TodayScreen({
                   {lang === "es" ? "Abrir trabajo" : "Open job"}
                 </button>
               )}
-            </article>
+            </TapArticle>
           ))}
           {d.reviews.map((r) => (
-            <article className="automation-card" key={`r${r.jobId}`}>
+            <TapArticle
+              key={`r${r.jobId}`}
+              onTap={
+                r.clientPhone
+                  ? () => {
+                      log("review", r.jobId, "next_day");
+                      window.location.href = smsHref(
+                        r.clientPhone,
+                        reviewMessage(r),
+                      );
+                    }
+                  : r.clientId != null
+                    ? () =>
+                        setScreen({
+                          name: "client",
+                          clientId: r.clientId as number,
+                        })
+                    : () => setScreen({ name: "detail", jobId: r.jobId })
+              }
+            >
               <div className="urgency-badge">
                 {lang === "es" ? "Pedir reseña" : "Ask for review"}
               </div>
@@ -13824,12 +13880,28 @@ function TodayScreen({
               ) : (
                 <span className="status error">{copy[lang].noPhone}</span>
               )}
-            </article>
+            </TapArticle>
           ))}
           {d.reengagement.map((r) => (
-            <article
-              className="automation-card"
+            <TapArticle
               key={`e${r.jobId}-${r.months}`}
+              onTap={
+                r.clientPhone
+                  ? () => {
+                      log("reengagement", r.jobId, String(r.months));
+                      window.location.href = smsHref(
+                        r.clientPhone,
+                        reengageMessage(r),
+                      );
+                    }
+                  : r.clientId != null
+                    ? () =>
+                        setScreen({
+                          name: "client",
+                          clientId: r.clientId as number,
+                        })
+                    : () => setScreen({ name: "detail", jobId: r.jobId })
+              }
             >
               <div className="urgency-badge">
                 {r.months} {lang === "es" ? "meses" : "months"}
@@ -13850,7 +13922,7 @@ function TodayScreen({
               ) : (
                 <span className="status error">{copy[lang].noPhone}</span>
               )}
-            </article>
+            </TapArticle>
           ))}
         </AutomationGroup>
       )}
@@ -13888,7 +13960,25 @@ function TodayScreen({
             {expansion.warranties
               .filter((w) => w.status !== "active")
               .map((w) => (
-                <article className="automation-card" key={`w${w.id}`}>
+                <TapArticle
+                  key={`w${w.id}`}
+                  onTap={
+                    w.clientPhone
+                      ? () => {
+                          window.location.href = smsHref(
+                            w.clientPhone,
+                            warrantyMessage(w),
+                          );
+                        }
+                      : w.clientId != null
+                        ? () =>
+                            setScreen({
+                              name: "client",
+                              clientId: w.clientId as number,
+                            })
+                        : () => setScreen({ name: "expansion" })
+                  }
+                >
                   <div className="urgency-badge">
                     {w.status === "expired"
                       ? lang === "es"
@@ -13905,17 +13995,12 @@ function TodayScreen({
                   {w.clientPhone && (
                     <a
                       className="primary-button"
-                      href={smsHref(
-                        w.clientPhone,
-                        lang === "es"
-                          ? `Hola ${w.clientName}, solo quería revisar cómo está todo antes de que venza su garantía el ${formatDate(w.expiryDate, lang)}.`
-                          : `Hi ${w.clientName}, just checking how everything is holding up before your warranty expires on ${formatDate(w.expiryDate, lang)}.`,
-                      )}
+                      href={smsHref(w.clientPhone, warrantyMessage(w))}
                     >
                       {lang === "es" ? "Abrir texto" : "Open text"}
                     </a>
                   )}
-                </article>
+                </TapArticle>
               ))}
           </AutomationGroup>
         )}
@@ -13934,7 +14019,10 @@ function TodayScreen({
             {expansion.plans
               .filter((p) => p.active && p.nextDueDate <= today)
               .map((p) => (
-                <article className="automation-card" key={`mp${p.id}`}>
+                <TapArticle
+                  key={`mp${p.id}`}
+                  onTap={() => setScreen({ name: "expansion" })}
+                >
                   <h3>
                     {p.clientName} · {p.title}
                   </h3>
@@ -13944,7 +14032,7 @@ function TodayScreen({
                   <button onClick={() => setScreen({ name: "expansion" })}>
                     {lang === "es" ? "Abrir mantenimiento" : "Open maintenance"}
                   </button>
-                </article>
+                </TapArticle>
               ))}
           </AutomationGroup>
         )}
@@ -14047,6 +14135,49 @@ function AutomationGroup({
       </header>
       <div>{children}</div>
     </section>
+  );
+}
+
+// Tappable Home reminder card: the whole card deep-links to the task it
+// describes (tap affordance = chevron + press state in .tap-target CSS).
+// Taps on nested links/buttons (SMS, Won/Lost, Renew…) are left alone.
+function TapArticle({
+  onTap,
+  className,
+  baseClass,
+  children,
+}: {
+  onTap: (() => void) | null;
+  className?: string;
+  baseClass?: string;
+  children: ReactNode;
+}) {
+  const cls = `${baseClass ?? "automation-card"}${className ? ` ${className}` : ""}`;
+  if (!onTap) return <article className={cls}>{children}</article>;
+  const handleClick = (e: ReactMouseEvent) => {
+    if ((e.target as HTMLElement).closest("a, button, input, select, textarea")) return;
+    // Inside a SwipeRow: ignore the tap when the swipe actions are revealed
+    // (the row was swiped open, not tapped).
+    const sw = (e.currentTarget as HTMLElement).closest(".swipe-row")?.querySelector(".swipe-content") as HTMLElement | null;
+    if (sw && sw.style.transform) return;
+    onTap();
+  };
+  const handleKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onTap();
+    }
+  };
+  return (
+    <article
+      className={`${cls} tap-target`}
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={handleKey}
+    >
+      {children}
+    </article>
   );
 }
 
