@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -400,6 +400,11 @@ async function serveStatic(res, urlPath) {
     });
     res.end(bytes);
     return;
+  }
+  // Public calculator funnel pages (/tools, /tools/<slug>): shareable no-login
+  // pages rendered by the app bundle's public tools screen.
+  if (urlPath === "/tools" || urlPath === "/tools/" || urlPath.startsWith("/tools/")) {
+    return sendFile(res, join(CLIENT_DIST, "index.html"));
   }
   if (urlPath === "/app" || urlPath.startsWith("/app/")) {
     const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
@@ -658,6 +663,27 @@ if (!process.env.BACKUP_ALERT_EMAIL) {
   setTimeout(tick, 2 * 60 * 1000); // catch up shortly after boot
   setInterval(tick, RECURRING_TICK_MS).unref();
   console.log(`[crewkat][recurring] scheduler armed (tick every ${RECURRING_TICK_MS / 60000} min).`);
+}
+
+// ---------------------------------------------------------------------------
+// Estimate nudge: in-process scheduler (single Render instance)
+// ---------------------------------------------------------------------------
+// Ticks hourly; the tick itself only nudges quotes that were sent, viewed,
+// and unanswered for 3+ days, exactly once each, so hourly ticks are cheap.
+
+{
+  const NUDGE_TICK_MS = 60 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runEstimateNudgeTick(makeCtx());
+      if (result.ran) console.log(`[crewkat][nudge] sent reminder(s) for quote(s): ${result.nudged.join(", ")}.`);
+    } catch (error) {
+      console.error("[crewkat][nudge] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 5 * 60 * 1000); // catch up shortly after boot
+  setInterval(tick, NUDGE_TICK_MS).unref();
+  console.log(`[crewkat][nudge] scheduler armed (tick every ${NUDGE_TICK_MS / 60000} min).`);
 }
 
 function shutdown(signal) {

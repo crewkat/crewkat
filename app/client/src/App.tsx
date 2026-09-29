@@ -351,6 +351,7 @@ type Screen =
   | { name: "followups" }
   | { name: "gallery" }
   | { name: "referrals" }
+  | { name: "crewDay" }
   | { name: "operations"; tab?: "calendar" | "leads" }
   | { name: "reports" }
   | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" | "analysis" }
@@ -1545,7 +1546,7 @@ function friendlyActionMessage(error: unknown, lang: Lang) {
   return message;
 }
 
-function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking"; token: string }) {
+function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" | "tools"; token: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(shellRef);
   return <div className="app-shell" ref={shellRef}>
@@ -1553,6 +1554,7 @@ function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking";
     {kind === "document" && <ClientDocumentScreen token={token} />}
     {kind === "portal" && <ClientPortalScreen lang="en" token={token} />}
     {kind === "booking" && <BookingRequestScreen lang="en" />}
+    {kind === "tools" && <PublicToolsScreen slug={token} />}
   </div>;
 }
 
@@ -1755,11 +1757,20 @@ export function App() {
   useEffect(() => {
     if (user) void ensurePushSubscription();
   }, [user]);
+  // Public calculator funnel pages (/tools, /tools/<slug>): no-login pages
+  // with shareable links and a signup CTA, rendered before any auth gate.
+  const [publicToolSlug] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    if (!window.location.pathname.startsWith("/tools")) return null;
+    const rest = window.location.pathname.replace(/^\/tools\/?/, "");
+    return rest.split("/")[0] || "";
+  });
   const params = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
   const hash = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const docToken = hash.get("doc") ?? "";
   const portalToken = hash.get("portal") ?? "";
   if (docToken) return <PublicEntry kind="document" token={docToken} />;
+  if (publicToolSlug !== null) return <PublicEntry kind="tools" token={publicToolSlug} />;
   if (portalToken) return <PublicEntry kind="portal" token={portalToken} />;
   if (params.has("booking")) return <PublicEntry kind="booking" token="" />;
   if (!user) return <AuthScreen onAuthenticated={setUser} />;
@@ -1927,6 +1938,71 @@ function OnboardingTour({ lang }: { lang: Lang }) {
         </div>
       </section>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Build 4: crew day view — today's jobs, appointments, who's on the crew,
+// and what's overdue. One glance before the truck rolls.
+// ---------------------------------------------------------------------------
+function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (s: Screen) => void }) {
+  const qc = useQueryClient();
+  const day = useQuery({ queryKey: ["crew-day"], queryFn: () => api.getCrewDayView({}) });
+  const dateLabel = new Date().toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" });
+  return (
+    <main className="page crew-day-page">
+      <PageHeader lang={lang} title={lang === "es" ? "Hoy en el equipo" : "Crew day"} onBack={onBack} />
+      <p className="crew-day-date">{dateLabel}</p>
+      {day.isLoading && (
+        <div className="crew-day-loading" aria-label={lang === "es" ? "Cargando" : "Loading"}>
+          {[0, 1, 2].map((i) => <div key={i} className="shimmer" style={{ height: 72 }} />)}
+        </div>
+      )}
+      {day.isError && <p className="status error">{actionErrorMessage(day.error)}</p>}
+      {day.data && (
+        <PullToRefresh lang={lang} refreshing={day.isFetching && !day.isLoading} onRefresh={() => qc.invalidateQueries({ queryKey: ["crew-day"] })}>
+          <div className="crew-day-sections">
+            {day.data.crewToday.length > 0 && (
+              <section className="crew-day-section stagger-in" aria-label={lang === "es" ? "Equipo hoy" : "Crew today"}>
+                <h2>{lang === "es" ? "Equipo hoy" : "Crew today"}</h2>
+                <div className="crew-chips">{day.data.crewToday.map((name) => <span key={name} className="crew-chip"><Icon size={16}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon>{name}</span>)}</div>
+              </section>
+            )}
+            <section className="crew-day-section stagger-in" style={{ animationDelay: "60ms" }} aria-label={lang === "es" ? "Trabajos de hoy" : "Today's jobs"}>
+              <h2>{lang === "es" ? "Trabajos de hoy" : "Today's jobs"} <span className="count-badge">{day.data.jobsToday.length}</span></h2>
+              {day.data.jobsToday.length === 0 && <p className="crew-day-empty">{lang === "es" ? "Nada programado para hoy." : "Nothing scheduled for today."}</p>}
+              {day.data.jobsToday.map((job) => (
+                <button key={job.id} type="button" className="crew-day-card" onClick={() => setScreen({ name: "detail", jobId: job.id })}>
+                  <span><strong>{job.clientName}</strong><small>{job.jobType} · {job.jobAddress}</small></span>
+                  <BackIcon />
+                </button>
+              ))}
+            </section>
+            <section className="crew-day-section stagger-in" style={{ animationDelay: "120ms" }} aria-label={lang === "es" ? "Citas de hoy" : "Today's appointments"}>
+              <h2>{lang === "es" ? "Citas de hoy" : "Today's appointments"} <span className="count-badge">{day.data.appointmentsToday.length}</span></h2>
+              {day.data.appointmentsToday.length === 0 && <p className="crew-day-empty">{lang === "es" ? "Sin citas hoy." : "No appointments today."}</p>}
+              {day.data.appointmentsToday.map((appt) => (
+                <button key={appt.id} type="button" className="crew-day-card" onClick={() => appt.jobId ? setScreen({ name: "detail", jobId: appt.jobId }) : setScreen({ name: "operations", tab: "calendar" })}>
+                  <span><strong>{new Date(appt.startsAt).toLocaleTimeString(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" })} · {appt.clientName}</strong><small>{appt.notes || (appt.clientPhone ? `☎ ${appt.clientPhone}` : "")}</small></span>
+                  <BackIcon />
+                </button>
+              ))}
+            </section>
+            {day.data.overdueInvoices.length > 0 && (
+              <section className="crew-day-section overdue stagger-in" style={{ animationDelay: "180ms" }} aria-label={lang === "es" ? "Facturas vencidas" : "Overdue invoices"}>
+                <h2>{lang === "es" ? "Facturas vencidas" : "Overdue invoices"} <span className="count-badge alert">{day.data.overdueInvoices.length}</span></h2>
+                {day.data.overdueInvoices.map((inv) => (
+                  <button key={inv.id} type="button" className="crew-day-card overdue" onClick={() => setScreen({ name: "invoicePreview", invoiceId: inv.id })}>
+                    <span><strong>{inv.invoiceNumber} · {inv.clientName}</strong><small>{lang === "es" ? "Venció" : "Due"} {inv.dueDate} · {usd(money(inv.total))}</small></span>
+                    <BackIcon />
+                  </button>
+                ))}
+              </section>
+            )}
+          </div>
+        </PullToRefresh>
+      )}
+    </main>
   );
 }
 
@@ -2277,6 +2353,9 @@ function CrewkatApplication() {
       {screen.name === "referrals" && (
         <ReferralsScreen lang={lang} onBack={goBack} setScreen={setScreen} />
       )}
+      {screen.name === "crewDay" && (
+        <CrewDayScreen lang={lang} onBack={goBack} setScreen={setScreen} />
+      )}
       {screen.name === "operations" && (
         <OperationsScreen
           lang={lang}
@@ -2356,6 +2435,7 @@ function CrewkatApplication() {
         />
       )}
       {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
+      <CelebrationOverlay />
       {/* Build 3: a new app version took over in the background — offer a refresh. */}
       {swUpdateAvailable && (
         <div className="update-toast" role="status">
@@ -2775,6 +2855,196 @@ function CountUp({ value, format }: { value: number; format: (n: number) => stri
   return <>{format(display)}</>;
 }
 
+/* ---------------------------------------------------------------------------
+   Build 4: motion kit — useReducedMotion, Confetti, SuccessCheck,
+   PullToRefresh, and DetailHero (shared-element-style list→detail). All
+   respect prefers-reduced-motion.
+   --------------------------------------------------------------------------- */
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!mq) return;
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+}
+
+// Build 4: global success celebration. Any screen can fire celebrate(label)
+// to show a confetti + success-check overlay at the app root.
+type CelebrationEvent = { label: string };
+const celebrationListeners = new Set<(event: CelebrationEvent) => void>();
+export function celebrate(label: string) {
+  buzz([15, 40, 15, 40, 30]);
+  for (const listener of celebrationListeners) listener({ label });
+}
+function CelebrationOverlay() {
+  const [event, setEvent] = useState<CelebrationEvent | null>(null);
+  const [burstKey, setBurstKey] = useState(0);
+  useEffect(() => {
+    const listener = (e: CelebrationEvent) => {
+      setEvent(e);
+      setBurstKey((k) => k + 1);
+    };
+    celebrationListeners.add(listener);
+    return () => { celebrationListeners.delete(listener); };
+  }, []);
+  useEffect(() => {
+    if (!event) return;
+    const id = window.setTimeout(() => setEvent(null), 2600);
+    return () => window.clearTimeout(id);
+  }, [event, burstKey]);
+  if (!event) return null;
+  return (
+    <div className="celebration-overlay pop-in" role="status" aria-live="polite">
+      <Confetti burstKey={burstKey} />
+      <div className="celebration-card spring-in">
+        <SuccessCheck size={64} />
+        <strong>{event.label}</strong>
+      </div>
+    </div>
+  );
+}
+
+/** Celebration burst on success (payment sent, estimate accepted, …). */
+function Confetti({ burstKey }: { burstKey: number }) {
+  const reduced = useReducedMotion();
+  const pieces = useMemo(() => {
+    if (reduced || burstKey <= 0) return [];
+    const colors = ["#f97316", "#22c55e", "#3b82f6", "#eab308", "#ec4899", "#8b5cf6"];
+    return Array.from({ length: 28 }, (_, i) => ({
+      id: `${burstKey}-${i}`,
+      left: `${(i * 97) % 100}%`,
+      delay: `${((i * 37) % 300) / 1000}s`,
+      color: colors[i % colors.length],
+      rotate: `${(i * 53) % 180}deg`,
+    }));
+  }, [burstKey, reduced]);
+  if (pieces.length === 0) return null;
+  return (
+    <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+      {pieces.map((p) => (
+        <span key={p.id} className="confetti-piece" style={{ left: p.left, background: p.color, animationDelay: p.delay, transform: `rotate(${p.rotate})` }} />
+      ))}
+    </div>
+  );
+}
+
+/** Animated success check; draws itself in, static when reduced-motion. */
+function SuccessCheck({ size = 64, label }: { size?: number; label?: string }) {
+  return (
+    <svg className="success-check pop-in" width={size} height={size} viewBox="0 0 64 64" role={label ? "img" : "presentation"} aria-label={label}>
+      <circle cx="32" cy="32" r="28" fill="none" stroke="#22c55e" strokeWidth="4" />
+      <path d="M20 33l8 8 16-17" fill="none" stroke="#22c55e" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * Rubber-band pull-to-refresh wrapper. Dragging down past the top stretches
+ * the content with damping (rubber band), a spinner grows with the pull, and
+ * crossing the threshold fires onRefresh with a springy snap-back.
+ */
+function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: () => Promise<unknown> | unknown; refreshing: boolean; children: ReactNode; lang: Lang }) {
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const [pull, setPull] = useState(0);
+  const startY = useRef(0);
+  const active = useRef(false);
+  const THRESHOLD = 72;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || reduced) return;
+    const onTouchStart = (e: globalThis.TouchEvent) => {
+      if (el.scrollTop <= 0) { active.current = true; startY.current = e.touches[0]?.clientY ?? 0; }
+    };
+    const onTouchMove = (e: globalThis.TouchEvent) => {
+      if (!active.current) return;
+      const dy = (e.touches[0]?.clientY ?? startY.current) - startY.current;
+      if (dy > 0) {
+        // Rubber band: resistance grows with distance.
+        const damped = THRESHOLD * (1 - Math.exp(-dy / (THRESHOLD * 1.6)));
+        setPull(damped);
+        if (dy > 8) e.preventDefault();
+      } else setPull(0);
+    };
+    const onTouchEnd = () => {
+      if (!active.current) return;
+      active.current = false;
+      if (pull >= THRESHOLD * 0.85) {
+        buzz(10);
+        void Promise.resolve(onRefresh()).finally(() => setPull(0));
+      } else setPull(0);
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onRefresh, pull, reduced]);
+  const shown = refreshing ? THRESHOLD : pull;
+  return (
+    <div ref={ref} style={{ overflowY: "auto", height: "100%", overscrollBehaviorY: "contain" }}>
+      <div className="ptr-indicator" style={{ height: shown, opacity: shown > 4 ? 1 : 0 }} aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ transform: `rotate(${(shown / THRESHOLD) * 180}deg) ${refreshing ? "scale(1.15)" : ""}`, animation: refreshing ? "market-refresh-spin 1s linear infinite" : undefined }}>
+          <path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" />
+        </svg>
+        <span className="sr-only">{lang === "es" ? "Desliza para actualizar" : "Pull to refresh"}</span>
+      </div>
+      <div style={pull > 0 && !refreshing ? { transform: `translateY(${pull * 0.35}px)`, transition: "transform .12s ease-out" } : undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shared-element-style list→detail transition helpers. List rows record
+ * their card rect at tap time; the detail screen springs in from it.
+ */
+let pendingDetailHeroRect: DOMRect | null = null;
+function captureDetailHeroRect(event: { currentTarget: HTMLElement }) {
+  try {
+    pendingDetailHeroRect = event.currentTarget.getBoundingClientRect();
+  } catch { pendingDetailHeroRect = null; }
+}
+function consumeDetailHeroRect(): DOMRect | null {
+  const rect = pendingDetailHeroRect;
+  pendingDetailHeroRect = null;
+  return rect;
+}
+
+/**
+ * Shared-element-style list→detail transition: the detail screen springs in
+ * from the tapped card's position, expanding to full screen. Pass the card's
+ * bounding rect at tap time (see captureDetailHeroRect/consumeDetailHeroRect).
+ */
+function DetailHero({ fromRect, children }: { fromRect: DOMRect | null; children: ReactNode }) {
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !fromRect || reduced) return;
+    const dx = fromRect.left + fromRect.width / 2 - window.innerWidth / 2;
+    const dy = fromRect.top + fromRect.height / 2 - window.innerHeight / 2;
+    const scale = Math.max(0.2, Math.min(1, fromRect.width / window.innerWidth));
+    el.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 0.3, borderRadius: "20px" },
+        { transform: "translate(0, 0) scale(1)", opacity: 1, borderRadius: "0px" },
+      ],
+      { duration: 380, easing: "cubic-bezier(.2,.9,.25,1.15)", fill: "backwards" },
+    );
+  }, [fromRect, reduced]);
+  return <div ref={ref} style={{ height: "100%", display: "flex", flexDirection: "column" }}>{children}</div>;
+}
+
 /* Build 3: global search — one entry point, grouped deep links. */
 function GlobalSearchBody({ lang, close, setScreen }: { lang: Lang; close: () => void; setScreen: (screen: Screen) => void }) {
   const [term, setTerm] = useState("");
@@ -2833,6 +3103,69 @@ function GlobalSearchBody({ lang, close, setScreen }: { lang: Lang; close: () =>
   </>);
 }
 
+// ---------------------------------------------------------------------------
+// Build 4: marketplace paid bump sheet — one-time Stripe payment for 7 days
+// of featured placement. Shows live status (featured until X) or the pay CTA.
+// ---------------------------------------------------------------------------
+function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
+  lang: Lang;
+  listingId: number | null;
+  myListings: Array<{ id: number; title: string }>;
+  text: { promote: string; featured: string; featureFor7Days: string; bumpBlurb: string; bumpActive: string; bumpPaying: string; bumpError: string; billingNotConnected: string; close: string };
+  onClose: () => void;
+}) {
+  const [targetId, setTargetId] = useState<number | null>(listingId);
+  useEffect(() => setTargetId(listingId), [listingId]);
+  const status = useQuery({
+    queryKey: ["listing-bump", targetId],
+    queryFn: () => api.getListingBumpStatus({ listingId: targetId as number }),
+    enabled: targetId !== null,
+  });
+  const pay = useMutation({
+    mutationFn: () => api.startListingBumpCheckout({ listingId: targetId as number }),
+    onSuccess: (result) => {
+      if (result.checkoutUrl) window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+    },
+  });
+  const featuredUntil = status.data?.featuredUntil ? new Date(status.data.featuredUntil).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <section className="more-sheet market-bump-sheet sheet-spring" role="dialog" aria-modal="true" aria-label={text.promote} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" />
+        <h2>★ {text.promote}</h2>
+        {targetId === null && (
+          <>
+            <p>{lang === "es" ? "Elige la publicación que quieres destacar:" : "Pick the listing to feature:"}</p>
+            <div className="bump-listing-picker">
+              {myListings.map((l) => <button key={l.id} type="button" onClick={() => setTargetId(l.id)}><strong>{l.title}</strong></button>)}
+              {myListings.length === 0 && <p>{lang === "es" ? "Primero publica algo en el mercado." : "List something in the Marketplace first."}</p>}
+            </div>
+          </>
+        )}
+        {targetId !== null && status.isLoading && <div className="shimmer" style={{ height: 90 }} />}
+        {targetId !== null && status.data?.featured && (
+          <div className="bump-active pop-in">
+            <SuccessCheck size={52} />
+            <p><strong>{text.featured}</strong> — {text.bumpActive} {featuredUntil}</p>
+          </div>
+        )}
+        {targetId !== null && status.data && !status.data.featured && (
+          <>
+            <div className="launch-option"><Icon><path d="M12 3v18M5 10l7-7 7 7" /></Icon><strong>{lang === "es" ? "Parte superior del mercado por 7 días" : "Top of Marketplace for 7 days"}</strong></div>
+            <p className="bump-blurb">{text.bumpBlurb}</p>
+            {pay.isError && <p className="status error">{text.bumpError}</p>}
+            {pay.data && !pay.data.configured && <p className="status error" role="status"><strong>{text.billingNotConnected}.</strong></p>}
+            <button type="button" className="primary-button" disabled={pay.isPending} onClick={() => pay.mutate()}>
+              {pay.isPending ? text.bumpPaying : text.featureFor7Days}
+            </button>
+          </>
+        )}
+        <button type="button" className="secondary-button" onClick={onClose}>{text.close}</button>
+      </section>
+    </div>
+  );
+}
+
 function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings: Settings | null; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
@@ -2850,6 +3183,22 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const [mapPreviewOpen, setMapPreviewOpen] = useState(false);
   const [savedIds, setSavedIds] = useState<number[]>(savedMarketplaceIds);
   const [promotionOpen, setPromotionOpen] = useState(false);
+  const [promoteListingId, setPromoteListingId] = useState<number | null>(null);
+  // Build 4: Stripe bump success return (?bump=success) → celebration banner.
+  const [bumpJustPaid, setBumpJustPaid] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("bump") === "success") {
+      setBumpJustPaid(true);
+      buzz([20, 40, 20]);
+      params.delete("bump");
+      const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", clean);
+      const id = window.setTimeout(() => setBumpJustPaid(false), 6000);
+      return () => window.clearTimeout(id);
+    }
+  }, []);
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceListing | null>(null);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -2973,9 +3322,9 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     }
   };
   const text = lang === "es" ? {
-    list: "Publicar empleo", listProject: "Publicar proyecto", explore: "Explorar", looking: "Leads", more: "Más", search: "¿Qué servicio necesitas?", location: "Área o código postal", all: "Todos", saved: "Guardados", savedNote: "Publicaciones que guardaste", top: "Categorías principales", categories: "Todas las categorías", emptyTitle: savedOnly ? "No tienes publicaciones guardadas" : "Aún no hay publicaciones", emptyBody: savedOnly ? "Toca el marcador en una publicación para guardarla aquí." : "Las publicaciones aparecerán aquí a medida que se unan empresas. Puedes publicar la primera ahora.", emptyWanted: "Aún no hay solicitudes", emptyWantedBody: "Las solicitudes de ayuda aparecerán aquí a medida que se unan empresas.", postRequest: "Publicar una solicitud", clear: "Borrar filtros", just: "Recién publicado", marketplaceSearch: "Buscar en el mercado", areaFilter: "Filtrar por área", myListings: "Mis publicaciones", myListingsNote: "Administra tu límite y promociones", quota: "publicaciones gratuitas usadas", promote: "Promocionar", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", moreSlots: "Obtener más espacios", launch: "Disponible en el lanzamiento", topPlacement: "Parte superior del mercado por 7 días", categoryFeature: "Destacado en la categoría", close: "Cerrar", promoted: "Promocionado", pull: "Desliza para actualizar", release: "Suelta para actualizar", refreshing: "Actualizando publicaciones…",
+    list: "Publicar empleo", listProject: "Publicar proyecto", explore: "Explorar", looking: "Leads", more: "Más", search: "¿Qué servicio necesitas?", location: "Área o código postal", all: "Todos", saved: "Guardados", savedNote: "Publicaciones que guardaste", top: "Categorías principales", categories: "Todas las categorías", emptyTitle: savedOnly ? "No tienes publicaciones guardadas" : "Aún no hay publicaciones", emptyBody: savedOnly ? "Toca el marcador en una publicación para guardarla aquí." : "Las publicaciones aparecerán aquí a medida que se unan empresas. Puedes publicar la primera ahora.", emptyWanted: "Aún no hay solicitudes", emptyWantedBody: "Las solicitudes de ayuda aparecerán aquí a medida que se unan empresas.", postRequest: "Publicar una solicitud", clear: "Borrar filtros", just: "Recién publicado", marketplaceSearch: "Buscar en el mercado", areaFilter: "Filtrar por área", myListings: "Mis publicaciones", myListingsNote: "Administra tu límite y promociones", quota: "publicaciones gratuitas usadas", promote: "Promocionar", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", moreSlots: "Obtener más espacios", launch: "Disponible en el lanzamiento", topPlacement: "Parte superior del mercado por 7 días", categoryFeature: "Destacado en la categoría", close: "Cerrar", promoted: "Promocionado", featured: "Destacado", featureFor7Days: "Destacar por 7 días", bumpBlurb: "Pago único vía Stripe. Tu publicación aparece primero en el mercado durante 7 días.", bumpActive: "Destacado hasta", bumpPaying: "Abriendo Stripe…", bumpError: "No se pudo iniciar el pago. Inténtalo de nuevo.", billingNotConnected: "La facturación aún no está conectada", pull: "Desliza para actualizar", release: "Suelta para actualizar", refreshing: "Actualizando publicaciones…",
   } : {
-    list: "List a job", listProject: "List a project", explore: "Explore", looking: "Leads", more: "More", search: "What service do you need?", location: "Service area or ZIP", all: "All", saved: "Saved items", savedNote: "Listings you bookmarked", top: "Top categories", categories: "All categories", emptyTitle: savedOnly ? "No saved listings yet" : "No listings yet", emptyBody: savedOnly ? "Tap the bookmark on a listing to keep it here." : "Listings will appear here as companies join. You can add the first one now.", emptyWanted: "No requests yet", emptyWantedBody: "Requests for help will appear here as companies join.", postRequest: "Post a request", clear: "Clear filters", just: "Just listed", marketplaceSearch: "Search Marketplace", areaFilter: "Filter by service area", myListings: "My listings", myListingsNote: "Manage your quota and promotions", quota: "free listings used", promote: "Promote", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", moreSlots: "Get more listing slots", launch: "Available at launch", topPlacement: "Top of Marketplace for 7 days", categoryFeature: "Featured in category", close: "Close", promoted: "Promoted", pull: "Pull to refresh", release: "Release to refresh", refreshing: "Refreshing listings…",
+    list: "List a job", listProject: "List a project", explore: "Explore", looking: "Leads", more: "More", search: "What service do you need?", location: "Service area or ZIP", all: "All", saved: "Saved items", savedNote: "Listings you bookmarked", top: "Top categories", categories: "All categories", emptyTitle: savedOnly ? "No saved listings yet" : "No listings yet", emptyBody: savedOnly ? "Tap the bookmark on a listing to keep it here." : "Listings will appear here as companies join. You can add the first one now.", emptyWanted: "No requests yet", emptyWantedBody: "Requests for help will appear here as companies join.", postRequest: "Post a request", clear: "Clear filters", just: "Just listed", marketplaceSearch: "Search Marketplace", areaFilter: "Filter by service area", myListings: "My listings", myListingsNote: "Manage your quota and promotions", quota: "free listings used", promote: "Promote", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", moreSlots: "Get more listing slots", launch: "Available at launch", topPlacement: "Top of Marketplace for 7 days", categoryFeature: "Featured in category", close: "Close", promoted: "Promoted", featured: "Featured", featureFor7Days: "Feature for 7 days", bumpBlurb: "One-time payment via Stripe. Your listing floats to the top of the Marketplace for 7 days.", bumpActive: "Featured until", bumpPaying: "Opening Stripe…", bumpError: "Couldn't start the payment. Try again.", billingNotConnected: "Billing isn’t connected yet", pull: "Pull to refresh", release: "Release to refresh", refreshing: "Refreshing listings…",
   };
   if (gate.data && !gate.data.enabled) {
     return <main className="page marketplace-page"><div className="market-empty"><span><Icon size={32}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon></span><h2>{lang === "es" ? "Marketplace pausado" : "Marketplace paused"}</h2><p>{lang === "es" ? "El Marketplace está temporalmente desactivado. Vuelve a intentarlo más tarde." : "The Marketplace is temporarily disabled. Please check back later."}</p></div></main>;
@@ -3010,7 +3359,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <div className="market-filter-row"><label><span className="sr-only">{lang === "es" ? "Categoría" : "Category"}</span><select value={category} onChange={(event) => { setCategory(event.target.value as MarketplaceCategory | "all"); setSavedOnly(false); }}><option value="all">{text.all}</option>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>{(category !== "all" || listingType !== "all" || location || search || savedOnly) && <button onClick={() => { setCategory("all"); setListingType("all"); setLocation(""); setSearch(""); setSavedOnly(false); }}>{text.clear}</button>}</div>
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
-          <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}{listing.promoted && <em className="market-promoted-badge">{text.promoted}</em>}{listing.justListed && <b>{text.just}</b>}<span className={`listing-type-badge ${listing.listingType}`}><Icon>{listing.listingType === "job" ? <><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></> : <><path d="M4 20h16M6 20V9l6-5 6 5v11"/></>}</Icon>{listing.listingType === "job" ? (lang === "es" ? "EMPLEO" : "JOB") : (lang === "es" ? "PROYECTO" : "PROJECT")}</span></div>
+          <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}{listing.promoted && <em className="market-promoted-badge">{text.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {text.featured}</em>}{listing.justListed && <b>{text.just}</b>}<span className={`listing-type-badge ${listing.listingType}`}><Icon>{listing.listingType === "job" ? <><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></> : <><path d="M4 20h16M6 20V9l6-5 6 5v11"/></>}</Icon>{listing.listingType === "job" ? (lang === "es" ? "EMPLEO" : "JOB") : (lang === "es" ? "PROYECTO" : "PROJECT")}</span></div>
           <div className="market-card-copy"><div className="market-price"><strong>{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div><h2>{listing.title}</h2><p>{listing.serviceArea}</p><small>{listing.companyName}</small></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : (lang === "es" ? "Guardar publicación" : "Save listing")}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
@@ -3019,7 +3368,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     {view === "looking" && <MarketplaceRequestsView lang={lang} settings={settings} requests={requests.data?.requests ?? []} loading={requests.isLoading} />}
     {view === "mine" && <section className="market-mine">
       <div className="market-quota"><div><strong>{auth?.user.tier === "premium" ? `${myListings.length} · Unlimited` : `${Math.min(gate.data?.myActiveListingCount ?? myListings.length, gate.data?.freeListingLimit ?? 3)} of ${gate.data?.freeListingLimit ?? 3}`}</strong><span>{auth?.user.tier === "premium" ? (lang === "es" ? "publicaciones Premium" : "Premium listings") : text.quota}</span></div>{auth?.user.tier === "free" && <div className="quota-track"><i style={{ width: `${Math.min(100, ((gate.data?.myActiveListingCount ?? myListings.length) / (gate.data?.freeListingLimit ?? 3)) * 100)}%` }}/></div>}</div>
-      {myListings.length ? <div className="my-listing-list">{myListings.map((listing) => <article key={listing.id}><button onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })}><strong>{listing.title}</strong><small><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span> · {marketplaceCategoryLabel(listing.category, lang)} · {listing.serviceArea}</small></button><div className="listing-manage-actions"><button onClick={() => setScreen({ name: "marketplaceEdit", listingId: listing.id })}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{text.edit}</button><button className="danger" onClick={() => setDeleteTarget(listing)}><TrashIcon/>{text.remove}</button><button className="secondary-button" onClick={openPromotion}>{text.promote}</button></div></article>)}</div> : <div className="market-empty compact"><h2>{text.emptyTitle}</h2><p>{text.emptyBody}</p></div>}
+      {myListings.length ? <div className="my-listing-list">{myListings.map((listing) => <article key={listing.id}><button onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })}><strong>{listing.title}</strong><small><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span> · {marketplaceCategoryLabel(listing.category, lang)} · {listing.serviceArea}</small></button><div className="listing-manage-actions"><button onClick={() => setScreen({ name: "marketplaceEdit", listingId: listing.id })}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{text.edit}</button><button className="danger" onClick={() => setDeleteTarget(listing)}><TrashIcon/>{text.remove}</button><button className="secondary-button" onClick={() => { setPromoteListingId(listing.id); openPromotion(); }}>{text.promote}</button></div></article>)}</div> : <div className="market-empty compact"><h2>{text.emptyTitle}</h2><p>{text.emptyBody}</p></div>}
       <button className="market-upsell" onClick={openPromotion}><PlusIcon/><span><strong>{text.moreSlots}</strong><small>{text.launch}</small></span></button>
     </section>}
     {view === "inbox" && <section className="market-inbox">
@@ -3042,7 +3391,14 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     </section>}
     {view === "alerts" && <AlertsView lang={lang} setScreen={setScreen} />}
     {deleteTarget && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteTarget(null)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="delete-listing-title">{text.removeTitle}</h2><strong>{deleteTarget.title}</strong><p>{text.removeBody}</p>{removeListing.isError && <p className="status error">{text.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteTarget(null)}>{text.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate(deleteTarget.id)}>{removeListing.isPending ? text.deleting : text.remove}</button></div></section></div>}
-    {promotionOpen && <div className="sheet-backdrop" onClick={() => setPromotionOpen(false)}><section className="more-sheet market-launch-sheet" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="launch-badge">{text.launch}</span><h2>{text.promote}</h2><div className="launch-option"><Icon><path d="M12 3v18M5 10l7-7 7 7"/></Icon><strong>{text.topPlacement}</strong></div><div className="launch-option"><Icon><path d="m12 3 3 6 6 .8-4.5 4.4 1.1 6.3L12 17.5l-5.6 3 1.1-6.3L3 9.8 9 9z"/></Icon><strong>{text.categoryFeature}</strong></div><p>{lang === "es" ? "Los pagos y la promoción pública se activarán cuando se lance la red." : "Payments and public promotion turn on when the network launches."}</p><button className="primary-button" onClick={() => setPromotionOpen(false)}>{text.close}</button></section></div>}
+    {bumpJustPaid && (
+      <div className="bump-success-banner pop-in" role="status">
+        <Confetti burstKey={1} />
+        <SuccessCheck size={40} />
+        <p><strong>{lang === "es" ? "¡Publicación destacada!" : "Listing featured!"}</strong><span>{lang === "es" ? "Tu publicación está en la parte superior por 7 días." : "Your listing is at the top for 7 days."}</span></p>
+      </div>
+    )}
+    {promotionOpen && <BumpPurchaseSheet lang={lang} listingId={promoteListingId} myListings={myListings.map((l) => ({ id: l.id, title: l.title }))} text={text} onClose={() => { setPromotionOpen(false); setPromoteListingId(null); }} />}
     {moreOpen && <FloatPopup lang={lang} title={text.more} onClose={() => setMoreOpen(false)}>{(close) => <>
       <button className="market-menu-row" onClick={() => { close(); setView("inbox"); }}><span className="market-category-icon"><Icon><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></Icon></span><span><strong>{sortText.inbox}{unreadMarketplaceCount > 0 && <b className="menu-row-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}</strong><small>{sortText.inboxNote}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); openNewListing("job"); }}><span className="market-category-icon"><Icon><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></Icon></span><span><strong>{text.list}</strong><small>{lang === "es" ? "Contrata a un empleado" : "Hire an employee"}</small></span><BackIcon/></button>
@@ -3110,7 +3466,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     const encoded = await Promise.all(photos.map(async (file) => ({ filename: file.name, contentType: file.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(file)).dataBase64 })));
     if (listingId) return api.updateMarketplaceListing({ id: listingId, ...form, replacePhotos: photos.length > 0, photos: encoded });
     return api.createMarketplaceListing({ ...form, photos: encoded });
-  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else onSaved(result.id); }, onError: (caught) => setError(friendlyActionMessage(caught, lang)) });
+  }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else { if (!listingId) celebrate(lang === "es" ? "Publicación en vivo" : "Listing is live"); onSaved(result.id); } }, onError: (caught) => setError(friendlyActionMessage(caught, lang)) });
   const t = lang === "es" ? { heading: listingId ? "Editar publicación" : form.listingType === "project" ? "Publicar un proyecto" : "Publicar un empleo", listingType: "Tipo de publicación", job: "Empleo", jobHelp: "Contratar a un empleado", project: "Proyecto", projectHelp: "Un subcontratista para una tarea", employment: "Condiciones de empleo", fullTime: "Tiempo completo", partTime: "Medio tiempo", temporary: "Temporal", payUnit: "Tipo de pago", hourly: "Por hora", salary: "Salario", title: "Título", titleHint: "Ej. Instalación de gabinetes disponible", category: "Categoría", priceType: "Precio", amount: "Precio actual", original: "Precio original (opcional)", fixed: "Precio fijo", free: "Gratis", contact: "Consultar precio", photos: "Fotos", photoHint: "Hasta 8 fotos JPG, PNG o WebP", keepPhotos: "Tus fotos actuales se conservarán. Elige nuevas fotos solo si quieres reemplazarlas.", replacePhotos: "Las fotos nuevas reemplazarán las actuales.", description: "Descripción", area: "Área de servicio o código postal", company: "Nombre de la empresa", phone: "Teléfono de contacto (opcional)", bookable: "Permitir reservas", bookableHelp: "Para alquileres de remolques, equipos u otros artículos por día", dailyRate: "Precio por día", publish: listingId ? "Guardar cambios" : "Publicar", required: "Agrega un título, área de servicio y empresa.", loading: "Cargando publicación…", notFound: "No se encontró esta publicación." } : { heading: listingId ? "Edit listing" : form.listingType === "project" ? "List a project" : "List a job", listingType: "Listing type", job: "Job", jobHelp: "Hiring an employee", project: "Project", projectHelp: "A subcontractor for one task", employment: "Employment terms", fullTime: "Full-time", partTime: "Part-time", temporary: "Temporary", payUnit: "Pay type", hourly: "Hourly", salary: "Salary", title: "Title", titleHint: "e.g. Cabinet installation available", category: "Trade category", priceType: "Price", amount: "Current price", original: "Original price (optional)", fixed: "Set a price", free: "Free", contact: "Contact for price", photos: "Photos", photoHint: "Up to 8 JPG, PNG, or WebP images", keepPhotos: "Your current photos will stay. Choose new photos only if you want to replace them.", replacePhotos: "New photos will replace the current ones.", description: "Description", area: "Service area or ZIP", company: "Company name", phone: "Contact phone (optional)", bookable: "Allow bookings", bookableHelp: "For trailers, equipment, or other items rented by the day", dailyRate: "Price per day", publish: listingId ? "Save changes" : "Publish listing", required: "Add a title, service area, and company name.", loading: "Loading listing…", notFound: "This listing could not be found." };
   if (listingId && existing.isLoading) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="loading-block" aria-label={t.loading}/></main>;
   if (listingId && !existing.data?.listing) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty"><h2>{t.notFound}</h2></div></main>;
@@ -3445,10 +3801,11 @@ function ProFeatureCard({ title, description, onClick }: { title: string; descri
 function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const auth = useContext(AuthContext);
   const subscription = useQuery({ queryKey: ["subscription"], queryFn: () => api.getSubscription({}) });
-  const checkout = useMutation({ mutationFn: () => api.startPremiumCheckout({}) });
+  const [plan, setPlan] = useState<"monthly" | "annual">("annual");
+  const checkout = useMutation({ mutationFn: (chosen: "monthly" | "annual") => api.startPremiumCheckout({ plan: chosen }) });
   const isPremium = auth?.user.tier === "premium" || subscription.data?.tier === "premium";
   const startCheckout = async () => {
-    const result = await checkout.mutateAsync();
+    const result = await checkout.mutateAsync(plan);
     if (result.checkoutUrl) window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
   };
   const features = lang === "es"
@@ -3460,14 +3817,31 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       <span className="premium-plan-mark">PREMIUM</span>
       <h1>{isPremium ? (lang === "es" ? "Tu espacio Pro está activo" : "Your Pro workspace is active") : (lang === "es" ? "Todo el trabajo. Menos trabajo pesado." : "The whole operation. Less busywork.")}</h1>
       <p>{lang === "es" ? "Mantén Hoy, Trabajos, Clientes, Facturas, Presupuestos, agenda y fotos gratis. Premium desbloquea todo lo demás." : "Keep Today, Jobs, Clients, Invoices, Estimates, scheduling, and photos free. Premium unlocks everything else."}</p>
-      <div className="upgrade-price"><strong>$19</strong><span>{lang === "es" ? "USD al mes" : "USD per month"}</span></div>
+      {/* Build 4: monthly vs discounted annual plan selector. The annual
+          price/discount still needs the owner's approval before activation. */}
+      {!isPremium && (
+        <div className="plan-selector" role="radiogroup" aria-label={lang === "es" ? "Elige tu plan" : "Choose your plan"}>
+          <button type="button" role="radio" aria-checked={plan === "monthly"} className={`plan-option${plan === "monthly" ? " selected" : ""}`} onClick={() => setPlan("monthly")}>
+            <span className="plan-option-name">{lang === "es" ? "Mensual" : "Monthly"}</span>
+            <span className="plan-option-price"><strong>$19</strong><small>{lang === "es" ? "/mes" : "/mo"}</small></span>
+            <span className="plan-option-note">{lang === "es" ? "Cancela cuando quieras" : "Cancel anytime"}</span>
+          </button>
+          <button type="button" role="radio" aria-checked={plan === "annual"} className={`plan-option${plan === "annual" ? " selected" : ""}`} onClick={() => setPlan("annual")}>
+            <span className="plan-option-badge">{lang === "es" ? "AHORRA 2 MESES" : "SAVE 2 MONTHS"}</span>
+            <span className="plan-option-name">{lang === "es" ? "Anual" : "Annual"}</span>
+            <span className="plan-option-price"><strong>{lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
+            <span className="plan-option-note">{lang === "es" ? "Precio anual por anunciar" : "Annual pricing to be announced"}</span>
+          </button>
+        </div>
+      )}
+      {isPremium && <div className="upgrade-price"><strong>$19</strong><span>{lang === "es" ? "USD al mes" : "USD per month"}</span></div>}
     </section>
     <section className="upgrade-features" aria-label={lang === "es" ? "Funciones Premium" : "Premium features"}>{features.map((feature) => <div key={feature}><span aria-hidden="true">✓</span><strong>{feature}</strong></div>)}</section>
     {checkout.isError && <p className="status error">{actionErrorMessage(checkout.error)}</p>}
     {checkout.data && !checkout.data.configured && <div className="billing-setup-note" role="status"><strong>{lang === "es" ? "La facturación aún no está conectada" : "Billing isn’t connected yet"}</strong><p>{lang === "es" ? "El propietario debe terminar la configuración segura de Stripe antes de aceptar suscripciones." : "The owner needs to finish the secure Stripe setup before subscriptions can be accepted."}</p></div>}
-    {!isPremium && <button className="primary-button upgrade-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (lang === "es" ? "Mejorar con Stripe" : "Upgrade with Stripe")}</button>}
+    {!isPremium && <button className="primary-button upgrade-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (plan === "annual" ? (lang === "es" ? "Mejorar anual con Stripe" : "Upgrade annual with Stripe") : (lang === "es" ? "Mejorar con Stripe" : "Upgrade with Stripe"))}</button>}
     {isPremium && <div className="active-plan-note" role="status"><strong>{lang === "es" ? "Premium activo" : "Premium active"}</strong><span>{subscription.data?.status === "founder" ? (lang === "es" ? "Plan fundador" : "Founder plan") : subscription.data?.cancelAtPeriodEnd ? (lang === "es" ? "Activo hasta el final del período" : "Active through the end of the billing period") : (lang === "es" ? "Todas las herramientas Pro están desbloqueadas" : "All Pro tools are unlocked")}</span></div>}
-    <p className="upgrade-fine-print">{lang === "es" ? "Pago mensual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly billing. Cancel anytime; Premium remains active through the paid billing period."}</p>
+    <p className="upgrade-fine-print">{lang === "es" ? "Pago mensual o anual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly or annual billing. Cancel anytime; Premium remains active through the paid billing period."}</p>
   </main>;
 }
 
@@ -3604,7 +3978,7 @@ function JobsScreen({
           <button
             className="job-row"
             key={job.id}
-            onClick={() => setScreen({ name: "detail", jobId: job.id })}
+            onClick={(e) => { captureDetailHeroRect(e); setScreen({ name: "detail", jobId: job.id }); }}
           >
             <span className="date-block">
               <strong>{new Date(`${job.jobDate}T12:00:00`).getDate()}</strong>
@@ -3951,6 +4325,7 @@ function JobDetail({
     mutationFn: () => api.completeJob({ jobId, overrideNote: completionNote }),
     onSuccess: () => {
       setCompletionError("");
+      celebrate(lang === "es" ? "Trabajo completado" : "Job completed");
       client.invalidateQueries({ queryKey: ["job", jobId] });
       client.invalidateQueries({ queryKey: ["jobs"] });
     },
@@ -4140,7 +4515,10 @@ function JobDetail({
     query.data.crewTasks.length +
     query.data.voiceNotes.length +
     query.data.punchItems.length;
+  // Build 4: shared-element entrance from the tapped job row.
+  const [heroRect] = useState<DOMRect | null>(() => consumeDetailHeroRect());
   return (
+    <DetailHero fromRect={heroRect}>
     <main className="page detail-page">
       <PageHeader
         lang={lang}
@@ -4329,6 +4707,11 @@ function JobDetail({
           <label className="job-notes-editor"><span>{t.notes}</span><textarea rows={3} value={detailDraft.notes} onChange={(event) => setDetailDraft({ ...detailDraft, notes: event.target.value })}/></label>
           <button className="secondary-button" type="button" disabled={saveJobInfo.isPending} onClick={() => saveJobInfo.mutate()}>{saveJobInfo.isPending ? t.saving : t.save}</button>
         </AccordionSection>
+        {/* Build 4: voice notes surfaced directly in job detail — record and
+            play back without leaving the job. */}
+        <AccordionSection title={t.voiceNotes} count={query.data.voiceNotes.length} icon={<Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>}>
+          <VoiceNotes lang={lang} data={query.data} />
+        </AccordionSection>
         <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} icon={<CheckIcon />}>
           <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Operaciones del trabajo" : "Job operations"} onClick={() => setScreen({ name: "jobOps", jobId })}/></div>
         </AccordionSection>
@@ -4344,6 +4727,7 @@ function JobDetail({
         {(setJobClient.isError || saveJobInfo.isError || linkInvoice.isError || linkDocument.isError) && <p className="status error">{t.error}</p>}
       </section></div>}
     </main>
+    </DetailHero>
   );
 }
 function AccordionSection({
@@ -7959,7 +8343,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: 
     <div className="financial-editor">
       <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className="editor-line-item" key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><input aria-label={`${t.item} ${index+1}`} value={item.description} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><small>1 × {usd(money(item.amount))}</small></div><input className="amount-input" aria-label={`${t.amount} ${index+1}`} inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
-      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:new Date().toISOString().slice(0,10),method,note});setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
+      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:new Date().toISOString().slice(0,10),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
@@ -7968,6 +8352,57 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete }: 
 
 function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice"|"quote";id:number;onClose:()=>void;onSaved:()=>void}){
  const [name,setName]=useState("");const [signature,setSignature]=useState("");const [saving,setSaving]=useState(false);return <div className="sheet-backdrop" role="presentation"><section className="signature-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Firma del cliente":"Client signature"}><div className="sheet-handle"/><div className="section-title-row"><h2>{lang==="es"?"Firma del cliente":"Client signature"}</h2><button onClick={onClose}>{copy[lang].close}</button></div><label><span>{lang==="es"?"Nombre del firmante":"Signer name"}</span><input value={name} onChange={(e)=>setName(e.target.value)}/></label><SignaturePad label={copy[lang].signature} clearLabel={copy[lang].clear} onChange={setSignature}/><button className="primary-button" disabled={!name.trim()||!signature||saving} onClick={async()=>{setSaving(true);try{await api.saveFinancialSignature({kind,id,signerName:name,signatureDataBase64:signature});onSaved();}finally{setSaving(false);}}}>{saving?copy[lang].saving:(lang==="es"?"Guardar firma":"Save signature")}</button></section></div>;
+}
+
+// ---------------------------------------------------------------------------
+// Build 4: auto-generated checkable materials list from an estimate's line
+// items. Check state persists in localStorage per estimate so the crew can
+// tick things off at the supply house.
+// ---------------------------------------------------------------------------
+function MaterialsChecklist({ lang, quoteId, lineItems }: { lang: Lang; quoteId: number; lineItems: Array<{ description: string; amount: string }> }) {
+  const storageKey = `crewkat-materials-${quoteId}`;
+  const [checked, setChecked] = useState<Record<number, boolean>>(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      return raw ? (JSON.parse(raw) as Record<number, boolean>) : {};
+    } catch { return {}; }
+  });
+  const [open, setOpen] = useState(false);
+  const toggle = (index: number) => {
+    setChecked((prev) => {
+      const next = { ...prev, [index]: !prev[index] };
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+    buzz(8);
+  };
+  const doneCount = lineItems.filter((_, i) => checked[i]).length;
+  const progress = lineItems.length ? Math.round((doneCount / lineItems.length) * 100) : 0;
+  return (
+    <section className="materials-checklist" aria-label={lang === "es" ? "Lista de materiales" : "Materials list"}>
+      <button type="button" className="materials-checklist-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="materials-checklist-title">
+          <Icon><path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" /></Icon>
+          <strong>{lang === "es" ? "Lista de materiales" : "Materials list"}</strong>
+          <small>{doneCount}/{lineItems.length} · {progress}%</small>
+        </span>
+        <span className={`chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
+      </button>
+      <div className="materials-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></div>
+      {open && (
+        <ul className="materials-items">
+          {lineItems.map((item, i) => (
+            <li key={i}>
+              <button type="button" className={`materials-item${checked[i] ? " done" : ""}`} onClick={() => toggle(i)} aria-pressed={!!checked[i]}>
+                <span className="materials-checkbox pop-in" aria-hidden="true">{checked[i] && <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 8.5l3.5 3.5L13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+                <span className="materials-item-text"><strong>{item.description}</strong><small>{usd(money(item.amount))}</small></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function QuotePreview({
@@ -8028,8 +8463,11 @@ function QuotePreview({
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${quote.accepted?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,lang==="es"?"Cotización":"Estimate");}}><ShareIcon/>{lang==="es"?"Enviar cotización":"Send estimate"}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
+    {/* Build 4: auto-generated checkable materials list from the estimate's
+        line items. Check state persists on-device per estimate. */}
+    <MaterialsChecklist lang={lang} quoteId={quote.id} lineItems={quote.lineItems} />
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{buzz(12);await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{buzz(12);await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});if(!quote.accepted)celebrate(lang==="es"?"Presupuesto aceptado":"Estimate accepted");await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={quote} settings={settings} lang={lang}/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -11091,10 +11529,22 @@ function VoiceNotes({ lang, data }: { lang: Lang; data: JobData }) {
   const upload = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState(false);
   const [title, setTitle] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const [draft, setDraft] = useState<{ blob: Blob; seconds: number } | null>(
     null,
   );
   const [error, setError] = useState("");
+  // Build 4: 10-minute cap — auto-stop the recorder at the limit.
+  const VOICE_MAX_SECONDS = 600;
+  useEffect(() => {
+    if (!recording) { setElapsed(0); return; }
+    const timer = window.setInterval(() => {
+      const s = Math.round((Date.now() - started.current) / 1000);
+      setElapsed(s);
+      if (s >= VOICE_MAX_SECONDS) stop();
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [recording]);
   const begin = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -11175,11 +11625,18 @@ function VoiceNotes({ lang, data }: { lang: Lang; data: JobData }) {
           accept="audio/*"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) setDraft({ blob: file, seconds: 0 });
+            if (!file) return;
+            if (file.size > 15 * 1024 * 1024) {
+              setError(lang === "es" ? "El audio debe ser menor de 15 MB." : "Audio must be under 15 MB.");
+              e.target.value = "";
+              return;
+            }
+            setError("");
+            setDraft({ blob: file, seconds: 0 });
           }}
         />
       </div>
-      {recording && <p className="recording-indicator">● {t.recording}</p>}
+      {recording && <p className="recording-indicator">● {t.recording} · {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")} / 10:00</p>}
       {error && <p className="status error">{error}</p>}
       {draft && (
         <div className="voice-draft">
@@ -11662,6 +12119,7 @@ function TodayScreen({
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
         <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
         <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon alternate"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Trabajos, citas y vencidos" : "Jobs, appointments & overdue"}</small></span><BackIcon /></button>
         <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
       {pinnedTools.length > 0 && (
@@ -11683,6 +12141,17 @@ function TodayScreen({
           </div>
         </section>
       )}
+      {/* Build 4: referral growth banner on Home. The reward is bonus
+          Marketplace listings (the real, implemented reward) — never a
+          free Premium month, which the billing code does not grant. */}
+      <button type="button" className="home-referral-banner stagger-in" onClick={() => setScreen({ name: "referrals" })}>
+        <span className="home-referral-icon" aria-hidden="true"><Icon><path d="M16 11a4 4 0 1 0-4-4M4 21c0-4 3-7 8-7 2 0 3.8.7 5.2 1.8M18 8v6M15 11h6" /></Icon></span>
+        <span>
+          <strong>{lang === "es" ? "Invita a un contratista, gana listados gratis" : "Refer a contractor, earn free listings"}</strong>
+          <small>{lang === "es" ? "5 listados extra en el Mercado por cada amigo que se una" : "5 bonus Marketplace listings for every friend who joins"}</small>
+        </span>
+        <BackIcon />
+      </button>
       <button type="button" className="home-attention-card" onClick={() => { const target = document.querySelector(".automation-group, .today-clear, .today-field-strip"); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
         <span><strong>{actionCount}</strong><small>{lang === "es" ? "acciones que merecen atención" : "actions worth your attention"}</small></span><BackIcon />
       </button>
@@ -16626,8 +17095,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
         ))}
       </section>
       <section className="portal-section">
-        <h2>{lang === "es" ? "Próximas visitas" : "Upcoming visits"}</h2>
-        {d.appointments.map((a) => (
+        <h2>{lang === "es" ? "Próximas visitas" : "Upcoming visits"}</h2>        {d.appointments.map((a) => (
           <article className="tool-record" key={a.id}>
             <strong>
               {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
@@ -16645,6 +17113,38 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
               : "No visits scheduled."}
           </p>
         )}
+      </section>
+      {/* Build 4: read-only estimate + invoice status in the client portal. */}
+      <section className="portal-section">
+        <h2>{lang === "es" ? "Presupuestos" : "Estimates"}</h2>
+        {d.estimates.map((e) => (
+          <details className="action-details" key={e.id}>
+            <summary>
+              {lang === "es" ? "Presupuesto" : "Estimate"} · {usd(money(e.total))}
+              <span className={`status-chip ${e.accepted ? "paid" : "sent"}`}>{e.accepted ? (lang === "es" ? "Aceptado" : "Accepted") : (lang === "es" ? "Pendiente" : "Pending")}</span>
+            </summary>
+            <ul className="portal-line-items">
+              {e.lineItems.map((item, i) => (
+                <li key={i}><span>{item.description}</span><strong>{usd(money(item.amount))}</strong></li>
+              ))}
+            </ul>
+          </details>
+        ))}
+        {!d.estimates.length && <p>{lang === "es" ? "No hay presupuestos." : "No estimates yet."}</p>}
+      </section>
+      <section className="portal-section">
+        <h2>{lang === "es" ? "Facturas" : "Invoices"}</h2>
+        {d.invoices.map((inv) => (
+          <article className="tool-record" key={inv.id}>
+            <strong>{inv.invoiceNumber} · {usd(money(inv.total))}</strong>
+            <span>
+              <span className={`status-chip ${inv.status}`}>{inv.status}</span>
+              {" · "}{lang === "es" ? "Vence" : "Due"} {inv.dueDate}
+              {Number(inv.balanceDue) > 0 && <> · <strong>{lang === "es" ? "Saldo" : "Balance"} {usd(money(inv.balanceDue))}</strong></>}
+            </span>
+          </article>
+        ))}
+        {!d.invoices.length && <p>{lang === "es" ? "No hay facturas." : "No invoices yet."}</p>}
       </section>
       <section className="portal-section">
         <h2>{lang === "es" ? "Selecciones" : "Selections"}</h2>
@@ -16750,6 +17250,187 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     </main>
   );
 }
+// ---------------------------------------------------------------------------
+// Build 4: public no-login calculator funnel (/tools, /tools/<slug>).
+// Shareable calculator pages with signup CTAs — the growth funnel. Fully
+// bilingual, mobile-first, staggered-entrance animations. Reuses the in-app
+// calculator components directly so public and in-app math never drift.
+// ---------------------------------------------------------------------------
+
+const PUBLIC_TOOL_ORDER: ToolboxTab[] = [
+  "loan", "materials", "angle", "convert", "area", "yards", "board", "drywall",
+  "roofing", "tile", "margin", "paint", "flooring", "fence", "block", "gravel",
+  "stairs", "insulation", "gutter", "rate", "punchlist",
+];
+
+const PUBLIC_TOOL_META: Record<ToolboxTab, { en: string; es: string; blurbEn: string; blurbEs: string; icon: string }> = {
+  loan: { en: "Loan payment", es: "Pago de préstamo", blurbEn: "Monthly payment, interest & payoff schedule.", blurbEs: "Pago mensual, interés y tabla de pagos.", icon: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  materials: { en: "Material guide", es: "Guía de materiales", blurbEn: "Quick reference for common materials.", blurbEs: "Referencia rápida de materiales comunes.", icon: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  angle: { en: "Angles", es: "Ángulos", blurbEn: "Miter and bevel angle math.", blurbEs: "Cálculos de ángulos de inglete y bisel.", icon: "M4 19h16L4 5zM8 15h5" },
+  convert: { en: "Unit converter", es: "Convertidor de unidades", blurbEn: "Feet, meters, inches, and more.", blurbEs: "Pies, metros, pulgadas y más.", icon: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
+  area: { en: "Measurements", es: "Medidas", blurbEn: "Area and perimeter for any room.", blurbEs: "Área y perímetro de cualquier cuarto.", icon: "M4 4h16v16H4zM8 4v16M4 10h16" },
+  yards: { en: "Concrete", es: "Concreto", blurbEn: "Cubic yards for slabs and footings.", blurbEs: "Yardas cúbicas para losas y zapatas.", icon: "M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" },
+  board: { en: "Lumber", es: "Madera", blurbEn: "Board feet for framing lumber.", blurbEs: "Pies tabla para madera de estructura.", icon: "M4 7h16v10H4zM8 7v10M13 7v10" },
+  drywall: { en: "Drywall sheets", es: "Paneles de yeso", blurbEn: "Sheets, screws & mud for walls.", blurbEs: "Paneles, tornillos y masilla para paredes.", icon: "M5 4h14v16H5zM9 4v16M5 10h14" },
+  roofing: { en: "Roofing squares", es: "Techos", blurbEn: "Squares, shingles & felt.", blurbEs: "Cuadros, tejas y fieltro.", icon: "M3 13 12 4l9 9M6 11v9h12v-9" },
+  tile: { en: "Tile boxes", es: "Cajas de loseta", blurbEn: "Boxes, thinset & grout.", blurbEs: "Cajas, mortero y lechada.", icon: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" },
+  margin: { en: "Markup & margin", es: "Margen y recargo", blurbEn: "Price jobs without losing money.", blurbEs: "Cotiza trabajos sin perder dinero.", icon: "M6 18 18 6M7 7h.01M17 17h.01" },
+  paint: { en: "Paint estimator", es: "Estimador de pintura", blurbEn: "Gallons, primer & labor for paint jobs.", blurbEs: "Galones, primer y mano de obra.", icon: "M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" },
+  flooring: { en: "Flooring boxes", es: "Cajas de piso", blurbEn: "Boxes and waste for any floor.", blurbEs: "Cajas y desperdicio para cualquier piso.", icon: "M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" },
+  fence: { en: "Fence & deck", es: "Cerca y deck", blurbEn: "Pickets, posts & concrete.", blurbEs: "Tablas, postes y concreto.", icon: "M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" },
+  block: { en: "Block & pavers", es: "Bloques y adoquines", blurbEn: "Blocks, mortar & sand.", blurbEs: "Bloques, mortero y arena.", icon: "M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" },
+  gravel: { en: "Gravel & soil", es: "Grava y tierra", blurbEn: "Yards and tons for base work.", blurbEs: "Yardas y toneladas para base.", icon: "M4 15 9 6l5 6 3-4 3 7zM4 20h16" },
+  stairs: { en: "Stair stringer", es: "Zanca de escalera", blurbEn: "Rise, run & stringer layout.", blurbEs: "Contrahuella, huella y trazado.", icon: "M4 20h4v-4h4v-4h4V8h4V4" },
+  insulation: { en: "Insulation batts", es: "Aislante en rollos", blurbEn: "Batts and rolls coverage.", blurbEs: "Cobertura de rollos y mantas.", icon: "M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" },
+  gutter: { en: "Gutter & downspouts", es: "Canalones y bajantes", blurbEn: "Linear feet and downspouts.", blurbEs: "Pies lineales y bajantes.", icon: "M4 6h16v4H4zM17 10v8h-4M17 18H6" },
+  rate: { en: "Billable rate", es: "Tarifa facturable", blurbEn: "Know your true hourly rate.", blurbEs: "Conoce tu tarifa real por hora.", icon: "M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" },
+  punchlist: { en: "Punch list", es: "Lista de pendientes", blurbEn: "Track the final details.", blurbEs: "Controla los detalles finales.", icon: "M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" },
+};
+
+function PublicToolsScreen({ slug }: { slug: string }) {
+  const [lang, setLang] = useState<Lang>(() => {
+    try {
+      const saved = window.localStorage.getItem("crewkat-public-lang");
+      if (saved === "es" || saved === "en") return saved;
+    } catch { /* storage unavailable */ }
+    return typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("es") ? "es" : "en";
+  });
+  const [copied, setCopied] = useState(false);
+  const tool = PUBLIC_TOOL_ORDER.includes(slug as ToolboxTab) ? (slug as ToolboxTab) : null;
+  const setPublicLang = (next: Lang) => {
+    setLang(next);
+    try { window.localStorage.setItem("crewkat-public-lang", next); } catch { /* storage unavailable */ }
+  };
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/tools${tool ? `/${tool}` : ""}` : "";
+  const share = async () => {
+    const title = tool ? PUBLIC_TOOL_META[tool][lang] : "Crewkat";
+    try {
+      if (typeof navigator !== "undefined" && "share" in navigator) {
+        await (navigator as Navigator & { share: (data: { title: string; url: string }) => Promise<void> }).share({ title: `Crewkat — ${title}`, url: shareUrl });
+        return;
+      }
+      throw new Error("no-share");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      } catch { /* clipboard unavailable */ }
+    }
+  };
+  const header = (
+    <header className="public-tools-header">
+      <a className="public-brand" href="/tools" aria-label="Crewkat tools">
+        <span className="public-brand-mark" aria-hidden="true">🐈‍⬛</span>
+        <span className="public-brand-name">Crewkat</span>
+      </a>
+      <div className="public-header-actions">
+        <div className="public-lang-toggle" role="group" aria-label={lang === "es" ? "Idioma" : "Language"}>
+          <button type="button" className={lang === "en" ? "active" : ""} onClick={() => setPublicLang("en")} aria-pressed={lang === "en"}>EN</button>
+          <button type="button" className={lang === "es" ? "active" : ""} onClick={() => setPublicLang("es")} aria-pressed={lang === "es"}>ES</button>
+        </div>
+        <a className="public-login-link" href="/app">{lang === "es" ? "Entrar" : "Log in"}</a>
+      </div>
+    </header>
+  );
+  const cta = (
+    <section className="public-cta-band">
+      <div>
+        <h2>{lang === "es" ? "Lleva estas calculadoras a cada trabajo" : "Take these calculators to every job"}</h2>
+        <p>{lang === "es" ? "Crewkat es gratis para contratistas: cotizaciones, facturas, fotos y más." : "Crewkat is free for contractors: estimates, invoices, photos and more."}</p>
+      </div>
+      <a className="public-cta-button" href="/app">{lang === "es" ? "Crear cuenta gratis" : "Create free account"}</a>
+    </section>
+  );
+  if (!tool) {
+    return (
+      <main className="page public-page public-tools-page">
+        {header}
+        <section className="public-hero">
+          <h1>{lang === "es" ? "Calculadoras gratis para contratistas" : "Free calculators for contractors"}</h1>
+          <p>{lang === "es" ? "Concreto, pintura, loseta, techos y más — sin cuenta, sin costo. Comparte cualquiera con tu equipo." : "Concrete, paint, tile, roofing and more — no account, no cost. Share any of them with your crew."}</p>
+          <button type="button" className="public-share-button" onClick={share}>
+            <Icon size={18}><path d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8" /></Icon>
+            {copied ? (lang === "es" ? "¡Enlace copiado!" : "Link copied!") : (lang === "es" ? "Compartir" : "Share")}
+          </button>
+        </section>
+        <section className="public-tools-grid" aria-label={lang === "es" ? "Calculadoras" : "Calculators"}>
+          {PUBLIC_TOOL_ORDER.map((tab, index) => {
+            const meta = PUBLIC_TOOL_META[tab];
+            return (
+              <a key={tab} className="public-tool-card stagger-in" style={{ animationDelay: `${Math.min(index, 12) * 45}ms` }} href={`/tools/${tab}`}>
+                <span className="public-tool-icon" aria-hidden="true"><Icon size={26}><path d={meta.icon} /></Icon></span>
+                <span className="public-tool-name">{meta[lang]}</span>
+                <span className="public-tool-blurb">{lang === "es" ? meta.blurbEs : meta.blurbEn}</span>
+              </a>
+            );
+          })}
+        </section>
+        {cta}
+        <footer className="public-footer"><p>© Crewkat — {lang === "es" ? "Hecho para contratistas" : "Built for contractors"}</p></footer>
+      </main>
+    );
+  }
+  const meta = PUBLIC_TOOL_META[tool];
+  return (
+    <main className="page public-page public-tools-page">
+      {header}
+      <nav className="public-breadcrumb" aria-label="Breadcrumb">
+        <a href="/tools">{lang === "es" ? "Calculadoras" : "Calculators"}</a>
+        <span aria-hidden="true">›</span>
+        <span>{meta[lang]}</span>
+      </nav>
+      <section className="public-tool-hero">
+        <h1>{meta[lang]}</h1>
+        <p>{lang === "es" ? meta.blurbEs : meta.blurbEn}</p>
+        <button type="button" className="public-share-button" onClick={share}>
+          <Icon size={18}><path d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8" /></Icon>
+          {copied ? (lang === "es" ? "¡Enlace copiado!" : "Link copied!") : (lang === "es" ? "Compartir esta calculadora" : "Share this calculator")}
+        </button>
+      </section>
+      <section className="public-tool-body" aria-label={meta[lang]}>
+        {tool === "loan" && <LoanCalculator lang={lang} />}
+        {tool === "materials" && <MaterialReference lang={lang} />}
+        {tool === "angle" && <AngleCalculator lang={lang} />}
+        {tool === "convert" && <UnitConverter lang={lang} />}
+        {tool === "area" && <AreaCalculator lang={lang} />}
+        {tool === "yards" && <YardsCalculator lang={lang} />}
+        {tool === "board" && <BoardFeetCalculator lang={lang} />}
+        {tool === "drywall" && <DrywallCalculator lang={lang} />}
+        {tool === "roofing" && <RoofingCalculator lang={lang} />}
+        {tool === "tile" && <TileCalculator lang={lang} />}
+        {tool === "margin" && <MarginCalculator lang={lang} />}
+        {tool === "paint" && <PaintCalculator lang={lang} />}
+        {tool === "flooring" && <FlooringCalculator lang={lang} />}
+        {tool === "fence" && <FenceCalculator lang={lang} />}
+        {tool === "block" && <BlockCalculator lang={lang} />}
+        {tool === "gravel" && <GravelCalculator lang={lang} />}
+        {tool === "stairs" && <StairCalculator lang={lang} />}
+        {tool === "insulation" && <InsulationCalculator lang={lang} />}
+        {tool === "gutter" && <GutterCalculator lang={lang} />}
+        {tool === "rate" && <RateBuilderCalculator lang={lang} />}
+        {tool === "punchlist" && <PunchListPanel lang={lang} />}
+      </section>
+      {cta}
+      <section className="public-more-tools" aria-label={lang === "es" ? "Más calculadoras" : "More calculators"}>
+        <h2>{lang === "es" ? "Más calculadoras gratis" : "More free calculators"}</h2>
+        <div className="public-tools-grid compact">
+          {PUBLIC_TOOL_ORDER.filter((t) => t !== tool).slice(0, 6).map((tab) => {
+            const m = PUBLIC_TOOL_META[tab];
+            return (
+              <a key={tab} className="public-tool-card" href={`/tools/${tab}`}>
+                <span className="public-tool-icon" aria-hidden="true"><Icon size={24}><path d={m.icon} /></Icon></span>
+                <span className="public-tool-name">{m[lang]}</span>
+              </a>
+            );
+          })}
+        </div>
+      </section>
+      <footer className="public-footer"><p>© Crewkat — {lang === "es" ? "Hecho para contratistas" : "Built for contractors"}</p></footer>
+    </main>
+  );
+}
+
 function BookingRequestScreen({ lang }: { lang: Lang }) {
   const [form, setForm] = useState({
     name: "",

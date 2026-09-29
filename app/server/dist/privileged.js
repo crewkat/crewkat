@@ -4385,8 +4385,29 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  sendNudgeEmail: {
+    request: object({
+      to: string2().email().max(200),
+      subject: string2().min(1).max(200),
+      text: string2().min(1).max(20000)
+    }),
+    response: object({ delivery: _enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createListingBumpCheckout: {
+    request: object({
+      userId: number2().int().positive(),
+      companyId: number2().int().positive(),
+      email: string2().email().max(200),
+      listingId: number2().int().positive()
+    }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createStripeCheckout: {
-    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200) }),
+    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual"]).default("monthly") }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
     capabilities: [],
     timeoutMs: 20000
@@ -4401,7 +4422,11 @@ var privileged = definePrivilegedContracts({
       subscriptionId: string2().nullable(),
       subscriptionStatus: string2().nullable(),
       currentPeriodEnd: number2().int().nullable(),
-      cancelAtPeriodEnd: boolean2()
+      cancelAtPeriodEnd: boolean2(),
+      checkoutType: string2().nullable(),
+      listingId: number2().int().positive().nullable(),
+      companyId: number2().int().positive().nullable(),
+      stripeSessionId: string2().nullable()
     }),
     capabilities: [],
     timeoutMs: 20000
@@ -4524,6 +4549,75 @@ var privilegedHandlers = definePrivilegedHandlers(privileged, {
       return { delivery: "failed" };
     }
   },
+  async sendNudgeEmail(args) {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    if (!apiKey)
+      return { delivery: "failed" };
+    const configuredFrom = process.env.RESEND_FROM_EMAIL?.trim();
+    const from = configuredFrom && !/[\r\n]/.test(configuredFrom) ? configuredFrom : DEFAULT_RESEND_FROM;
+    const safeSubject = args.subject.replace(/[\r\n]/g, " ");
+    try {
+      const response = await fetch(RESEND_EMAIL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from,
+          to: [args.to],
+          subject: safeSubject,
+          text: args.text
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      return { delivery: response.ok ? "sent" : "failed" };
+    } catch {
+      return { delivery: "failed" };
+    }
+  },
+  async createListingBumpCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const priceId = process.env.STRIPE_BUMP_PRICE_ID?.trim();
+    const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+    const missing = [
+      !secretKey ? "STRIPE_SECRET_KEY" : "",
+      !priceId ? "STRIPE_BUMP_PRICE_ID" : "",
+      !publicUrl ? "CREWKAT_PUBLIC_URL" : ""
+    ].filter(Boolean);
+    if (missing.length || !secretKey || !priceId || !publicUrl)
+      return { configured: false, checkoutUrl: null, missing };
+    if (!/^https:\/\//i.test(publicUrl))
+      return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
+    const body = new URLSearchParams({
+      mode: "payment",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: args.email,
+      client_reference_id: String(args.userId),
+      "metadata[type]": "listing_bump",
+      "metadata[user_id]": String(args.userId),
+      "metadata[company_id]": String(args.companyId),
+      "metadata[listing_id]": String(args.listingId),
+      success_url: `${publicUrl}/app/?bump=success`,
+      cancel_url: `${publicUrl}/app/?bump=cancelled`,
+      allow_promotion_codes: "true"
+    });
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Stripe Checkout could not be started. Check the server billing configuration.");
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url))
+      throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
   async sendAuthEmail(args) {
     const apiKey = process.env.RESEND_API_KEY?.trim();
     if (!apiKey)
@@ -4560,12 +4654,13 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
   async createStripeCheckout(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim();
-    const priceId = process.env.STRIPE_PREMIUM_PRICE_ID?.trim();
+    const annual = args.plan === "annual";
+    const priceId = annual ? process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID?.trim() : process.env.STRIPE_PREMIUM_PRICE_ID?.trim();
     const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
     const missing = [
       !publishableKey ? "STRIPE_PUBLISHABLE_KEY" : "",
       !secretKey ? "STRIPE_SECRET_KEY" : "",
-      !priceId ? "STRIPE_PREMIUM_PRICE_ID" : "",
+      !priceId ? annual ? "STRIPE_PREMIUM_ANNUAL_PRICE_ID" : "STRIPE_PREMIUM_PRICE_ID" : "",
       !publicUrl ? "CREWKAT_PUBLIC_URL" : ""
     ].filter(Boolean);
     if (missing.length || !secretKey || !priceId || !publicUrl)
@@ -4632,6 +4727,10 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
     const subscriptionStatus = typeof object2.status === "string" ? object2.status : null;
     const currentPeriodEnd = typeof object2.current_period_end === "number" ? object2.current_period_end : null;
     const eventType = event.type === "checkout.session.completed" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted" ? event.type : "ignored";
+    const listingIdValue = metadata.listing_id;
+    const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
+    const companyIdValue = metadata.company_id;
+    const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
     return {
       eventId: event.id,
       eventType,
@@ -4640,7 +4739,11 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       subscriptionId,
       subscriptionStatus,
       currentPeriodEnd,
-      cancelAtPeriodEnd: object2.cancel_at_period_end === true
+      cancelAtPeriodEnd: object2.cancel_at_period_end === true,
+      checkoutType: typeof metadata.type === "string" ? metadata.type : null,
+      listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
+      companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
+      stripeSessionId: event.type === "checkout.session.completed" && typeof object2.id === "string" ? object2.id : null
     };
   },
   async listStripeCharges(args) {

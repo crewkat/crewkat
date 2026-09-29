@@ -5189,6 +5189,9 @@ function bindIfParam(value, column) {
 var eq = (left, right) => {
   return sql`${left} = ${bindIfParam(right, left)}`;
 };
+var ne = (left, right) => {
+  return sql`${left} <> ${bindIfParam(right, left)}`;
+};
 function and(...unfilteredConditions) {
   const conditions = unfilteredConditions.filter((c) => c !== undefined);
   if (conditions.length === 0) {
@@ -6704,6 +6707,7 @@ var quotes = sqliteTable("quotes", {
   parentQuoteId: integer2("parent_quote_id"),
   versionNumber: integer2("version_number").notNull().default(1),
   superseded: integer2("superseded", { mode: "boolean" }).notNull().default(false),
+  estimateNudgeSentAt: integer2("estimate_nudge_sent_at", { mode: "timestamp_ms" }),
   accepted: integer2("accepted", { mode: "boolean" }).notNull().default(false),
   convertedToInvoiceId: integer2("converted_to_invoice_id"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
@@ -7341,6 +7345,7 @@ var marketplaceListings = sqliteTable("marketplace_listings", {
   bookable: integer2("bookable", { mode: "boolean" }).notNull().default(false),
   dailyRate: text("daily_rate").notNull().default(""),
   promoted: integer2("promoted", { mode: "boolean" }).notNull().default(false),
+  featuredUntil: integer2("featured_until", { mode: "timestamp_ms" }),
   moderationStatus: text("moderation_status").notNull().default("active"),
   moderationReason: text("moderation_reason").notNull().default(""),
   flagCount: integer2("flag_count").notNull().default(0),
@@ -7436,6 +7441,14 @@ var referralEvents = sqliteTable("referral_events", {
   referredUserId: integer2("referred_user_id").notNull().unique().references(() => authUsers.id, { onDelete: "cascade" }),
   rewarded: integer2("rewarded", { mode: "boolean" }).notNull().default(false),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var listingBumpPurchases = sqliteTable("listing_bump_purchases", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  companyId: integer2("company_id").notNull().default(1),
+  listingId: integer2("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  stripeSessionId: text("stripe_session_id").notNull().default(""),
+  purchasedAt: integer2("purchased_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  expiresAt: integer2("expires_at", { mode: "timestamp_ms" }).notNull()
 });
 var marketplaceAlerts = sqliteTable("marketplace_alerts", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -7602,8 +7615,29 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  sendNudgeEmail: {
+    request: object({
+      to: string2().email().max(200),
+      subject: string2().min(1).max(200),
+      text: string2().min(1).max(20000)
+    }),
+    response: object({ delivery: _enum(["sent", "failed"]) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createListingBumpCheckout: {
+    request: object({
+      userId: number2().int().positive(),
+      companyId: number2().int().positive(),
+      email: string2().email().max(200),
+      listingId: number2().int().positive()
+    }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createStripeCheckout: {
-    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200) }),
+    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual"]).default("monthly") }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
     capabilities: [],
     timeoutMs: 20000
@@ -7618,7 +7652,11 @@ var privileged = definePrivilegedContracts({
       subscriptionId: string2().nullable(),
       subscriptionStatus: string2().nullable(),
       currentPeriodEnd: number2().int().nullable(),
-      cancelAtPeriodEnd: boolean2()
+      cancelAtPeriodEnd: boolean2(),
+      checkoutType: string2().nullable(),
+      listingId: number2().int().positive().nullable(),
+      companyId: number2().int().positive().nullable(),
+      stripeSessionId: string2().nullable()
     }),
     capabilities: [],
     timeoutMs: 20000
@@ -8098,7 +8136,7 @@ var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: numbe
 var marketplaceCategorySchema = _enum(["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"]);
 var moderationStatusSchema = _enum(["active", "auto_rejected", "pending_review", "removed"]);
 var marketplacePhotoSchema = object({ id: number2(), url: string2(), filename: string2() });
-var marketplaceListingSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), employmentType: _enum(["full_time", "part_time", "temporary"]), payUnit: _enum(["hourly", "salary"]), priceKind: _enum(["amount", "free", "contact"]), price: string2(), originalPrice: string2(), description: string2(), serviceArea: string2(), companyName: string2(), companyPhone: string2(), bookable: boolean2(), dailyRate: string2(), promoted: boolean2(), isMine: boolean2(), moderationStatus: moderationStatusSchema, photos: array(marketplacePhotoSchema), justListed: boolean2(), createdAt: string2(), updatedAt: string2() });
+var marketplaceListingSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), employmentType: _enum(["full_time", "part_time", "temporary"]), payUnit: _enum(["hourly", "salary"]), priceKind: _enum(["amount", "free", "contact"]), price: string2(), originalPrice: string2(), description: string2(), serviceArea: string2(), companyName: string2(), companyPhone: string2(), bookable: boolean2(), dailyRate: string2(), promoted: boolean2(), featured: boolean2(), featuredUntil: string2().nullable(), isMine: boolean2(), moderationStatus: moderationStatusSchema, photos: array(marketplacePhotoSchema), justListed: boolean2(), createdAt: string2(), updatedAt: string2() });
 var marketplaceRequestSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), description: string2(), serviceArea: string2(), neededBy: string2(), companyName: string2(), companyPhone: string2(), createdAt: string2(), updatedAt: string2() });
 var marketplaceMessageSchema = object({ id: number2(), listingId: number2(), body: string2(), imageUrl: string2().nullable(), imageFilename: string2(), sender: _enum(["me", "other"]), senderName: string2(), isRead: boolean2(), createdAt: string2() });
 var marketplaceInboxRowSchema = object({ listingId: number2(), listingTitle: string2(), companyName: string2(), lastMessage: string2(), lastMessageAt: string2(), unreadCount: number2(), isInquiry: boolean2().default(false) });
@@ -8272,7 +8310,8 @@ function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, gra
 }
 async function marketplaceListingShape(ctx, row, photoRows) {
   const photos2 = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus, photos: photos2, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
+  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus, photos: photos2, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function marketplaceRequestShape(row) {
   return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -9181,6 +9220,65 @@ async function runRecurringInvoiceTick(ctx) {
   }
   return { ran: generated.length > 0, generated };
 }
+async function runEstimateNudgeTick(ctx) {
+  const db = ctx.db();
+  const cutoff = Date.now() - 3 * 86400000;
+  const candidates = await db.select().from(quotes).where(and(ne(quotes.sentAt, ""), eq(quotes.accepted, false), eq(quotes.superseded, false), isNull(quotes.estimateNudgeSentAt)));
+  const nudged = [];
+  for (const quote of candidates) {
+    try {
+      const link = (await db.select({ firstViewedAt: documentLinks.firstViewedAt }).from(documentLinks).where(and(eq(documentLinks.documentKind, "quote"), eq(documentLinks.documentId, quote.id), isNull(documentLinks.revokedAt))).orderBy(desc(documentLinks.createdAt)).limit(1))[0];
+      const viewedAt = link?.firstViewedAt?.getTime() ?? null;
+      if (!viewedAt || viewedAt > cutoff)
+        continue;
+      const now = new Date;
+      const clientName = quote.clientName || "there";
+      const companyName = await companyNameForNudge(db, quote.companyId);
+      if (quote.clientEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(quote.clientEmail)) {
+        const subject = `Still interested? Your estimate from ${companyName}`;
+        const text = `Hi ${clientName},
+
+Just checking in \u2014 you viewed your estimate of $${quote.total} on ${new Date(viewedAt).toLocaleDateString()} and we wanted to make sure you had everything you need.
+
+Reply to this email or give us a call and we'll take care of the rest.
+
+Thanks!`;
+        try {
+          const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: quote.clientEmail, subject, text });
+          if (result.delivery !== "sent")
+            throw new Error("email not sent");
+        } catch (error) {
+          console.error(`[crewkat][nudge] quote ${quote.id}: email failed, falling back to in-app notice:`, error);
+          await notifyNudgeFallback(db, quote);
+        }
+      } else {
+        await notifyNudgeFallback(db, quote);
+      }
+      await db.update(quotes).set({ estimateNudgeSentAt: now }).where(eq(quotes.id, quote.id));
+      nudged.push(quote.id);
+      console.log(`[crewkat][nudge] quote ${quote.id}: reminder sent.`);
+    } catch (error) {
+      console.error(`[crewkat][nudge] quote ${quote.id} failed:`, error);
+    }
+  }
+  return { ran: nudged.length > 0, nudged };
+}
+async function companyNameForNudge(db, companyId) {
+  try {
+    const row = (await db.select({ companyName: settings.companyName }).from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+    return row?.companyName?.trim() || "Crewkat";
+  } catch {
+    return "Crewkat";
+  }
+}
+async function notifyNudgeFallback(db, quote) {
+  const users = await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, quote.companyId));
+  for (const user of users) {
+    try {
+      await createUserNotification(db, user.id, "estimate-nudge", `Estimate viewed, no reply \u2014 follow up with ${quote.clientName}`, `Presupuesto visto sin respuesta \u2014 haz seguimiento con ${quote.clientName}`, `estimate:${quote.id}`);
+    } catch {}
+  }
+}
 var listingModerationResultSchema = object({ flagged: boolean2(), status: moderationStatusSchema, reasons: array(string2()) });
 async function scanListingForModeration(db, input) {
   if (!await isAutoModerationEnabled(db))
@@ -9576,17 +9674,17 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
   }),
   startPremiumCheckout: defineAction({
-    request: object({}),
+    request: object({ plan: _enum(["monthly", "annual"]).default("monthly") }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
     privileged: [privileged.createStripeCheckout],
-    async handler(ctx) {
+    async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
       const user = (await ctx.db().select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user)
         throw new Error("Sign in to continue.");
       if (user.tier === "premium")
         return { configured: true, checkoutUrl: null, missing: [] };
-      return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email });
+      return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email, plan: args.plan });
     }
   }),
   handleStripeWebhook: defineAction({
@@ -9601,6 +9699,22 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (event.eventType === "ignored") {
         await db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: new Date });
         return { ok: true, duplicate: false, processed: false };
+      }
+      if (event.eventType === "checkout.session.completed" && event.checkoutType === "listing_bump" && event.listingId) {
+        const listing = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, event.listingId)).limit(1))[0];
+        if (!listing)
+          throw new Error("Bump purchase did not match a Marketplace listing.");
+        if (!event.companyId || listing.companyId !== event.companyId)
+          throw new Error("Bump purchase did not match the listing's company.");
+        const now = new Date;
+        const expiresAt = new Date(now.getTime() + 7 * 86400000);
+        await db.batch([
+          db.update(marketplaceListings).set({ featuredUntil: expiresAt, updatedAt: now }).where(eq(marketplaceListings.id, listing.id)),
+          db.insert(listingBumpPurchases).values({ companyId: listing.companyId, listingId: listing.id, stripeSessionId: event.stripeSessionId ?? "", purchasedAt: now, expiresAt }),
+          db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now })
+        ]);
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: true };
       }
       let user = event.userId ? (await db.select().from(authUsers).where(eq(authUsers.id, event.userId)).limit(1))[0] : undefined;
       if (!user && event.subscriptionId)
@@ -10288,7 +10402,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  addVoiceNote: defineAction({ request: object({ jobId: number2().int().positive(), title: string2().trim().max(160), filename: string2().min(1).max(240), contentType: string2().min(1).max(100), durationSeconds: number2().int().min(0).max(3600), dataBase64: string2().min(1).max(20000000) }), response: object({ id: number2() }), async handler(ctx, args) {
+  addVoiceNote: defineAction({ request: object({ jobId: number2().int().positive(), title: string2().trim().max(160), filename: string2().min(1).max(240), contentType: string2().min(1).max(100), durationSeconds: number2().int().min(0).max(600), dataBase64: string2().min(1).max(20000000) }), response: object({ id: number2() }), async handler(ctx, args) {
     const key = `voice/${args.jobId}/${crypto.randomUUID()}`;
     await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType });
     const rows = await ctx.db().insert(voiceNotes).values({ jobId: args.jobId, title: args.title, blobKey: key, filename: args.filename, contentType: args.contentType, durationSeconds: args.durationSeconds, createdAt: new Date }).returning({ id: voiceNotes.id });
@@ -10591,6 +10705,31 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { invoiceId: made.id };
   } }),
+  getCrewDayView: defineAction({
+    request: object({}),
+    response: object({
+      date: string2(),
+      jobsToday: array(object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2(), jobDate: string2(), appointmentAt: string2() })),
+      appointmentsToday: array(object({ id: number2(), jobId: number2().nullable(), clientName: string2(), clientPhone: string2(), startsAt: string2(), notes: string2() })),
+      crewToday: array(string2()),
+      overdueInvoices: array(object({ id: number2(), invoiceNumber: string2(), clientName: string2(), total: string2(), dueDate: string2() }))
+    }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const today = new Date().toISOString().slice(0, 10);
+      const [jobRows, appointmentRows, invoiceRows, logRows] = await Promise.all([
+        db.select().from(jobs),
+        db.select().from(appointments).orderBy(appointments.startsAt),
+        db.select().from(invoices),
+        db.select({ crew: dailyLogs.crew, logDate: dailyLogs.logDate }).from(dailyLogs)
+      ]);
+      const jobsToday = jobRows.filter((j) => j.jobDate === today || j.appointmentAt && j.appointmentAt.slice(0, 10) === today).map((j) => ({ id: j.id, clientName: j.clientName, jobType: j.jobType, jobAddress: j.jobAddress, jobDate: j.jobDate, appointmentAt: j.appointmentAt }));
+      const appointmentsToday = appointmentRows.filter((a) => a.startsAt.slice(0, 10) === today).map((a) => ({ id: a.id, jobId: a.jobId, clientName: a.clientName, clientPhone: a.clientPhone, startsAt: a.startsAt, notes: a.notes }));
+      const crewToday = [...new Set(logRows.filter((l) => l.logDate === today).flatMap((l) => String(l.crew || "").split(",").map((s) => s.trim()).filter(Boolean)))];
+      const overdueInvoices = invoiceRows.filter((inv) => inv.status !== "paid" && inv.dueDate && inv.dueDate < today).map((inv) => ({ id: inv.id, invoiceNumber: inv.invoiceNumber, clientName: inv.clientName, total: inv.total, dueDate: inv.dueDate }));
+      return { date: today, jobsToday, appointmentsToday, crewToday, overdueInvoices };
+    }
+  }),
   getDashboard: defineAction({ request: object({}), response: object({ revenueMonth: number2(), expensesMonth: number2(), actualProfitMonth: number2(), outstanding: number2(), hoursWeek: number2(), winRate: number2(), appointments: array(appointmentSchema), overdueCount: number2(), quoteFollowupCount: number2(), reminders: array(internalNoteSchema) }), async handler(ctx) {
     const db = ctx.db();
     const [invoiceRows, paymentRows, timeRows, leadRows, appointmentRows, noteRows, quoteRows, settingRows, expenseRows] = await Promise.all([db.select().from(invoices), db.select().from(payments), db.select().from(timeEntries), db.select().from(leads), db.select().from(appointments).orderBy(appointments.startsAt), db.select().from(internalNotes).orderBy(internalNotes.reminderDate), db.select().from(quotes), db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(businessExpenses)]);
@@ -11299,15 +11438,19 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { token, route: `#portal=${encodeURIComponent(token)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
-  getPortalData: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })) }), async handler(ctx, args) {
+  getPortalData: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })) })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
-    const [photos2, appointments2, selections2, documents2] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt))]);
+    const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments)]);
     const today = new Date().toISOString();
-    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))) };
+    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
+      const paid = payments2.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
+      const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
+      return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2) };
+    }) };
   } }),
   portalUpdateSelection: defineAction({ request: object({ token: string2().min(32).max(200), selectionId: number2().int().positive(), status: _enum(["approved", "rejected"]) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
@@ -11980,6 +12123,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       const db = ctx.db();
       await requireMarketplaceEnabled(db);
       const rows = await db.select().from(marketplaceListings).orderBy(desc(marketplaceListings.promoted), desc(marketplaceListings.createdAt));
+      const now = Date.now();
+      rows.sort((a, b) => Number(Boolean(b.featuredUntil && b.featuredUntil.getTime() > now)) - Number(Boolean(a.featuredUntil && a.featuredUntil.getTime() > now)));
       const photoRows = await db.select().from(marketplaceListingPhotos).orderBy(marketplaceListingPhotos.sortOrder);
       const search = args.search.toLowerCase();
       const area = args.serviceArea.toLowerCase();
@@ -12178,6 +12323,37 @@ If that was you, just sign in again. If not, we recommend changing your password
       }
       ctx.invalidateQueries();
       return { ok: true, status };
+    }
+  }),
+  startListingBumpCheckout: defineAction({
+    request: object({ listingId: number2().int().positive() }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    privileged: [privileged.createListingBumpCheckout],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const listing = (await db.select().from(marketplaceListings).where(and(eq(marketplaceListings.id, args.listingId), eq(marketplaceListings.companyId, identity.workspaceCompanyId))).limit(1))[0];
+      if (!listing)
+        throw new Error("Listing not found.");
+      if (listing.moderationStatus !== "active")
+        throw new Error("Only active listings can be featured.");
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      return await ctx.executePrivileged(privileged.createListingBumpCheckout, { userId: user.id, companyId: user.companyId, email: user.email, listingId: listing.id });
+    }
+  }),
+  getListingBumpStatus: defineAction({
+    request: object({ listingId: number2().int().positive() }),
+    response: object({ featured: boolean2(), featuredUntil: string2().nullable(), configured: boolean2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const listing = (await db.select({ featuredUntil: marketplaceListings.featuredUntil, companyId: marketplaceListings.companyId }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing || listing.companyId !== identity.workspaceCompanyId)
+        throw new Error("Listing not found.");
+      const until = listing.featuredUntil && listing.featuredUntil.getTime() > Date.now() ? listing.featuredUntil : null;
+      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
     }
   }),
   listMarketplaceMessages: defineAction({
@@ -13085,6 +13261,7 @@ export {
   performBackup,
   performMonthlyVerify,
   recoverStaleBackupRuns,
+  runEstimateNudgeTick,
   runRecurringInvoiceTick,
   runScheduledBackup
 };

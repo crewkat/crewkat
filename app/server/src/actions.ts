@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
-import { and, desc, eq, gte, inArray, isNull, like, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { execFile } from "node:child_process";
 import { randomInt } from "node:crypto";
@@ -99,7 +99,7 @@ const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "
 const moderationStatusSchema = z.enum(["active", "auto_rejected", "pending_review", "removed"]);
 type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), listingId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), sender: z.enum(["me", "other"]), senderName: z.string(), isRead: z.boolean(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ listingId: z.number(), listingTitle: z.string(), companyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
@@ -249,7 +249,8 @@ function quoteShape(q: typeof schema.quotes.$inferSelect) { return { id: q.id, c
 function invoiceShape(row: typeof schema.invoices.$inferSelect, paymentRows: Array<typeof schema.payments.$inferSelect> = [], fee: {type:"flat"|"percent";value:number;graceDays:number} = {type:"flat",value:0,graceDays:0}) { const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(row.total.replace(/[^0-9.-]/g, "") || 0); const due=row.dueDate?new Date(`${row.dueDate}T12:00:00`).getTime():0; const daysLate=due?Math.floor((Date.now()-due)/86400000)-fee.graceDays:0; const monthsLate=Math.max(0,Math.ceil(daysLate/30)); const lateFee=row.status!=="paid"&&monthsLate>0?(fee.type==="percent"?total*fee.value/100*monthsLate:fee.value):0; return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson) as Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee:(total+lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }; }
 async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>) {
   const photos = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
+  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function marketplaceRequestShape(row: typeof schema.marketplaceRequests.$inferSelect) {
   return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -1155,6 +1156,80 @@ export async function runRecurringInvoiceTick(ctx: Ctx): Promise<{ ran: boolean;
   return { ran: generated.length > 0, generated };
 }
 
+// ---------------------------------------------------------------------------
+// Estimate nudge scheduler entry point (called from server.mjs alongside the
+// other ticks). Finds estimates that were sent, VIEWED (document link
+// first_viewed_at), but not accepted within 3 days, and nudges exactly once
+// per quote: a polite Resend email to the client when an email address is on
+// file, otherwise an in-app notification telling the contractor to follow up.
+// Never throws for a single bad quote: failures are logged and skipped.
+// ---------------------------------------------------------------------------
+export async function runEstimateNudgeTick(ctx: Ctx): Promise<{ ran: boolean; nudged: number[] }> {
+  const db = ctx.db<typeof schema>();
+  const cutoff = Date.now() - 3 * 86400000;
+  const candidates = await db.select().from(schema.quotes).where(
+    and(
+      ne(schema.quotes.sentAt, ""),
+      eq(schema.quotes.accepted, false),
+      eq(schema.quotes.superseded, false),
+      isNull(schema.quotes.estimateNudgeSentAt),
+    ),
+  );
+  const nudged: number[] = [];
+  for (const quote of candidates) {
+    try {
+      // Viewed? The client-facing document link for this quote tracks views.
+      const link = (await db.select({ firstViewedAt: schema.documentLinks.firstViewedAt })
+        .from(schema.documentLinks)
+        .where(and(eq(schema.documentLinks.documentKind, "quote"), eq(schema.documentLinks.documentId, quote.id), isNull(schema.documentLinks.revokedAt)))
+        .orderBy(desc(schema.documentLinks.createdAt))
+        .limit(1))[0];
+      const viewedAt = link?.firstViewedAt?.getTime() ?? null;
+      if (!viewedAt || viewedAt > cutoff) continue;
+      const now = new Date();
+      const clientName = quote.clientName || "there";
+      const companyName = await companyNameForNudge(db, quote.companyId);
+      if (quote.clientEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(quote.clientEmail)) {
+        const subject = `Still interested? Your estimate from ${companyName}`;
+        const text = `Hi ${clientName},\n\nJust checking in — you viewed your estimate of $${quote.total} on ${new Date(viewedAt).toLocaleDateString()} and we wanted to make sure you had everything you need.\n\nReply to this email or give us a call and we'll take care of the rest.\n\nThanks!`;
+        try {
+          const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: quote.clientEmail, subject, text });
+          if (result.delivery !== "sent") throw new Error("email not sent");
+        } catch (error) {
+          console.error(`[crewkat][nudge] quote ${quote.id}: email failed, falling back to in-app notice:`, error);
+          await notifyNudgeFallback(db, quote);
+        }
+      } else {
+        await notifyNudgeFallback(db, quote);
+      }
+      await db.update(schema.quotes).set({ estimateNudgeSentAt: now }).where(eq(schema.quotes.id, quote.id));
+      nudged.push(quote.id);
+      console.log(`[crewkat][nudge] quote ${quote.id}: reminder sent.`);
+    } catch (error) {
+      console.error(`[crewkat][nudge] quote ${quote.id} failed:`, error);
+    }
+  }
+  return { ran: nudged.length > 0, nudged };
+}
+
+async function companyNameForNudge(db: ReturnType<Ctx["db"]>, companyId: number): Promise<string> {
+  try {
+    const row = (await db.select({ companyName: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+    return row?.companyName?.trim() || "Crewkat";
+  } catch {
+    return "Crewkat";
+  }
+}
+
+async function notifyNudgeFallback(db: ReturnType<Ctx["db"]>, quote: typeof schema.quotes.$inferSelect): Promise<void> {
+  const users = await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.companyId, quote.companyId));
+  for (const user of users) {
+    try {
+      await createUserNotification(db, user.id, "estimate-nudge", `Estimate viewed, no reply — follow up with ${quote.clientName}`, `Presupuesto visto sin respuesta — haz seguimiento con ${quote.clientName}`, `estimate:${quote.id}`);
+    } catch { /* best-effort */ }
+  }
+}
+
 const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
 
 async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
@@ -1560,15 +1635,15 @@ export const BaseActions = {
     },
   }),
   startPremiumCheckout: defineAction({
-    request: z.object({}),
+    request: z.object({ plan: z.enum(["monthly", "annual"]).default("monthly") }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
     privileged: [privileged.createStripeCheckout],
-    async handler(ctx) {
+    async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
       const user = (await ctx.db<typeof schema>().select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user) throw new Error("Sign in to continue.");
       if (user.tier === "premium") return { configured: true, checkoutUrl: null, missing: [] };
-      return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email });
+      return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email, plan: args.plan });
     },
   }),
   handleStripeWebhook: defineAction({
@@ -1582,6 +1657,23 @@ export const BaseActions = {
       if (event.eventType === "ignored") {
         await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: new Date() });
         return { ok: true, duplicate: false, processed: false };
+      }
+      // Build 4: marketplace paid bump — one-time purchase, 7-day featured placement.
+      if (event.eventType === "checkout.session.completed" && event.checkoutType === "listing_bump" && event.listingId) {
+        const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, event.listingId)).limit(1))[0];
+        if (!listing) throw new Error("Bump purchase did not match a Marketplace listing.");
+        // Security: the listing must belong to the company that paid (defense in
+        // depth — metadata is Stripe-signed, but never feature a foreign listing).
+        if (!event.companyId || listing.companyId !== event.companyId) throw new Error("Bump purchase did not match the listing's company.");
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 7 * 86400000);
+        await db.batch([
+          db.update(schema.marketplaceListings).set({ featuredUntil: expiresAt, updatedAt: now }).where(eq(schema.marketplaceListings.id, listing.id)),
+          db.insert(schema.listingBumpPurchases).values({ companyId: listing.companyId, listingId: listing.id, stripeSessionId: event.stripeSessionId ?? "", purchasedAt: now, expiresAt }),
+          db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now }),
+        ]);
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: true };
       }
       let user = event.userId ? (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, event.userId)).limit(1))[0] : undefined;
       if (!user && event.subscriptionId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeSubscriptionId, event.subscriptionId)).limit(1))[0];
@@ -1761,7 +1853,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   deleteReceipt: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.receipts).where(eq(schema.receipts.id, args.id)).limit(1); const row = rows[0]; if (row) { await db.delete(schema.receipts).where(eq(schema.receipts.id, args.id)); await ctx.blobs.delete(row.blobKey); } ctx.invalidateQueries(); return { ok: true }; }}),
   saveCrewTask: defineAction({ request: z.object({ id: z.number().int().positive().nullable().default(null), jobId: z.number().int().positive(), text: z.string().trim().min(1).max(500), completed: z.boolean().default(false) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); if (args.id) { await db.update(schema.crewTasks).set({ text: args.text, completed: args.completed, updatedAt: new Date() }).where(eq(schema.crewTasks.id, args.id)); ctx.invalidateQueries(); return { id: args.id }; } const rows = await db.insert(schema.crewTasks).values({ jobId: args.jobId, text: args.text, completed: args.completed, createdAt: new Date(), updatedAt: new Date() }).returning({ id: schema.crewTasks.id }); const made = rows[0]; if (!made) throw new Error("Could not save task."); ctx.invalidateQueries(); return { id: made.id }; }}),
   deleteCrewTask: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().delete(schema.crewTasks).where(eq(schema.crewTasks.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
-  addVoiceNote: defineAction({ request: z.object({ jobId: z.number().int().positive(), title: z.string().trim().max(160), filename: z.string().min(1).max(240), contentType: z.string().min(1).max(100), durationSeconds: z.number().int().min(0).max(3600), dataBase64: z.string().min(1).max(20_000_000) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const key = `voice/${args.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); const rows = await ctx.db<typeof schema>().insert(schema.voiceNotes).values({ jobId: args.jobId, title: args.title, blobKey: key, filename: args.filename, contentType: args.contentType, durationSeconds: args.durationSeconds, createdAt: new Date() }).returning({ id: schema.voiceNotes.id }); const made = rows[0]; if (!made) throw new Error("Could not save voice note."); ctx.invalidateQueries(); return { id: made.id }; }}),
+  addVoiceNote: defineAction({ request: z.object({ jobId: z.number().int().positive(), title: z.string().trim().max(160), filename: z.string().min(1).max(240), contentType: z.string().min(1).max(100), durationSeconds: z.number().int().min(0).max(600), dataBase64: z.string().min(1).max(20_000_000) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const key = `voice/${args.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); const rows = await ctx.db<typeof schema>().insert(schema.voiceNotes).values({ jobId: args.jobId, title: args.title, blobKey: key, filename: args.filename, contentType: args.contentType, durationSeconds: args.durationSeconds, createdAt: new Date() }).returning({ id: schema.voiceNotes.id }); const made = rows[0]; if (!made) throw new Error("Could not save voice note."); ctx.invalidateQueries(); return { id: made.id }; }}),
   deleteVoiceNote: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.voiceNotes).where(eq(schema.voiceNotes.id, args.id)).limit(1); const row = rows[0]; if (row) { await db.delete(schema.voiceNotes).where(eq(schema.voiceNotes.id, args.id)); await ctx.blobs.delete(row.blobKey); } ctx.invalidateQueries(); return { ok: true }; }}),
   addPayment: defineAction({ request: z.object({ invoiceId: z.number().int().positive(), amount: z.string().trim().min(1).max(80), paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), method: z.string().trim().max(80), note: z.string().trim().max(500) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.insert(schema.payments).values({ ...args, amount: normalizeMoney(args.amount, "0.00"), createdAt: new Date() }).returning({ id: schema.payments.id }); const made = rows[0]; if (!made) throw new Error("Could not save payment."); const invoiceRows = await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1); const inv = invoiceRows[0]; if (inv) { const wasPaid = inv.status === "paid"; const payments = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, inv.id)); const paid = payments.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(inv.total.replace(/[^0-9.-]/g, "") || 0); const nowPaid = paid >= total && total > 0; if (nowPaid) await db.update(schema.invoices).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.invoices.id, inv.id));
       // Chunk D push: invoice just paid in full.
@@ -1799,6 +1891,40 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   saveMilestone: defineAction({ request: z.object({ jobId: z.number().int().positive(), label: z.string().trim().min(1).max(160), amount: z.string().trim().max(80), percentage: z.string().trim().max(80), dueDate: z.string().max(10) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const rows = await ctx.db<typeof schema>().insert(schema.paymentMilestones).values({ ...args, amount: normalizeMoney(args.amount, "0.00"), status: "pending", createdAt: new Date(), updatedAt: new Date() }).returning({ id: schema.paymentMilestones.id }); const made = rows[0]; if (!made) throw new Error("Could not save milestone."); ctx.invalidateQueries(); return { id: made.id }; }}),
   updateMilestoneStatus: defineAction({ request: z.object({ id: z.number().int().positive(), status: z.enum(["pending", "paid"]) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().update(schema.paymentMilestones).set({ status: args.status, updatedAt: new Date() }).where(eq(schema.paymentMilestones.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   invoiceMilestone: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ invoiceId: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const milestones = await db.select().from(schema.paymentMilestones).where(eq(schema.paymentMilestones.id, args.id)).limit(1); const milestone = milestones[0]; if (!milestone) throw new Error("Milestone not found."); if (milestone.invoiceId) return { invoiceId: milestone.invoiceId }; const jobs = await db.select().from(schema.jobs).where(eq(schema.jobs.id, milestone.jobId)).limit(1); const job = jobs[0]; if (!job) throw new Error("Job not found."); const settingRows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const setting = settingRows[0]; const amount = milestone.amount || "0"; const now = new Date(); const rows = await db.insert(schema.invoices).values({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: now.toISOString().slice(0, 10), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: schema.invoices.id }); const made = rows[0]; if (!made) throw new Error("Could not create invoice."); await db.update(schema.paymentMilestones).set({ invoiceId: made.id, updatedAt: now }).where(eq(schema.paymentMilestones.id, milestone.id)); ctx.invalidateQueries(); return { invoiceId: made.id }; }}),
+  // Build 4: crew day-view — one screen for today's schedule: today's jobs,
+  // today's appointments, who's assigned (from daily logs crew field), and
+  // what's overdue.
+  getCrewDayView: defineAction({
+    request: z.object({}),
+    response: z.object({
+      date: z.string(),
+      jobsToday: z.array(z.object({ id: z.number(), clientName: z.string(), jobType: z.string(), jobAddress: z.string(), jobDate: z.string(), appointmentAt: z.string() })),
+      appointmentsToday: z.array(z.object({ id: z.number(), jobId: z.number().nullable(), clientName: z.string(), clientPhone: z.string(), startsAt: z.string(), notes: z.string() })),
+      crewToday: z.array(z.string()),
+      overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })),
+    }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const today = new Date().toISOString().slice(0, 10);
+      const [jobRows, appointmentRows, invoiceRows, logRows] = await Promise.all([
+        db.select().from(schema.jobs),
+        db.select().from(schema.appointments).orderBy(schema.appointments.startsAt),
+        db.select().from(schema.invoices),
+        db.select({ crew: schema.dailyLogs.crew, logDate: schema.dailyLogs.logDate }).from(schema.dailyLogs),
+      ]);
+      const jobsToday = jobRows
+        .filter((j) => j.jobDate === today || (j.appointmentAt && j.appointmentAt.slice(0, 10) === today))
+        .map((j) => ({ id: j.id, clientName: j.clientName, jobType: j.jobType, jobAddress: j.jobAddress, jobDate: j.jobDate, appointmentAt: j.appointmentAt }));
+      const appointmentsToday = appointmentRows
+        .filter((a) => a.startsAt.slice(0, 10) === today)
+        .map((a) => ({ id: a.id, jobId: a.jobId, clientName: a.clientName, clientPhone: a.clientPhone, startsAt: a.startsAt, notes: a.notes }));
+      const crewToday = [...new Set(logRows.filter((l) => l.logDate === today).flatMap((l) => String(l.crew || "").split(",").map((s) => s.trim()).filter(Boolean)))];
+      const overdueInvoices = invoiceRows
+        .filter((inv) => inv.status !== "paid" && inv.dueDate && inv.dueDate < today)
+        .map((inv) => ({ id: inv.id, invoiceNumber: inv.invoiceNumber, clientName: inv.clientName, total: inv.total, dueDate: inv.dueDate }));
+      return { date: today, jobsToday, appointmentsToday, crewToday, overdueInvoices };
+    },
+  }),
   getDashboard: defineAction({ request: z.object({}), response: z.object({ revenueMonth: z.number(), expensesMonth: z.number(), actualProfitMonth: z.number(), outstanding: z.number(), hoursWeek: z.number(), winRate: z.number(), appointments: z.array(appointmentSchema), overdueCount: z.number(), quoteFollowupCount: z.number(), reminders: z.array(internalNoteSchema) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [invoiceRows, paymentRows, timeRows, leadRows, appointmentRows, noteRows, quoteRows, settingRows, expenseRows] = await Promise.all([db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.timeEntries), db.select().from(schema.leads), db.select().from(schema.appointments).orderBy(schema.appointments.startsAt), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.quotes), db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(schema.businessExpenses)]); const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const revenueMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const expensesMonth = expenseRows.filter((row) => new Date(`${row.expenseDate}T12:00:00`).getTime() >= monthStart).reduce((sum,row)=>sum+Number(row.amount.replace(/[^0-9.-]/g,"")||0),0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); return sum + Math.max(0, Number(invoice.total.replace(/[^0-9.-]/g, "") || 0) - paid); }, 0); const day = now.getDay(); const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((day + 6) % 7)); weekStart.setHours(0,0,0,0); const hoursWeek = timeRows.filter((row) => row.startedAt >= weekStart).reduce((sum, row) => sum + Math.max(0, ((row.endedAt?.getTime() ?? now.getTime()) - row.startedAt.getTime()) / 3600000), 0); const decided = leadRows.filter((row) => row.stage === "won" || row.stage === "lost"); const winRate = decided.length ? Math.round(decided.filter((row) => row.stage === "won").length / decided.length * 100) : 0; const today = now.toISOString().slice(0,10); const followDays = settingRows[0]?.quoteFollowUpDays ?? 3; const quoteFollowupCount = quoteRows.filter((q) => !q.jobId && q.sentAt && Math.floor((now.getTime() - new Date(`${q.sentAt}T00:00:00`).getTime()) / 86400000) >= followDays).length; return { revenueMonth, expensesMonth, actualProfitMonth: revenueMonth - expensesMonth, outstanding, hoursWeek, winRate, appointments: appointmentRows.filter((row) => row.startsAt.slice(0,10) >= today).slice(0,6).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork })), overdueCount: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).length, quoteFollowupCount, reminders: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })) }; }}),
 
   getAutomationCenter: defineAction({
@@ -2052,7 +2178,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   revokePortalLink: defineAction({ request:z.object({jobId:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt)));ctx.invalidateQueries();return{ok:true};} }),
   getPortalLinkInfo: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), expiresAt: z.string().nullable(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); const link=(await db.select().from(schema.portalTokens).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))).orderBy(desc(schema.portalTokens.createdAt)).limit(1))[0]; if(!link) return{link:null}; return{link:{hint:link.tokenHint,expiresAt:link.expiresAt?.toISOString()??null,expired:link.expiresAt?link.expiresAt.getTime()<Date.now():false,viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   rotatePortalLink: defineAction({ request: z.object({ jobId: z.number().int().positive(), expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.literal(0)]).default(90) }), response: z.object({ token: z.string(), route: z.string(), expiresAt: z.string().nullable() }), async handler(ctx, args): Promise<{token:string;route:string;expiresAt:string|null}> { const db=ctx.db<typeof schema>(); const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,args.jobId)).limit(1))[0]; if(!job) throw new Error("Job not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashPortalToken(token); const now=new Date(); const expiresAt=args.expiresInDays===0?null:new Date(now.getTime()+args.expiresInDays*86400000); await db.batch([db.update(schema.portalTokens).set({revokedAt:now}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))),db.insert(schema.portalTokens).values({jobId:args.jobId,tokenHash:hash,tokenHint:token.slice(-6),expiresAt,createdAt:now})]); ctx.invalidateQueries(); return{token,route:`#portal=${encodeURIComponent(token)}`,expiresAt:expiresAt?.toISOString()??null}; } }),
-  getPortalData: defineAction({ request:z.object({token:z.string().min(32).max(200)}),response:z.object({job:z.object({id:z.number(),clientName:z.string(),jobType:z.string(),jobAddress:z.string()}),photos:z.array(z.object({id:z.number(),stage:stageSchema,caption:z.string(),url:z.string()})),appointments:z.array(z.object({id:z.number(),startsAt:z.string(),notes:z.string()})),selections:z.array(selectionSchema),changeOrders:z.array(z.object({id:z.number(),title:z.string(),description:z.string(),amount:z.string(),originalUrl:z.string().nullable(),clientSignerName:z.string(),clientSignedAt:z.string().nullable()}))}),async handler(ctx,args){const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:true});const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,access.jobId)).limit(1))[0];if(!job)throw new Error("Job not found.");const [photos,appointments,selections,documents]=await Promise.all([db.select().from(schema.photos).where(eq(schema.photos.jobId,job.id)).orderBy(schema.photos.createdAt),db.select().from(schema.appointments).where(eq(schema.appointments.jobId,job.id)).orderBy(schema.appointments.startsAt),db.select().from(schema.selections).where(eq(schema.selections.jobId,job.id)).orderBy(schema.selections.id),db.select().from(schema.documents).where(eq(schema.documents.jobId,job.id)).orderBy(desc(schema.documents.createdAt))]);const today=new Date().toISOString();return{job:{id:job.id,clientName:job.clientName,jobType:job.jobType,jobAddress:job.jobAddress},photos:await Promise.all(photos.filter(p=>!p.excludeFromSocial).map(async p=>({id:p.id,stage:p.stage,caption:p.caption,url:await ctx.blobs.getUrl(p.blobKey)}))),appointments:appointments.filter(a=>a.startsAt>=today).map(a=>({id:a.id,startsAt:a.startsAt,notes:a.notes})),selections:await Promise.all(selections.map(async s=>({id:s.id,jobId:s.jobId,category:s.category,item:s.item,vendor:s.vendor,photoUrl:s.photoBlobKey?await ctx.blobs.getUrl(s.photoBlobKey):null,approvalStatus:s.approvalStatus,leadTimeDays:s.leadTimeDays,createdAt:s.createdAt.toISOString()}))),changeOrders:await Promise.all(documents.filter(d=>d.kind==="change_order").map(async d=>({id:d.id,title:d.title,description:d.description,amount:d.amount,originalUrl:d.originalBlobKey?await ctx.blobs.getUrl(d.originalBlobKey):null,clientSignerName:d.clientSignerName,clientSignedAt:d.clientSignedAt?.toISOString()??null}))) };} }),
+  getPortalData: defineAction({ request:z.object({token:z.string().min(32).max(200)}),response:z.object({job:z.object({id:z.number(),clientName:z.string(),jobType:z.string(),jobAddress:z.string()}),photos:z.array(z.object({id:z.number(),stage:stageSchema,caption:z.string(),url:z.string()})),appointments:z.array(z.object({id:z.number(),startsAt:z.string(),notes:z.string()})),selections:z.array(selectionSchema),changeOrders:z.array(z.object({id:z.number(),title:z.string(),description:z.string(),amount:z.string(),originalUrl:z.string().nullable(),clientSignerName:z.string(),clientSignedAt:z.string().nullable()})),estimates:z.array(z.object({id:z.number(),total:z.string(),sentAt:z.string(),accepted:z.boolean(),lineItems:z.array(z.object({description:z.string(),amount:z.string()}))})),invoices:z.array(z.object({id:z.number(),invoiceNumber:z.string(),total:z.string(),status:z.string(),dueDate:z.string(),balanceDue:z.string()}))}),async handler(ctx,args){const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:true});const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,access.jobId)).limit(1))[0];if(!job)throw new Error("Job not found.");const [photos,appointments,selections,documents,quotes,invoices,payments]=await Promise.all([db.select().from(schema.photos).where(eq(schema.photos.jobId,job.id)).orderBy(schema.photos.createdAt),db.select().from(schema.appointments).where(eq(schema.appointments.jobId,job.id)).orderBy(schema.appointments.startsAt),db.select().from(schema.selections).where(eq(schema.selections.jobId,job.id)).orderBy(schema.selections.id),db.select().from(schema.documents).where(eq(schema.documents.jobId,job.id)).orderBy(desc(schema.documents.createdAt)),db.select().from(schema.quotes).where(and(eq(schema.quotes.jobId,job.id),eq(schema.quotes.superseded,false))).orderBy(desc(schema.quotes.createdAt)),db.select().from(schema.invoices).where(eq(schema.invoices.jobId,job.id)).orderBy(desc(schema.invoices.createdAt)),db.select().from(schema.payments)]);const today=new Date().toISOString();return{job:{id:job.id,clientName:job.clientName,jobType:job.jobType,jobAddress:job.jobAddress},photos:await Promise.all(photos.filter(p=>!p.excludeFromSocial).map(async p=>({id:p.id,stage:p.stage,caption:p.caption,url:await ctx.blobs.getUrl(p.blobKey)}))),appointments:appointments.filter(a=>a.startsAt>=today).map(a=>({id:a.id,startsAt:a.startsAt,notes:a.notes})),selections:await Promise.all(selections.map(async s=>({id:s.id,jobId:s.jobId,category:s.category,item:s.item,vendor:s.vendor,photoUrl:s.photoBlobKey?await ctx.blobs.getUrl(s.photoBlobKey):null,approvalStatus:s.approvalStatus,leadTimeDays:s.leadTimeDays,createdAt:s.createdAt.toISOString()}))),changeOrders:await Promise.all(documents.filter(d=>d.kind==="change_order").map(async d=>({id:d.id,title:d.title,description:d.description,amount:d.amount,originalUrl:d.originalBlobKey?await ctx.blobs.getUrl(d.originalBlobKey):null,clientSignerName:d.clientSignerName,clientSignedAt:d.clientSignedAt?.toISOString()??null}))),estimates:quotes.map(q=>({id:q.id,total:q.total,sentAt:q.sentAt,accepted:q.accepted,lineItems:(JSON.parse(q.lineItemsJson) as Array<{description:string;amount:string}>).map(i=>({description:i.description,amount:i.amount}))})),invoices:invoices.map(inv=>{const paid=payments.filter(p=>p.invoiceId===inv.id).reduce((s,p)=>s+Number(String(p.amount).replace(/[^0-9.-]/g,"")||0),0);const total=Number(String(inv.total).replace(/[^0-9.-]/g,"")||0);return{id:inv.id,invoiceNumber:inv.invoiceNumber,total:inv.total,status:inv.status,dueDate:inv.dueDate,balanceDue:Math.max(0,total-paid).toFixed(2)};}) };} }),
   portalUpdateSelection: defineAction({request:z.object({token:z.string().min(32).max(200),selectionId:z.number().int().positive(),status:z.enum(["approved","rejected"])}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:false});const selection=(await db.select().from(schema.selections).where(eq(schema.selections.id,args.selectionId)).limit(1))[0];if(!selection||selection.jobId!==access.jobId)throw new Error("Selection not found.");await db.update(schema.selections).set({approvalStatus:args.status}).where(eq(schema.selections.id,selection.id));await logPortalEvent(ctx,access.id,args.status==="approved"?"approve_selection":"reject_selection");ctx.invalidateQueries();return{ok:true};} }),
   portalSignChangeOrder: defineAction({request:z.object({token:z.string().min(32).max(200),documentId:z.number().int().positive(),signerName:z.string().trim().min(1).max(160),signatureDataBase64:z.string().min(1).max(5_000_000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:false});const document=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.documentId)).limit(1))[0];if(!document||document.jobId!==access.jobId||document.kind!=="change_order")throw new Error("Change order not found.");if(document.clientSignedAt)return{ok:true};const key=`client-signatures/${access.jobId}/${crypto.randomUUID()}.png`;await ctx.blobs.put(key,Buffer.from(args.signatureDataBase64,"base64"),{contentType:"image/png"});await db.update(schema.documents).set({clientSignerName:args.signerName,clientSignatureBlobKey:key,clientSignedAt:new Date()}).where(eq(schema.documents.id,document.id));await logPortalEvent(ctx,access.id,"sign");const jobCompany=(await db.select({companyId:schema.jobs.companyId}).from(schema.jobs).where(eq(schema.jobs.id,document.jobId)).limit(1))[0];if(jobCompany)await notifyCompanyEvent(ctx,jobCompany.companyId,"notifyDocSigned","document-signed",`Client signed "${document.title}"`,"Un cliente firmó tu documento",`doc-signed:${document.id}`);ctx.invalidateQueries();return{ok:true};} }),
   createDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ token: z.string(), hint: z.string(), expiresAt: z.string() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); if(!await documentLinkTargetExists(ctx,args.kind,args.id)) throw new Error("Document not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashLinkToken(token); const now=new Date(); const expiresAt=new Date(now.getTime()+30*86400000); await db.update(schema.documentLinks).set({revokedAt:now}).where(and(eq(schema.documentLinks.documentKind,args.kind),eq(schema.documentLinks.documentId,args.id),isNull(schema.documentLinks.revokedAt))); await db.insert(schema.documentLinks).values({documentKind:args.kind,documentId:args.id,tokenHash:hash,tokenHint:token.slice(-6),expiresAt,createdAt:now}); ctx.invalidateQueries(); return{token,hint:token.slice(-6),expiresAt:expiresAt.toISOString()}; } }),
@@ -2304,6 +2430,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db<typeof schema>();
       await requireMarketplaceEnabled(db);
       const rows = await db.select().from(schema.marketplaceListings).orderBy(desc(schema.marketplaceListings.promoted), desc(schema.marketplaceListings.createdAt));
+      const now = Date.now();
+      // Featured (paid bump, unexpired) floats above everything else.
+      rows.sort((a, b) => Number(Boolean(b.featuredUntil && b.featuredUntil.getTime() > now)) - Number(Boolean(a.featuredUntil && a.featuredUntil.getTime() > now)));
       const photoRows = await db.select().from(schema.marketplaceListingPhotos).orderBy(schema.marketplaceListingPhotos.sortOrder);
       const search = args.search.toLowerCase();
       const area = args.serviceArea.toLowerCase();
@@ -2473,6 +2602,34 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       }
       ctx.invalidateQueries();
       return { ok: true, status };
+    },
+  }),
+  // Build 4: marketplace paid bump — one-time Stripe payment for 7-day featured placement.
+  startListingBumpCheckout: defineAction({
+    request: z.object({ listingId: z.number().int().positive() }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
+    privileged: [privileged.createListingBumpCheckout],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const listing = (await db.select().from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.id, args.listingId), eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId))).limit(1))[0];
+      if (!listing) throw new Error("Listing not found.");
+      if (listing.moderationStatus !== "active") throw new Error("Only active listings can be featured.");
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      return await ctx.executePrivileged(privileged.createListingBumpCheckout, { userId: user.id, companyId: user.companyId, email: user.email, listingId: listing.id });
+    },
+  }),
+  getListingBumpStatus: defineAction({
+    request: z.object({ listingId: z.number().int().positive() }),
+    response: z.object({ featured: z.boolean(), featuredUntil: z.string().nullable(), configured: z.boolean() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const listing = (await db.select({ featuredUntil: schema.marketplaceListings.featuredUntil, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing || listing.companyId !== identity.workspaceCompanyId) throw new Error("Listing not found.");
+      const until = listing.featuredUntil && listing.featuredUntil.getTime() > Date.now() ? listing.featuredUntil : null;
+      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
     },
   }),
   listMarketplaceMessages: defineAction({

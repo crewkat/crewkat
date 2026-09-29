@@ -122,6 +122,7 @@ export const quotes = sqliteTable("quotes", {
   parentQuoteId: integer("parent_quote_id"),
   versionNumber: integer("version_number").notNull().default(1),
   superseded: integer("superseded", { mode: "boolean" }).notNull().default(false),
+  estimateNudgeSentAt: integer("estimate_nudge_sent_at", { mode: "timestamp_ms" }),
   accepted: integer("accepted", { mode: "boolean" }).notNull().default(false),
   convertedToInvoiceId: integer("converted_to_invoice_id"), // FK to invoices.id in SQL migration (plain here to avoid a quotes<->invoices circular type inference)
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
@@ -652,6 +653,7 @@ export const marketplaceListings = sqliteTable("marketplace_listings", {
   bookable: integer("bookable", { mode: "boolean" }).notNull().default(false),
   dailyRate: text("daily_rate").notNull().default(""),
   promoted: integer("promoted", { mode: "boolean" }).notNull().default(false),
+  featuredUntil: integer("featured_until", { mode: "timestamp_ms" }),
   moderationStatus: text("moderation_status").notNull().default("active"),
   moderationReason: text("moderation_reason").notNull().default(""),
   flagCount: integer("flag_count").notNull().default(0),
@@ -754,6 +756,16 @@ export const referralEvents = sqliteTable("referral_events", {
   referredUserId: integer("referred_user_id").notNull().unique().references(() => authUsers.id, { onDelete: "cascade" }),
   rewarded: integer("rewarded", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Build 4: marketplace paid bump — one-time Stripe purchase for 7-day featured placement.
+export const listingBumpPurchases = sqliteTable("listing_bump_purchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  stripeSessionId: text("stripe_session_id").notNull().default(""),
+  purchasedAt: integer("purchased_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
 
 // Chunk D: marketplace saved-search alerts (per user).
