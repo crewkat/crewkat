@@ -33,7 +33,7 @@ type TouchEvent,
 } from "react";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
-import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
+import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 // Phase 4: Google Play Billing (Digital Goods API) for the TWA.
@@ -91,6 +91,13 @@ const APP_INFO = {
   developer: "Crewkat",
   supportEmail: "stallionsconstructioncompany@gmail.com",
 } as const;
+
+// Per-deploy build id stamped into the built index.html by client/build.mjs.
+// Lets Danny (and support) see exactly which build is running on a device.
+function appBuildId(): string {
+  if (typeof window === "undefined") return "";
+  return (window as unknown as { __CREWKAT_BUILD_ID__?: string }).__CREWKAT_BUILD_ID__ ?? "";
+}
 
 const HELP_CONTENT = {
   en: {
@@ -1779,8 +1786,11 @@ export function App() {
     return () => window.removeEventListener(AUTH_SESSION_INVALID_EVENT, handleInvalidSession);
   }, [queryClient]);
   // Chunk D: register the app service worker (offline mode + web push).
+  // Proactive checks: the installed app can linger on a stale build for days,
+  // so re-check for a newer worker whenever the app returns to the foreground.
   useEffect(() => {
     void registerAppServiceWorker();
+    startProactiveSwUpdateChecks();
   }, []);
   // Chunk D: keep the push subscription current once signed in. Never prompts —
   // if permission isn't already granted the user enables it from Settings.
@@ -2146,6 +2156,43 @@ function CrewkatApplication() {
     document.documentElement.dataset.accent = accent;
     window.localStorage.setItem("crewkat-accent", accent);
   }, [accent]);
+  // Appearance follows the account, not the device: the server is the source
+  // of truth, so the installed app, the web app, and any other device always
+  // match. The last values confirmed by the server are tracked so the echo
+  // of our own save (via settings invalidation) is not mistaken for a change
+  // made on another device.
+  const appearanceSyncedRef = useRef<{ themeMode: ThemeMode; uiAccent: AccentChoice } | null>(null);
+  const saveAppearance = useMutation({
+    mutationFn: (v: { themeMode: ThemeMode; uiAccent: AccentChoice }) => api.updateAppearance(v),
+    onSuccess: (_data, v) => {
+      appearanceSyncedRef.current = { themeMode: v.themeMode, uiAccent: v.uiAccent };
+    },
+  });
+  useEffect(() => {
+    const serverTheme = settings.data?.themeMode;
+    const serverAccent = settings.data?.uiAccent;
+    if (!serverTheme || !serverAccent) return;
+    const synced = appearanceSyncedRef.current;
+    if (synced && synced.themeMode === serverTheme && synced.uiAccent === serverAccent) return;
+    let changed = false;
+    if (serverTheme !== themeMode) {
+      setThemeMode(serverTheme);
+      changed = true;
+    }
+    if (serverAccent !== accent) {
+      setAccent(serverAccent);
+      changed = true;
+    }
+    if (changed) appearanceSyncedRef.current = { themeMode: serverTheme, uiAccent: serverAccent };
+  }, [settings.data?.themeMode, settings.data?.uiAccent, themeMode, accent]);
+  const handleThemeChange = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    saveAppearance.mutate({ themeMode: mode, uiAccent: accent });
+  };
+  const handleAccentChange = (value: AccentChoice) => {
+    setAccent(value);
+    saveAppearance.mutate({ themeMode, uiAccent: value });
+  };
   const saveSettings = useMutation({
     mutationFn: (v: SettingsInput) => api.updateSettings(v),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
@@ -2318,9 +2365,10 @@ function CrewkatApplication() {
           value={settings.data ?? null}
           saving={saveSettings.isPending}
           themeMode={themeMode}
-          onThemeChange={setThemeMode}
+          onThemeChange={handleThemeChange}
           accent={accent}
-          onAccentChange={setAccent}
+          onAccentChange={handleAccentChange}
+          updateAvailable={swUpdateAvailable}
           onBack={goBack}
           setScreen={setScreen}
           onSave={(v, onDone) => saveSettings.mutate(v, { onSuccess: () => { onDone?.(); } })}
@@ -6742,6 +6790,7 @@ function SettingsScreen({
   onThemeChange,
   accent,
   onAccentChange,
+  updateAvailable,
   onBack,
   setScreen,
   onSave,
@@ -6753,6 +6802,7 @@ function SettingsScreen({
   onThemeChange: (mode: ThemeMode) => void;
   accent: AccentChoice;
   onAccentChange: (accent: AccentChoice) => void;
+  updateAvailable: boolean;
   onBack: () => void;
   setScreen: (screen: Screen) => void;
   onSave: (v: SettingsInput, onDone?: () => void) => void;
@@ -6780,6 +6830,8 @@ function SettingsScreen({
     socialWatermark: true,
     language: lang,
     accentColor: "#1f5a4a",
+    themeMode: "system" as const,
+    uiAccent: "orange" as const,
     defaultQuoteTheme: "classic",
     defaultDocumentFont: "helvetica",
     defaultShowTaxLine: true,
@@ -6924,7 +6976,7 @@ function SettingsScreen({
     lang === "es"
       ? {
           title: "Apariencia",
-          note: "El tema cambia al instante y se guarda en este dispositivo.",
+          note: "Los cambios se aplican al instante y se sincronizan en todos tus dispositivos.",
           light: "Claro",
           dark: "Oscuro",
           system: "Sistema",
@@ -6932,7 +6984,7 @@ function SettingsScreen({
         }
       : {
           title: "Appearance",
-          note: "Changes immediately and stays saved on this device.",
+          note: "Changes apply immediately and sync across all your devices.",
           light: "Light",
           dark: "Dark",
           system: "System",
@@ -7662,6 +7714,17 @@ function SettingsScreen({
                 <div>
                   <dt>{lang === "es" ? "Versión" : "Version"}</dt>
                   <dd>{APP_INFO.version}</dd>
+                </div>
+                <div>
+                  <dt>{lang === "es" ? "Compilación" : "Build"}</dt>
+                  <dd>
+                    {appBuildId() || (lang === "es" ? "Desconocida" : "Unknown")}
+                    {updateAvailable && (
+                      <span style={{ marginLeft: 8, fontWeight: 600, color: "var(--accent)" }}>
+                        {lang === "es" ? "· Actualización lista" : "· Update ready"}
+                      </span>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>{lang === "es" ? "Año" : "Year"}</dt>

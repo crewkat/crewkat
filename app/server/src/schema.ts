@@ -239,6 +239,10 @@ export const settings = sqliteTable("settings", {
   socialWatermark: integer("social_watermark", { mode: "boolean" }).notNull().default(true),
   language: text("language", { enum: ["en", "es"] }).notNull().default("en"),
   accentColor: text("accent_color").notNull().default("#1f5a4a"),
+  // App appearance follows the account, not the device (0055): the installed
+  // app, the web app, and any other device always render the same theme.
+  themeMode: text("theme_mode", { enum: ["light", "dark", "system"] }).notNull().default("system"),
+  uiAccent: text("ui_accent", { enum: ["orange", "blue", "green", "purple", "rose"] }).notNull().default("orange"),
   defaultQuoteTheme: text("default_quote_theme", { enum: ["classic", "modern", "bold", "minimal"] }).notNull().default("classic"),
   defaultDocumentFont: text("default_document_font", { enum: ["helvetica", "times", "courier", "palatino"] }).notNull().default("helvetica"),
   defaultShowTaxLine: integer("default_show_tax_line", { mode: "boolean" }).notNull().default(true),

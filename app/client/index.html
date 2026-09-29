@@ -13,6 +13,17 @@
          lives outside the space's routes and fails auth. -->
     <link rel="icon" href="data:," />
     <title>Crewkat</title>
+    <!-- Apply the saved appearance before React boots: no theme flash on load,
+         and the right theme is set even before the app hydrates. React takes
+         over (and may apply the account-synced appearance) afterwards. -->
+    <script>
+      try {
+        var ckTheme = window.localStorage.getItem("crewkat-theme") || window.localStorage.getItem("tradesign-theme");
+        if (ckTheme === "light" || ckTheme === "dark") document.documentElement.setAttribute("data-theme", ckTheme);
+        var ckAccent = window.localStorage.getItem("crewkat-accent");
+        if (ckAccent === "orange" || ckAccent === "blue" || ckAccent === "green" || ckAccent === "purple" || ckAccent === "rose") document.documentElement.setAttribute("data-accent", ckAccent);
+      } catch (e) {}
+    </script>
     <script src="./src/main.tsx" type="module"></script>
   </head>
   <body>

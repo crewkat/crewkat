@@ -67,6 +67,12 @@ let swText = await readFile(swPath, "utf8");
 swText = swText.split("__BUILD_ID__").join(buildId);
 await writeFile(swPath, swText);
 console.log(`[build] sw.js stamped with build id ${buildId}`);
+// Expose the build id to the app so Settings can show the running version
+// (and whether an update is waiting). Injected post-build like the PWA links.
+html = html.replace(
+  "</title>",
+  `</title>\n    <script>window.__CREWKAT_BUILD_ID__ = ${JSON.stringify(buildId)};</script>`
+);
 html = html.replace(
   '<link rel="icon" href="data:," />',
   `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`

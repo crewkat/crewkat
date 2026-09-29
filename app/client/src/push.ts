@@ -61,6 +61,37 @@ export function activateWaitingServiceWorker(): void {
 }
 
 /**
+ * Proactively check for a newer service worker whenever the app comes back to
+ * the foreground (throttled to ~30 min). The installed Play/TWA app can
+ * otherwise sit on a stale build for days: it has no tab-reload habit and the
+ * browser only re-checks sw.js on its own schedule. When a newer worker is
+ * found, the existing controllerchange -> SW_UPDATE_AVAILABLE_EVENT flow shows
+ * the "Update available" toast.
+ */
+let proactiveSwChecksStarted = false;
+let lastProactiveSwCheck = 0;
+export function startProactiveSwUpdateChecks(): void {
+  if (proactiveSwChecksStarted) return;
+  proactiveSwChecksStarted = true;
+  const check = () => {
+    try {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastProactiveSwCheck < 30 * 60 * 1000) return;
+      lastProactiveSwCheck = now;
+      void navigator.serviceWorker
+        .getRegistration("/app/")
+        .then((reg) => reg?.update().catch(() => {}));
+    } catch {
+      /* best-effort */
+    }
+  };
+  document.addEventListener("visibilitychange", check);
+  window.addEventListener("focus", check);
+  check();
+}
+
+/**
  * Ensures a push subscription exists and is stored server-side.
  * Never prompts: if Notification.permission isn't already "granted" this
  * returns "needs-permission" so the UI can ask from a real user gesture.

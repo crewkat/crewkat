@@ -49,7 +49,7 @@ check("journal when values are non-decreasing", nonDecreasing);
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore);
-check("newest migration tag is 0054_phase3_dispatch", last.tag === "0054_phase3_dispatch", last.tag);
+check("newest migration tag is 0055_add_appearance_settings", last.tag === "0055_add_appearance_settings", last.tag);
 
 // --- 2. Apply all migrations on a scratch DB ----------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-phase2-"));
