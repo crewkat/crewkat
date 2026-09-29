@@ -2214,6 +2214,32 @@ function CrewkatApplication() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     return hash.get("doc") ?? "";
   });
+  // Phase 3: public "On My Way" tracking links (#onmyway=). No login needed.
+  // Persisted in sessionStorage (like the client portal) so a refresh keeps
+  // the status card alive; the hash is stripped from the URL on arrival.
+  const [onMyWayToken] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const incoming = hash.get("onmyway");
+    if (incoming) {
+      try {
+        window.sessionStorage.setItem("crewkat-onmyway-token", incoming);
+      } catch {
+        /* storage unavailable */
+      }
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+      return incoming;
+    }
+    try {
+      return window.sessionStorage.getItem("crewkat-onmyway-token") ?? "";
+    } catch {
+      return "";
+    }
+  });
   if (portalToken)
     return (
       <div className="app-shell" ref={appShellRef}>
@@ -2226,6 +2252,13 @@ function CrewkatApplication() {
       <div className="app-shell" ref={appShellRef}>
         <SafeAreaTopScrim backgroundColor="var(--bg)" />
         <ClientDocumentScreen token={docToken} />
+      </div>
+    );
+  if (onMyWayToken)
+    return (
+      <div className="app-shell" ref={appShellRef}>
+        <SafeAreaTopScrim backgroundColor="var(--bg)" />
+        <OnMyWayScreen initialLang={lang} token={onMyWayToken} />
       </div>
     );
   if (publicParams.has("booking"))
@@ -2428,6 +2461,9 @@ function CrewkatApplication() {
       )}
       {screen.name === "bidBoard" && (
         <BidBoardScreen lang={lang} onBack={goBack} />
+      )}
+      {screen.name === "dispatch" && (
+        <DispatchScreen lang={lang} onBack={goBack} />
       )}
       {screen.name === "marketplaceNew" && (
         <MarketplaceListingForm lang={lang} settings={appSettings} initialListingType={screen.listingType} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
@@ -3951,6 +3987,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
   ];
   const operations: ToolTile[] = lang === "es" ? [
     { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Despacho", description: "Calendario de citas con arrastrar y soltar", screen: { name: "dispatch" }, icon: toolIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
     { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
     { title: "Pedidos esperando proveedores", description: "Compara cotizaciones y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
     { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
@@ -3961,6 +3998,7 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     { title: "Horas del equipo", description: "Revisa las horas guardadas por persona", screen: { name: "expansion", tab: "crew" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
   ] : [
     { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Dispatch", description: "Drag-and-drop appointment calendar", screen: { name: "dispatch" }, icon: toolIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
     { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
     { title: "Orders waiting on suppliers", description: "Compare bids and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
     { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
@@ -4911,6 +4949,7 @@ type WorkspacePanelProps = {
 };
 
 function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "operations">) {
+  const qc = useQueryClient();
   const appointments = useQuery({
     queryKey: ["appointments"],
     queryFn: () => api.listAppointments({}),
@@ -4957,7 +4996,18 @@ function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<Workspace
             {mine.map((a) => (
               <li key={a.id}>
                 <strong>{fmt(a.startsAt)}</strong>
-                <span>{a.notes || "—"}</span>
+                <span>
+                  {a.notes || "—"}
+                  {a.crewMember && ` · ${a.crewMember}`}
+                </span>
+                <OnMyWayShareControls
+                  lang={lang}
+                  appointmentId={a.id}
+                  hasShareLink={a.hasShareLink}
+                  onChanged={() =>
+                    qc.invalidateQueries({ queryKey: ["appointments"] })
+                  }
+                />
               </li>
             ))}
           </ul>
@@ -5039,16 +5089,75 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, invoices, operations, setS
           <strong>{usd(money(job.depositAmount))}</strong>
         </div>
       </div>
-      {operations?.profitability && (
-        <div className="panel-card">
-          <h3>{lang === "es" ? "Rentabilidad" : "Profitability"}</h3>
-          <p>
-            <strong>{usd(operations.profitability.profit)}</strong>
-            {" · "}
-            {lang === "es" ? "Margen" : "Margin"} {operations.profitability.margin.toFixed(1)}%
-          </p>
-        </div>
-      )}
+      {operations?.profitability && (() => {
+        const p = operations.profitability;
+        const selPct = p.selectionBudget > 0
+          ? Math.min(100, (p.selectionActual / p.selectionBudget) * 100)
+          : p.selectionActual > 0 ? 100 : 0;
+        return (
+          <>
+            <div className="panel-card">
+              <h3>{lang === "es" ? "Presupuesto" : "Budget"}</h3>
+              <ul className="panel-list budget-rows">
+                <li>
+                  <span>{lang === "es" ? "Presupuesto total" : "Budget total"}</span>
+                  <strong>{usd(p.budgetTotal)}</strong>
+                </li>
+                <li>
+                  <span>{lang === "es" ? "Órdenes de cambio" : "Change orders"}</span>
+                  <strong>{usd(p.changeOrdersTotal)}</strong>
+                </li>
+                <li>
+                  <span>
+                    {lang === "es" ? "Selecciones" : "Selections"}
+                    <small>
+                      {usd(p.selectionActual)} / {usd(p.selectionBudget)}
+                    </small>
+                  </span>
+                  <strong>{selPct.toFixed(0)}%</strong>
+                </li>
+              </ul>
+              <div
+                className={`budget-bar${selPct >= 100 && p.selectionBudget > 0 ? " over" : ""}`}
+                role="progressbar"
+                aria-valuenow={Math.round(selPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={lang === "es" ? "Presupuesto de selecciones usado" : "Selection budget used"}
+              >
+                <span style={{ width: `${selPct}%` }} />
+              </div>
+            </div>
+            <div className="panel-card">
+              <h3>{lang === "es" ? "Rentabilidad" : "Profitability"}</h3>
+              <ul className="panel-list profit-rows">
+                <li>
+                  <span>{lang === "es" ? "Materiales" : "Materials"}</span>
+                  <strong>{usd(p.materials)}</strong>
+                </li>
+                <li>
+                  <span>{lang === "es" ? "Mano de obra" : "Labor"}</span>
+                  <strong>{usd(p.laborCost)}</strong>
+                </li>
+                <li>
+                  <span>{lang === "es" ? "Gastos" : "Expenses"}</span>
+                  <strong>{usd(p.expenses)}</strong>
+                </li>
+                <li>
+                  <span>{lang === "es" ? "Subcontratistas" : "Subcontractors"}</span>
+                  <strong>{usd(p.subcontractors)}</strong>
+                </li>
+              </ul>
+              <p className="profit-hero">
+                <strong>{usd(p.profit)}</strong>
+                <span>
+                  {lang === "es" ? "Margen" : "Margin"} {p.margin.toFixed(1)}%
+                </span>
+              </p>
+            </div>
+          </>
+        );
+      })()}
       <div className="panel-card">
         <h3>{lang === "es" ? "Facturas" : "Invoices"}</h3>
         {mine.length === 0 ? (
@@ -15621,6 +15730,9 @@ function OperationsScreen({
     startsAt: `${new Date().toLocaleDateString("en-CA")}T09:00`,
     notes: "",
     exteriorWork: false,
+    status: "scheduled" as "scheduled" | "confirmed" | "on_my_way" | "arrived" | "completed" | "cancelled",
+    crewMember: "",
+    etaMinutes: null as number | null,
   });
   const [lead, setLead] = useState({
     name: "",
@@ -16119,6 +16231,895 @@ function stageLabel(
   return (lang === "es" ? es : en)[stage];
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3: dispatch calendar + On-My-Way share links.
+// ---------------------------------------------------------------------------
+
+type AppointmentStatus =
+  | "scheduled"
+  | "confirmed"
+  | "on_my_way"
+  | "arrived"
+  | "completed"
+  | "cancelled";
+
+type DispatchAppointment = Awaited<
+  ReturnType<typeof api.listAppointments>
+>["appointments"][number];
+
+type DispatchJob = Awaited<ReturnType<typeof api.listJobs>>["jobs"][number];
+
+const APPOINTMENT_STATUSES: AppointmentStatus[] = [
+  "scheduled",
+  "confirmed",
+  "on_my_way",
+  "arrived",
+  "completed",
+  "cancelled",
+];
+
+function appointmentStatusLabel(status: string, lang: Lang): string {
+  const labels: Record<string, { en: string; es: string }> = {
+    scheduled: { en: "Scheduled", es: "Programada" },
+    confirmed: { en: "Confirmed", es: "Confirmada" },
+    on_my_way: { en: "On the way", es: "En camino" },
+    arrived: { en: "Arrived", es: "Llegó" },
+    completed: { en: "Completed", es: "Completada" },
+    cancelled: { en: "Cancelled", es: "Cancelada" },
+  };
+  const entry = labels[status];
+  if (!entry) return status;
+  return lang === "es" ? entry.es : entry.en;
+}
+
+// The share token is returned by the server only at share time, so it is
+// kept in sessionStorage (per appointment id) while the browser tab lives.
+const ON_MY_WAY_TOKENS_KEY = "crewkat-onmyway-tokens";
+
+function readOnMyWayTokens(): Record<string, string> {
+  try {
+    const raw = window.sessionStorage.getItem(ON_MY_WAY_TOKENS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistOnMyWayTokens(tokens: Record<string, string>) {
+  try {
+    window.sessionStorage.setItem(ON_MY_WAY_TOKENS_KEY, JSON.stringify(tokens));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function OnMyWayShareControls({
+  lang,
+  appointmentId,
+  hasShareLink,
+  onChanged,
+}: {
+  lang: Lang;
+  appointmentId: number;
+  hasShareLink: boolean;
+  onChanged: () => void;
+}) {
+  const [token, setToken] = useState<string | null>(
+    () => readOnMyWayTokens()[String(appointmentId)] ?? null,
+  );
+  const [copied, setCopied] = useState(false);
+  const share = useMutation({
+    mutationFn: () => api.shareOnMyWay({ appointmentId }),
+    onSuccess: (result) => {
+      const next = {
+        ...readOnMyWayTokens(),
+        [String(appointmentId)]: result.token,
+      };
+      persistOnMyWayTokens(next);
+      setToken(result.token);
+      setCopied(false);
+      buzz(10);
+      onChanged();
+    },
+  });
+  const revoke = useMutation({
+    mutationFn: () => api.revokeOnMyWay({ appointmentId }),
+    onSuccess: () => {
+      const next = { ...readOnMyWayTokens() };
+      delete next[String(appointmentId)];
+      persistOnMyWayTokens(next);
+      setToken(null);
+      setCopied(false);
+      buzz(8);
+      onChanged();
+    },
+  });
+  const link = token ? `https://crewkat.com/#onmyway=${token}` : null;
+  return (
+    <div className="onmyway-controls">
+      {link ? (
+        <>
+          <button
+            type="button"
+            className="small-button"
+            onClick={async () => {
+              if (await copyText(link)) {
+                setCopied(true);
+                buzz(6);
+                window.setTimeout(() => setCopied(false), 2000);
+              }
+            }}
+          >
+            <ShareIcon />
+            {copied
+              ? lang === "es"
+                ? "¡Copiado!"
+                : "Copied!"
+              : lang === "es"
+                ? "Copiar enlace «En camino»"
+                : "Copy On-My-Way link"}
+          </button>
+          <button
+            type="button"
+            className="small-button onmyway-revoke"
+            disabled={revoke.isPending}
+            onClick={() => revoke.mutate()}
+          >
+            {lang === "es" ? "Revocar" : "Revoke"}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="small-button"
+          disabled={share.isPending}
+          onClick={() => share.mutate()}
+        >
+          <ShareIcon />
+          {share.isPending
+            ? lang === "es"
+              ? "Creando…"
+              : "Creating…"
+            : hasShareLink
+              ? lang === "es"
+                ? "Generar enlace nuevo"
+                : "Generate new link"
+              : lang === "es"
+                ? "Compartir enlace «En camino»"
+                : "Share On-My-Way link"}
+        </button>
+      )}
+      {share.isError && (
+        <p className="status error">
+          {lang === "es"
+            ? "No se pudo crear el enlace."
+            : "Could not create the link."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+type AppointmentForm = {
+  id: number | null;
+  jobId: number | null;
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  startsAt: string; // datetime-local value "YYYY-MM-DDTHH:mm"
+  notes: string;
+  exteriorWork: boolean;
+  status: AppointmentStatus;
+  crewMember: string;
+  etaMinutes: string; // raw number input
+};
+
+const EMPTY_APPOINTMENT_FORM: AppointmentForm = {
+  id: null,
+  jobId: null,
+  clientId: null,
+  clientName: "",
+  clientPhone: "",
+  startsAt: "",
+  notes: "",
+  exteriorWork: false,
+  status: "scheduled",
+  crewMember: "",
+  etaMinutes: "",
+};
+
+function appointmentToForm(a: DispatchAppointment): AppointmentForm {
+  return {
+    id: a.id,
+    jobId: a.jobId,
+    clientId: a.clientId,
+    clientName: a.clientName,
+    clientPhone: a.clientPhone,
+    startsAt: a.startsAt.slice(0, 16),
+    notes: a.notes,
+    exteriorWork: a.exteriorWork,
+    status: a.status,
+    crewMember: a.crewMember,
+    etaMinutes: a.etaMinutes == null ? "" : String(a.etaMinutes),
+  };
+}
+
+function AppointmentSheet({
+  lang,
+  initial,
+  jobs,
+  hasShareLink,
+  onClose,
+  onSaved,
+}: {
+  lang: Lang;
+  initial: AppointmentForm;
+  jobs: DispatchJob[];
+  hasShareLink: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState(initial);
+  const [prevStatus] = useState(initial.status);
+  const [prevEta] = useState(
+    initial.etaMinutes.trim() === "" ? null : Number(initial.etaMinutes),
+  );
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [error, setError] = useState("");
+
+  const parsedEta =
+    form.status === "on_my_way" && form.etaMinutes.trim() !== ""
+      ? Math.min(480, Math.max(1, Math.round(Number(form.etaMinutes) || 0)))
+      : null;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const clientName = form.clientName.trim();
+      if (!clientName)
+        throw new Error(
+          lang === "es"
+            ? "Falta el nombre del cliente."
+            : "Client name is required.",
+        );
+      if (!form.startsAt)
+        throw new Error(
+          lang === "es"
+            ? "Falta la fecha y hora."
+            : "Date and time are required.",
+        );
+      const startsAt =
+        form.startsAt.length === 16 ? `${form.startsAt}:00` : form.startsAt;
+      const saved = await api.saveAppointment({
+        id: form.id,
+        jobId: form.jobId,
+        clientId: form.clientId,
+        clientName,
+        clientPhone: form.clientPhone.trim(),
+        startsAt,
+        notes: form.notes.trim(),
+        exteriorWork: form.exteriorWork,
+        status: form.status,
+        crewMember: form.crewMember.trim(),
+        etaMinutes: parsedEta,
+      });
+      if (
+        (form.status === "on_my_way" || form.status === "arrived") &&
+        (form.status !== prevStatus || parsedEta !== prevEta)
+      ) {
+        // Refreshes the public On-My-Way page and logs a bilingual system
+        // message to the job thread.
+        await api
+          .updateOnMyWay({
+            appointmentId: saved.id,
+            status: form.status,
+            etaMinutes: parsedEta,
+          })
+          .catch(() => undefined);
+      }
+      return saved;
+    },
+    onSuccess: () => {
+      buzz(10);
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      onSaved();
+    },
+    onError: (e) =>
+      setError(
+        e instanceof Error
+          ? e.message
+          : lang === "es"
+            ? "No se pudo guardar."
+            : "Could not save.",
+      ),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => {
+      if (form.id == null) throw new Error("no id");
+      return api.deleteAppointment({ id: form.id });
+    },
+    onSuccess: () => {
+      buzz(8);
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      onSaved();
+    },
+    onError: () =>
+      setError(lang === "es" ? "No se pudo eliminar." : "Could not delete."),
+  });
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <section
+        className="dispatch-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={lang === "es" ? "Cita" : "Appointment"}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sheet-handle" />
+        <h2>
+          {form.id
+            ? lang === "es"
+              ? "Editar cita"
+              : "Edit appointment"
+            : lang === "es"
+              ? "Nueva cita"
+              : "New appointment"}
+        </h2>
+        <form
+          className="compact-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError("");
+            save.mutate();
+          }}
+        >
+          <label>
+            <span>{lang === "es" ? "Trabajo (opcional)" : "Job (optional)"}</span>
+            <select
+              value={form.jobId ?? ""}
+              onChange={(event) => {
+                const id = event.target.value
+                  ? Number(event.target.value)
+                  : null;
+                const j = jobs.find((row) => row.id === id);
+                setForm({
+                  ...form,
+                  jobId: id,
+                  clientId: j ? j.clientId : form.clientId,
+                  clientName: j ? j.clientName : form.clientName,
+                  clientPhone:
+                    j && !form.clientPhone ? j.clientPhone : form.clientPhone,
+                });
+              }}
+            >
+              <option value="">—</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.clientName} · {j.jobType}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="field-pair">
+            <label>
+              <span>{copy[lang].client}</span>
+              <input
+                value={form.clientName}
+                onChange={(event) =>
+                  setForm({ ...form, clientName: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>{copy[lang].phone}</span>
+              <input
+                value={form.clientPhone}
+                onChange={(event) =>
+                  setForm({ ...form, clientPhone: event.target.value })
+                }
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>{copy[lang].appointment}</span>
+              <input
+                type="datetime-local"
+                value={form.startsAt}
+                onChange={(event) =>
+                  setForm({ ...form, startsAt: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>{lang === "es" ? "Personal" : "Crew member"}</span>
+              <input
+                value={form.crewMember}
+                onChange={(event) =>
+                  setForm({ ...form, crewMember: event.target.value })
+                }
+                placeholder={lang === "es" ? "¿Quién va?" : "Who's going?"}
+              />
+            </label>
+          </div>
+          <div className="field-pair">
+            <label>
+              <span>{lang === "es" ? "Estado" : "Status"}</span>
+              <select
+                value={form.status}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    status: event.target.value as AppointmentStatus,
+                  })
+                }
+              >
+                {APPOINTMENT_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {appointmentStatusLabel(s, lang)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {form.status === "on_my_way" && (
+              <label>
+                <span>{lang === "es" ? "Llega en (min)" : "ETA (min)"}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={480}
+                  inputMode="numeric"
+                  value={form.etaMinutes}
+                  onChange={(event) =>
+                    setForm({ ...form, etaMinutes: event.target.value })
+                  }
+                  placeholder="25"
+                />
+              </label>
+            )}
+          </div>
+          <label>
+            <span>{copy[lang].notes}</span>
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(event) =>
+                setForm({ ...form, notes: event.target.value })
+              }
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={form.exteriorWork}
+              onChange={(event) =>
+                setForm({ ...form, exteriorWork: event.target.checked })
+              }
+            />
+            <span>
+              {lang === "es"
+                ? "Trabajo exterior — mostrar pronóstico"
+                : "Exterior work — show forecast"}
+            </span>
+          </label>
+          {form.id != null && (
+            <OnMyWayShareControls
+              lang={lang}
+              appointmentId={form.id}
+              hasShareLink={hasShareLink}
+              onChanged={() => {
+                qc.invalidateQueries({ queryKey: ["appointments"] });
+              }}
+            />
+          )}
+          {error && <p className="status error">{error}</p>}
+          <div className="dispatch-sheet-actions">
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={save.isPending || remove.isPending}
+            >
+              {save.isPending
+                ? lang === "es"
+                  ? "Guardando…"
+                  : "Saving…"
+                : copy[lang].save}
+            </button>
+            {form.id != null &&
+              (confirmingDelete ? (
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={remove.isPending}
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    {lang === "es" ? "Cancelar" : "Cancel"}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate()}
+                  >
+                    {remove.isPending
+                      ? lang === "es"
+                        ? "Eliminando…"
+                        : "Deleting…"
+                      : lang === "es"
+                        ? "Sí, eliminar"
+                        : "Yes, delete"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  <TrashIcon />
+                  {lang === "es" ? "Eliminar" : "Delete"}
+                </button>
+              ))}
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const qc = useQueryClient();
+  const [view, setView] = useState<"day" | "week">("day");
+  const [focusDate, setFocusDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA"),
+  );
+  const [sheetInitial, setSheetInitial] = useState<AppointmentForm | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
+  const dragStartedRef = useRef(false);
+
+  const appointments = useQuery({
+    queryKey: ["appointments"],
+    queryFn: () => api.listAppointments({}),
+  });
+  const jobs = useQuery({
+    queryKey: ["jobs", ""],
+    queryFn: () => api.listJobs({ search: "" }),
+  });
+  const jobById = useMemo(
+    () => new Map((jobs.data?.jobs ?? []).map((j) => [j.id, j])),
+    [jobs.data],
+  );
+
+  const all = appointments.data?.appointments ?? [];
+
+  const weekDays = useMemo(() => {
+    const base = new Date(`${focusDate}T00:00:00`);
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.toLocaleDateString("en-CA");
+    });
+  }, [focusDate]);
+
+  const moveAppointment = (
+    appt: DispatchAppointment,
+    dateStr: string,
+    hour: number,
+  ) => {
+    const d = new Date(appt.startsAt);
+    const mins = Number.isNaN(d.getTime()) ? 0 : d.getMinutes();
+    const newStartsAt = `${dateStr}T${String(hour).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`;
+    if (newStartsAt === appt.startsAt) {
+      setSelectedId(null);
+      return;
+    }
+    const previous = appt.startsAt;
+    buzz(8);
+    const args = {
+      id: appt.id,
+      jobId: appt.jobId,
+      clientId: appt.clientId,
+      clientName: appt.clientName,
+      clientPhone: appt.clientPhone,
+      startsAt: newStartsAt,
+      notes: appt.notes,
+      exteriorWork: appt.exteriorWork,
+      status: appt.status,
+      crewMember: appt.crewMember,
+      etaMinutes: appt.etaMinutes,
+    };
+    api
+      .saveAppointment(args)
+      .then(() => {
+        setSelectedId(null);
+        qc.invalidateQueries({ queryKey: ["appointments"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      })
+      .catch(() => undefined);
+    showUndoToast(
+      lang === "es" ? "Movido" : "Moved",
+      lang === "es" ? "Deshacer" : "Undo",
+      () => {
+        api
+          .saveAppointment({ ...args, startsAt: previous })
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ["appointments"] });
+          })
+          .catch(() => undefined);
+      },
+    );
+  };
+
+  const newAppointment = () => {
+    setSelectedId(null);
+    setSheetInitial({
+      ...EMPTY_APPOINTMENT_FORM,
+      startsAt: `${focusDate}T09:00`,
+    });
+  };
+
+  const shiftFocusDate = (days: number) => {
+    const d = new Date(`${focusDate}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    setFocusDate(d.toLocaleDateString("en-CA"));
+  };
+
+  const renderCard = (appt: DispatchAppointment) => {
+    const jobType =
+      appt.jobId != null ? jobById.get(appt.jobId)?.jobType : undefined;
+    const time = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(appt.startsAt));
+    const selected = selectedId === appt.id;
+    return (
+      <article
+        key={appt.id}
+        className={`dispatch-card st-${appt.status}${selected ? " selected" : ""}`}
+        draggable
+        onDragStart={(event) => {
+          dragStartedRef.current = true;
+          event.dataTransfer.setData("text/plain", String(appt.id));
+          event.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={() => {
+          window.setTimeout(() => {
+            dragStartedRef.current = false;
+          }, 50);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (dragStartedRef.current) return;
+          if (selectedId === appt.id) setSheetInitial(appointmentToForm(appt));
+          else {
+            setSelectedId(appt.id);
+            buzz(4);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") setSheetInitial(appointmentToForm(appt));
+        }}
+      >
+        <div className="dispatch-card-top">
+          <strong className="dispatch-client">{appt.clientName}</strong>
+          <span className="dispatch-status">
+            {appointmentStatusLabel(appt.status, lang)}
+          </span>
+        </div>
+        <div className="dispatch-card-meta">
+          <span>{time}</span>
+          {jobType && <span>{jobType}</span>}
+          {appt.crewMember && <span>{appt.crewMember}</span>}
+        </div>
+        {appt.status === "on_my_way" && appt.etaMinutes != null && (
+          <span className="dispatch-eta">
+            ~{appt.etaMinutes} {lang === "es" ? "min" : "min"}
+          </span>
+        )}
+      </article>
+    );
+  };
+
+  const slotDropHandlers = (
+    dateStr: string,
+    hour: number,
+    slotKey: string,
+    keepHour = false,
+  ) => {
+    const resolveHour = (appt: DispatchAppointment) =>
+      keepHour ? new Date(appt.startsAt).getHours() : hour;
+    return {
+      onDragOver: (event: React.DragEvent) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragOverSlot(slotKey);
+      },
+      onDragLeave: () =>
+        setDragOverSlot((cur) => (cur === slotKey ? null : cur)),
+      onDrop: (event: React.DragEvent) => {
+        event.preventDefault();
+        setDragOverSlot(null);
+        const id = Number(event.dataTransfer.getData("text/plain"));
+        const appt = all.find((a) => a.id === id);
+        if (appt) moveAppointment(appt, dateStr, resolveHour(appt));
+      },
+      onClick: () => {
+        if (selectedId == null) return;
+        const appt = all.find((a) => a.id === selectedId);
+        if (appt) moveAppointment(appt, dateStr, resolveHour(appt));
+      },
+    };
+  };
+
+  const hourLabel = (hour: number) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      hour: "numeric",
+    }).format(new Date(2000, 0, 1, hour));
+
+  const dayLabel = (dateStr: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      weekday: "short",
+    }).format(new Date(`${dateStr}T00:00:00`));
+  const dayNum = (dateStr: string) => Number(dateStr.slice(8, 10));
+
+  const visibleDays = view === "day" ? [focusDate] : weekDays;
+
+  return (
+    <main className="page dispatch-page">
+      <PageHeader
+        lang={lang}
+        title={lang === "es" ? "Despacho" : "Dispatch"}
+        onBack={onBack}
+        actions={
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={lang === "es" ? "Nueva cita" : "New appointment"}
+            onClick={newAppointment}
+          >
+            <PlusIcon />
+          </button>
+        }
+      />
+      <div className="calendar-toolbar dispatch-toolbar">
+        <div>
+          <button
+            className={view === "day" ? "active" : ""}
+            onClick={() => setView("day")}
+          >
+            {lang === "es" ? "Día" : "Day"}
+          </button>
+          <button
+            className={view === "week" ? "active" : ""}
+            onClick={() => setView("week")}
+          >
+            {lang === "es" ? "Semana" : "Week"}
+          </button>
+        </div>
+        <div className="dispatch-date-nav">
+          <button
+            type="button"
+            aria-label={lang === "es" ? "Anterior" : "Previous"}
+            onClick={() => shiftFocusDate(view === "week" ? -7 : -1)}
+          >
+            ‹
+          </button>
+          <input
+            type="date"
+            value={focusDate}
+            onChange={(event) => setFocusDate(event.target.value)}
+            aria-label={lang === "es" ? "Fecha" : "Date"}
+          />
+          <button
+            type="button"
+            aria-label={lang === "es" ? "Siguiente" : "Next"}
+            onClick={() => shiftFocusDate(view === "week" ? 7 : 1)}
+          >
+            ›
+          </button>
+        </div>
+      </div>
+      {selectedId != null && (
+        <p className="dispatch-hint" role="status">
+          {lang === "es"
+            ? "Cita seleccionada — toca un horario para moverla, o tócala de nuevo para editarla."
+            : "Appointment selected — tap a time slot to move it, or tap it again to edit."}
+        </p>
+      )}
+      {appointments.isLoading ? (
+        <div className="loading-block" />
+      ) : view === "day" ? (
+        <section className="dispatch-day" aria-label={focusDate}>
+          {Array.from({ length: 15 }, (_, i) => i + 6).map((hour) => {
+            const cards = all
+              .filter((a) => {
+                const d = new Date(a.startsAt);
+                return (
+                  a.startsAt.slice(0, 10) === focusDate &&
+                  d.getHours() === hour
+                );
+              })
+              .sort((x, y) => (x.startsAt < y.startsAt ? -1 : 1));
+            const slotKey = `${focusDate}-${hour}`;
+            return (
+              <div key={hour} className="dispatch-row">
+                <span className="dispatch-hour">{hourLabel(hour)}</span>
+                <div
+                  className={`dispatch-slot${dragOverSlot === slotKey ? " drop-target" : ""}${selectedId != null ? " move-armed" : ""}`}
+                  {...slotDropHandlers(focusDate, hour, slotKey)}
+                >
+                  {cards.map(renderCard)}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="dispatch-week" aria-label={lang === "es" ? "Semana" : "Week"}>
+          {weekDays.map((dateStr) => {
+            const cards = all
+              .filter((a) => a.startsAt.slice(0, 10) === dateStr)
+              .sort((x, y) => (x.startsAt < y.startsAt ? -1 : 1));
+            return (
+              <div
+                key={dateStr}
+                className={`dispatch-day-col${dragOverSlot === dateStr ? " drop-target" : ""}${selectedId != null ? " move-armed" : ""}`}
+                {...slotDropHandlers(dateStr, 9, dateStr, true)}
+              >
+                <header className={dateStr === new Date().toLocaleDateString("en-CA") ? "today" : ""}>
+                  <span>{dayLabel(dateStr)}</span>
+                  <strong>{dayNum(dateStr)}</strong>
+                </header>
+                <div className="dispatch-day-cards">{cards.map(renderCard)}</div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+      {visibleDays.length > 0 &&
+        all.every(
+          (a) => !visibleDays.includes(a.startsAt.slice(0, 10)),
+        ) && (
+          <div className="empty-state">
+            <h2>
+              {lang === "es"
+                ? "No hay citas en este período."
+                : "No appointments in this period."}
+            </h2>
+          </div>
+        )}
+      {sheetInitial && (
+        <AppointmentSheet
+          lang={lang}
+          initial={sheetInitial}
+          jobs={jobs.data?.jobs ?? []}
+          hasShareLink={
+            sheetInitial.id != null
+              ? (all.find((a) => a.id === sheetInitial.id)?.hasShareLink ??
+                false)
+              : false
+          }
+          onClose={() => setSheetInitial(null)}
+          onSaved={() => setSheetInitial(null)}
+        />
+      )}
+    </main>
+  );
+}
+
 function JobOperationsScreen({
   lang,
   jobId,
@@ -16150,6 +17151,8 @@ function JobOperationsScreen({
     vendor: "",
     approvalStatus: "pending" as "pending" | "approved" | "rejected",
     leadTimeDays: 0,
+    estimatedCost: "",
+    actualCost: "",
   });
   const [selectionFile, setSelectionFile] = useState<File | null>(null);
   const [log, setLog] = useState({
@@ -16181,6 +17184,27 @@ function JobOperationsScreen({
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["job-operations", jobId] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  const saveSelectionCosts = async (
+    s: (typeof data.selections)[number],
+    estimatedCost: string,
+    actualCost: string,
+  ) => {
+    await api.saveSelection({
+      id: s.id,
+      jobId,
+      category: s.category,
+      item: s.item,
+      vendor: s.vendor,
+      approvalStatus: s.approvalStatus,
+      leadTimeDays: s.leadTimeDays,
+      estimatedCost,
+      actualCost,
+      photoFilename: "",
+      photoContentType: "",
+      photoDataBase64: "",
+    });
+    refresh();
   };
   const shareSelections = async () => {
     const text = [
@@ -16300,6 +17324,7 @@ function JobOperationsScreen({
               let encoded = { dataBase64: "" };
               if (selectionFile) encoded = await fileToBase64(selectionFile);
               await api.saveSelection({
+                id: null,
                 jobId,
                 ...selection,
                 photoFilename: selectionFile?.name ?? "",
@@ -16313,6 +17338,8 @@ function JobOperationsScreen({
                 vendor: "",
                 approvalStatus: "pending",
                 leadTimeDays: 0,
+                estimatedCost: "",
+                actualCost: "",
               });
               setSelectionFile(null);
               refresh();
@@ -16368,6 +17395,30 @@ function JobOperationsScreen({
                 />
               </label>
             </div>
+            <div className="field-pair">
+              <label>
+                <span>{lang === "es" ? "Costo estimado ($)" : "Estimated cost ($)"}</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={selection.estimatedCost}
+                  onChange={(e) =>
+                    setSelection({ ...selection, estimatedCost: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                <span>{lang === "es" ? "Costo real ($)" : "Actual cost ($)"}</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={selection.actualCost}
+                  onChange={(e) =>
+                    setSelection({ ...selection, actualCost: e.target.value })
+                  }
+                />
+              </label>
+            </div>
             <label>
               <span>{lang === "es" ? "Foto opcional" : "Optional photo"}</span>
               <input
@@ -16414,6 +17465,36 @@ function JobOperationsScreen({
                           : "No lead time"}
                     </small>
                   </label>
+                  <div className="selection-costs">
+                    <label>
+                      <span>{lang === "es" ? "Est. $" : "Est. $"}</span>
+                      <input
+                        inputMode="decimal"
+                        aria-label={`${s.item} ${lang === "es" ? "costo estimado" : "estimated cost"}`}
+                        defaultValue={s.estimatedCost}
+                        key={`est-${s.id}-${s.estimatedCost}`}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v === s.estimatedCost) return;
+                          void saveSelectionCosts(s, v || "0", s.actualCost);
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>{lang === "es" ? "Real $" : "Actual $"}</span>
+                      <input
+                        inputMode="decimal"
+                        aria-label={`${s.item} ${lang === "es" ? "costo real" : "actual cost"}`}
+                        defaultValue={s.actualCost}
+                        key={`act-${s.id}-${s.actualCost}`}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v === s.actualCost) return;
+                          void saveSelectionCosts(s, s.estimatedCost, v || "0");
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
                 <select
                   value={s.approvalStatus}
@@ -18336,6 +19417,102 @@ async function buildClientSignedContractPdf(
   pdf.setTextColor(70, 78, 76);
   pdf.text(new Date().toLocaleString(lang === "es" ? "es-US" : "en-US"), margin, y);
   return pdf.output("blob");
+}
+
+// Phase 3: public "On My Way" status page. Company-agnostic, no login
+// required. Polls the server every 60 seconds for fresh status/ETA.
+function OnMyWayScreen({
+  initialLang,
+  token,
+}: {
+  initialLang: Lang;
+  token: string;
+}) {
+  const [lang, setLang] = useState<Lang>(initialLang);
+  const q = useQuery({
+    queryKey: ["onmyway-status", token],
+    queryFn: () => api.getOnMyWayStatus({ token }),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const d = q.data;
+  const statusLabel = d ? appointmentStatusLabel(d.status, lang) : "";
+  return (
+    <main className="onmyway-page">
+      <div className="onmyway-lang" role="group" aria-label="Language / Idioma">
+        <button
+          type="button"
+          className={lang === "en" ? "active" : ""}
+          onClick={() => setLang("en")}
+        >
+          EN
+        </button>
+        <button
+          type="button"
+          className={lang === "es" ? "active" : ""}
+          onClick={() => setLang("es")}
+        >
+          ES
+        </button>
+      </div>
+      <p className="onmyway-brand">Crewkat</p>
+      {q.isLoading ? (
+        <div className="loading-block" />
+      ) : q.isError || !d ? (
+        <section className="onmyway-card">
+          <h1>{lang === "es" ? "Enlace no disponible" : "Link unavailable"}</h1>
+          <p>
+            {lang === "es"
+              ? "Este enlace ya no está activo. Pide a tu contratista un enlace nuevo."
+              : "This link is no longer active. Ask your contractor for a fresh link."}
+          </p>
+        </section>
+      ) : (
+        <section className="onmyway-card" aria-live="polite">
+          {d.clientName && (
+            <p className="onmyway-greeting">
+              {lang === "es" ? `Hola, ${d.clientName}` : `Hi, ${d.clientName}`}
+            </p>
+          )}
+          <span className={`onmyway-pill st-${d.status}`}>{statusLabel}</span>
+          {d.status === "on_my_way" && d.etaMinutes != null && (
+            <p className="onmyway-eta">
+              ~{d.etaMinutes} {lang === "es" ? "min" : "min"}
+            </p>
+          )}
+          <dl className="onmyway-details">
+            {d.jobType && (
+              <div>
+                <dt>{lang === "es" ? "Trabajo" : "Job"}</dt>
+                <dd>{d.jobType}</dd>
+              </div>
+            )}
+            {d.jobAddress && (
+              <div>
+                <dt>{lang === "es" ? "Dirección" : "Address"}</dt>
+                <dd>{d.jobAddress}</dd>
+              </div>
+            )}
+            {d.crewMember && (
+              <div>
+                <dt>{lang === "es" ? "Equipo" : "Crew"}</dt>
+                <dd>{d.crewMember}</dd>
+              </div>
+            )}
+            <div>
+              <dt>{lang === "es" ? "Actualizado" : "Updated"}</dt>
+              <dd>
+                {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(d.updatedAt))}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      )}
+    </main>
+  );
 }
 
 function ClientDocumentScreen({ token }: { token: string }) {

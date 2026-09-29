@@ -2859,3 +2859,95 @@ button { -webkit-tap-highlight-color: transparent; }
   .workspace-panel, .thread-bubble, .bid-card { animation:none !important; }
   .composer-icon.recording { animation:none !important; }
 }
+
+/* Phase 3: dispatch calendar. */
+.dispatch-page { padding-bottom: 2rem; }
+.dispatch-toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; justify-content:space-between; }
+.dispatch-date-nav { display:flex; align-items:center; gap:.35rem; }
+.dispatch-date-nav button { min-width:38px; min-height:38px; border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:var(--text); font-size:1.1rem; font-weight:800; }
+.dispatch-hint { margin:.5rem 0; padding:.6rem .8rem; border:1px dashed var(--accent); border-radius:.7rem; color:var(--accent); font-size:.82rem; font-weight:600; }
+.dispatch-day { display:grid; gap:2px; margin-top:.5rem; }
+.dispatch-row { display:grid; grid-template-columns:56px 1fr; gap:.5rem; min-height:64px; }
+.dispatch-hour { font-size:.72rem; color:var(--dim); font-weight:700; padding-top:.4rem; text-align:right; }
+.dispatch-slot { border:1px solid var(--edge); border-radius:.7rem; background:var(--surface); padding:.35rem; display:grid; gap:.35rem; align-content:start; min-height:64px; transition:border-color .15s ease, background .15s ease; }
+.dispatch-slot.drop-target { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.dispatch-slot.move-armed { cursor:pointer; }
+.dispatch-week { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(200px,1fr); gap:.5rem; overflow-x:auto; margin-top:.5rem; padding-bottom:.5rem; }
+.dispatch-day-col { border:1px solid var(--edge); border-radius:.8rem; background:var(--surface); min-height:240px; display:flex; flex-direction:column; transition:border-color .15s ease, background .15s ease; }
+.dispatch-day-col.drop-target { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.dispatch-day-col > header { display:flex; align-items:center; justify-content:space-between; padding:.55rem .7rem; border-bottom:1px solid var(--edge); font-size:.8rem; color:var(--dim); }
+.dispatch-day-col > header strong { font-size:1rem; color:var(--text); }
+.dispatch-day-col > header.today { color:var(--accent); }
+.dispatch-day-col > header.today strong { color:var(--accent); }
+.dispatch-day-cards { display:grid; gap:.4rem; padding:.5rem; align-content:start; flex:1; }
+.dispatch-card { background:var(--bg); border:1px solid var(--edge); border-left:4px solid #8a93a6; border-radius:.65rem; padding:.55rem .65rem; display:grid; gap:.25rem; cursor:pointer; }
+.dispatch-card.selected { outline:2px solid var(--accent); outline-offset:1px; }
+.dispatch-card-top { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.dispatch-client { font-size:.86rem; }
+.dispatch-card.st-cancelled .dispatch-client { text-decoration:line-through; }
+.dispatch-status { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--dim); white-space:nowrap; }
+.dispatch-card-meta { display:flex; flex-wrap:wrap; gap:.35rem .7rem; font-size:.76rem; color:var(--dim); }
+.dispatch-eta { font-size:.78rem; font-weight:800; color:#f58a1f; }
+.dispatch-card.st-scheduled { border-left-color:#8a93a6; }
+.dispatch-card.st-confirmed { border-left-color:#2f7cf6; }
+.dispatch-card.st-on_my_way { border-left-color:#f58a1f; animation:dispatch-pulse 1.6s ease-in-out infinite; }
+.dispatch-card.st-on_my_way .dispatch-status { color:#f58a1f; }
+.dispatch-card.st-arrived { border-left-color:#2ea44f; }
+.dispatch-card.st-arrived .dispatch-status { color:#2ea44f; }
+.dispatch-card.st-completed { border-left-color:#7fbf8f; opacity:.72; }
+.dispatch-card.st-completed .dispatch-status { color:#7fbf8f; }
+.dispatch-card.st-completed .dispatch-client::after { content:" ✓"; }
+.dispatch-card.st-cancelled { border-left-color:#d64541; }
+.dispatch-card.st-cancelled .dispatch-status { color:#d64541; }
+@keyframes dispatch-pulse {
+  0%, 100% { box-shadow:0 0 0 0 rgba(245,138,31,.45); }
+  50% { box-shadow:0 0 0 7px rgba(245,138,31,0); }
+}
+.dispatch-sheet { width:min(100%,520px); margin:0 auto; background:var(--surface); color:var(--text); border-radius:1rem; padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom)); display:grid; gap:.85rem; max-height:92dvh; overflow-y:auto; }
+.dispatch-sheet h2 { margin:0; font-size:1.05rem; }
+.dispatch-sheet-actions { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
+.dispatch-sheet-actions .primary-button { flex:1 1 auto; }
+
+/* Phase 3: On-My-Way share controls + public page. */
+.onmyway-controls { display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; margin-top:.4rem; }
+.onmyway-controls .small-button { display:inline-flex; align-items:center; gap:.35rem; }
+.onmyway-revoke { color:var(--danger); }
+.onmyway-page { min-height:100dvh; display:grid; align-content:start; justify-items:center; gap:1rem; padding:2.5rem 1.25rem 3rem; background:var(--bg); color:var(--text); }
+.onmyway-lang { display:flex; gap:.35rem; }
+.onmyway-lang button { border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:.4rem .9rem; font-weight:800; font-size:.8rem; }
+.onmyway-lang button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.onmyway-brand { font-weight:900; font-size:1.15rem; letter-spacing:.02em; color:var(--dim); margin:0; }
+.onmyway-card { width:min(100%,440px); background:var(--surface); border:1px solid var(--edge); border-radius:1.1rem; padding:1.5rem; display:grid; gap:.9rem; justify-items:center; text-align:center; }
+.onmyway-card h1 { margin:0; font-size:1.25rem; }
+.onmyway-card p { margin:0; color:var(--dim); }
+.onmyway-greeting { font-size:.95rem; font-weight:700; color:var(--text) !important; }
+.onmyway-pill { font-size:1.05rem; font-weight:900; text-transform:uppercase; letter-spacing:.06em; border-radius:999px; padding:.55rem 1.4rem; }
+.onmyway-pill.st-scheduled { background:#e8ecf3; color:#5b6577; }
+.onmyway-pill.st-confirmed { background:#dbe9ff; color:#1f5fd6; }
+.onmyway-pill.st-on_my_way { background:#ffe8cf; color:#c25e0a; animation:dispatch-pulse 1.6s ease-in-out infinite; }
+.onmyway-pill.st-arrived { background:#d9f2e3; color:#1f7a44; }
+.onmyway-pill.st-completed { background:#e3efe6; color:#5d7f6a; }
+.onmyway-pill.st-cancelled { background:#ffe0de; color:#b3322c; }
+.onmyway-eta { font-size:2.4rem !important; font-weight:900; color:var(--text) !important; line-height:1; }
+.onmyway-details { display:grid; gap:.55rem; width:100%; margin:0; text-align:left; }
+.onmyway-details > div { display:grid; gap:.15rem; border-top:1px solid var(--edge); padding-top:.55rem; }
+.onmyway-details dt { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
+.onmyway-details dd { margin:0; font-size:.95rem; }
+
+/* Phase 3: selection costs, budget, profitability. */
+.selection-costs { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:.4rem; }
+.selection-costs label { display:grid; gap:.2rem; font-size:.72rem; font-weight:700; color:var(--dim); }
+.selection-costs input { width:100%; min-height:38px; border:1px solid var(--border); border-radius:.6rem; background:var(--surface); color:var(--text); padding:.45rem .6rem; font-size:.85rem; }
+.budget-rows li, .profit-rows li { display:flex; align-items:center; justify-content:space-between; gap:.8rem; }
+.budget-rows small { display:block; font-size:.75rem; color:var(--dim); font-weight:400; }
+.budget-bar { height:.65rem; border-radius:999px; background:var(--bg); border:1px solid var(--edge); overflow:hidden; margin-top:.6rem; }
+.budget-bar > span { display:block; height:100%; background:var(--accent); border-radius:999px; transition:width .3s ease; }
+.budget-bar.over > span { background:var(--danger); }
+.profit-hero { display:flex; align-items:baseline; justify-content:space-between; gap:.8rem; margin:.7rem 0 0; padding-top:.7rem; border-top:1px solid var(--edge); }
+.profit-hero strong { font-size:1.5rem; }
+.profit-hero span { font-size:.82rem; color:var(--dim); font-weight:700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-card.st-on_my_way, .onmyway-pill.st-on_my_way { animation:none !important; }
+  .dispatch-slot, .dispatch-day-col, .budget-bar > span { transition:none !important; }
+}

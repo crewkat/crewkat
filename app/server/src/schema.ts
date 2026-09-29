@@ -361,6 +361,11 @@ export const appointments = sqliteTable("appointments", {
   startsAt: text("starts_at").notNull(),
   notes: text("notes").notNull().default(""),
   exteriorWork: integer("exterior_work", { mode: "boolean" }).notNull().default(false),
+  status: text("status", { enum: ["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"] }).notNull().default("scheduled"),
+  crewMember: text("crew_member").notNull().default(""),
+  etaMinutes: integer("eta_minutes"),
+  shareTokenHash: text("share_token_hash").unique(),
+  shareTokenHint: text("share_token_hint").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -398,6 +403,8 @@ export const selections = sqliteTable("selections", {
   photoContentType: text("photo_content_type").notNull().default(""),
   approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
   leadTimeDays: integer("lead_time_days").notNull().default(0),
+  estimatedCost: text("estimated_cost").notNull().default("0"),
+  actualCost: text("actual_cost").notNull().default("0"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
