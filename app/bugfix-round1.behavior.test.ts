@@ -234,6 +234,9 @@ for (const [label, snippet] of escapeTargets) {
 
 check("bottom-nav content clearance rule exists",
   cssSrc.includes(".app-shell.has-bottom-nav .page"));
+check("bottom nav keeps the dedicated 62px center track (FAB must not cover labels)",
+  cssSrc.includes("repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr))") &&
+  !/\.bottom-nav\s*\{[^}]*grid-template-columns:\s*repeat\(5/.test(cssSrc));
 check("settings accordion panel wraps without clipping",
   cssSrc.includes(".settings-accordion-panel .privacy-note"));
 check("login exposes verify-email recovery",

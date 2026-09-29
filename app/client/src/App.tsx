@@ -61,11 +61,11 @@ type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 type ThemeMode = "light" | "dark" | "system";
 type AccentChoice = "orange" | "blue" | "green" | "purple" | "rose";
 const ACCENT_CHOICES: Array<{ value: AccentChoice; color: string; en: string; es: string }> = [
-  { value: "orange", color: "#f26430", en: "Orange", es: "Naranja" },
+  { value: "orange", color: "#f97316", en: "Orange", es: "Naranja" },
   { value: "blue", color: "#2563eb", en: "Blue", es: "Azul" },
   { value: "green", color: "#16a34a", en: "Green", es: "Verde" },
   { value: "purple", color: "#9333ea", en: "Purple", es: "Morado" },
-  { value: "rose", color: "#e11d48", en: "Rose", es: "Rosa" },
+  { value: "rose", color: "#f43f5e", en: "Rose", es: "Rosa" },
 ];
 type DocumentDesign = { theme: QuoteTheme; font: DocumentFont; accentColor: string; showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean; showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string };
 type ToolMode =
@@ -2158,32 +2158,46 @@ function CrewkatApplication() {
   }, [accent]);
   // Appearance follows the account, not the device: the server is the source
   // of truth, so the installed app, the web app, and any other device always
-  // match. The last values confirmed by the server are tracked so the echo
-  // of our own save (via settings invalidation) is not mistaken for a change
-  // made on another device.
-  const appearanceSyncedRef = useRef<{ themeMode: ThemeMode; uiAccent: AccentChoice } | null>(null);
+  // match. appearanceIntentRef tracks the values WE last chose so the effect
+  // below never reverts our own optimistic change while the save is in
+  // flight — the settings query only sees the new values after it refetches.
+  const appearanceIntentRef = useRef<{ themeMode: ThemeMode; uiAccent: AccentChoice } | null>(null);
   const saveAppearance = useMutation({
     mutationFn: (v: { themeMode: ThemeMode; uiAccent: AccentChoice }) => api.updateAppearance(v),
-    onSuccess: (_data, v) => {
-      appearanceSyncedRef.current = { themeMode: v.themeMode, uiAccent: v.uiAccent };
+    onMutate: (v) => {
+      appearanceIntentRef.current = { themeMode: v.themeMode, uiAccent: v.uiAccent };
+    },
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: () => {
+      // The save failed: drop our intent and let the next settings refetch
+      // restore the last server-confirmed values.
+      appearanceIntentRef.current = null;
+      client.invalidateQueries({ queryKey: ["settings"] });
     },
   });
   useEffect(() => {
     const serverTheme = settings.data?.themeMode;
     const serverAccent = settings.data?.uiAccent;
     if (!serverTheme || !serverAccent) return;
-    const synced = appearanceSyncedRef.current;
-    if (synced && synced.themeMode === serverTheme && synced.uiAccent === serverAccent) return;
-    let changed = false;
-    if (serverTheme !== themeMode) {
-      setThemeMode(serverTheme);
-      changed = true;
+    const intent = appearanceIntentRef.current;
+    if (intent) {
+      if (intent.themeMode === serverTheme && intent.uiAccent === serverAccent) {
+        // The server confirmed our save (or already agreed with it): adopt
+        // the server values and clear the intent so changes made on another
+        // device flow through again.
+        appearanceIntentRef.current = null;
+        if (serverTheme !== themeMode) setThemeMode(serverTheme);
+        if (serverAccent !== accent) setAccent(serverAccent);
+      }
+      // Otherwise our save is still in flight and the query data is stale —
+      // leave the user's choice alone.
+      return;
     }
-    if (serverAccent !== accent) {
-      setAccent(serverAccent);
-      changed = true;
-    }
-    if (changed) appearanceSyncedRef.current = { themeMode: serverTheme, uiAccent: serverAccent };
+    // No outstanding intent: the server wins (e.g. changed on another device).
+    if (serverTheme !== themeMode) setThemeMode(serverTheme);
+    if (serverAccent !== accent) setAccent(serverAccent);
   }, [settings.data?.themeMode, settings.data?.uiAccent, themeMode, accent]);
   const handleThemeChange = (mode: ThemeMode) => {
     setThemeMode(mode);
@@ -3296,8 +3310,11 @@ function PullToRefresh({ onRefresh, refreshing, children, lang }: { onRefresh: (
     };
   }, [reduced]);
   const shown = refreshing ? THRESHOLD : pull;
+  // The wrapper is intentionally NOT a scroller (no overflow/height): the
+  // .app-shell is the single scroll container. A nested scroller here caused
+  // scroll gestures to be captured inconsistently across browsers.
   return (
-    <div ref={ref} style={{ overflowY: "auto", height: "100%", overscrollBehaviorY: "contain" }}>
+    <div ref={ref} style={{ minHeight: "100%" }}>
       <div className="ptr-indicator" style={{ height: shown, opacity: shown > 4 ? 1 : 0 }} aria-hidden="true">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ transform: `rotate(${(shown / THRESHOLD) * 180}deg) ${refreshing ? "scale(1.15)" : ""}`, animation: refreshing ? "market-refresh-spin 1s linear infinite" : undefined }}>
           <path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5" />

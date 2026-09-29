@@ -301,4 +301,12 @@ describe("Home pull-to-refresh", () => {
   test("host/browser pull-to-refresh is blocked at the app shell", () => {
     expect(APP).toContain("useBlockHostPullToRefresh(");
   });
+
+  test("wrapper is not a nested scroller (shell is the scroll container)", () => {
+    // Regression 2026-09-29: the wrapper used overflowY:auto + height:100%,
+    // creating a second scroll container inside .app-shell. Scroll gestures
+    // could be captured by the wrong layer depending on the browser.
+    expect(ptr).not.toContain('overflowY: "auto"');
+    expect(ptr).not.toContain("overscrollBehaviorY");
+  });
 });

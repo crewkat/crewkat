@@ -19,7 +19,7 @@
   --text: #171a1c;
   --dim: #5d6866;
   --border: #c9d1ce;
-  --accent: #f26430;
+  --accent: #f97316;
   --accent-ink: #25120b;
   --green: #1f5a4a;
   --danger: #a63a29;
@@ -2087,7 +2087,6 @@ html[data-theme="dark"] .listing-type-filters button.project.active,html[data-th
 
 /* Marketing-mockup home and raised quick-create navigation */
 .bottom-nav {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
   min-height: 72px;
   padding-top: 6px;
   overflow: visible;
@@ -2330,7 +2329,7 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 :root[data-accent="blue"] { --accent: #2563eb; --accent-ink: #ffffff; }
 :root[data-accent="green"] { --accent: #16a34a; --accent-ink: #ffffff; }
 :root[data-accent="purple"] { --accent: #9333ea; --accent-ink: #ffffff; }
-:root[data-accent="rose"] { --accent: #e11d48; --accent-ink: #ffffff; }
+:root[data-accent="rose"] { --accent: #f43f5e; --accent-ink: #ffffff; }
 :root[data-theme="dark"][data-accent="blue"] { --accent: #60a5fa; --accent-ink: #0b1f4d; }
 :root[data-theme="dark"][data-accent="green"] { --accent: #4ade80; --accent-ink: #052e16; }
 :root[data-theme="dark"][data-accent="purple"] { --accent: #c084fc; --accent-ink: #2e1065; }

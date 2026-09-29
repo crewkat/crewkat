@@ -10,6 +10,10 @@
 //  5. Client static guards — server-wins sync logic, immediate-save wiring,
 //     pre-React theme script, proactive SW update checks, build-id display,
 //     light-theme CSS variables, cross-device note copy.
+//  6. Intent-race fix — the user's own optimistic change is never reverted
+//     while its save is in flight (onMutate records the intent; the effect
+//     yields until the server confirms); orange/rose accents are visually
+//     distinct.
 //
 // Run from app/:  bun appearance-sync.behavior.test.ts
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -130,7 +134,10 @@ if (settingsInput.success) {
 }
 
 // --- 5. Client static guards ------------------------------------------------------
-check("client tracks last server-confirmed appearance", appSrc.includes("appearanceSyncedRef"));
+check("client tracks the user's own appearance intent", appSrc.includes("appearanceIntentRef"));
+check("intent is recorded before the save (onMutate)", appSrc.includes("appearanceIntentRef.current = { themeMode: v.themeMode, uiAccent: v.uiAccent }"));
+check("server-wins effect yields while own save is in flight", appSrc.includes("our save is still in flight") && appSrc.includes("leave the user's choice alone"));
+check("appearance save refetches settings on success", (appSrc.match(/client\.invalidateQueries\(\{ queryKey: \["settings"\] \}\)/g) ?? []).length >= 2);
 check("client adopts server appearance when it differs (server wins)", appSrc.includes("serverTheme !== themeMode") && appSrc.includes("setThemeMode(serverTheme)"));
 check("theme change saves to server immediately", appSrc.includes("saveAppearance.mutate({ themeMode: mode, uiAccent: accent })"));
 check("accent change saves to server immediately", appSrc.includes("saveAppearance.mutate({ themeMode, uiAccent: value })"));
@@ -150,7 +157,9 @@ check("Settings About shows the build id", appSrc.includes("appBuildId()") && ap
 check("Settings About flags a waiting update", appSrc.includes("Update ready") && appSrc.includes("updateAvailable={swUpdateAvailable}"));
 
 check("light theme sets light background", cssSrc.includes('[data-theme="light"]') && cssSrc.includes("--bg: #f4f2ed"));
-check("light theme uses orange accent default", cssSrc.includes("--accent: #f26430"));
+check("orange accent is a true orange", cssSrc.includes("--accent: #f97316"));
+check("rose accent is pink-distinct from orange", cssSrc.includes('--accent: #f43f5e'));
+check("accent swatches match the theme colors", appSrc.includes('{ value: "orange", color: "#f97316"') && appSrc.includes('{ value: "rose", color: "#f43f5e"'));
 
 // --- summary ----------------------------------------------------------------------
 if (failures > 0) {
