@@ -1637,6 +1637,12 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   // was never verified (e.g. the user navigated away mid-signup), plus a
   // persistent "Verify email / resend code" link on the sign-in form.
   const [verifyRecovery, setVerifyRecovery] = useState(false);
+  // The auth screen itself stays English (user language loads after
+  // sign-in); these NEW recovery strings follow the browser language.
+  const authLang: Lang = useMemo(
+    () => (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en"),
+    []
+  );
   // Chrome renders fake autofill dots in an untouched password field while
   // the real value is still empty; keep the field read-only until focused so
   // the dots it shows are always real.
@@ -1653,7 +1659,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   const move = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false); setPwEditable(false); };
   const startEmailVerify = async (emailValue: string) => {
     const target = emailValue.trim();
-    if (!target) { setError("Enter your email above first, then verify it."); return; }
+    if (!target) { setError(authLang === "es" ? "Escribe tu correo arriba primero y luego verifícalo." : "Enter your email above first, then verify it."); return; }
     setEmail(target); setMode("verify"); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false);
     setBusy(true);
     try {
@@ -1728,12 +1734,12 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {devCode && <div className="dev-code" role="status"><strong>Testing code</strong><code>{devCode}</code><small>No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.</small></div>}
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
-        {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>Verify my email instead</button>}
+        {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar mi correo en su lugar" : "Verify my email instead"}</button>}
         <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
       <div className="auth-links">
         {mode === "login" && <button type="button" onClick={() => move("forgot")}>Forgot password?</button>}
-        {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>Verify email / resend code</button>}
+        {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar correo / reenviar código" : "Verify email / resend code"}</button>}
         {mode === "login" && <button type="button" onClick={() => move("signup")}>Create a company account</button>}
         {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>Already have an account? Sign in</button>}
         {(mode === "forgot" || mode === "reset" || mode === "verify") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
