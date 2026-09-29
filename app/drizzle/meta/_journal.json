@@ -351,6 +351,20 @@
       "when": 1790900000000,
       "tag": "0050_bump_portal_nudge",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1791000000000,
+      "tag": "0051_review_checklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1791100000000,
+      "tag": "0052_play_billing",
+      "breakpoints": true
     }
   ]
 }

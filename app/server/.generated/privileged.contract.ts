@@ -106,4 +106,31 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Phase 4: Google Play Billing (TWA, package com.crewkat.app). Verifies a
+  // subscription purchase token against the Play Developer API
+  // (purchases.subscriptionsv2.get). Never grants anything itself — it only
+  // reports what Google says; the action layer decides on entitlement.
+  // Unconfigured -> configured:false (graceful, no crash, no grant).
+  verifyPlayPurchase: {
+    request: z.object({ purchaseToken: z.string().min(1).max(2000), sku: z.string().min(1).max(200) }),
+    response: z.object({
+      configured: z.boolean(),
+      verified: z.boolean(),
+      active: z.boolean(),
+      orderId: z.string().nullable(),
+      expiryTimeMillis: z.string().nullable(),
+      autoRenewing: z.boolean(),
+      error: z.string().nullable(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  // Phase 4: reports Play Billing server configuration without needing a
+  // purchase token (drives the Upgrade screen's Play vs Stripe presentation).
+  getPlayBillingStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), sku: z.string(), packageName: z.string() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
 });

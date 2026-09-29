@@ -264,11 +264,12 @@ export const settings = sqliteTable("settings", {
   addShippingAddress: integer("add_shipping_address", { mode: "boolean" }).notNull().default(false),
   addJobSiteAddress: integer("add_job_site_address", { mode: "boolean" }).notNull().default(true),
   convertToQuote: integer("convert_to_quote", { mode: "boolean" }).notNull().default(false),
-  notificationsEnabled: integer("notifications_enabled", { mode: "boolean" }).notNull().default(true),
-  notifyNewMessage: integer("notify_new_message", { mode: "boolean" }).notNull().default(true),
+  notificationsEnabled: integer("notifications_enabled", { mode: "boolean" }).notNull().default(true),  notifyNewMessage: integer("notify_new_message", { mode: "boolean" }).notNull().default(true),
   notifyDocSigned: integer("notify_doc_signed", { mode: "boolean" }).notNull().default(true),
   notifyInvoiceViewed: integer("notify_invoice_viewed", { mode: "boolean" }).notNull().default(true),
   notifyEstimateViewed: integer("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
+  reviewRequestsEnabled: integer("review_requests_enabled", { mode: "boolean" }).notNull().default(true),
+  reviewRequestDelayDays: integer("review_request_delay_days").notNull().default(3),
   simpleMode: integer("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
@@ -445,7 +446,7 @@ export const automationLogs = sqliteTable("automation_logs", {
   kind: text("kind", { enum: ["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew"] }).notNull(),
   entityId: integer("entity_id").notNull(),
   stage: text("stage").notNull().default(""),
-  channel: text("channel", { enum: ["sms"] }).notNull().default("sms"),
+  channel: text("channel", { enum: ["sms", "email"] }).notNull().default("sms"),
   sentAt: integer("sent_at", { mode: "timestamp_ms" }).notNull(),
 });
 
@@ -736,6 +737,10 @@ export const authUsers = sqliteTable("auth_users", {
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // Phase 4: Google Play Billing (TWA). Set when premium was granted via a
+  // verified Play purchase; null for Stripe/manual/founder premium.
+  playPurchaseToken: text("play_purchase_token"),
+  playOrderId: text("play_order_id"),
   subscriptionStatus: text("subscription_status").notNull().default("inactive"),
   subscriptionCurrentPeriodEnd: integer("subscription_current_period_end", { mode: "timestamp_ms" }),
   cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
@@ -747,6 +752,19 @@ export const authUsers = sqliteTable("auth_users", {
   referralCode: text("referral_code"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Phase 4: Google Play Billing — one row per verified Play purchase. The
+// purchase_token unique index makes verification idempotent: re-verifying the
+// same token never creates a second row or a second grant.
+export const playBillingPurchases = sqliteTable("play_billing_purchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  purchaseToken: text("purchase_token").notNull(),
+  orderId: text("order_id"),
+  sku: text("sku").notNull(),
+  verifiedAt: integer("verified_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 // Chunk D: referral loop — one row per successful referred signup.
@@ -767,6 +785,21 @@ export const listingBumpPurchases = sqliteTable("listing_bump_purchases", {
   purchasedAt: integer("purchased_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+// Phase 1: first-run activation checklist — one row per auth user; the steps
+// themselves are computed live from real data (clients, quotes, invoices,
+// payments), so only dismissal/completion state is persisted.
+export const onboardingChecklist = sqliteTable("onboarding_checklist", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  dismissedAt: integer("dismissed_at", { mode: "timestamp_ms" }),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("onboarding_checklist_user_unique").on(table.userId),
+]);
 
 // Chunk D: marketplace saved-search alerts (per user).
 export const marketplaceAlerts = sqliteTable("marketplace_alerts", {

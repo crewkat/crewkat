@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import * as schema from "./schema";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
+import { playBillingActions } from "./play-billing";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -52,7 +53,7 @@ const receiptSchema = z.object({ id: z.number(), jobId: z.number(), vendor: z.st
 const crewTaskSchema = z.object({ id: z.number(), jobId: z.number(), text: z.string(), completed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const voiceNoteSchema = z.object({ id: z.number(), jobId: z.number(), title: z.string(), url: z.string(), durationSeconds: z.number(), createdAt: z.string() });
 const certificateSchema = z.object({ id: z.number(), jobId: z.number(), completionDate: z.string(), warrantyTerms: z.string(), createdAt: z.string(), updatedAt: z.string() });
-const settingsInputSchema = z.object({ companyName: z.string().trim().max(180), licenseNumber: z.string().trim().max(80), phone: z.string().trim().max(80), email: z.string().trim().email().max(200).or(z.literal("")), website: z.string().trim().max(300), address: z.string().trim().max(500), profileDescription: z.string().trim().max(3000), serviceArea: z.string().trim().max(500), facebookUrl: z.string().trim().max(600), instagramUrl: z.string().trim().max(600), youtubeUrl: z.string().trim().max(600), reviewUrl: z.string().trim().max(600), paymentInstructions: z.string().trim().max(1500), quoteFollowUpDays: z.number().int().min(1).max(60), offersFreeEstimates: z.boolean(), socialWatermark: z.boolean(), language: languageSchema, accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: z.boolean(), defaultShowDiscountLine: z.boolean(), defaultShowPaidLine: z.boolean(), defaultShowPaymentTerms: z.boolean(), defaultShowFooterNotes: z.boolean(), defaultShowLogo: z.boolean(), defaultShowCompanyInfo: z.boolean(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: z.string().trim().max(3000), warrantyTerms: z.string().trim().max(5000), hourlyCostRate: z.string().trim().max(80), lateFeeType: z.enum(["flat","percent"]), lateFeeValue: z.string().trim().max(80), lateFeeGraceDays: z.number().int().min(0).max(365), costAlertPercent: z.number().int().min(50).max(100), paymentRemindersEnabled: z.boolean(), onlineSignatureEnabled: z.boolean(), overdueInvoiceRemindersEnabled: z.boolean(), overdueReminderDays: z.number().int().min(1).max(90), invoiceGroupBy: z.enum(["creation_date", "due_date", "client"]), addShippingAddress: z.boolean(), addJobSiteAddress: z.boolean(), convertToQuote: z.boolean(), notificationsEnabled: z.boolean(), notifyNewMessage: z.boolean().default(true), notifyDocSigned: z.boolean().default(true), notifyInvoiceViewed: z.boolean().default(true), notifyEstimateViewed: z.boolean().default(true), simpleMode: z.boolean() });
+const settingsInputSchema = z.object({ companyName: z.string().trim().max(180), licenseNumber: z.string().trim().max(80), phone: z.string().trim().max(80), email: z.string().trim().email().max(200).or(z.literal("")), website: z.string().trim().max(300), address: z.string().trim().max(500), profileDescription: z.string().trim().max(3000), serviceArea: z.string().trim().max(500), facebookUrl: z.string().trim().max(600), instagramUrl: z.string().trim().max(600), youtubeUrl: z.string().trim().max(600), reviewUrl: z.string().trim().max(600), paymentInstructions: z.string().trim().max(1500), quoteFollowUpDays: z.number().int().min(1).max(60), offersFreeEstimates: z.boolean(), socialWatermark: z.boolean(), language: languageSchema, accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: z.boolean(), defaultShowDiscountLine: z.boolean(), defaultShowPaidLine: z.boolean(), defaultShowPaymentTerms: z.boolean(), defaultShowFooterNotes: z.boolean(), defaultShowLogo: z.boolean(), defaultShowCompanyInfo: z.boolean(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: z.string().trim().max(3000), warrantyTerms: z.string().trim().max(5000), hourlyCostRate: z.string().trim().max(80), lateFeeType: z.enum(["flat","percent"]), lateFeeValue: z.string().trim().max(80), lateFeeGraceDays: z.number().int().min(0).max(365), costAlertPercent: z.number().int().min(50).max(100), paymentRemindersEnabled: z.boolean(), onlineSignatureEnabled: z.boolean(), overdueInvoiceRemindersEnabled: z.boolean(), overdueReminderDays: z.number().int().min(1).max(90), invoiceGroupBy: z.enum(["creation_date", "due_date", "client"]), addShippingAddress: z.boolean(), addJobSiteAddress: z.boolean(), convertToQuote: z.boolean(), notificationsEnabled: z.boolean(), notifyNewMessage: z.boolean().default(true), notifyDocSigned: z.boolean().default(true), notifyInvoiceViewed: z.boolean().default(true), notifyEstimateViewed: z.boolean().default(true), reviewRequestsEnabled: z.boolean().default(true), reviewRequestDelayDays: z.number().int().min(0).max(30).default(3), simpleMode: z.boolean() });
 const settingsSchema = settingsInputSchema.extend({ logoUrl: z.string().nullable(), coverUrl: z.string().nullable() });
 const clientInputSchema = z.object({ name: z.string().trim().min(1).max(160), phone: z.string().trim().max(80), email: z.string().trim().email().max(200).or(z.literal("")), address: z.string().trim().max(240), notes: z.string().trim().max(2000), tags: z.array(z.string().trim().min(1).max(40)).max(12).default([]), referredByClientId: z.number().int().positive().nullable().default(null) });
 
@@ -675,7 +676,7 @@ function withWorkspace(ctx: Ctx, user: typeof schema.authUsers.$inferSelect): Wo
   return scoped;
 }
 
-function workspaceIdentity(ctx: Ctx) {
+export function workspaceIdentity(ctx: Ctx) {
   const scoped = ctx as WorkspaceCtx;
   if (!scoped.workspaceCompanyId || !scoped.workspaceUserId) throw new Error("Sign in to continue.");
   return scoped;
@@ -1244,6 +1245,72 @@ async function notifyNudgeFallback(db: ReturnType<Ctx["db"]>, quote: typeof sche
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 1: review-request scheduler entry point (called from server.mjs
+// alongside the estimate-nudge tick). For jobs completed at least
+// `reviewRequestDelayDays` ago (Settings, default 3), with review requests
+// enabled and a review URL configured, emails the client a polite review ask
+// exactly once per job — tracked in automation_logs (kind "review", channel
+// "email"). Email-only: no SMS/Twilio. One bad job never throws the tick.
+// ---------------------------------------------------------------------------
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export async function sendJobReviewEmail(ctx: Ctx, db: ReturnType<Ctx["db"]>, job: typeof schema.jobs.$inferSelect, stage: "auto" | "manual"): Promise<boolean> {
+  const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, job.companyId)).limit(1))[0];
+  const reviewUrl = (setting?.reviewUrl || "").trim();
+  if (!reviewUrl) throw new Error("Add your review link in Settings first.");
+  if (!job.clientEmail || !EMAIL_RE.test(job.clientEmail)) throw new Error("No client email on file for this job.");
+  const already = (await db.select({ id: schema.automationLogs.id }).from(schema.automationLogs)
+    .where(and(eq(schema.automationLogs.kind, "review"), eq(schema.automationLogs.channel, "email"), eq(schema.automationLogs.entityId, job.id)))
+    .limit(1))[0];
+  if (already) return false;
+  const companyName = await companyNameForNudge(db, job.companyId);
+  const clientName = job.clientName || "there";
+  const subject = `How did we do? A quick review helps ${companyName}`;
+  const text = `Hi ${clientName},\n\nThanks for trusting ${companyName} with your project. If you were happy with the work, a quick Google review would mean a lot to us — it takes less than a minute:\n\n${reviewUrl}\n\nThanks so much,\n${companyName}`;
+  try {
+    const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: job.clientEmail, subject, text });
+    if (result.delivery !== "sent") throw new Error("email not sent");
+  } catch (error) {
+    console.error(`[crewkat][reviews] job ${job.id}: email failed:`, error);
+    throw error;
+  }
+  await db.insert(schema.automationLogs).values({ kind: "review", entityId: job.id, stage, channel: "email", sentAt: new Date() });
+  return true;
+}
+
+export async function runReviewRequestTick(ctx: Ctx): Promise<{ ran: boolean; emailed: number[] }> {
+  const db = ctx.db<typeof schema>();
+  const emailed: number[] = [];
+  const settingsRows = await db.select().from(schema.settings).where(eq(schema.settings.reviewRequestsEnabled, true));
+  for (const setting of settingsRows) {
+    try {
+      if (!(setting.reviewUrl || "").trim()) continue;
+      const delayDays = setting.reviewRequestDelayDays ?? 3;
+      const cutoff = Date.now() - Math.max(0, delayDays) * 86400000;
+      const jobs = await db.select().from(schema.jobs).where(
+        and(
+          eq(schema.jobs.companyId, setting.companyId),
+          lte(schema.jobs.completedAt, new Date(cutoff)),
+        ),
+      );
+      for (const job of jobs) {
+        try {
+          if (await sendJobReviewEmail(ctx, db, job, "auto")) {
+            emailed.push(job.id);
+            console.log(`[crewkat][reviews] job ${job.id}: review request emailed.`);
+          }
+        } catch (error) {
+          console.error(`[crewkat][reviews] job ${job.id} failed:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("[crewkat][reviews] company tick failed:", error);
+    }
+  }
+  return { ran: emailed.length > 0, emailed };
+}
+
 const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
 
 async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
@@ -1426,6 +1493,9 @@ export async function notifyAlertMatches(ctx: Ctx, listing: AlertListingInfo): P
 }
 
 export const BaseActions = {
+  // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
+  // keep their existing order and names unchanged.
+  ...playBillingActions,
   getAuthBootstrap: defineAction({
     request: z.object({}),
     response: z.object({ hasAccount: z.boolean(), ownerClaimAvailable: z.boolean(), recordCounts: z.object({ jobs: z.number(), clients: z.number(), invoices: z.number() }) }),
@@ -1640,12 +1710,15 @@ export const BaseActions = {
   }),
   getSubscription: defineAction({
     request: z.object({}),
-    response: z.object({ tier: z.enum(["free", "premium"]), status: z.string(), cancelAtPeriodEnd: z.boolean(), currentPeriodEnd: z.string().nullable() }),
+    // Phase 4: provider tells the Upgrade screen which billing path granted
+    // premium ("play" = Google Play Billing in the TWA, "stripe" = web).
+    response: z.object({ tier: z.enum(["free", "premium"]), status: z.string(), cancelAtPeriodEnd: z.boolean(), currentPeriodEnd: z.string().nullable(), provider: z.enum(["stripe", "play", "manual", "founder", "none"]) }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const user = (await ctx.db<typeof schema>().select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user) throw new Error("Sign in to continue.");
-      return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null };
+      const provider: "stripe" | "play" | "manual" | "founder" | "none" = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : user.subscriptionStatus === "founder" ? "founder" : user.subscriptionStatus === "manual" ? "manual" : "none";
+      return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, provider };
     },
   }),
   startPremiumCheckout: defineAction({
@@ -2100,7 +2173,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   }),
   savePriceBookItem: defineAction({ request: z.object({ id: z.number().int().positive().nullable().default(null), name: z.string().trim().min(1).max(160), description: z.string().trim().max(500), unitPrice: z.string().trim().max(80) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); const now=new Date(); if(args.id){await db.update(schema.priceBookItems).set({name:args.name,description:args.description,unitPrice:normalizeMoney(args.unitPrice, "0.00"),updatedAt:now}).where(eq(schema.priceBookItems.id,args.id));ctx.invalidateQueries();return{id:args.id};} const rows=await db.insert(schema.priceBookItems).values({name:args.name,description:args.description,unitPrice:normalizeMoney(args.unitPrice, "0.00"),createdAt:now,updatedAt:now}).returning({id:schema.priceBookItems.id});const made=rows[0];if(!made)throw new Error("Could not save price book item.");ctx.invalidateQueries();return{id:made.id};} }),
   deletePriceBookItem: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().delete(schema.priceBookItems).where(eq(schema.priceBookItems.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
-  saveQuoteTemplate: defineAction({ request:z.object({id:z.number().int().positive().nullable().default(null),name:z.string().trim().min(1).max(160),lineItems:z.array(quoteItemSchema).min(1).max(50)}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const now=new Date();if(args.id){await db.update(schema.quoteTemplates).set({name:args.name,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),isStarter:false,updatedAt:now}).where(eq(schema.quoteTemplates.id,args.id));ctx.invalidateQueries();return{id:args.id};}const rows=await db.insert(schema.quoteTemplates).values({name:args.name,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),isStarter:false,createdAt:now,updatedAt:now}).returning({id:schema.quoteTemplates.id});const made=rows[0];if(!made)throw new Error("Could not save template.");ctx.invalidateQueries();return{id:made.id};} }),
+  saveQuoteTemplate: defineAction({ request:z.object({id:z.number().int().positive().nullable().default(null),name:z.string().trim().min(1).max(160),lineItems:z.array(quoteItemSchema).min(1).max(50)}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const now=new Date();const name=args.name.trim();if(!name)throw new Error("Template name is required.");if(args.id){await db.update(schema.quoteTemplates).set({name,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),isStarter:false,updatedAt:now}).where(eq(schema.quoteTemplates.id,args.id));ctx.invalidateQueries();return{id:args.id};}const rows=await db.insert(schema.quoteTemplates).values({name,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),isStarter:false,createdAt:now,updatedAt:now}).returning({id:schema.quoteTemplates.id});const made=rows[0];if(!made)throw new Error("Could not save template.");ctx.invalidateQueries();return{id:made.id};} }),
   deleteQuoteTemplate: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().delete(schema.quoteTemplates).where(eq(schema.quoteTemplates.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
   saveMileageTrip: defineAction({ request:z.object({id:z.number().int().positive().nullable().default(null),tripDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),fromLocation:z.string().trim().max(240),toLocation:z.string().trim().max(240),miles:z.string().trim().min(1).max(40),jobId:z.number().int().positive().nullable().default(null),purpose:z.string().trim().max(500)}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();if(args.id){await db.update(schema.mileageTrips).set({tripDate:args.tripDate,fromLocation:args.fromLocation,toLocation:args.toLocation,miles:args.miles,jobId:args.jobId,purpose:args.purpose}).where(eq(schema.mileageTrips.id,args.id));ctx.invalidateQueries();return{id:args.id};}const rows=await db.insert(schema.mileageTrips).values({tripDate:args.tripDate,fromLocation:args.fromLocation,toLocation:args.toLocation,miles:args.miles,jobId:args.jobId,purpose:args.purpose,createdAt:new Date()}).returning({id:schema.mileageTrips.id});const made=rows[0];if(!made)throw new Error("Could not save trip.");ctx.invalidateQueries();return{id:made.id};} }),
   deleteMileageTrip: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().delete(schema.mileageTrips).where(eq(schema.mileageTrips.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
@@ -2326,6 +2399,155 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     await notifyCompanyEvent(ctx,link.companyId,"notifyDocSigned","document-signed",`Client signed "${doc.title}"`,"Un cliente firmó tu documento",`doc-signed:${doc.id}`);
     ctx.invalidateQueries(); return{ok:true,signedAt:now.toISOString()};
   } }),
+  // Phase 1: per-document activity timeline (estimate / invoice). Derived
+  // from existing authoritative data — no new table: quote sent/accepted/
+  // converted, document-link shared/viewed, payment-reminder automation logs,
+  // recorded payments, and signatures.
+  getDocumentTimeline: defineAction({
+    request: z.object({ kind: z.enum(["quote", "invoice"]), id: z.number().int().positive() }),
+    response: z.object({ events: z.array(z.object({ type: z.string(), at: z.string().nullable(), detail: z.string().default("") })) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const events: Array<{ type: string; at: string | null; detail: string }> = [];
+      const push = (type: string, at: Date | string | null | undefined, detail = "") => {
+        let iso: string | null = null;
+        if (at instanceof Date && !Number.isNaN(at.getTime())) iso = at.toISOString();
+        else if (typeof at === "string" && at.trim()) {
+          const d = new Date(/T/.test(at) ? at : `${at}T12:00:00`);
+          if (!Number.isNaN(d.getTime())) iso = d.toISOString();
+        }
+        events.push({ type, at: iso, detail });
+      };
+      const pushLinkEvents = async (kind: "quote" | "invoice", id: number) => {
+        const links = await db.select().from(schema.documentLinks)
+          .where(and(eq(schema.documentLinks.documentKind, kind), eq(schema.documentLinks.documentId, id)))
+          .orderBy(schema.documentLinks.createdAt);
+        for (const link of links) push("shared", link.createdAt, "Link shared");
+        const firstViews = links.map((l) => l.firstViewedAt).filter((d): d is Date => !!d);
+        const totalViews = links.reduce((s, l) => s + l.viewCount, 0);
+        if (firstViews.length) push("viewed", new Date(Math.min(...firstViews.map((d) => d.getTime()))), totalViews > 1 ? `${totalViews} views` : "First view");
+        return links;
+      };
+      if (args.kind === "quote") {
+        const quote = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, args.id)).limit(1))[0];
+        if (!quote) throw new Error("Estimate not found.");
+        push("created", quote.createdAt);
+        if (quote.sentAt) push("sent", quote.sentAt, "Sent to client");
+        await pushLinkEvents("quote", quote.id);
+        if (quote.estimateNudgeSentAt) push("reminder", quote.estimateNudgeSentAt, "Follow-up reminder sent");
+        if (quote.accepted) push("approved", quote.updatedAt, "Estimate approved");
+        if (quote.convertedToInvoiceId) push("converted", quote.updatedAt, "Converted to invoice");
+      } else {
+        const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.id)).limit(1))[0];
+        if (!invoice) throw new Error("Invoice not found.");
+        push("created", invoice.createdAt);
+        if (invoice.status !== "draft") push("sent", invoice.updatedAt, "Sent to client");
+        await pushLinkEvents("invoice", invoice.id);
+        const reminders = await db.select().from(schema.automationLogs)
+          .where(and(eq(schema.automationLogs.kind, "payment"), eq(schema.automationLogs.entityId, invoice.id)))
+          .orderBy(schema.automationLogs.sentAt);
+        for (const r of reminders) push("reminder", r.sentAt, r.stage || "Payment reminder");
+        const paymentRows = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, invoice.id)).orderBy(schema.payments.paymentDate);
+        for (const p of paymentRows) push("paid", p.paymentDate, `Payment ${p.amount}${p.method ? ` · ${p.method}` : ""}`);
+      }
+      events.sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+      return { events };
+    },
+  }),
+  // Phase 1: first-run activation checklist. Steps are computed live from real
+  // data; only dismissal is persisted per user.
+  getOnboardingChecklist: defineAction({
+    request: z.object({}),
+    response: z.object({
+      steps: z.array(z.object({ key: z.string(), titleEn: z.string(), titleEs: z.string(), done: z.boolean() })),
+      dismissed: z.boolean(),
+      allDone: z.boolean(),
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const [clients, jobs, quotes, invoices, payments] = await Promise.all([
+        db.select({ id: schema.clients.id }).from(schema.clients).limit(1),
+        db.select({ id: schema.jobs.id }).from(schema.jobs).limit(1),
+        db.select({ sentAt: schema.quotes.sentAt }).from(schema.quotes).where(ne(schema.quotes.sentAt, "")).limit(1),
+        db.select({ id: schema.invoices.id }).from(schema.invoices).limit(1),
+        db.select({ id: schema.payments.id }).from(schema.payments).limit(1),
+      ]);
+      const steps = [
+        { key: "add_client", titleEn: "Add your first client", titleEs: "Agrega tu primer cliente", done: clients.length > 0 },
+        { key: "create_job", titleEn: "Create a job", titleEs: "Crea un trabajo", done: jobs.length > 0 },
+        { key: "send_estimate", titleEn: "Send an estimate", titleEs: "Envía un presupuesto", done: quotes.length > 0 },
+        { key: "send_invoice", titleEn: "Send an invoice", titleEs: "Envía una factura", done: invoices.length > 0 },
+        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments.length > 0 },
+      ];
+      const row = (await db.select().from(schema.onboardingChecklist).where(eq(schema.onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
+      const dismissed = !!row?.dismissedAt;
+      const allDone = steps.every((s) => s.done);
+      if (allDone && row && !row.completedAt) {
+        await db.update(schema.onboardingChecklist).set({ completedAt: new Date(), updatedAt: new Date() }).where(eq(schema.onboardingChecklist.id, row.id));
+      }
+      return { steps, dismissed, allDone };
+    },
+  }),
+  dismissOnboardingChecklist: defineAction({
+    request: z.object({}),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx): Promise<{ ok: true }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const row = (await db.select().from(schema.onboardingChecklist).where(eq(schema.onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
+      const now = new Date();
+      if (row) await db.update(schema.onboardingChecklist).set({ dismissedAt: now, updatedAt: now }).where(eq(schema.onboardingChecklist.id, row.id));
+      else await db.insert(schema.onboardingChecklist).values({ userId: identity.workspaceUserId, dismissedAt: now });
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  // Phase 1: undo for job completion — reopens a completed job.
+  reopenJob: defineAction({
+    request: z.object({ jobId: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+      if (!job) throw new Error("Job not found.");
+      if (!job.completedAt) return { ok: true };
+      await db.update(schema.jobs).set({ completedAt: null, completionOverrideNote: "", updatedAt: new Date() }).where(eq(schema.jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  // Phase 1: undo for estimate approval — clears the accepted flag across the series.
+  unacceptQuote: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      const quote = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, args.id)).limit(1))[0];
+      if (!quote) throw new Error("Estimate not found.");
+      const seriesId = quote.seriesId ?? quote.id;
+      const versions = (await db.select().from(schema.quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
+      for (const version of versions) {
+        if (version.accepted) await db.update(schema.quotes).set({ accepted: false, automationStatus: "awaiting", lostReason: null, lostNote: "", updatedAt: new Date() }).where(eq(schema.quotes.id, version.id));
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  // Phase 1: manual review-request send for one job (the scheduler covers the
+  // automatic path). Idempotent — already-requested jobs return emailed:false.
+  sendReviewRequest: defineAction({
+    request: z.object({ jobId: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true), emailed: z.boolean() }),
+    async handler(ctx, args): Promise<{ ok: true; emailed: boolean }> {
+      const db = ctx.db<typeof schema>();
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+      if (!job) throw new Error("Job not found.");
+      const emailed = await sendJobReviewEmail(ctx, db, job, "manual");
+      ctx.invalidateQueries();
+      return { ok: true, emailed };
+    },
+  }),
   submitEstimateRequest: defineAction({request:z.object({name:z.string().trim().min(2).max(160),phone:z.string().trim().min(7).max(40),email:z.string().trim().email().max(200),address:z.string().trim().min(5).max(240),serviceType:z.string().trim().min(2).max(120),projectDetails:z.string().trim().min(10).max(3000),preferredContactTime:z.string().trim().max(120),company:z.string().max(0).default("")}),response:z.object({id:z.number()}),async handler(ctx,args){if(args.company)throw new Error("Request rejected.");const db=ctx.db<typeof schema>();const digits=normalizedPhone(args.phone);if(digits.length<10)throw new Error("Enter a valid phone number.");const recent=await db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt));const cutoff=Date.now()-86400000;const duplicates=recent.filter(l=>l.source==="website form"&&l.createdAt.getTime()>=cutoff&&(normalizedPhone(l.phone)===digits||l.email.toLowerCase()===args.email.toLowerCase()));if(duplicates.length>=3)throw new Error("Too many recent requests. Please call the office.");const rows=await db.insert(schema.leads).values({name:args.name,phone:args.phone,email:args.email,address:args.address,serviceType:args.serviceType,preferredContactTime:args.preferredContactTime,source:"website form",notes:args.projectDetails,stage:"new",createdAt:new Date(),updatedAt:new Date()}).returning({id:schema.leads.id});const made=rows[0];if(!made)throw new Error("Could not submit request.");ctx.invalidateQueries();return{id:made.id};} }),
   updateJobSiteLocation: defineAction({request:z.object({jobId:z.number().int().positive(),latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.jobs).set({latitude:String(args.latitude),longitude:String(args.longitude),updatedAt:new Date()}).where(eq(schema.jobs.id,args.jobId));ctx.invalidateQueries();return{ok:true};} }),
   suggestJobsByLocation: defineAction({request:z.object({latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180)}),response:z.object({jobs:z.array(z.object({id:z.number(),label:z.string(),distanceMiles:z.number()}))}),async handler(ctx,args){const rows=await ctx.db<typeof schema>().select().from(schema.jobs);const rad=(value:number)=>value*Math.PI/180;const miles=(lat:number,lon:number)=>{const dLat=rad(lat-args.latitude),dLon=rad(lon-args.longitude);const a=Math.sin(dLat/2)**2+Math.cos(rad(args.latitude))*Math.cos(rad(lat))*Math.sin(dLon/2)**2;return 3958.8*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));};return{jobs:rows.flatMap(j=>{const lat=Number(j.latitude),lon=Number(j.longitude);return Number.isFinite(lat)&&Number.isFinite(lon)?[{id:j.id,label:`${j.clientName} · ${j.jobType}`,distanceMiles:Math.round(miles(lat,lon)*10)/10}]:[]}).sort((a,b)=>a.distanceMiles-b.distanceMiles).slice(0,5)};} }),
@@ -3352,7 +3574,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   }),
   submitSupportReport: defineAction({ request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }), response: z.object({ id: z.number(), sentAt: z.string() }), async handler(ctx, args) { const now = new Date(); const rows = await ctx.db<typeof schema>().insert(schema.supportReports).values({ ...args, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.supportReports.id }); const made = rows[0]; if (!made) throw new Error("The report could not be saved."); ctx.invalidateQueries(); return { id: made.id, sentAt: now.toISOString() }; }}),
 
-  getSettings: defineAction({ request: z.object({}), response: settingsSchema, async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const row = rows[0]; if (!row) return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en" as const, accentColor: "#1f5a4a", defaultQuoteTheme: "classic" as const, defaultDocumentFont: "helvetica" as const, defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent" as const, lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date" as const, addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, simpleMode: true, logoUrl: null, coverUrl: null }; return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null }; }}),
+  getSettings: defineAction({ request: z.object({}), response: settingsSchema, async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const row = rows[0]; if (!row) return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en" as const, accentColor: "#1f5a4a", defaultQuoteTheme: "classic" as const, defaultDocumentFont: "helvetica" as const, defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent" as const, lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date" as const, addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, simpleMode: true, logoUrl: null, coverUrl: null }; return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null }; }}),
   updateSettings: defineAction({ request: settingsInputSchema, response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select({ id: schema.settings.id }).from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); if (rows[0]) await db.update(schema.settings).set({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ ...args, hourlyCostRate: normalizeMoney(args.hourlyCostRate, "0.00"), lateFeeValue: normalizeMoney(args.lateFeeValue, "0.00"), updatedAt: new Date() }); ctx.invalidateQueries(); return { ok: true }; }}),
   uploadLogo: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(10_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ logoBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", logoBlobKey: key, updatedAt: new Date() }); if (old?.logoBlobKey) await ctx.blobs.delete(old.logoBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),
   uploadCompanyCover: defineAction({ request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png"]), dataBase64: z.string().min(1).max(14_000_000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = platformDb(ctx); const rows = await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const old = rows[0]; const key = `branding/covers/${crypto.randomUUID()}-${args.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); if (old) await db.update(schema.settings).set({ coverBlobKey: key, updatedAt: new Date() }).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)); else await db.insert(schema.settings).values({ companyName: "", coverBlobKey: key, updatedAt: new Date() }); if (old?.coverBlobKey) await ctx.blobs.delete(old.coverBlobKey); ctx.invalidateQueries(); return { ok: true }; }}),

@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick, runReviewRequestTick } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -684,6 +684,28 @@ if (!process.env.BACKUP_ALERT_EMAIL) {
   setTimeout(tick, 5 * 60 * 1000); // catch up shortly after boot
   setInterval(tick, NUDGE_TICK_MS).unref();
   console.log(`[crewkat][nudge] scheduler armed (tick every ${NUDGE_TICK_MS / 60000} min).`);
+}
+
+// ---------------------------------------------------------------------------
+// Review requests: in-process scheduler (single Render instance)
+// ---------------------------------------------------------------------------
+// Ticks hourly; the tick only emails jobs completed reviewRequestDelayDays+
+// ago (Settings), with review requests enabled and a review URL set, exactly
+// once per job (automation_logs kind "review"), so hourly ticks are cheap.
+
+{
+  const REVIEWS_TICK_MS = 60 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runReviewRequestTick(makeCtx());
+      if (result.ran) console.log(`[crewkat][reviews] sent review request(s) for job(s): ${result.emailed.join(", ")}.`);
+    } catch (error) {
+      console.error("[crewkat][reviews] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 6 * 60 * 1000); // catch up shortly after boot
+  setInterval(tick, REVIEWS_TICK_MS).unref();
+  console.log(`[crewkat][reviews] scheduler armed (tick every ${REVIEWS_TICK_MS / 60000} min).`);
 }
 
 function shutdown(signal) {

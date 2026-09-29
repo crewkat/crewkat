@@ -33,6 +33,8 @@ import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSess
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
+// Phase 4: Google Play Billing (Digital Goods API) for the TWA.
+import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
 
@@ -2487,6 +2489,8 @@ function CrewkatApplication() {
       )}
       {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
       <CelebrationOverlay />
+      {/* Phase 1: forgiving undo toasts for optimistic status changes. */}
+      <UndoToastHost lang={lang} />
       {/* Build 3: a new app version took over in the background — offer a refresh. */}
       {swUpdateAvailable && (
         <div className="update-toast" role="status">
@@ -2968,6 +2972,149 @@ function CelebrationOverlay() {
         <strong>{event.label}</strong>
       </div>
     </div>
+  );
+}
+
+// Phase 1: forgiving status changes. Any screen can fire
+// showUndoToast(message, undoLabel, onUndo) to offer a few seconds of undo
+// after an optimistic status change (job complete, estimate accept, …).
+type UndoToastEvent = { id: number; message: string; undoLabel: string; onUndo: () => void; durationMs: number };
+const undoToastListeners = new Set<(event: UndoToastEvent) => void>();
+let undoToastSeq = 0;
+export function showUndoToast(message: string, undoLabel: string, onUndo: () => void, durationMs = 7000) {
+  undoToastSeq += 1;
+  const event = { id: undoToastSeq, message, undoLabel, onUndo, durationMs };
+  for (const listener of undoToastListeners) listener(event);
+}
+function UndoToastHost({ lang }: { lang: Lang }) {
+  const [toast, setToast] = useState<UndoToastEvent | null>(null);
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    const listener = (e: UndoToastEvent) => setToast(e);
+    undoToastListeners.add(listener);
+    return () => { undoToastListeners.delete(listener); };
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), toast.durationMs);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+  if (!toast) return null;
+  return (
+    <div className={`undo-toast${reduced ? " no-anim" : ""}`} role="status">
+      <span>{toast.message}</span>
+      <button type="button" className="undo-toast-action" onClick={() => { const current = toast; setToast(null); current.onUndo(); }}>
+        {toast.undoLabel}
+      </button>
+      <button type="button" className="undo-toast-dismiss" onClick={() => setToast(null)} aria-label={lang === "es" ? "Descartar" : "Dismiss"}>
+        <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>
+      </button>
+    </div>
+  );
+}
+
+// Phase 1: per-document activity timeline (estimate / invoice). Events are
+// derived server-side from sent/viewed/approved/paid history; items reveal
+// with a stagger, skipped entirely under reduced motion.
+const TIMELINE_LABELS: Record<string, { en: string; es: string }> = {
+  created: { en: "Created", es: "Creado" },
+  sent: { en: "Sent to client", es: "Enviado al cliente" },
+  shared: { en: "Link shared", es: "Enlace compartido" },
+  viewed: { en: "Viewed by client", es: "Visto por el cliente" },
+  reminder: { en: "Reminder sent", es: "Recordatorio enviado" },
+  approved: { en: "Approved", es: "Aprobado" },
+  converted: { en: "Converted to invoice", es: "Convertido a factura" },
+  paid: { en: "Payment recorded", es: "Pago registrado" },
+};
+function DocumentTimeline({ lang, kind, id }: { lang: Lang; kind: "quote" | "invoice"; id: number }) {
+  const reduced = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const query = useQuery({ queryKey: ["document-timeline", kind, id], queryFn: () => api.getDocumentTimeline({ kind, id }) });
+  const events = query.data?.events ?? [];
+  return (
+    <details className="action-details timeline-details" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>
+        {lang === "es" ? "Actividad" : "Activity"}
+        {events.length > 0 && <span className="timeline-count">{events.length}</span>}
+      </summary>
+      {query.isLoading ? (
+        <div className="loading-block" />
+      ) : events.length === 0 ? (
+        <p className="job-section-empty">{lang === "es" ? "Aún no hay actividad." : "No activity yet."}</p>
+      ) : (
+        <ol className="doc-timeline">
+          {events.map((event, i) => (
+            <li
+              key={`${event.type}-${i}`}
+              className={open && !reduced ? "timeline-enter" : undefined}
+              style={open && !reduced ? { animationDelay: `${Math.min(i, 14) * 55}ms` } : undefined}
+            >
+              <span className={`timeline-dot type-${event.type}`} aria-hidden="true" />
+              <div className="timeline-body">
+                <strong>{TIMELINE_LABELS[event.type]?.[lang] ?? event.type}</strong>
+                {event.detail ? <small>{event.detail}</small> : null}
+                {event.at ? <time>{formatDate(event.at.slice(0, 10), lang)}</time> : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
+  );
+}
+
+// Phase 1: first-run activation checklist. Steps are computed live from real
+// data (clients, jobs, estimates, invoices, payments); only dismissal is
+// persisted per user. Hidden once dismissed or fully complete.
+function ActivationChecklist({ lang, setScreen }: { lang: Lang; setScreen: (s: Screen) => void }) {
+  const qc = useQueryClient();
+  const reduced = useReducedMotion();
+  const query = useQuery({ queryKey: ["onboarding-checklist"], queryFn: () => api.getOnboardingChecklist({}) });
+  const dismiss = useMutation({
+    mutationFn: () => api.dismissOnboardingChecklist({}),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["onboarding-checklist"] }); },
+  });
+  const data = query.data;
+  if (query.isLoading || !data || data.dismissed || data.allDone) return null;
+  const done = data.steps.filter((s) => s.done).length;
+  const total = data.steps.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const destinations: Record<string, Screen> = {
+    add_client: { name: "clients" },
+    create_job: { name: "jobs" },
+    send_estimate: { name: "quotes" },
+    send_invoice: { name: "invoices" },
+    receive_payment: { name: "invoices" },
+  };
+  return (
+    <section className={`activation-card${reduced ? " no-anim" : ""}`} aria-label={lang === "es" ? "Primeros pasos" : "Getting started"}>
+      <header>
+        <div>
+          <strong>{lang === "es" ? "Primeros pasos" : "Getting started"}</strong>
+          <small>{done} {lang === "es" ? "de" : "of"} {total} · {pct}%</small>
+        </div>
+        <button type="button" className="icon-button" onClick={() => { buzz(8); dismiss.mutate(); }} aria-label={lang === "es" ? "Ocultar" : "Dismiss"}>
+          <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>
+        </button>
+      </header>
+      <div className="activation-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={lang === "es" ? "Progreso" : "Progress"}>
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <ul>
+        {data.steps.map((step, i) => (
+          <li key={step.key} className={reduced ? undefined : "timeline-enter"} style={reduced ? undefined : { animationDelay: `${i * 60}ms` }}>
+            <button
+              type="button"
+              disabled={step.done}
+              onClick={() => { buzz(8); const dest = destinations[step.key]; if (dest) setScreen(dest); }}
+            >
+              <span className={`activation-check${step.done ? " done" : ""}`} aria-hidden="true">{step.done ? <CheckIcon /> : null}</span>
+              <span>{lang === "es" ? step.titleEs : step.titleEn}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -3884,6 +4031,67 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     const result = await checkout.mutateAsync(plan);
     if (result.checkoutUrl) window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
   };
+  // Phase 4: Google Play Billing — offered ONLY inside the Play-installed app
+  // with the Digital Goods API present. The Play flow never surfaces Stripe
+  // links (Google Play policy); the web keeps the Stripe flow untouched.
+  const qc = useQueryClient();
+  const [playOffered, setPlayOffered] = useState(false);
+  const [playConfig, setPlayConfig] = useState<{ configured: boolean; sku: string } | null>(null);
+  const [playDetails, setPlayDetails] = useState<PlaySkuDetails | null>(null);
+  const [playBusy, setPlayBusy] = useState(false);
+  const [playError, setPlayError] = useState("");
+  useEffect(() => {
+    if (!canUsePlayBilling()) return;
+    setPlayOffered(true);
+    let alive = true;
+    void (async () => {
+      try {
+        const config = await api.getPlayBillingConfig({});
+        if (!alive) return;
+        setPlayConfig({ configured: config.configured, sku: config.sku });
+        if (config.configured) {
+          const details = await getPlaySkuDetails(config.sku);
+          if (alive) setPlayDetails(details);
+        }
+      } catch {
+        if (alive) setPlayConfig({ configured: false, sku: "" });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  // A Play-billed account re-verifies its entitlement when this screen opens.
+  const playRefreshDone = useRef(false);
+  useEffect(() => {
+    if (playRefreshDone.current || !playOffered) return;
+    if (subscription.data?.provider === "play" && subscription.data.tier === "premium") {
+      playRefreshDone.current = true;
+      void api.refreshPlaySubscription({})
+        .then(() => { void qc.invalidateQueries({ queryKey: ["subscription"] }); })
+        .catch(() => {});
+    }
+  }, [playOffered, subscription.data, qc]);
+  const buyWithPlay = async () => {
+    if (!playConfig?.sku || playBusy) return;
+    setPlayBusy(true);
+    setPlayError("");
+    buzz(10);
+    try {
+      const purchaseToken = await purchasePlaySku(playConfig.sku);
+      await api.verifyPlaySubscription({ purchaseToken, sku: playConfig.sku });
+      celebrate(lang === "es" ? "¡Premium activado!" : "Premium activated!");
+      await qc.invalidateQueries({ queryKey: ["subscription"] });
+    } catch (error) {
+      // Dismissing the Play sheet is not an error worth surfacing.
+      if (!isPlayPurchaseCancelled(error)) {
+        setPlayError(error instanceof Error && error.message ? error.message : actionErrorMessage(error));
+      }
+    } finally {
+      setPlayBusy(false);
+    }
+  };
+  const playPriceLabel = playDetails?.price
+    ? `${playDetails.price.currency === "USD" ? "$" : `${playDetails.price.currency} `}${Number(playDetails.price.value).toFixed(2).replace(/\.00$/, "")}`
+    : "$19";
   const features = lang === "es"
     ? ["Órdenes de compra y proveedores", "Equipo, mantenimiento y seguridad", "Nómina, puntaje de prospectos y automatizaciones", "Informes avanzados y límites ilimitados", "Promoción y espacios extra en Marketplace", "Todas las próximas herramientas Pro"]
     : ["Purchase orders and suppliers", "Equipment, upkeep, and safety", "Payroll, lead scoring, and automations", "Advanced reports and unlimited limits", "Marketplace promotion and extra listing slots", "Every upcoming Pro tool"];
@@ -3894,8 +4102,10 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       <h1>{isPremium ? (lang === "es" ? "Tu espacio Pro está activo" : "Your Pro workspace is active") : (lang === "es" ? "Todo el trabajo. Menos trabajo pesado." : "The whole operation. Less busywork.")}</h1>
       <p>{lang === "es" ? "Mantén Hoy, Trabajos, Clientes, Facturas, Presupuestos, agenda y fotos gratis. Premium desbloquea todo lo demás." : "Keep Today, Jobs, Clients, Invoices, Estimates, scheduling, and photos free. Premium unlocks everything else."}</p>
       {/* Build 4: monthly vs discounted annual plan selector. The annual
-          price/discount still needs the owner's approval before activation. */}
-      {!isPremium && (
+          price/discount still needs the owner's approval before activation.
+          Phase 4: hidden inside the Play flow — the Play app sells the monthly
+          SKU through Google Play Billing only. */}
+      {!isPremium && !playOffered && (
         <div className="plan-selector" role="radiogroup" aria-label={lang === "es" ? "Elige tu plan" : "Choose your plan"}>
           <button type="button" role="radio" aria-checked={plan === "monthly"} className={`plan-option${plan === "monthly" ? " selected" : ""}`} onClick={() => setPlan("monthly")}>
             <span className="plan-option-name">{lang === "es" ? "Mensual" : "Monthly"}</span>
@@ -3911,13 +4121,37 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
         </div>
       )}
       {isPremium && <div className="upgrade-price"><strong>$19</strong><span>{lang === "es" ? "USD al mes" : "USD per month"}</span></div>}
+      {/* Phase 4: Play Billing plan card — monthly SKU through Google Play. */}
+      {!isPremium && playOffered && playConfig?.configured && (
+        <div className="plan-selector" role="radiogroup" aria-label={lang === "es" ? "Elige tu plan" : "Choose your plan"}>
+          <button type="button" role="radio" aria-checked className="plan-option selected" disabled>
+            <span className="plan-option-name">{lang === "es" ? "Mensual" : "Monthly"}</span>
+            <span className="plan-option-price"><strong>{playPriceLabel}</strong><small>{lang === "es" ? "/mes" : "/mo"}</small></span>
+            <span className="plan-option-note">{lang === "es" ? "Facturado por Google Play" : "Billed through Google Play"}</span>
+          </button>
+        </div>
+      )}
+      {!isPremium && playOffered && playConfig && !playConfig.configured && (
+        <div className="billing-setup-note" role="status">
+          <strong>{lang === "es" ? "Google Play Billing aún no está conectado" : "Google Play Billing isn't connected yet"}</strong>
+          <p>{lang === "es" ? "El propietario debe terminar la configuración de Play Console antes de aceptar suscripciones en la app." : "The owner needs to finish the Play Console setup before subscriptions can be accepted in the app."}</p>
+        </div>
+      )}
+      {!isPremium && playOffered && !playConfig && <div className="loading-block" aria-label={lang === "es" ? "Cargando" : "Loading"} />}
     </section>
     <section className="upgrade-features" aria-label={lang === "es" ? "Funciones Premium" : "Premium features"}>{features.map((feature) => <div key={feature}><span aria-hidden="true">✓</span><strong>{feature}</strong></div>)}</section>
     {checkout.isError && <p className="status error">{actionErrorMessage(checkout.error)}</p>}
     {checkout.data && !checkout.data.configured && <div className="billing-setup-note" role="status"><strong>{lang === "es" ? "La facturación aún no está conectada" : "Billing isn’t connected yet"}</strong><p>{lang === "es" ? "El propietario debe terminar la configuración segura de Stripe antes de aceptar suscripciones." : "The owner needs to finish the secure Stripe setup before subscriptions can be accepted."}</p></div>}
-    {!isPremium && <button className="primary-button upgrade-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (plan === "annual" ? (lang === "es" ? "Mejorar anual con Stripe" : "Upgrade annual with Stripe") : (lang === "es" ? "Mejorar con Stripe" : "Upgrade with Stripe"))}</button>}
-    {isPremium && <div className="active-plan-note" role="status"><strong>{lang === "es" ? "Premium activo" : "Premium active"}</strong><span>{subscription.data?.status === "founder" ? (lang === "es" ? "Plan fundador" : "Founder plan") : subscription.data?.cancelAtPeriodEnd ? (lang === "es" ? "Activo hasta el final del período" : "Active through the end of the billing period") : (lang === "es" ? "Todas las herramientas Pro están desbloqueadas" : "All Pro tools are unlocked")}</span></div>}
-    <p className="upgrade-fine-print">{lang === "es" ? "Pago mensual o anual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly or annual billing. Cancel anytime; Premium remains active through the paid billing period."}</p>
+    {!isPremium && !playOffered && <button className="primary-button upgrade-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (plan === "annual" ? (lang === "es" ? "Mejorar anual con Stripe" : "Upgrade annual with Stripe") : (lang === "es" ? "Mejorar con Stripe" : "Upgrade with Stripe"))}</button>}
+    {/* Phase 4: Play Billing subscribe button (TWA only — no Stripe link here). */}
+    {!isPremium && playOffered && playConfig?.configured && (
+      <>
+        {playError && <p className="status error" role="alert">{playError}</p>}
+        <button className="primary-button upgrade-button" type="button" disabled={playBusy} onClick={() => void buyWithPlay()}>{playBusy ? (lang === "es" ? "Abriendo Google Play…" : "Opening Google Play…") : (lang === "es" ? "Suscribirse con Google Play" : "Subscribe with Google Play")}</button>
+      </>
+    )}
+    {isPremium && <div className="active-plan-note" role="status"><strong>{lang === "es" ? "Premium activo" : "Premium active"}</strong><span>{subscription.data?.provider === "play" ? (lang === "es" ? "Facturado por Google Play · adminístralo en la app Play Store." : "Billed through Google Play · manage it in the Play Store app.") : subscription.data?.status === "founder" ? (lang === "es" ? "Plan fundador" : "Founder plan") : subscription.data?.cancelAtPeriodEnd ? (lang === "es" ? "Activo hasta el final del período" : "Active through the end of the billing period") : (lang === "es" ? "Todas las herramientas Pro están desbloqueadas" : "All Pro tools are unlocked")}</span></div>}
+    <p className="upgrade-fine-print">{playOffered && !isPremium ? (lang === "es" ? "Pago mensual a través de Google Play. Cancela cuando quieras en la app Play Store; Premium permanece activo hasta el final del período pagado." : "Monthly billing through Google Play. Cancel anytime in the Play Store app; Premium remains active through the paid billing period.") : (lang === "es" ? "Pago mensual o anual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly or annual billing. Cancel anytime; Premium remains active through the paid billing period.")}</p>
   </main>;
 }
 
@@ -4399,20 +4633,51 @@ function JobDetail({
       client.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
+  const [optimisticCompleted, setOptimisticCompleted] = useState(false);
+  // Phase 1: optimistic completion with a forgiving Undo — the UI flips to
+  // completed instantly; the toast offers reopenJob() for a few seconds.
   const complete = useMutation({
     mutationFn: () => api.completeJob({ jobId, overrideNote: completionNote }),
-    onSuccess: () => {
+    onMutate: () => {
+      setOptimisticCompleted(true);
       setCompletionError("");
+    },
+    onSuccess: () => {
       celebrate(lang === "es" ? "Trabajo completado" : "Job completed");
       client.invalidateQueries({ queryKey: ["job", jobId] });
       client.invalidateQueries({ queryKey: ["jobs"] });
+      showUndoToast(
+        lang === "es" ? "Trabajo marcado como completo" : "Job marked complete",
+        lang === "es" ? "Deshacer" : "Undo",
+        () => {
+          setOptimisticCompleted(false);
+          void api.reopenJob({ jobId }).then(() => {
+            void client.invalidateQueries({ queryKey: ["job", jobId] });
+            void client.invalidateQueries({ queryKey: ["jobs"] });
+          });
+        },
+      );
     },
-    onError: () =>
+    onError: () => {
+      setOptimisticCompleted(false);
       setCompletionError(
         lang === "es"
           ? "Agrega una nota para explicar las fotos requeridas que faltan."
           : "Add a note explaining any missing required photos.",
-      ),
+      );
+      // The override note lives in the completion section below — bring it into view.
+      window.setTimeout(() => {
+        document.getElementById("job-completion")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 60);
+    },
+  });
+  const reopen = useMutation({
+    mutationFn: () => api.reopenJob({ jobId }),
+    onSuccess: () => {
+      setOptimisticCompleted(false);
+      client.invalidateQueries({ queryKey: ["job", jobId] });
+      client.invalidateQueries({ queryKey: ["jobs"] });
+    },
   });
   const refreshJob = async () => {
     await Promise.all([
@@ -4613,18 +4878,62 @@ function JobDetail({
         }
       />
       <FlowStepper lang={lang} steps={flowSteps} />
-      {!flowQuote && (
-        <button type="button" className="primary-button flow-next-step" onClick={() => { buzz(8); setScreen({ name: "quoteNew", jobId }); }}>
-          <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon>
-          {lang === "es" ? "Crear estimado para este trabajo" : "Create estimate for this job"}
-        </button>
-      )}
-      {flowQuote && !flowInvoice && (
-        <button type="button" className="primary-button flow-next-step" disabled={convertFlowQuote.isPending} onClick={() => convertFlowQuote.mutate(flowQuote.id)}>
-          <FileIcon />
-          {convertFlowQuote.isPending ? (lang === "es" ? "Creando…" : "Creating…") : (lang === "es" ? "Convertir estimado en factura" : "Convert estimate to invoice")}
-        </button>
-      )}
+      {/* Phase 1: contextual quick-action rail — the next lifecycle step only,
+          animated on state change, with a persistent undo affordance. */}
+      <section className="quick-rail" aria-label={lang === "es" ? "Acciones rápidas" : "Quick actions"}>
+        {!flowQuote ? (
+          <button type="button" className="quick-rail-action primary" onClick={() => { buzz(8); setScreen({ name: "quoteNew", jobId }); }}>
+            <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon>
+            <span>{lang === "es" ? "Crear estimado" : "Create estimate"}</span>
+          </button>
+        ) : !flowQuote.accepted ? (
+          <button type="button" className="quick-rail-action" onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: flowQuote.id }); }}>
+            <Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Icon>
+            <span>{lang === "es" ? "Ver estimado" : "View estimate"}</span>
+          </button>
+        ) : null}
+        {flowQuote?.accepted && !flowInvoice && (
+          <button type="button" className="quick-rail-action primary" disabled={convertFlowQuote.isPending} onClick={() => convertFlowQuote.mutate(flowQuote.id)}>
+            <FileIcon />
+            <span>{convertFlowQuote.isPending ? (lang === "es" ? "Creando…" : "Creating…") : (lang === "es" ? "Convertir a factura" : "Convert to invoice")}</span>
+          </button>
+        )}
+        {flowInvoice && flowInvoice.status !== "paid" && (
+          <button type="button" className="quick-rail-action primary" onClick={() => { buzz(8); setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }); }}>
+            <Icon><path d="M12 2v20M17 6.5c0-2-2.2-3-5-3s-5 1-5 3 2 2.6 5 3.2 5 1.4 5 3.3-2.2 3-5 3-5-1-5-3" /></Icon>
+            <span>{lang === "es" ? "Registrar pago" : "Record payment"}</span>
+          </button>
+        )}
+        {!(job.completedAt || optimisticCompleted) ? (
+          <button type="button" className="quick-rail-action" disabled={complete.isPending} onClick={() => complete.mutate()}>
+            <CheckIcon />
+            <span>{lang === "es" ? "Marcar completo" : "Mark complete"}</span>
+          </button>
+        ) : (
+          <button type="button" className="quick-rail-action" disabled={reopen.isPending} onClick={() => { buzz(8); reopen.mutate(); }}>
+            <Icon><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></Icon>
+            <span>{lang === "es" ? "Reabrir trabajo" : "Reopen job"}</span>
+          </button>
+        )}
+        {(job.completedAt || optimisticCompleted) && (
+          <button
+            type="button"
+            className="quick-rail-action"
+            onClick={async () => {
+              buzz(8);
+              try {
+                const result = await api.sendReviewRequest({ jobId });
+                celebrate(result.emailed ? (lang === "es" ? "Solicitud enviada" : "Request sent") : (lang === "es" ? "Ya se envió" : "Already sent"));
+              } catch {
+                // Best-effort: no review link or no client email configured.
+              }
+            }}
+          >
+            <Icon><path d="m12 2 3 6.6 7 .8-5.2 4.8 1.4 7-6.2-3.6L5.8 21l1.4-7L2 9.4l7-.8Z" /></Icon>
+            <span>{lang === "es" ? "Pedir reseña" : "Ask for review"}</span>
+          </button>
+        )}
+      </section>
       <section className="job-client-selector">
         <span>{lang === "es" ? "Cliente" : "Client"}</span>
         <button type="button" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }}>
@@ -4680,7 +4989,7 @@ function JobDetail({
           }}
         />
       )}
-      {settings?.simpleMode !== true && (<section className="completion-panel">
+      {settings?.simpleMode !== true && (<section className="completion-panel" id="job-completion">
         <div className="completion-heading">
           <div>
             <span>
@@ -4715,15 +5024,26 @@ function JobDetail({
             ))}
           </div>
         </fieldset>
-        {job.completedAt ? (
+        {(job.completedAt || optimisticCompleted) ? (
           <p className="status success">
             <CheckIcon />
-            {lang === "es"
-              ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
-              : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`}
+            {job.completedAt
+              ? (lang === "es"
+                ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
+                : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`)
+              : (lang === "es" ? "Completado" : "Completed")}
             {job.completionOverrideNote
               ? ` · ${job.completionOverrideNote}`
               : ""}
+            {/* Phase 1: persistent reopen affordance next to the undo toast. */}
+            <button
+              type="button"
+              className="small-button reopen-inline"
+              disabled={reopen.isPending}
+              onClick={() => { buzz(8); reopen.mutate(); }}
+            >
+              {lang === "es" ? "Reabrir" : "Reopen"}
+            </button>
           </p>
         ) : (
           <>
@@ -5367,6 +5687,8 @@ function SettingsScreen({
     notifyDocSigned: true,
     notifyInvoiceViewed: true,
     notifyEstimateViewed: true,
+    reviewRequestsEnabled: true,
+    reviewRequestDelayDays: 3,
     simpleMode: true,
     logoUrl: null,
     coverUrl: null,
@@ -5618,6 +5940,23 @@ function SettingsScreen({
                 }
               />
             </label>
+            {/* Phase 1: automated email review requests (no SMS). */}
+            <label className="switch-row">
+              <span>{lang === "es" ? "Pedir reseñas automáticamente" : "Automatically request reviews"}</span>
+              <input type="checkbox" role="switch" checked={form.reviewRequestsEnabled} onChange={(e) => setForm({ ...form, reviewRequestsEnabled: e.target.checked })} />
+            </label>
+            {form.reviewRequestsEnabled && (
+              <label>
+                <span>{lang === "es" ? "Días después de completar el trabajo" : "Days after job completion"}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.reviewRequestDelayDays}
+                  onChange={(e) => setForm({ ...form, reviewRequestDelayDays: Math.max(0, Math.min(30, Math.round(Number(e.target.value) || 0))) })}
+                />
+              </label>
+            )}
             <label>
               <span>{t.accentColor}</span>
               <div className="color-field">
@@ -7893,6 +8232,11 @@ function QuoteBuilder({
   );
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Phase 1: assemblies — templates can be applied additively ("Add") or as a
+  // full replacement, and the current line items can be saved as a new assembly.
+  const [applyMode, setApplyMode] = useState<"append" | "replace">("append");
+  const [assemblyName, setAssemblyName] = useState("");
+  const [assemblyNotice, setAssemblyNotice] = useState("");
   const save = useMutation({
     mutationFn: () =>
       api.saveQuote({
@@ -8013,19 +8357,30 @@ function QuoteBuilder({
               <span>
                 {lang === "es" ? "Aplicar plantilla" : "Apply template"}
               </span>
+              <div className="segmented-control" role="group" aria-label={lang === "es" ? "Modo de aplicación" : "Apply mode"}>
+                <button type="button" className={applyMode === "append" ? "active" : ""} onClick={() => setApplyMode("append")}>
+                  {lang === "es" ? "Añadir" : "Add"}
+                </button>
+                <button type="button" className={applyMode === "replace" ? "active" : ""} onClick={() => setApplyMode("replace")}>
+                  {lang === "es" ? "Reemplazar" : "Replace"}
+                </button>
+              </div>
               <select
                 defaultValue=""
                 onChange={(e) => {
                   const template = growth.data?.templates.find(
                     (row) => row.id === Number(e.target.value),
                   );
-                  if (template)
+                  if (template) {
+                    const items = template.lineItems.map((item) => ({
+                      ...item,
+                    }));
                     setForm({
                       ...form,
-                      lineItems: template.lineItems.map((item) => ({
-                        ...item,
-                      })),
+                      lineItems: applyMode === "append" ? [...form.lineItems, ...items] : items,
                     });
+                    if (applyMode === "append") celebrate(lang === "es" ? "Plantilla añadida" : "Template added");
+                  }
                   e.currentTarget.value = "";
                 }}
               >
@@ -8040,6 +8395,39 @@ function QuoteBuilder({
               </select>
             </label>
           )}
+          {/* Phase 1: save the current line items as a reusable trade assembly. */}
+          <div className="assembly-save">
+            <input
+              value={assemblyName}
+              onChange={(e) => { setAssemblyName(e.target.value); setAssemblyNotice(""); }}
+              placeholder={lang === "es" ? "Nombre del ensamblaje…" : "Assembly name…"}
+              maxLength={160}
+              aria-label={lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
+            />
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!assemblyName.trim() || !form.lineItems.some((i) => i.description.trim())}
+              onClick={async () => {
+                buzz(8);
+                try {
+                  await api.saveQuoteTemplate({
+                    id: null,
+                    name: assemblyName.trim(),
+                    lineItems: form.lineItems.filter((i) => i.description.trim()).map((i) => ({ description: i.description.trim(), amount: i.amount })),
+                  });
+                  setAssemblyName("");
+                  setAssemblyNotice(lang === "es" ? "Ensamblaje guardado" : "Assembly saved");
+                  await client.invalidateQueries({ queryKey: ["growth-toolkit"] });
+                } catch {
+                  setAssemblyNotice(lang === "es" ? "No se pudo guardar" : "Could not save");
+                }
+              }}
+            >
+              {lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
+            </button>
+            {assemblyNotice && <small className="status" role="status">{assemblyNotice}</small>}
+          </div>
           {(growth.data?.priceBook.length ?? 0) > 0 && (
             <div className="quick-add">
               <span>
@@ -8536,8 +8924,31 @@ function QuotePreview({
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
   if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/><div className="loading-block"/></main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
-  const status = quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Abierta" : "Opened") : (lang === "es" ? "Borrador" : "Draft");
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
+  // Phase 1: optimistic accept with a forgiving Undo.
+  const [optimisticAccepted, setOptimisticAccepted] = useState<boolean | null>(null);
+  const acceptedNow = optimisticAccepted ?? quote.accepted;
+  const status = acceptedNow || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Abierta" : "Opened") : (lang === "es" ? "Borrador" : "Draft");
+  const toggleAccepted = async () => {
+    buzz(12);
+    const next = !acceptedNow;
+    setOptimisticAccepted(next);
+    try {
+      await api.updateQuoteAutomationStatus({ id: quote.id, status: next ? "won" : "awaiting", lostReason: null, lostNote: "" });
+      if (next) celebrate(lang === "es" ? "Presupuesto aceptado" : "Estimate accepted");
+      await refresh();
+      showUndoToast(
+        next ? (lang === "es" ? "Estimado aceptado" : "Estimate accepted") : (lang === "es" ? "Estimado reabierto" : "Estimate reopened"),
+        lang === "es" ? "Deshacer" : "Undo",
+        () => {
+          setOptimisticAccepted(!next);
+          void api.updateQuoteAutomationStatus({ id: quote.id, status: next ? "awaiting" : "won", lostReason: null, lostNote: "" }).then(() => refresh());
+        },
+      );
+    } catch {
+      setOptimisticAccepted(null);
+    }
+  };
   return <main className="page financial-detail-page">
     <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
@@ -8553,14 +8964,16 @@ function QuotePreview({
         : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
     ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={quote} settings={settings} lang={lang}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
-    <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${quote.accepted?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
+    <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${acceptedNow?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,capFirst(estTerms.singular));}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     {/* Build 4: auto-generated checkable materials list from the estimate's
         line items. Check state persists on-device per estimate. */}
     <MaterialsChecklist lang={lang} quoteId={quote.id} lineItems={quote.lineItems} />
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={async()=>{buzz(12);await api.updateQuoteAutomationStatus({id:quote.id,status:quote.accepted?"awaiting":"won",lostReason:null,lostNote:""});if(!quote.accepted)celebrate(lang==="es"?"Presupuesto aceptado":"Estimate accepted");await refresh();}}><CheckIcon/><span>{quote.accepted?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    {/* Phase 1: per-document activity timeline. */}
+    <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={toggleAccepted}><CheckIcon/><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={quote} settings={settings} lang={lang}/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -9011,6 +9424,8 @@ function InvoicePreview({
     </section>
     <details className="action-details document-details"><summary>{t.recurring}</summary><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></details>
     <details className="action-details document-details"><summary>{lang==="es"?"Factura recurrente automática":"Automatic recurring invoice"}</summary><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></details>
+    {/* Phase 1: per-document activity timeline. */}
+    <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
     <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
@@ -12298,6 +12713,8 @@ function TodayScreen({
           <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
         </div>
       </header>
+      {/* Phase 1: first-run activation checklist — dismissible, live from real data. */}
+      <ActivationChecklist lang={lang} setScreen={setScreen} />
       {homeFailed && (
         <div className="home-error-banner" role="alert">
           <div>
