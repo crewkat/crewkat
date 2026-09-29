@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick, runReviewRequestTick } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick, runReviewRequestTick, runWeeklyProgressTick } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -706,6 +706,28 @@ if (!process.env.BACKUP_ALERT_EMAIL) {
   setTimeout(tick, 6 * 60 * 1000); // catch up shortly after boot
   setInterval(tick, REVIEWS_TICK_MS).unref();
   console.log(`[crewkat][reviews] scheduler armed (tick every ${REVIEWS_TICK_MS / 60000} min).`);
+}
+
+// ---------------------------------------------------------------------------
+// Weekly progress digests: in-process scheduler (single Render instance)
+// ---------------------------------------------------------------------------
+// Ticks every 6 hours; the tick only emails jobs with client-shared daily logs
+// from the past 7 days, exactly once per job per week (automation_logs kind
+// "weekly_progress"), so frequent ticks are cheap and safe.
+
+{
+  const PROGRESS_TICK_MS = 6 * 60 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runWeeklyProgressTick(makeCtx());
+      if (result.ran) console.log(`[crewkat][progress] sent weekly digest(s) for job(s): ${result.emailed.join(", ")}.`);
+    } catch (error) {
+      console.error("[crewkat][progress] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 8 * 60 * 1000); // catch up shortly after boot
+  setInterval(tick, PROGRESS_TICK_MS).unref();
+  console.log(`[crewkat][progress] scheduler armed (tick every ${PROGRESS_TICK_MS / 3600000} h).`);
 }
 
 function shutdown(signal) {

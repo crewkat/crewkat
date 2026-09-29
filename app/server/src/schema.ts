@@ -270,6 +270,7 @@ export const settings = sqliteTable("settings", {
   notifyEstimateViewed: integer("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
   reviewRequestsEnabled: integer("review_requests_enabled", { mode: "boolean" }).notNull().default(true),
   reviewRequestDelayDays: integer("review_request_delay_days").notNull().default(3),
+  weeklyProgressEnabled: integer("weekly_progress_enabled", { mode: "boolean" }).notNull().default(true),
   simpleMode: integer("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
@@ -410,6 +411,9 @@ export const dailyLogs = sqliteTable("daily_logs", {
   hours: text("hours").notNull().default("0"),
   photoIdsJson: text("photo_ids_json").notNull().default("[]"),
   notes: text("notes").notNull().default(""),
+  blockers: text("blockers").notNull().default(""),
+  clientSummary: text("client_summary").notNull().default(""),
+  sharedWithClient: integer("shared_with_client", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
@@ -443,7 +447,7 @@ export const paymentMilestones = sqliteTable("payment_milestones", {
 export const automationLogs = sqliteTable("automation_logs", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
-  kind: text("kind", { enum: ["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew"] }).notNull(),
+  kind: text("kind", { enum: ["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew", "weekly_progress"] }).notNull(),
   entityId: integer("entity_id").notNull(),
   stage: text("stage").notNull().default(""),
   channel: text("channel", { enum: ["sms", "email"] }).notNull().default("sms"),
@@ -931,3 +935,39 @@ export const recurringInvoiceSchedules = sqliteTable("recurring_invoice_schedule
   index("recurring_invoice_schedules_due_idx").on(table.active, table.nextRunDate),
 ]);
 
+
+export const jobMessages = sqliteTable("job_messages", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  sender: text("sender", { enum: ["contractor", "client", "system"] }).notNull().default("contractor"),
+  body: text("body").notNull().default(""),
+  imageBlobKey: text("image_blob_key"),
+  imageFilename: text("image_filename").notNull().default(""),
+  imageContentType: text("image_content_type").notNull().default(""),
+  voiceBlobKey: text("voice_blob_key"),
+  voiceFilename: text("voice_filename").notNull().default(""),
+  voiceContentType: text("voice_content_type").notNull().default(""),
+  voiceDurationSeconds: integer("voice_duration_seconds").notNull().default(0),
+  readAt: integer("read_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("job_messages_job_idx").on(table.jobId),
+]);
+
+export const bidBoardItems = sqliteTable("bid_board_items", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  listingId: integer("listing_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
+  requestId: integer("request_id").references(() => marketplaceRequests.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  stage: text("stage", { enum: ["interested", "estimating", "submitted", "won", "lost"] }).notNull().default("interested"),
+  dueDate: text("due_date").notNull().default(""),
+  remindAt: integer("remind_at", { mode: "timestamp_ms" }),
+  notes: text("notes").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("bid_board_items_user_idx").on(table.userId),
+]);

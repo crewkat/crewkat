@@ -6848,6 +6848,9 @@ var settings = sqliteTable("settings", {
   notifyDocSigned: integer2("notify_doc_signed", { mode: "boolean" }).notNull().default(true),
   notifyInvoiceViewed: integer2("notify_invoice_viewed", { mode: "boolean" }).notNull().default(true),
   notifyEstimateViewed: integer2("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
+  reviewRequestsEnabled: integer2("review_requests_enabled", { mode: "boolean" }).notNull().default(true),
+  reviewRequestDelayDays: integer2("review_request_delay_days").notNull().default(3),
+  weeklyProgressEnabled: integer2("weekly_progress_enabled", { mode: "boolean" }).notNull().default(true),
   simpleMode: integer2("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
@@ -6978,6 +6981,9 @@ var dailyLogs = sqliteTable("daily_logs", {
   hours: text("hours").notNull().default("0"),
   photoIdsJson: text("photo_ids_json").notNull().default("[]"),
   notes: text("notes").notNull().default(""),
+  blockers: text("blockers").notNull().default(""),
+  clientSummary: text("client_summary").notNull().default(""),
+  sharedWithClient: integer2("shared_with_client", { mode: "boolean" }).notNull().default(false),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -7008,10 +7014,10 @@ var paymentMilestones = sqliteTable("payment_milestones", {
 var automationLogs = sqliteTable("automation_logs", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
-  kind: text("kind", { enum: ["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew"] }).notNull(),
+  kind: text("kind", { enum: ["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew", "weekly_progress"] }).notNull(),
   entityId: integer2("entity_id").notNull(),
   stage: text("stage").notNull().default(""),
-  channel: text("channel", { enum: ["sms"] }).notNull().default("sms"),
+  channel: text("channel", { enum: ["sms", "email"] }).notNull().default("sms"),
   sentAt: integer2("sent_at", { mode: "timestamp_ms" }).notNull()
 });
 var supportReports = sqliteTable("support_reports", {
@@ -7423,6 +7429,8 @@ var authUsers = sqliteTable("auth_users", {
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  playPurchaseToken: text("play_purchase_token"),
+  playOrderId: text("play_order_id"),
   subscriptionStatus: text("subscription_status").notNull().default("inactive"),
   subscriptionCurrentPeriodEnd: integer2("subscription_current_period_end", { mode: "timestamp_ms" }),
   cancelAtPeriodEnd: integer2("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
@@ -7434,6 +7442,15 @@ var authUsers = sqliteTable("auth_users", {
   referralCode: text("referral_code"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var playBillingPurchases = sqliteTable("play_billing_purchases", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  purchaseToken: text("purchase_token").notNull(),
+  orderId: text("order_id"),
+  sku: text("sku").notNull(),
+  verifiedAt: integer2("verified_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var referralEvents = sqliteTable("referral_events", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -7450,6 +7467,17 @@ var listingBumpPurchases = sqliteTable("listing_bump_purchases", {
   purchasedAt: integer2("purchased_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   expiresAt: integer2("expires_at", { mode: "timestamp_ms" }).notNull()
 });
+var onboardingChecklist = sqliteTable("onboarding_checklist", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  companyId: integer2("company_id").notNull().default(1),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  dismissedAt: integer2("dismissed_at", { mode: "timestamp_ms" }),
+  completedAt: integer2("completed_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("onboarding_checklist_user_unique").on(table.userId)
+]);
 var marketplaceAlerts = sqliteTable("marketplace_alerts", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
@@ -7562,6 +7590,40 @@ var recurringInvoiceSchedules = sqliteTable("recurring_invoice_schedules", {
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 }, (table) => [
   index("recurring_invoice_schedules_due_idx").on(table.active, table.nextRunDate)
+]);
+var jobMessages = sqliteTable("job_messages", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  sender: text("sender", { enum: ["contractor", "client", "system"] }).notNull().default("contractor"),
+  body: text("body").notNull().default(""),
+  imageBlobKey: text("image_blob_key"),
+  imageFilename: text("image_filename").notNull().default(""),
+  imageContentType: text("image_content_type").notNull().default(""),
+  voiceBlobKey: text("voice_blob_key"),
+  voiceFilename: text("voice_filename").notNull().default(""),
+  voiceContentType: text("voice_content_type").notNull().default(""),
+  voiceDurationSeconds: integer2("voice_duration_seconds").notNull().default(0),
+  readAt: integer2("read_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("job_messages_job_idx").on(table.jobId)
+]);
+var bidBoardItems = sqliteTable("bid_board_items", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull(),
+  listingId: integer2("listing_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
+  requestId: integer2("request_id").references(() => marketplaceRequests.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  stage: text("stage", { enum: ["interested", "estimating", "submitted", "won", "lost"] }).notNull().default("interested"),
+  dueDate: text("due_date").notNull().default(""),
+  remindAt: integer2("remind_at", { mode: "timestamp_ms" }),
+  notes: text("notes").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("bid_board_items_user_idx").on(table.userId)
 ]);
 
 // src/auth-email.ts
@@ -7682,8 +7744,104 @@ var privileged = definePrivilegedContracts({
     response: object({ id: string2(), amount: number2().int(), currency: string2(), status: string2() }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  verifyPlayPurchase: {
+    request: object({ purchaseToken: string2().min(1).max(2000), sku: string2().min(1).max(200) }),
+    response: object({
+      configured: boolean2(),
+      verified: boolean2(),
+      active: boolean2(),
+      orderId: string2().nullable(),
+      expiryTimeMillis: string2().nullable(),
+      autoRenewing: boolean2(),
+      error: string2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getPlayBillingStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), sku: string2(), packageName: string2() }),
+    capabilities: [],
+    timeoutMs: 1e4
   }
 });
+
+// src/play-billing.ts
+async function grantPlayPremium(db, userId, verification, purchaseToken, sku) {
+  const now = new Date;
+  const periodEnd = verification.expiryTimeMillis ? new Date(Number(verification.expiryTimeMillis)) : null;
+  await db.update(authUsers).set({
+    tier: "premium",
+    subscriptionStatus: "active",
+    subscriptionCurrentPeriodEnd: periodEnd && !Number.isNaN(periodEnd.getTime()) ? periodEnd : null,
+    cancelAtPeriodEnd: false,
+    playPurchaseToken: purchaseToken,
+    playOrderId: verification.orderId,
+    updatedAt: now
+  }).where(eq(authUsers.id, userId));
+  await db.insert(playBillingPurchases).values({
+    userId,
+    purchaseToken,
+    orderId: verification.orderId,
+    sku,
+    verifiedAt: now
+  }).onConflictDoNothing({ target: playBillingPurchases.purchaseToken });
+}
+var playBillingActions = {
+  getPlayBillingConfig: defineAction({
+    request: object({}),
+    response: object({ configured: boolean2(), sku: string2(), packageName: string2() }),
+    privileged: [privileged.getPlayBillingStatus],
+    async handler(ctx) {
+      return await ctx.executePrivileged(privileged.getPlayBillingStatus, {});
+    }
+  }),
+  verifyPlaySubscription: defineAction({
+    request: object({ purchaseToken: string2().min(1).max(2000), sku: string2().min(1).max(200) }),
+    response: object({ ok: literal(true), tier: literal("premium"), currentPeriodEnd: string2().nullable() }),
+    privileged: [privileged.verifyPlayPurchase],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const result = await ctx.executePrivileged(privileged.verifyPlayPurchase, { purchaseToken: args.purchaseToken, sku: args.sku });
+      if (!result.configured)
+        throw new Error("Google Play Billing is not connected yet. The owner needs to finish the Play Console setup first.");
+      if (!result.verified || !result.active)
+        throw new Error(result.error || "This Google Play purchase could not be verified.");
+      await grantPlayPremium(db, identity.workspaceUserId, result, args.purchaseToken, args.sku);
+      const user = (await db.select({ subscriptionCurrentPeriodEnd: authUsers.subscriptionCurrentPeriodEnd }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      ctx.invalidateQueries();
+      return { ok: true, tier: "premium", currentPeriodEnd: user?.subscriptionCurrentPeriodEnd?.toISOString() ?? null };
+    }
+  }),
+  refreshPlaySubscription: defineAction({
+    request: object({}),
+    response: object({ tier: _enum(["free", "premium"]), status: string2(), currentPeriodEnd: string2().nullable() }),
+    privileged: [privileged.verifyPlayPurchase],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      if (!user.playPurchaseToken) {
+        return { tier: user.tier, status: user.subscriptionStatus, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null };
+      }
+      const status = await ctx.executePrivileged(privileged.getPlayBillingStatus, {});
+      const result = await ctx.executePrivileged(privileged.verifyPlayPurchase, { purchaseToken: user.playPurchaseToken, sku: status.sku });
+      if (result.configured && result.verified && result.active) {
+        await grantPlayPremium(db, user.id, result, user.playPurchaseToken, status.sku);
+        const refreshed = (await db.select({ subscriptionCurrentPeriodEnd: authUsers.subscriptionCurrentPeriodEnd }).from(authUsers).where(eq(authUsers.id, user.id)).limit(1))[0];
+        ctx.invalidateQueries();
+        return { tier: "premium", status: "active", currentPeriodEnd: refreshed?.subscriptionCurrentPeriodEnd?.toISOString() ?? null };
+      }
+      await db.update(authUsers).set({ tier: "free", subscriptionStatus: "expired", cancelAtPeriodEnd: false, subscriptionCurrentPeriodEnd: null, updatedAt: new Date }).where(eq(authUsers.id, user.id));
+      ctx.invalidateQueries();
+      return { tier: "free", status: "expired", currentPeriodEnd: null };
+    }
+  })
+};
 
 // src/moderation.ts
 var REASON_EXPLICIT = "Explicit or adult content";
@@ -8082,7 +8240,7 @@ var receiptSchema = object({ id: number2(), jobId: number2(), vendor: string2(),
 var crewTaskSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2(), createdAt: string2(), updatedAt: string2() });
 var voiceNoteSchema = object({ id: number2(), jobId: number2(), title: string2(), url: string2(), durationSeconds: number2(), createdAt: string2() });
 var certificateSchema = object({ id: number2(), jobId: number2(), completionDate: string2(), warrantyTerms: string2(), createdAt: string2(), updatedAt: string2() });
-var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), simpleMode: boolean2() });
+var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), reviewRequestsEnabled: boolean2().default(true), reviewRequestDelayDays: number2().int().min(0).max(30).default(3), weeklyProgressEnabled: boolean2().default(true), simpleMode: boolean2() });
 var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable() });
 var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
 function normalizeClientTags(tags) {
@@ -8130,7 +8288,7 @@ var subcontractorSchema = object({ id: number2(), jobId: number2(), name: string
 var shareImageSchema = object({ id: number2(), jobId: number2(), beforePhotoId: number2(), afterPhotoId: number2(), branded: boolean2(), filename: string2(), url: string2(), createdAt: string2() });
 var leadSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), serviceType: string2(), preferredContactTime: string2(), source: string2(), notes: string2(), stage: leadStageSchema, projectSize: _enum(["small", "medium", "large"]), engagement: _enum(["slow", "normal", "fast"]), score: number2(), clientId: number2().nullable(), quoteId: number2().nullable(), createdAt: string2() });
 var selectionSchema = object({ id: number2(), jobId: number2(), category: string2(), item: string2(), vendor: string2(), photoUrl: string2().nullable(), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2(), createdAt: string2() });
-var dailyLogSchema = object({ id: number2(), jobId: number2(), logDate: string2(), crew: string2(), hours: string2(), photoIds: array(number2()), notes: string2(), createdAt: string2() });
+var dailyLogSchema = object({ id: number2(), jobId: number2(), logDate: string2(), crew: string2(), hours: string2(), photoIds: array(number2()), notes: string2(), blockers: string2(), clientSummary: string2(), sharedWithClient: boolean2(), createdAt: string2() });
 var internalNoteSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), note: string2(), reminderDate: string2(), completed: boolean2(), createdAt: string2() });
 var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: number2().nullable(), label: string2(), amount: string2(), percentage: string2(), dueDate: string2(), status: _enum(["pending", "paid"]), createdAt: string2() });
 var marketplaceCategorySchema = _enum(["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"]);
@@ -9294,6 +9452,66 @@ async function notifyNudgeFallback(db, quote) {
     } catch {}
   }
 }
+var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function sendJobReviewEmail(ctx, db, job, stage) {
+  const setting = (await db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1))[0];
+  const reviewUrl = (setting?.reviewUrl || "").trim();
+  if (!reviewUrl)
+    throw new Error("Add your review link in Settings first.");
+  if (!job.clientEmail || !EMAIL_RE.test(job.clientEmail))
+    throw new Error("No client email on file for this job.");
+  const already = (await db.select({ id: automationLogs.id }).from(automationLogs).where(and(eq(automationLogs.kind, "review"), eq(automationLogs.channel, "email"), eq(automationLogs.entityId, job.id))).limit(1))[0];
+  if (already)
+    return false;
+  const companyName = await companyNameForNudge(db, job.companyId);
+  const clientName = job.clientName || "there";
+  const subject = `How did we do? A quick review helps ${companyName}`;
+  const text = `Hi ${clientName},
+
+Thanks for trusting ${companyName} with your project. If you were happy with the work, a quick Google review would mean a lot to us \u2014 it takes less than a minute:
+
+${reviewUrl}
+
+Thanks so much,
+${companyName}`;
+  try {
+    const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: job.clientEmail, subject, text });
+    if (result.delivery !== "sent")
+      throw new Error("email not sent");
+  } catch (error) {
+    console.error(`[crewkat][reviews] job ${job.id}: email failed:`, error);
+    throw error;
+  }
+  await db.insert(automationLogs).values({ kind: "review", entityId: job.id, stage, channel: "email", sentAt: new Date });
+  return true;
+}
+async function runReviewRequestTick(ctx) {
+  const db = ctx.db();
+  const emailed = [];
+  const settingsRows = await db.select().from(settings).where(eq(settings.reviewRequestsEnabled, true));
+  for (const setting of settingsRows) {
+    try {
+      if (!(setting.reviewUrl || "").trim())
+        continue;
+      const delayDays = setting.reviewRequestDelayDays ?? 3;
+      const cutoff = Date.now() - Math.max(0, delayDays) * 86400000;
+      const jobs2 = await db.select().from(jobs).where(and(eq(jobs.companyId, setting.companyId), lte(jobs.completedAt, new Date(cutoff))));
+      for (const job of jobs2) {
+        try {
+          if (await sendJobReviewEmail(ctx, db, job, "auto")) {
+            emailed.push(job.id);
+            console.log(`[crewkat][reviews] job ${job.id}: review request emailed.`);
+          }
+        } catch (error) {
+          console.error(`[crewkat][reviews] job ${job.id} failed:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("[crewkat][reviews] company tick failed:", error);
+    }
+  }
+  return { ran: emailed.length > 0, emailed };
+}
 var listingModerationResultSchema = object({ flagged: boolean2(), status: moderationStatusSchema, reasons: array(string2()) });
 async function scanListingForModeration(db, input) {
   if (!await isAutoModerationEnabled(db))
@@ -9439,7 +9657,87 @@ View it in Crewkat: ${appPublicUrl()}/app`
     }
   } catch {}
 }
+var bidBoardStageSchema = _enum(["interested", "estimating", "submitted", "won", "lost"]);
+async function requireJobCompany(ctx, db, jobId) {
+  const identity = workspaceIdentity(ctx);
+  const job = (await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1))[0];
+  if (!job || job.companyId !== identity.workspaceCompanyId)
+    throw new Error("Job not found.");
+  return { identity, job };
+}
+async function jobMessageShape(ctx, m) {
+  return {
+    id: m.id,
+    jobId: m.jobId,
+    sender: m.sender,
+    body: m.body,
+    imageUrl: m.imageBlobKey ? await ctx.blobs.getUrl(m.imageBlobKey) : null,
+    voiceUrl: m.voiceBlobKey ? await ctx.blobs.getUrl(m.voiceBlobKey) : null,
+    voiceDurationSeconds: m.voiceDurationSeconds,
+    createdAt: m.createdAt.toISOString()
+  };
+}
+async function logJobSystemMessage(db, jobId, bodyEn, bodyEs) {
+  try {
+    await db.insert(jobMessages).values({ jobId, sender: "system", body: `${bodyEn} / ${bodyEs}`, createdAt: new Date });
+  } catch {}
+}
+async function runWeeklyProgressTick(ctx) {
+  const db = ctx.db();
+  const emailed = [];
+  const settingsRows = await db.select().from(settings).where(eq(settings.weeklyProgressEnabled, true));
+  const weekAgo = Date.now() - 7 * 86400000;
+  const sentCutoff = new Date(Date.now() - 6 * 86400000);
+  for (const setting of settingsRows) {
+    try {
+      const jobs2 = await db.select().from(jobs).where(eq(jobs.companyId, setting.companyId));
+      for (const job of jobs2) {
+        try {
+          if (!job.clientEmail || !EMAIL_RE.test(job.clientEmail))
+            continue;
+          const already = (await db.select({ id: automationLogs.id }).from(automationLogs).where(and(eq(automationLogs.kind, "weekly_progress"), eq(automationLogs.entityId, job.id), gte(automationLogs.sentAt, sentCutoff))).limit(1))[0];
+          if (already)
+            continue;
+          const logs = (await db.select().from(dailyLogs).where(eq(dailyLogs.jobId, job.id))).filter((l) => l.sharedWithClient && l.createdAt.getTime() >= weekAgo).sort((a, b) => a.logDate.localeCompare(b.logDate));
+          if (!logs.length)
+            continue;
+          const companyName = await companyNameForNudge(db, job.companyId);
+          const lines = logs.map((l) => {
+            const parts = [`${l.logDate}: ${l.clientSummary || l.notes || ""}`.trim()];
+            if (l.hours && l.hours !== "0")
+              parts.push(`(${l.hours}h)`);
+            return `- ${parts.join(" ")}`;
+          });
+          const subject = `Weekly progress update \u2014 ${job.jobType} at ${job.jobAddress}`;
+          const text = `Hi ${job.clientName || "there"},
+
+Here's what happened on your project this week with ${companyName}:
+
+${lines.join(`
+`)}
+
+Questions? Just reply to this email.
+
+Thanks,
+${companyName}`;
+          const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: job.clientEmail, subject, text });
+          if (result.delivery !== "sent")
+            throw new Error("email not sent");
+          await db.insert(automationLogs).values({ kind: "weekly_progress", entityId: job.id, stage: "auto", channel: "email", sentAt: new Date });
+          emailed.push(job.id);
+          console.log(`[crewkat][progress] job ${job.id}: weekly digest emailed.`);
+        } catch (error) {
+          console.error(`[crewkat][progress] job ${job.id} failed:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("[crewkat][progress] company tick failed:", error);
+    }
+  }
+  return { ran: emailed.length > 0, emailed };
+}
 var BaseActions = {
+  ...playBillingActions,
   getAuthBootstrap: defineAction({
     request: object({}),
     response: object({ hasAccount: boolean2(), ownerClaimAvailable: boolean2(), recordCounts: object({ jobs: number2(), clients: number2(), invoices: number2() }) }),
@@ -9679,13 +9977,14 @@ If that was you, just sign in again. If not, we recommend changing your password
   }),
   getSubscription: defineAction({
     request: object({}),
-    response: object({ tier: _enum(["free", "premium"]), status: string2(), cancelAtPeriodEnd: boolean2(), currentPeriodEnd: string2().nullable() }),
+    response: object({ tier: _enum(["free", "premium"]), status: string2(), cancelAtPeriodEnd: boolean2(), currentPeriodEnd: string2().nullable(), provider: _enum(["stripe", "play", "manual", "founder", "none"]) }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const user = (await ctx.db().select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user)
         throw new Error("Sign in to continue.");
-      return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null };
+      const provider = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : user.subscriptionStatus === "founder" ? "founder" : user.subscriptionStatus === "manual" ? "manual" : "none";
+      return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, provider };
     }
   }),
   startPremiumCheckout: defineAction({
@@ -9881,10 +10180,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     const db = ctx.db();
     const now = new Date;
     const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress });
-    const rows = await db.insert(jobs).values({ ...args, clientId, amountDue: normalizeMoney(args.amountDue), depositAmount: normalizeMoney(args.depositAmount), createdAt: now, updatedAt: now }).returning({ id: jobs.id });
+    const rows = await db.insert(jobs).values({ ...args, companyId: workspaceIdentity(ctx).workspaceCompanyId, clientId, amountDue: normalizeMoney(args.amountDue), depositAmount: normalizeMoney(args.depositAmount), createdAt: now, updatedAt: now }).returning({ id: jobs.id });
     const made = rows[0];
     if (!made)
       throw new Error("The job could not be saved.");
+    await logJobSystemMessage(db, made.id, "Job created", "Trabajo creado");
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
@@ -10565,7 +10865,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { id };
   } }),
   listAppointments: defineAction({ request: object({}), response: object({ appointments: array(appointmentSchema) }), async handler(ctx) {
-    const rows = await ctx.db().select().from(appointments).orderBy(appointments.startsAt);
+    const rows = await ctx.db().select().from(appointments).where(eq(appointments.companyId, workspaceIdentity(ctx).workspaceCompanyId)).orderBy(appointments.startsAt);
     return { appointments: rows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork })) };
   } }),
   saveAppointment: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), startsAt: string2().min(1).max(40), notes: string2().trim().max(2000), exteriorWork: boolean2().default(false) }), response: object({ id: number2() }), async handler(ctx, args) {
@@ -10625,7 +10925,9 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   getJobOperations: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ selections: array(selectionSchema), dailyLogs: array(dailyLogSchema), internalNotes: array(internalNoteSchema), milestones: array(milestoneSchema), profitability: object({ quoted: number2(), invoiced: number2(), variance: number2(), variancePercent: number2().nullable(), materials: number2(), expenses: number2(), subcontractors: number2(), laborHours: number2(), laborCost: number2(), profit: number2(), margin: number2() }) }), async handler(ctx, args) {
     const db = ctx.db();
-    const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows] = await Promise.all([db.select().from(selections).where(eq(selections.jobId, args.jobId)).orderBy(desc(selections.createdAt)), db.select().from(dailyLogs).where(eq(dailyLogs.jobId, args.jobId)).orderBy(desc(dailyLogs.logDate)), db.select().from(internalNotes).where(eq(internalNotes.jobId, args.jobId)).orderBy(desc(internalNotes.createdAt)), db.select().from(paymentMilestones).where(eq(paymentMilestones.jobId, args.jobId)).orderBy(paymentMilestones.id), db.select().from(invoices).where(eq(invoices.jobId, args.jobId)), db.select().from(receipts).where(eq(receipts.jobId, args.jobId)), db.select().from(timeEntries).where(eq(timeEntries.jobId, args.jobId)), db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(businessExpenses).where(eq(businessExpenses.jobId, args.jobId)), db.select().from(subcontractors).where(eq(subcontractors.jobId, args.jobId)), db.select().from(quotes).where(eq(quotes.jobId, args.jobId))]);
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const jobId = job.id;
+    const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows] = await Promise.all([db.select().from(selections).where(eq(selections.jobId, jobId)).orderBy(desc(selections.createdAt)), db.select().from(dailyLogs).where(eq(dailyLogs.jobId, jobId)).orderBy(desc(dailyLogs.logDate)), db.select().from(internalNotes).where(eq(internalNotes.jobId, jobId)).orderBy(desc(internalNotes.createdAt)), db.select().from(paymentMilestones).where(eq(paymentMilestones.jobId, jobId)).orderBy(paymentMilestones.id), db.select().from(invoices).where(eq(invoices.jobId, jobId)), db.select().from(receipts).where(eq(receipts.jobId, jobId)), db.select().from(timeEntries).where(eq(timeEntries.jobId, jobId)), db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(businessExpenses).where(eq(businessExpenses.jobId, jobId)), db.select().from(subcontractors).where(eq(subcontractors.jobId, jobId)), db.select().from(quotes).where(eq(quotes.jobId, jobId))]);
     const now = Date.now();
     const invoiced = invoiceRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0);
     const quoted = jobQuoteRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -10635,7 +10937,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const expenses = expenseRows.reduce((sum, row) => sum + Number(row.amount.replace(/[^0-9.-]/g, "") || 0), 0);
     const subcontractors2 = subcontractorRows.reduce((sum, row) => sum + Number(row.agreedAmount.replace(/[^0-9.-]/g, "") || 0), 0);
     const profit = invoiced - materials - laborCost - expenses - subcontractors2;
-    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => ({ id: row.id, jobId: row.jobId, invoiceId: row.invoiceId, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() })), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0 } };
+    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => ({ id: row.id, jobId: row.jobId, invoiceId: row.invoiceId, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() })), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0 } };
   } }),
   saveSelection: defineAction({ request: object({ jobId: number2().int().positive(), category: string2().trim().min(1).max(160), item: string2().trim().min(1).max(300), vendor: string2().trim().max(160), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2().int().min(0).max(730).default(0), photoFilename: string2().max(240).default(""), photoContentType: _enum(["", "image/jpeg", "image/png", "image/webp"]), photoDataBase64: string2().max(20000000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
     let photoBlobKey = null;
@@ -10655,15 +10957,15 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  saveDailyLog: defineAction({ request: object({ jobId: number2().int().positive(), logDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), crew: string2().trim().max(1000), hours: string2().trim().max(80), photoIds: array(number2().int().positive()).max(24), notes: string2().trim().max(5000) }), response: object({ id: number2() }), async handler(ctx, args) {
+  saveDailyLog: defineAction({ request: object({ jobId: number2().int().positive(), logDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), crew: string2().trim().max(1000), hours: string2().trim().max(80), photoIds: array(number2().int().positive()).max(24), notes: string2().trim().max(5000), blockers: string2().trim().max(2000).default(""), clientSummary: string2().trim().max(2000).default(""), sharedWithClient: boolean2().default(false) }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const existing = (await db.select({ id: dailyLogs.id }).from(dailyLogs).where(and(eq(dailyLogs.jobId, args.jobId), eq(dailyLogs.logDate, args.logDate))).limit(1))[0];
     if (existing) {
-      await db.update(dailyLogs).set({ crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, updatedAt: new Date }).where(eq(dailyLogs.id, existing.id));
+      await db.update(dailyLogs).set({ crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, blockers: args.blockers, clientSummary: args.clientSummary, sharedWithClient: args.sharedWithClient, updatedAt: new Date }).where(eq(dailyLogs.id, existing.id));
       ctx.invalidateQueries();
       return { id: existing.id };
     }
-    const rows = await db.insert(dailyLogs).values({ jobId: args.jobId, logDate: args.logDate, crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, createdAt: new Date, updatedAt: new Date }).returning({ id: dailyLogs.id });
+    const rows = await db.insert(dailyLogs).values({ jobId: args.jobId, logDate: args.logDate, crew: args.crew, hours: args.hours, photoIdsJson: JSON.stringify(args.photoIds), notes: args.notes, blockers: args.blockers, clientSummary: args.clientSummary, sharedWithClient: args.sharedWithClient, createdAt: new Date, updatedAt: new Date }).returning({ id: dailyLogs.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save daily log.");
@@ -10960,12 +11262,15 @@ If that was you, just sign in again. If not, we recommend changing your password
   saveQuoteTemplate: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), name: string2().trim().min(1).max(160), lineItems: array(quoteItemSchema).min(1).max(50) }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const now = new Date;
+    const name = args.name.trim();
+    if (!name)
+      throw new Error("Template name is required.");
     if (args.id) {
-      await db.update(quoteTemplates).set({ name: args.name, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), isStarter: false, updatedAt: now }).where(eq(quoteTemplates.id, args.id));
+      await db.update(quoteTemplates).set({ name, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), isStarter: false, updatedAt: now }).where(eq(quoteTemplates.id, args.id));
       ctx.invalidateQueries();
       return { id: args.id };
     }
-    const rows = await db.insert(quoteTemplates).values({ name: args.name, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), isStarter: false, createdAt: now, updatedAt: now }).returning({ id: quoteTemplates.id });
+    const rows = await db.insert(quoteTemplates).values({ name, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), isStarter: false, createdAt: now, updatedAt: now }).returning({ id: quoteTemplates.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save template.");
@@ -11606,7 +11911,162 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true, signedAt: now.toISOString() };
   } }),
-  submitEstimateRequest: defineAction({ request: object({ name: string2().trim().min(2).max(160), phone: string2().trim().min(7).max(40), email: string2().trim().email().max(200), address: string2().trim().min(5).max(240), serviceType: string2().trim().min(2).max(120), projectDetails: string2().trim().min(10).max(3000), preferredContactTime: string2().trim().max(120), company: string2().max(0).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
+  getDocumentTimeline: defineAction({
+    request: object({ kind: _enum(["quote", "invoice"]), id: number2().int().positive() }),
+    response: object({ events: array(object({ type: string2(), at: string2().nullable(), detail: string2().default("") })) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const events = [];
+      const push = (type, at, detail = "") => {
+        let iso = null;
+        if (at instanceof Date && !Number.isNaN(at.getTime()))
+          iso = at.toISOString();
+        else if (typeof at === "string" && at.trim()) {
+          const d = new Date(/T/.test(at) ? at : `${at}T12:00:00`);
+          if (!Number.isNaN(d.getTime()))
+            iso = d.toISOString();
+        }
+        events.push({ type, at: iso, detail });
+      };
+      const pushLinkEvents = async (kind, id) => {
+        const links = await db.select().from(documentLinks).where(and(eq(documentLinks.documentKind, kind), eq(documentLinks.documentId, id))).orderBy(documentLinks.createdAt);
+        for (const link of links)
+          push("shared", link.createdAt, "Link shared");
+        const firstViews = links.map((l) => l.firstViewedAt).filter((d) => !!d);
+        const totalViews = links.reduce((s, l) => s + l.viewCount, 0);
+        if (firstViews.length)
+          push("viewed", new Date(Math.min(...firstViews.map((d) => d.getTime()))), totalViews > 1 ? `${totalViews} views` : "First view");
+        return links;
+      };
+      if (args.kind === "quote") {
+        const quote = (await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
+        if (!quote)
+          throw new Error("Estimate not found.");
+        push("created", quote.createdAt);
+        if (quote.sentAt)
+          push("sent", quote.sentAt, "Sent to client");
+        await pushLinkEvents("quote", quote.id);
+        if (quote.estimateNudgeSentAt)
+          push("reminder", quote.estimateNudgeSentAt, "Follow-up reminder sent");
+        if (quote.accepted)
+          push("approved", quote.updatedAt, "Estimate approved");
+        if (quote.convertedToInvoiceId)
+          push("converted", quote.updatedAt, "Converted to invoice");
+      } else {
+        const invoice = (await db.select().from(invoices).where(eq(invoices.id, args.id)).limit(1))[0];
+        if (!invoice)
+          throw new Error("Invoice not found.");
+        push("created", invoice.createdAt);
+        if (invoice.status !== "draft")
+          push("sent", invoice.updatedAt, "Sent to client");
+        await pushLinkEvents("invoice", invoice.id);
+        const reminders = await db.select().from(automationLogs).where(and(eq(automationLogs.kind, "payment"), eq(automationLogs.entityId, invoice.id))).orderBy(automationLogs.sentAt);
+        for (const r of reminders)
+          push("reminder", r.sentAt, r.stage || "Payment reminder");
+        const paymentRows = await db.select().from(payments).where(eq(payments.invoiceId, invoice.id)).orderBy(payments.paymentDate);
+        for (const p of paymentRows)
+          push("paid", p.paymentDate, `Payment ${p.amount}${p.method ? ` \xB7 ${p.method}` : ""}`);
+      }
+      events.sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+      return { events };
+    }
+  }),
+  getOnboardingChecklist: defineAction({
+    request: object({}),
+    response: object({
+      steps: array(object({ key: string2(), titleEn: string2(), titleEs: string2(), done: boolean2() })),
+      dismissed: boolean2(),
+      allDone: boolean2()
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const [clients2, jobs2, quotes2, invoices2, payments2] = await Promise.all([
+        db.select({ id: clients.id }).from(clients).limit(1),
+        db.select({ id: jobs.id }).from(jobs).limit(1),
+        db.select({ sentAt: quotes.sentAt }).from(quotes).where(ne(quotes.sentAt, "")).limit(1),
+        db.select({ id: invoices.id }).from(invoices).limit(1),
+        db.select({ id: payments.id }).from(payments).limit(1)
+      ]);
+      const steps = [
+        { key: "add_client", titleEn: "Add your first client", titleEs: "Agrega tu primer cliente", done: clients2.length > 0 },
+        { key: "create_job", titleEn: "Create a job", titleEs: "Crea un trabajo", done: jobs2.length > 0 },
+        { key: "send_estimate", titleEn: "Send an estimate", titleEs: "Env\xEDa un presupuesto", done: quotes2.length > 0 },
+        { key: "send_invoice", titleEn: "Send an invoice", titleEs: "Env\xEDa una factura", done: invoices2.length > 0 },
+        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments2.length > 0 }
+      ];
+      const row = (await db.select().from(onboardingChecklist).where(eq(onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
+      const dismissed = !!row?.dismissedAt;
+      const allDone = steps.every((s) => s.done);
+      if (allDone && row && !row.completedAt) {
+        await db.update(onboardingChecklist).set({ completedAt: new Date, updatedAt: new Date }).where(eq(onboardingChecklist.id, row.id));
+      }
+      return { steps, dismissed, allDone };
+    }
+  }),
+  dismissOnboardingChecklist: defineAction({
+    request: object({}),
+    response: object({ ok: literal(true) }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const row = (await db.select().from(onboardingChecklist).where(eq(onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
+      const now = new Date;
+      if (row)
+        await db.update(onboardingChecklist).set({ dismissedAt: now, updatedAt: now }).where(eq(onboardingChecklist.id, row.id));
+      else
+        await db.insert(onboardingChecklist).values({ userId: identity.workspaceUserId, dismissedAt: now });
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  reopenJob: defineAction({
+    request: object({ jobId: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      if (!job.completedAt)
+        return { ok: true };
+      await db.update(jobs).set({ completedAt: null, completionOverrideNote: "", updatedAt: new Date }).where(eq(jobs.id, args.jobId));
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  unacceptQuote: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const quote = (await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
+      if (!quote)
+        throw new Error("Estimate not found.");
+      const seriesId = quote.seriesId ?? quote.id;
+      const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
+      for (const version of versions) {
+        if (version.accepted)
+          await db.update(quotes).set({ accepted: false, automationStatus: "awaiting", lostReason: null, lostNote: "", updatedAt: new Date }).where(eq(quotes.id, version.id));
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  sendReviewRequest: defineAction({
+    request: object({ jobId: number2().int().positive() }),
+    response: object({ ok: literal(true), emailed: boolean2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      const emailed = await sendJobReviewEmail(ctx, db, job, "manual");
+      ctx.invalidateQueries();
+      return { ok: true, emailed };
+    }
+  }),
+  submitEstimateRequest: defineAction({ request: object({ name: string2().trim().min(2).max(160), phone: string2().trim().min(7).max(40), email: string2().trim().email().max(200), address: string2().trim().min(5).max(240), serviceType: string2().trim().min(2).max(120), projectDetails: string2().trim().min(10).max(3000), preferredContactTime: string2().trim().max(120), preferredDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/).or(literal("")).default(""), preferredTime: string2().regex(/^\d{2}:\d{2}$/).or(literal("")).default(""), company: string2().max(0).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
     if (args.company)
       throw new Error("Request rejected.");
     const db = ctx.db();
@@ -11622,6 +12082,10 @@ If that was you, just sign in again. If not, we recommend changing your password
     const made = rows[0];
     if (!made)
       throw new Error("Could not submit request.");
+    if (args.preferredDate) {
+      const startsAt = `${args.preferredDate}T${args.preferredTime || "09:00"}:00`;
+      await db.insert(appointments).values({ clientName: args.name, clientPhone: args.phone, startsAt, notes: `Online booking \u2014 ${args.serviceType}. ${args.projectDetails}`.slice(0, 1000), createdAt: new Date, updatedAt: new Date });
+    }
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
@@ -11945,17 +12409,16 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   completeJob: defineAction({ request: object({ jobId: number2().int().positive(), overrideNote: string2().trim().max(1000).default("") }), response: object({ ok: literal(true), missingStages: array(stageSchema) }), async handler(ctx, args) {
     const db = ctx.db();
-    const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
-    if (!job)
-      throw new Error("Job not found.");
-    const photos2 = await db.select().from(photos).where(eq(photos.jobId, args.jobId));
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const photos2 = await db.select().from(photos).where(eq(photos.jobId, job.id));
     const required = job.requiredPhotoStages.split(",").filter((s) => s === "before" || s === "during" || s === "after");
     const missingStages = required.filter((s) => !photos2.some((p) => p.stage === s));
     if (missingStages.length && !args.overrideNote)
       throw new Error("Add an override note for missing required photos.");
-    await db.update(jobs).set({ completedAt: new Date, completionOverrideNote: args.overrideNote, updatedAt: new Date }).where(eq(jobs.id, args.jobId));
+    await db.update(jobs).set({ completedAt: new Date, completionOverrideNote: args.overrideNote, updatedAt: new Date }).where(eq(jobs.id, job.id));
     if (missingStages.length)
-      await db.insert(completionOverrides).values({ jobId: args.jobId, missingStages: missingStages.join(","), note: args.overrideNote, createdAt: new Date });
+      await db.insert(completionOverrides).values({ jobId: job.id, missingStages: missingStages.join(","), note: args.overrideNote, createdAt: new Date });
+    await logJobSystemMessage(db, job.id, "Job marked complete", "Trabajo marcado como completado");
     ctx.invalidateQueries();
     return { ok: true, missingStages };
   } }),
@@ -13082,8 +13545,8 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const row = rows[0];
     if (!row)
-      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, simpleMode: true, logoUrl: null, coverUrl: null };
-    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
+      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
+    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = platformDb(ctx);
@@ -13171,7 +13634,111 @@ If that was you, just sign in again. If not, we recommend changing your password
       }
       return { tools };
     }
-  })
+  }),
+  listJobMessages: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ messages: array(object({ id: number2(), jobId: number2(), sender: _enum(["contractor", "client", "system"]), body: string2(), imageUrl: string2().nullable(), voiceUrl: string2().nullable(), voiceDurationSeconds: number2(), createdAt: string2() })) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const rows = await db.select().from(jobMessages).where(eq(jobMessages.jobId, job.id)).orderBy(jobMessages.createdAt, jobMessages.id);
+    return { messages: await Promise.all(rows.map((m) => jobMessageShape(ctx, m))) };
+  } }),
+  sendJobMessage: defineAction({ request: object({ jobId: number2().int().positive(), body: string2().trim().max(4000).default(""), imageDataBase64: string2().max(15000000).default(""), imageFilename: string2().max(240).default(""), imageContentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]).default("image/jpeg"), voiceDataBase64: string2().max(20000000).default(""), voiceFilename: string2().max(240).default(""), voiceDurationSeconds: number2().int().min(0).max(600).default(0) }), response: object({ id: number2() }), async handler(ctx, args) {
+    if (!args.body && !args.imageDataBase64 && !args.voiceDataBase64)
+      throw new Error("Write a message or attach a photo or voice note.");
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    let imageBlobKey = null;
+    if (args.imageDataBase64) {
+      imageBlobKey = `job-messages/${job.id}/${crypto.randomUUID()}`;
+      await ctx.blobs.put(imageBlobKey, Buffer.from(args.imageDataBase64, "base64"), { contentType: args.imageContentType });
+    }
+    let voiceBlobKey = null;
+    if (args.voiceDataBase64) {
+      voiceBlobKey = `job-messages/${job.id}/${crypto.randomUUID()}.webm`;
+      await ctx.blobs.put(voiceBlobKey, Buffer.from(args.voiceDataBase64, "base64"), { contentType: "audio/webm" });
+    }
+    const made = (await db.insert(jobMessages).values({ jobId: job.id, sender: "contractor", body: args.body, imageBlobKey, imageFilename: args.imageFilename, imageContentType: args.imageContentType, voiceBlobKey, voiceFilename: args.voiceFilename, voiceContentType: "audio/webm", voiceDurationSeconds: args.voiceDurationSeconds, createdAt: new Date }).returning({ id: jobMessages.id }))[0];
+    if (!made) {
+      if (imageBlobKey)
+        await ctx.blobs.delete(imageBlobKey).catch(() => {});
+      if (voiceBlobKey)
+        await ctx.blobs.delete(voiceBlobKey).catch(() => {});
+      throw new Error("The message could not be sent.");
+    }
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  portalListJobMessages: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ messages: array(object({ id: number2(), jobId: number2(), sender: _enum(["contractor", "client", "system"]), body: string2(), imageUrl: string2().nullable(), voiceUrl: string2().nullable(), voiceDurationSeconds: number2(), createdAt: string2() })) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
+    const rows = await db.select().from(jobMessages).where(eq(jobMessages.jobId, access.jobId)).orderBy(jobMessages.createdAt, jobMessages.id);
+    return { messages: await Promise.all(rows.map((m) => jobMessageShape(ctx, m))) };
+  } }),
+  portalSendJobMessage: defineAction({ request: object({ token: string2().min(32).max(200), body: string2().trim().max(4000).default(""), imageDataBase64: string2().max(15000000).default(""), imageFilename: string2().max(240).default(""), imageContentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]).default("image/jpeg") }), response: object({ id: number2() }), async handler(ctx, args) {
+    if (!args.body && !args.imageDataBase64)
+      throw new Error("Write a message or attach a photo.");
+    const db = ctx.db();
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
+    let imageBlobKey = null;
+    if (args.imageDataBase64) {
+      imageBlobKey = `job-messages/${access.jobId}/${crypto.randomUUID()}`;
+      await ctx.blobs.put(imageBlobKey, Buffer.from(args.imageDataBase64, "base64"), { contentType: args.imageContentType });
+    }
+    const made = (await db.insert(jobMessages).values({ jobId: access.jobId, sender: "client", body: args.body, imageBlobKey, imageFilename: args.imageFilename, imageContentType: args.imageContentType, createdAt: new Date }).returning({ id: jobMessages.id }))[0];
+    if (!made) {
+      if (imageBlobKey)
+        await ctx.blobs.delete(imageBlobKey).catch(() => {});
+      throw new Error("The message could not be sent.");
+    }
+    const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
+    if (job)
+      await notifyCompanyEvent(ctx, job.companyId, "notifyNewMessage", "message", `New client message on ${job.jobType}`, `Nuevo mensaje del cliente en ${job.jobType}`, `job:${job.id}:messages`);
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  listBidBoard: defineAction({ request: object({}), response: object({ items: array(object({ id: number2(), title: string2(), stage: bidBoardStageSchema, dueDate: string2(), remindAt: string2().nullable(), notes: string2(), listingId: number2().nullable(), requestId: number2().nullable(), createdAt: string2(), updatedAt: string2() })) }), async handler(ctx) {
+    const identity = workspaceIdentity(ctx);
+    const db = ctx.db();
+    const rows = await db.select().from(bidBoardItems).where(eq(bidBoardItems.userId, identity.workspaceUserId)).orderBy(desc(bidBoardItems.updatedAt));
+    return { items: rows.map((r) => ({ id: r.id, title: r.title, stage: r.stage, dueDate: r.dueDate, remindAt: r.remindAt ? r.remindAt.toISOString() : null, notes: r.notes, listingId: r.listingId, requestId: r.requestId, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })) };
+  } }),
+  saveBidBoardItem: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), title: string2().trim().min(1).max(200), listingId: number2().int().positive().nullable().default(null), requestId: number2().int().positive().nullable().default(null), stage: bidBoardStageSchema.default("interested"), dueDate: string2().trim().max(10).default(""), remindAt: string2().datetime().nullable().default(null), notes: string2().trim().max(3000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
+    const identity = workspaceIdentity(ctx);
+    const db = ctx.db();
+    const now = new Date;
+    if (args.id) {
+      const existing = (await db.select().from(bidBoardItems).where(eq(bidBoardItems.id, args.id)).limit(1))[0];
+      if (!existing || existing.userId !== identity.workspaceUserId)
+        throw new Error("Bid not found.");
+      await db.update(bidBoardItems).set({ title: args.title, listingId: args.listingId, requestId: args.requestId, stage: args.stage, dueDate: args.dueDate, remindAt: args.remindAt ? new Date(args.remindAt) : null, notes: args.notes, updatedAt: now }).where(eq(bidBoardItems.id, args.id));
+      ctx.invalidateQueries();
+      return { id: args.id };
+    }
+    const made = (await db.insert(bidBoardItems).values({ companyId: identity.workspaceCompanyId, userId: identity.workspaceUserId, title: args.title, listingId: args.listingId, requestId: args.requestId, stage: args.stage, dueDate: args.dueDate, remindAt: args.remindAt ? new Date(args.remindAt) : null, notes: args.notes, createdAt: now, updatedAt: now }).returning({ id: bidBoardItems.id }))[0];
+    if (!made)
+      throw new Error("The bid could not be saved.");
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  moveBidBoardItem: defineAction({ request: object({ id: number2().int().positive(), stage: bidBoardStageSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const identity = workspaceIdentity(ctx);
+    const db = ctx.db();
+    const existing = (await db.select().from(bidBoardItems).where(eq(bidBoardItems.id, args.id)).limit(1))[0];
+    if (!existing || existing.userId !== identity.workspaceUserId)
+      throw new Error("Bid not found.");
+    await db.update(bidBoardItems).set({ stage: args.stage, updatedAt: new Date }).where(eq(bidBoardItems.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  deleteBidBoardItem: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const identity = workspaceIdentity(ctx);
+    const db = ctx.db();
+    const existing = (await db.select().from(bidBoardItems).where(eq(bidBoardItems.id, args.id)).limit(1))[0];
+    if (!existing || existing.userId !== identity.workspaceUserId)
+      throw new Error("Bid not found.");
+    await db.delete(bidBoardItems).where(eq(bidBoardItems.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } })
 };
 var PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap",
@@ -13190,7 +13757,9 @@ var PUBLIC_ACTIONS = new Set([
   "portalSignChangeOrder",
   "resolveDocumentLink",
   "submitDocumentSignature",
-  "submitEstimateRequest"
+  "submitEstimateRequest",
+  "portalListJobMessages",
+  "portalSendJobMessage"
 ]);
 var PREMIUM_ACTIONS = new Set([
   "getAutomationCenter",
@@ -13304,5 +13873,9 @@ export {
   recoverStaleBackupRuns,
   runEstimateNudgeTick,
   runRecurringInvoiceTick,
-  runScheduledBackup
+  runReviewRequestTick,
+  runScheduledBackup,
+  runWeeklyProgressTick,
+  sendJobReviewEmail,
+  workspaceIdentity
 };

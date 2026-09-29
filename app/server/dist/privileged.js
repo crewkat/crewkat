@@ -1,6 +1,6 @@
 // @bun
 // src/privileged.ts
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, createSign, timingSafeEqual } from "crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -4452,6 +4452,26 @@ var privileged = definePrivilegedContracts({
     response: object({ id: string2(), amount: number2().int(), currency: string2(), status: string2() }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  verifyPlayPurchase: {
+    request: object({ purchaseToken: string2().min(1).max(2000), sku: string2().min(1).max(200) }),
+    response: object({
+      configured: boolean2(),
+      verified: boolean2(),
+      active: boolean2(),
+      orderId: string2().nullable(),
+      expiryTimeMillis: string2().nullable(),
+      autoRenewing: boolean2(),
+      error: string2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getPlayBillingStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), sku: string2(), packageName: string2() }),
+    capabilities: [],
+    timeoutMs: 1e4
   }
 });
 var privilegedHandlers = definePrivilegedHandlers(privileged, {
@@ -4818,6 +4838,126 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       currency: typeof result.currency === "string" ? result.currency : "usd",
       status: typeof result.status === "string" ? result.status : "unknown"
     };
+  },
+  async getPlayBillingStatus() {
+    const sku = process.env.PLAY_PREMIUM_SKU?.trim() || "crewkat_premium_monthly";
+    const packageName = process.env.PLAY_PACKAGE_NAME?.trim() || "com.crewkat.app";
+    const configured = Boolean(process.env.PLAY_SERVICE_ACCOUNT_JSON?.trim() || process.env.PLAY_SERVICE_ACCOUNT_JSON_PATH?.trim());
+    return { configured, sku, packageName };
+  },
+  async verifyPlayPurchase(args) {
+    const failed = (error) => ({
+      configured: true,
+      verified: false,
+      active: false,
+      orderId: null,
+      expiryTimeMillis: null,
+      autoRenewing: false,
+      error
+    });
+    const unconfigured = {
+      configured: false,
+      verified: false,
+      active: false,
+      orderId: null,
+      expiryTimeMillis: null,
+      autoRenewing: false,
+      error: "Google Play Billing verification is not configured."
+    };
+    const sku = process.env.PLAY_PREMIUM_SKU?.trim() || "crewkat_premium_monthly";
+    const packageName = process.env.PLAY_PACKAGE_NAME?.trim() || "com.crewkat.app";
+    if (args.sku !== sku) {
+      console.error("[crewkat][play-billing] rejected unexpected SKU:", args.sku);
+      return { ...failed("Unknown product."), error: "Unknown product." };
+    }
+    let serviceAccountJson = process.env.PLAY_SERVICE_ACCOUNT_JSON?.trim() || "";
+    if (!serviceAccountJson) {
+      const jsonPath = process.env.PLAY_SERVICE_ACCOUNT_JSON_PATH?.trim() || "";
+      if (!jsonPath)
+        return unconfigured;
+      try {
+        serviceAccountJson = (await readFile(jsonPath, "utf8")).trim();
+      } catch (error) {
+        console.error("[crewkat][play-billing] could not read service-account file:", error);
+        return unconfigured;
+      }
+    }
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(serviceAccountJson);
+    } catch {
+      console.error("[crewkat][play-billing] service-account JSON is invalid.");
+      return unconfigured;
+    }
+    if (typeof serviceAccount.client_email !== "string" || typeof serviceAccount.private_key !== "string") {
+      console.error("[crewkat][play-billing] service-account JSON is missing client_email/private_key.");
+      return unconfigured;
+    }
+    try {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+      const claims = Buffer.from(JSON.stringify({
+        iss: serviceAccount.client_email,
+        scope: "https://www.googleapis.com/auth/androidpublisher",
+        aud: "https://oauth2.googleapis.com/token",
+        iat: nowSeconds,
+        exp: nowSeconds + 3600
+      })).toString("base64url");
+      const signer = createSign("RSA-SHA256");
+      signer.update(`${header}.${claims}`);
+      const signature = signer.sign(serviceAccount.private_key, "base64url");
+      const assertion = `${header}.${claims}.${signature}`;
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!tokenResponse.ok) {
+        console.error("[crewkat][play-billing] Google OAuth token request failed:", tokenResponse.status);
+        return failed("Google authentication failed.");
+      }
+      const tokenJson = await tokenResponse.json();
+      if (typeof tokenJson.access_token !== "string" || !tokenJson.access_token)
+        return failed("Google authentication failed.");
+      const apiUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/purchases/subscriptionsv2/${encodeURIComponent(args.purchaseToken)}`;
+      const purchaseResponse = await fetch(apiUrl, {
+        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (purchaseResponse.status === 404)
+        return failed("Purchase not found.");
+      if (!purchaseResponse.ok) {
+        console.error("[crewkat][play-billing] Play Developer API error:", purchaseResponse.status);
+        return failed("Google Play verification failed.");
+      }
+      const purchase = await purchaseResponse.json();
+      const lineItem = Array.isArray(purchase.lineItems) ? purchase.lineItems[0] : undefined;
+      const productId = typeof lineItem?.productId === "string" ? lineItem.productId : "";
+      if (productId !== sku) {
+        console.error("[crewkat][play-billing] product mismatch:", productId);
+        return failed("Purchase does not match this product.");
+      }
+      const state = typeof purchase.subscriptionState === "string" ? purchase.subscriptionState : "";
+      const expiryTime = typeof lineItem?.expiryTime === "string" ? lineItem.expiryTime : "";
+      const expiryMs = expiryTime ? Date.parse(expiryTime) : NaN;
+      const notExpired = Number.isFinite(expiryMs) && expiryMs > Date.now();
+      const active = (state === "SUBSCRIPTION_STATE_ACTIVE" || state === "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" || state === "SUBSCRIPTION_STATE_CANCELED") && notExpired;
+      return {
+        configured: true,
+        verified: true,
+        active,
+        orderId: typeof lineItem?.orderId === "string" ? lineItem.orderId : null,
+        expiryTimeMillis: Number.isFinite(expiryMs) ? String(expiryMs) : null,
+        autoRenewing: lineItem?.autoRenewing === true,
+        error: null
+      };
+    } catch (error) {
+      console.error("[crewkat][play-billing] verification failed:", error);
+      return failed("Google Play verification failed.");
+    }
   }
 });
 export {

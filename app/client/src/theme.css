@@ -2777,3 +2777,85 @@ button { -webkit-tap-highlight-color: transparent; }
   .undo-toast, .timeline-enter { animation: none !important; }
   .activation-progress span, .quick-rail-action { transition: none !important; }
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 2: unified job workspace, messaging thread, Bid Board.
+   --------------------------------------------------------------------------- */
+.workspace-tabs { display:flex; gap:6px; overflow-x:auto; padding:10px 16px 4px; margin:0 -16px; scrollbar-width:none; position:sticky; top:0; z-index:5; background:var(--bg); }
+.workspace-tabs::-webkit-scrollbar { display:none; }
+.workspace-tabs button { flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:13px; font-weight:600; }
+.workspace-tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink,#fff); }
+.workspace-tabs button:active { transform:scale(.96); }
+.tab-badge { min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:#d33; color:#fff; font-size:11px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+.workspace-tabs button.active .tab-badge { background:#fff; color:var(--accent); }
+
+.workspace-panel { display:flex; flex-direction:column; gap:12px; padding:12px 0 24px; animation:panel-in .22s ease; }
+@keyframes panel-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+.panel-card { background:var(--surface); border:1px solid var(--edge); border-radius:14px; padding:14px; }
+.panel-card h3 { margin:0 0 8px; font-size:14px; }
+.panel-card .muted { color:var(--dim); font-size:13px; margin:0; }
+.panel-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.panel-list li { display:flex; flex-direction:column; gap:2px; padding:10px 12px; border:1px solid var(--edge); border-radius:10px; background:var(--bg); }
+.panel-list li strong { font-size:13.5px; }
+.panel-list li span { font-size:13px; color:var(--dim); }
+.panel-list li time, .panel-list li small { font-size:12px; color:var(--dim); }
+.panel-list.timeline li { border-left:3px solid var(--accent); }
+.money-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.money-grid div { display:flex; flex-direction:column; gap:2px; }
+.money-grid small { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+.money-grid strong { font-size:16px; }
+.log-blockers { color:#b3541e; font-size:12.5px; margin:4px 0 0; }
+
+/* Messaging thread (contractor + portal share bubble styles). */
+.job-thread { display:flex; flex-direction:column; gap:8px; padding:12px 0 20px; }
+.thread-scroll { display:flex; flex-direction:column; gap:10px; max-height:52vh; overflow-y:auto; padding:6px 2px; }
+.thread-scroll.portal-thread { max-height:40vh; }
+.thread-bubble { max-width:84%; display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:16px; animation:panel-in .18s ease; }
+.thread-bubble.contractor, .thread-bubble.client { align-self:flex-end; background:var(--accent); color:var(--accent-ink,#fff); border-bottom-right-radius:4px; }
+.thread-bubble.contractor time, .thread-bubble.client time { color:inherit; opacity:.75; }
+.portal-thread .thread-bubble.client { align-self:flex-end; }
+.portal-thread .thread-bubble.contractor { align-self:flex-start; background:var(--surface); color:var(--text); border:1px solid var(--edge); border-bottom-left-radius:4px; border-bottom-right-radius:16px; }
+.job-thread .thread-bubble.client { align-self:flex-start; background:var(--surface); color:var(--text); border:1px solid var(--edge); border-bottom-left-radius:4px; border-bottom-right-radius:16px; }
+.thread-bubble.system { align-self:center; background:color-mix(in srgb,var(--accent) 10%,var(--surface)); border:1px dashed var(--border); border-radius:999px; max-width:94%; }
+.thread-bubble .system-event { font-size:12.5px; color:var(--dim); text-align:center; }
+.thread-bubble p { margin:0; white-space:pre-wrap; font-size:14px; }
+.thread-bubble img { max-width:100%; max-height:240px; border-radius:10px; display:block; object-fit:cover; }
+.thread-bubble audio { max-width:100%; }
+.thread-bubble time { font-size:10px; color:var(--dim); align-self:flex-end; }
+.thread-composer { display:flex; flex-direction:column; gap:6px; border-top:1px solid var(--edge); padding-top:8px; }
+.composer-attach-row { display:flex; gap:8px; flex-wrap:wrap; }
+.composer-chip { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:var(--surface); border:1px solid var(--edge); font-size:12.5px; }
+.composer-chip button { border:none; background:none; font-size:16px; line-height:1; color:var(--dim); }
+.composer-row { display:flex; gap:8px; align-items:center; }
+.composer-row input[type=text], .composer-row input:not([type]) { flex:1; min-height:42px; border-radius:999px; border:1px solid var(--border); background:var(--surface); padding:0 14px; font-size:14px; color:var(--text); }
+.composer-icon { flex:0 0 auto; width:42px; height:42px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); display:inline-flex; align-items:center; justify-content:center; }
+.composer-icon.recording { background:#d33; border-color:#d33; color:#fff; animation:pulse-rec 1.2s infinite; }
+@keyframes pulse-rec { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+.composer-row .primary-button { flex:0 0 auto; min-height:42px; }
+
+/* Bid Board kanban. */
+.bid-board-page .page { padding-bottom:32px; }
+.bid-board { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; padding:12px 0 24px; }
+.bid-column { background:var(--surface); border:1px solid var(--edge); border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:10px; min-height:120px; }
+.bid-column > header { display:flex; align-items:center; justify-content:space-between; }
+.bid-column h2 { margin:0; font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); }
+.bid-count { font-size:12px; font-weight:700; background:var(--bg); border:1px solid var(--edge); border-radius:999px; padding:2px 9px; }
+.bid-cards { display:flex; flex-direction:column; gap:10px; }
+.bid-card { background:var(--bg); border:1px solid var(--edge); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:4px; animation:panel-in .18s ease; }
+.bid-card.reminder-due { border-color:#d33; }
+.bid-reminder-badge { align-self:flex-start; font-size:11px; font-weight:700; color:#fff; background:#d33; border-radius:999px; padding:2px 9px; }
+.bid-card strong { font-size:14px; }
+.bid-company { font-size:12.5px; color:var(--dim); }
+.bid-amount { font-size:15px; font-weight:700; color:var(--accent); }
+.bid-card small { font-size:12px; color:var(--dim); }
+.bid-card p { margin:4px 0 0; font-size:13px; white-space:pre-wrap; }
+.bid-card-actions { display:flex; gap:8px; margin-top:6px; align-items:center; }
+.bid-card-actions button { flex:0 0 auto; min-width:36px; min-height:32px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:16px; font-weight:700; }
+.bid-card-actions button:disabled { opacity:.35; }
+.bid-card-actions .bid-delete { flex:1; font-size:12px; font-weight:600; color:#d33; }
+.muted.small { font-size:12.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panel, .thread-bubble, .bid-card { animation:none !important; }
+  .composer-icon.recording { animation:none !important; }
+}

@@ -337,6 +337,8 @@ type Screen =
   | { name: "expansion"; tab?: "losses" | "warranties" | "videos" | "crew" | "scanner" | "tax" | "suppliers" | "plans" }
   | { name: "fieldIntelligence"; tab?: "purchasing" | "equipment" | "safety" | "credentials" | "payroll" | "costs" }
   | { name: "detail"; jobId: number }
+  | { name: "bidBoard" }
+  | { name: "dispatch" }
   | { name: "proof"; jobId: number }
   | { name: "settings" }
   | { name: "legal"; document: LegalDocumentKind }
@@ -2424,6 +2426,9 @@ function CrewkatApplication() {
       {screen.name === "marketplace" && (
         <MarketplaceScreen lang={lang} settings={appSettings} setScreen={setScreen} />
       )}
+      {screen.name === "bidBoard" && (
+        <BidBoardScreen lang={lang} onBack={goBack} />
+      )}
       {screen.name === "marketplaceNew" && (
         <MarketplaceListingForm lang={lang} settings={appSettings} initialListingType={screen.listingType} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
       )}
@@ -3616,6 +3621,8 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <button className="market-menu-row" onClick={() => { close(); openNewListing("job"); }}><span className="market-category-icon"><Icon><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></Icon></span><span><strong>{text.list}</strong><small>{lang === "es" ? "Contrata a un empleado" : "Hire an employee"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); openNewListing("project"); }}><span className="market-category-icon"><Icon><path d="M4 20h16M6 20V9l6-5 6 5v11M9 20v-6h6v6"/></Icon></span><span><strong>{text.listProject}</strong><small>{lang === "es" ? "Busca un subcontratista para una tarea específica" : "Find a subcontractor for one specific task"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); setView("alerts"); }}><span className="market-category-icon"><Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon></span><span><strong>{lang === "es" ? "Alertas" : "Alerts"}{(alerts.data?.alerts.length ?? 0) > 0 ? ` · ${alerts.data?.alerts.length}` : ""}</strong><small>{lang === "es" ? "Avisos cuando se publique lo que buscas" : "Get notified when what you want gets posted"}</small></span><BackIcon/></button>
+      {/* Phase 2: Bid Board — external bid pipeline, launched from Marketplace. */}
+      <button className="market-menu-row" onClick={() => { close(); setScreen({ name: "bidBoard" }); }}><span className="market-category-icon"><Icon><path d="M4 5h16v12H4zM4 7l8 6 8-6"/></Icon></span><span><strong>{lang === "es" ? "Tablero de licitaciones" : "Bid Board"}</strong><small>{lang === "es" ? "Sigue tus ofertas externas" : "Track your external project bids"}</small></span><BackIcon/></button>
       <button className="market-menu-row profile-menu-row" onClick={() => { close(); setScreen({ name: "companyProfile" }); }}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil de empresa" : "Edit company profile"}</strong><small>{lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); setSearch(""); setCategory("all"); setLocation(""); setView("mine"); }}><span className="market-category-icon"><Icon><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 11h8M8 15h5"/></Icon></span><span><strong>{text.myListings}</strong><small>{text.myListingsNote}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); setSavedOnly(true); setCategory("all"); setView("explore"); }}><span className="market-category-icon"><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></span><span><strong>{text.saved}</strong><small>{text.savedNote}</small></span><BackIcon/></button>
@@ -4572,6 +4579,952 @@ function JobFormScreen({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2: unified job workspace — tabbed shell, client messaging, Bid Board.
+// The JobDetail screen becomes a workspace: Overview keeps the existing long
+// scroll; Schedule / Messages / Docs / Financials / Photos / Activity render
+// focused panels from the same job data. Fully bilingual, reduced-motion
+// friendly (CSS class hooks), tenant-isolated by the server actions.
+// ---------------------------------------------------------------------------
+
+type WorkspaceTab =
+  | "overview"
+  | "schedule"
+  | "messages"
+  | "documents"
+  | "financials"
+  | "photos"
+  | "activity";
+
+const WORKSPACE_TABS: Array<{ id: WorkspaceTab; en: string; es: string }> = [
+  { id: "overview", en: "Overview", es: "Resumen" },
+  { id: "schedule", en: "Schedule", es: "Agenda" },
+  { id: "messages", en: "Messages", es: "Mensajes" },
+  { id: "documents", en: "Docs", es: "Docs" },
+  { id: "financials", en: "Financials", es: "Finanzas" },
+  { id: "photos", en: "Photos", es: "Fotos" },
+  { id: "activity", en: "Activity", es: "Actividad" },
+];
+
+function JobWorkspaceTabs({
+  lang,
+  tab,
+  onChange,
+  unreadMessages,
+}: {
+  lang: Lang;
+  tab: WorkspaceTab;
+  onChange: (t: WorkspaceTab) => void;
+  unreadMessages: number;
+}) {
+  return (
+    <nav
+      className="workspace-tabs"
+      aria-label={lang === "es" ? "Secciones del trabajo" : "Job sections"}
+    >
+      {WORKSPACE_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          className={tab === t.id ? "active" : ""}
+          aria-current={tab === t.id ? "page" : undefined}
+          onClick={() => {
+            buzz(6);
+            onChange(t.id);
+          }}
+        >
+          {lang === "es" ? t.es : t.en}
+          {t.id === "messages" && unreadMessages > 0 && (
+            <span className="tab-badge">
+              {unreadMessages > 9 ? "9+" : unreadMessages}
+            </span>
+          )}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+type JobMessage = Awaited<ReturnType<typeof api.listJobMessages>>["messages"][number];
+
+// Phase 2: two-way contractor/client thread for a job — text, photos, voice
+// notes, and lifecycle system events. Contractor side (in-app).
+function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["job-messages", jobId],
+    queryFn: () => api.listJobMessages({ jobId }),
+    refetchInterval: 8000,
+  });
+  const [body, setBody] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [voice, setVoice] = useState<{ blob: Blob; seconds: number } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState("");
+  const recorder = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
+  const startedAt = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const messages = q.data?.messages ?? [];
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length]);
+
+  const stopRecording = () => {
+    const rec = recorder.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // ignore
+    }
+    rec.stream.getTracks().forEach((t) => t.stop());
+    setRecording(false);
+  };
+
+  const startRecording = async () => {
+    try {
+      setError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunks.current = [];
+      startedAt.current = Date.now();
+      rec.ondataavailable = (e) => {
+        if (e.data.size) chunks.current.push(e.data);
+      };
+      rec.onstop = () => {
+        const seconds = Math.min(
+          120,
+          Math.round((Date.now() - startedAt.current) / 1000),
+        );
+        const blob = new Blob(chunks.current, {
+          type: rec.mimeType || "audio/webm",
+        });
+        if (blob.size > 0) setVoice({ blob, seconds });
+      };
+      rec.start();
+      recorder.current = rec;
+      setRecording(true);
+    } catch {
+      setError(
+        lang === "es"
+          ? "No se pudo acceder al micrófono."
+          : "Could not access the microphone.",
+      );
+    }
+  };
+
+  const send = useMutation({
+    mutationFn: async () => {
+      let imagePayload: { filename: string; contentType: string; dataBase64: string } | null = null;
+      if (image) {
+        const enc = await fileToBase64(image);
+        imagePayload = {
+          filename: image.name,
+          contentType: (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(image.type)
+            ? image.type
+            : "image/jpeg") as "image/jpeg",
+          dataBase64: enc.dataBase64,
+        };
+      }
+      let voicePayload: { filename: string; dataBase64: string; durationSeconds: number } | null = null;
+      if (voice) {
+        const buf = await voice.blob.arrayBuffer();
+        voicePayload = {
+          filename: "voice-note.webm",
+          dataBase64: bytesToBase64(new Uint8Array(buf.slice(0))),
+          durationSeconds: voice.seconds,
+        };
+      }
+      return api.sendJobMessage({
+        jobId,
+        body: body.trim(),
+        imageDataBase64: imagePayload?.dataBase64 ?? "",
+        imageFilename: imagePayload?.filename ?? "",
+        imageContentType: (imagePayload?.contentType as "image/jpeg" | "image/png" | "image/webp" | "image/gif") ?? "image/jpeg",
+        voiceDataBase64: voicePayload?.dataBase64 ?? "",
+        voiceFilename: voicePayload?.filename ?? "",
+        voiceDurationSeconds: voicePayload?.durationSeconds ?? 0,
+      });
+    },
+    onSuccess: () => {
+      setBody("");
+      setImage(null);
+      setVoice(null);
+      setError("");
+      buzz(10);
+      void qc.invalidateQueries({ queryKey: ["job-messages", jobId] });
+    },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+
+  const canSend = !send.isPending && (!!body.trim() || !!image || !!voice);
+  const sendLabel = lang === "es" ? "Enviar" : "Send";
+
+  return (
+    <section
+      className="job-thread"
+      aria-label={lang === "es" ? "Mensajes del trabajo" : "Job messages"}
+    >
+      <div className="thread-scroll" ref={scrollRef}>
+        {q.isLoading ? (
+          <div className="loading-block" />
+        ) : messages.length === 0 ? (
+          <div className="empty-state small">
+            <p>
+              {lang === "es"
+                ? "Aún no hay mensajes. Escríbele al cliente aquí y todo queda registrado en el trabajo."
+                : "No messages yet. Message the client here and everything stays on the job record."}
+            </p>
+          </div>
+        ) : (
+          messages.map((m: JobMessage) => (
+            <div key={m.id} className={`thread-bubble ${m.sender}`}>
+              {m.sender === "system" ? (
+                <span className="system-event">{m.body}</span>
+              ) : (
+                <>
+                  {m.imageUrl && (
+                    <a href={m.imageUrl} target="_blank" rel="noreferrer">
+                      <img src={m.imageUrl} alt="" loading="lazy" />
+                    </a>
+                  )}
+                  {m.voiceUrl && (
+                    <audio controls preload="none" src={m.voiceUrl}>
+                      {lang === "es" ? "Nota de voz" : "Voice note"}
+                    </audio>
+                  )}
+                  {m.body && <p>{m.body}</p>}
+                  <time>
+                    {new Intl.DateTimeFormat(
+                      lang === "es" ? "es-US" : "en-US",
+                      { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" },
+                    ).format(new Date(m.createdAt))}
+                  </time>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="thread-composer">
+        {(image || voice) && (
+          <div className="composer-attach-row">
+            {image && (
+              <span className="composer-chip">
+                {lang === "es" ? "Foto: " : "Photo: "}
+                {image.name}
+                <button type="button" aria-label={lang === "es" ? "Quitar" : "Remove"} onClick={() => setImage(null)}>
+                  ×
+                </button>
+              </span>
+            )}
+            {voice && (
+              <span className="composer-chip">
+                {lang === "es" ? `Nota de voz (${voice.seconds}s)` : `Voice note (${voice.seconds}s)`}
+                <button type="button" aria-label={lang === "es" ? "Quitar" : "Remove"} onClick={() => setVoice(null)}>
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+        <div className="composer-row">
+          <button
+            type="button"
+            className="composer-icon"
+            aria-label={lang === "es" ? "Adjuntar foto" : "Attach photo"}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Icon>
+              <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+              <circle cx="12" cy="13" r="3.5" />
+            </Icon>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            aria-hidden
+            tabIndex={-1}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setImage(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className={`composer-icon${recording ? " recording" : ""}`}
+            aria-label={recording ? (lang === "es" ? "Detener grabación" : "Stop recording") : (lang === "es" ? "Grabar nota de voz" : "Record voice note")}
+            onClick={() => (recording ? stopRecording() : void startRecording())}
+          >
+            <Icon>
+              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" />
+            </Icon>
+          </button>
+          <input
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder={lang === "es" ? "Escribe un mensaje…" : "Write a message…"}
+            aria-label={lang === "es" ? "Mensaje" : "Message"}
+            maxLength={4000}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && canSend) {
+                e.preventDefault();
+                send.mutate();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!canSend}
+            onClick={() => send.mutate()}
+          >
+            {send.isPending ? "…" : sendLabel}
+          </button>
+        </div>
+        {error && <p className="status error">{error}</p>}
+      </div>
+    </section>
+  );
+}
+
+// Phase 2: focused panels for each workspace tab. Each reuses the data the
+// JobDetail already fetched — no extra round trips.
+
+type WorkspacePanelProps = {
+  lang: Lang;
+  jobId: number;
+  job: NonNullable<JobData["job"]>;
+  photos: JobData["photos"];
+  documents: Awaited<ReturnType<typeof api.listDocuments>>["documents"];
+  invoices: Awaited<ReturnType<typeof api.listInvoices>>["invoices"];
+  quotes: Awaited<ReturnType<typeof api.listQuotes>>["quotes"];
+  operations: Awaited<ReturnType<typeof api.getJobOperations>> | undefined;
+  setScreen: (s: Screen) => void;
+};
+
+function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "operations">) {
+  const appointments = useQuery({
+    queryKey: ["appointments"],
+    queryFn: () => api.listAppointments({}),
+  });
+  const mine = (appointments.data?.appointments ?? []).filter((a) => a.jobId === jobId);
+  const fmt = (iso: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(iso));
+  return (
+    <section className="workspace-panel" aria-label={lang === "es" ? "Agenda" : "Schedule"}>
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Fecha del trabajo" : "Job date"}</h3>
+        <p>
+          <strong>{job.jobDate || "—"}</strong>
+          {job.appointmentAt && <> · {fmt(job.appointmentAt)}</>}
+        </p>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            const start = job.appointmentAt ? new Date(job.appointmentAt) : null;
+            const dt = start && !Number.isNaN(start.getTime())
+              ? start.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z"
+              : null;
+            const url = dt
+              ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(job.jobType)}&dates=${dt}/${dt}&details=${encodeURIComponent(job.jobAddress)}`
+              : "https://calendar.google.com/calendar/render";
+            window.open(url, "_blank", "noopener");
+          }}
+        >
+          {lang === "es" ? "Añadir al calendario" : "Add to calendar"}
+        </button>
+      </div>
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Citas" : "Appointments"}</h3>
+        {appointments.isLoading ? (
+          <div className="loading-block" />
+        ) : mine.length === 0 ? (
+          <p className="muted">{lang === "es" ? "Sin citas para este trabajo." : "No appointments for this job."}</p>
+        ) : (
+          <ul className="panel-list">
+            {mine.map((a) => (
+              <li key={a.id}>
+                <strong>{fmt(a.startsAt)}</strong>
+                <span>{a.notes || "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Registro diario" : "Daily log"}</h3>
+        {(operations?.dailyLogs ?? []).length === 0 ? (
+          <p className="muted">{lang === "es" ? "Aún no hay registros diarios." : "No daily logs yet."}</p>
+        ) : (
+          <ul className="panel-list">
+            {(operations?.dailyLogs ?? []).map((l) => (
+              <li key={l.id}>
+                <strong>{l.logDate}</strong>
+                <span>{l.crew || "—"} · {l.hours || "0"}h</span>
+                {l.blockers && <small className="log-blockers">{lang === "es" ? "Bloqueos: " : "Blockers: "}{l.blockers}</small>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "documents" | "setScreen">) {
+  const mine = documents.filter((d) => d.jobId === jobId);
+  return (
+    <section className="workspace-panel" aria-label={lang === "es" ? "Documentos" : "Documents"}>
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</h3>
+        {mine.length === 0 ? (
+          <p className="muted">{lang === "es" ? "Sin documentos en este trabajo." : "No documents on this job."}</p>
+        ) : (
+          <ul className="panel-list">
+            {mine.map((d) => (
+              <li key={d.id}>
+                <strong>{d.title}</strong>
+                <span>
+                  {d.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}
+                  {d.clientSignedAt
+                    ? (lang === "es" ? " · Firmado" : " · Signed")
+                    : (lang === "es" ? " · Sin firmar" : " · Unsigned")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="row-actions">
+          <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>
+            {lang === "es" ? "Nuevo contrato" : "New contract"}
+          </button>
+          <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>
+            {lang === "es" ? "Nueva orden de cambio" : "New change order"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceFinancialsPanel({ lang, jobId, job, invoices, operations, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "invoices" | "operations" | "setScreen">) {
+  const mine = invoices.filter((i) => i.jobId === jobId);
+  const totalInvoiced = mine.reduce((s, i) => s + Number(i.totalWithLateFee || i.total || 0), 0);
+  const totalPaid = mine.reduce((s, i) => s + Number(i.paidToDate || 0), 0);
+  return (
+    <section className="workspace-panel" aria-label={lang === "es" ? "Finanzas" : "Financials"}>
+      <div className="panel-card money-grid">
+        <div>
+          <small>{lang === "es" ? "Facturado" : "Invoiced"}</small>
+          <strong>{usd(totalInvoiced)}</strong>
+        </div>
+        <div>
+          <small>{lang === "es" ? "Cobrado" : "Paid"}</small>
+          <strong>{usd(totalPaid)}</strong>
+        </div>
+        <div>
+          <small>{lang === "es" ? "Depósito" : "Deposit"}</small>
+          <strong>{usd(money(job.depositAmount))}</strong>
+        </div>
+      </div>
+      {operations?.profitability && (
+        <div className="panel-card">
+          <h3>{lang === "es" ? "Rentabilidad" : "Profitability"}</h3>
+          <p>
+            <strong>{usd(operations.profitability.profit)}</strong>
+            {" · "}
+            {lang === "es" ? "Margen" : "Margin"} {operations.profitability.margin.toFixed(1)}%
+          </p>
+        </div>
+      )}
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Facturas" : "Invoices"}</h3>
+        {mine.length === 0 ? (
+          <p className="muted">{lang === "es" ? "Sin facturas en este trabajo." : "No invoices on this job."}</p>
+        ) : (
+          <ul className="panel-list">
+            {mine.map((i) => (
+              <li key={i.id}>
+                <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
+                <span className={`status-chip ${i.status}`}>{i.status}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" className="secondary-button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>
+          {lang === "es" ? "Nueva factura" : "New invoice"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function WorkspacePhotosPanel({ lang, photos }: Pick<WorkspacePanelProps, "lang" | "photos">) {
+  const stages = ["before", "during", "after"] as const;
+  const label = (s: string) =>
+    s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "during" ? (lang === "es" ? "Durante" : "During") : (lang === "es" ? "Después" : "After");
+  return (
+    <section className="workspace-panel" aria-label={lang === "es" ? "Fotos" : "Photos"}>
+      {stages.map((s) => {
+        const list = photos.filter((p) => p.stage === s);
+        return (
+          <div className="panel-card" key={s}>
+            <h3>{label(s)} · {list.length}</h3>
+            {list.length === 0 ? (
+              <p className="muted">{lang === "es" ? "Sin fotos." : "No photos."}</p>
+            ) : (
+              <div className="photo-grid">
+                {list.map((p) => (
+                  <figure key={p.id}>
+                    <img src={p.url} alt={p.caption || label(s)} loading="lazy" />
+                    {p.caption && <figcaption>{p.caption}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+type ActivityItem = { at: number; label: string; detail: string };
+
+function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operations }: Pick<WorkspacePanelProps, "lang" | "job" | "quotes" | "invoices" | "documents" | "operations">) {
+  const items: ActivityItem[] = [];
+  const push = (iso: string | null | undefined, label: string, detail: string) => {
+    if (!iso) return;
+    const t = new Date(iso).getTime();
+    if (!Number.isNaN(t)) items.push({ at: t, label, detail });
+  };
+  push(job.createdAt, lang === "es" ? "Trabajo creado" : "Job created", job.jobType);
+  if (job.completedAt) push(job.completedAt, lang === "es" ? "Trabajo completado" : "Job completed", "");
+  quotes.filter((x) => x.jobId === job.id).forEach((x) =>
+    push(x.createdAt, lang === "es" ? "Presupuesto" : "Estimate", `${usd(money(x.total))}${x.accepted ? (lang === "es" ? " · Aceptado" : " · Accepted") : ""}`));
+  invoices.filter((x) => x.jobId === job.id).forEach((x) =>
+    push(x.createdAt, lang === "es" ? "Factura" : "Invoice", `${x.invoiceNumber} · ${usd(money(x.totalWithLateFee || x.total))} · ${x.status}`));
+  documents.filter((x) => x.jobId === job.id).forEach((x) =>
+    push(x.signedAt, x.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order"), x.title));
+  (operations?.dailyLogs ?? []).forEach((l) =>
+    push(`${l.logDate}T12:00:00`, lang === "es" ? "Registro diario" : "Daily log", `${l.crew || "—"} · ${l.hours || "0"}h`));
+  items.sort((a, b) => b.at - a.at);
+  return (
+    <section className="workspace-panel" aria-label={lang === "es" ? "Actividad" : "Activity"}>
+      <div className="panel-card">
+        <h3>{lang === "es" ? "Línea de tiempo" : "Timeline"}</h3>
+        {items.length === 0 ? (
+          <p className="muted">{lang === "es" ? "Sin actividad aún." : "No activity yet."}</p>
+        ) : (
+          <ul className="panel-list timeline">
+            {items.map((it, i) => (
+              <li key={i}>
+                <strong>{it.label}</strong>
+                <span>{it.detail}</span>
+                <time>
+                  {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium" }).format(new Date(it.at))}
+                </time>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function JobWorkspacePanel(props: WorkspacePanelProps & { tab: WorkspaceTab }) {
+  const { tab } = props;
+  if (tab === "schedule") return <WorkspaceSchedulePanel {...props} />;
+  if (tab === "messages") return <JobMessagesThread lang={props.lang} jobId={props.jobId} />;
+  if (tab === "documents") return <WorkspaceDocumentsPanel {...props} />;
+  if (tab === "financials") return <WorkspaceFinancialsPanel {...props} />;
+  if (tab === "photos") return <WorkspacePhotosPanel {...props} />;
+  if (tab === "activity") return <WorkspaceActivityPanel {...props} />;
+  return null;
+}
+
+// Phase 2: Bid Board — kanban pipeline for external project bids, built on
+// the existing per-user bid board actions (stages: interested → estimating →
+// submitted → won / lost). Cards move with ‹ › steppers (touch-friendly) and
+// Undo; reminders surface as due badges.
+const BID_STAGES = [
+  { id: "interested", en: "Interested", es: "Interesado" },
+  { id: "estimating", en: "Estimating", es: "Cotizando" },
+  { id: "submitted", en: "Submitted", es: "Enviada" },
+  { id: "won", en: "Won", es: "Ganada" },
+  { id: "lost", en: "Lost", es: "Perdida" },
+] as const;
+type BidStage = (typeof BID_STAGES)[number]["id"];
+type BidItem = Awaited<ReturnType<typeof api.listBidBoard>>["items"][number];
+
+const EMPTY_BID = { title: "", dueDate: "", reminderDate: "", notes: "", stage: "interested" as BidStage };
+
+function BidBoardScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["bid-board"], queryFn: () => api.listBidBoard({}) });
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_BID);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const items = q.data?.items ?? [];
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.saveBidBoardItem({
+        id: null,
+        listingId: null,
+        requestId: null,
+        title: form.title.trim(),
+        stage: form.stage,
+        dueDate: form.dueDate,
+        remindAt: form.reminderDate ? `${form.reminderDate}T12:00:00` : null,
+        notes: form.notes.trim(),
+      }),
+    onSuccess: () => {
+      setFormOpen(false);
+      setForm(EMPTY_BID);
+      buzz(10);
+      void qc.invalidateQueries({ queryKey: ["bid-board"] });
+    },
+    onError: (caught) => {
+      void caught;
+    },
+  });
+
+  const moveItem = (item: BidItem, dir: -1 | 1) => {
+    const idx = BID_STAGES.findIndex((s) => s.id === item.stage);
+    const next = BID_STAGES[idx + dir];
+    if (!next) return;
+    const prev = item.stage;
+    buzz(8);
+    qc.setQueryData(["bid-board"], (old: Awaited<ReturnType<typeof api.listBidBoard>> | undefined) =>
+      old ? { items: old.items.map((i) => (i.id === item.id ? { ...i, stage: next.id as BidStage } : i)) } : old,
+    );
+    api.moveBidBoardItem({ id: item.id, stage: next.id }).catch(() => undefined);
+    const stageLabel = lang === "es" ? next.es : next.en;
+    showUndoToast(
+      lang === "es" ? `Movido a ${stageLabel}` : `Moved to ${stageLabel}`,
+      lang === "es" ? "Deshacer" : "Undo",
+      () => {
+        api.moveBidBoardItem({ id: item.id, stage: prev }).catch(() => undefined);
+      },
+    );
+  };
+
+  const remove = (id: number) => {
+    api.deleteBidBoardItem({ id }).catch(() => undefined);
+    setConfirmDeleteId(null);
+    void qc.invalidateQueries({ queryKey: ["bid-board"] });
+  };
+
+  const today = new Date().toLocaleDateString("en-CA");
+  const reminderDue = (i: BidItem) =>
+    !!i.remindAt && i.remindAt.slice(0, 10) <= today && i.stage !== "won" && i.stage !== "lost";
+
+  return (
+    <main className="page bid-board-page">
+      <PageHeader
+        lang={lang}
+        title={lang === "es" ? "Tablero de licitaciones" : "Bid Board"}
+        onBack={onBack}
+        actions={
+          <button type="button" className="icon-button" aria-label={lang === "es" ? "Agregar" : "Add"} onClick={() => setFormOpen(true)}>
+            <PlusIcon />
+          </button>
+        }
+      />
+      {q.isLoading ? (
+        <div className="loading-block" />
+      ) : (
+        <div className="bid-board">
+          {BID_STAGES.map((stage) => {
+            const cards = items.filter((i) => i.stage === stage.id);
+            return (
+              <section key={stage.id} className={`bid-column ${stage.id}`} aria-label={lang === "es" ? stage.es : stage.en}>
+                <header>
+                  <h2>{lang === "es" ? stage.es : stage.en}</h2>
+                  <span className="bid-count">{cards.length}</span>
+                </header>
+                <div className="bid-cards">
+                  {cards.map((item) => (
+                    <article key={item.id} className={`bid-card${reminderDue(item) ? " reminder-due" : ""}`}>
+                      {reminderDue(item) && (
+                        <span className="bid-reminder-badge">
+                          {lang === "es" ? "Recordatorio vencido" : "Reminder due"}
+                        </span>
+                      )}
+                      <strong>{item.title}</strong>
+                      {item.dueDate && (
+                        <small>
+                          {lang === "es" ? "Vence" : "Due"} {item.dueDate}
+                        </small>
+                      )}
+                      {item.remindAt && (
+                        <small>
+                          {lang === "es" ? "Recordatorio" : "Reminder"}{" "}
+                          {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium" }).format(new Date(item.remindAt))}
+                        </small>
+                      )}
+                      {item.notes && <p>{item.notes}</p>}
+                      <div className="bid-card-actions">
+                        <button
+                          type="button"
+                          disabled={stage.id === "interested"}
+                          aria-label={lang === "es" ? "Mover atrás" : "Move back"}
+                          onClick={() => moveItem(item, -1)}
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="bid-delete"
+                          onClick={() => (confirmDeleteId === item.id ? remove(item.id) : setConfirmDeleteId(item.id))}
+                        >
+                          {confirmDeleteId === item.id ? (lang === "es" ? "¿Confirmar?" : "Confirm?") : (lang === "es" ? "Eliminar" : "Delete")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={stage.id === "lost"}
+                          aria-label={lang === "es" ? "Mover adelante" : "Move forward"}
+                          onClick={() => moveItem(item, 1)}
+                        >
+                          ›
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                  {cards.length === 0 && (
+                    <p className="muted small">{lang === "es" ? "Sin elementos." : "No items."}</p>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+      {formOpen && (
+        <div className="sheet-backdrop" onClick={() => !save.isPending && setFormOpen(false)}>
+          <section
+            className="more-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === "es" ? "Nueva licitación" : "New bid"}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sheet-handle" />
+            <div className="sheet-title-row">
+              <h2>{lang === "es" ? "Nueva licitación" : "New bid"}</h2>
+              <button aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setFormOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="compact-form">
+              <label>
+                <span>{lang === "es" ? "Título" : "Title"}</span>
+                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={200} />
+              </label>
+              <div className="field-pair">
+                <label>
+                  <span>{lang === "es" ? "Vence" : "Due date"}</span>
+                  <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+                </label>
+                <label>
+                  <span>{lang === "es" ? "Recordatorio" : "Reminder"}</span>
+                  <input type="date" value={form.reminderDate} onChange={(e) => setForm({ ...form, reminderDate: e.target.value })} />
+                </label>
+              </div>
+              <label>
+                <span>{lang === "es" ? "Etapa" : "Stage"}</span>
+                <select value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value as BidStage })}>
+                  {BID_STAGES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {lang === "es" ? s.es : s.en}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>{lang === "es" ? "Notas" : "Notes"}</span>
+                <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} maxLength={3000} />
+              </label>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={save.isPending || !form.title.trim()}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? "…" : lang === "es" ? "Guardar" : "Save"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// Phase 2: client-side thread in the portal — text + photos. Voice notes are
+// contractor-only for now (mic permissions in a share link are unreliable).
+function PortalMessages({ lang, token }: { lang: Lang; token: string }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["portal-messages", token],
+    queryFn: () => api.portalListJobMessages({ token }),
+    refetchInterval: 10000,
+  });
+  const [body, setBody] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const messages = q.data?.messages ?? [];
+
+  const send = useMutation({
+    mutationFn: async () => {
+      let payload: { filename: string; contentType: string; dataBase64: string } | null = null;
+      if (image) {
+        const enc = await fileToBase64(image);
+        payload = {
+          filename: image.name,
+          contentType: (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(image.type)
+            ? image.type
+            : "image/jpeg") as "image/jpeg",
+          dataBase64: enc.dataBase64,
+        };
+      }
+      return api.portalSendJobMessage({
+        token,
+        body: body.trim(),
+        imageDataBase64: payload?.dataBase64 ?? "",
+        imageFilename: payload?.filename ?? "",
+        imageContentType: (payload?.contentType as "image/jpeg" | "image/png" | "image/webp" | "image/gif") ?? "image/jpeg",
+      });
+    },
+    onSuccess: () => {
+      setBody("");
+      setImage(null);
+      setError("");
+      void qc.invalidateQueries({ queryKey: ["portal-messages", token] });
+    },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+
+  const canSend = !send.isPending && (!!body.trim() || !!image);
+
+  return (
+    <section className="portal-section" aria-label={lang === "es" ? "Mensajes" : "Messages"}>
+      <h2>{lang === "es" ? "Mensajes" : "Messages"}</h2>
+      <div className="thread-scroll portal-thread">
+        {q.isLoading ? (
+          <div className="loading-block" />
+        ) : messages.length === 0 ? (
+          <p className="muted">
+            {lang === "es"
+              ? "Escriba aquí para comunicarse con su contratista."
+              : "Write here to reach your contractor."}
+          </p>
+        ) : (
+          messages.map((m) => (
+            <div key={m.id} className={`thread-bubble ${m.sender}`}>
+              {m.sender === "system" ? (
+                <span className="system-event">{m.body}</span>
+              ) : (
+                <>
+                  {m.imageUrl && (
+                    <a href={m.imageUrl} target="_blank" rel="noreferrer">
+                      <img src={m.imageUrl} alt="" loading="lazy" />
+                    </a>
+                  )}
+                  {m.voiceUrl && (
+                    <audio controls preload="none" src={m.voiceUrl}>
+                      {lang === "es" ? "Nota de voz" : "Voice note"}
+                    </audio>
+                  )}
+                  {m.body && <p>{m.body}</p>}
+                  <time>
+                    {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    }).format(new Date(m.createdAt))}
+                  </time>
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="thread-composer">
+        {image && (
+          <div className="composer-attach-row">
+            <span className="composer-chip">
+              {image.name}
+              <button type="button" onClick={() => setImage(null)} aria-label={lang === "es" ? "Quitar" : "Remove"}>
+                ×
+              </button>
+            </span>
+          </div>
+        )}
+        <div className="composer-row">
+          <button
+            type="button"
+            className="composer-icon"
+            aria-label={lang === "es" ? "Adjuntar foto" : "Attach photo"}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Icon>
+              <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+              <circle cx="12" cy="13" r="3.5" />
+            </Icon>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            aria-hidden
+            tabIndex={-1}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setImage(f);
+              e.target.value = "";
+            }}
+          />
+          <input
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder={lang === "es" ? "Escribe un mensaje…" : "Write a message…"}
+            aria-label={lang === "es" ? "Mensaje" : "Message"}
+            maxLength={4000}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && canSend) {
+                e.preventDefault();
+                send.mutate();
+              }
+            }}
+          />
+          <button type="button" className="primary-button" disabled={!canSend} onClick={() => send.mutate()}>
+            {send.isPending ? "…" : lang === "es" ? "Enviar" : "Send"}
+          </button>
+        </div>
+        {error && <p className="status error">{error}</p>}
+      </div>
+    </section>
+  );
+}
+
 function JobDetail({
   lang,
   jobId,
@@ -4860,6 +5813,31 @@ function JobDetail({
     query.data.punchItems.length;
   // Build 4: shared-element entrance from the tapped job row.
   const [heroRect] = useState<DOMRect | null>(() => consumeDetailHeroRect());
+  // Phase 2: unified workspace tab + unread client-message badge. The badge
+  // counts client messages newer than the last time the Messages tab was
+  // opened (tracked per job in localStorage).
+  const [wsTab, setWsTab] = useState<WorkspaceTab>("overview");
+  const [lastSeenMsg, setLastSeenMsg] = useState<number>(() =>
+    Number(window.localStorage.getItem(`crewkat-job-msg-seen:${jobId}`) ?? 0),
+  );
+  const wsMessages = useQuery({
+    queryKey: ["job-messages", jobId],
+    queryFn: () => api.listJobMessages({ jobId }),
+    refetchInterval: 15000,
+  });
+  useEffect(() => {
+    if (wsTab === "messages") {
+      const ids = (wsMessages.data?.messages ?? []).map((m) => m.id);
+      const max = Math.max(0, ...ids);
+      if (max > lastSeenMsg) {
+        setLastSeenMsg(max);
+        window.localStorage.setItem(`crewkat-job-msg-seen:${jobId}`, String(max));
+      }
+    }
+  }, [wsTab, wsMessages.data, jobId, lastSeenMsg]);
+  const wsUnread = (wsMessages.data?.messages ?? []).filter(
+    (m) => m.sender === "client" && m.id > lastSeenMsg,
+  ).length;
   return (
     <DetailHero fromRect={heroRect}>
     <main className="page detail-page">
@@ -4878,6 +5856,24 @@ function JobDetail({
         }
       />
       <FlowStepper lang={lang} steps={flowSteps} />
+      {/* Phase 2: unified job workspace — tabbed shell. Overview keeps the
+          existing long scroll; other tabs render focused panels. */}
+      <JobWorkspaceTabs lang={lang} tab={wsTab} onChange={setWsTab} unreadMessages={wsUnread} />
+      {wsTab !== "overview" ? (
+        <JobWorkspacePanel
+          lang={lang}
+          tab={wsTab}
+          jobId={jobId}
+          job={job}
+          photos={query.data?.photos ?? []}
+          documents={documentsQuery.data?.documents ?? []}
+          invoices={invoicesQuery.data?.invoices ?? []}
+          quotes={quotesQuery.data?.quotes ?? []}
+          operations={operationsQuery.data}
+          setScreen={setScreen}
+        />
+      ) : (
+        <>
       {/* Phase 1: contextual quick-action rail — the next lifecycle step only,
           animated on state change, with a persistent undo affordance. */}
       <section className="quick-rail" aria-label={lang === "es" ? "Acciones rápidas" : "Quick actions"}>
@@ -5114,6 +6110,7 @@ function JobDetail({
           <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Operaciones del trabajo" : "Job operations"} onClick={() => setScreen({ name: "jobOps", jobId })}/></div>
         </AccordionSection>
       </section>
+      </>)}
       {activeJobSheet && <div className={`client-sheet-backdrop${jobSheetClosing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet)); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={activeJobSheet}>
         <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={() => closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet))}>×</button></header>
         {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
@@ -5689,6 +6686,7 @@ function SettingsScreen({
     notifyEstimateViewed: true,
     reviewRequestsEnabled: true,
     reviewRequestDelayDays: 3,
+    weeklyProgressEnabled: true,
     simpleMode: true,
     logoUrl: null,
     coverUrl: null,
@@ -5957,6 +6955,11 @@ function SettingsScreen({
                 />
               </label>
             )}
+            {/* Phase 2: weekly client progress digest from shared daily logs. */}
+            <label className="switch-row">
+              <span>{lang === "es" ? "Correo semanal de avance al cliente" : "Weekly progress email to client"}</span>
+              <input type="checkbox" role="switch" checked={form.weeklyProgressEnabled} onChange={(e) => setForm({ ...form, weeklyProgressEnabled: e.target.checked })} />
+            </label>
             <label>
               <span>{t.accentColor}</span>
               <div className="color-field">
@@ -15155,6 +16158,9 @@ function JobOperationsScreen({
     hours: "",
     photoIds: [] as number[],
     notes: "",
+    blockers: "",
+    clientSummary: "",
+    sharedWithClient: true,
   });
   const [note, setNote] = useState({ note: "", reminderDate: "" });
   const [milestone, setMilestone] = useState({
@@ -15442,7 +16448,7 @@ function JobOperationsScreen({
             onSubmit={async (e) => {
               e.preventDefault();
               await api.saveDailyLog({ jobId, ...log });
-              setLog({ ...log, crew: "", hours: "", photoIds: [], notes: "" });
+              setLog({ ...log, crew: "", hours: "", photoIds: [], notes: "", blockers: "", clientSummary: "" });
               refresh();
             }}
           >
@@ -15501,6 +16507,36 @@ function JobOperationsScreen({
                 onChange={(e) => setLog({ ...log, notes: e.target.value })}
               />
             </label>
+            <label>
+              <span>{lang === "es" ? "Bloqueos / pendientes" : "Blockers"}</span>
+              <textarea
+                rows={2}
+                value={log.blockers}
+                onChange={(e) => setLog({ ...log, blockers: e.target.value })}
+                placeholder={lang === "es" ? "Material en espera, clima, acceso…" : "Waiting on material, weather, access…"}
+              />
+            </label>
+            <label>
+              <span>{lang === "es" ? "Resumen para el cliente" : "Client summary"}</span>
+              <textarea
+                rows={3}
+                value={log.clientSummary}
+                onChange={(e) => setLog({ ...log, clientSummary: e.target.value })}
+                placeholder={lang === "es" ? "Lo que el cliente verá en su correo semanal…" : "What the client will see in their weekly email…"}
+              />
+            </label>
+            <label className="market-bookable-switch">
+              <span>
+                <strong>{lang === "es" ? "Compartir con el cliente" : "Share with client"}</strong>
+                <small>{lang === "es" ? "Incluir este día en el correo semanal de avance." : "Include this day in the weekly progress email."}</small>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={log.sharedWithClient}
+                onChange={(e) => setLog({ ...log, sharedWithClient: e.target.checked })}
+              />
+            </label>
             <button className="primary-button">{copy[lang].save}</button>
           </form>
           <div className="timeline-list">
@@ -15512,8 +16548,10 @@ function JobOperationsScreen({
                     {l.crew || "—"} · {l.hours || "0"}h
                   </strong>
                   <p>{l.notes || "—"}</p>
+                  {l.blockers && <p className="log-blockers"><strong>{lang === "es" ? "Bloqueos: " : "Blockers: "}</strong>{l.blockers}</p>}
                   <small>
                     {l.photoIds.length} {copy[lang].photos}
+                    {l.sharedWithClient ? (lang === "es" ? " · Compartido" : " · Shared") : (lang === "es" ? " · Privado" : " · Private")}
                   </small>
                 </div>
               </article>
@@ -17768,6 +18806,8 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           </p>
         )}
       </section>
+      {/* Phase 2: two-way client messaging in the portal. */}
+      <PortalMessages lang={lang} token={token} />
       {/* Build 4: read-only estimate + invoice status in the client portal. */}
       <section className="portal-section">
         <h2>{lang === "es" ? "Presupuestos" : "Estimates"}</h2>
@@ -18094,6 +19134,8 @@ function BookingRequestScreen({ lang }: { lang: Lang }) {
     serviceType: "",
     projectDetails: "",
     preferredContactTime: "",
+    preferredDate: "",
+    preferredTime: "",
     company: "",
   });
   const [done, setDone] = useState(false);
@@ -18116,8 +19158,8 @@ function BookingRequestScreen({ lang }: { lang: Lang }) {
           <h1>{lang === "es" ? "Solicitud recibida" : "Request received"}</h1>
           <p>
             {lang === "es"
-              ? "Nos comunicaremos con usted pronto."
-              : "We’ll be in touch soon."}
+              ? "Nos comunicaremos con usted pronto para confirmar su visita."
+              : "We’ll be in touch soon to confirm your visit."}
           </p>
         </section>
       </main>
@@ -18210,6 +19252,28 @@ function BookingRequestScreen({ lang }: { lang: Lang }) {
             }
           />
         </label>
+        {/* Phase 2: preferred visit slot → auto-creates an appointment. */}
+        <div className="field-pair">
+          <label>
+            <span>
+              {lang === "es" ? "Fecha preferida de visita" : "Preferred visit date"}
+            </span>
+            <input
+              type="date"
+              value={form.preferredDate}
+              min={new Date().toLocaleDateString("en-CA")}
+              onChange={(e) => setForm({ ...form, preferredDate: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Hora preferida" : "Preferred time"}</span>
+            <input
+              type="time"
+              value={form.preferredTime}
+              onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
+            />
+          </label>
+        </div>
         <label className="honeypot" aria-hidden="true">
           <span>Website</span>
           <input
