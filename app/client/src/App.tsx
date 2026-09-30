@@ -9935,19 +9935,21 @@ function InvoicesScreen({
                   {s.frequency === "weekly" ? (lang === "es" ? "Semanal" : "Weekly") : (lang === "es" ? "Mensual" : "Monthly")} · {lang === "es" ? "Próxima" : "Next"}: {formatDate(s.nextRunDate, lang)} · {usd(money(s.total))}
                 </small>
               </span>
-              <button
-                className="small-button"
-                onClick={() => setScreen({ name: "invoicePreview", invoiceId: s.invoiceId })}
-              >
-                {lang === "es" ? "Ver" : "View"}
-              </button>
-              <button
-                className="small-button danger-button"
-                disabled={cancelSchedule.isPending}
-                onClick={() => cancelSchedule.mutate(s.id)}
-              >
-                {lang === "es" ? "Cancelar" : "Cancel"}
-              </button>
+              <div className="recurring-actions">
+                <button
+                  className="small-button"
+                  onClick={() => setScreen({ name: "invoicePreview", invoiceId: s.invoiceId })}
+                >
+                  {lang === "es" ? "Ver" : "View"}
+                </button>
+                <button
+                  className="small-button danger-button"
+                  disabled={cancelSchedule.isPending}
+                  onClick={() => cancelSchedule.mutate(s.id)}
+                >
+                  {lang === "es" ? "Cancelar" : "Cancel"}
+                </button>
+              </div>
             </article>
           ))}
         </section>

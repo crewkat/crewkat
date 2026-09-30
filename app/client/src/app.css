@@ -38,3 +38,8 @@ article.outgoing .message-seen { color: var(--accent); }
 /* Build0.2: pull-to-refresh indicator on message thread */
 .pull-refresh-indicator { text-align: center; padding: 8px; font-size: 12px; color: var(--dim); font-weight: 600; }
 .message-thread { transition: transform 0.15s ease-out; }
+
+/* Fix: recurring schedule card buttons wrapping on narrow screens */
+.recurring-panel article { flex-wrap: wrap; }
+.recurring-panel article > span { flex: 1 1 180px; min-width: 0; }
+.recurring-actions { display: flex; gap: 8px; margin-left: auto; }
