@@ -22,6 +22,7 @@ useLayoutEffect,
 useMemo,
 useRef,
 useState,
+useSyncExternalStore,
 type ChangeEvent,
 type CSSProperties,
 type FormEvent,
@@ -1552,6 +1553,41 @@ function friendlyActionMessage(error: unknown, lang: Lang) {
   return message;
 }
 
+// Free-tier limit detection. Server throws FREE_JOB_LIMIT: / FREE_INVOICE_LIMIT:
+// prefixed errors; these trigger the upgrade sheet instead of an error toast.
+type LimitKind = "job" | "invoice";
+function getLimitKind(error: unknown): LimitKind | null {
+  const message = actionErrorMessage(error);
+  if (message.startsWith("FREE_JOB_LIMIT:")) return "job";
+  if (message.startsWith("FREE_INVOICE_LIMIT:")) return "invoice";
+  return null;
+}
+
+// Global limit-sheet store: any mutation that hits a free-tier ceiling calls
+// notifyLimitHit, and the App root renders the upgrade sheet.
+let limitHit: LimitKind | null = null;
+const limitListeners = new Set<() => void>();
+function notifyLimitHit(kind: LimitKind) {
+  limitHit = kind;
+  limitListeners.forEach((fn) => fn());
+}
+function dismissLimitHit() {
+  limitHit = null;
+  limitListeners.forEach((fn) => fn());
+}
+function subscribeLimitHit(fn: () => void) {
+  limitListeners.add(fn);
+  return () => { limitListeners.delete(fn); };
+}
+function getLimitHit() { return limitHit; }
+// Call in a mutation onError: shows the upgrade sheet for limit errors,
+// otherwise falls back to the normal error display.
+function handleLimitError(error: unknown, fallback: () => void) {
+  const kind = getLimitKind(error);
+  if (kind) notifyLimitHit(kind);
+  else fallback();
+}
+
 function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" | "tools"; token: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(shellRef);
@@ -2075,6 +2111,7 @@ function CrewkatApplication() {
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
   const [scrollNavigationKey, setScrollNavigationKey] = useState(1);
   const [lang, setLang] = useState<Lang>("en");
+  const limitKind = useSyncExternalStore(subscribeLimitHit, getLimitHit);
   // Build 3: service-worker update toast — a new build took control.
   const [swUpdateAvailable, setSwUpdateAvailable] = useState(false);
   useEffect(() => {
@@ -2594,6 +2631,7 @@ function CrewkatApplication() {
         </div>
       )}
     </div>
+      {limitKind && <LimitReachedSheet lang={lang} kind={limitKind} onClose={dismissLimitHit} onUpgrade={() => { dismissLimitHit(); setScreen({ name: "upgrade" }); }} />}
     </ToolsNavigationContext.Provider>
     </SettingsNavigationContext.Provider>
   );
@@ -4006,6 +4044,22 @@ function UpgradeGateSheet({ lang, tool, onClose, onUpgrade }: { lang: Lang; tool
   </div>;
 }
 
+function LimitReachedSheet({ lang, kind, onClose, onUpgrade }: { lang: Lang; kind: LimitKind; onClose: () => void; onUpgrade: () => void }) {
+  useEscapeToClose(true, onClose);
+  const title = lang === "es" ? "Límite del plan gratuito" : "Free plan limit";
+  const body = kind === "job"
+    ? (lang === "es" ? "Tienes 3 trabajos activos, el máximo del plan gratuito. Completa un trabajo para liberar un espacio, o sube a Pro para trabajos ilimitados." : "You have 3 active jobs, the free plan maximum. Complete a job to free a slot, or upgrade to Pro for unlimited jobs.")
+    : (lang === "es" ? "Has creado 5 facturas este mes, el máximo del plan gratuito. Sube a Pro para facturación ilimitada." : "You've created 5 invoices this month, the free plan maximum. Upgrade to Pro for unlimited invoicing.");
+  return <div className="client-sheet-backdrop" role="presentation" onClick={onClose}>
+    <section className="client-sheet pro-gate-sheet" role="dialog" aria-modal="true" aria-labelledby="limit-sheet-title" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" />
+      <header><div><span className="pro-header-badge">PRO</span><h2 id="limit-sheet-title">{title}</h2></div><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button></header>
+      <p>{body}</p>
+      <button className="primary-button" type="button" onClick={onUpgrade}>{lang === "es" ? "Ver Premium — $19/mes" : "View Premium — $19/mo"}</button>
+    </section>
+  </div>;
+}
+
 function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
@@ -4169,7 +4223,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const auth = useContext(AuthContext);
   const subscription = useQuery({ queryKey: ["subscription"], queryFn: () => api.getSubscription({}) });
   const [plan, setPlan] = useState<"monthly" | "annual">("annual");
-  const checkout = useMutation({ mutationFn: (chosen: "monthly" | "annual") => api.startPremiumCheckout({ plan: chosen }) });
+  const checkout = useMutation({ mutationFn: (chosen: "monthly" | "annual" | "lifetime") => api.startPremiumCheckout({ plan: chosen }) });
   const isPremium = auth?.user.tier === "premium" || subscription.data?.tier === "premium";
   const startCheckout = async () => {
     const result = await checkout.mutateAsync(plan);
@@ -4180,6 +4234,8 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   // links (Google Play policy); the web keeps the Stripe flow untouched.
   const qc = useQueryClient();
   const [playOffered, setPlayOffered] = useState(false);
+  const foundingQuery = useQuery({ queryKey: ["founding-availability"], queryFn: () => api.getFoundingMemberAvailability({}), enabled: !isPremium && !playOffered });
+  const usageQuery = useQuery({ queryKey: ["usage-limits"], queryFn: () => api.getUsageLimits({}), enabled: !isPremium });
   const [playConfig, setPlayConfig] = useState<{ configured: boolean; sku: string } | null>(null);
   const [playDetails, setPlayDetails] = useState<PlaySkuDetails | null>(null);
   const [playBusy, setPlayBusy] = useState(false);
@@ -4237,14 +4293,21 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     ? `${playDetails.price.currency === "USD" ? "$" : `${playDetails.price.currency} `}${Number(playDetails.price.value).toFixed(2).replace(/\.00$/, "")}`
     : "$19";
   const features = lang === "es"
-    ? ["Órdenes de compra y proveedores", "Equipo, mantenimiento y seguridad", "Nómina, puntaje de prospectos y automatizaciones", "Informes avanzados y límites ilimitados", "Promoción y espacios extra en Marketplace", "Todas las próximas herramientas Pro"]
-    : ["Purchase orders and suppliers", "Equipment, upkeep, and safety", "Payroll, lead scoring, and automations", "Advanced reports and unlimited limits", "Marketplace promotion and extra listing slots", "Every upcoming Pro tool"];
+    ? ["Trabajos y facturas ilimitados", "Órdenes de compra y proveedores", "Equipo, mantenimiento y seguridad", "Nómina, puntaje de prospectos y automatizaciones", "Informes avanzados", "Todas las próximas herramientas Pro"]
+    : ["Unlimited jobs and invoices", "Purchase orders and suppliers", "Equipment, upkeep, and safety", "Payroll, lead scoring, and automations", "Advanced reports", "Every upcoming Pro tool"];
   return <main className="page upgrade-page">
     <PageHeader lang={lang} title={lang === "es" ? "Crewkat Premium" : "Crewkat Premium"} onBack={onBack} />
     <section className="upgrade-hero">
       <span className="premium-plan-mark">PREMIUM</span>
       <h1>{isPremium ? (lang === "es" ? "Tu espacio Pro está activo" : "Your Pro workspace is active") : (lang === "es" ? "Todo el trabajo. Menos trabajo pesado." : "The whole operation. Less busywork.")}</h1>
-      <p>{lang === "es" ? "Mantén Hoy, Trabajos, Clientes, Facturas, Presupuestos, agenda y fotos gratis. Premium desbloquea todo lo demás." : "Keep Today, Jobs, Clients, Invoices, Estimates, scheduling, and photos free. Premium unlocks everything else."}</p>
+      <p>{lang === "es" ? "Gratis: 3 trabajos activos y 5 facturas al mes. Premium desbloquea límites ilimitados y todas las herramientas Pro." : "Free: 3 active jobs and 5 invoices per month. Premium unlocks unlimited limits and every Pro tool."}</p>
+      {!isPremium && usageQuery.data && usageQuery.data.tier === "free" && (
+        <p className="usage-line" role="status">
+          {lang === "es"
+            ? `Estás usando ${usageQuery.data.activeJobs} de ${usageQuery.data.maxActiveJobs} trabajos y ${usageQuery.data.invoicesThisMonth} de ${usageQuery.data.maxInvoicesPerMonth} facturas este mes.`
+            : `You're using ${usageQuery.data.activeJobs} of ${usageQuery.data.maxActiveJobs} jobs and ${usageQuery.data.invoicesThisMonth} of ${usageQuery.data.maxInvoicesPerMonth} invoices this month.`}
+        </p>
+      )}
       {/* Build 4: monthly vs discounted annual plan selector. The annual
           price/discount still needs the owner's approval before activation.
           Phase 4: hidden inside the Play flow — the Play app sells the monthly
@@ -4286,6 +4349,15 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     <section className="upgrade-features" aria-label={lang === "es" ? "Funciones Premium" : "Premium features"}>{features.map((feature) => <div key={feature}><span aria-hidden="true">✓</span><strong>{feature}</strong></div>)}</section>
     {checkout.isError && <p className="status error">{actionErrorMessage(checkout.error)}</p>}
     {checkout.data && !checkout.data.configured && <div className="billing-setup-note" role="status"><strong>{lang === "es" ? "La facturación aún no está conectada" : "Billing isn’t connected yet"}</strong><p>{lang === "es" ? "El propietario debe terminar la configuración segura de Stripe antes de aceptar suscripciones." : "The owner needs to finish the secure Stripe setup before subscriptions can be accepted."}</p></div>}
+    {!isPremium && !playOffered && foundingQuery.data?.configured && foundingQuery.data.available && (
+      <div className="founding-card" role="region" aria-label={lang === "es" ? "Miembro fundador" : "Founding member"}>
+        <span className="plan-option-badge">{lang === "es" ? `QUEDAN ${foundingQuery.data.remaining}` : `${foundingQuery.data.remaining} LEFT`}</span>
+        <h3>{lang === "es" ? "Miembro fundador" : "Founding member"}</h3>
+        <p className="founding-price"><strong>$149</strong><span>{lang === "es" ? "pago único" : "one-time"}</span></p>
+        <p>{lang === "es" ? "Pro de por vida para los primeros 100. Sin mensualidades, para siempre." : "Lifetime Pro for the first 100. No monthly fees, ever."}</p>
+        <button className="primary-button" type="button" disabled={checkout.isPending} onClick={() => void checkout.mutateAsync("lifetime").then((r) => { if (r.checkoutUrl) window.location.href = r.checkoutUrl; })}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (lang === "es" ? "Ser miembro fundador" : "Become a founding member")}</button>
+      </div>
+    )}
     {!isPremium && !playOffered && <button className="primary-button upgrade-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (plan === "annual" ? (lang === "es" ? "Mejorar anual con Stripe" : "Upgrade annual with Stripe") : (lang === "es" ? "Mejorar con Stripe" : "Upgrade with Stripe"))}</button>}
     {/* Phase 4: Play Billing subscribe button (TWA only — no Stripe link here). */}
     {!isPremium && playOffered && playConfig?.configured && (
@@ -4668,7 +4740,7 @@ function JobFormScreen({
   const create = useMutation({
     mutationFn: () => api.createJob(form),
     onSuccess: (v) => onCreated(v.id),
-    onError: () => setError(t.error),
+    onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -5862,6 +5934,7 @@ function JobDetail({
       await client.invalidateQueries({ queryKey: ["invoices"] });
       setScreen({ name: "invoicePreview", invoiceId: r.invoiceId });
     },
+    onError: (e) => handleLimitError(e, () => {}),
   });
   const flowQuote = (quotesQuery.data?.quotes ?? []).find((q) => q.jobId === jobId) ?? null;
   const flowInvoice = (invoicesQuery.data?.invoices ?? []).find((i) => i.jobId === jobId) ?? null;
@@ -8892,6 +8965,7 @@ function QuotesScreen({
       client.invalidateQueries({ queryKey: ["invoices"] });
       setScreen({ name: "invoicePreview", invoiceId: r.invoiceId });
     },
+    onError: (e) => handleLimitError(e, () => {}),
   });
   return (
     <main className="page">
@@ -9770,7 +9844,7 @@ function QuotePreview({
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => { if (quote) void buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }).then(setBlob); }, [quote, settings, lang]);
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);}});
-  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);}});
+  const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
   const [confirmConvert, setConfirmConvert] = useState(false);
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
   if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/><div className="loading-block"/></main>;
@@ -9865,7 +9939,7 @@ function InvoicesScreen({
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
   const estTerms = estimateTerms(lang, settings); const estimateWord = capFirst(estTerms.plural);
   const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
-  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id, today: localToday() }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); } });
+  const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id, today: localToday() }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); }, onError: (e) => handleLimitError(e, () => {}) });
   const status = useMutation({
     mutationFn: ({ id, status }: { id: number; status: InvoiceStatus }) =>
       api.updateInvoiceStatus({ id, status }),
@@ -10044,7 +10118,7 @@ function InvoiceBuilder({
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); onBack(); },
-    onError: () => setError(t.error),
+    onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
@@ -10242,7 +10316,7 @@ function InvoicePreview({
   const [recurringEnd,setRecurringEnd]=useState("");
   useEffect(()=>{if(invoice){void buildInvoicePdf(invoice,settings,lang,{discount:t.discount,tax:t.tax,paymentInstructions:t.paymentInstructions}).then(setBlob);setFrequency(invoice.recurringFrequency);setNextDue(invoice.nextDueDate);setRecurringEnd(invoice.recurringEndDate);}},[invoice,settings,lang]);
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["invoices"]});};
-  const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);}});
+  const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);},onError:(e)=>handleLimitError(e,()=>{})});
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
   const schedulesQuery=useQuery({queryKey:["recurring-schedules"],queryFn:()=>api.listRecurringSchedules({})});
   const [scheduleFrequency,setScheduleFrequency]=useState<"weekly"|"monthly">("monthly");

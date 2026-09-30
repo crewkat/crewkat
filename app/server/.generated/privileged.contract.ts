@@ -65,7 +65,7 @@ export const privileged = definePrivilegedContracts({
     timeoutMs: 20_000,
   },
   createStripeCheckout: {
-    request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200), plan: z.enum(["monthly", "annual"]).default("monthly") }),
+    request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200), plan: z.enum(["monthly", "annual", "lifetime"]).default("monthly") }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
     capabilities: [],
     timeoutMs: 20_000,
@@ -82,6 +82,7 @@ export const privileged = definePrivilegedContracts({
       currentPeriodEnd: z.number().int().nullable(),
       cancelAtPeriodEnd: z.boolean(),
       checkoutType: z.string().nullable(),
+      plan: z.string().nullable(),
       listingId: z.number().int().positive().nullable(),
       companyId: z.number().int().positive().nullable(),
       stripeSessionId: z.string().nullable(),
