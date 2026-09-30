@@ -10313,6 +10313,8 @@ function InvoicesScreen({
   const qc = useQueryClient();
   const [tab, setTab] = useState<"invoices" | "estimates">("invoices");
   const [confirmConvertQuoteId, setConfirmConvertQuoteId] = useState<number | null>(null);
+  const [invSearch, setInvSearch] = useState("");
+  const [invStatus, setInvStatus] = useState<"all" | InvoiceStatus>("all");
   const schedulesQuery = useQuery({ queryKey: ["recurring-schedules"], queryFn: () => api.listRecurringSchedules({}) });
   const cancelSchedule = useMutation({ mutationFn: (id: number) => api.cancelRecurringSchedule({ id }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recurring-schedules"] }); } });
   const activeSchedules = (schedulesQuery.data?.schedules ?? []).filter((s) => s.active);
@@ -10327,6 +10329,11 @@ function InvoicesScreen({
     return b.createdAt.localeCompare(a.createdAt);
   });
   const sortedInvoices = sortDocuments(query.data?.invoices ?? []);
+  const invTerm = invSearch.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
+  const visibleInvoices = sortedInvoices.filter((invoice) =>
+    (invStatus === "all" || invoice.status === invStatus) &&
+    (!invTerm || [invoice.clientName, invoice.invoiceNumber, invoice.jobType, String(invoice.id)].some((v) => v.toLocaleLowerCase(lang === "es" ? "es" : "en").includes(invTerm)))
+  );
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
   const estTerms = estimateTerms(lang, settings); const estimateWord = capFirst(estTerms.plural);
   const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
@@ -10419,17 +10426,26 @@ function InvoicesScreen({
           ))}
         </section>
       )}
-      {tab === "invoices" ? <section className="quote-list document-list">
+      {tab === "invoices" && (
+        <div className="ck-invoice-toolbar">
+          <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? "Buscar facturas" : "Search invoices"}</span><input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder={lang === "es" ? "Buscar facturas" : "Search invoices"} aria-label={lang === "es" ? "Buscar facturas" : "Search invoices"} /></label>
+          <select className="ck-btn-sm" value={invStatus} onChange={(e) => setInvStatus(e.target.value as "all" | InvoiceStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
+            <option value="all">{lang === "es" ? "Todas" : "All"}</option><option value="draft">{t.draft}</option><option value="sent">{lang === "es" ? "Pendiente" : "Pending"}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option>
+          </select>
+        </div>
+      )}
+      {tab === "invoices" ? <section className="quote-list document-list" aria-label={lang === "es" ? "Lista de facturas" : "Invoice list"}>
         {query.isLoading && <SkeletonList rows={5} />}
-        {sortedInvoices.map((invoice) => (
+        {visibleInvoices.map((invoice) => (
           <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
-          <TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
-            <div className="document-row-copy">
-              <span className={`status-chip ${invoice.status}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : t.sent}</span>
-              <h2>{invoice.clientName}</h2>
-              <p>{invoice.jobType || t.invoices} · {usd(money(invoice.totalWithLateFee))}</p>
-              <small>#{invoice.id} · {t.balanceRemaining}: {usd(Number(invoice.balanceRemaining))}{invoice.recurringFrequency !== "none" ? ` · ${t.recurring}` : ""}</small>
-            </div>
+          <TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
+            <button type="button" className={`ck-check${invoice.status === "paid" ? " done" : ""}`} aria-label={invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid")} onClick={() => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); }}>{invoice.status === "paid" && <CheckIcon />}</button>
+            <span className="ck-invoice-row-copy">
+              <strong>{lang === "es" ? "Factura" : "Invoice"} #{invoice.invoiceNumber} - {invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</strong>
+              <small>{invoice.clientName}</small>
+              <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</span>
+            </span>
+            <strong className="ck-invoice-row-amount">{usd(money(invoice.totalWithLateFee))}</strong>
             <div className="row-actions">
               <select value={invoice.status} onChange={(e) => status.mutate({ id: invoice.id, status: e.target.value as InvoiceStatus })} aria-label={`${t.invoiceStatus} #${invoice.id}`}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select>
               <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>{t.viewDocument}</button>
@@ -10437,6 +10453,7 @@ function InvoicesScreen({
           </TapArticle>
           </SwipeRow>
         ))}
+        {visibleInvoices.length === 0 && !query.isLoading && (query.data?.invoices.length ?? 0) > 0 && <p className="privacy-note">{lang === "es" ? "No hay facturas que coincidan con la búsqueda." : "No invoices match your search."}</p>}
         {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE"} onAction={() => setScreen({ name: "invoiceNew" })} />}
       </section> : <section className="quote-list document-list">
         {quotes.isLoading && <SkeletonList rows={5} />}
@@ -10733,8 +10750,46 @@ function InvoicePreview({
         ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState, onTap: openPaymentSheet }
         : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState, onTap: openPaymentSheet },
     ]} />
-    <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={invoice} settings={settings} lang={lang} kind="invoice"/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
-    <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(invoice.totalWithLateFee))}</strong></div><span className={`status-chip ${invoice.status}`}>{statusLabel}</span><ViewedBadge lang={lang} kind="invoice" id={invoice.id} /><div className="record-links"><button onClick={() => invoice.clientId ? setScreen({ name: "client", clientId: invoice.clientId }) : setScreen({ name: "clients" })}>{invoice.clientName}</button>{invoice.jobId && <button onClick={() => setScreen({ name: "detail", jobId: invoice.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
+    <section className="ck-invoice-detail ck-compact-card" aria-label={lang === "es" ? "Detalle de factura" : "Invoice detail"}>
+      <div className="ck-inv-head">
+        <div>
+          <small className="ck-inv-label">{lang === "es" ? "Factura" : "Invoice"}</small>
+          <h2 className="ck-inv-number">INVOICE #{invoice.invoiceNumber.replace(/^INV-/i, "")}</h2>
+        </div>
+        <button type="button" className="ck-icon-btn" onClick={() => setEditing(true)} aria-label={lang === "es" ? "Editar factura" : "Edit invoice"}><Icon size={17}><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon></button>
+      </div>
+      <div className="ck-inv-meta">
+        <span>{lang === "es" ? "Cliente" : "Client"}: <strong>{invoice.clientName}</strong></span>
+        <span>{lang === "es" ? "Fecha" : "Date"}: {formatDate(invoice.issueDate, lang)} · {lang === "es" ? "Vence" : "Due"}: {invoice.dueDate ? formatDate(invoice.dueDate, lang) : "—"}</span>
+      </div>
+      <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{statusLabel}</span>
+      <ul className="ck-inv-items">
+        {invoice.lineItems.map((item, idx) => {
+          const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount));
+          const unitLabel = item.unit === "hours" ? (lang === "es" ? "h" : "hrs") : item.unit === "days" ? (lang === "es" ? "días" : "days") : "";
+          return (
+            <li key={idx}>
+              <div><strong>{item.name || item.description}</strong><small>{item.quantity}{unitLabel ? ` ${unitLabel}` : ""} × {usd(money(item.amount))}</small></div>
+              <span>{usd(lineTotal)}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="ck-inv-totals">
+        <div><span>{t.subtotal}</span><strong>{usd(money(invoice.subtotal))}</strong></div>
+        {money(invoice.discountValue) > 0 && <div><span>{t.discount}</span><strong>-{usd(money(invoice.discountValue))}</strong></div>}
+        <div><span>{t.tax}</span><strong>{usd(money(invoice.taxValue))}</strong></div>
+      </div>
+      <div className="ck-inv-total-bar"><span>{t.total}</span><strong>{usd(money(invoice.totalWithLateFee))}</strong></div>
+      <button type="button" className="ck-inv-pay-btn" onClick={openPaymentSheet}>{invoice.status === "paid" ? `✓ ${t.paid}` : (lang === "es" ? "Marcar como pagada ✓" : "Mark as Paid ✓")}</button>
+      <button type="button" className="ck-btn-sm ck-btn-ghost" onClick={() => setFullScreen(true)}>{t.previewPdf}</button>
+      <div className="ck-inv-links">
+        <button onClick={() => invoice.clientId ? setScreen({ name: "client", clientId: invoice.clientId }) : setScreen({ name: "clients" })}>{invoice.clientName}</button>
+        {invoice.jobId && <button onClick={() => setScreen({ name: "detail", jobId: invoice.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}
+        <ViewedBadge lang={lang} kind="invoice" id={invoice.id} />
+      </div>
+      {signature.data?.signature && <small className="signed-label"><CheckIcon />{lang === "es" ? "Firmada por" : "Signed by"} {signature.data.signature.signerName}</small>}
+    </section>
     <button className="primary-button send-document" disabled={!blob} onClick={sendInvoice}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
     <section className="payment-section" aria-label={t.partialPayments}>

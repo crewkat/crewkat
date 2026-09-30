@@ -33,7 +33,7 @@ describe("TapArticle document support", () => {
 describe("invoice/estimate cards are tappable", () => {
   test("invoice card opens the invoice preview", () => {
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
+      '<TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
     );
   });
 
