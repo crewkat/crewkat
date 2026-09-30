@@ -3985,6 +3985,181 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       };
     },
   }),
+  // ---------------------------------------------------------------------------
+  // Platform support inbox: two-way chat between Crewkat users and Danny.
+  // Reports arrive server-side here (the old in-app form wrote to the
+  // device's local support_reports table, which no one ever saw). Replies are
+  // plain conversation bubbles — deliberately no read receipts; the only
+  // unread signal is Danny's inbox badge.
+  // ---------------------------------------------------------------------------
+  submitPlatformSupportReport: defineAction({
+    request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }),
+    response: z.object({ id: z.number(), sentAt: z.string() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      const now = new Date();
+      const made = (await db.insert(schema.platformSupportReports).values({ userId: user.id, userName: user.name, userEmail: user.email, kind: args.kind, subject: args.subject, message: args.message, language: args.language, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.platformSupportReports.id }))[0];
+      if (!made) throw new Error("The report could not be sent.");
+      ctx.invalidateQueries();
+      return { id: made.id, sentAt: now.toISOString() };
+    },
+  }),
+  platformSupportInbox: defineAction({
+    request: z.object({}),
+    response: z.object({
+      reports: z.array(z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), replyCount: z.number(), lastReplyAt: z.string().nullable(), createdAt: z.string(), resolvedAt: z.string().nullable() })),
+      unreadCount: z.number(),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const reports = await db.select().from(schema.platformSupportReports).orderBy(desc(schema.platformSupportReports.createdAt), desc(schema.platformSupportReports.id));
+      const reportIds = reports.map((r) => r.id);
+      const replyRows = reportIds.length ? await db.select().from(schema.platformSupportReplies).where(inArray(schema.platformSupportReplies.reportId, reportIds)) : [];
+      const countByReport = new Map<number, number>();
+      const lastAtByReport = new Map<number, Date>();
+      for (const reply of replyRows) {
+        countByReport.set(reply.reportId, (countByReport.get(reply.reportId) ?? 0) + 1);
+        const prev = lastAtByReport.get(reply.reportId);
+        if (!prev || reply.createdAt > prev) lastAtByReport.set(reply.reportId, reply.createdAt);
+      }
+      return {
+        reports: reports.map((r) => ({
+          id: r.id, userName: r.userName, userEmail: r.userEmail, kind: r.kind, subject: r.subject, message: r.message,
+          language: r.language, status: r.status, isUnread: r.isUnread,
+          replyCount: countByReport.get(r.id) ?? 0, lastReplyAt: lastAtByReport.get(r.id)?.toISOString() ?? null,
+          createdAt: r.createdAt.toISOString(), resolvedAt: r.resolvedAt?.toISOString() ?? null,
+        })),
+        unreadCount: reports.filter((r) => r.isUnread).length,
+      };
+    },
+  }),
+  platformSupportThread: defineAction({
+    request: z.object({ reportId: z.number().int().positive() }),
+    response: z.object({
+      report: z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable() }),
+      replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
+      if (!report) throw new Error("Report not found.");
+      const replies = await db.select().from(schema.platformSupportReplies).where(eq(schema.platformSupportReplies.reportId, report.id)).orderBy(schema.platformSupportReplies.createdAt, schema.platformSupportReplies.id);
+      return {
+        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null },
+        replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() })),
+      };
+    },
+  }),
+  replyToSupportReport: defineAction({
+    request: z.object({ reportId: z.number().int().positive(), message: z.string().trim().min(1).max(5000) }),
+    response: z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
+      if (!report) throw new Error("Report not found.");
+      const now = new Date();
+      const made = (await db.insert(schema.platformSupportReplies).values({ reportId: report.id, sender: "admin", message: args.message, createdAt: now }).returning({ id: schema.platformSupportReplies.id }))[0];
+      if (!made) throw new Error("The reply could not be sent.");
+      // Danny read the thread by replying — clear the unread flag, stay open.
+      await db.update(schema.platformSupportReports).set({ isUnread: false, updatedAt: now }).where(eq(schema.platformSupportReports.id, report.id));
+      await logAdminAction(db, admin.id, "support.reply", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> — ${report.subject}`);
+      ctx.invalidateQueries();
+      return { id: made.id, sender: "admin", message: args.message, createdAt: now.toISOString() };
+    },
+  }),
+  updatePlatformSupportReport: defineAction({
+    request: z.object({ id: z.number().int().positive(), status: z.enum(["open", "resolved"]), isUnread: z.boolean() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date();
+      const current = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.id)).limit(1))[0];
+      if (!current) throw new Error("Report not found.");
+      await db.update(schema.platformSupportReports).set({ status: args.status, isUnread: args.isUnread, resolvedAt: args.status === "resolved" ? now : null, updatedAt: now }).where(eq(schema.platformSupportReports.id, args.id));
+      await logAdminAction(db, admin.id, args.status === "resolved" ? "support.resolve" : "support.reopen", "platform_support_report", String(args.id), `${current.userName} <${current.userEmail}> — ${current.subject}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  userSupportThreads: defineAction({
+    request: z.object({}),
+    response: z.object({
+      threads: z.array(z.object({
+        id: z.number(), kind: z.string(), subject: z.string(), message: z.string(), status: z.string(),
+        replyCount: z.number(), lastReply: z.object({ sender: z.string(), message: z.string(), createdAt: z.string() }).nullable(),
+        createdAt: z.string(), updatedAt: z.string(),
+      })),
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const reports = await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.userId, identity.workspaceUserId)).orderBy(desc(schema.platformSupportReports.createdAt), desc(schema.platformSupportReports.id));
+      const reportIds = reports.map((r) => r.id);
+      const replyRows = reportIds.length ? await db.select().from(schema.platformSupportReplies).where(inArray(schema.platformSupportReplies.reportId, reportIds)) : [];
+      const byReport = new Map<number, { id: number; sender: string; message: string; createdAt: Date }[]>();
+      for (const reply of replyRows) {
+        const list = byReport.get(reply.reportId) ?? [];
+        list.push({ id: reply.id, sender: reply.sender, message: reply.message, createdAt: reply.createdAt });
+        byReport.set(reply.reportId, list);
+      }
+      return {
+        threads: reports.map((r) => {
+          const replies = (byReport.get(r.id) ?? []).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+          const latest = replies[0] ?? null;
+          return {
+            id: r.id, kind: r.kind, subject: r.subject, message: r.message, status: r.status,
+            replyCount: replies.length,
+            lastReply: latest ? { sender: latest.sender, message: latest.message.slice(0, 120), createdAt: latest.createdAt.toISOString() } : null,
+            createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+          };
+        }),
+      };
+    },
+  }),
+  userSupportThread: defineAction({
+    request: z.object({ reportId: z.number().int().positive() }),
+    response: z.object({
+      report: z.object({ id: z.number(), kind: z.string(), subject: z.string(), message: z.string(), status: z.string(), createdAt: z.string() }),
+      replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
+    }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
+      // Ownership check: users can only ever see their own reports.
+      if (!report || report.userId !== identity.workspaceUserId) throw new Error("Report not found.");
+      const replies = await db.select().from(schema.platformSupportReplies).where(eq(schema.platformSupportReplies.reportId, report.id)).orderBy(schema.platformSupportReplies.createdAt, schema.platformSupportReplies.id);
+      return {
+        report: { id: report.id, kind: report.kind, subject: report.subject, message: report.message, status: report.status, createdAt: report.createdAt.toISOString() },
+        replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() })),
+      };
+    },
+  }),
+  replyToOwnSupportReport: defineAction({
+    request: z.object({ reportId: z.number().int().positive(), message: z.string().trim().min(1).max(5000) }),
+    response: z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
+      // Ownership check: users can only reply on their own reports.
+      if (!report || report.userId !== identity.workspaceUserId) throw new Error("Report not found.");
+      const now = new Date();
+      const made = (await db.insert(schema.platformSupportReplies).values({ reportId: report.id, sender: "user", message: args.message, createdAt: now }).returning({ id: schema.platformSupportReplies.id }))[0];
+      if (!made) throw new Error("The reply could not be sent.");
+      // Flag it unread so Danny's inbox badge picks it up.
+      await db.update(schema.platformSupportReports).set({ isUnread: true, updatedAt: now }).where(eq(schema.platformSupportReports.id, report.id));
+      ctx.invalidateQueries();
+      return { id: made.id, sender: "user", message: args.message, createdAt: now.toISOString() };
+    },
+  }),
   submitSupportReport: defineAction({ request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }), response: z.object({ id: z.number(), sentAt: z.string() }), async handler(ctx, args) { const now = new Date(); const rows = await ctx.db<typeof schema>().insert(schema.supportReports).values({ ...args, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.supportReports.id }); const made = rows[0]; if (!made) throw new Error("The report could not be saved."); ctx.invalidateQueries(); return { id: made.id, sentAt: now.toISOString() }; }}),
 
   getSettings: defineAction({ request: z.object({}), response: settingsSchema, async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1); const row = rows[0]; if (!row) return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en" as const, accentColor: "#1f5a4a", themeMode: "system" as const, uiAccent: "orange" as const, defaultQuoteTheme: "classic" as const, defaultDocumentFont: "helvetica" as const, defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent" as const, lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date" as const, addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null }; return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null }; }}),

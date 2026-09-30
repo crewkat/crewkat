@@ -1011,3 +1011,40 @@ export const cancellationFeedback = sqliteTable("cancellation_feedback", {
   index("cancellation_feedback_user_idx").on(table.userId),
   index("cancellation_feedback_created_idx").on(table.createdAt),
 ]);
+
+// Platform support inbox: reports sent from Settings -> Customer support land
+// here server-side so Danny sees them in the platform admin console. The local
+// per-device `supportReports` table above stays for the contractor's own crew
+// support flow and is untouched by this feature.
+export const platformSupportReports = sqliteTable("platform_support_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  userName: text("user_name").notNull(),
+  userEmail: text("user_email").notNull(),
+  kind: text("kind", { enum: ["support", "problem", "question", "general", "feature"] }).notNull(),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  language: text("language", { enum: ["en", "es"] }).notNull().default("en"),
+  status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
+  isUnread: integer("is_unread", { mode: "boolean" }).notNull().default(true),
+  resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("platform_support_reports_user_idx").on(table.userId),
+  index("platform_support_reports_created_idx").on(table.createdAt),
+  index("platform_support_reports_status_idx").on(table.status),
+]);
+
+// Two-way replies on a support report. `sender` is who wrote it; there are
+// deliberately no read receipts — only Danny's unread badge on the inbox.
+export const platformSupportReplies = sqliteTable("platform_support_replies", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  reportId: integer("report_id").notNull().references(() => platformSupportReports.id, { onDelete: "cascade" }),
+  sender: text("sender", { enum: ["user", "admin"] }).notNull(),
+  message: text("message").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("platform_support_replies_report_idx").on(table.reportId),
+  index("platform_support_replies_created_idx").on(table.createdAt),
+]);

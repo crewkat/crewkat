@@ -4,7 +4,7 @@ import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS } from "..
 export type LegalDocumentKind = "terms" | "privacy" | "marketplace";
 
 const EFFECTIVE_DATE = "September 26, 2026";
-const CONTACT_EMAIL = "stallionsconstructioncompany@gmail.com";
+const CONTACT_EMAIL = "support@crewkat.com";
 
 function LegalSection({ title, children }: { title: string; children: ReactNode }) {
   return (

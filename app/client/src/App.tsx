@@ -90,7 +90,6 @@ const APP_INFO = {
   version: "0.9.0",
   releaseYear: "2026",
   developer: "Crewkat",
-  supportEmail: "stallionsconstructioncompany@gmail.com",
 } as const;
 
 // Per-deploy build id stamped into the built index.html by client/build.mjs.
@@ -7020,10 +7019,11 @@ function SettingsScreen({
   });
   const report = useMutation({
     mutationFn: () =>
-      api.submitSupportReport({ ...supportForm, language: lang }),
+      api.submitPlatformSupportReport({ ...supportForm, language: lang }),
     onSuccess: (result) => {
       setSentReport(result);
       setSupportForm((current) => ({ ...current, subject: "", message: "" }));
+      client.invalidateQueries({ queryKey: ["support-threads"] });
     },
   });
   const backup = useMutation({
@@ -7581,26 +7581,11 @@ function SettingsScreen({
             <div className="settings-heading">
               <p>
                 {lang === "es"
-                  ? "Escríbenos por correo o envía un reporte dentro de la app."
-                  : "Email support or send a report from inside the app."}
+                  ? "Envía un reporte desde la app — te respondemos aquí mismo."
+                  : "Send a report from inside the app — we reply right here."}
               </p>
             </div>
-            <a
-              className="support-email"
-              href={`mailto:${APP_INFO.supportEmail}?subject=${encodeURIComponent("Crewkat support")}`}
-            >
-              <Icon>
-                <path d="M3 5h18v14H3z" />
-                <path d="m3 6 9 7 9-7" />
-              </Icon>
-              <span>
-                <strong>
-                  {lang === "es" ? "Enviar correo a soporte" : "Email support"}
-                </strong>
-                <small>{APP_INFO.supportEmail}</small>
-              </span>
-              <BackIcon />
-            </a>
+            <SupportThreadsPanel lang={lang} />
             <fieldset className="support-form">
               <legend>
                 {lang === "es" ? "Enviar un reporte" : "Send a report"}
@@ -7888,7 +7873,7 @@ const ADMIN_DEFAULTS: AdminParameters = {
   hourlyLaborCost: "0",
 };
 
-type PlatformAdminTab = "analytics" | "queue" | "users" | "refunds" | "settings" | "audit";
+type PlatformAdminTab = "analytics" | "support" | "queue" | "users" | "refunds" | "settings" | "audit";
 
 function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefundEmail }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void; initialTab?: PlatformAdminTab; initialRefundEmail?: string }) {
   const auth = useContext(AuthContext);
@@ -7897,19 +7882,22 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => { if (initialRefundEmail !== undefined) setRefundEmail(initialRefundEmail); }, [initialRefundEmail]);
   const t = lang === "es"
-    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
-    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
+    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", support: "Soporte", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
+    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
+  const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}), enabled: !!auth?.user.isPlatformAdmin, staleTime: 15000 });
+  const supportUnread = inboxBadge.data?.unreadCount ?? 0;
   if (!auth?.user.isPlatformAdmin) {
     return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.denied}</h2><p>{t.deniedBody}</p></div></main>;
   }
   return <main className="page pa-page">
     <PageHeader lang={lang} title={t.title} onBack={onBack} />
     <nav className="pa-tabs" aria-label={t.title}>
-      {(["analytics", "queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
-        <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}</button>
+      {(["analytics", "support", "queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
+        <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}{value === "support" && supportUnread > 0 && <span className="pa-tab-badge">{supportUnread}</span>}</button>
       ))}
     </nav>
     {tab === "analytics" && <PAAnalyticsTab lang={lang} />}
+    {tab === "support" && <PASupportTab lang={lang} />}
     {tab === "queue" && <PAQueueTab lang={lang} />}
     {tab === "users" && <PAUsersTab lang={lang} setScreen={setScreen} />}
     {tab === "refunds" && <PARefundsTab lang={lang} initialEmail={refundEmail} />}
@@ -8098,6 +8086,185 @@ function ExitSurveySheet({ lang }: { lang: Lang }) {
       <button type="button" className="secondary-button" onClick={() => setDismissed(true)}>{t.skip}</button>
       <button type="button" className="primary-button" disabled={!reason || submit.isPending} onClick={() => reason && submit.mutate({ reason: reason as typeof t.reasons[number]["value"], details: details.trim() })}>{t.submit}</button>
     </div>
+  </div>;
+}
+
+type SupportStrings = {
+  loading: string; empty: string; emptyBody: string; loadError: string; retry: string;
+  by: string; replies: string; open: string; resolved: string; unread: string;
+  markResolved: string; reopen: string; markRead: string; markUnread: string; back: string;
+  title: string; crewkatSupport: string; you: string;
+};
+
+function supportKindLabel(kind: string, lang: Lang): string {
+  const map: Record<string, { en: string; es: string }> = {
+    support: { en: "Support", es: "Soporte" },
+    problem: { en: "Bug / error", es: "Error" },
+    question: { en: "Question", es: "Pregunta" },
+    general: { en: "General", es: "Consulta" },
+    feature: { en: "Feature request", es: "Sugerencia" },
+  };
+  const entry = map[kind];
+  return entry ? entry[lang] : kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+function supportDate(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+type ThreadBubble = { id: string | number; fromViewer: boolean; name: string; message: string; createdAt: string };
+
+function ThreadBubbles({ lang, items }: { lang: Lang; items: ThreadBubble[] }) {
+  return <div className="thread-bubbles">{items.map((item) => (
+    <div key={item.id} className={`bubble ${item.fromViewer ? "admin" : "user"}`}>
+      {item.message}
+      <small>{item.name} · {supportDate(item.createdAt, lang)}</small>
+    </div>
+  ))}</div>;
+}
+
+function ThreadReplyBox({ lang, onSend, pending, error }: { lang: Lang; onSend: (message: string) => void; pending: boolean; error: string }) {
+  const [draft, setDraft] = useState("");
+  const t = lang === "es" ? { placeholder: "Escribe una respuesta…", send: "Enviar", sending: "Enviando…" } : { placeholder: "Write a reply…", send: "Send", sending: "Sending…" };
+  return <form className="thread-reply" onSubmit={(event) => { event.preventDefault(); const message = draft.trim(); if (message && !pending) { onSend(message); setDraft(""); } }}>
+    <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={t.placeholder} maxLength={5000} aria-label={t.placeholder} />
+    {error && <p className="status error" role="alert">{error}</p>}
+    <button type="submit" className="primary-button" disabled={pending || !draft.trim()}>{pending ? t.sending : t.send}</button>
+  </form>;
+}
+
+// ---------------------------------------------------------------------------
+// Platform admin: Support tab — inbox of user reports with two-way threads.
+// ---------------------------------------------------------------------------
+function PASupportTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [openId, setOpenId] = useState<number | null>(null);
+  const query = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}) });
+  const update = useMutation({
+    mutationFn: (args: { id: number; status: "open" | "resolved"; isUnread: boolean }) => api.updatePlatformSupportReport(args),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }),
+    onError: () => {},
+  });
+  const t: SupportStrings = lang === "es"
+    ? { loading: "Cargando…", empty: "Sin mensajes de soporte.", emptyBody: "Los reportes enviados desde la app aparecerán aquí.", loadError: "No se pudo cargar el buzón de soporte.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "Marcar resuelto", reopen: "Reabrir", markRead: "Marcar leído", markUnread: "Marcar sin leer", back: "Atrás", title: "Solicitudes de soporte", crewkatSupport: "Soporte de Crewkat", you: "Tú" }
+    : { loading: "Loading…", empty: "No support messages.", emptyBody: "Reports sent from inside the app will show up here.", loadError: "Could not load the support inbox.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "Mark resolved", reopen: "Reopen", markRead: "Mark read", markUnread: "Mark unread", back: "Back", title: "Support requests", crewkatSupport: "Crewkat support", you: "You" };
+  if (openId !== null) return <PASupportThreadView lang={lang} reportId={openId} onBack={() => setOpenId(null)} t={t} />;
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  const reports = query.data?.reports ?? [];
+  if (!reports.length) return <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>;
+  return <div className="pa-list">
+    {reports.map((report) => (
+      <article key={report.id} className={`pa-card ${report.isUnread ? "pa-report-unread" : ""}`}>
+        <button type="button" className="pa-report-clickable" onClick={() => setOpenId(report.id)} aria-label={`${report.subject}`}>
+          <div className="pa-card-head">
+            <div><h3>{report.subject}</h3><small>{report.userName} · {report.userEmail} · {supportDate(report.createdAt, lang)}</small></div>
+            <div className="pa-badges-row">
+              {report.isUnread && <span className="pa-tab-badge">{t.unread}</span>}
+              <span className={`pa-badge ${report.status}`}>{report.status === "resolved" ? t.resolved : t.open}</span>
+            </div>
+          </div>
+          <p className="pa-desc">{report.message}</p>
+          <div className="pa-badges-row">
+            <span className="pa-badge pa-kind">{supportKindLabel(report.kind, lang)}</span>
+            {report.replyCount > 0 && <span className="pa-reason">{report.replyCount} {t.replies}</span>}
+          </div>
+        </button>
+        <div className="pa-actions">
+          <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status === "resolved" ? "open" : "resolved", isUnread: report.isUnread })}>{report.status === "resolved" ? t.reopen : t.markResolved}</button>
+          <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status as "open" | "resolved", isUnread: !report.isUnread })}>{report.isUnread ? t.markRead : t.markUnread}</button>
+        </div>
+      </article>
+    ))}
+  </div>;
+}
+
+function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; reportId: number; onBack: () => void; t: SupportStrings }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-support-thread", reportId], queryFn: () => api.platformSupportThread({ reportId }) });
+  const [error, setError] = useState("");
+  const send = useMutation({
+    mutationFn: (message: string) => api.replyToSupportReport({ reportId, message }),
+    onSuccess: async () => { setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-support-thread", reportId] }), qc.invalidateQueries({ queryKey: ["pa-support-inbox"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const update = useMutation({
+    mutationFn: (args: { id: number; status: "open" | "resolved"; isUnread: boolean }) => api.updatePlatformSupportReport(args),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }); query.refetch(); },
+  });
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2>{query.isError && <p>{actionErrorMessage(query.error)}</p>}<button type="button" className="primary-button" onClick={onBack}>{t.back}</button></div>;
+  const { report, replies } = query.data;
+  const you = lang === "es" ? "Tú" : "You";
+  const items: ThreadBubble[] = [
+    { id: `opener-${report.id}`, fromViewer: false, name: report.userName, message: report.message, createdAt: report.createdAt },
+    ...replies.map((reply) => ({ id: reply.id, fromViewer: reply.sender === "admin", name: reply.sender === "admin" ? you : report.userName, message: reply.message, createdAt: reply.createdAt })),
+  ];
+  return <div className="thread">
+    <button type="button" className="secondary-button thread-back" onClick={onBack}>← {t.back}</button>
+    <div className="pa-card">
+      <div className="pa-card-head">
+        <div><h3 className="thread-subject">{report.subject}</h3><small>{report.userName} · {report.userEmail} · {supportDate(report.createdAt, lang)}</small></div>
+        <div className="pa-badges-row">
+          <span className="pa-badge pa-kind">{supportKindLabel(report.kind, lang)}</span>
+          <span className={`pa-badge ${report.status}`}>{report.status === "resolved" ? t.resolved : t.open}</span>
+        </div>
+      </div>
+      <div className="pa-actions">
+        <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status === "resolved" ? "open" : "resolved", isUnread: false })}>{report.status === "resolved" ? t.reopen : t.markResolved}</button>
+      </div>
+    </div>
+    <ThreadBubbles lang={lang} items={items} />
+    <ThreadReplyBox lang={lang} pending={send.isPending} error={error} onSend={(message) => send.mutate(message)} />
+  </div>;
+}
+
+// ---------------------------------------------------------------------------
+// Settings -> Customer support: the user's own threads ("My requests").
+// ---------------------------------------------------------------------------
+function SupportThreadsPanel({ lang }: { lang: Lang }) {
+  const [openId, setOpenId] = useState<number | null>(null);
+  const query = useQuery({ queryKey: ["support-threads"], queryFn: () => api.userSupportThreads({}) });
+  const t: SupportStrings = lang === "es"
+    ? { loading: "Cargando…", empty: "", emptyBody: "", loadError: "No se pudieron cargar tus solicitudes.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Atrás", title: "Mis solicitudes", crewkatSupport: "Soporte de Crewkat", you: "Tú" }
+    : { loading: "Loading…", empty: "", emptyBody: "", loadError: "Couldn't load your requests.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Back", title: "My requests", crewkatSupport: "Crewkat support", you: "You" };
+  if (openId !== null) return <UserSupportThreadView lang={lang} reportId={openId} onBack={() => setOpenId(null)} t={t} />;
+  if (query.isLoading || query.isError) return null;
+  const threads = query.data?.threads ?? [];
+  if (!threads.length) return null;
+  return <div className="support-threads">
+    <h3 className="support-threads-title">{t.title}</h3>
+    {threads.map((thread) => (
+      <button key={thread.id} type="button" className="support-thread-row" onClick={() => setOpenId(thread.id)}>
+        <strong>{thread.subject}</strong>
+        <small>{supportKindLabel(thread.kind, lang)} · {thread.status === "resolved" ? t.resolved : t.open} · {supportDate(thread.createdAt, lang)}</small>
+        {thread.lastReply && <p className="support-thread-preview"><strong>{thread.lastReply.sender === "admin" ? t.crewkatSupport : t.you}:</strong> {thread.lastReply.message}</p>}
+      </button>
+    ))}
+  </div>;
+}
+
+function UserSupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; reportId: number; onBack: () => void; t: SupportStrings }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["support-thread", reportId], queryFn: () => api.userSupportThread({ reportId }) });
+  const [error, setError] = useState("");
+  const send = useMutation({
+    mutationFn: (message: string) => api.replyToOwnSupportReport({ reportId, message }),
+    onSuccess: async () => { setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["support-thread", reportId] }), qc.invalidateQueries({ queryKey: ["support-threads"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  if (query.isLoading) return <div className="loading-block" aria-label="Loading…" />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2>{query.isError && <p>{actionErrorMessage(query.error)}</p>}<button type="button" className="primary-button" onClick={onBack}>{t.back}</button></div>;
+  const { report, replies } = query.data;
+  const items: ThreadBubble[] = [
+    { id: `opener-${report.id}`, fromViewer: true, name: t.you, message: report.message, createdAt: report.createdAt },
+    ...replies.map((reply) => ({ id: reply.id, fromViewer: reply.sender === "user", name: reply.sender === "user" ? t.you : t.crewkatSupport, message: reply.message, createdAt: reply.createdAt })),
+  ];
+  return <div className="thread">
+    <button type="button" className="secondary-button thread-back" onClick={onBack}>← {t.back}</button>
+    <h3 className="thread-subject">{report.subject}</h3>
+    <ThreadBubbles lang={lang} items={items} />
+    {report.status !== "resolved" && <ThreadReplyBox lang={lang} pending={send.isPending} error={error} onSend={(message) => send.mutate(message)} />}
   </div>;
 }
 
