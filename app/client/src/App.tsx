@@ -41,6 +41,7 @@ import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
+import { parseVCard } from "./vcard";
 
 type Lang = "en" | "es";
 type Stage = "before" | "during" | "after";
@@ -399,6 +400,10 @@ const copy = {
     clients: "Clients",
     newClient: "New client",
     pickFromContacts: "Pick from contacts",
+    contactsFallbackTitle: "Add from contacts",
+    contactsFallbackBody: "This browser can't open your contacts directly. Open Crewkat in Chrome to pick a contact, or import a contact file (.vcf) instead.",
+    openInChrome: "Open in Chrome",
+    chooseVCardFile: "Choose vCard file (.vcf)",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
     clientHistory: "Client history",
@@ -692,6 +697,10 @@ const copy = {
     clients: "Clientes",
     newClient: "Nuevo cliente",
     pickFromContacts: "Elegir de contactos",
+    contactsFallbackTitle: "Agregar desde contactos",
+    contactsFallbackBody: "Este navegador no puede abrir tus contactos directamente. Abre Crewkat en Chrome para elegir un contacto o importa un archivo de contacto (.vcf).",
+    openInChrome: "Abrir en Chrome",
+    chooseVCardFile: "Elegir archivo vCard (.vcf)",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
     clientHistory: "Historial del cliente",
@@ -2108,6 +2117,18 @@ function CrewkatApplication() {
     };
   }, []);
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
+  // Contacts fallback: the "Open in Chrome" intent link carries ?newClient=1 —
+  // land on the New Client form, then clear the param so refreshes don't reopen it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("newClient") === "1") {
+      params.delete("newClient");
+      const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", clean);
+      setScreenStack([{ name: "clients" }, { name: "clientNew" }]);
+    }
+  }, []);
   const [dismissedBanner, setDismissedBanner] = useState(() => window.localStorage.getItem("crewkat-banner-dismissed") ?? "");
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
@@ -10843,7 +10864,18 @@ interface NavigatorWithContacts extends Navigator {
     select: (props: string[], opts?: { multiple?: boolean }) => Promise<ContactPickerContact[]>;
   };
 }
-function canPickContacts(): boolean {
+// Show the contacts button on all Android devices — the native Contact Picker
+// API only exists in Chrome/Edge, but Samsung Internet (default on Galaxy
+// phones) never exposes it, so gating on the API hides the feature from most
+// users. Desktop/iOS keep the manual form.
+function showContactsButton(): boolean {
+  try {
+    return /Android/i.test(navigator.userAgent || "");
+  } catch {
+    return false;
+  }
+}
+function hasNativeContactPicker(): boolean {
   try {
     const nav = navigator as NavigatorWithContacts;
     return typeof nav.contacts?.select === "function";
@@ -10865,6 +10897,7 @@ function ClientForm({
   const t = copy[lang];
   const [form, setForm] = useState(initial);
   const [tagDraft, setTagDraft] = useState("");
+  const [contactsFallbackOpen, setContactsFallbackOpen] = useState(false);
   const clients = useQuery({
     queryKey: ["clients", ""],
     queryFn: () => api.listClients({ search: "" }),
@@ -10880,11 +10913,17 @@ function ClientForm({
     setTagDraft("");
   };
   const pickFromContacts = async () => {
+    if (!hasNativeContactPicker()) {
+      // No native picker on this browser (e.g. Samsung Internet) — offer the fallback sheet.
+      setContactsFallbackOpen(true);
+      return;
+    }
     const nav = navigator as NavigatorWithContacts;
-    if (typeof nav.contacts?.select !== "function") return;
+    const selectContact = nav.contacts?.select;
+    if (!selectContact) return; // checked by hasNativeContactPicker above; guard for the type checker
     try {
       // Must run in the tap handler (user gesture) or the picker is blocked.
-      const [contact] = await nav.contacts.select(["name", "email", "tel", "address"], { multiple: false });
+      const [contact] = await selectContact(["name", "email", "tel", "address"], { multiple: false });
       if (!contact) return;
       const addr = contact.address?.[0];
       const address = addr
@@ -10901,7 +10940,36 @@ function ClientForm({
       // Picker dismissed or unavailable — stay silent, manual entry continues.
     }
   };
+  // Fallback: force-open this same page in Chrome, landing on the New Client form.
+  const openInChrome = () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("newClient", "1");
+    const target = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.location.href = `intent://${window.location.host}${target}#Intent;scheme=https;package=com.android.chrome;end`;
+  };
+  // Fallback: import a contact shared/exported as a .vcf file.
+  const importVCardFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const parsed = parseVCard(await file.text());
+      if (parsed) {
+        setForm((f) => ({
+          ...f,
+          name: parsed.name || f.name,
+          phone: parsed.phone || f.phone,
+          email: parsed.email || f.email,
+          address: parsed.address || f.address,
+        }));
+      }
+    } catch {
+      // Unreadable file — stay on the manual form.
+    }
+    setContactsFallbackOpen(false);
+  };
   return (
+    <>
     <form
       className="job-form client-form"
       onSubmit={(e) => {
@@ -10909,7 +10977,7 @@ function ClientForm({
         if (form.name.trim()) save.mutate();
       }}
     >
-      {canPickContacts() && (
+      {showContactsButton() && (
         <div className="client-contacts-row">
           <button type="button" className="ck-btn-sm" onClick={pickFromContacts}>
             <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>
@@ -10969,6 +11037,21 @@ function ClientForm({
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
+    {contactsFallbackOpen && (
+      <BottomSheet lang={lang} title={t.contactsFallbackTitle} onClose={() => setContactsFallbackOpen(false)}>
+        {(close) => (
+          <div className="contacts-fallback">
+            <p>{t.contactsFallbackBody}</p>
+            <button type="button" className="primary-button" onClick={() => { openInChrome(); close(); }}>{t.openInChrome}</button>
+            <label className="secondary-button contacts-vcard-label">
+              {t.chooseVCardFile}
+              <input type="file" accept=".vcf,text/vcard" hidden onChange={importVCardFile} />
+            </label>
+          </div>
+        )}
+      </BottomSheet>
+    )}
+    </>
   );
 }
 
