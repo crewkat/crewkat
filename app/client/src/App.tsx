@@ -2370,6 +2370,7 @@ function CrewkatApplication() {
       )}
       <OnboardingTour lang={lang} />
       <OfflineBanner lang={lang} />
+      <ExitSurveySheet lang={lang} />
       {screen.name === "today" && (
         <TodayScreen
           lang={lang}
@@ -7887,33 +7888,217 @@ const ADMIN_DEFAULTS: AdminParameters = {
   hourlyLaborCost: "0",
 };
 
-type PlatformAdminTab = "queue" | "users" | "refunds" | "settings" | "audit";
+type PlatformAdminTab = "analytics" | "queue" | "users" | "refunds" | "settings" | "audit";
 
 function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefundEmail }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void; initialTab?: PlatformAdminTab; initialRefundEmail?: string }) {
   const auth = useContext(AuthContext);
-  const [tab, setTab] = useState<PlatformAdminTab>(initialTab ?? "queue");
+  const [tab, setTab] = useState<PlatformAdminTab>(initialTab ?? "analytics");
   const [refundEmail, setRefundEmail] = useState(initialRefundEmail ?? "");
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => { if (initialRefundEmail !== undefined) setRefundEmail(initialRefundEmail); }, [initialRefundEmail]);
   const t = lang === "es"
-    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
-    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
+    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
+    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
   if (!auth?.user.isPlatformAdmin) {
     return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.denied}</h2><p>{t.deniedBody}</p></div></main>;
   }
   return <main className="page pa-page">
     <PageHeader lang={lang} title={t.title} onBack={onBack} />
     <nav className="pa-tabs" aria-label={t.title}>
-      {(["queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
+      {(["analytics", "queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
         <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}</button>
       ))}
     </nav>
+    {tab === "analytics" && <PAAnalyticsTab lang={lang} />}
     {tab === "queue" && <PAQueueTab lang={lang} />}
     {tab === "users" && <PAUsersTab lang={lang} setScreen={setScreen} />}
     {tab === "refunds" && <PARefundsTab lang={lang} initialEmail={refundEmail} />}
     {tab === "settings" && <PASettingsTab lang={lang} />}
     {tab === "audit" && <PAAuditTab lang={lang} />}
   </main>;
+}
+
+function PAAnalyticsTab({ lang }: { lang: Lang }) {
+  const overview = useQuery({ queryKey: ["pa-analytics-overview"], queryFn: () => api.adminAnalyticsOverview({}) });
+  const charts = useQuery({ queryKey: ["pa-analytics-charts"], queryFn: () => api.adminAnalyticsCharts({ days: 30 }) });
+  const cancellations = useQuery({ queryKey: ["pa-cancellation-stats"], queryFn: () => api.adminCancellationStats({}) });
+  const activity = useQuery({ queryKey: ["pa-recent-activity"], queryFn: () => api.adminRecentActivity({}) });
+  const t = lang === "es"
+    ? {
+        users: "Usuarios totales", newToday: "Nuevos hoy", newWeek: "Nuevos esta semana", newMonth: "Nuevos este mes",
+        premium: "Premium activos", subsToday: "Suscripciones hoy", subsWeek: "Suscripciones esta semana",
+        mrr: "Ingresos mensuales", founding: "Fundadores", cancelled: "Cancelados (30d)", churn: "Abandono",
+        signupsChart: "Registros — últimos 30 días", subsChart: "Suscripciones — últimos 30 días", cancelChart: "Cancelaciones — últimos 30 días",
+        whyLeave: "Por qué se van", recentSignups: "Registros recientes", recentEvents: "Actividad reciente",
+        noData: "Sin datos todavía", loading: "Cargando analíticas…",
+      }
+    : {
+        users: "Total users", newToday: "New today", newWeek: "New this week", newMonth: "New this month",
+        premium: "Active Premium", subsToday: "Subs today", subsWeek: "Subs this week",
+        mrr: "Monthly revenue", founding: "Founders", cancelled: "Cancelled (30d)", churn: "Churn",
+        signupsChart: "Signups — last 30 days", subsChart: "Subscriptions — last 30 days", cancelChart: "Cancellations — last 30 days",
+        whyLeave: "Why they leave", recentSignups: "Recent signups", recentEvents: "Recent activity",
+        noData: "No data yet", loading: "Loading analytics…",
+      };
+  const reasonLabels: Record<string, string> = lang === "es"
+    ? { too_expensive: "Muy caro", not_using_enough: "No lo usa lo suficiente", missing_features: "Faltan funciones", switched_tool: "Cambió de herramienta", business_closed: "Cerró el negocio", temporary_break: "Pausa temporal", other: "Otro" }
+    : { too_expensive: "Too expensive", not_using_enough: "Not using it enough", missing_features: "Missing features", switched_tool: "Switched tools", business_closed: "Business closed", temporary_break: "Temporary break", other: "Other" };
+  if (overview.isLoading) return <div className="market-empty"><p>{t.loading}</p></div>;
+  const o = overview.data;
+  const maxSignup = Math.max(1, ...(charts.data?.signups.map((s) => s.count) ?? [1]));
+  const maxSub = Math.max(1, ...(charts.data?.subscriptions.map((s) => s.count) ?? [1]));
+  const maxCancel = Math.max(1, ...(charts.data?.cancellations.map((s) => s.count) ?? [1]));
+  const maxReason = Math.max(1, ...(cancellations.data?.byReason.map((r) => r.count) ?? [1]));
+  return <div className="pa-analytics">
+    <div className="pa-stat-grid">
+      <div className="pa-stat"><span className="pa-stat-value">{o?.totalUsers ?? "—"}</span><span className="pa-stat-label">{t.users}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.newToday ?? "—"}</span><span className="pa-stat-label">{t.newToday}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.newThisWeek ?? "—"}</span><span className="pa-stat-label">{t.newWeek}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.activePremium ?? "—"}</span><span className="pa-stat-label">{t.premium}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">${o?.mrr?.toFixed(0) ?? "—"}</span><span className="pa-stat-label">{t.mrr}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.foundingClaimed ?? "—"}/100</span><span className="pa-stat-label">{t.founding}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.churnRate ?? "—"}%</span><span className="pa-stat-label">{t.churn}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{o?.cancelledLast30d ?? "—"}</span><span className="pa-stat-label">{t.cancelled}</span></div>
+    </div>
+
+    <section className="pa-chart-section">
+      <h3>{t.signupsChart}</h3>
+      <div className="pa-bars" role="img" aria-label={t.signupsChart}>
+        {(charts.data?.signups ?? []).map((s) => (
+          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count}`}>
+            <div className="pa-bar" style={{ height: `${Math.max(4, (s.count / maxSignup) * 100)}%` }} />
+            <span className="pa-bar-label">{s.date.slice(8)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="pa-chart-section">
+      <h3>{t.subsChart}</h3>
+      <div className="pa-bars" role="img" aria-label={t.subsChart}>
+        {(charts.data?.subscriptions ?? []).map((s) => (
+          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count} (M:${s.monthly} A:${s.annual} L:${s.lifetime} P:${s.play})`}>
+            <div className="pa-bar green" style={{ height: `${Math.max(4, (s.count / maxSub) * 100)}%` }} />
+            <span className="pa-bar-label">{s.date.slice(8)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="pa-chart-section">
+      <h3>{t.cancelChart}</h3>
+      <div className="pa-bars" role="img" aria-label={t.cancelChart}>
+        {(charts.data?.cancellations ?? []).map((s) => (
+          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count}`}>
+            <div className="pa-bar red" style={{ height: `${Math.max(4, (s.count / maxCancel) * 100)}%` }} />
+            <span className="pa-bar-label">{s.date.slice(8)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="pa-chart-section">
+      <h3>{t.whyLeave} ({cancellations.data?.total ?? 0})</h3>
+      {(cancellations.data?.byReason.length ?? 0) === 0 && <p className="pa-muted">{t.noData}</p>}
+      <div className="pa-reasons">
+        {(cancellations.data?.byReason ?? []).map((r) => (
+          <div key={r.reason} className="pa-reason-row">
+            <span className="pa-reason-label">{reasonLabels[r.reason] ?? r.reason}</span>
+            <div className="pa-reason-track"><div className="pa-reason-fill" style={{ width: `${(r.count / maxReason) * 100}%` }} /></div>
+            <span className="pa-reason-count">{r.count}</span>
+          </div>
+        ))}
+      </div>
+      {(cancellations.data?.recent.filter((r) => r.details).length ?? 0) > 0 && (
+        <div className="pa-feedback-list">
+          {(cancellations.data?.recent.filter((r) => r.details) ?? []).slice(0, 5).map((r) => (
+            <blockquote key={r.id} className="pa-feedback-quote">
+              <p>“{r.details}”</p>
+              <cite>— {r.userName} · {reasonLabels[r.reason] ?? r.reason}</cite>
+            </blockquote>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <div className="pa-two-col">
+      <section className="pa-chart-section">
+        <h3>{t.recentSignups}</h3>
+        <ul className="pa-activity">
+          {(activity.data?.signups ?? []).map((u) => (
+            <li key={u.id}><strong>{u.name}</strong><span className="pa-muted">{u.email}</span><span className={`pa-badge ${u.tier === "premium" ? "premium" : ""}`}>{u.tier}</span></li>
+          ))}
+        </ul>
+      </section>
+      <section className="pa-chart-section">
+        <h3>{t.recentEvents}</h3>
+        <ul className="pa-activity">
+          {(activity.data?.events ?? []).map((e) => (
+            <li key={e.id}><strong>{e.userName}</strong><span className="pa-muted">{e.eventType} · {e.plan}</span><span className="pa-muted">{new Date(e.createdAt).toLocaleDateString()}</span></li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  </div>;
+}
+
+function ExitSurveySheet({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const pending = useQuery({ queryKey: ["pending-cancellation-feedback"], queryFn: () => api.pendingCancellationFeedback({}), staleTime: 60000 });
+  const [reason, setReason] = useState<string>("");
+  const [details, setDetails] = useState("");
+  const [dismissed, setDismissed] = useState(false);
+  const submit = useMutation({
+    mutationFn: (args: { reason: "too_expensive" | "not_using_enough" | "missing_features" | "switched_tool" | "business_closed" | "temporary_break" | "other"; details: string }) => api.submitCancellationFeedback(args),
+    onSuccess: async () => { setDismissed(true); await qc.invalidateQueries({ queryKey: ["pending-cancellation-feedback"] }); },
+  });
+  useEscapeToClose(!!pending.data?.pending && !dismissed, () => setDismissed(true));
+  if (!pending.data?.pending || dismissed) return null;
+  const t = lang === "es"
+    ? {
+        title: "Lamentamos verte partir",
+        body: "Tu suscripción Premium terminó. ¿Nos cuentas en 10 segundos por qué? Nos ayuda a mejorar Crewkat.",
+        reasons: [
+          { value: "too_expensive", label: "Muy caro" },
+          { value: "not_using_enough", label: "No lo usaba lo suficiente" },
+          { value: "missing_features", label: "Le faltan funciones que necesito" },
+          { value: "switched_tool", label: "Me cambié a otra herramienta" },
+          { value: "business_closed", label: "Cerré el negocio" },
+          { value: "temporary_break", label: "Pausa temporal" },
+          { value: "other", label: "Otro motivo" },
+        ] as const,
+        detailsPlaceholder: "Cuéntanos más (opcional)…",
+        submit: "Enviar", skip: "Ahora no",
+      }
+    : {
+        title: "Sorry to see you go",
+        body: "Your Premium subscription ended. Mind telling us in 10 seconds why? It helps us make Crewkat better.",
+        reasons: [
+          { value: "too_expensive", label: "Too expensive" },
+          { value: "not_using_enough", label: "Wasn't using it enough" },
+          { value: "missing_features", label: "Missing features I need" },
+          { value: "switched_tool", label: "Switched to another tool" },
+          { value: "business_closed", label: "Closed the business" },
+          { value: "temporary_break", label: "Temporary break" },
+          { value: "other", label: "Other reason" },
+        ] as const,
+        detailsPlaceholder: "Tell us more (optional)…",
+        submit: "Send", skip: "Not now",
+      };
+  return <div className="exit-survey-sheet" role="dialog" aria-modal="true" aria-label={t.title}>
+    <h2>{t.title}</h2>
+    <p>{t.body}</p>
+    <div className="exit-survey-reasons">
+      {t.reasons.map((r) => (
+        <button key={r.value} type="button" className={`exit-survey-reason${reason === r.value ? " selected" : ""}`} onClick={() => setReason(r.value)}>{r.label}</button>
+      ))}
+    </div>
+    <textarea className="exit-survey-details" value={details} onChange={(e) => setDetails(e.target.value)} placeholder={t.detailsPlaceholder} maxLength={1000} />
+    <div className="exit-survey-actions">
+      <button type="button" className="secondary-button" onClick={() => setDismissed(true)}>{t.skip}</button>
+      <button type="button" className="primary-button" disabled={!reason || submit.isPending} onClick={() => reason && submit.mutate({ reason: reason as typeof t.reasons[number]["value"], details: details.trim() })}>{t.submit}</button>
+    </div>
+  </div>;
 }
 
 function PAQueueTab({ lang }: { lang: Lang }) {

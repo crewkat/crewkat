@@ -12,7 +12,7 @@
 // plumbing as Stripe premium (auth_users.tier = "premium"), which unlocks the
 // exact same Pro tools.
 import { defineAction, z, type Ctx } from "@hatch/space-sdk";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import * as schema from "./schema";
 import { privileged } from "@space/privileged";
 import { workspaceIdentity } from "./actions";
@@ -35,6 +35,12 @@ async function grantPlayPremium(db: Db, userId: number, verification: { orderId:
   await db.insert(schema.playBillingPurchases).values({
     userId, purchaseToken, orderId: verification.orderId, sku, verifiedAt: now,
   }).onConflictDoNothing({ target: schema.playBillingPurchases.purchaseToken });
+  // Mission Control: log the Play subscription for analytics (idempotent —
+  // only log if this user has no prior play_subscribed event).
+  const existing = await db.select({ id: schema.subscriptionEvents.id }).from(schema.subscriptionEvents).where(and(eq(schema.subscriptionEvents.userId, userId), eq(schema.subscriptionEvents.eventType, "play_subscribed"))).limit(1);
+  if (!existing[0]) {
+    await db.insert(schema.subscriptionEvents).values({ userId, eventType: "play_subscribed", plan: "play_monthly", createdAt: now });
+  }
 }
 
 export const playBillingActions = {

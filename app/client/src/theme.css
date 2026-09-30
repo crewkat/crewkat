@@ -3092,3 +3092,46 @@ button { -webkit-tap-highlight-color: transparent; }
 .document-list .tap-target::after { top: .5rem; }
 .tools-home .tool-tile-icon svg { width: 17px; height: 17px; }
 .tools-home .tool-pin-toggle { height: 40px; }
+
+/* Mission Control analytics dashboard */
+.pa-analytics { display: flex; flex-direction: column; gap: 18px; }
+.pa-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 560px) { .pa-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+.pa-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pa-stat-value { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; }
+.pa-stat-label { font-size: .72rem; color: var(--muted); text-align: center; }
+.pa-chart-section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.pa-chart-section h3 { margin: 0 0 10px; font-size: .95rem; }
+.pa-bars { display: flex; align-items: flex-end; gap: 3px; height: 110px; }
+.pa-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+.pa-bar { width: 100%; max-width: 18px; border-radius: 3px 3px 0 0; background: var(--accent); }
+.pa-bar.green { background: #22c55e; }
+.pa-bar.red { background: #ef4444; }
+.pa-bar-label { font-size: .6rem; color: var(--muted); margin-top: 3px; }
+.pa-bar-col:nth-child(n+16) .pa-bar-label { display: none; }
+.pa-reasons { display: flex; flex-direction: column; gap: 8px; }
+.pa-reason-row { display: flex; align-items: center; gap: 10px; }
+.pa-reason-label { flex: 0 0 38%; font-size: .82rem; }
+.pa-reason-track { flex: 1; height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; }
+.pa-reason-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.pa-reason-count { flex: 0 0 28px; text-align: right; font-weight: 700; font-size: .85rem; }
+.pa-feedback-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pa-feedback-quote { margin: 0; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--background); border-radius: 0 10px 10px 0; }
+.pa-feedback-quote p { margin: 0 0 4px; font-size: .85rem; }
+.pa-feedback-quote cite { font-size: .72rem; color: var(--muted); font-style: normal; }
+.pa-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .pa-two-col { grid-template-columns: 1fr; } }
+.pa-activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pa-activity li { display: flex; align-items: center; gap: 8px; font-size: .82rem; flex-wrap: wrap; }
+.pa-muted { color: var(--muted); font-size: .75rem; }
+
+/* Exit survey prompt for churned users */
+.exit-survey-sheet { position: fixed; inset: auto 0 0 0; z-index: 90; background: var(--surface); border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 32px rgba(0,0,0,.25); }
+.exit-survey-sheet h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.exit-survey-sheet > p { margin: 0 0 14px; color: var(--dim); font-size: .9rem; }
+.exit-survey-reasons { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.exit-survey-reason { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); font: inherit; font-size: .9rem; text-align: left; width: 100%; }
+.exit-survey-reason.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.exit-survey-details { width: 100%; min-height: 64px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); color: inherit; font: inherit; font-size: .9rem; padding: 10px 12px; margin-bottom: 12px; resize: vertical; }
+.exit-survey-actions { display: flex; gap: 10px; }
+.exit-survey-actions .primary-button { flex: 1; }

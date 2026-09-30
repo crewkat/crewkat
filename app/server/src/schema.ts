@@ -982,3 +982,32 @@ export const bidBoardItems = sqliteTable("bid_board_items", {
 }, (table) => [
   index("bid_board_items_user_idx").on(table.userId),
 ]);
+
+// Mission Control analytics: subscription lifecycle events. One row per
+// meaningful billing transition, written by the Stripe webhook handler and
+// Play Billing verification. Powers the platform admin analytics dashboard.
+export const subscriptionEvents = sqliteTable("subscription_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  eventType: text("event_type", { enum: ["subscribed", "cancelled", "expired", "renewed", "founding_claimed", "play_subscribed"] }).notNull(),
+  plan: text("plan", { enum: ["monthly", "annual", "lifetime", "play_monthly"] }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("subscription_events_user_idx").on(table.userId),
+  index("subscription_events_created_idx").on(table.createdAt),
+  index("subscription_events_type_idx").on(table.eventType),
+]);
+
+// Exit survey: why a customer left Premium. Shown once as a gentle prompt
+// after a subscription ends; feeds the churn breakdown in Mission Control.
+export const cancellationFeedback = sqliteTable("cancellation_feedback", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  reason: text("reason", { enum: ["too_expensive", "not_using_enough", "missing_features", "switched_tool", "business_closed", "temporary_break", "other"] }).notNull(),
+  details: text("details").notNull().default(""),
+  plan: text("plan", { enum: ["monthly", "annual", "lifetime", "play_monthly"] }).notNull().default("monthly"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("cancellation_feedback_user_idx").on(table.userId),
+  index("cancellation_feedback_created_idx").on(table.createdAt),
+]);

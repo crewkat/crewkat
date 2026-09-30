@@ -1841,6 +1841,45 @@ export const BaseActions = {
       return { ok: true, acceptedAt: now.toISOString(), version: MARKETPLACE_TERMS_VERSION };
     },
   }),
+  // Mission Control exit survey: a churned user tells us why they left.
+  // Shown once as a gentle prompt after their subscription ends.
+  submitCancellationFeedback: defineAction({
+    request: z.object({
+      reason: z.enum(["too_expensive", "not_using_enough", "missing_features", "switched_tool", "business_closed", "temporary_break", "other"]),
+      details: z.string().trim().max(1000).default(""),
+    }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      // Only accept feedback if they actually churned (have a cancelled event
+      // and haven't already given feedback).
+      const cancelled = await db.select({ id: schema.subscriptionEvents.id }).from(schema.subscriptionEvents).where(and(eq(schema.subscriptionEvents.userId, user.id), eq(schema.subscriptionEvents.eventType, "cancelled"))).limit(1);
+      if (!cancelled[0]) throw new Error("No cancelled subscription found.");
+      const existing = await db.select({ id: schema.cancellationFeedback.id }).from(schema.cancellationFeedback).where(eq(schema.cancellationFeedback.userId, user.id)).limit(1);
+      if (existing[0]) return { ok: true as const };
+      const lastSub = await db.select({ plan: schema.subscriptionEvents.plan }).from(schema.subscriptionEvents).where(and(eq(schema.subscriptionEvents.userId, user.id), inArray(schema.subscriptionEvents.eventType, ["subscribed", "play_subscribed"]))).orderBy(desc(schema.subscriptionEvents.createdAt)).limit(1);
+      await db.insert(schema.cancellationFeedback).values({ userId: user.id, reason: args.reason, details: args.details, plan: lastSub[0]?.plan ?? "monthly", createdAt: new Date() });
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+  pendingCancellationFeedback: defineAction({
+    request: z.object({}),
+    response: z.object({ pending: z.boolean() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) return { pending: false };
+      const cancelled = await db.select({ id: schema.subscriptionEvents.id }).from(schema.subscriptionEvents).where(and(eq(schema.subscriptionEvents.userId, user.id), eq(schema.subscriptionEvents.eventType, "cancelled"))).limit(1);
+      if (!cancelled[0]) return { pending: false };
+      const existing = await db.select({ id: schema.cancellationFeedback.id }).from(schema.cancellationFeedback).where(eq(schema.cancellationFeedback.userId, user.id)).limit(1);
+      return { pending: !existing[0] };
+    },
+  }),
   getSubscription: defineAction({
     request: z.object({}),
     // Phase 4: provider tells the Upgrade screen which billing path granted
@@ -1950,15 +1989,27 @@ export const BaseActions = {
           throw new Error(count >= 100 ? "Founding member cap reached — payment received after all 100 spots were taken." : "Founding member grant failed; user not found.");
         }
         await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+        // Mission Control: log the founding claim for analytics.
+        await db.insert(schema.subscriptionEvents).values({ userId: user.id, eventType: "founding_claimed", plan: "lifetime", createdAt: now });
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
       }
       const end = event.currentPeriodEnd ? new Date(event.currentPeriodEnd * 1000) : null;
+      const now = new Date();
       if (event.eventType === "customer.subscription.deleted") {
         await db.update(schema.authUsers).set({ tier: "free", subscriptionStatus: event.subscriptionStatus ?? "canceled", cancelAtPeriodEnd: false, subscriptionCurrentPeriodEnd: end, stripeCustomerId: event.customerId ?? user.stripeCustomerId, stripeSubscriptionId: event.subscriptionId ?? user.stripeSubscriptionId, updatedAt: new Date() }).where(eq(schema.authUsers.id, user.id));
+        // Mission Control: log the cancellation. The exit survey prompt is
+        // shown to the user on next app open (see pendingCancellationFeedback).
+        const plan = user.subscriptionStatus === "founding_member" ? "lifetime" : "monthly";
+        await db.insert(schema.subscriptionEvents).values({ userId: user.id, eventType: "cancelled", plan, createdAt: now });
       } else {
         const active = event.eventType === "checkout.session.completed" || ["active", "trialing", "past_due"].includes(event.subscriptionStatus ?? "");
         await db.update(schema.authUsers).set({ tier: active ? "premium" : "free", subscriptionStatus: event.subscriptionStatus ?? (active ? "active" : user.subscriptionStatus), cancelAtPeriodEnd: event.cancelAtPeriodEnd, subscriptionCurrentPeriodEnd: end ?? user.subscriptionCurrentPeriodEnd, stripeCustomerId: event.customerId ?? user.stripeCustomerId, stripeSubscriptionId: event.subscriptionId ?? user.stripeSubscriptionId, updatedAt: new Date() }).where(eq(schema.authUsers.id, user.id));
+        // Mission Control: log new subscriptions from checkout completion.
+        if (event.eventType === "checkout.session.completed" && active) {
+          const plan = event.plan === "annual" ? "annual" : "monthly";
+          await db.insert(schema.subscriptionEvents).values({ userId: user.id, eventType: "subscribed", plan, createdAt: now });
+        }
       }
       await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: new Date() });
       ctx.invalidateQueries();
@@ -3527,6 +3578,159 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       return { ok: true, status };
     },
     privileged: [privileged.sendSecurityAlert],
+  }),
+  // Mission Control: platform analytics dashboard. All actions require platform admin.
+  adminAnalyticsOverview: defineAction({
+    request: z.object({}),
+    response: z.object({
+      totalUsers: z.number(), newToday: z.number(), newThisWeek: z.number(), newThisMonth: z.number(),
+      activePremium: z.number(), premiumToday: z.number(), premiumThisWeek: z.number(),
+      mrr: z.number(), foundingClaimed: z.number(), foundingRemaining: z.number(),
+      cancelledLast30d: z.number(), churnRate: z.number(),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date();
+      const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+      const weekAgo = new Date(now.getTime() - 7 * 86400000);
+      const monthAgo = new Date(now.getTime() - 30 * 86400000);
+
+      const users = await db.select({ id: schema.authUsers.id, createdAt: schema.authUsers.createdAt, tier: schema.authUsers.tier, subscriptionStatus: schema.authUsers.subscriptionStatus }).from(schema.authUsers);
+      const totalUsers = users.length;
+      const newToday = users.filter((u) => u.createdAt >= startOfDay).length;
+      const newThisWeek = users.filter((u) => u.createdAt >= weekAgo).length;
+      const newThisMonth = users.filter((u) => u.createdAt >= monthAgo).length;
+
+      const premiumUsers = users.filter((u) => u.tier === "premium");
+      const activePremium = premiumUsers.length;
+      const foundingClaimed = users.filter((u) => u.subscriptionStatus === "founding_member").length;
+      const foundingRemaining = Math.max(0, 100 - foundingClaimed);
+
+      // New premium subscriptions from lifecycle events (accurate timestamps).
+      const subEvents = await db.select().from(schema.subscriptionEvents).where(inArray(schema.subscriptionEvents.eventType, ["subscribed", "founding_claimed", "play_subscribed"]));
+      const premiumToday = subEvents.filter((e) => e.createdAt >= startOfDay).length;
+      const premiumThisWeek = subEvents.filter((e) => e.createdAt >= weekAgo).length;
+
+      // MRR: monthly × $19 + annual × $189/12 + play monthly × $19. Founding/lifetime excluded.
+      const latestPlanByUser = new Map<number, string>();
+      const sortedEvents = [...subEvents].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      for (const e of sortedEvents) {
+        if (!latestPlanByUser.has(e.userId)) latestPlanByUser.set(e.userId, e.plan);
+      }
+      const premiumUserIds = new Set(premiumUsers.map((u) => u.id));
+      let mrr = 0;
+      for (const [userId, plan] of latestPlanByUser) {
+        if (!premiumUserIds.has(userId)) continue;
+        if (plan === "monthly" || plan === "play_monthly") mrr += 19;
+        else if (plan === "annual") mrr += 189 / 12;
+      }
+
+      // Churn: cancellations in last 30d ÷ premium users at start of period (approx).
+      const cancelEvents = await db.select().from(schema.subscriptionEvents).where(eq(schema.subscriptionEvents.eventType, "cancelled"));
+      const cancelledLast30d = cancelEvents.filter((e) => e.createdAt >= monthAgo).length;
+      const churnRate = activePremium > 0 ? Math.round((cancelledLast30d / (activePremium + cancelledLast30d)) * 1000) / 10 : 0;
+
+      return { totalUsers, newToday, newThisWeek, newThisMonth, activePremium, premiumToday, premiumThisWeek, mrr: Math.round(mrr * 100) / 100, foundingClaimed, foundingRemaining, cancelledLast30d, churnRate };
+    },
+  }),
+  adminAnalyticsCharts: defineAction({
+    request: z.object({ days: z.number().int().min(7).max(90).default(30) }),
+    response: z.object({
+      signups: z.array(z.object({ date: z.string(), count: z.number() })),
+      subscriptions: z.array(z.object({ date: z.string(), count: z.number(), monthly: z.number(), annual: z.number(), lifetime: z.number(), play: z.number() })),
+      cancellations: z.array(z.object({ date: z.string(), count: z.number() })),
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const days: { date: string; count: number }[] = [];
+      const now = new Date();
+      for (let i = args.days - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        days.push({ date: d.toISOString().slice(0, 10), count: 0 });
+      }
+      const byDate = new Map(days.map((d) => [d.date, d]));
+
+      const users = await db.select({ createdAt: schema.authUsers.createdAt }).from(schema.authUsers);
+      for (const u of users) {
+        const key = u.createdAt.toISOString().slice(0, 10);
+        const bucket = byDate.get(key);
+        if (bucket) bucket.count++;
+      }
+      const signups = days.map((d) => ({ ...d }));
+
+      // Reset for subscriptions.
+      for (const d of days) d.count = 0;
+      const subEvents = await db.select().from(schema.subscriptionEvents).where(inArray(schema.subscriptionEvents.eventType, ["subscribed", "founding_claimed", "play_subscribed"]));
+      const subsByDate = new Map<string, { count: number; monthly: number; annual: number; lifetime: number; play: number }>();
+      for (const d of days) subsByDate.set(d.date, { count: 0, monthly: 0, annual: 0, lifetime: 0, play: 0 });
+      for (const e of subEvents) {
+        const key = e.createdAt.toISOString().slice(0, 10);
+        const bucket = subsByDate.get(key);
+        if (!bucket) continue;
+        bucket.count++;
+        if (e.plan === "monthly") bucket.monthly++;
+        else if (e.plan === "annual") bucket.annual++;
+        else if (e.plan === "lifetime") bucket.lifetime++;
+        else if (e.plan === "play_monthly") bucket.play++;
+      }
+      const subscriptions = days.map((d) => ({ date: d.date, ...subsByDate.get(d.date)! }));
+
+      for (const d of days) d.count = 0;
+      const cancelEvents = await db.select({ createdAt: schema.subscriptionEvents.createdAt }).from(schema.subscriptionEvents).where(eq(schema.subscriptionEvents.eventType, "cancelled"));
+      for (const e of cancelEvents) {
+        const key = e.createdAt.toISOString().slice(0, 10);
+        const bucket = byDate.get(key);
+        if (bucket) bucket.count++;
+      }
+      const cancellations = days.map((d) => ({ ...d }));
+
+      return { signups, subscriptions, cancellations };
+    },
+  }),
+  adminCancellationStats: defineAction({
+    request: z.object({}),
+    response: z.object({
+      byReason: z.array(z.object({ reason: z.string(), count: z.number() })),
+      recent: z.array(z.object({ id: z.number(), userName: z.string(), reason: z.string(), details: z.string(), plan: z.string(), createdAt: z.string() })),
+      total: z.number(),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const feedback = await db.select().from(schema.cancellationFeedback).orderBy(desc(schema.cancellationFeedback.createdAt)).limit(100);
+      const byReason = new Map<string, number>();
+      for (const f of feedback) byReason.set(f.reason, (byReason.get(f.reason) ?? 0) + 1);
+      const userIds = [...new Set(feedback.map((f) => f.userId))];
+      const users = userIds.length ? await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, userIds)) : [];
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      return {
+        byReason: [...byReason.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
+        recent: feedback.slice(0, 20).map((f) => ({ id: f.id, userName: nameById.get(f.userId) ?? "Unknown", reason: f.reason, details: f.details, plan: f.plan, createdAt: f.createdAt.toISOString() })),
+        total: feedback.length,
+      };
+    },
+  }),
+  adminRecentActivity: defineAction({
+    request: z.object({}),
+    response: z.object({
+      signups: z.array(z.object({ id: z.number(), name: z.string(), email: z.string(), tier: z.string(), createdAt: z.string() })),
+      events: z.array(z.object({ id: z.number(), userName: z.string(), eventType: z.string(), plan: z.string(), createdAt: z.string() })),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const recentUsers = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email, tier: schema.authUsers.tier, createdAt: schema.authUsers.createdAt }).from(schema.authUsers).orderBy(desc(schema.authUsers.createdAt)).limit(15);
+      const recentEvents = await db.select().from(schema.subscriptionEvents).orderBy(desc(schema.subscriptionEvents.createdAt)).limit(15);
+      const userIds = [...new Set(recentEvents.map((e) => e.userId))];
+      const users = userIds.length ? await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, userIds)) : [];
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      return {
+        signups: recentUsers.map((u) => ({ id: u.id, name: u.name, email: u.email, tier: u.tier, createdAt: u.createdAt.toISOString() })),
+        events: recentEvents.map((e) => ({ id: e.id, userName: nameById.get(e.userId) ?? "Unknown", eventType: e.eventType, plan: e.plan, createdAt: e.createdAt.toISOString() })),
+      };
+    },
   }),
   adminUsersList: defineAction({
     request: z.object({ search: z.string().trim().max(120).default(""), page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(20) }),
