@@ -1,0 +1,38 @@
+
+/* Build0.2: visible labels on invoice line-item inputs */
+.field-label { display: grid; gap: 4px; min-width: 0; }
+.field-label > span { font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.field-label input { width: 100%; }
+.amount-label { min-width: 0; }
+
+/* Build0.2: client document page — action menu + proportions */
+.client-doc-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.client-doc-actions .secondary-button { flex: 1; min-width: 100px; }
+@media (max-width: 480px) {
+  .client-doc-page .quote-paper { margin: 8px 0 24px; padding: 0 16px 20px; font-size: 11px; }
+  .client-doc-page .quote-paper-band { margin: 0 -16px; padding: 10px 16px; }
+  .client-doc-page .quote-paper h2 { font-size: 18px; }
+}
+@media print {
+  .client-doc-actions, .client-lang-toggle { display: none !important; }
+}
+
+/* Build0.2: merged recurring section */
+.recurring-subsection { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.recurring-subsection:last-child { border-bottom: none; }
+.recurring-subsection h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.pro-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; color: #fff; background: var(--accent); border-radius: 4px; vertical-align: middle; }
+
+/* Build0.2: make document action bar more prominent */
+.document-action-bar { border-top: 2px solid var(--accent); background: var(--surface); }
+.document-action-bar button { color: var(--text); font-size: 11px; }
+.document-action-bar button svg { width: 22px; height: 22px; color: var(--accent); }
+.document-action-bar button:active svg { color: var(--text); }
+
+/* Build0.2: Seen read receipt in marketplace chat */
+.message-seen { display: block; font-size: 10px; color: var(--dim); text-align: right; margin-top: 2px; font-style: italic; }
+article.outgoing .message-seen { color: var(--accent); }
+
+/* Build0.2: pull-to-refresh indicator on message thread */
+.pull-refresh-indicator { text-align: center; padding: 8px; font-size: 12px; color: var(--dim); font-weight: 600; }
+.message-thread { transition: transform 0.15s ease-out; }

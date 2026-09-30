@@ -3147,17 +3147,14 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db<typeof schema>();
       const listing = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) { ctx.invalidateQueries(); return { ok: true }; }
-      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
-      if (listing.companyId === myCompanyId) {
-        // Owner: mark inquirer messages as read
-        await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other"), isNull(schema.marketplaceMessages.readAt)));
-      } else {
-        // Inquirer: mark owner messages as read (only in threads I participated in)
-        const myMessages = await db.select({ id: schema.marketplaceMessages.id }).from(schema.marketplaceMessages).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.senderCompanyId, myCompanyId))).limit(1);
-        if (myMessages.length > 0) {
-          await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "me"), isNull(schema.marketplaceMessages.readAt)));
-        }
-      }
+      const identity = workspaceIdentity(ctx);
+      const myCompanyId = identity.workspaceCompanyId;
+      // Build0.2: opening a thread marks every message from other companies as
+      // read. Simpler and more robust than branching on sender labels.
+      await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), ne(schema.marketplaceMessages.senderCompanyId, myCompanyId), isNull(schema.marketplaceMessages.readAt)));
+      // Also clear any in-app notifications pointing at this listing so the
+      // inbox badge can't get stuck.
+      await db.update(schema.userNotifications).set({ isRead: true }).where(and(eq(schema.userNotifications.userId, identity.workspaceUserId), like(schema.userNotifications.link, `%${args.listingId}%`), eq(schema.userNotifications.isRead, false)));
       ctx.invalidateQueries();
       return { ok: true };
     },
