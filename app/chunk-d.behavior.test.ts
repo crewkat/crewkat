@@ -50,7 +50,7 @@ check("journal when values are non-decreasing", nonDecreasing);
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration (0048) when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
-check("newest migration tag is 0055_add_appearance_settings", last.tag === "0055_add_appearance_settings", last.tag);
+check("newest migration tag is 0056_add_analytics_tables", last.tag === "0056_add_analytics_tables", last.tag);
 check("0046_referral_loop and 0047_marketplace_alerts are journaled in order",
   entries.some((e) => e.tag === "0046_referral_loop") && entries.some((e) => e.tag === "0047_marketplace_alerts"));
 

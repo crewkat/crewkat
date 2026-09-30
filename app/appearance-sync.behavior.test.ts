@@ -72,9 +72,9 @@ const ctx = {
 
 // Journal: 0055 entry present with a `when` strictly newer than 0054's.
 const entries = journal.entries as Array<{ idx: number; when: number; tag: string }>;
-const e54 = entries.find((e) => e.tag === "0055_add_appearance_settings");
+const e54 = entries.find((e) => e.tag === "0056_add_analytics_tables");
 const e53 = entries.find((e) => e.tag === "0054_phase3_dispatch");
-check("journal has 0055_add_appearance_settings", !!e54);
+check("journal has 0056_add_analytics_tables", !!e54);
 check("0055 when is strictly newer than 0054 (drizzle skips older)", !!e54 && !!e53 && e54.when > e53.when);
 
 // Columns exist after migrate.
