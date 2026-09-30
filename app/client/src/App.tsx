@@ -1155,11 +1155,13 @@ function PageHeader({
   title,
   onBack,
   actions,
+  minimal,
 }: {
   lang: Lang;
   title: string;
   onBack?: () => void;
   actions?: ReactNode;
+  minimal?: boolean;
 }) {
   const openSettings = useContext(SettingsNavigationContext);
   const openTools = useContext(ToolsNavigationContext);
@@ -1186,7 +1188,7 @@ function PageHeader({
       </h1>
       <div className="header-actions">
         {actions}
-        {openTools && (
+        {!minimal && openTools && (
           <button
             className="icon-button"
             onClick={openTools}
@@ -1195,7 +1197,7 @@ function PageHeader({
             <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon>
           </button>
         )}
-        {openSettings && (
+        {!minimal && openSettings && (
           <button
             className="icon-button master-settings-button"
             onClick={openSettings}
@@ -1244,12 +1246,63 @@ function safeName(value: string) {
       .replace(/^-+|-+$/g, "") || "document"
   );
 }
+// ---------------------------------------------------------------------------
+// Build 0.3: Android hardware back button. In-app screens don't push browser
+// history, so the system back button would close the installed (TWA) app.
+// Components register interceptors; the topmost runs first and returns true
+// when it consumed the press (closed a sheet / saved an editor). The App
+// shell also arms a single history guard entry so back navigates in-app.
+// ---------------------------------------------------------------------------
+type HardwareBackInterceptor = () => boolean;
+const hardwareBackInterceptors: HardwareBackInterceptor[] = [];
+function pushHardwareBackInterceptor(fn: HardwareBackInterceptor): () => void {
+  hardwareBackInterceptors.push(fn);
+  return () => {
+    const i = hardwareBackInterceptors.indexOf(fn);
+    if (i >= 0) hardwareBackInterceptors.splice(i, 1);
+  };
+}
+function runHardwareBackInterceptor(): boolean {
+  const fn = hardwareBackInterceptors[hardwareBackInterceptors.length - 1];
+  return fn ? fn() : false;
+}
+// Build 0.3: last-viewed invoice/estimate, restored when the Invoices tab is
+// re-entered (survives reloads via sessionStorage).
+function readLastFinancialScreen(): Screen | null {
+  try {
+    const raw = window.sessionStorage.getItem("crewkat-last-financial");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Screen;
+    return parsed && (parsed.name === "invoicePreview" || parsed.name === "quotePreview") ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+// Visible resize affordance for description textareas (the native resizer
+// handle alone is nearly invisible on phones).
+const ResizeGrip = () => (
+  <svg className="textarea-grip" viewBox="0 0 16 16" aria-hidden="true">
+    <path
+      d="M3 13l10-10M6.5 13L13 6.5M10 13l3-3"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      fill="none"
+    />
+  </svg>
+);
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  // The anchor must be in the DOM: clicks on detached anchors are ignored in
+  // some WebViews (including the installed app), which made downloads
+  // silently do nothing there.
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1200);
 }
 async function copyText(value: string) {
@@ -1287,14 +1340,36 @@ async function nativeShare(
   const file = new File([blob], filename, {
     type: blob.type || "application/octet-stream",
   });
-  if (
-    navigator.share &&
-    (!navigator.canShare || navigator.canShare({ files: [file] }))
-  )
-    await navigator
-      .share({ title, text, files: [file] })
-      .catch(() => undefined);
-  else downloadBlob(blob, filename);
+  // 1. System share sheet (best on phones). Never fail silently: if share()
+  // rejects (as it does in the installed TWA for file shares), fall through
+  // to the fallbacks instead of swallowing the tap.
+  if (navigator.share) {
+    try {
+      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+        await navigator.share({ title, text, files: [file] });
+        return;
+      }
+    } catch {
+      /* fall through to fallbacks below */
+    }
+  }
+  // 2. Open the file in a new tab. Inside the installed (TWA) app this escapes
+  // to the browser, whose viewer offers its own share / download actions.
+  // Previously the tap did nothing at all there.
+  const url = URL.createObjectURL(blob);
+  let opened: Window | null = null;
+  try {
+    opened = window.open(url, "_blank", "noopener");
+  } catch {
+    opened = null;
+  }
+  if (opened) {
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return;
+  }
+  // 3. Last resort: direct download.
+  downloadBlob(blob, filename);
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 async function downloadSocialPhotos(files: File[], jobType: string) {
   if (files.length === 1) {
@@ -2117,6 +2192,38 @@ function CrewkatApplication() {
     };
   }, []);
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
+  // Build 0.3: hardware back-button support. screenStackRef mirrors the stack
+  // synchronously so the popstate handler always sees the latest depth.
+  const screenStackRef = useRef<Screen[]>(screenStack);
+  screenStackRef.current = screenStack;
+  const backGuardArmedRef = useRef(false);
+  const lastFinancialScreenRef = useRef<Screen | null>(readLastFinancialScreen());
+  const publicScreenRef = useRef(false);
+  useEffect(() => {
+    // Public link screens (#doc=, #portal=, …): leave the browser back button
+    // alone — default behavior is correct there.
+    if (publicScreenRef.current) return;
+    const onPopState = () => {
+      // The browser consumed our guard entry.
+      backGuardArmedRef.current = false;
+      // Draft-save in-progress work before navigating: flush any pending
+      // draft writes first (interceptors below do this), then navigate.
+      if (runHardwareBackInterceptor()) {
+        // An overlay/editor consumed the press — re-arm the guard so the next
+        // press still navigates in-app instead of exiting.
+        if (screenStackRef.current.length > 1) {
+          try { window.history.pushState(null, ""); backGuardArmedRef.current = true; } catch { /* noop */ }
+        }
+        return;
+      }
+      popScreenStackRef.current();
+      if (screenStackRef.current.length > 1) {
+        try { window.history.pushState(null, ""); backGuardArmedRef.current = true; } catch { /* noop */ }
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   // Contacts fallback: the "Open in Chrome" intent link carries ?newClient=1 —
   // land on the New Client form, then clear the param so refreshes don't reopen it.
   useEffect(() => {
@@ -2159,25 +2266,54 @@ function CrewkatApplication() {
     const destination: Screen = auth.user.tier === "free" && premiumScreen ? { name: "upgrade" } : next;
     const currentIndex = Math.max(0, screenStack.length - 1);
     scrollSnapshotsRef.current[currentIndex] = captureNavigationScroll();
+    // Build 0.3: remember the last-viewed invoice/estimate so the Invoices tab
+    // restores it instead of always landing on the list.
+    if (destination.name === "invoicePreview" || destination.name === "quotePreview") {
+      lastFinancialScreenRef.current = destination;
+      try { window.sessionStorage.setItem("crewkat-last-financial", JSON.stringify(destination)); } catch { /* storage unavailable */ }
+    }
+    // Build 0.3: arm a single history guard entry the first time we leave the
+    // root screen so the Android hardware back button navigates in-app instead
+    // of closing the installed app.
+    if (screenStack.length <= 1 && !backGuardArmedRef.current && !publicScreenRef.current) {
+      try { window.history.pushState(null, ""); backGuardArmedRef.current = true; } catch { /* noop */ }
+    }
     setScreenStack((stack) => [...stack, destination]);
+    screenStackRef.current = [...screenStackRef.current, destination];
     requestNavigationScroll({ mode: "top" });
   };
-  const goBack = () => {
-    if (screenStack.length <= 1) {
+  const popScreenStack = () => {
+    const stack = screenStackRef.current;
+    if (stack.length <= 1) {
       scrollSnapshotsRef.current = [];
       setScreenStack([{ name: "today" }]);
+      screenStackRef.current = [{ name: "today" }];
       requestNavigationScroll({ mode: "top" });
       return;
     }
-    const targetIndex = screenStack.length - 2;
+    const targetIndex = stack.length - 2;
     const snapshot = scrollSnapshotsRef.current[targetIndex];
     scrollSnapshotsRef.current = scrollSnapshotsRef.current.slice(0, targetIndex + 1);
-    setScreenStack((stack) => stack.slice(0, -1));
+    const nextStack = stack.slice(0, -1);
+    setScreenStack(nextStack);
+    screenStackRef.current = nextStack;
     requestNavigationScroll(snapshot ? { mode: "restore", snapshot } : { mode: "top" });
+  };
+  const popScreenStackRef = useRef(popScreenStack);
+  popScreenStackRef.current = popScreenStack;
+  const goBack = () => {
+    // Overlays/editors get first refusal (close sheet, save editor, …).
+    if (runHardwareBackInterceptor()) return;
+    popScreenStack();
   };
   const openRoot = (tab: RootTab) => {
     scrollSnapshotsRef.current = [];
-    setScreenStack([{ name: tab }]);
+    // Build 0.3: returning to the Invoices tab restores the last-viewed
+    // invoice/estimate instead of dropping the user on the list.
+    const remembered = tab === "invoices" && rootTabFor(screen) !== "invoices" ? lastFinancialScreenRef.current : null;
+    const nextStack: Screen[] = remembered ? [{ name: "invoices" }, remembered] : [{ name: tab }];
+    setScreenStack(nextStack);
+    screenStackRef.current = nextStack;
     requestNavigationScroll({ mode: "top" });
   };
   useLayoutEffect(() => runNavigationScroll(scrollIntentRef.current), [scrollNavigationKey]);
@@ -2348,6 +2484,8 @@ function CrewkatApplication() {
       return "";
     }
   });
+  // Build 0.3: public link screens keep the default browser back-button behavior.
+  if (portalToken || docToken || onMyWayToken || publicParams.has("booking")) publicScreenRef.current = true;
   if (portalToken)
     return (
       <div className="app-shell" ref={appShellRef}>
@@ -4772,7 +4910,7 @@ function JobDateSheet({ lang, jobDate, appointmentAt, onChange, onClose, closing
   return <div className={`client-sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="client-sheet job-date-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Fecha y cita" : "Job date and appointment"}>
       <div className="sheet-handle" />
-      <header><h2>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={onClose}>×</button></header>
+      <header><h2>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</h2><button type="button" className="sheet-save-btn" onClick={onClose}>{lang === "es" ? "Guardar" : "Save"}</button></header>
       <div className="compact-form">
         <label><span>{copy[lang].date}</span><input type="date" value={jobDate} onChange={(event) => onChange({ jobDate: event.target.value, appointmentAt })} /></label>
         <label><span>{copy[lang].appointment}</span><input type="datetime-local" value={appointmentAt} onChange={(event) => onChange({ jobDate, appointmentAt: event.target.value })} /></label>
@@ -6458,12 +6596,12 @@ function JobDetail({
       </section>
       </>)}
       {activeJobSheet && <div className={`client-sheet-backdrop${jobSheetClosing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet)); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={activeJobSheet}>
-        <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={() => closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet))}>×</button></header>
+        <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2>{["dates", "payment", "deposit"].includes(activeJobSheet as string) ? <button type="button" className="sheet-save-btn" onClick={() => closeJobSheet(true)}>{lang === "es" ? "Guardar" : "Save"}</button> : <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => closeJobSheet(false)}>×</button>}</header>
         {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
-        {activeJobSheet === "dates" && <div className="compact-form"><label><span>{t.date}</span><input type="date" value={detailDraft.jobDate} onChange={(event) => setDetailDraft({ ...detailDraft, jobDate: event.target.value })}/></label><label><span>{t.appointment}</span><input type="datetime-local" value={detailDraft.appointmentAt} onChange={(event) => setDetailDraft({ ...detailDraft, appointmentAt: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Los cambios se guardan al cerrar." : "Changes save when you close."}</p></div>}
+        {activeJobSheet === "dates" && <div className="compact-form"><label><span>{t.date}</span><input type="date" value={detailDraft.jobDate} onChange={(event) => setDetailDraft({ ...detailDraft, jobDate: event.target.value })}/></label><label><span>{t.appointment}</span><input type="datetime-local" value={detailDraft.appointmentAt} onChange={(event) => setDetailDraft({ ...detailDraft, appointmentAt: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
         {(activeJobSheet === "invoices" || activeJobSheet === "contracts") && <><div className="direction-toggle" role="tablist"><button type="button" className={linkTab === "new" ? "active" : ""} onClick={() => setLinkTab("new")}>{lang === "es" ? "Nuevo" : "New"}</button><button type="button" className={linkTab === "existing" ? "active" : ""} onClick={() => setLinkTab("existing")}>{lang === "es" ? "Existente" : "Existing"}</button></div>{linkTab === "new" ? <div className="sheet-new-actions">{activeJobSheet === "invoices" ? <button className="primary-button" type="button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>{lang === "es" ? "Crear factura para este trabajo" : "Create invoice for this job"}</button> : <><button className="primary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>{lang === "es" ? "Nuevo contrato" : "New contract"}</button><button className="secondary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>{lang === "es" ? "Nueva orden de cambio" : "New change order"}</button></>}</div> : <div className="sheet-record-list">{activeJobSheet === "invoices" ? (invoicesQuery.data?.invoices ?? []).filter((invoice) => invoice.jobId !== jobId).map((invoice) => <button type="button" key={invoice.id} onClick={() => { linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: jobId }); closeJobSheet(); }}><span><strong>{invoice.invoiceNumber} · {invoice.clientName}</strong><small>{usd(money(invoice.totalWithLateFee))}</small></span><PlusIcon/></button>) : (documentsQuery.data?.documents ?? []).filter((doc) => doc.jobId !== jobId).map((doc) => <button type="button" key={doc.id} onClick={() => { linkDocument.mutate(doc.id); closeJobSheet(); }}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><PlusIcon/></button>)}</div>}</>}
-        {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Los cambios se guardan al cerrar." : "Changes save when you close."}</p></div>}
-        {activeJobSheet === "deposit" && <div className="compact-form"><label><span>{t.depositAmount}</span><input inputMode="decimal" value={detailDraft.depositAmount} onChange={(event) => setDetailDraft({ ...detailDraft, depositAmount: event.target.value })} placeholder="$0.00"/></label><p className="sheet-note">{lang === "es" ? "El depósito se guarda al cerrar." : "The deposit saves when you close."}</p></div>}
+        {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
+        {activeJobSheet === "deposit" && <div className="compact-form"><label><span>{t.depositAmount}</span><input inputMode="decimal" value={detailDraft.depositAmount} onChange={(event) => setDetailDraft({ ...detailDraft, depositAmount: event.target.value })} placeholder="$0.00"/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar el depósito." : "Tap Save to save the deposit."}</p></div>}
         {activeJobSheet === "address" && <div className="address-sheet-actions"><p>{job.jobAddress}</p><button type="button" onClick={() => { void copyText(job.jobAddress); closeJobSheet(); }}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang === "es" ? "Copiar dirección" : "Copy address"}</span></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.jobAddress)}`} target="_blank" rel="noreferrer"><Icon><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></Icon><span>{lang === "es" ? "Abrir en Maps" : "Open in Maps"}</span></a></div>}
         {(setJobClient.isError || saveJobInfo.isError || linkInvoice.isError || linkDocument.isError) && <p className="status error">{t.error}</p>}
       </section></div>}
@@ -10146,21 +10284,49 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const [method, setMethod] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editorPreview, setEditorPreview] = useState<Blob | null>(null);
+  const editorPreviewUrl = useMemo(() => (editorPreview ? URL.createObjectURL(editorPreview) : null), [editorPreview]);
+  useEffect(() => () => { if (editorPreviewUrl) URL.revokeObjectURL(editorPreviewUrl); }, [editorPreviewUrl]);
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
   const move = (index: number, direction: -1 | 1) => { const next = [...form.lineItems]; const target = index + direction; if (target < 0 || target >= next.length) return; const current = next[index]; const other = next[target]; if (!current || !other) return; next[index] = other; next[target] = current; setForm({...form,lineItems:next}); };
-  const save = async () => { const items=form.lineItems.filter((item)=>item.description.trim()).map((item)=>({description:item.description,amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const})); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  // Build 0.3 (item 4): the edit sheet used to show a single "Item" input per
+  // line — the Name + Description fields from the new-invoice form were
+  // missing. Keep an item when it has either, and fall back to the name when
+  // the description is blank (same rule as the new-invoice form).
+  const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const}));
+  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
+  // the current (unsaved) form values.
+  const previewPdf = async () => {
+    const items = editableItems();
+    const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote };
+    const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
+    const pdf = kind === "invoice" ? await buildInvoicePdf(doc, settings ?? null, lang, strings) : await buildQuotePdf(doc, settings ?? null, lang, strings);
+    setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
+  };
   useEscapeToClose(true,()=>{if(!saving)onCancel();});
+  useEscapeToClose(editorPreview!==null,()=>setEditorPreview(null));
+  // Build 0.3 (item 7): hardware back while editing saves the document, then
+  // closes the sheet — one press never loses work. The sheet closes when the
+  // save settles either way, so a failing save can't trap the back button.
+  const saveRef = useRef(save); saveRef.current = save;
+  const cancelRef = useRef(onCancel); cancelRef.current = onCancel;
+  useEffect(() => pushHardwareBackInterceptor(() => {
+    void Promise.resolve(saveRef.current()).catch(() => {}).finally(() => cancelRef.current());
+    return true;
+  }), []);
   return <div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget&&!saving)onCancel();}}>
     <section className="more-sheet editor-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
     <div className="sheet-handle" />
-    <header className="sheet-header-row editor-header"><button type="button" className="text-button" onClick={onCancel} disabled={saving}>{t.close}</button><h2>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</h2><button type="button" className="primary-button editor-save" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
+    <header className="sheet-header-row editor-header"><button type="button" className="text-button" onClick={onCancel} disabled={saving}>{t.close}</button><h2>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn editor-preview-btn" onClick={() => void previewPdf()} disabled={saving}>{lang === "es" ? "Vista previa" : "Preview PDF"}</button><button type="button" className="sheet-save-btn" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></span></header>
     <div className="financial-editor">
-      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className={`editor-line-item${reorder?"":" no-reorder"}`} key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><label className="field-label"><span>{t.item}</span><input aria-label={`${t.item} ${index+1}`} placeholder={lang === "es" ? "Ej. Remodelación de cocina" : "e.g. Kitchen remodel"} value={item.description} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/></label><small>1 × {usd(money(item.amount))}</small></div><label className="field-label amount-label"><span>{t.amount}</span><input className="amount-input" aria-label={`${t.amount} ${index+1}`} placeholder="0.00" inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></label></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className={`editor-line-item${reorder?"":" no-reorder"}`} key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><label className="field-label"><span>{t.item}</span><input aria-label={`${t.item} ${index+1}`} placeholder={lang === "es" ? "Ej. Trabajo / Material" : "e.g. Work / Material"} value={item.name ?? ""} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,name:e.target.value}:x)})}/></label><label className="field-label"><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="line-item-description" aria-label={`${lang === "es" ? "Descripción" : "Description"} ${index+1}`} placeholder={lang === "es" ? "Describe este artículo (opcional)" : "Describe this item (optional)"} value={item.description} rows={2} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><ResizeGrip /></span></label><small>1 × {usd(money(item.amount))}</small></div><label className="field-label amount-label"><span>{t.amount}</span><input className="amount-input" aria-label={`${t.amount} ${index+1}`} placeholder="0.00" inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></label></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
       {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
+    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setEditorPreview(null);}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del PDF" : "PDF preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>setEditorPreview(null)}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={()=>{const blob=editorPreview;setEditorPreview(null);if(blob)void nativeShare(blob, `${kind}-${document.id}.pdf`, lang === "es" ? "Enviar PDF" : "Send PDF", lang === "es" ? "Documento" : "Document");}}>{lang === "es" ? "Enviar" : "Send"}</button></span></header><iframe className="editor-preview-iframe" title={lang === "es" ? "Vista previa del PDF" : "PDF preview"} src={editorPreviewUrl ?? undefined}/></section></div>}
     </section>
   </div>;
 }
@@ -10261,7 +10427,7 @@ function QuotePreview({
   const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
   const [confirmConvert, setConfirmConvert] = useState(false);
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
-  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/><div className="loading-block"/></main>;
+  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isPending ? <div className="loading-block"/> : <div className="empty-state"><p>{lang === "es" ? "Esta cotización ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>}</main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
   // Phase 1: optimistic accept with a forgiving Undo.
@@ -10289,7 +10455,7 @@ function QuotePreview({
     }
   };
   return <main className="page financial-detail-page">
-    <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} minimal={editing} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
       quote.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: quote.jobId as number }) }
@@ -10312,7 +10478,7 @@ function QuotePreview({
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={toggleAccepted}><CheckIcon/><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><Icon><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={toggleAccepted}><CheckIcon/><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`} /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -10496,6 +10662,46 @@ function InvoicesScreen({
     </main>
   );
 }
+// ---------------------------------------------------------------------------
+// Build 0.3 (item 2): new-invoice draft autosave. A closed/crashed app no
+// longer loses a half-written invoice: the draft (localStorage, 7-day
+// expiry) is restored on return with a Discard option, and cleared once the
+// invoice actually saves.
+// ---------------------------------------------------------------------------
+const INVOICE_DRAFT_KEY = "crewkat-invoice-draft";
+const INVOICE_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+type InvoiceFormState = {
+  invoiceNumber: string; quoteId: number | null; jobId: number | null; clientId: number | null;
+  clientName: string; clientPhone: string; clientEmail: string; jobAddress: string; shippingAddress: string; jobType: string;
+  issueDate: string; dueDate: string; status: InvoiceStatus;
+  recurringFrequency: "none" | "daily" | "weekly" | "monthly" | "quarterly"; nextDueDate: string; recurringEndDate: string;
+  theme: QuoteTheme; font: DocumentFont; accentColor: string;
+  showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean;
+  showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string;
+  footnote: string; discountType: AdjustmentType; discountValue: string; taxType: AdjustmentType; taxValue: string;
+  lineItems: Array<{ name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours" }>;
+};
+function invoiceDraftHasContent(form: any): boolean {
+  if (!form || typeof form !== "object") return false;
+  if ((form.clientName ?? "").toString().trim()) return true;
+  const items = Array.isArray(form.lineItems) ? form.lineItems : [];
+  return items.some((i: any) => (i?.name ?? "").toString().trim() || (i?.description ?? "").toString().trim() || (i?.amount ?? "").toString().trim());
+}
+function readInvoiceDraft(): { savedAt: number; form: Partial<InvoiceFormState>; discountEnabled: boolean; taxEnabled: boolean } | null {
+  try {
+    const raw = window.localStorage.getItem(INVOICE_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.form) return null;
+    if (Date.now() - Number(parsed.savedAt || 0) > INVOICE_DRAFT_TTL_MS || !invoiceDraftHasContent(parsed.form)) {
+      window.localStorage.removeItem(INVOICE_DRAFT_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 function InvoiceBuilder({
   lang,
   settings,
@@ -10516,9 +10722,11 @@ function InvoiceBuilder({
   useEscapeToClose(activeSheet !== null, () => closeSheet());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState("");
-  const [discountEnabled, setDiscountEnabled] = useState(false);
-  const [taxEnabled, setTaxEnabled] = useState(false);
-  const [form, setForm] = useState({
+  // Build 0.3 (item 2): restore an interrupted invoice draft, if one exists.
+  const restoredDraft = useMemo(readInvoiceDraft, []);
+  const [discountEnabled, setDiscountEnabled] = useState(restoredDraft?.discountEnabled ?? false);
+  const [taxEnabled, setTaxEnabled] = useState(restoredDraft?.taxEnabled ?? false);
+  const initialForm = {
     invoiceNumber: "", quoteId: null as number | null, jobId: jobId ?? (null as number | null), clientId: null as number | null,
     clientName: "", clientPhone: "", clientEmail: "", jobAddress: "", shippingAddress: "", jobType: "",
     issueDate: new Date().toLocaleDateString("en-CA"), dueDate: "", status: "draft" as InvoiceStatus,
@@ -10532,7 +10740,34 @@ function InvoiceBuilder({
     footnote: settings?.defaultFootnote ?? "", discountType: "percent" as AdjustmentType, discountValue: "0",
     taxType: "percent" as AdjustmentType, taxValue: "0",
     lineItems: [{ name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" as "none" | "days" | "hours" }],
+  };
+  const [form, setForm] = useState<InvoiceFormState>(() => restoredDraft ? { ...initialForm, ...restoredDraft.form } : initialForm);
+  const [draftRestored, setDraftRestored] = useState(() => Boolean(restoredDraft));
+  // Debounced draft write (~750ms). The ref always holds the latest writer so
+  // the hardware-back interceptor (below) can flush synchronously.
+  const flushInvoiceDraftRef = useRef(() => {});
+  useEffect(() => {
+    flushInvoiceDraftRef.current = () => {
+      try {
+        if (invoiceDraftHasContent(form)) window.localStorage.setItem(INVOICE_DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), form, discountEnabled, taxEnabled }));
+        else window.localStorage.removeItem(INVOICE_DRAFT_KEY);
+      } catch { /* storage unavailable */ }
+    };
   });
+  useEffect(() => {
+    const timer = window.setTimeout(() => flushInvoiceDraftRef.current(), 750);
+    return () => window.clearTimeout(timer);
+  }, [form, discountEnabled, taxEnabled]);
+  // Build 0.3 (item 7): hardware back while composing flushes the draft, then
+  // lets navigation continue (the press is not consumed).
+  useEffect(() => pushHardwareBackInterceptor(() => { flushInvoiceDraftRef.current(); return false; }), []);
+  const discardDraft = () => {
+    try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ }
+    setDraftRestored(false);
+    setDiscountEnabled(false);
+    setTaxEnabled(false);
+    setForm({ ...initialForm });
+  };
   useEffect(() => {
     const job = jobQuery.data?.job;
     if (job && !form.clientName) setForm((v) => ({ ...v, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType }));
@@ -10548,7 +10783,7 @@ function InvoiceBuilder({
   const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); onBack(); },
+    onSuccess: () => { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); onBack(); },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
@@ -10558,6 +10793,7 @@ function InvoiceBuilder({
     <PageHeader lang={lang} title={t.newInvoice} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
     <form className="job-form invoice-fly-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
       <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
+      {draftRestored && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Borrador restaurado" : "Draft restored"}</span><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></div>}
       <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
       <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
         <div className="field-pair"><label><span>{t.phone}</span><input type="tel" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}/></label><label><span>{t.email}</span><input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}/></label></div>
@@ -10569,7 +10805,7 @@ function InvoiceBuilder({
         {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card" key={index}>
           <div className="invoice-line-head"><strong>{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</strong>{form.lineItems.length > 1 && <button type="button" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
           <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}/></label>
-          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={2} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/></label>
+          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="resize-vertical" rows={2} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/><ResizeGrip /></span></label>
           <div className="invoice-line-grid trio"><label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={item.amount} onChange={(e) => updateItem(index, { amount: e.target.value })} placeholder="$0.00"/></label><label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={item.quantity} onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}/></label><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label></div>
           <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label>
           <div className="invoice-line-total"><span>{lang === "es" ? "Total de partida" : "Item total"}</span><strong>{usd(lineTotal)}</strong></div>
@@ -10590,7 +10826,7 @@ function InvoiceBuilder({
       {error && <p className="status error">{error}</p>}
       <button className="primary-button sticky-submit" disabled={save.isPending}>{save.isPending ? t.saving : t.saveInvoice}</button>
     </form>
-    {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" aria-label={lang === "es" ? "Guardar y cerrar" : "Save and close"} onClick={closeSheet}>×</button></header>
+    {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" className="sheet-save-btn" onClick={closeSheet}>{lang === "es" ? "Guardar" : "Save"}</button></header>
       {activeSheet === "details" ? <div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Número de factura" : "Invoice number"}</span><input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}/><small>{lang === "es" ? "Asignado automáticamente; puedes cambiarlo." : "Assigned automatically — you can change it."}</small></label></div> : <div className="invoice-adjustment-sheet"><AdjustmentField lang={lang} label={activeSheet === "discount" ? t.discount : t.tax} type={activeSheet === "discount" ? form.discountType : form.taxType} value={activeSheet === "discount" ? form.discountValue : form.taxValue} onType={(value) => activeSheet === "discount" ? setForm({ ...form, discountType: value }) : setForm({ ...form, taxType: value })} onValue={(value) => activeSheet === "discount" ? setForm({ ...form, discountValue: value }) : setForm({ ...form, taxValue: value })}/><button type="button" className="primary-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(true) : setTaxEnabled(true); closeSheet(); }}>{lang === "es" ? "Agregar" : "Add"} {activeSheet === "discount" ? t.discount.toLowerCase() : t.tax.toLowerCase()}</button><button type="button" className="text-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(false) : setTaxEnabled(false); closeSheet(); }}>{lang === "es" ? "Quitar" : "Remove"}</button></div>}
     </section></div>}
     {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }}/>} 
@@ -10754,13 +10990,13 @@ function InvoicePreview({
   const startSchedule=useMutation({mutationFn:()=>api.createRecurringSchedule({invoiceId,frequency:scheduleFrequency,today:localToday()}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const cancelSchedule=useMutation({mutationFn:(id:number)=>api.cancelRecurringSchedule({id}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const invoiceSchedules=(schedulesQuery.data?.schedules??[]).filter((s)=>s.invoiceId===invoiceId&&s.active);
-  if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/><div className="loading-block"/></main>;
+  if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/>{query.isPending?<div className="loading-block"/>:<div className="empty-state"><p>{lang === "es" ? "Esta factura ya no existe." : "This invoice no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>}</main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
   // Payment actions now go through the payment sheet (details + history).
   const sendInvoice=async()=>{buzz(8);if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);};
   return <main className="page financial-detail-page">
-    <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} minimal={editing} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
       invoice.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: invoice.jobId as number }) }
@@ -10823,7 +11059,7 @@ function InvoicePreview({
     <details className="action-details document-details"><summary>{t.recurring}{isPremium ? null : <span className="pro-badge">PRO</span>}</summary>{isPremium ? <><div className="recurring-subsection"><h4>{lang==="es"?"Manual":"Manual"}</h4><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></div><div className="recurring-subsection"><h4>{lang==="es"?"Automática":"Automatic"}</h4><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></div></> : <p className="privacy-note">{lang==="es"?"Las facturas recurrentes son una función Pro.":"Recurring invoices are a Pro feature."} <button type="button" className="text-button" onClick={()=>setScreen({name:"upgrade"})}>{lang==="es"?"Ver planes":"See plans"}</button></p>}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><GearIcon/><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><Icon><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><CheckIcon/><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${t.pdfPreview}`} /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -11621,6 +11857,9 @@ function DocumentSigner({
     filename: string;
     title: string;
   } | null>(null);
+  // Build 0.3 (item 11): the "View document" build used to fail silently.
+  const [viewError, setViewError] = useState("");
+  const [viewingId, setViewingId] = useState<number | null>(null);
   useEscapeToClose(preview !== null, () => setPreview(null));
   const save = useMutation({
     mutationFn: async () => {
@@ -11752,21 +11991,32 @@ function DocumentSigner({
               </div>
               <div className="row-actions">
                 <button
+                  type="button"
+                  className="btn"
+                  disabled={viewingId === d.id}
                   onClick={async () => {
-                    const blob = await buildSignedDocumentPdf(
-                      d,
-                      job,
-                      settings,
-                      lang,
-                    );
-                    setPreview({
-                      blob,
-                      filename: `${safeName(job.clientName)}-${safeName(d.title)}-signed.pdf`,
-                      title: d.title,
-                    });
+                    setViewingId(d.id);
+                    setViewError("");
+                    try {
+                      const blob = await buildSignedDocumentPdf(
+                        d,
+                        job,
+                        settings,
+                        lang,
+                      );
+                      setPreview({
+                        blob,
+                        filename: `${safeName(job.clientName)}-${safeName(d.title)}-signed.pdf`,
+                        title: d.title,
+                      });
+                    } catch (e) {
+                      setViewError(actionErrorMessage(e));
+                    } finally {
+                      setViewingId(null);
+                    }
                   }}
                 >
-                  {t.viewDocument}
+                  {viewingId === d.id ? (lang === "es" ? "Abriendo…" : "Opening…") : t.viewDocument}
                 </button>
                 {d.signedPdfUrl ? (
                   <a
@@ -11789,6 +12039,7 @@ function DocumentSigner({
               <DocumentLinkPanel lang={lang} kind={d.kind} id={d.id} />
             </article>
           ))}
+          {viewError && <p className="status error" role="alert">{viewError}</p>}
         </section>
       )}
       {preview && (
@@ -11834,8 +12085,20 @@ async function buildSignedDocumentPdf(
   lang: Lang,
 ) {
   const t = copy[lang];
-  const sigBlob = await (await fetch(document.signatureUrl)).blob();
-  const sigData = await blobDataUrl(sigBlob);
+  // Build 0.3 (item 11): every fetch is guarded. A missing/expired signature
+  // image or original PDF used to throw and leave the "View document" button
+  // doing nothing at all — now the PDF still builds with a placeholder note.
+  let sigData = "";
+  let sigFormat: "PNG" | "JPEG" = "PNG";
+  try {
+    const sigBlob = await (await fetch(document.signatureUrl)).blob();
+    if (sigBlob.type.startsWith("image/")) {
+      sigData = await blobDataUrl(sigBlob);
+      if (sigBlob.type.includes("jpeg") || sigBlob.type.includes("jpg")) sigFormat = "JPEG";
+    }
+  } catch {
+    sigData = "";
+  }
   const page = new jsPDF({ unit: "pt", format: "letter" });
   const w = page.internal.pageSize.getWidth();
   let y = 48;
@@ -11894,7 +12157,23 @@ async function buildSignedDocumentPdf(
   y += 24;
   page.setFont("helvetica", "bold");
   page.text(t.signature, 42, y);
-  page.addImage(sigData, "PNG", 42, y + 10, 230, 70);
+  if (sigData) {
+    try {
+      page.addImage(sigData, sigFormat, 42, y + 10, 230, 70);
+    } catch {
+      sigData = "";
+    }
+  }
+  if (!sigData) {
+    // Signature image unavailable (deleted file, bad format) — keep the page
+    // instead of a broken build.
+    page.setFont("helvetica", "italic");
+    page.setFontSize(10);
+    page.setTextColor(120, 120, 120);
+    page.text(lang === "es" ? "(Imagen de firma no disponible)" : "(Signature image unavailable)", 42, y + 34);
+    page.setFont("helvetica", "normal");
+    page.setTextColor(24, 32, 30);
+  }
   page.setFont("helvetica", "normal");
   page.text(document.signerName, 42, y + 94);
   page.text(
@@ -11907,16 +12186,20 @@ async function buildSignedDocumentPdf(
   );
   let blob = page.output("blob");
   if (document.originalUrl) {
-    const original = await PDFDocument.load(
-      await (await fetch(document.originalUrl)).arrayBuffer(),
-    );
-    const signaturePdf = await PDFDocument.load(await blob.arrayBuffer());
-    const pages = await original.copyPages(
-      signaturePdf,
-      signaturePdf.getPageIndices(),
-    );
-    pages.forEach((p) => original.addPage(p));
-    blob = new Blob([await original.save()], { type: "application/pdf" });
+    try {
+      const original = await PDFDocument.load(
+        await (await fetch(document.originalUrl)).arrayBuffer(),
+      );
+      const signaturePdf = await PDFDocument.load(await blob.arrayBuffer());
+      const pages = await original.copyPages(
+        signaturePdf,
+        signaturePdf.getPageIndices(),
+      );
+      pages.forEach((p) => original.addPage(p));
+      blob = new Blob([await original.save()], { type: "application/pdf" });
+    } catch {
+      // Original document unavailable — the signature page alone still opens.
+    }
   }
   return blob;
 }
@@ -12722,6 +13005,30 @@ function DepositRequest({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Build 0.3 (item 13): normalize photos before embedding in PDFs. Phone
+// photos are multi-megapixel and sometimes WebP — jsPDF chokes on the raw
+// bytes or a wrong format guess, and the image silently goes missing from
+// the packet. Downscaling to a bounded JPEG always embeds.
+// ---------------------------------------------------------------------------
+async function normalizePhotoForPdf(blob: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(blob);
+  const maxSide = 1200;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("no 2d context");
+  }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
 function ProofPacket({
   lang,
   jobId,
@@ -12861,8 +13168,8 @@ function ProofPacket({
         try {
           const blob = await (await fetch(p.url)).blob();
           doc.addImage(
-            await blobDataUrl(blob),
-            blob.type.includes("png") ? "PNG" : "JPEG",
+            await normalizePhotoForPdf(blob),
+            "JPEG",
             margin,
             y,
             w - margin * 2,
@@ -19146,6 +19453,36 @@ function TaxExport({ lang }: { lang: Lang }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Build 0.3 (item 14): scanner draft. Returning from the camera intent can
+// recreate the activity and wipe component state — the captured photo and
+// the half-filled form used to vanish, leaving "Create" disabled with no
+// explanation. The draft (sessionStorage) restores both on return.
+// ---------------------------------------------------------------------------
+const SCAN_DRAFT_KEY = "crewkat-scan-draft";
+type ScanDraft = {
+  title: string; kind: "receipt" | "contract" | "other"; vendor: string;
+  amount: string; expenseDate: string; category: string; note: string;
+  jobId: number | null; captureDataUrl: string | null;
+};
+function readScanDraft(): ScanDraft | null {
+  try {
+    const raw = window.sessionStorage.getItem(SCAN_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const kind = parsed.kind === "contract" || parsed.kind === "other" ? parsed.kind : "receipt";
+    return {
+      title: String(parsed.title ?? ""), kind,
+      vendor: String(parsed.vendor ?? ""), amount: String(parsed.amount ?? ""),
+      expenseDate: String(parsed.expenseDate ?? ""), category: String(parsed.category ?? "materials"),
+      note: String(parsed.note ?? ""), jobId: typeof parsed.jobId === "number" ? parsed.jobId : null,
+      captureDataUrl: typeof parsed.captureDataUrl === "string" ? parsed.captureDataUrl : null,
+    };
+  } catch {
+    return null;
+  }
+}
 function ScannerTool({
   lang,
   data,
@@ -19156,25 +19493,70 @@ function ScannerTool({
   refresh: () => void;
 }) {
   const today = new Date().toLocaleDateString("en-CA");
-  const [jobId, setJobId] = useState<number | null>(data.jobs[0]?.id ?? null);
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<"receipt" | "contract" | "other">("receipt");
+  // Build 0.3 (item 14): restore an interrupted scan draft, if any.
+  const scanDraft = useMemo(readScanDraft, []);
+  const [jobId, setJobId] = useState<number | null>(scanDraft?.jobId ?? data.jobs[0]?.id ?? null);
+  const [title, setTitle] = useState(scanDraft?.title ?? "");
+  const [kind, setKind] = useState<"receipt" | "contract" | "other">(scanDraft?.kind ?? "receipt");
   const [file, setFile] = useState<File | null>(null);
+  // capture: downscaled JPEG data URL of the photo — survives activity
+  // recreation, unlike the File object, and doubles as the processing source.
+  const [capture, setCapture] = useState<string | null>(scanDraft?.captureDataUrl ?? null);
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [vendor, setVendor] = useState("");
-  const [amount, setAmount] = useState("");
-  const [expenseDate, setExpenseDate] = useState(today);
-  const [category, setCategory] = useState("materials");
-  const [note, setNote] = useState("");
+  const [vendor, setVendor] = useState(scanDraft?.vendor ?? "");
+  const [amount, setAmount] = useState(scanDraft?.amount ?? "");
+  const [expenseDate, setExpenseDate] = useState(scanDraft?.expenseDate || today);
+  const [category, setCategory] = useState(scanDraft?.category ?? "materials");
+  const [note, setNote] = useState(scanDraft?.note ?? "");
   const [error, setError] = useState("");
+  const onCapture = async (f: File | null) => {
+    setFile(f);
+    if (!f) { setCapture(null); return; }
+    try {
+      const bitmap = await createImageBitmap(f);
+      const max = 1200;
+      const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const c = canvas.getContext("2d");
+      if (c) {
+        c.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        setCapture(canvas.toDataURL("image/jpeg", 0.85));
+        // A photo with no title kept "Create" disabled with no explanation —
+        // default the title so the tap does something immediately.
+        setTitle((t) => (t.trim() ? t : `Scan ${today}`));
+      }
+      bitmap.close();
+    } catch {
+      /* keep the file; no thumbnail this time */
+    }
+  };
+  // Persist the draft continuously; flush synchronously on hardware back
+  // (item 7) without consuming the press.
+  const flushScanDraftRef = useRef(() => {});
+  useEffect(() => {
+    flushScanDraftRef.current = () => {
+      try {
+        const hasContent = title.trim() || vendor.trim() || amount.trim() || note.trim() || capture;
+        if (hasContent) window.sessionStorage.setItem(SCAN_DRAFT_KEY, JSON.stringify({ title, kind, vendor, amount, expenseDate, category, note, jobId, captureDataUrl: capture }));
+        else window.sessionStorage.removeItem(SCAN_DRAFT_KEY);
+      } catch { /* storage full/unavailable */ }
+    };
+  });
+  useEffect(() => { flushScanDraftRef.current(); }, [title, kind, vendor, amount, expenseDate, category, note, jobId, capture]);
+  useEffect(() => pushHardwareBackInterceptor(() => { flushScanDraftRef.current(); return false; }), []);
   const process = async () => {
-    if (!file || !title || (kind === "receipt" && (!expenseDate || !amount)))
+    // Prefer the original file; fall back to the persisted capture (e.g.
+    // after the camera intent recreated the activity and dropped the File).
+    const source: Blob | null = file ?? (capture ? await (await fetch(capture)).blob() : null);
+    if (!source || !title || (kind === "receipt" && (!expenseDate || !amount)))
       return;
     setBusy(true);
     setError("");
     try {
-      const bitmap = await createImageBitmap(file);
+      const bitmap = await createImageBitmap(source);
       const max = 1800;
       const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement("canvas");
@@ -19237,6 +19619,8 @@ function ScannerTool({
       });
       refresh();
       setFile(null);
+      setCapture(null);
+      try { window.sessionStorage.removeItem(SCAN_DRAFT_KEY); } catch { /* noop */ }
       setTitle("");
       setVendor("");
       setAmount("");
@@ -19367,15 +19751,29 @@ function ScannerTool({
             type="file"
             accept="image/jpeg,image/png,image/webp"
             capture="environment"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => void onCapture(e.target.files?.[0] ?? null)}
           />
         </label>
+        {capture && !preview && (
+          <>
+            <img
+              className="scan-capture-preview"
+              src={capture}
+              alt={lang === "es" ? "Foto capturada" : "Captured photo"}
+            />
+            <p className="scan-hint">
+              {lang === "es"
+                ? "Foto lista. Revisa el título y crea el PDF."
+                : "Photo ready. Check the title, then create the PDF."}
+            </p>
+          </>
+        )}
         {error && <p className="status error">{error}</p>}
         <button
           className="primary-button"
           disabled={
             busy ||
-            !file ||
+            !(file || capture) ||
             !title ||
             (kind === "receipt" && (!expenseDate || !amount))
           }
@@ -20118,6 +20516,72 @@ function ClientDocumentScreen({ token }: { token: string }) {
     },
     onError: (e) => setSignError(e instanceof Error ? e.message : t.linkInvalid),
   });
+  // Build 0.3 (item 8): the client link shows the actual generated PDF — the
+  // same document the company sees — instead of a plain-HTML mock.
+  const docData = q.data ?? null;
+  const [docPdf, setDocPdf] = useState<Blob | null>(null);
+  const [docPdfFailed, setDocPdfFailed] = useState(false);
+  const docPdfUrl = useMemo(() => (docPdf ? URL.createObjectURL(docPdf) : null), [docPdf]);
+  useEffect(() => () => { if (docPdfUrl) URL.revokeObjectURL(docPdfUrl); }, [docPdfUrl]);
+  useEffect(() => {
+    const d = docData;
+    if (!d || (d.kind !== "invoice" && d.kind !== "quote")) return;
+    let cancelled = false;
+    const financialKind = d.kind;
+    (async () => {
+      try {
+        const settings = {
+          logoUrl: d.company.logoUrl, companyName: d.company.name, phone: d.company.phone,
+          email: d.company.email, website: d.company.website, licenseNumber: d.company.licenseNumber, address: "",
+        } as unknown as Settings;
+        const pd: FinancialDocument = {
+          id: d.documentId,
+          clientName: d.clientName,
+          jobAddress: d.jobAddress,
+          jobType: d.jobType,
+          lineItems: d.lineItems.map((item) => ({
+            name: item.name ?? "", description: item.description, amount: item.amount,
+            quantity: item.quantity ?? 1, discount: item.discount ?? "0",
+            unit: (item.unit === "days" || item.unit === "hours" ? item.unit : "none") as "none" | "days" | "hours",
+          })),
+          invoiceNumber: d.invoiceNumber || undefined,
+          issueDate: d.issueDate || undefined,
+          dueDate: d.dueDate || undefined,
+          expiryDate: d.expiryDate || undefined,
+          status: (d.status as InvoiceStatus) || undefined,
+          subtotal: d.subtotal,
+          discountType: (d.discountType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+          discountValue: d.discountValue,
+          taxType: (d.taxType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+          taxValue: d.taxValue,
+          total: d.total,
+          footnote: d.footnote,
+          theme: (["classic", "modern", "bold", "minimal"].includes(d.theme) ? d.theme : "classic") as QuoteTheme,
+          font: (["helvetica", "times", "courier", "palatino"].includes(d.font) ? d.font : "helvetica") as DocumentFont,
+          accentColor: d.accentColor || "#1f5a4a",
+          showTaxLine: d.showTaxLine,
+          showDiscountLine: d.showDiscountLine,
+          showPaidLine: d.showPaidLine,
+          showPaymentTerms: d.showPaymentTerms,
+          showFooterNotes: d.showFooterNotes,
+          showLogo: d.showLogo,
+          showCompanyInfo: d.showCompanyInfo,
+          customizeJson: d.customizeJson || "{}",
+        };
+        const strings = { discount: copy[lang].discount, tax: copy[lang].tax, paymentInstructions: copy[lang].paymentInstructions };
+        const pdf = financialKind === "invoice"
+          ? await buildInvoicePdf(pd, settings, lang, strings)
+          : await buildQuotePdf(pd, settings, lang, strings);
+        if (!cancelled) {
+          setDocPdf(new Blob([pdf], { type: "application/pdf" }));
+          setDocPdfFailed(false);
+        }
+      } catch {
+        if (!cancelled) setDocPdfFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [docData, lang]);
   const langToggle = (
     <div className="client-lang-toggle">
       <button
@@ -20162,25 +20626,34 @@ function ClientDocumentScreen({ token }: { token: string }) {
         clientName: doc.clientName,
         jobAddress: doc.jobAddress,
         jobType: doc.jobType,
-        lineItems: doc.lineItems,
+        lineItems: doc.lineItems.map((item) => ({
+          name: item.name ?? "", description: item.description, amount: item.amount,
+          quantity: item.quantity ?? 1, discount: item.discount ?? "0",
+          unit: (item.unit === "days" || item.unit === "hours" ? item.unit : "none") as "none" | "days" | "hours",
+        })),
+        invoiceNumber: doc.invoiceNumber || undefined,
+        issueDate: doc.issueDate || undefined,
+        dueDate: doc.dueDate || undefined,
+        expiryDate: doc.expiryDate || undefined,
+        status: (doc.status as InvoiceStatus) || undefined,
         subtotal: doc.subtotal,
-        discountType: "fixed",
-        discountValue: "0",
-        taxType: "fixed",
-        taxValue: "0",
+        discountType: (doc.discountType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+        discountValue: doc.discountValue,
+        taxType: (doc.taxType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+        taxValue: doc.taxValue,
         total: doc.total,
         footnote: doc.footnote,
-        theme: "classic",
-        font: "helvetica",
-        accentColor: "#1f5a4a",
-        showTaxLine: false,
-        showDiscountLine: false,
-        showPaidLine: false,
-        showPaymentTerms: false,
-        showFooterNotes: !!doc.footnote,
-        showLogo: !!c.logoUrl,
-        showCompanyInfo: true,
-        customizeJson: JSON.stringify(defaultDocumentCustomize(financialKind, lang)),
+        theme: (["classic", "modern", "bold", "minimal"].includes(doc.theme) ? doc.theme : "classic") as QuoteTheme,
+        font: (["helvetica", "times", "courier", "palatino"].includes(doc.font) ? doc.font : "helvetica") as DocumentFont,
+        accentColor: doc.accentColor || "#1f5a4a",
+        showTaxLine: doc.showTaxLine,
+        showDiscountLine: doc.showDiscountLine,
+        showPaidLine: doc.showPaidLine,
+        showPaymentTerms: doc.showPaymentTerms,
+        showFooterNotes: doc.showFooterNotes,
+        showLogo: doc.showLogo,
+        showCompanyInfo: doc.showCompanyInfo,
+        customizeJson: doc.customizeJson || "{}",
       }
     : null;
   const previewSettings = {
@@ -20192,19 +20665,9 @@ function ClientDocumentScreen({ token }: { token: string }) {
     licenseNumber: c.licenseNumber,
     address: "",
   } as unknown as Settings;
-  const downloadPdf = async () => {
-    if (!previewDoc || !financialKind) return;
-    const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
-    const pdf = financialKind === "invoice" ? await buildInvoicePdf(previewDoc, previewSettings, lang, strings) : await buildQuotePdf(previewDoc, previewSettings, lang, strings);
-    const blob = new Blob([pdf], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${financialKind}-${previewDoc.id}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const downloadPdf = () => {
+    if (!docPdf || !financialKind) return;
+    downloadBlob(docPdf, `${financialKind}-${doc.documentId}.pdf`);
   };
   const shareDoc = async () => {
     const shareUrl = window.location.href;
@@ -20220,7 +20683,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
     <main className="page public-page client-doc-page">
       {langToggle}
       <div className="client-doc-actions">
-        <button type="button" className="secondary-button" onClick={downloadPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+        <button type="button" className="secondary-button" onClick={downloadPdf} disabled={!docPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
         <button type="button" className="secondary-button" onClick={shareDoc}>{lang === "es" ? "Compartir" : "Share"}</button>
         <button type="button" className="secondary-button" onClick={printDoc}>{lang === "es" ? "Imprimir" : "Print"}</button>
       </div>
@@ -20234,12 +20697,20 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </div>
       </header>
       {previewDoc && financialKind ? (
-        <QuotePaper
-          quote={previewDoc}
-          settings={previewSettings}
-          lang={lang}
-          kind={financialKind}
-        />
+        docPdfUrl ? (
+          <iframe className="client-doc-pdf" title={doc.title} src={docPdfUrl} />
+        ) : docPdfFailed ? (
+          <div className="client-doc-pdf-fallback">
+            <QuotePaper
+              quote={previewDoc}
+              settings={previewSettings}
+              lang={lang}
+              kind={financialKind}
+            />
+          </div>
+        ) : (
+          <div className="loading-block" />
+        )
       ) : (
         <article className="quote-paper">
           <div className="quote-paper-title-row">
@@ -22041,7 +22512,11 @@ function PunchListPanel({ lang }: { lang: Lang }) {
   });
   const items = itemsQuery.data?.items ?? [];
   const doneCount = items.filter((i) => i.completed).length;
-  return <section className="calculator-panel"><h2>{lang === "es" ? "Lista de pendientes" : "Punch list"}</h2><p>{lang === "es" ? "Elige un trabajo y lleva la cuenta de los pendientes." : "Pick a job and track its punch items."}</p><div className="field-pair"><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>{jobsQuery.data?.jobs.map((j) => <option key={j.id} value={j.id}>{j.clientName} · {j.jobType}</option>)}</select></label></div>{jobId && <><div className="punch-add"><input value={text} onChange={(e) => setText(e.target.value)} placeholder={lang === "es" ? "Agregar pendiente…" : "Add a punch item…"} maxLength={500}/><button type="button" className="primary-button" disabled={!text.trim() || add.isPending} onClick={() => add.mutate()}><PlusIcon />{lang === "es" ? "Agregar" : "Add"}</button></div><p className="result-callout">{doneCount} / {items.length} {lang === "es" ? "completados" : "done"}</p><div className="punch-list">{items.map((item) => <article key={item.id} className={item.completed ? "punch-done" : ""}><button type="button" aria-label={item.completed ? (lang === "es" ? "Marcar pendiente" : "Mark open") : (lang === "es" ? "Marcar completado" : "Mark done")} onClick={() => toggle.mutate({ id: item.id, completed: !item.completed })}><CheckIcon /></button><span>{item.text}</span><button type="button" aria-label={lang === "es" ? "Eliminar pendiente" : "Delete punch item"} onClick={() => remove.mutate(item.id)}><TrashIcon /></button></article>)}</div>{items.length === 0 && <p>{lang === "es" ? "No hay pendientes todavía. Agrega el primero arriba." : "No punch items yet. Add the first one above."}</p>}</>}<ResultHistory lang={lang} tool="punchlist" value={`${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"}`}/></section>;
+  // Build0.3: the saved/copied result is the actual list, not just the counter.
+  const listCopy = items.length
+    ? [`${lang === "es" ? "Lista de pendientes" : "Punch list"} (${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"})`, ...items.map((i) => `${i.completed ? "✓" : "□"} ${i.text}`)].join("\n")
+    : "";
+  return <section className="calculator-panel"><h2>{lang === "es" ? "Lista de pendientes" : "Punch list"}</h2><p>{lang === "es" ? "Elige un trabajo y lleva la cuenta de los pendientes." : "Pick a job and track its punch items."}</p><div className="field-pair"><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>{jobsQuery.data?.jobs.map((j) => <option key={j.id} value={j.id}>{j.clientName} · {j.jobType}</option>)}</select></label></div>{jobId && <><div className="punch-add"><input value={text} onChange={(e) => setText(e.target.value)} placeholder={lang === "es" ? "Agregar pendiente…" : "Add a punch item…"} maxLength={500}/><button type="button" className="primary-button" disabled={!text.trim() || add.isPending} onClick={() => add.mutate()}><PlusIcon />{lang === "es" ? "Agregar" : "Add"}</button></div><p className="result-callout">{doneCount} / {items.length} {lang === "es" ? "completados" : "done"}</p><div className="punch-list">{items.map((item) => <article key={item.id} className={item.completed ? "punch-done" : ""}><button type="button" aria-label={item.completed ? (lang === "es" ? "Marcar pendiente" : "Mark open") : (lang === "es" ? "Marcar completado" : "Mark done")} onClick={() => toggle.mutate({ id: item.id, completed: !item.completed })}><CheckIcon /></button><span>{item.text}</span><button type="button" aria-label={lang === "es" ? "Eliminar pendiente" : "Delete punch item"} onClick={() => remove.mutate(item.id)}><TrashIcon /></button></article>)}</div>{items.length === 0 && <p>{lang === "es" ? "No hay pendientes todavía. Agrega el primero arriba." : "No punch items yet. Add the first one above."}</p>}</>}<ResultHistory lang={lang} tool="punchlist" value={listCopy || `${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"}`}/></section>;
 }
 
 function CrewClockPanel({ lang }: { lang: Lang }) {
