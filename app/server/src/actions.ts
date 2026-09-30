@@ -1872,12 +1872,13 @@ export const BaseActions = {
   }),
   getFoundingMemberAvailability: defineAction({
     request: z.object({}),
-    response: z.object({ totalSpots: z.number(), claimed: z.number(), remaining: z.number(), available: z.boolean(), configured: z.boolean() }),
+    response: z.object({ totalSpots: z.number(), claimed: z.number(), remaining: z.number(), available: z.boolean(), configured: z.boolean(), annualConfigured: z.boolean() }),
     async handler(ctx) {
       const db = ctx.db<typeof schema>();
       const claimed = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.subscriptionStatus, "founding_member"))).length;
       const configured = Boolean(process.env.STRIPE_FOUNDING_PRICE_ID?.trim());
-      return { totalSpots: 100, claimed, remaining: Math.max(0, 100 - claimed), available: claimed < 100, configured };
+      const annualConfigured = Boolean(process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID?.trim());
+      return { totalSpots: 100, claimed, remaining: Math.max(0, 100 - claimed), available: claimed < 100, configured, annualConfigured };
     },
   }),
   startPremiumCheckout: defineAction({

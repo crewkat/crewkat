@@ -4308,10 +4308,10 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             : `You're using ${usageQuery.data.activeJobs} of ${usageQuery.data.maxActiveJobs} jobs and ${usageQuery.data.invoicesThisMonth} of ${usageQuery.data.maxInvoicesPerMonth} invoices this month.`}
         </p>
       )}
-      {/* Build 4: monthly vs discounted annual plan selector. The annual
-          price/discount still needs the owner's approval before activation.
-          Phase 4: hidden inside the Play flow — the Play app sells the monthly
-          SKU through Google Play Billing only. */}
+      {/* Build 4: monthly vs discounted annual plan selector. Annual shows
+          $189/yr when STRIPE_PREMIUM_ANNUAL_PRICE_ID is configured, "Coming
+          soon" otherwise. Phase 4: hidden inside the Play flow — the Play app
+          sells the monthly SKU through Google Play Billing only. */}
       {!isPremium && !playOffered && (
         <div className="plan-selector" role="radiogroup" aria-label={lang === "es" ? "Elige tu plan" : "Choose your plan"}>
           <button type="button" role="radio" aria-checked={plan === "monthly"} className={`plan-option${plan === "monthly" ? " selected" : ""}`} onClick={() => setPlan("monthly")}>
@@ -4319,11 +4319,11 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             <span className="plan-option-price"><strong>$19</strong><small>{lang === "es" ? "/mes" : "/mo"}</small></span>
             <span className="plan-option-note">{lang === "es" ? "Cancela cuando quieras" : "Cancel anytime"}</span>
           </button>
-          <button type="button" role="radio" aria-checked={plan === "annual"} className={`plan-option${plan === "annual" ? " selected" : ""}`} onClick={() => setPlan("annual")}>
+          <button type="button" role="radio" aria-checked={plan === "annual"} className={`plan-option${plan === "annual" ? " selected" : ""}`} onClick={() => setPlan("annual")} disabled={!foundingQuery.data?.annualConfigured}>
             <span className="plan-option-badge">{lang === "es" ? "AHORRA 2 MESES" : "SAVE 2 MONTHS"}</span>
             <span className="plan-option-name">{lang === "es" ? "Anual" : "Annual"}</span>
-            <span className="plan-option-price"><strong>{lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
-            <span className="plan-option-note">{lang === "es" ? "Precio anual por anunciar" : "Annual pricing to be announced"}</span>
+            <span className="plan-option-price"><strong>{foundingQuery.data?.annualConfigured ? <><span>$189</span><small>{lang === "es" ? "/año" : "/yr"}</small></> : lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
+            <span className="plan-option-note">{foundingQuery.data?.annualConfigured ? (lang === "es" ? "Cancela cuando quieras" : "Cancel anytime") : lang === "es" ? "Precio anual por anunciar" : "Annual pricing to be announced"}</span>
           </button>
         </div>
       )}
