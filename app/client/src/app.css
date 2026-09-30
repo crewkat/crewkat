@@ -5,11 +5,13 @@
 .field-label input { width: 100%; }
 .amount-label { min-width: 0; }
 
-/* Build0.2: client document page — action menu + proportions */
+/* Build0.2: client document page — action menu + proportions (match app PDF preview) */
+.client-doc-page { max-width: 640px; margin: 0 auto; padding: 0 16px 32px; }
 .client-doc-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
 .client-doc-actions .secondary-button { flex: 1; min-width: 100px; }
+.client-doc-page .quote-paper { margin: 8px 0 24px; }
 @media (max-width: 480px) {
-  .client-doc-page .quote-paper { margin: 8px 0 24px; padding: 0 16px 20px; font-size: 11px; }
+  .client-doc-page .quote-paper { padding: 0 16px 20px; font-size: 11px; }
   .client-doc-page .quote-paper-band { margin: 0 -16px; padding: 10px 16px; }
   .client-doc-page .quote-paper h2 { font-size: 18px; }
 }
