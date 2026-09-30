@@ -10856,26 +10856,27 @@ function ClientForm({
         if (form.name.trim()) save.mutate();
       }}
     >
-      <label>
-        <span>{t.client} *</span>
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+      <label className="ck-field">
+        <span className="ck-label">{t.client} *</span>
+        <input className="ck-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
       </label>
-      <label>
-        <span>{t.phone}</span>
-        <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+      <label className="ck-field">
+        <span className="ck-label">{t.phone}</span>
+        <input className="ck-input" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
       </label>
-      <label>
-        <span>{t.email}</span>
-        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+      <label className="ck-field">
+        <span className="ck-label">{t.email}</span>
+        <input className="ck-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       </label>
-      <label>
-        <span>{t.address}</span>
-        <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+      <label className="ck-field">
+        <span className="ck-label">{t.address}</span>
+        <input className="ck-input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
       </label>
       <fieldset className="client-tags-field">
         <legend>{lang === "es" ? "Etiquetas" : "Tags"}</legend>
         <div className="client-tag-entry">
           <input
+            className="ck-input"
             value={tagDraft}
             maxLength={40}
             placeholder={lang === "es" ? "Ej. Cocina" : "e.g. Kitchen"}
@@ -10891,13 +10892,13 @@ function ClientForm({
           {form.tags.map((tag) => <button type="button" key={tag} onClick={() => setForm({ ...form, tags: form.tags.filter((item) => item !== tag) })} aria-label={`${lang === "es" ? "Quitar" : "Remove"} ${tag}`}>{tag}<span aria-hidden="true">×</span></button>)}
         </div>}
       </fieldset>
-      <label>
-        <span>{t.notes}</span>
-        <textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+      <label className="ck-field">
+        <span className="ck-label">{t.notes}</span>
+        <textarea className="ck-textarea" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       </label>
-      <label>
-        <span>{t.referredBy}</span>
-        <select value={form.referredByClientId ?? ""} onChange={(e) => setForm({ ...form, referredByClientId: e.target.value ? Number(e.target.value) : null })}>
+      <label className="ck-field">
+        <span className="ck-label">{t.referredBy}</span>
+        <select className="ck-select" value={form.referredByClientId ?? ""} onChange={(e) => setForm({ ...form, referredByClientId: e.target.value ? Number(e.target.value) : null })}>
           <option value="">{t.noReferrer}</option>
           {clients.data?.clients.filter((c) => c.id !== form.id).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}
         </select>
