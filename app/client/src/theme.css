@@ -2644,6 +2644,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .plan-option-name { font-weight: 700; font-size: .9rem; }
 .plan-option-price strong { font-size: 1.5rem; letter-spacing: -.02em; }
 .plan-option-price small { color: var(--muted); font-size: .82rem; }
+.plan-option-permonth { color: var(--muted); font-size: .72rem; margin-top: -2px; }
 .plan-option-note { color: var(--muted); font-size: .78rem; }
 .plan-option-badge {
   position: absolute; top: -11px; left: 10px; background: var(--accent); color: #fff;

@@ -4323,6 +4323,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             <span className="plan-option-badge">{lang === "es" ? "AHORRA 2 MESES" : "SAVE 2 MONTHS"}</span>
             <span className="plan-option-name">{lang === "es" ? "Anual" : "Annual"}</span>
             <span className="plan-option-price"><strong>{foundingQuery.data?.annualConfigured ? <><span>$189</span><small>{lang === "es" ? "/año" : "/yr"}</small></> : lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
+            {foundingQuery.data?.annualConfigured && <span className="plan-option-permonth">{lang === "es" ? "$15.75/mes" : "$15.75/mo"}</span>}
             <span className="plan-option-note">{foundingQuery.data?.annualConfigured ? (lang === "es" ? "Cancela cuando quieras" : "Cancel anytime") : lang === "es" ? "Precio anual por anunciar" : "Annual pricing to be announced"}</span>
           </button>
         </div>
