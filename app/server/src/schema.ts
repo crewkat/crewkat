@@ -704,6 +704,7 @@ export const marketplaceMessages = sqliteTable("marketplace_messages", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  conversationId: integer("conversation_id").references(() => marketplaceConversations.id, { onDelete: "cascade" }),
   body: text("body").notNull().default(""),
   imageBlobKey: text("image_blob_key"),
   imageFilename: text("image_filename").notNull().default(""),
@@ -711,6 +712,21 @@ export const marketplaceMessages = sqliteTable("marketplace_messages", {
   sender: text("sender", { enum: ["me", "other"] }).notNull().default("me"),
   senderCompanyId: integer("sender_company_id"),
   readAt: integer("read_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// One private thread per (listing, inquirer company). No company_id column on
+// purpose: conversations are cross-company by design, so the workspace db
+// proxy leaves this table unscoped and every action enforces participation
+// in code. Read state is per-participant and never exposed to the other side.
+export const marketplaceConversations = sqliteTable("marketplace_conversations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  ownerCompanyId: integer("owner_company_id").notNull(),
+  inquirerCompanyId: integer("inquirer_company_id").notNull(),
+  inquirerReadAt: integer("inquirer_read_at", { mode: "timestamp_ms" }),
+  ownerReadAt: integer("owner_read_at", { mode: "timestamp_ms" }),
+  lastMessageAt: integer("last_message_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 

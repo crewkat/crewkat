@@ -334,7 +334,8 @@ type Screen =
   | { name: "marketplace" }
   | { name: "marketplaceNew"; listingType: "job" | "project" }
   | { name: "marketplaceEdit"; listingId: number }
-  | { name: "marketplaceDetail"; listingId: number; openMessages?: boolean }
+  | { name: "marketplaceDetail"; listingId: number }
+  | { name: "marketplaceThread"; conversationId: number }
   | { name: "tools" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
@@ -1086,7 +1087,7 @@ function rootTabFor(screen: Screen): RootTab {
 }
 function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void; onNavigate: (screen: Screen) => void }) {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   // Chunk D: the Marketplace badge covers both unread messages and notifications.
   const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
@@ -2558,7 +2559,10 @@ function CrewkatApplication() {
         <MarketplaceListingForm lang={lang} settings={appSettings} listingId={screen.listingId} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
       )}
       {screen.name === "marketplaceDetail" && (
-        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} initialMessageOpen={screen.openMessages === true} onBack={goBack} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={() => setScreen({ name: "marketplace" })} />
+        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} onBack={goBack} onOpenThread={(conversationId) => setScreen({ name: "marketplaceThread", conversationId })} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={() => setScreen({ name: "marketplace" })} />
+      )}
+      {screen.name === "marketplaceThread" && (
+        <MarketplaceThreadScreen lang={lang} conversationId={screen.conversationId} onBack={goBack} />
       )}
       {screen.name === "tools" && (
         <ToolsHomeScreen lang={lang} setScreen={setScreen} />
@@ -3600,7 +3604,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const listings = useQuery({ queryKey: ["marketplace-listings", search, category, location], queryFn: () => api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: location }) });
   const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const requests = useQuery({ queryKey: ["marketplace-requests"], queryFn: () => api.listMarketplaceRequests({}) });
-  const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   // Chunk D: saved keyword alerts + in-app notifications (polled for freshness).
   const alerts = useQuery({ queryKey: ["marketplace-alerts"], queryFn: () => api.listMarketplaceAlerts({}) });
   const notifications = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
@@ -3757,9 +3761,9 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       {inbox.isLoading ? <div className="market-inbox-loading"><div/><div/><div/></div> : (() => {
         const ownerConvos = (inbox.data?.conversations ?? []).filter((c) => !c.isInquiry);
         const inquiryConvos = (inbox.data?.conversations ?? []).filter((c) => c.isInquiry);
-        const renderConvo = (conversation: { listingId: number; listingTitle: string; companyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number }) => <button key={conversation.listingId} type="button" className={conversation.unreadCount > 0 ? "unread" : ""} onClick={() => setScreen({ name: "marketplaceDetail", listingId: conversation.listingId, openMessages: true })}>
+        const renderConvo = (conversation: { id: number; listingId: number; listingTitle: string; otherPartyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number }) => <button key={conversation.id} type="button" className={conversation.unreadCount > 0 ? "unread" : ""} onClick={() => setScreen({ name: "marketplaceThread", conversationId: conversation.id })}>
           <span className="inbox-avatar"><Icon><path d="M4 6h16v12H4zM4 7l8 6 8-6"/></Icon></span>
-          <span className="inbox-copy"><strong>{conversation.listingTitle}</strong><small>{conversation.companyName}</small><p>{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</p></span>
+          <span className="inbox-copy"><strong>{conversation.listingTitle}</strong><small>{conversation.otherPartyName}</small><p>{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</p></span>
           <span className="inbox-meta"><time>{new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(conversation.lastMessageAt))}</time>{conversation.unreadCount > 0 && <b aria-label={`${conversation.unreadCount} ${lang === "es" ? "sin leer" : "unread"}`}>{conversation.unreadCount}</b>}</span>
         </button>;
         return <>
@@ -3889,23 +3893,68 @@ const MARKETPLACE_REPORT_REASONS: { value: "spam" | "explicit" | "illegal" | "sc
   { value: "other", en: "Something else", es: "Otro motivo" },
 ];
 
-function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false, onBack, onEdit, onDeleted }: { lang: Lang; listingId: number; initialMessageOpen?: boolean; onBack: () => void; onEdit: () => void; onDeleted: () => void }) {
+// ---------------------------------------------------------------------------
+// Marketplace private conversation — one thread per (listing, inquirer).
+// There are deliberately no read receipts: no "Seen" badge is ever rendered.
+// ---------------------------------------------------------------------------
+function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang; conversationId: number; onBack: () => void }) {
+  const qc = useQueryClient();
+  const [message, setMessage] = useState("");
+  const [messageImage, setMessageImage] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const thread = useQuery({ queryKey: ["marketplace-thread", conversationId], queryFn: () => api.marketplaceConversation({ conversationId }), refetchInterval: 5000 });
+  const markRead = useMutation({ mutationFn: () => api.markMarketplaceConversationRead({ conversationId }), onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["marketplace-inbox"] }); }, onError: () => {} });
+  const latestId = thread.data?.messages.length ? thread.data.messages[thread.data.messages.length - 1]?.id ?? null : null;
+  useEffect(() => { if (latestId !== null) markRead.mutate(); }, [conversationId, latestId]);
+  useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [latestId]);
+  const send = useMutation({
+    mutationFn: async () => api.sendMarketplaceMessage({ conversationId, body: message, image: messageImage ? { filename: messageImage.name, contentType: messageImage.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(messageImage)).dataBase64 } : null }),
+    onSuccess: async () => { setMessage(""); setMessageImage(null); setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-thread", conversationId] }), qc.invalidateQueries({ queryKey: ["marketplace-inbox"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { title: "Conversación", privacy: "Los mensajes son privados entre tu empresa y la otra empresa.", write: "Escribe un mensaje", addPhoto: "Agregar foto", send: "Enviar", sending: "Enviando…", noMessages: "Inicia la conversación.", loadError: "No se pudo cargar la conversación.", back: "Atrás", attached: "Foto adjunta" }
+    : { title: "Conversation", privacy: "Messages are private between you and the other company.", write: "Write a message", addPhoto: "Add photo", send: "Send", sending: "Sending…", noMessages: "Start the conversation.", loadError: "The conversation could not be loaded.", back: "Back", attached: "Attached photo" };
+  const convo = thread.data;
+  if (thread.isLoading) return <main className="page marketplace-thread"><PageHeader lang={lang} title={t.title} onBack={onBack}/><div className="loading-block"/></main>;
+  if (thread.isError || !convo) return <main className="page marketplace-thread"><PageHeader lang={lang} title={t.title} onBack={onBack}/><div className="market-empty"><h2>{t.loadError}</h2>{thread.isError && <p>{actionErrorMessage(thread.error)}</p>}<button type="button" className="primary-button" onClick={onBack}>← {t.back}</button></div></main>;
+  return <main className="page marketplace-thread">
+    <PageHeader lang={lang} title={convo.otherPartyName} onBack={onBack}/>
+    <p className="sheet-note thread-privacy"><strong>{convo.listingTitle}</strong> · {t.privacy}</p>
+    <div className="message-thread page-thread" ref={threadRef}>
+      {convo.messages.length ? convo.messages.map((item) => <article key={item.id} className={item.outgoing ? "outgoing" : "incoming"}>
+        {!item.outgoing && <span className="message-sender">{item.senderName}</span>}
+        {item.imageUrl && <img src={item.imageUrl} alt={item.imageFilename || t.attached}/>}
+        {item.body && <p>{item.body}</p>}
+        <time>{new Date(item.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</time>
+      </article>) : <p className="thread-empty">{t.noMessages}</p>}
+    </div>
+    {error && <p className="status error" role="alert">{error}</p>}
+    <form className="message-composer page-composer" onSubmit={(event) => { event.preventDefault(); if ((message.trim() || messageImage) && !send.isPending) send.mutate(); }}>
+      <textarea rows={2} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t.write} aria-label={t.write}/>
+      <label><Icon><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon>{messageImage?.name || t.addPhoto}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setMessageImage(event.target.files?.[0] ?? null)}/></label>
+      <button className="primary-button" disabled={send.isPending || (!message.trim() && !messageImage)}>{send.isPending ? t.sending : t.send}</button>
+    </form>
+  </main>;
+}
+
+
+function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["marketplace-listing", listingId], queryFn: () => api.getMarketplaceListing({ id: listingId }) });
   const [showPhone, setShowPhone] = useState(false);
   const [saved, setSaved] = useState(() => savedMarketplaceIds().includes(listingId));
-  const [messageOpen, setMessageOpen] = useState(initialMessageOpen);
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageImage, setMessageImage] = useState<File | null>(null);
+  const [convoPickerOpen, setConvoPickerOpen] = useState(false);
   const [booking, setBooking] = useState({ startDate: "", endDate: "", note: "" });
   const [sentBooking, setSentBooking] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   useEscapeToClose(deleteOpen, () => setDeleteOpen(false));
   useEscapeToClose(reportOpen, () => setReportOpen(false));
-  useEscapeToClose(messageOpen, () => setMessageOpen(false));
   useEscapeToClose(bookingOpen, () => setBookingOpen(false));
+  useEscapeToClose(convoPickerOpen, () => setConvoPickerOpen(false));
   const [reportConfirm, setReportConfirm] = useState(false);
   const [reportReason, setReportReason] = useState<"spam" | "explicit" | "illegal" | "scam" | "misleading" | "other">("spam");
   const [reportDetails, setReportDetails] = useState("");
@@ -3916,28 +3965,17 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
     onSuccess: () => { setReportConfirm(false); setReportDone(true); setReportError(""); },
     onError: (caught) => setReportError(actionErrorMessage(caught)),
   });
-  const messages = useQuery({ queryKey: ["marketplace-messages", listingId], queryFn: () => api.listMarketplaceMessages({ listingId }), enabled: messageOpen, refetchInterval: messageOpen ? 5000 : false });
-  // Build0.2: pull-to-refresh state for the message thread.
-  const [pullY, setPullY] = useState(0);
-  const [pulling, setPulling] = useState(false);
-  const pullStart = useRef<{ y: number } | null>(null);
-  const threadRef = useRef<HTMLDivElement | null>(null);
-  const markRead = useMutation({ mutationFn: () => api.markMarketplaceThreadRead({ listingId }), onSuccess: async () => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-inbox"] }), qc.invalidateQueries({ queryKey: ["marketplace-messages", listingId] })]); } });
-  useEffect(() => { if (messageOpen) markRead.mutate(); else if (listingId) markRead.mutate(); }, [messageOpen, listingId]);
-  // Build0.2: pull-to-refresh handlers (manual backup for auto-refresh).
-  const onThreadTouchStart = (e: React.TouchEvent) => { const t = e.touches[0]; if (t && threadRef.current && threadRef.current.scrollTop <= 0) pullStart.current = { y: t.clientY }; };
-  const onThreadTouchMove = (e: React.TouchEvent) => { const t = e.touches[0]; if (!t || !pullStart.current) return; const dy = t.clientY - pullStart.current.y; if (dy > 0) setPullY(Math.min(dy, 120)); };
-  const onThreadTouchEnd = async () => { if (pullY > 60 && !pulling) { setPulling(true); try { await messages.refetch(); await markRead.mutateAsync(); } finally { setPulling(false); } } setPullY(0); pullStart.current = null; };
-  const send = useMutation({ mutationFn: async () => api.sendMarketplaceMessage({ listingId, body: message, image: messageImage ? { filename: messageImage.name, contentType: messageImage.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(messageImage)).dataBase64 } : null, sender: "me" }), onSuccess: async () => { setMessage(""); setMessageImage(null); await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-messages", listingId] }), qc.invalidateQueries({ queryKey: ["marketplace-inbox"] })]); } });
+  const myConvos = useQuery({ queryKey: ["marketplace-convos-for-listing", listingId], queryFn: async () => { const inbox = await api.marketplaceConversations({}); return inbox.conversations.filter((conversation) => conversation.listingId === listingId); }, enabled: convoPickerOpen });
+  const startConvo = useMutation({ mutationFn: () => api.startMarketplaceConversation({ listingId }), onSuccess: (result) => onOpenThread(result.conversationId) });
   const requestBooking = useMutation({ mutationFn: () => api.createMarketplaceBooking({ listingId, ...booking }), onSuccess: () => setSentBooking(true) });
   const removeListing = useMutation({ mutationFn: () => api.deleteMarketplaceListing({ id: listingId }), onSuccess: async () => { const next = savedMarketplaceIds().filter((id) => id !== listingId); window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); await qc.invalidateQueries({ queryKey: ["marketplace-listings"] }); onDeleted(); } });
   const listing = query.data?.listing;
-  const t = lang === "es" ? { notFound: "No se encontró esta publicación.", just: "Recién publicado", about: "Detalles", company: "Publicado por", contact: "Ver teléfono", noPhone: "Esta empresa no agregó un teléfono.", save: "Guardar", saved: "Guardado", preview: "Vista previa local", message: "Mensaje", book: "Reservar", conversation: "Conversación", messageIntro: "Los mensajes son privados entre tu empresa y la otra empresa.", write: "Escribe un mensaje", addPhoto: "Agregar foto", send: "Enviar", bookingTitle: "Solicitar reserva", start: "Fecha de inicio", end: "Fecha final", note: "Nota para el propietario", submit: "Enviar solicitud", bookingSent: "Solicitud guardada", bookingSentBody: "Tu solicitud de reserva ha sido enviada. El propietario confirmará pronto.", close: "Cerrar", perDay: "por día", noMessages: "Inicia la conversación sobre esta publicación.", manage: "Administrar publicación", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", report: "Reportar esta publicación", reportTitle: "Reportar publicación", reportReason: "Motivo", reportDetails: "Detalles (opcional)", reportSubmit: "Continuar", reportConfirmTitle: "¿Reportar esta publicación?", reportConfirmBody: "Nuestro equipo revisará esta publicación. Los reportes falsos pueden afectar tu cuenta.", reportConfirmYes: "Sí, reportar", reportThanks: "Gracias por tu reporte.", reportThanksBody: "Nuestro equipo revisará esta publicación pronto." } : { notFound: "This listing could not be found.", just: "Just listed", about: "About this listing", company: "Listed by", contact: "Show phone number", noPhone: "This company did not add a phone number.", save: "Save", saved: "Saved", preview: "Local preview", message: "Message", book: "Book", conversation: "Conversation", messageIntro: "Messages are private between you and the other company.", write: "Write a message", addPhoto: "Add photo", send: "Send", bookingTitle: "Request booking", start: "Start date", end: "End date", note: "Note for the owner", submit: "Send request", bookingSent: "Request saved", bookingSentBody: "Your booking request has been sent. The owner will confirm shortly.", close: "Close", perDay: "per day", noMessages: "Start the conversation about this listing.", manage: "Manage listing", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", report: "Report this listing", reportTitle: "Report listing", reportReason: "Reason", reportDetails: "Details (optional)", reportSubmit: "Continue", reportConfirmTitle: "Report this listing?", reportConfirmBody: "Our team will review this listing. False reports can affect your account.", reportConfirmYes: "Yes, report it", reportThanks: "Thanks for the report.", reportThanksBody: "Our team will review this listing soon." };
+  const t = lang === "es" ? { notFound: "No se encontró esta publicación.", just: "Recién publicado", about: "Detalles", company: "Publicado por", contact: "Ver teléfono", noPhone: "Esta empresa no agregó un teléfono.", save: "Guardar", saved: "Guardado", preview: "Vista previa local", message: "Mensaje", book: "Reservar", conversation: "Conversación", convosTitle: "Conversaciones sobre esta publicación", convosEmpty: "Aún no hay mensajes sobre esta publicación.", starting: "Abriendo conversación…", startError: "No se pudo abrir la conversación. Inténtalo de nuevo.", bookingTitle: "Solicitar reserva", start: "Fecha de inicio", end: "Fecha final", note: "Nota para el propietario", submit: "Enviar solicitud", bookingSent: "Solicitud guardada", bookingSentBody: "Tu solicitud de reserva ha sido enviada. El propietario confirmará pronto.", close: "Cerrar", perDay: "por día", noMessages: "Inicia la conversación sobre esta publicación.", manage: "Administrar publicación", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", report: "Reportar esta publicación", reportTitle: "Reportar publicación", reportReason: "Motivo", reportDetails: "Detalles (opcional)", reportSubmit: "Continuar", reportConfirmTitle: "¿Reportar esta publicación?", reportConfirmBody: "Nuestro equipo revisará esta publicación. Los reportes falsos pueden afectar tu cuenta.", reportConfirmYes: "Sí, reportar", reportThanks: "Gracias por tu reporte.", reportThanksBody: "Nuestro equipo revisará esta publicación pronto." } : { notFound: "This listing could not be found.", just: "Just listed", about: "About this listing", company: "Listed by", contact: "Show phone number", noPhone: "This company did not add a phone number.", save: "Save", saved: "Saved", preview: "Local preview", message: "Message", book: "Book", conversation: "Conversation", convosTitle: "Conversations about this listing", convosEmpty: "No messages about this listing yet.", starting: "Opening conversation…", startError: "The conversation could not be opened. Try again.", bookingTitle: "Request booking", start: "Start date", end: "End date", note: "Note for the owner", submit: "Send request", bookingSent: "Request saved", bookingSentBody: "Your booking request has been sent. The owner will confirm shortly.", close: "Close", perDay: "per day", noMessages: "Start the conversation about this listing.", manage: "Manage listing", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", report: "Report this listing", reportTitle: "Report listing", reportReason: "Reason", reportDetails: "Details (optional)", reportSubmit: "Continue", reportConfirmTitle: "Report this listing?", reportConfirmBody: "Our team will review this listing. False reports can affect your account.", reportConfirmYes: "Yes, report it", reportThanks: "Thanks for the report.", reportThanksBody: "Our team will review this listing soon." };
   const toggle = () => { const ids = savedMarketplaceIds(); const next = ids.includes(listingId) ? ids.filter((id) => id !== listingId) : [...ids, listingId]; window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); setSaved(next.includes(listingId)); };
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <img key={photo.id} className={index === 0 ? "primary" : ""} src={photo.url} alt={`${listing.title} ${index + 1}`}/>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
-    <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" onClick={() => setMessageOpen(true)}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>
+    <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
     <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2><strong>{listing.companyName}</strong>{listing.companyPhone ? <>{showPhone ? <p className="market-phone">{listing.companyPhone}</p> : <button className="primary-button" onClick={() => setShowPhone(true)}>{t.contact}</button>}</> : <p className="muted-note">{t.noPhone}</p>}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
@@ -3951,7 +3989,7 @@ function MarketplaceListingDetail({ lang, listingId, initialMessageOpen = false,
       {reportError && <p className="status error">{reportError}</p>}
       <div className="delete-sheet-actions"><button type="button" onClick={() => setReportOpen(false)}>{t.cancel}</button><button type="button" className="primary-button" onClick={() => { setReportError(""); setReportConfirm(true); }}>{t.reportSubmit}</button></div></>}
     </section></div>}
-    {messageOpen && <div className="sheet-backdrop"><section className="more-sheet conversation-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.conversation}</h2><button aria-label={t.close} onClick={() => setMessageOpen(false)}>×</button></div><p className="sheet-note">{t.messageIntro}</p>{(pullY > 0 || pulling) && <div className="pull-refresh-indicator">{pulling ? (lang === "es" ? "Actualizando…" : "Refreshing…") : (lang === "es" ? "Suelta para actualizar" : "Release to refresh")}</div>}<div className="message-thread" ref={threadRef} onTouchStart={onThreadTouchStart} onTouchMove={onThreadTouchMove} onTouchEnd={onThreadTouchEnd} style={pullY > 0 ? { transform: `translateY(${pullY * 0.4}px)` } : undefined}>{(messages.data?.messages ?? []).length ? (() => { const msgs = messages.data?.messages ?? []; const lastOutgoingIdx = msgs.map((m, i) => ({ m, i })).filter(({ m }) => ((listing?.isMine ?? true) ? m.sender === "me" : m.sender === "other")).map(({ i }) => i).pop(); return msgs.map((item, idx) => { const outgoing = (listing?.isMine ?? true) ? item.sender === "me" : item.sender === "other"; const showSeen = outgoing && idx === lastOutgoingIdx && item.isRead; return <article key={item.id} className={outgoing ? "outgoing" : "incoming"}>{!outgoing && <span className="message-sender">{item.senderName}</span>}{item.imageUrl && <img src={item.imageUrl} alt={item.imageFilename || (lang === "es" ? "Foto adjunta" : "Attached photo")}/>} {item.body && <p>{item.body}</p>}<time>{new Date(item.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</time>{showSeen && <span className="message-seen">{lang === "es" ? "Visto" : "Seen"}</span>}</article>; }); })() : <p className="thread-empty">{t.noMessages}</p>}</div><form className="message-composer" onSubmit={(event) => { event.preventDefault(); if (message.trim() || messageImage) send.mutate(); }}><textarea rows={2} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t.write} aria-label={t.write}/><label><Icon><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon>{messageImage?.name || t.addPhoto}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setMessageImage(event.target.files?.[0] ?? null)}/></label><button className="primary-button" disabled={send.isPending || (!message.trim() && !messageImage)}>{t.send}</button></form></section></div>}
+    {convoPickerOpen && <div className="sheet-backdrop" onClick={() => setConvoPickerOpen(false)}><section className="more-sheet conversation-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-convos-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><div className="sheet-title-row"><h2 id="detail-convos-title">{t.convosTitle}</h2><button aria-label={t.close} onClick={() => setConvoPickerOpen(false)}>×</button></div>{myConvos.isLoading ? <div className="loading-block"/> : (myConvos.data ?? []).length ? <div className="convo-picker-list">{(myConvos.data ?? []).map((conversation) => <button key={conversation.id} type="button" className="convo-picker-row" onClick={() => { setConvoPickerOpen(false); onOpenThread(conversation.id); }}><span className="inbox-copy"><strong>{conversation.otherPartyName}</strong><span className="inbox-preview">{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</span></span>{conversation.unreadCount > 0 && <span className="unread-badge">{conversation.unreadCount}</span>}</button>)}</div> : <p className="thread-empty">{t.convosEmpty}</p>}</section></div>}
     {bookingOpen && <div className="sheet-backdrop"><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
   </>}</main>;
 }
@@ -13806,7 +13844,7 @@ function TodayScreen({
   const jobsQuery = useQuery({ queryKey: ["jobs", ""], queryFn: () => api.listJobs({ search: "" }) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: () => api.listAppointments({}) });
-  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.getMarketplaceInbox({}), refetchInterval: 10000 });
+  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   const notificationsHomeQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
   const pinnedTools = pinsQuery.data?.tools ?? [];

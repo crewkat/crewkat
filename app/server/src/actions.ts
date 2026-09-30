@@ -102,8 +102,8 @@ type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
 const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
-const marketplaceMessageSchema = z.object({ id: z.number(), listingId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), sender: z.enum(["me", "other"]), senderName: z.string(), isRead: z.boolean(), createdAt: z.string() });
-const marketplaceInboxRowSchema = z.object({ listingId: z.number(), listingTitle: z.string(), companyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
+const marketplaceMessageSchema = z.object({ id: z.number(), conversationId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), outgoing: z.boolean(), senderName: z.string(), createdAt: z.string() });
+const marketplaceInboxRowSchema = z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
 const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(), startDate: z.string(), endDate: z.string(), note: z.string(), status: z.enum(["requested", "confirmed", "declined"]), createdAt: z.string() });
 
 function jobShape(row: typeof schema.jobs.$inferSelect, photoCount = 0, photoStages: string[] = []) {
@@ -1623,6 +1623,31 @@ export async function runWeeklyProgressTick(ctx: Ctx): Promise<{ ran: boolean; e
     }
   }
   return { ran: emailed.length > 0, emailed };
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace private conversations.
+// One thread per (listing, inquirer company). Participants are the listing's
+// owner company and the inquiring company; anyone else gets a generic
+// "not found" so conversation ids can't be probed. Read state is
+// per-participant on the conversation row and is never exposed to the other
+// party — there are deliberately no read receipts anywhere in this flow.
+// ---------------------------------------------------------------------------
+type MarketplaceConversationRow = typeof schema.marketplaceConversations.$inferSelect;
+
+async function marketplaceConversationOrThrow(db: ReturnType<Ctx["db"]>, conversationId: number, myCompanyId: number): Promise<MarketplaceConversationRow> {
+  const conversation = (await db.select().from(schema.marketplaceConversations).where(eq(schema.marketplaceConversations.id, conversationId)).limit(1))[0];
+  if (!conversation || (conversation.ownerCompanyId !== myCompanyId && conversation.inquirerCompanyId !== myCompanyId)) {
+    throw new Error("Conversation not found.");
+  }
+  return conversation;
+}
+
+async function marketplaceCompanyNames(db: ReturnType<Ctx["db"]>, companyIds: number[]): Promise<Map<number, string>> {
+  const unique = [...new Set(companyIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!unique.length) return new Map();
+  const rows = await db.select({ companyId: schema.settings.companyId, companyName: schema.settings.companyName }).from(schema.settings).where(inArray(schema.settings.companyId, unique));
+  return new Map(rows.map((row) => [row.companyId, row.companyName || `Company ${row.companyId}`]));
 }
 
 export const BaseActions = {
@@ -3216,142 +3241,169 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
     },
   }),
-  listMarketplaceMessages: defineAction({
+  startMarketplaceConversation: defineAction({
     request: z.object({ listingId: z.number().int().positive() }),
-    response: z.object({ messages: z.array(marketplaceMessageSchema) }),
+    response: z.object({ conversationId: z.number() }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
       const identity = workspaceIdentity(ctx);
       const myCompanyId = identity.workspaceCompanyId;
-      // Verify the listing exists and check ownership for authorization.
-      const listingCheck = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
-      if (!listingCheck) throw new Error("Listing not found.");
-      const isOwner = listingCheck.companyId === myCompanyId;
-      const allRows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.listingId, args.listingId)).orderBy(schema.marketplaceMessages.createdAt);
-      // Privacy: owners see all messages; other companies only see their own
-      // messages plus the owner's replies (never other companies' messages).
-      const rows = isOwner ? allRows : allRows.filter((row) => row.sender === "me" || row.senderCompanyId === myCompanyId);
-      // Get company names for senders (from settings table)
-      const companyIds = new Set<number>();
-      for (const row of rows) {
-        if (row.senderCompanyId) companyIds.add(row.senderCompanyId);
+      const listing = (await db.select({ id: schema.marketplaceListings.id, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing) throw new Error("This listing is no longer available.");
+      if (listing.companyId === myCompanyId) throw new Error("You can't message your own listing.");
+      const existing = (await db.select({ id: schema.marketplaceConversations.id }).from(schema.marketplaceConversations).where(and(eq(schema.marketplaceConversations.listingId, args.listingId), eq(schema.marketplaceConversations.inquirerCompanyId, myCompanyId))).limit(1))[0];
+      if (existing) { ctx.invalidateQueries(); return { conversationId: existing.id }; }
+      try {
+        const made = (await db.insert(schema.marketplaceConversations).values({ listingId: args.listingId, ownerCompanyId: listing.companyId, inquirerCompanyId: myCompanyId, lastMessageAt: new Date(), createdAt: new Date() }).returning({ id: schema.marketplaceConversations.id }))[0];
+        if (!made) throw new Error("The conversation could not be started.");
+        ctx.invalidateQueries();
+        return { conversationId: made.id };
+      } catch (error) {
+        // Lost a get-or-create race: the unique (listing, inquirer) index
+        // fired, so the winner's row is the one to return.
+        const winner = (await db.select({ id: schema.marketplaceConversations.id }).from(schema.marketplaceConversations).where(and(eq(schema.marketplaceConversations.listingId, args.listingId), eq(schema.marketplaceConversations.inquirerCompanyId, myCompanyId))).limit(1))[0];
+        if (winner) { ctx.invalidateQueries(); return { conversationId: winner.id }; }
+        throw error;
       }
-      const companies = companyIds.size > 0
-        ? await db.select({ companyId: schema.settings.companyId, companyName: schema.settings.companyName }).from(schema.settings).where(inArray(schema.settings.companyId, [...companyIds]))
-        : [];
-      const companyNameById = new Map(companies.map((c) => [c.companyId, c.companyName]));
-      // Get listing owner name as fallback
-      const listing = (await db.select({ companyId: schema.marketplaceListings.companyId, companyName: schema.marketplaceListings.companyName }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
-      return { messages: await Promise.all(rows.map(async (row) => {
-        let senderName = "Unknown";
-        if (row.senderCompanyId && companyNameById.has(row.senderCompanyId)) {
-          senderName = companyNameById.get(row.senderCompanyId)!;
-        } else if (row.sender === "me" && listing) {
-          senderName = listing.companyName;
-        }
-        return { id: row.id, listingId: row.listingId, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, sender: row.sender, senderName, isRead: row.sender === "me" || row.readAt !== null, createdAt: row.createdAt.toISOString() };
-      })) };
     },
   }),
-  getMarketplaceInbox: defineAction({
+  marketplaceConversations: defineAction({
     request: z.object({}),
     response: z.object({ unreadCount: z.number(), conversations: z.array(marketplaceInboxRowSchema) }),
     async handler(ctx) {
       const db = ctx.db<typeof schema>();
-      const [messages, listings] = await Promise.all([
-        db.select().from(schema.marketplaceMessages).orderBy(desc(schema.marketplaceMessages.createdAt)),
-        db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings),
-      ]);
+      const identity = workspaceIdentity(ctx);
+      const myCompanyId = identity.workspaceCompanyId;
+      const convos = await db.select().from(schema.marketplaceConversations).where(or(eq(schema.marketplaceConversations.ownerCompanyId, myCompanyId), eq(schema.marketplaceConversations.inquirerCompanyId, myCompanyId))).orderBy(desc(schema.marketplaceConversations.lastMessageAt));
+      if (!convos.length) return { unreadCount: 0, conversations: [] };
+      const convoIds = convos.map((c) => c.id);
+      const listingIds = [...new Set(convos.map((c) => c.listingId))];
+      const listings = await db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName }).from(schema.marketplaceListings).where(inArray(schema.marketplaceListings.id, listingIds));
       const listingById = new Map(listings.map((listing) => [listing.id, listing]));
-      const grouped = new Map<number, { listingId: number; listingTitle: string; companyName: string; lastMessage: string; lastMessageAt: string; unreadCount: number; isInquiry: boolean }>();
-      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const companyIds: number[] = [];
+      for (const c of convos) companyIds.push(c.ownerCompanyId === myCompanyId ? c.inquirerCompanyId : c.ownerCompanyId);
+      // Company names are public (shown on every listing), so read them
+      // unscoped; the workspace proxy would only return the caller's own row.
+      const names = await marketplaceCompanyNames(platformDb(ctx), companyIds);
+      const messages = await db.select().from(schema.marketplaceMessages).where(inArray(schema.marketplaceMessages.conversationId, convoIds)).orderBy(desc(schema.marketplaceMessages.createdAt));
+      const latestByConvo = new Map<number, typeof messages[number]>();
+      const messagesByConvo = new Map<number, typeof messages>();
       for (const message of messages) {
-        const listing = listingById.get(message.listingId);
-        if (!listing) continue;
-        const isOwner = listing.companyId === myCompanyId;
-        const isMyInquiry = !isOwner && message.senderCompanyId === myCompanyId;
-        if (!isOwner && !isMyInquiry) continue;
-        const existing = grouped.get(message.listingId);
-        // For owners: unread = messages from others not read. For inquirers: unread = messages from owner not read.
-        const unread = isOwner
-          ? (message.sender === "other" && message.readAt === null ? 1 : 0)
-          : (message.sender === "me" && message.readAt === null ? 1 : 0);
-        if (!existing) {
-          grouped.set(message.listingId, {
-            listingId: message.listingId,
-            listingTitle: listing.title,
-            companyName: listing.companyName,
-            lastMessage: message.body || (message.imageBlobKey ? "Photo" : "Message"),
-            lastMessageAt: message.createdAt.toISOString(),
-            unreadCount: unread,
-            isInquiry: !isOwner,
-          });
-        } else {
-          existing.unreadCount += unread;
-        }
+        if (message.conversationId == null) continue;
+        if (!latestByConvo.has(message.conversationId)) latestByConvo.set(message.conversationId, message);
+        const list = messagesByConvo.get(message.conversationId) ?? [];
+        list.push(message);
+        messagesByConvo.set(message.conversationId, list);
       }
-      const conversations = [...grouped.values()].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
-      return { unreadCount: conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0), conversations };
+      const rows = convos.map((convo) => {
+        const isInquiry = convo.ownerCompanyId !== myCompanyId;
+        const listing = listingById.get(convo.listingId);
+        const otherCompanyId = isInquiry ? convo.ownerCompanyId : convo.inquirerCompanyId;
+        const otherPartyName = isInquiry ? (listing?.companyName || "Unknown company") : (names.get(otherCompanyId) || `Company ${otherCompanyId}`);
+        const latest = latestByConvo.get(convo.id);
+        const readAt = isInquiry ? convo.inquirerReadAt : convo.ownerReadAt;
+        // Unread for the CALLER only: messages from the other party newer
+        // than the caller's own read timestamp. Never leaks the other side.
+        const unreadCount = (messagesByConvo.get(convo.id) ?? []).filter((m) => m.senderCompanyId !== myCompanyId && (!readAt || m.createdAt.getTime() > readAt.getTime())).length;
+        return {
+          id: convo.id,
+          listingId: convo.listingId,
+          listingTitle: listing?.title || "Listing",
+          otherPartyName,
+          lastMessage: latest ? (latest.body || (latest.imageBlobKey ? "Photo" : "Message")) : "",
+          lastMessageAt: (latest?.createdAt || convo.lastMessageAt).toISOString(),
+          unreadCount,
+          isInquiry,
+        };
+      });
+      return { unreadCount: rows.reduce((sum, row) => sum + row.unreadCount, 0), conversations: rows };
     },
   }),
-  markMarketplaceThreadRead: defineAction({
-    request: z.object({ listingId: z.number().int().positive() }),
+  marketplaceConversation: defineAction({
+    request: z.object({ conversationId: z.number().int().positive() }),
+    response: z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), isInquiry: z.boolean(), messages: z.array(marketplaceMessageSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const myCompanyId = identity.workspaceCompanyId;
+      const convo = await marketplaceConversationOrThrow(db, args.conversationId, myCompanyId);
+      const isInquiry = convo.ownerCompanyId !== myCompanyId;
+      const listing = (await db.select({ title: schema.marketplaceListings.title, companyName: schema.marketplaceListings.companyName }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, convo.listingId)).limit(1))[0];
+      const otherCompanyId = isInquiry ? convo.ownerCompanyId : convo.inquirerCompanyId;
+      const names = await marketplaceCompanyNames(platformDb(ctx), [myCompanyId, otherCompanyId]);
+      const otherPartyName = isInquiry ? (listing?.companyName || "Unknown company") : (names.get(otherCompanyId) || `Company ${otherCompanyId}`);
+      const myName = names.get(myCompanyId) || "";
+      const rows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.conversationId, convo.id)).orderBy(schema.marketplaceMessages.createdAt);
+      const messages = await Promise.all(rows.map(async (row) => {
+        const outgoing = row.senderCompanyId === myCompanyId;
+        return { id: row.id, conversationId: convo.id, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, outgoing, senderName: outgoing ? myName : otherPartyName, createdAt: row.createdAt.toISOString() };
+      }));
+      return { id: convo.id, listingId: convo.listingId, listingTitle: listing?.title || "Listing", otherPartyName, isInquiry, messages };
+    },
+  }),
+  markMarketplaceConversationRead: defineAction({
+    request: z.object({ conversationId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
       const db = ctx.db<typeof schema>();
-      const listing = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
-      if (!listing) { ctx.invalidateQueries(); return { ok: true }; }
       const identity = workspaceIdentity(ctx);
       const myCompanyId = identity.workspaceCompanyId;
-      // Build0.2: opening a thread marks every message from other companies as
-      // read. Simpler and more robust than branching on sender labels.
-      await db.update(schema.marketplaceMessages).set({ readAt: new Date() }).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), ne(schema.marketplaceMessages.senderCompanyId, myCompanyId), isNull(schema.marketplaceMessages.readAt)));
+      const convo = await marketplaceConversationOrThrow(db, args.conversationId, myCompanyId);
+      const now = new Date();
+      // Only the caller's own read timestamp is ever written; the other
+      // party's timestamp is untouched and never returned to anyone.
+      if (convo.ownerCompanyId === myCompanyId) {
+        await db.update(schema.marketplaceConversations).set({ ownerReadAt: now }).where(eq(schema.marketplaceConversations.id, convo.id));
+      } else {
+        await db.update(schema.marketplaceConversations).set({ inquirerReadAt: now }).where(eq(schema.marketplaceConversations.id, convo.id));
+      }
       // Also clear any in-app notifications pointing at this listing so the
       // inbox badge can't get stuck.
-      await db.update(schema.userNotifications).set({ isRead: true }).where(and(eq(schema.userNotifications.userId, identity.workspaceUserId), like(schema.userNotifications.link, `%${args.listingId}%`), eq(schema.userNotifications.isRead, false)));
+      await db.update(schema.userNotifications).set({ isRead: true }).where(and(eq(schema.userNotifications.userId, identity.workspaceUserId), like(schema.userNotifications.link, `%${convo.listingId}%`), eq(schema.userNotifications.isRead, false)));
       ctx.invalidateQueries();
       return { ok: true };
     },
   }),
   sendMarketplaceMessage: defineAction({
-    request: z.object({ listingId: z.number().int().positive(), body: z.string().trim().max(3000), image: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) }).nullable(), sender: z.enum(["me", "other"]).default("me") }),
+    request: z.object({ conversationId: z.number().int().positive(), body: z.string().trim().max(3000), image: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) }).nullable() }),
     response: z.object({ id: z.number() }),
     async handler(ctx, args) {
       if (!args.body && !args.image) throw new Error("Write a message or add a photo.");
       const db = ctx.db<typeof schema>();
-      const listing = (await db.select({ id: schema.marketplaceListings.id, companyId: schema.marketplaceListings.companyId, title: schema.marketplaceListings.title }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
-      if (!listing) throw new Error("This listing is no longer available.");
       const identity = workspaceIdentity(ctx);
-      const isOwner = listing.companyId === identity.workspaceCompanyId;
-      const sender = isOwner ? "me" : "other";
-      const senderCompanyId = identity.workspaceCompanyId;
-      const key = args.image ? `marketplace/messages/${args.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
+      const myCompanyId = identity.workspaceCompanyId;
+      const convo = await marketplaceConversationOrThrow(db, args.conversationId, myCompanyId);
+      const isOwner = convo.ownerCompanyId === myCompanyId;
+      const listing = (await db.select({ id: schema.marketplaceListings.id, title: schema.marketplaceListings.title }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, convo.listingId)).limit(1))[0];
+      if (!listing) throw new Error("This listing is no longer available.");
+      const key = args.image ? `marketplace/messages/${convo.listingId}/${crypto.randomUUID()}-${args.image.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}` : null;
       if (args.image && key) await ctx.blobs.put(key, Buffer.from(args.image.dataBase64, "base64"), { contentType: args.image.contentType });
       try {
-        const made = (await db.insert(schema.marketplaceMessages).values({ companyId: listing.companyId, listingId: args.listingId, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender, senderCompanyId, readAt: isOwner ? new Date() : null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
+        // companyId follows the old convention (listing owner's company) so
+        // the listing owner's delete flow keeps working unchanged.
+        const made = (await db.insert(schema.marketplaceMessages).values({ companyId: convo.ownerCompanyId, listingId: convo.listingId, conversationId: convo.id, body: args.body, imageBlobKey: key, imageFilename: args.image?.filename ?? "", imageContentType: args.image?.contentType ?? "", sender: isOwner ? "me" : "other", senderCompanyId: myCompanyId, readAt: null, createdAt: new Date() }).returning({ id: schema.marketplaceMessages.id }))[0];
         if (!made) throw new Error("The message could not be saved.");
-        // Chunk D push: new marketplace inquiry / reply (Build 2: gated on the recipient company's notification preference).
+        const now = new Date();
+        // Bump the thread; the recipient's own read timestamp is left alone
+        // so their unread count is exactly the messages newer than their
+        // last read — no read state is ever fabricated or leaked.
+        await db.update(schema.marketplaceConversations).set({ lastMessageAt: now }).where(eq(schema.marketplaceConversations.id, convo.id));
+        // Chunk D push: notify ONLY the other participant in this
+        // conversation (previously every inquirer on the listing was pinged).
         try {
-          const titleEn = sender === "other" ? `New inquiry: ${listing.title}` : `New reply: ${listing.title}`;
-          const titleEs = sender === "other" ? `Nueva consulta: ${listing.title}` : `Nueva respuesta: ${listing.title}`;
+          const recipientCompanyId = isOwner ? convo.inquirerCompanyId : convo.ownerCompanyId;
+          const titleEn = isOwner ? `New reply: ${listing.title}` : `New inquiry: ${listing.title}`;
+          const titleEs = isOwner ? `Nueva respuesta: ${listing.title}` : `Nueva consulta: ${listing.title}`;
           const preview = args.body.length > 120 ? `${args.body.slice(0, 120)}…` : args.body;
-          if (sender === "other") {
-            if ((await getNotifyPrefs(db, listing.companyId)).notifyNewMessage) {
-              await sendPushToCompany(db, listing.companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
-            }
-          } else {
-            const others = await db.select({ senderCompanyId: schema.marketplaceMessages.senderCompanyId }).from(schema.marketplaceMessages).where(and(eq(schema.marketplaceMessages.listingId, args.listingId), eq(schema.marketplaceMessages.sender, "other")));
-            const companies = [...new Set(others.map((row) => row.senderCompanyId).filter((value): value is number => typeof value === "number" && value !== identity.workspaceCompanyId))];
-            for (const companyId of companies) {
-              if (!(await getNotifyPrefs(db, companyId)).notifyNewMessage) continue;
-              await sendPushToCompany(db, companyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
-            }
+          if ((await getNotifyPrefs(db, recipientCompanyId)).notifyNewMessage) {
+            await sendPushToCompany(db, recipientCompanyId, { titleEn, titleEs, bodyEn: preview, bodyEs: preview, url: "/app/", listingId: listing.id }, identity.workspaceUserId);
           }
         } catch { /* push is best-effort */ }
         ctx.invalidateQueries(); return { id: made.id };
       } catch (error) { if (key) await ctx.blobs.delete(key).catch(() => {}); throw error; }
     },
   }),
+
   createMarketplaceBooking: defineAction({
     request: z.object({ listingId: z.number().int().positive(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string().trim().max(2000) }),
     response: z.object({ id: z.number() }),
