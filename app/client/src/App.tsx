@@ -2190,7 +2190,7 @@ function CrewkatApplication() {
   });
   useEffect(() => {
     const serverTheme = settings.data?.themeMode;
-    const serverAccent = settings.data?.uiAccent === "rose" ? "red" : settings.data?.uiAccent;
+    const serverAccent = (settings.data?.uiAccent as string) === "rose" ? "red" : settings.data?.uiAccent;
     if (!serverTheme || !serverAccent) return;
     const intent = appearanceIntentRef.current;
     if (intent) {
@@ -6293,7 +6293,7 @@ function JobDetail({
           {socialNotice && <p className={`status social-notice${socialNoticeError ? " error" : ""}`} role="status">{socialNotice}</p>}
           <div className="photo-workspace">
             <div className="stage-tabs">{(["before", "during", "after"] as const).map((s) => <button key={s} className={stage === s ? "active" : ""} onClick={() => setStage(s)}>{t[s]} <span>{query.data.photos.filter((p) => p.stage === s).length}</span></button>)}</div>
-            <div className="upload-row"><button className="camera-button" onClick={() => camera.current?.click()}><CameraIcon />{t.camera}</button><button className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files}/><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files}/></div>
+            <div className="upload-row"><button type="button" className="camera-button" onClick={() => camera.current?.click()}><span className="camera-button-icon"><CameraIcon /></span><span>{t.camera}</span></button><button type="button" className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files}/><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files}/></div>
             <div className="photo-grid">{query.data.photos.filter((p) => p.stage === stage).map((p) => <PhotoCard key={p.id} photo={p} lang={lang} jobId={jobId} onAnnotate={() => setScreen({ name: "tool", jobId, mode: "annotate", photoId: p.id })}/>)}</div>
             {query.data.photos.filter((p) => p.stage === stage).length === 0 && <div className="stage-empty"><CameraIcon /><p>{t.noPhotos}</p></div>}
           </div>
@@ -9652,15 +9652,19 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
   const move = (index: number, direction: -1 | 1) => { const next = [...form.lineItems]; const target = index + direction; if (target < 0 || target >= next.length) return; const current = next[index]; const other = next[target]; if (!current || !other) return; next[index] = other; next[target] = current; setForm({...form,lineItems:next}); };
   const save = async () => { const items=form.lineItems.filter((item)=>item.description.trim()).map((item)=>({description:item.description,amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const})); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
-  return <div className="document-overlay editor-overlay" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
-    <header className="document-overlay-head"><button onClick={onCancel}><BackIcon />{t.close}</button><strong>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</strong><button className="small-button" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
+  useEscapeToClose(true,()=>{if(!saving)onCancel();});
+  return <div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget&&!saving)onCancel();}}>
+    <section className="more-sheet editor-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
+    <div className="sheet-handle" />
+    <header className="sheet-header-row editor-header"><button type="button" className="text-button" onClick={onCancel} disabled={saving}>{t.close}</button><h2>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</h2><button type="button" className="primary-button editor-save" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></header>
     <div className="financial-editor">
-      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className="editor-line-item" key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><input aria-label={`${t.item} ${index+1}`} value={item.description} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><small>1 × {usd(money(item.amount))}</small></div><input className="amount-input" aria-label={`${t.amount} ${index+1}`} inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className={`editor-line-item${reorder?"":" no-reorder"}`} key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><input aria-label={`${t.item} ${index+1}`} value={item.description} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><small>1 × {usd(money(item.amount))}</small></div><input className="amount-input" aria-label={`${t.amount} ${index+1}`} inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
       {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><input type="checkbox" checked={document.status === "paid"} onChange={async(e)=>{await api.toggleInvoicePaid({id:document.id,paid:e.target.checked,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
+    </section>
   </div>;
 }
 
@@ -19647,6 +19651,7 @@ function DocumentLinkPanel({
   const qc = useQueryClient();
   const [token, setToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const info = useQuery({
     queryKey: ["document-link", kind, id],
     queryFn: () => api.getDocumentLinkInfo({ kind, id }),
@@ -19658,8 +19663,12 @@ function DocumentLinkPanel({
     mutationFn: () => api.createDocumentLink({ kind, id }),
     onSuccess: (res) => {
       setToken(res.token);
+      setError(null);
       setCopied(false);
       refresh();
+    },
+    onError: (err) => {
+      setError(actionErrorMessage(err));
     },
   });
   const revoke = useMutation({
@@ -19738,14 +19747,17 @@ function DocumentLinkPanel({
             </div>
           </>
         ) : (
-          <button
-            type="button"
-            className="btn primary"
-            disabled={create.isPending}
-            onClick={() => create.mutate()}
-          >
-            {t.createClientLink}
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={create.isPending}
+              onClick={() => { setError(null); create.mutate(); }}
+            >
+              {t.createClientLink}
+            </button>
+            {error && <p className="error-text" role="alert">{error}</p>}
+          </>
         )}
       </div>
     </details>

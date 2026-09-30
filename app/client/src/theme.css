@@ -159,6 +159,8 @@ fieldset { padding: 0; border: 0; }
 .upload-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; margin-top: 14px; }
 .camera-button, .gallery-button { min-height: 54px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; font-weight: 800; cursor: pointer; }
 .camera-button { border: 0; background: var(--accent); color: var(--accent-ink); }
+.camera-button-icon { display: inline-flex; align-items: center; justify-content: center; }
+.camera-button-icon svg { width: 22px; height: 22px; flex-shrink: 0; }
 .gallery-button { border: 1px solid var(--border); background: var(--surface); }
 .upload-status { margin: 12px 0 0; color: var(--green); font-weight: 700; font-size: 13px; }
 .photo-grid { display: grid; gap: 16px; margin-top: 18px; }
@@ -1121,11 +1123,23 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .section-title-row button,.text-button { min-height: 38px; border: 0; background: transparent; color: var(--accent); font-weight: 800; }
 .editor-line-item { display: grid; grid-template-columns: auto minmax(0,1fr) 112px; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .line-item-fields { min-width: 0; display: grid; gap: 4px; }
-.line-item-fields input,.amount-input { min-width: 0; min-height: 42px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.line-item-fields input,.amount-input { min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; }
 .line-item-fields small { color: var(--dim); }
 .reorder-buttons { display: grid; gap: 3px; }
 .reorder-buttons button { width: 34px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text); }
 .add-item-wide { width: 100%; }
+/* Invoice/estimate editor as a floating sheet (matches Mark paid / More sheets). */
+.more-sheet.editor-sheet { width: min(100%, 640px); max-height: min(88vh, 780px); }
+.editor-header { margin-bottom: 4px; }
+.editor-header h2 { flex: 1; text-align: center; margin: 0; }
+.editor-header .editor-save { min-height: 40px; padding: 8px 18px; }
+.editor-sheet .financial-editor { width: 100%; margin: 0; padding: 8px 2px 12px; }
+/* Line items: when reorder mode is off there are only two columns (fields + amount). */
+.editor-line-item.no-reorder { grid-template-columns: minmax(0,1fr) 112px; }
+@media (max-width:430px) {
+  .editor-line-item.no-reorder { grid-template-columns: minmax(0,1fr); }
+  .editor-line-item.no-reorder .amount-input { grid-column: 1; }
+}
 .totals-editor > div,.balance-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .totals-editor > button { min-height: 42px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--accent); text-align: left; font-weight: 800; }
 .editor-grand-total { padding-top: 12px; border-top: 2px solid var(--text); font-size: 21px; }

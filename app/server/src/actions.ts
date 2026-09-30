@@ -3067,7 +3067,16 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ messages: z.array(marketplaceMessageSchema) }),
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
-      const rows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.listingId, args.listingId)).orderBy(schema.marketplaceMessages.createdAt);
+      const identity = workspaceIdentity(ctx);
+      const myCompanyId = identity.workspaceCompanyId;
+      // Verify the listing exists and check ownership for authorization.
+      const listingCheck = (await db.select({ companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listingCheck) throw new Error("Listing not found.");
+      const isOwner = listingCheck.companyId === myCompanyId;
+      const allRows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.listingId, args.listingId)).orderBy(schema.marketplaceMessages.createdAt);
+      // Privacy: owners see all messages; other companies only see their own
+      // messages plus the owner's replies (never other companies' messages).
+      const rows = isOwner ? allRows : allRows.filter((row) => row.sender === "me" || row.senderCompanyId === myCompanyId);
       // Get company names for senders (from settings table)
       const companyIds = new Set<number>();
       for (const row of rows) {
