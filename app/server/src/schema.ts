@@ -38,6 +38,9 @@ export const jobs = sqliteTable("jobs", {
   requiredPhotoStages: text("required_photo_stages").notNull().default("before,during,after"),
   completedAt: integer("completed_at", { mode: "timestamp_ms" }),
   completionOverrideNote: text("completion_override_note").notNull().default(""),
+  // Authoritative sample marker. Sample jobs never count toward the free
+  // tier's active-job ceiling (the "[SAMPLE]" name prefix is display-only).
+  isSample: integer("is_sample", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [

@@ -398,6 +398,7 @@ const copy = {
     error: "Something went wrong. Try again.",
     clients: "Clients",
     newClient: "New client",
+    pickFromContacts: "Pick from contacts",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
     clientHistory: "Client history",
@@ -690,6 +691,7 @@ const copy = {
     error: "Algo salió mal. Inténtalo de nuevo.",
     clients: "Clientes",
     newClient: "Nuevo cliente",
+    pickFromContacts: "Elegir de contactos",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
     clientHistory: "Historial del cliente",
@@ -10820,6 +10822,35 @@ const blankClient = {
   tags: [] as string[],
   referredByClientId: null as number | null,
 };
+// Web Contact Picker API (Chrome on Android — the TWA runtime). Not in the
+// standard TS DOM lib, so declared locally. Feature-detected at render time:
+// the button is hidden entirely where the API is unavailable.
+interface ContactPickerAddress {
+  streetAddress?: string;
+  addressLocality?: string;
+  addressRegion?: string;
+  postalCode?: string;
+  country?: string;
+}
+interface ContactPickerContact {
+  name?: string[];
+  email?: string[];
+  tel?: string[];
+  address?: ContactPickerAddress[];
+}
+interface NavigatorWithContacts extends Navigator {
+  contacts?: {
+    select: (props: string[], opts?: { multiple?: boolean }) => Promise<ContactPickerContact[]>;
+  };
+}
+function canPickContacts(): boolean {
+  try {
+    const nav = navigator as NavigatorWithContacts;
+    return typeof nav.contacts?.select === "function";
+  } catch {
+    return false;
+  }
+}
 function ClientForm({
   lang,
   initial = blankClient,
@@ -10848,6 +10879,28 @@ function ClientForm({
     setForm({ ...form, tags: [...form.tags, tag] });
     setTagDraft("");
   };
+  const pickFromContacts = async () => {
+    const nav = navigator as NavigatorWithContacts;
+    if (typeof nav.contacts?.select !== "function") return;
+    try {
+      // Must run in the tap handler (user gesture) or the picker is blocked.
+      const [contact] = await nav.contacts.select(["name", "email", "tel", "address"], { multiple: false });
+      if (!contact) return;
+      const addr = contact.address?.[0];
+      const address = addr
+        ? [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean).join(", ")
+        : "";
+      setForm((f) => ({
+        ...f,
+        name: contact.name?.[0] ?? f.name,
+        phone: contact.tel?.[0] ?? f.phone,
+        email: contact.email?.[0] ?? f.email,
+        address: address || f.address,
+      }));
+    } catch {
+      // Picker dismissed or unavailable — stay silent, manual entry continues.
+    }
+  };
   return (
     <form
       className="job-form client-form"
@@ -10856,6 +10909,14 @@ function ClientForm({
         if (form.name.trim()) save.mutate();
       }}
     >
+      {canPickContacts() && (
+        <div className="client-contacts-row">
+          <button type="button" className="ck-btn-sm" onClick={pickFromContacts}>
+            <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>
+            {t.pickFromContacts}
+          </button>
+        </div>
+      )}
       <label className="ck-field">
         <span className="ck-label">{t.client} *</span>
         <input className="ck-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />

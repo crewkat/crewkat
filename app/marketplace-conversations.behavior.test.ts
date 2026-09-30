@@ -51,8 +51,8 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0058_marketplace_conversations", last.tag === "0058_marketplace_conversations", last.tag);
-check("0058 when is strictly newer than 0057 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
+check("newest migration tag is 0059_sample_job_flag", last.tag === "0059_sample_job_flag", last.tag);
+check("0059 when is strictly newer than 0058 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Migration heuristic on a pre-0058 database ------------------------------
 const legacyDir = await mkdtemp(join(tmpdir(), "crewkat-convos-legacy-"));

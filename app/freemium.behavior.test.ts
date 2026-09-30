@@ -13,6 +13,8 @@
 //     repeat delivery with a different eventId).
 //  9. Founding-member cap never exceeds 100 — 100 pre-inserted, the 101st
 //     grant fails atomically and the count stays at 100.
+// 10. Sample job (is_sample) excluded from the free job ceiling: sample +
+//     3 real jobs allowed, the 4th real job still blocked.
 //
 // Run from app/:  bun freemium.behavior.test.ts
 import { mkdtemp } from "node:fs/promises";
@@ -258,6 +260,34 @@ check("101st grant fails with the cap message",
 check("founding member count stays at 100", (await foundingCount()) === 100);
 const capUser = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, user5)).limit(1))[0]!;
 check("101st user remains free tier", capUser.tier === "free", capUser.tier);
+
+// --- 10. Sample job excluded from the free job ceiling ------------------------
+// A fresh company loads sample data: the sample job is flagged is_sample and
+// must not consume any of the 3 free slots. 3 real jobs still allowed, the
+// 4th real job still blocked.
+const sampleUserRows = await db.insert(schema.authUsers).values([
+  { companyId: 3, name: "Sample User", email: "sample@example.com", passwordHash: "x", passwordSalt: "y", passwordIterations: 1, tier: "free", referralCode: "SAMPL001" },
+]).returning({ id: schema.authUsers.id });
+const sampleUser = sampleUserRows[0]!.id;
+await db.insert(schema.settings).values({ companyId: 3, companyName: "Sample Test Co" });
+const ctxSample = makeCtx(3, sampleUser, noPrivileged);
+const sampleData = await (BaseActions.loadSampleData as any).handler(ctxSample, {});
+check("loadSampleData returns a sample job id", typeof sampleData.jobId === "number");
+const sampleJobRow = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, sampleData.jobId)).limit(1))[0]!;
+check("sample job is flagged isSample", sampleJobRow.isSample === true);
+const sampleUsage = await (BaseActions.getUsageLimits as any).handler(ctxSample, {});
+check("sample job does not count toward the free job ceiling",
+  sampleUsage.activeJobs === 0 && sampleUsage.maxActiveJobs === 3, JSON.stringify(sampleUsage));
+for (let n = 1; n <= 3; n++) {
+  const res = await (BaseActions.createJob as any).handler(ctxSample, jobArgs(300 + n));
+  check(`sample-company real job ${n} succeeds`, typeof res.id === "number");
+}
+const sampleJob4Err = await expectThrow((BaseActions.createJob as any).handler(ctxSample, jobArgs(304)));
+check("sample-company 4th real job fails with FREE_JOB_LIMIT",
+  sampleJob4Err?.message?.startsWith("FREE_JOB_LIMIT") === true, sampleJob4Err?.message);
+const sampleUsageAfter = await (BaseActions.getUsageLimits as any).handler(ctxSample, {});
+check("usage meter counts only the 3 real jobs, not the sample",
+  sampleUsageAfter.activeJobs === 3, JSON.stringify(sampleUsageAfter));
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);

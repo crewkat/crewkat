@@ -3185,6 +3185,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .ck-btn-sm { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 800; cursor: pointer; }
 .ck-btn-sm:active { transform: scale(.98); }
 .ck-btn-ghost { background: transparent; }
+.client-contacts-row { display: flex; justify-content: flex-end; margin: 0 0 4px; }
+.client-contacts-row .ck-btn-sm svg { width: 15px; height: 15px; }
 .ck-icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); cursor: pointer; flex: 0 0 auto; }
 
 /* Invoice list: compact mockup rows */
