@@ -1631,7 +1631,7 @@ function useBlockHostPullToRefresh(shellRef: { current: HTMLDivElement | null })
 }
 
 type AuthUser = ApiResponse<typeof api, "login">["user"];
-const AuthContext = createContext<{ user: AuthUser; signOut: () => Promise<void> } | null>(null);
+const AuthContext = createContext<{ user: AuthUser; signOut: () => Promise<void>; setUserName: (name: string) => void } | null>(null);
 
 function actionErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Something went wrong. Try again.";
@@ -1955,7 +1955,7 @@ export function App() {
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
   };
-  return <AuthContext.Provider value={{ user, signOut }}><CrewkatApplication /></AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewkatApplication /></AuthContext.Provider>;
 }
 
 function SampleDataButton({
@@ -7111,6 +7111,38 @@ function CompanyProfileEditor({ lang, value, saving, onBack, onSave }: { lang: L
 let settingsOpenSectionCache: string | null = null;
 let settingsMorePanelCache: "email" | "payments" | "overdue" | "sorting" | "notifications" | "trash" | null = null;
 
+// Settings -> Account: rename the owner account (the name is otherwise only
+// set once at signup).
+function AccountNameEditor({ lang }: { lang: Lang }) {
+  const auth = useContext(AuthContext);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(auth?.user.name ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (!auth) return null;
+  const save = async () => {
+    const trimmed = name.trim();
+    if (trimmed.length < 2) { setError(lang === "es" ? "El nombre debe tener al menos 2 caracteres." : "Name must be at least 2 characters."); return; }
+    setBusy(true); setError("");
+    try {
+      const result = await api.updateProfileName({ name: trimmed });
+      auth.setUserName(result.name);
+      setEditing(false);
+    } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
+  };
+  if (!editing) return <button type="button" className="secondary-button" onClick={() => { setName(auth.user.name); setError(""); setEditing(true); }}>{lang === "es" ? "Editar nombre" : "Edit name"}</button>;
+  return (
+    <div className="account-name-editor">
+      <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoComplete="name" /></label>
+      {error && <p className="status error">{error}</p>}
+      <div className="account-name-actions">
+        <button type="button" className="primary-button" onClick={() => void save()} disabled={busy}>{busy ? (lang === "es" ? "Guardando…" : "Saving…") : (lang === "es" ? "Guardar" : "Save")}</button>
+        <button type="button" className="secondary-button" onClick={() => setEditing(false)} disabled={busy}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsScreen({
   lang,
   value,
@@ -7339,6 +7371,7 @@ function SettingsScreen({
             <SettingsAccordion title={auth.user.name} icon={<Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0" /></Icon>}>
               <div className="account-settings">
                 <div><strong>{auth.user.email}</strong><small>{auth.user.tier === "premium" ? (lang === "es" ? "Propietario verificado · Premium" : "Verified owner · Premium") : (lang === "es" ? "Propietario verificado · Gratis" : "Verified owner · Free")}</small></div>
+                <AccountNameEditor lang={lang} />
                 <button type="button" className="secondary-button" onClick={() => setScreen({ name: "upgrade" })}>{lang === "es" ? "Ver plan" : "View plan"}</button>
                 <button type="button" className="secondary-button account-signout" onClick={() => void auth.signOut()}>{lang === "es" ? "Cerrar sesión" : "Sign out"}</button>
               </div>

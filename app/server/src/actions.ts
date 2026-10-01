@@ -1895,6 +1895,20 @@ export const BaseActions = {
       return { ok: true, acceptedAt: now.toISOString(), version: MARKETPLACE_TERMS_VERSION };
     },
   }),
+  // Let the owner rename their account (set once at signup; editable from
+  // Settings -> Account). Displayed in Settings and on Marketplace listings.
+  updateProfileName: defineAction({
+    request: z.object({ name: z.string().trim().min(2).max(80) }),
+    response: z.object({ ok: z.literal(true), name: z.string() }),
+    async handler(ctx, args): Promise<{ ok: true; name: string }> {
+      const db = ctx.db<typeof schema>(); const now = new Date();
+      const identity = workspaceIdentity(ctx);
+      const name = args.name.trim();
+      await db.update(schema.authUsers).set({ name, updatedAt: now }).where(eq(schema.authUsers.id, identity.workspaceUserId));
+      ctx.invalidateQueries();
+      return { ok: true, name };
+    },
+  }),
   // Mission Control exit survey: a churned user tells us why they left.
   // Shown once as a gentle prompt after their subscription ends.
   submitCancellationFeedback: defineAction({

@@ -1699,6 +1699,10 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .account-settings small { color:var(--dim); }
 .account-signout { flex:0 0 auto; color:var(--danger); }
 @media (max-width:420px) { .account-settings { align-items:stretch; flex-direction:column; } .account-signout { width:100%; } }
+.account-name-editor { flex:1 1 100%; display:grid; gap:10px; }
+.account-name-editor label { display:grid; gap:6px; font-size:13px; font-weight:700; }
+.account-name-actions { display:flex; gap:10px; }
+.account-name-actions .primary-button, .account-name-actions .secondary-button { flex:1; min-height:48px; }
 
 
 /* Freemium plan */
