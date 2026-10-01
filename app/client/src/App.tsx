@@ -1947,7 +1947,10 @@ export function App() {
   // Existing users who signed up before the Marketplace Terms existed (or a
   // newer version shipped) must accept before they can use the app.
   if (!user.marketplaceTermsAcceptedAt || user.marketplaceTermsVersion !== MARKETPLACE_TERMS_VERSION) {
-    return <MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} />;
+    // The gate must live inside .app-shell: html/body/#root are overflow:hidden
+    // and the shell is the only scroll container. Without it the terms text
+    // overflows with no way to scroll.
+    return <div className="app-shell"><MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} /></div>;
   }
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); setUser(null); }
