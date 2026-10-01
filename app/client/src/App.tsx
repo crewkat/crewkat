@@ -1953,7 +1953,7 @@ export function App() {
     return <div className="app-shell"><MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} /></div>;
   }
   const signOut = async () => {
-    try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); setUser(null); }
+    try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
   };
   return <AuthContext.Provider value={{ user, signOut }}><CrewkatApplication /></AuthContext.Provider>;
 }
@@ -10449,7 +10449,12 @@ function QuotePreview({
   const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
   const [confirmConvert, setConfirmConvert] = useState(false);
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
-  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isPending ? <div className="loading-block"/> : <div className="empty-state"><p>{lang === "es" ? "Esta cotización ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>}</main>;
+  // A stale remembered id (deleted estimate, or another account's id left in
+  // sessionStorage) lands here with nothing to show. Bounce back instead of
+  // stranding the user on a dead-end screen.
+  const quoteGone = query.isSuccess && !quote;
+  useEffect(()=>{ if(quoteGone) onBack(); },[quoteGone]);
+  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isError ? <div className="empty-state"><p>{lang === "es" ? "Esta cotización ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div> : <div className="loading-block"/>}</main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
   // Phase 1: optimistic accept with a forgiving Undo.
@@ -11011,12 +11016,17 @@ function InvoicePreview({
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["invoices"]});};
   const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);},onError:(e)=>handleLimitError(e,()=>{})});
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
+  // A stale remembered id (deleted invoice, or another account's id left in
+  // sessionStorage) lands here with nothing to show. Bounce back instead of
+  // stranding the user on a dead-end screen.
+  const invoiceGone=query.isSuccess&&!invoice;
+  useEffect(()=>{if(invoiceGone)onBack();},[invoiceGone]);
   const schedulesQuery=useQuery({queryKey:["recurring-schedules"],queryFn:()=>api.listRecurringSchedules({})});
   const [scheduleFrequency,setScheduleFrequency]=useState<"weekly"|"monthly">("monthly");
   const startSchedule=useMutation({mutationFn:()=>api.createRecurringSchedule({invoiceId,frequency:scheduleFrequency,today:localToday()}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const cancelSchedule=useMutation({mutationFn:(id:number)=>api.cancelRecurringSchedule({id}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["recurring-schedules"]});}});
   const invoiceSchedules=(schedulesQuery.data?.schedules??[]).filter((s)=>s.invoiceId===invoiceId&&s.active);
-  if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/>{query.isPending?<div className="loading-block"/>:<div className="empty-state"><p>{lang === "es" ? "Esta factura ya no existe." : "This invoice no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>}</main>;
+  if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/>{query.isError?<div className="empty-state"><p>{lang === "es" ? "Esta factura ya no existe." : "This invoice no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>:<div className="loading-block"/>}</main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
   // Payment actions now go through the payment sheet (details + history).
