@@ -568,6 +568,42 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Build 0.4 (item 2): server-rendered PDF for client document links.
+    // Chrome on Android cannot render blob: PDF URLs in an <iframe>, so the
+    // client link embeds this endpoint (<object>/<embed> + "Open PDF").
+    const docPdfMatch = (req.method === "GET" || req.method === "HEAD") ? /^\/doc\/([^/]+)\/pdf$/.exec(path) : null;
+    if (docPdfMatch) {
+      let token = "";
+      try { token = decodeURIComponent(docPdfMatch[1]); } catch { token = ""; }
+      try {
+        const lang = url.searchParams.get("lang") === "es" ? "es" : "en";
+        const { status, body } = await dispatchAction("getDocumentLinkPdf", { token, lang }, {
+          userAgent: req.headers["user-agent"] ?? "",
+          clientIp: clientIp(req),
+        });
+        const pdfBase64 = status === 200 && body && !body.error ? body.data?.pdfBase64 : null;
+        if (typeof pdfBase64 !== "string" || !pdfBase64) {
+          res.writeHead(404, { "x-content-type-options": "nosniff" });
+          res.end();
+          return;
+        }
+        const bytes = Buffer.from(pdfBase64, "base64");
+        const filename = String(body.data?.filename || "document.pdf").replace(/[^A-Za-z0-9._-]+/g, "_");
+        res.writeHead(200, {
+          "content-type": "application/pdf",
+          "content-disposition": `inline; filename="${filename}"`,
+          "content-length": bytes.length,
+          "x-content-type-options": "nosniff",
+          "cache-control": "private, max-age=3600",
+        });
+        if (req.method === "GET") res.end(bytes); else res.end();
+      } catch {
+        res.writeHead(404, { "x-content-type-options": "nosniff" });
+        res.end();
+      }
+      return;
+    }
+
     if ((req.method === "GET" || req.method === "HEAD") && path.startsWith("/blobs/")) {
       if (req.method === "HEAD") {
         const encodedKey = path.slice("/blobs/".length);

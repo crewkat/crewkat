@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import * as schema from "./schema";
+import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
@@ -1650,6 +1651,34 @@ async function marketplaceCompanyNames(db: ReturnType<Ctx["db"]>, companyIds: nu
   return new Map(rows.map((row) => [row.companyId, row.companyName || `Company ${row.companyId}`]));
 }
 
+// Build 0.4: document-link payload assembly, shared by resolveDocumentLink
+// (which adds view counting + company notify) and getDocumentLinkPdf (the
+// server-rendered PDF endpoint — no side effects here).
+async function getDocumentLinkPayload(ctx: Ctx, token: string) {
+  const db = ctx.db<typeof schema>();
+  const link = await resolveDocumentLinkToken(ctx, token);
+  const settings = (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
+  const company = { name: settings?.companyName ?? "", phone: settings?.phone ?? "", email: settings?.email ?? "", website: settings?.website ?? "", licenseNumber: settings?.licenseNumber ?? "", logoUrl: settings?.logoBlobKey ? await ctx.blobs.getUrl(settings.logoBlobKey) : null };
+  const base = { kind: link.documentKind, documentId: link.documentId, signable: false, alreadySigned: false, company, title: "", clientName: "", jobAddress: "", jobType: "", lineItems: [] as Array<{ description: string; amount: string }>, subtotal: "", total: "", dateLabel: "", dateValue: "", footnote: "", bodyText: "", description: "", amount: "", contractorSignerName: "", linkExpiresAt: link.expiresAt.toISOString(),
+    // Build 0.3 (item 8): document design defaults (overridden below for invoices/quotes).
+    invoiceNumber: "", issueDate: "", dueDate: "", expiryDate: "", status: "", discountType: "percent", discountValue: "0", taxType: "percent", taxValue: "0", theme: "classic", font: "helvetica", accentColor: "#1f5a4a", showTaxLine: true, showDiscountLine: true, showPaidLine: true, showPaymentTerms: true, showFooterNotes: true, showLogo: true, showCompanyInfo: true, customizeJson: "{}" };
+  const designOf = (row: { discountType: string; discountValue: string; taxType: string; taxValue: string; theme: string; font: string; accentColor: string; showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean; showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string }) => ({ discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson });
+  if (link.documentKind === "invoice") {
+    const row = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, link.documentId)).limit(1))[0];
+    if (!row) throw new Error("This document is no longer available.");
+    return { link, payload: { ...base, ...designOf(row), title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status } };
+  }
+  if (link.documentKind === "quote") {
+    const row = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, link.documentId)).limit(1))[0];
+    if (!row) throw new Error("This document is no longer available.");
+    return { link, payload: { ...base, ...designOf(row), title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate } };
+  }
+  const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
+  if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
+  const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10) } };
+}
+
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
@@ -2648,25 +2677,31 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     // Build 0.3 (item 8): the actual document design, so the client link can
     // render the real PDF instead of a plain-HTML mock.
     invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string() }), async handler(ctx, args) {
-    const db=ctx.db<typeof schema>(); const link=await resolveDocumentLinkToken(ctx,args.token);
-    const now=new Date();
+    // Build 0.4: payload assembly moved to getDocumentLinkPayload (shared with
+    // getDocumentLinkPdf); this handler keeps the view counting + notify.
+    const { link, payload } = await getDocumentLinkPayload(ctx, args.token);
+    const db = ctx.db<typeof schema>();
+    const now = new Date();
     // Build 2: notify the company the first time a shared invoice/estimate is viewed each day (avoids spam from repeat opens).
-    const dayAgo=new Date(now.getTime()-24*3600_000);
-    const recentView=(await db.select({id:schema.documentLinkEvents.id}).from(schema.documentLinkEvents).where(and(eq(schema.documentLinkEvents.linkId,link.id),eq(schema.documentLinkEvents.eventType,"view"),gte(schema.documentLinkEvents.occurredAt,dayAgo))).limit(1))[0];
-    const notifyView=!recentView&&(link.documentKind==="invoice"||link.documentKind==="quote");
-    await db.update(schema.documentLinks).set({viewCount:link.viewCount+1,firstViewedAt:link.firstViewedAt??now,lastViewedAt:now}).where(eq(schema.documentLinks.id,link.id));
-    await db.insert(schema.documentLinkEvents).values({linkId:link.id,eventType:"view",userAgent:args.userAgent.slice(0,300),occurredAt:now});
-    const settings=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0];
-    const company={name:settings?.companyName??"",phone:settings?.phone??"",email:settings?.email??"",website:settings?.website??"",licenseNumber:settings?.licenseNumber??"",logoUrl:settings?.logoBlobKey?await ctx.blobs.getUrl(settings.logoBlobKey):null};
-    const base={kind:link.documentKind,documentId:link.documentId,signable:false,alreadySigned:false,company,title:"",clientName:"",jobAddress:"",jobType:"",lineItems:[] as Array<{description:string;amount:string}>,subtotal:"",total:"",dateLabel:"",dateValue:"",footnote:"",bodyText:"",description:"",amount:"",contractorSignerName:"",linkExpiresAt:link.expiresAt.toISOString(),
-      // Build 0.3 (item 8): document design defaults (overridden below for invoices/quotes).
-      invoiceNumber:"",issueDate:"",dueDate:"",expiryDate:"",status:"",discountType:"percent",discountValue:"0",taxType:"percent",taxValue:"0",theme:"classic",font:"helvetica",accentColor:"#1f5a4a",showTaxLine:true,showDiscountLine:true,showPaidLine:true,showPaymentTerms:true,showFooterNotes:true,showLogo:true,showCompanyInfo:true,customizeJson:"{}"};
-    const designOf=(row:{discountType:string;discountValue:string;taxType:string;taxValue:string;theme:string;font:string;accentColor:string;showTaxLine:boolean;showDiscountLine:boolean;showPaidLine:boolean;showPaymentTerms:boolean;showFooterNotes:boolean;showLogo:boolean;showCompanyInfo:boolean;customizeJson:string})=>({discountType:row.discountType,discountValue:row.discountValue,taxType:row.taxType,taxValue:row.taxValue,theme:row.theme,font:row.font,accentColor:row.accentColor,showTaxLine:row.showTaxLine,showDiscountLine:row.showDiscountLine,showPaidLine:row.showPaidLine,showPaymentTerms:row.showPaymentTerms,showFooterNotes:row.showFooterNotes,showLogo:row.showLogo,showCompanyInfo:row.showCompanyInfo,customizeJson:row.customizeJson});
-    if(link.documentKind==="invoice"){const row=(await db.select().from(schema.invoices).where(eq(schema.invoices.id,link.documentId)).limit(1))[0];if(!row)throw new Error("This document is no longer available.");if(notifyView)await notifyCompanyEvent(ctx,link.companyId,"notifyInvoiceViewed","document-viewed",`Client viewed invoice #${row.id}`,"Un cliente vio tu factura",`invoice:${row.id}`);return{...base,...designOf(row),title:`Invoice #${row.id}`,clientName:row.clientName,jobAddress:row.jobAddress,jobType:row.jobType,lineItems:JSON.parse(row.lineItemsJson),subtotal:row.subtotal,total:row.total,dateLabel:"Due date",dateValue:row.dueDate,footnote:row.footnote,invoiceNumber:row.invoiceNumber,issueDate:row.issueDate,dueDate:row.dueDate,status:row.status};}
-    if(link.documentKind==="quote"){const row=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,link.documentId)).limit(1))[0];if(!row)throw new Error("This document is no longer available.");if(notifyView)await notifyCompanyEvent(ctx,link.companyId,"notifyEstimateViewed","document-viewed",`Client viewed estimate #${row.id}`,"Un cliente vio tu estimado",`quote:${row.id}`);return{...base,...designOf(row),title:`Estimate #${row.id}`,clientName:row.clientName,jobAddress:row.jobAddress,jobType:row.jobType,lineItems:JSON.parse(row.lineItemsJson),subtotal:row.subtotal,total:row.total,dateLabel:"Valid until",dateValue:row.expiryDate,footnote:row.footnote,expiryDate:row.expiryDate};}
-    const doc=(await db.select().from(schema.documents).where(eq(schema.documents.id,link.documentId)).limit(1))[0];if(!doc||doc.kind!==link.documentKind)throw new Error("This document is no longer available.");
-    const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,doc.jobId)).limit(1))[0];
-    return{...base,signable:true,alreadySigned:!!doc.clientSignedAt,title:doc.title,clientName:job?.clientName??"",jobAddress:job?.jobAddress??"",jobType:job?.jobType??"",bodyText:doc.bodyText,description:doc.description,amount:doc.amount,contractorSignerName:doc.signerName,dateLabel:"Signed",dateValue:doc.signedAt.toISOString().slice(0,10)};
+    const dayAgo = new Date(now.getTime() - 24*3600_000);
+    const recentView = (await db.select({ id: schema.documentLinkEvents.id }).from(schema.documentLinkEvents).where(and(eq(schema.documentLinkEvents.linkId, link.id), eq(schema.documentLinkEvents.eventType, "view"), gte(schema.documentLinkEvents.occurredAt, dayAgo))).limit(1))[0];
+    const notifyView = !recentView && (link.documentKind === "invoice" || link.documentKind === "quote");
+    await db.update(schema.documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(schema.documentLinks.id, link.id));
+    await db.insert(schema.documentLinkEvents).values({ linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    if (notifyView && link.documentKind === "invoice") await notifyCompanyEvent(ctx, link.companyId, "notifyInvoiceViewed", "document-viewed", `Client viewed invoice #${payload.documentId}`, "Un cliente vio tu factura", `invoice:${payload.documentId}`);
+    if (notifyView && link.documentKind === "quote") await notifyCompanyEvent(ctx, link.companyId, "notifyEstimateViewed", "document-viewed", `Client viewed estimate #${payload.documentId}`, "Un cliente vio tu estimado", `quote:${payload.documentId}`);
+    return payload;
+  } }),
+  // Build 0.4 (item 2): server-rendered PDF for client document links, served
+  // by GET /doc/:token/pdf. Chrome on Android cannot render blob: PDF URLs in
+  // an <iframe>, so the client link embeds this endpoint instead. No view
+  // counting here — resolveDocumentLink owns that side effect.
+  getDocumentLinkPdf: defineAction({ request: z.object({ token: z.string().min(64).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pdfBase64: z.string(), filename: z.string(), kind: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string; kind: string }> {
+    const { payload } = await getDocumentLinkPayload(ctx, args.token);
+    const kind = payload.kind;
+    if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
+    const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, args.lang);
+    return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
   } }),
   submitDocumentSignature: defineAction({ request: z.object({ token: z.string().min(64).max(200), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedPdfDataBase64: z.string().min(1).max(30_000_000), userAgent: z.string().max(500).default("") }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx,args): Promise<{ok:true;signedAt:string}> {
     const db=ctx.db<typeof schema>(); const link=await resolveDocumentLinkToken(ctx,args.token);

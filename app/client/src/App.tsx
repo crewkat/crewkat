@@ -41,7 +41,6 @@ import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
-import { parseVCard } from "./vcard";
 
 type Lang = "en" | "es";
 type Stage = "before" | "during" | "after";
@@ -400,10 +399,7 @@ const copy = {
     clients: "Clients",
     newClient: "New client",
     pickFromContacts: "Pick from contacts",
-    contactsFallbackTitle: "Add from contacts",
-    contactsFallbackBody: "This browser can't open your contacts directly. Open Crewkat in Chrome to pick a contact, or import a contact file (.vcf) instead.",
-    openInChrome: "Open in Chrome",
-    chooseVCardFile: "Choose vCard file (.vcf)",
+    contactsUnavailable: "Contacts aren't available here",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
     clientHistory: "Client history",
@@ -669,6 +665,7 @@ const copy = {
     alreadySigned: "Already signed",
     linkInvalid: "This link isn't working",
     linkInvalidHint: "It may have expired or been replaced. Please ask for a new link.",
+    openPdf: "Open PDF",
     linkSecureNote: "This is a secure, private link just for you.",
     forLabel: "For",
   },
@@ -697,10 +694,7 @@ const copy = {
     clients: "Clientes",
     newClient: "Nuevo cliente",
     pickFromContacts: "Elegir de contactos",
-    contactsFallbackTitle: "Agregar desde contactos",
-    contactsFallbackBody: "Este navegador no puede abrir tus contactos directamente. Abre Crewkat en Chrome para elegir un contacto o importa un archivo de contacto (.vcf).",
-    openInChrome: "Abrir en Chrome",
-    chooseVCardFile: "Elegir archivo vCard (.vcf)",
+    contactsUnavailable: "Los contactos no están disponibles aquí",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
     clientHistory: "Historial del cliente",
@@ -966,6 +960,7 @@ const copy = {
     alreadySigned: "Ya firmado",
     linkInvalid: "Este enlace no funciona",
     linkInvalidHint: "Puede haber vencido o sido reemplazado. Pide un enlace nuevo.",
+    openPdf: "Abrir PDF",
     linkSecureNote: "Este es un enlace seguro y privado solo para ti.",
     forLabel: "Para",
   },
@@ -1060,6 +1055,19 @@ const FileIcon = () => (
   <Icon>
     <path d="M6 2h8l4 4v16H6z" />
     <path d="M14 2v5h5M9 13h6M9 17h6" />
+  </Icon>
+);
+// Build 0.4 (item 3): icons for the Send bottom sheet.
+const MailIcon = () => (
+  <Icon>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </Icon>
+);
+const LinkIcon = () => (
+  <Icon>
+    <path d="M10 14a5 5 0 0 0 7.1.4l2.8-2.8a5 5 0 0 0-7.1-7.1l-1.6 1.6" />
+    <path d="M14 10a5 5 0 0 0-7.1-.4l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.6-1.6" />
   </Icon>
 );
 const GearIcon = () => (
@@ -2514,6 +2522,9 @@ function CrewkatApplication() {
         <BookingRequestScreen lang={lang} />
       </div>
     );
+  // Build 0.4 (item 4): the invoice/estimate views bring their own action bar
+  // (Edit / Mark paid / Send / More) — hide the master bottom tab bar there.
+  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview";
   return (
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
@@ -2521,7 +2532,7 @@ function CrewkatApplication() {
     <ToolsNavigationContext.Provider
       value={screen.name === "tools" ? null : () => setScreen({ name: "tools" })}
     >
-    <div className={`app-shell${screen.name !== "legal" ? " has-bottom-nav" : ""}`} ref={appShellRef}>
+    <div className={`app-shell${screen.name !== "legal" ? " has-bottom-nav" : ""}${hideMasterNav ? " master-nav-hidden" : ""}`} ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
         <div className="announcement-banner" role="status">
@@ -2779,7 +2790,7 @@ function CrewkatApplication() {
           onBack={goBack}
         />
       )}
-      {screen.name !== "legal" && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
+      {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
       <CelebrationOverlay />
       {/* Phase 1: forgiving undo toasts for optimistic status changes. */}
       <UndoToastHost lang={lang} />
@@ -10422,6 +10433,9 @@ function QuotePreview({
   const [editing, setEditing] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Build 0.4 (item 3): Send opens the send-options sheet.
+  const [sendSheetOpen, setSendSheetOpen] = useState(false);
+  useEscapeToClose(sendSheetOpen, () => setSendSheetOpen(false));
   useEffect(() => { if (quote) void buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }).then(setBlob); }, [quote, settings, lang]);
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);}});
   const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
@@ -10470,7 +10484,7 @@ function QuotePreview({
     ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={quote} settings={settings} lang={lang}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${acceptedNow?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
-    <button className="primary-button send-document" disabled={!blob} onClick={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();if(blob)await nativeShare(blob,filename,capFirst(estTerms.singular));}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
+    <button className="primary-button send-document" disabled={!blob} onClick={()=>{buzz(8);setSendSheetOpen(true);}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     {/* Build 4: auto-generated checkable materials list from the estimate's
         line items. Check state persists on-device per estimate. */}
@@ -10483,6 +10497,7 @@ function QuotePreview({
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="quote" id={quote.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","quote",quoteId]});setSignatureOpen(false);}}/>}
+    {sendSheetOpen&&<SendSheet lang={lang} kind="quote" id={quote.id} docLabel={capFirst(estTerms.singular)} docNumber={`#${quote.id}`} clientName={quote.clientName} clientEmail={quote.clientEmail} companyName={settings?.companyName ?? ""} blob={blob} filename={filename} title={capFirst(estTerms.singular)} markSent={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();}} onClose={()=>setSendSheetOpen(false)}/>}
     {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?`Opciones de ${estTerms.singular}`:`${capFirst(estTerms.singular)} options`}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?`Convertir ${estTerms.singular} en factura`:`Convert ${estTerms.singular} to invoice`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,capFirst(estTerms.singular))}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?`Duplicar ${estTerms.singular}`:`Duplicate ${estTerms.singular}`}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?`Eliminar ${estTerms.singular}`:`Delete ${estTerms.singular}`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
   </main>;
 }
@@ -10978,6 +10993,9 @@ function InvoicePreview({
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [paymentSheetOpen,setPaymentSheetOpen]=useState(false);
   const openPaymentSheet=()=>{buzz(15);setPaymentSheetOpen(true);};
+  // Build 0.4 (item 3): Send opens the send-options sheet.
+  const [sendSheetOpen,setSendSheetOpen]=useState(false);
+  useEscapeToClose(sendSheetOpen,()=>setSendSheetOpen(false));
   const [frequency,setFrequency]=useState<"none"|"daily"|"weekly"|"monthly"|"quarterly">("none");
   const [nextDue,setNextDue]=useState("");
   const [recurringEnd,setRecurringEnd]=useState("");
@@ -10994,7 +11012,10 @@ function InvoicePreview({
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
   const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
   // Payment actions now go through the payment sheet (details + history).
-  const sendInvoice=async()=>{buzz(8);if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();if(blob)await nativeShare(blob,filename,t.invoices);};
+  // Build 0.4 (item 3): Send opens the send-options sheet; each option marks
+  // the invoice sent first, then performs its action.
+  const sendInvoice=()=>{buzz(8);setSendSheetOpen(true);};
+  const markInvoiceSent=async()=>{if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();};
   return <main className="page financial-detail-page">
     <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} minimal={editing} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
@@ -11066,6 +11087,7 @@ function InvoicePreview({
     {signatureOpen&&<SignatureDialog lang={lang} kind="invoice" id={invoice.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","invoice",invoiceId]});setSignatureOpen(false);}}/>}
     {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{const receipt=buildPaymentReceipt(invoice,settings,lang);void nativeShare(receipt,`${safeName(invoice.clientName)}-receipt-${invoice.id}.pdf`,lang==="es"?"Recibo de pago":"Payment receipt");}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
 {paymentSheetOpen&&invoice&&<PaymentSheet lang={lang} invoice={invoice} onClose={()=>setPaymentSheetOpen(false)} onSaved={async()=>{await refresh();}}/>}
+{sendSheetOpen&&<SendSheet lang={lang} kind="invoice" id={invoice.id} docLabel={lang==="es"?"Factura":"Invoice"} docNumber={invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4,"0")}`} clientName={invoice.clientName} clientEmail={invoice.clientEmail} companyName={settings?.companyName ?? ""} blob={blob} filename={filename} title={t.invoices} markSent={markInvoiceSent} onClose={()=>setSendSheetOpen(false)}/>}
   </main>;
 }
 
@@ -11111,14 +11133,6 @@ function showContactsButton(): boolean {
     return false;
   }
 }
-function hasNativeContactPicker(): boolean {
-  try {
-    const nav = navigator as NavigatorWithContacts;
-    return typeof nav.contacts?.select === "function";
-  } catch {
-    return false;
-  }
-}
 function ClientForm({
   lang,
   initial = blankClient,
@@ -11133,7 +11147,6 @@ function ClientForm({
   const t = copy[lang];
   const [form, setForm] = useState(initial);
   const [tagDraft, setTagDraft] = useState("");
-  const [contactsFallbackOpen, setContactsFallbackOpen] = useState(false);
   const clients = useQuery({
     queryKey: ["clients", ""],
     queryFn: () => api.listClients({ search: "" }),
@@ -11148,15 +11161,14 @@ function ClientForm({
     setForm({ ...form, tags: [...form.tags, tag] });
     setTagDraft("");
   };
+  // Contacts button: directly attempt the native Contact Picker. If the API
+  // is missing or fails, show a brief note and leave the manual form alone.
   const pickFromContacts = async () => {
-    if (!hasNativeContactPicker()) {
-      // No native picker on this browser (e.g. Samsung Internet) — offer the fallback sheet.
-      setContactsFallbackOpen(true);
+    const selectContact = (navigator as NavigatorWithContacts).contacts?.select;
+    if (typeof selectContact !== "function") {
+      showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500);
       return;
     }
-    const nav = navigator as NavigatorWithContacts;
-    const selectContact = nav.contacts?.select;
-    if (!selectContact) return; // checked by hasNativeContactPicker above; guard for the type checker
     try {
       // Must run in the tap handler (user gesture) or the picker is blocked.
       const [contact] = await selectContact(["name", "email", "tel", "address"], { multiple: false });
@@ -11172,37 +11184,12 @@ function ClientForm({
         email: contact.email?.[0] ?? f.email,
         address: address || f.address,
       }));
-    } catch {
-      // Picker dismissed or unavailable — stay silent, manual entry continues.
-    }
-  };
-  // Fallback: force-open this same page in Chrome, landing on the New Client form.
-  const openInChrome = () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("newClient", "1");
-    const target = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
-    window.location.href = `intent://${window.location.host}${target}#Intent;scheme=https;package=com.android.chrome;end`;
-  };
-  // Fallback: import a contact shared/exported as a .vcf file.
-  const importVCardFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const parsed = parseVCard(await file.text());
-      if (parsed) {
-        setForm((f) => ({
-          ...f,
-          name: parsed.name || f.name,
-          phone: parsed.phone || f.phone,
-          email: parsed.email || f.email,
-          address: parsed.address || f.address,
-        }));
+    } catch (error) {
+      // User dismissed the picker — stay silent. Any other failure gets the note.
+      if ((error as { name?: string } | null)?.name !== "AbortError") {
+        showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500);
       }
-    } catch {
-      // Unreadable file — stay on the manual form.
     }
-    setContactsFallbackOpen(false);
   };
   return (
     <>
@@ -11273,20 +11260,6 @@ function ClientForm({
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
-    {contactsFallbackOpen && (
-      <BottomSheet lang={lang} title={t.contactsFallbackTitle} onClose={() => setContactsFallbackOpen(false)}>
-        {(close) => (
-          <div className="contacts-fallback">
-            <p>{t.contactsFallbackBody}</p>
-            <button type="button" className="primary-button" onClick={() => { openInChrome(); close(); }}>{t.openInChrome}</button>
-            <label className="secondary-button contacts-vcard-label">
-              {t.chooseVCardFile}
-              <input type="file" accept=".vcf,text/vcard" hidden onChange={importVCardFile} />
-            </label>
-          </div>
-        )}
-      </BottomSheet>
-    )}
     </>
   );
 }
@@ -20516,9 +20489,27 @@ function ClientDocumentScreen({ token }: { token: string }) {
     },
     onError: (e) => setSignError(e instanceof Error ? e.message : t.linkInvalid),
   });
-  // Build 0.3 (item 8): the client link shows the actual generated PDF — the
-  // same document the company sees — instead of a plain-HTML mock.
+  // Build 0.4 (item 2): server-rendered PDF for the client link. Chrome on
+  // Android cannot render blob: PDF URLs inside an <iframe>, so financial
+  // documents embed GET /doc/:token/pdf (Content-Disposition: inline) instead.
+  // The client-side blob render stays as the fallback if the endpoint fails.
   const docData = q.data ?? null;
+  const serverPdfUrl = `/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`;
+  const [serverPdfOk, setServerPdfOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!docData || (docData.kind !== "invoice" && docData.kind !== "quote")) { setServerPdfOk(null); return; }
+    let cancelled = false;
+    setServerPdfOk(null);
+    (async () => {
+      try {
+        const r = await fetch(`/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`, { method: "HEAD" });
+        if (!cancelled) setServerPdfOk(r.ok);
+      } catch {
+        if (!cancelled) setServerPdfOk(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [docData, token, lang]);
   const [docPdf, setDocPdf] = useState<Blob | null>(null);
   const [docPdfFailed, setDocPdfFailed] = useState(false);
   const docPdfUrl = useMemo(() => (docPdf ? URL.createObjectURL(docPdf) : null), [docPdf]);
@@ -20526,6 +20517,8 @@ function ClientDocumentScreen({ token }: { token: string }) {
   useEffect(() => {
     const d = docData;
     if (!d || (d.kind !== "invoice" && d.kind !== "quote")) return;
+    // Only render client-side when the server PDF endpoint is unavailable.
+    if (serverPdfOk !== false) return;
     let cancelled = false;
     const financialKind = d.kind;
     (async () => {
@@ -20581,7 +20574,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [docData, lang]);
+  }, [docData, lang, serverPdfOk]);
   const langToggle = (
     <div className="client-lang-toggle">
       <button
@@ -20683,7 +20676,11 @@ function ClientDocumentScreen({ token }: { token: string }) {
     <main className="page public-page client-doc-page">
       {langToggle}
       <div className="client-doc-actions">
-        <button type="button" className="secondary-button" onClick={downloadPdf} disabled={!docPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+        {serverPdfOk && financialKind ? (
+          <a className="secondary-button" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</a>
+        ) : (
+          <button type="button" className="secondary-button" onClick={downloadPdf} disabled={!docPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+        )}
         <button type="button" className="secondary-button" onClick={shareDoc}>{lang === "es" ? "Compartir" : "Share"}</button>
         <button type="button" className="secondary-button" onClick={printDoc}>{lang === "es" ? "Imprimir" : "Print"}</button>
       </div>
@@ -20697,17 +20694,31 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </div>
       </header>
       {previewDoc && financialKind ? (
-        docPdfUrl ? (
-          <iframe className="client-doc-pdf" title={doc.title} src={docPdfUrl} />
-        ) : docPdfFailed ? (
-          <div className="client-doc-pdf-fallback">
-            <QuotePaper
-              quote={previewDoc}
-              settings={previewSettings}
-              lang={lang}
-              kind={financialKind}
-            />
-          </div>
+        serverPdfOk ? (
+          <>
+            <object className="client-doc-pdf" data={serverPdfUrl} type="application/pdf" title={doc.title}>
+              <div className="client-doc-pdf-open">
+                <p>{lang === "es" ? "No se pudo mostrar el PDF aquí." : "The PDF couldn't be shown here."}</p>
+                <a className="secondary-button" href={serverPdfUrl}>{t.openPdf}</a>
+              </div>
+            </object>
+            <a className="secondary-button client-doc-open-btn" href={serverPdfUrl}>{t.openPdf}</a>
+          </>
+        ) : serverPdfOk === false ? (
+          docPdfUrl ? (
+            <iframe className="client-doc-pdf" title={doc.title} src={docPdfUrl} />
+          ) : docPdfFailed ? (
+            <div className="client-doc-pdf-fallback">
+              <QuotePaper
+                quote={previewDoc}
+                settings={previewSettings}
+                lang={lang}
+                kind={financialKind}
+              />
+            </div>
+          ) : (
+            <div className="loading-block" />
+          )
         ) : (
           <div className="loading-block" />
         )
@@ -20815,6 +20826,103 @@ function ViewedBadge({
   );
 }
 
+// Build 0.4 (item 3): the Send bottom sheet — "Send by Email" / "Send Link" /
+// "Send PDF", matching the app's small floating sheet aesthetic. Shared by the
+// invoice and estimate previews.
+function SendSheet({
+  lang,
+  kind,
+  id,
+  docLabel,
+  docNumber,
+  clientName,
+  clientEmail,
+  companyName,
+  blob,
+  filename,
+  title,
+  markSent,
+  onClose,
+}: {
+  lang: Lang;
+  kind: "invoice" | "quote";
+  id: number;
+  docLabel: string;
+  docNumber: string;
+  clientName: string;
+  clientEmail: string;
+  companyName: string;
+  blob: Blob | null;
+  filename: string;
+  title: string;
+  markSent: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const freshLinkUrl = async () => {
+    // One active link per document — creating revokes the previous one, same
+    // as the share-link panel below the document.
+    const res = await api.createDocumentLink({ kind, id });
+    await qc.invalidateQueries({ queryKey: ["document-link", kind, id] });
+    return `${window.location.origin}${window.location.pathname}#doc=${res.token}`;
+  };
+  const run = async (fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await markSent();
+      await fn();
+    } catch (e) {
+      showUndoToast(actionErrorMessage(e), copy[lang].close, () => {}, 4000);
+      setBusy(false);
+    }
+  };
+  const sendByEmail = () =>
+    run(async () => {
+      const link = await freshLinkUrl();
+      const subject = `${docLabel} ${docNumber} — ${companyName}`.trim();
+      const body =
+        lang === "es"
+          ? `Hola ${clientName || "cliente"},\n\nAquí está tu ${docLabel.toLowerCase()} ${docNumber}: ${link}`
+          : `Hi ${clientName || "there"},\n\nHere is your ${docLabel.toLowerCase()} ${docNumber}: ${link}`;
+      window.location.href = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      onClose();
+    });
+  const sendLink = () =>
+    run(async () => {
+      const link = await freshLinkUrl();
+      const ok = await copyText(link);
+      showUndoToast(
+        ok ? copy[lang].linkCopied : lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link",
+        copy[lang].close,
+        () => {},
+        3500,
+      );
+      onClose();
+    });
+  const sendPdf = () =>
+    run(async () => {
+      if (blob) await nativeShare(blob, filename, title);
+      onClose();
+    });
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="more-sheet send-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Enviar" : "Send"}>
+        <div className="sheet-handle" />
+        <button type="button" disabled={busy} onClick={() => void sendByEmail()}>
+          <MailIcon /><span>{lang === "es" ? "Enviar por Email" : "Send by Email"}</span>
+        </button>
+        <button type="button" disabled={busy} onClick={() => void sendLink()}>
+          <LinkIcon /><span>{lang === "es" ? "Enviar enlace" : "Send Link"}</span>
+        </button>
+        <button type="button" disabled={busy || !blob} onClick={() => void sendPdf()}>
+          <FileIcon /><span>{lang === "es" ? "Enviar PDF" : "Send PDF"}</span>
+        </button>
+      </section>
+    </div>
+  );
+}
 function DocumentLinkPanel({
   lang,
   kind,

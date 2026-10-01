@@ -1,14 +1,12 @@
-// Danny 2026-09-30: "Pick from contacts" must work for everyone, not just
-// Chrome/Edge users — Samsung Internet (default on Galaxy phones) never
-// exposes navigator.contacts. Static assertions: the button shows on all
-// Android, the fallback sheet offers "Open in Chrome" (intent deep link)
-// and .vcf import, and ?newClient=1 lands on the New Client form.
+// Danny 2026-10-01 (build0.4): "Pick from contacts" directly attempts the
+// native Contact Picker. The "Open in Chrome" / vCard fallback sheet is gone:
+// if the API is missing or fails, a brief toast says contacts aren't
+// available and nothing else happens. Static assertions on the new behavior.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const APP = readFileSync(join(import.meta.dir, "client/src/App.tsx"), "utf8");
-const VCARD = readFileSync(join(import.meta.dir, "client/src/vcard.ts"), "utf8");
 const CSS = readFileSync(join(import.meta.dir, "client/src/theme.css"), "utf8");
 
 describe("contacts button visibility", () => {
@@ -16,37 +14,32 @@ describe("contacts button visibility", () => {
     expect(APP).toContain("showContactsButton()");
     expect(APP).toMatch(/\/Android\/i\.test\(navigator\.userAgent/);
   });
-
-  test("native picker path is still preferred when available", () => {
-    expect(APP).toContain("hasNativeContactPicker");
-    expect(APP).toContain("nav.contacts?.select");
-  });
 });
 
-describe("contacts fallback sheet", () => {
-  test("uses the shared BottomSheet with compact styling", () => {
-    expect(APP).toContain("contactsFallbackOpen");
-    expect(APP).toContain("<BottomSheet");
-    expect(APP).toContain("t.contactsFallbackTitle");
-    expect(APP).toContain("t.contactsFallbackBody");
-    expect(CSS).toContain(".contacts-fallback");
+describe("contacts picker — direct attempt, no fallback sheet", () => {
+  test("pickFromContacts calls navigator.contacts.select directly", () => {
+    expect(APP).toContain("const pickFromContacts = async () => {");
+    expect(APP).toContain("contacts?.select");
+    expect(APP).toContain('await selectContact(["name", "email", "tel", "address"]');
   });
 
-  test("Open in Chrome builds an intent:// URL from the live host", () => {
-    expect(APP).toContain("t.openInChrome");
-    expect(APP).toContain("package=com.android.chrome");
-    expect(APP).toContain("window.location.host");
-    expect(APP).toContain("#Intent;scheme=https;");
+  test("missing API or failure shows a brief 'not available' toast and nothing else", () => {
+    expect(APP).toContain("showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500)");
+    // The old fallback-sheet wiring is gone.
+    expect(APP).not.toContain("contactsFallbackOpen");
+    expect(APP).not.toContain("openInChrome");
+    expect(APP).not.toContain("importVCardFile");
+    expect(APP).not.toContain("hasNativeContactPicker");
+    expect(APP).not.toContain("package=com.android.chrome");
   });
 
-  test("vCard file import is wired with .vcf accept", () => {
-    expect(APP).toContain("t.chooseVCardFile");
-    expect(APP).toContain('accept=".vcf,text/vcard"');
-    expect(APP).toContain("parseVCard(await file.text())");
+  test("user dismissing the picker (AbortError) stays silent", () => {
+    expect(APP).toContain('"AbortError"');
   });
 
-  test("vcard parser module exposes parseVCard", () => {
-    expect(VCARD).toContain("export function parseVCard");
+  test("fallback sheet styles removed from theme", () => {
+    expect(CSS).not.toContain(".contacts-fallback");
+    expect(CSS).not.toContain(".contacts-vcard-label");
   });
 });
 
@@ -59,16 +52,13 @@ describe("newClient deep link", () => {
   });
 });
 
-describe("contacts fallback copy (en + es)", () => {
-  for (const [lang, title, chrome] of [
-    ["en", "Add from contacts", "Open in Chrome"],
-    ["es", "Agregar desde contactos", "Abrir en Chrome"],
+describe("contacts unavailable copy (en + es)", () => {
+  for (const [lang, text] of [
+    ["en", "Contacts aren't available here"],
+    ["es", "Los contactos no están disponibles aquí"],
   ] as const) {
     test(`${lang} copy present`, () => {
-      expect(APP).toContain(`contactsFallbackTitle: "${title}"`);
-      expect(APP).toContain(`openInChrome: "${chrome}"`);
-      expect(APP).toContain("contactsFallbackBody:");
-      expect(APP).toContain("chooseVCardFile:");
+      expect(APP).toContain(`contactsUnavailable: "${text}"`);
     });
   }
 });
