@@ -122,6 +122,8 @@ fieldset { padding: 0; border: 0; }
 .language-choice button { min-height: 50px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); font-weight: 700; }
 .language-choice button.active { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
 .sticky-submit { position: fixed; left: 16px; right: 16px; bottom: calc(118px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); z-index: 90; width: calc(100% - 32px); max-width: 608px; margin-inline: auto; box-shadow:0 8px 26px rgba(0,0,0,.24); transition:bottom .14s ease-out; }
+/* Keyboard open: the bottom nav is hidden behind it, so hug the keyboard. */
+.keyboard-open .sticky-submit { bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); }
 /* Build 3: "Saved" confirmation state on the settings save button. */
 .primary-button.saved-confirm { background: var(--green); border-color: var(--green); color: #fff; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }

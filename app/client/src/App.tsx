@@ -2187,6 +2187,10 @@ function CrewkatApplication() {
     const updateKeyboardOffset = () => {
       const offset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
       document.documentElement.style.setProperty("--keyboard-offset", `${Math.round(offset)}px`);
+      // When the keyboard is open the bottom nav is hidden behind it, so the
+      // sticky form save buttons drop down to hug the keyboard instead of
+      // floating 118px above it over the form.
+      document.documentElement.classList.toggle("keyboard-open", offset > 40);
     };
     updateKeyboardOffset();
     viewport?.addEventListener("resize", updateKeyboardOffset);
@@ -2197,6 +2201,7 @@ function CrewkatApplication() {
       viewport?.removeEventListener("scroll", updateKeyboardOffset);
       window.removeEventListener("resize", updateKeyboardOffset);
       document.documentElement.style.removeProperty("--keyboard-offset");
+      document.documentElement.classList.remove("keyboard-open");
     };
   }, []);
   const [screenStack, setScreenStack] = useState<Screen[]>([{ name: "today" }]);
