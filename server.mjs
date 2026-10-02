@@ -568,6 +568,29 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Build 0.5 (items 2+3): short public document links (/d/:code).
+    // Looks up the link by its short alias and redirects to the #doc= client
+    // page (the fragment keeps the credential out of server logs). No view
+    // counting here — the client's resolveDocumentLink call owns that side
+    // effect when the page loads. Unknown/expired codes fall through.
+    const shortDocMatch = (req.method === "GET" || req.method === "HEAD") ? /^\/d\/([A-Za-z0-9]{8,24})$/.exec(path) : null;
+    if (shortDocMatch) {
+      try {
+        const code = shortDocMatch[1];
+        const rows = await libsql.execute({
+          sql: `SELECT 1 FROM document_links WHERE short_code = ? AND revoked_at IS NULL AND expires_at > ? LIMIT 1`,
+          args: [code, Date.now()],
+        });
+        if (rows.rows.length) {
+          const host = req.headers.host || "crewkat.com";
+          const proto = req.headers["x-forwarded-proto"] || "https";
+          res.writeHead(302, { location: `${proto}://${host}/app/#doc=${encodeURIComponent(code)}`, "cache-control": "private, max-age=60" });
+          res.end();
+          return;
+        }
+      } catch { /* fall through to the SPA below */ }
+    }
+
     // Build 0.4 (item 2): server-rendered PDF for client document links.
     // Chrome on Android cannot render blob: PDF URLs in an <iframe>, so the
     // client link embeds this endpoint (<object>/<embed> + "Open PDF").

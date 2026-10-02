@@ -592,6 +592,8 @@ export const documentLinks = sqliteTable("document_links", {
   documentId: integer("document_id").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
+  // Build 0.5 (items 2+3): short public alias for /d/:code links.
+  shortCode: text("short_code").unique(),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   viewCount: integer("view_count").notNull().default(0),

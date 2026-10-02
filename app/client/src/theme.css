@@ -124,6 +124,11 @@ fieldset { padding: 0; border: 0; }
 .sticky-submit { position: fixed; left: 16px; right: 16px; bottom: calc(118px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); z-index: 90; width: calc(100% - 32px); max-width: 608px; margin-inline: auto; box-shadow:0 8px 26px rgba(0,0,0,.24); transition:bottom .14s ease-out; }
 /* Keyboard open: the bottom nav is hidden behind it, so hug the keyboard. */
 .keyboard-open .sticky-submit { bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); }
+/* Build 0.5 (item 6): the invoice builder's sticky Save was a full-width bar
+   floating 118px up over the totals/footnote — shrink it to a compact
+   right-aligned pill and give the form extra scroll clearance below it. */
+.invoice-builder-page .sticky-submit { left: auto; right: 16px; width: auto; max-width: none; padding-left: 22px; padding-right: 22px; }
+.invoice-builder-page .job-form { padding-bottom: calc(210px + env(safe-area-inset-bottom)); }
 /* Build 3: "Saved" confirmation state on the settings save button. */
 .primary-button.saved-confirm { background: var(--green); border-color: var(--green); color: #fff; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
@@ -2268,6 +2273,14 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* Chunk D: referral panel + push toggle hint. */
 .referral-link-row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
 .referral-link-row input { flex: 1; min-width: 0; }
+/* Build 0.5 (item 5): Refer-a-contractor screen. */
+.refer-steps { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 16px; }
+.refer-step { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+.refer-step-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; background: var(--accent, #f26a1b); }
+.refer-step strong { display: block; font-size: 15px; }
+.refer-step small { display: block; font-size: 13px; color: var(--dim); margin-top: 2px; }
+.refer-share-block { margin-bottom: 16px; }
+.refer-fine-print { margin-bottom: 24px; }
 .switch-row span small { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
 
 /* Chunk D: marketplace alerts + notifications. */

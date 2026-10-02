@@ -344,7 +344,7 @@ type Screen =
   | { name: "new" }
   | { name: "expansion"; tab?: "losses" | "warranties" | "videos" | "crew" | "scanner" | "tax" | "suppliers" | "plans" }
   | { name: "fieldIntelligence"; tab?: "purchasing" | "equipment" | "safety" | "credentials" | "payroll" | "costs" }
-  | { name: "detail"; jobId: number }
+  | { name: "detail"; jobId: number; tab?: WorkspaceTab }
   | { name: "bidBoard" }
   | { name: "dispatch" }
   | { name: "proof"; jobId: number }
@@ -363,6 +363,7 @@ type Screen =
   | { name: "followups" }
   | { name: "gallery" }
   | { name: "referrals" }
+  | { name: "referContractor" }
   | { name: "crewDay" }
   | { name: "operations"; tab?: "calendar" | "leads" }
   | { name: "reports" }
@@ -2187,22 +2188,33 @@ function CrewkatApplication() {
   useBlockHostPullToRefresh(appShellRef);
   useEffect(() => {
     const viewport = window.visualViewport;
+    // Build 0.5 (item 6): on some Android browsers the layout viewport resizes
+    // with the keyboard, so the visualViewport offset math reads ~0 and the
+    // sticky Save button never drops to hug the keyboard. Fall back to the
+    // focused-field signal on touch devices.
+    const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
     const updateKeyboardOffset = () => {
       const offset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
       document.documentElement.style.setProperty("--keyboard-offset", `${Math.round(offset)}px`);
+      const active = document.activeElement;
+      const fieldFocused = !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
       // When the keyboard is open the bottom nav is hidden behind it, so the
       // sticky form save buttons drop down to hug the keyboard instead of
       // floating 118px above it over the form.
-      document.documentElement.classList.toggle("keyboard-open", offset > 40);
+      document.documentElement.classList.toggle("keyboard-open", offset > 20 || (coarsePointer && fieldFocused));
     };
     updateKeyboardOffset();
     viewport?.addEventListener("resize", updateKeyboardOffset);
     viewport?.addEventListener("scroll", updateKeyboardOffset);
     window.addEventListener("resize", updateKeyboardOffset);
+    document.addEventListener("focusin", updateKeyboardOffset);
+    document.addEventListener("focusout", updateKeyboardOffset);
     return () => {
       viewport?.removeEventListener("resize", updateKeyboardOffset);
       viewport?.removeEventListener("scroll", updateKeyboardOffset);
       window.removeEventListener("resize", updateKeyboardOffset);
+      document.removeEventListener("focusin", updateKeyboardOffset);
+      document.removeEventListener("focusout", updateKeyboardOffset);
       document.documentElement.style.removeProperty("--keyboard-offset");
       document.documentElement.classList.remove("keyboard-open");
     };
@@ -2589,6 +2601,7 @@ function CrewkatApplication() {
         <JobDetail
           lang={lang}
           jobId={screen.jobId}
+          initialTab={screen.tab}
           settings={appSettings}
           onBack={goBack}
           setScreen={setScreen}
@@ -2707,6 +2720,9 @@ function CrewkatApplication() {
       )}
       {screen.name === "referrals" && (
         <ReferralsScreen lang={lang} onBack={goBack} setScreen={setScreen} />
+      )}
+      {screen.name === "referContractor" && (
+        <ReferContractorScreen lang={lang} onBack={goBack} />
       )}
       {screen.name === "crewDay" && (
         <CrewDayScreen lang={lang} onBack={goBack} setScreen={setScreen} />
@@ -2934,6 +2950,8 @@ function AlertsView({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
     const quoteMatch = /^quote:(\d+)$/.exec(notification.link);
     if (quoteMatch) { setScreen({ name: "quotePreview", quoteId: Number(quoteMatch[1]) }); return; }
     if (/^doc-signed:\d+$/.test(notification.link)) { setScreen({ name: "jobs" }); return; }
+    const jobMsgMatch = /^job:(\d+):messages$/.exec(notification.link);
+    if (jobMsgMatch) { setScreen({ name: "detail", jobId: Number(jobMsgMatch[1]), tab: "messages" }); return; }
     const match = /^marketplace:(\d+)$/.exec(notification.link);
     if (match) setScreen({ name: "marketplaceDetail", listingId: Number(match[1]) });
   };
@@ -3743,6 +3761,10 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const [sortBy, setSortBy] = useState<MarketplaceSort>("newest");
   const [locationPopupOpen, setLocationPopupOpen] = useState(false);
   const [mapPreviewOpen, setMapPreviewOpen] = useState(false);
+  // Build 0.5 (item 4): snapshot the map query when the preview opens instead
+  // of live-binding the iframe to every keystroke (mid-typing queries geocode
+  // poorly and Google renders a zoomed-out world view).
+  const [mapQuery, setMapQuery] = useState("Tampa, FL");
   const [savedIds, setSavedIds] = useState<number[]>(savedMarketplaceIds);
   const [promotionOpen, setPromotionOpen] = useState(false);
   const [promoteListingId, setPromoteListingId] = useState<number | null>(null);
@@ -3982,8 +4004,8 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     {locationPopupOpen && <FloatPopup lang={lang} title={sortText.locationTitle} onClose={() => setLocationPopupOpen(false)}>{(close) => <>
       <p className="popup-hint">{sortText.locationHint}</p>
       <label className="popup-input"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder={text.location} aria-label={text.location}/></label>
-      <button className="secondary-button popup-map-button" onClick={() => setMapPreviewOpen((open) => !open)}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
-      {mapPreviewOpen && <div className="popup-map"><iframe title={sortText.showOnMap} src={`https://maps.google.com/maps?q=${encodeURIComponent(location.trim() || "Tampa, FL")}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><small>{sortText.mapNote}</small></div>}
+      <button className="secondary-button popup-map-button" onClick={() => { if (!mapPreviewOpen) setMapQuery(location.trim() || "Tampa, FL"); setMapPreviewOpen((open) => !open); }}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
+      {mapPreviewOpen && <div className="popup-map"><iframe key={mapQuery} title={sortText.showOnMap} src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><small>{sortText.mapNote}</small></div>}
       <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setMapPreviewOpen(false); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
     </>}</FloatPopup>}
   </main>;
@@ -4084,7 +4106,7 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
   const [error, setError] = useState("");
   const threadRef = useRef<HTMLDivElement | null>(null);
   const thread = useQuery({ queryKey: ["marketplace-thread", conversationId], queryFn: () => api.marketplaceConversation({ conversationId }), refetchInterval: 5000 });
-  const markRead = useMutation({ mutationFn: () => api.markMarketplaceConversationRead({ conversationId }), onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["marketplace-inbox"] }); }, onError: () => {} });
+  const markRead = useMutation({ mutationFn: () => api.markMarketplaceConversationRead({ conversationId }), onSuccess: async () => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-inbox"] }), qc.invalidateQueries({ queryKey: ["marketplace-notifications"] })]); }, onError: () => {} });
   const latestId = thread.data?.messages.length ? thread.data.messages[thread.data.messages.length - 1]?.id ?? null : null;
   useEffect(() => { if (latestId !== null) markRead.mutate(); }, [conversationId, latestId]);
   useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [latestId]);
@@ -5084,6 +5106,18 @@ function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
     queryFn: () => api.listJobMessages({ jobId }),
     refetchInterval: 8000,
   });
+  // Build 0.5 (item 1): viewing the thread clears the "new client message"
+  // notification so the nav badge drops once the texts are read.
+  const markRead = useMutation({
+    mutationFn: () => api.markJobMessagesRead({ jobId }),
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["marketplace-notifications"] }); },
+    onError: () => {},
+  });
+  const messageCount = q.data?.messages.length ?? 0;
+  useEffect(() => {
+    if (messageCount > 0) markRead.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, messageCount]);
   const [body, setBody] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [voice, setVoice] = useState<{ blob: Blob; seconds: number } | null>(null);
@@ -6030,12 +6064,14 @@ function JobDetail({
   settings,
   onBack,
   setScreen,
+  initialTab,
 }: {
   lang: Lang;
   jobId: number;
   settings: Settings | null;
   onBack: () => void;
   setScreen: (s: Screen) => void;
+  initialTab?: WorkspaceTab;
 }) {
   const t = copy[lang];
   const client = useQueryClient();
@@ -6217,7 +6253,7 @@ function JobDetail({
   // Phase 2: unified workspace tab + unread client-message badge. The badge
   // counts client messages newer than the last time the Messages tab was
   // opened (tracked per job in localStorage).
-  const [wsTab, setWsTab] = useState<WorkspaceTab>("overview");
+  const [wsTab, setWsTab] = useState<WorkspaceTab>(initialTab ?? "overview");
   const [lastSeenMsg, setLastSeenMsg] = useState<number>(() =>
     Number(window.localStorage.getItem(`crewkat-job-msg-seen:${jobId}`) ?? 0),
   );
@@ -14290,6 +14326,50 @@ function CompletionCertificate({
   );
 }
 
+// Build 0.5 (item 5): the home "Refer a contractor" banner now lands here —
+// how it works, the share panel (native share sheet + copy link + live
+// counts), and the fine print. ReferralsScreen stays for client referrals.
+function ReferContractorScreen({
+  lang,
+  onBack,
+}: {
+  lang: Lang;
+  onBack: () => void;
+}) {
+  const steps = lang === "es" ? [
+    { n: "1", title: "Comparte tu enlace", body: "Envíaselo a otro contratista por texto, WhatsApp o correo." },
+    { n: "2", title: "Se registra y verifica su correo", body: "Cuando verifica su correo, la invitación cuenta." },
+    { n: "3", title: "Ganas 5 listados extra", body: "Tu límite gratis del Marketplace sube 5 por cada amigo que se una." },
+  ] : [
+    { n: "1", title: "Share your link", body: "Send it to another contractor by text, WhatsApp, or email." },
+    { n: "2", title: "They join and verify email", body: "The referral counts once they verify their email." },
+    { n: "3", title: "You earn 5 bonus listings", body: "Your free Marketplace limit goes up by 5 for every friend who joins." },
+  ];
+  return (
+    <main className="page">
+      <PageHeader lang={lang} title={lang === "es" ? "Invita a un contratista" : "Refer a contractor"} onBack={onBack} />
+      <section className="refer-steps">
+        {steps.map((s) => (
+          <div key={s.n} className="refer-step">
+            <span className="refer-step-num" aria-hidden="true">{s.n}</span>
+            <span><strong>{s.title}</strong><small>{s.body}</small></span>
+          </div>
+        ))}
+      </section>
+      <section className="refer-share-block">
+        <ReferralPanel lang={lang} />
+      </section>
+      <section className="refer-fine-print">
+        <p className="dim small">
+          {lang === "es"
+            ? "Los listados extra aumentan tu límite gratis del Marketplace — no tienen valor en efectivo y no se pueden transferir. Invitaciones falsas o spam pueden anular tus bonos."
+            : "Bonus listings raise your free Marketplace limit — they have no cash value and can't be transferred. Fake or spammy invites may forfeit your bonuses."}
+        </p>
+      </section>
+    </main>
+  );
+}
+
 function ReferralsScreen({
   lang,
   onBack,
@@ -14673,7 +14753,7 @@ function TodayScreen({
       {/* Build 4: referral growth banner on Home. The reward is bonus
           Marketplace listings (the real, implemented reward) — never a
           free Premium month, which the billing code does not grant. */}
-      <button type="button" className="home-referral-banner stagger-in" onClick={() => setScreen({ name: "referrals" })}>
+      <button type="button" className="home-referral-banner stagger-in" onClick={() => setScreen({ name: "referContractor" })}>
         <span className="home-referral-icon" aria-hidden="true"><Icon><path d="M16 11a4 4 0 1 0-4-4M4 21c0-4 3-7 8-7 2 0 3.8.7 5.2 1.8M18 8v6M15 11h6" /></Icon></span>
         <span>
           <strong>{lang === "es" ? "Invita a un contratista, gana listados gratis" : "Refer a contractor, earn free listings"}</strong>
@@ -20714,7 +20794,8 @@ function ClientDocumentScreen({ token }: { token: string }) {
     downloadBlob(docPdf, `${financialKind}-${doc.documentId}.pdf`);
   };
   const shareDoc = async () => {
-    const shareUrl = window.location.href;
+    // Build 0.5 (item 3): share the short /d/:code URL when known.
+    const shareUrl = doc.shortCode ? `${window.location.origin}/d/${doc.shortCode}` : window.location.href;
     const shareData = { title: c.name, text: lang === "es" ? "Documento de " + c.name : "Document from " + c.name, url: shareUrl };
     if (navigator.share) {
       try { await navigator.share(shareData); } catch { /* dismissed */ }
@@ -20912,11 +20993,12 @@ function SendSheet({
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const freshLinkUrl = async () => {
-    // One active link per document — creating revokes the previous one, same
-    // as the share-link panel below the document.
+    // Build 0.5 (items 2+3): short /d/:code links; previously shared links
+    // stay valid (no revoke-on-create), and Send Link opens the native share
+    // sheet like the client page's Share button.
     const res = await api.createDocumentLink({ kind, id });
     await qc.invalidateQueries({ queryKey: ["document-link", kind, id] });
-    return `${window.location.origin}${window.location.pathname}#doc=${res.token}`;
+    return `${window.location.origin}/d/${res.shortCode}`;
   };
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -20943,6 +21025,22 @@ function SendSheet({
   const sendLink = () =>
     run(async () => {
       const link = await freshLinkUrl();
+      // Build 0.5 (item 3): same native share prompt as the client page's
+      // Share button; clipboard copy is the fallback.
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          await navigator.share({
+            title: `${docLabel} ${docNumber} — ${companyName}`.trim(),
+            text: lang === "es" ? `Aquí está tu ${docLabel.toLowerCase()} ${docNumber}` : `Here is your ${docLabel.toLowerCase()} ${docNumber}`,
+            url: link,
+          });
+          onClose();
+          return;
+        } catch (e) {
+          // User dismissed the sheet — don't fall through to copy.
+          if (e instanceof DOMException && e.name === "AbortError") { onClose(); return; }
+        }
+      }
       const ok = await copyText(link);
       showUndoToast(
         ok ? copy[lang].linkCopied : lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link",
@@ -20985,7 +21083,7 @@ function DocumentLinkPanel({
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
-  const [token, setToken] = useState<string | null>(null);
+  const [shortCode, setShortCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const info = useQuery({
@@ -20998,7 +21096,7 @@ function DocumentLinkPanel({
   const create = useMutation({
     mutationFn: () => api.createDocumentLink({ kind, id }),
     onSuccess: (res) => {
-      setToken(res.token);
+      setShortCode(res.shortCode);
       setError(null);
       setCopied(false);
       refresh();
@@ -21010,12 +21108,16 @@ function DocumentLinkPanel({
   const revoke = useMutation({
     mutationFn: () => api.revokeDocumentLink({ kind, id }),
     onSuccess: () => {
-      setToken(null);
+      setShortCode(null);
       refresh();
     },
   });
-  const url = token
-    ? `${window.location.origin}${window.location.pathname}#doc=${token}`
+  // Build 0.5 (items 2+3): share the short /d/:code URL. A freshly created
+  // link shows its code immediately; otherwise fall back to the latest
+  // active link's code from the server.
+  const activeShortCode = shortCode ?? link?.shortCode ?? null;
+  const url = activeShortCode
+    ? `${window.location.origin}/d/${activeShortCode}`
     : null;
   const copyLink = async () => {
     if (!url) return;
