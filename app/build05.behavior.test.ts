@@ -185,7 +185,9 @@ check("item 5: ReferContractorScreen renders steps + share panel + fine print", 
 
 check("item 6: invoice Save is a compact right-aligned pill", themeSrc.includes(".invoice-builder-page .sticky-submit") && themeSrc.includes("width: auto"));
 check("item 6: invoice form gets extra bottom clearance", themeSrc.includes(".invoice-builder-page .job-form") && themeSrc.includes("210px"));
-check("item 6: keyboard detection falls back to focused-field on touch devices", appSrc.includes("coarsePointer && fieldFocused"));
+check("item 6: builders hide the master nav", appSrc.includes('screen.name === "invoiceNew" || screen.name === "quoteNew"'));
+check("item 6: builder Save pinned to true bottom when nav hidden (no keyboard-detection dependency)", themeSrc.includes(".app-shell.master-nav-hidden .form-page .sticky-submit"));
+check("item 6: new invoice starts blank, draft offered via Resume/Discard", appSrc.includes("You have an unsaved draft") && appSrc.includes("resumeDraft") && !appSrc.includes("restoredDraft"));
 
 await rm(dir, { recursive: true, force: true });
 await rm(upDir, { recursive: true, force: true });

@@ -2188,33 +2188,24 @@ function CrewkatApplication() {
   useBlockHostPullToRefresh(appShellRef);
   useEffect(() => {
     const viewport = window.visualViewport;
-    // Build 0.5 (item 6): on some Android browsers the layout viewport resizes
-    // with the keyboard, so the visualViewport offset math reads ~0 and the
-    // sticky Save button never drops to hug the keyboard. Fall back to the
-    // focused-field signal on touch devices.
-    const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
     const updateKeyboardOffset = () => {
       const offset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
       document.documentElement.style.setProperty("--keyboard-offset", `${Math.round(offset)}px`);
-      const active = document.activeElement;
-      const fieldFocused = !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
       // When the keyboard is open the bottom nav is hidden behind it, so the
       // sticky form save buttons drop down to hug the keyboard instead of
-      // floating 118px above it over the form.
-      document.documentElement.classList.toggle("keyboard-open", offset > 20 || (coarsePointer && fieldFocused));
+      // floating 118px above it over the form. (The invoice/estimate builders
+      // hide the nav and pin their Save to the true bottom structurally, so
+      // they don't depend on this detection.)
+      document.documentElement.classList.toggle("keyboard-open", offset > 20);
     };
     updateKeyboardOffset();
     viewport?.addEventListener("resize", updateKeyboardOffset);
     viewport?.addEventListener("scroll", updateKeyboardOffset);
     window.addEventListener("resize", updateKeyboardOffset);
-    document.addEventListener("focusin", updateKeyboardOffset);
-    document.addEventListener("focusout", updateKeyboardOffset);
     return () => {
       viewport?.removeEventListener("resize", updateKeyboardOffset);
       viewport?.removeEventListener("scroll", updateKeyboardOffset);
       window.removeEventListener("resize", updateKeyboardOffset);
-      document.removeEventListener("focusin", updateKeyboardOffset);
-      document.removeEventListener("focusout", updateKeyboardOffset);
       document.documentElement.style.removeProperty("--keyboard-offset");
       document.documentElement.classList.remove("keyboard-open");
     };
@@ -2544,7 +2535,9 @@ function CrewkatApplication() {
     );
   // Build 0.4 (item 4): the invoice/estimate views bring their own action bar
   // (Edit / Mark paid / Send / More) — hide the master bottom tab bar there.
-  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview";
+  // Build 0.5 fix: the builders hide it too, so the sticky Save can sit at the
+  // true bottom without ever overlapping the nav.
+  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew";
   return (
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
@@ -10819,10 +10812,11 @@ function InvoiceBuilder({
   useEscapeToClose(activeSheet !== null, () => closeSheet());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState("");
-  // Build 0.3 (item 2): restore an interrupted invoice draft, if one exists.
-  const restoredDraft = useMemo(readInvoiceDraft, []);
-  const [discountEnabled, setDiscountEnabled] = useState(restoredDraft?.discountEnabled ?? false);
-  const [taxEnabled, setTaxEnabled] = useState(restoredDraft?.taxEnabled ?? false);
+  // Build 0.5 fix: "New invoice" always opens blank. An interrupted draft is
+  // offered via a Resume/Discard banner instead of silently filling the form.
+  const availableDraft = useMemo(readInvoiceDraft, []);
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [taxEnabled, setTaxEnabled] = useState(false);
   const initialForm = {
     invoiceNumber: "", quoteId: null as number | null, jobId: jobId ?? (null as number | null), clientId: null as number | null,
     clientName: "", clientPhone: "", clientEmail: "", jobAddress: "", shippingAddress: "", jobType: "",
@@ -10838,8 +10832,8 @@ function InvoiceBuilder({
     taxType: "percent" as AdjustmentType, taxValue: "0",
     lineItems: [{ name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" as "none" | "days" | "hours" }],
   };
-  const [form, setForm] = useState<InvoiceFormState>(() => restoredDraft ? { ...initialForm, ...restoredDraft.form } : initialForm);
-  const [draftRestored, setDraftRestored] = useState(() => Boolean(restoredDraft));
+  const [form, setForm] = useState<InvoiceFormState>(() => initialForm);
+  const [draftOffered, setDraftOffered] = useState(() => Boolean(availableDraft));
   // Debounced draft write (~750ms). The ref always holds the latest writer so
   // the hardware-back interceptor (below) can flush synchronously.
   const flushInvoiceDraftRef = useRef(() => {});
@@ -10858,12 +10852,17 @@ function InvoiceBuilder({
   // Build 0.3 (item 7): hardware back while composing flushes the draft, then
   // lets navigation continue (the press is not consumed).
   useEffect(() => pushHardwareBackInterceptor(() => { flushInvoiceDraftRef.current(); return false; }), []);
+  const resumeDraft = () => {
+    if (availableDraft) {
+      setForm({ ...initialForm, ...availableDraft.form });
+      setDiscountEnabled(availableDraft.discountEnabled ?? false);
+      setTaxEnabled(availableDraft.taxEnabled ?? false);
+    }
+    setDraftOffered(false);
+  };
   const discardDraft = () => {
     try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ }
-    setDraftRestored(false);
-    setDiscountEnabled(false);
-    setTaxEnabled(false);
-    setForm({ ...initialForm });
+    setDraftOffered(false);
   };
   useEffect(() => {
     const job = jobQuery.data?.job;
@@ -10890,7 +10889,7 @@ function InvoiceBuilder({
     <PageHeader lang={lang} title={t.newInvoice} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
     <form className="job-form invoice-fly-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
       <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
-      {draftRestored && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Borrador restaurado" : "Draft restored"}</span><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></div>}
+      {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
       <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
       <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
         <div className="field-pair"><label><span>{t.phone}</span><input type="tel" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}/></label><label><span>{t.email}</span><input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}/></label></div>

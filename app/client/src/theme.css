@@ -129,6 +129,12 @@ fieldset { padding: 0; border: 0; }
    right-aligned pill and give the form extra scroll clearance below it. */
 .invoice-builder-page .sticky-submit { left: auto; right: 16px; width: auto; max-width: none; padding-left: 22px; padding-right: 22px; }
 .invoice-builder-page .job-form { padding-bottom: calc(210px + env(safe-area-inset-bottom)); }
+/* Build 0.5 fix: the builders hide the master nav, so the sticky Save sits at
+   the true bottom in every state — no 118px float, no overlap with the nav,
+   and no reliance on keyboard detection. With
+   interactive-widget=resizes-content the fixed button rides above the
+   keyboard when it opens. */
+.app-shell.master-nav-hidden .form-page .sticky-submit { bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); }
 /* Build 3: "Saved" confirmation state on the settings save button. */
 .primary-button.saved-confirm { background: var(--green); border-color: var(--green); color: #fff; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
@@ -3296,6 +3302,8 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 /* draft restore notice */
 .draft-restored-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; margin: 10px 0; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); font-size: 13px; font-weight: 700; }
 .draft-restored-notice button { border: 0; background: transparent; color: var(--danger); font-weight: 800; font-size: 13px; cursor: pointer; }
+.draft-notice-actions { display: flex; gap: 12px; align-items: center; }
+.draft-notice-actions .draft-resume-btn { color: var(--accent); }
 /* scanner capture thumbnail */
 .scan-capture-preview { width: 100%; max-height: 220px; object-fit: contain; background: #222; border-radius: 8px; margin-bottom: 4px; }
 .scan-hint { font-size: 13px; color: var(--dim); margin: 0 0 8px; }
