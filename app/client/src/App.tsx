@@ -689,6 +689,7 @@ const copy = {
     confirmDeleteAttachment: "Delete this attachment?",
     attachmentTooLarge: "That file is too large (15MB max).",
     attachmentUploading: "Uploading…",
+    attachmentCancel: "Cancel",
   },
   es: {
     jobs: "Trabajos",
@@ -1001,6 +1002,7 @@ const copy = {
     confirmDeleteAttachment: "¿Eliminar este adjunto?",
     attachmentTooLarge: "Ese archivo es muy grande (máx. 15MB).",
     attachmentUploading: "Subiendo…",
+    attachmentCancel: "Cancelar",
   },
 } as const;
 
@@ -2590,7 +2592,7 @@ function CrewkatApplication() {
   // (Edit / Mark paid / Send / More) — hide the master bottom tab bar there.
   // Build 0.5 fix: the builders hide it too, so the sticky Save can sit at the
   // true bottom without ever overlapping the nav.
-  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew";
+  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew" || screen.name === "invoiceAttachments" || screen.name === "quoteAttachments";
   return (
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
@@ -2716,6 +2718,14 @@ function CrewkatApplication() {
           onOpenInvoice={(id) => setScreen({ name: "invoicePreview", invoiceId: id })}
         />
       )}
+      {screen.name === "quoteAttachments" && (
+        <DocumentAttachmentsScreen
+          lang={lang}
+          docType="quote"
+          docId={screen.quoteId}
+          onBack={goBack}
+        />
+      )}
       {screen.name === "invoices" && (
         <InvoicesScreen
           lang={lang}
@@ -2740,6 +2750,14 @@ function CrewkatApplication() {
           onBack={goBack}
           setScreen={setScreen}
           onOpenInvoice={(id) => setScreen({ name: "invoicePreview", invoiceId: id })}
+        />
+      )}
+      {screen.name === "invoiceAttachments" && (
+        <DocumentAttachmentsScreen
+          lang={lang}
+          docType="invoice"
+          docId={screen.invoiceId}
+          onBack={goBack}
         />
       )}
       {screen.name === "clients" && (
@@ -11085,6 +11103,225 @@ function MaterialsChecklist({ lang, quoteId, lineItems }: { lang: Lang; quoteId:
   );
 }
 
+// Build 0.6: append attachments to the in-app PDF preview blob. pdf-lib is
+// loaded lazily so the main bundle stays lean; failures fall back to the
+// base document.
+import type { AttachmentForPdf } from "./pdfAttachments";
+async function appendAttachmentsToBlob(
+  base: Blob,
+  data: { attachments: Array<{ kind: string; contentType: string; url: string | null }>; imagesPerPage: number } | null | undefined,
+): Promise<Blob> {
+  try {
+    const list = data?.attachments ?? [];
+    if (list.length === 0) return base;
+    const atts: AttachmentForPdf[] = [];
+    for (const a of list) {
+      if (!a.url) continue;
+      try {
+        const res = await fetch(a.url);
+        if (!res.ok) continue;
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.length < 10) continue;
+        atts.push({ kind: a.kind as "image" | "pdf", contentType: a.contentType, bytes });
+      } catch {
+        // one bad file never breaks the preview
+      }
+    }
+    if (atts.length === 0) return base;
+    const { appendAttachmentsToPdf } = await import("./pdfAttachments");
+    const perPage = data?.imagesPerPage === 2 ? 2 : data?.imagesPerPage === 4 ? 4 : 1;
+    const merged = await appendAttachmentsToPdf(new Uint8Array(await base.arrayBuffer()), atts, perPage);
+    return new Blob([merged as unknown as BlobPart], { type: "application/pdf" });
+  } catch {
+    return base;
+  }
+}
+
+// Build 0.6: attachments (images + PDFs) on estimates/quotes and invoices,
+// mirroring Invoice Fly. Attachments are appended to the generated PDF after
+// the main document pages.
+function DocumentAttachmentsRow({
+  lang,
+  docType,
+  docId,
+  onOpen,
+}: {
+  lang: Lang;
+  docType: "quote" | "invoice";
+  docId: number;
+  onOpen: () => void;
+}) {
+  const t = copy[lang];
+  const query = useQuery({
+    queryKey: ["document-attachments", docType, docId],
+    queryFn: () => api.listDocumentAttachments({ docType, docId }),
+  });
+  const count = query.data?.attachments.length ?? 0;
+  return (
+    <button type="button" className="attachment-row tap-target" onClick={() => { buzz(8); onOpen(); }}>
+      <Icon size={18}><path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l8.57-8.57A4 4 0 1118 8.84l-8.59 8.57a2 2 0 01-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+      <span>{t.addImagesPdfs} ({count})</span>
+      <span className="chevron" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+function DocumentAttachmentsScreen({
+  lang,
+  docType,
+  docId,
+  onBack,
+}: {
+  lang: Lang;
+  docType: "quote" | "invoice";
+  docId: number;
+  onBack: () => void;
+}) {
+  const t = copy[lang];
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["document-attachments", docType, docId],
+    queryFn: () => api.listDocumentAttachments({ docType, docId }),
+  });
+  const attachments = query.data?.attachments ?? [];
+  const images = attachments.filter((a) => a.kind === "image");
+  const pdfs = attachments.filter((a) => a.kind === "pdf");
+  const perPage = query.data?.imagesPerPage ?? 1;
+  const [modeOpen, setModeOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  useEscapeToClose(modeOpen, () => setModeOpen(false));
+  useEscapeToClose(deleteId !== null, () => setDeleteId(null));
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["document-attachments", docType, docId] });
+
+  const setPerPage = useMutation({
+    mutationFn: (n: 1 | 2 | 4) => api.setDocumentImagesPerPage({ docType, docId, perPage: n }),
+    onSuccess: () => { setModeOpen(false); void refresh(); },
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteDocumentAttachment({ id }),
+    onSuccess: () => { setDeleteId(null); void refresh(); },
+  });
+
+  const uploadFiles = async (files: FileList | null, kind: "image" | "pdf") => {
+    if (!files || files.length === 0 || uploading) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      for (const file of Array.from(files)) {
+        // Client-side compression (like the logo): phone photos shrink to
+        // max 1600px JPEG before upload so PDFs stay small and fast.
+        const processed = kind === "image" ? await compressImageFile(file, "attachment") : file;
+        if (processed.size > 15_000_000) throw new Error(t.attachmentTooLarge);
+        const contentType = kind === "pdf" ? "application/pdf" : processed.type;
+        if (kind === "image" && !["image/jpeg", "image/png", "image/webp"].includes(contentType)) throw new Error(t.attachmentTooLarge);
+        const { dataBase64 } = await fileToBase64(processed);
+        await api.uploadDocumentAttachment({
+          docType,
+          docId,
+          kind,
+          fileName: processed.name.slice(0, 240) || (kind === "pdf" ? "document.pdf" : "image.jpg"),
+          contentType: contentType as "image/jpeg" | "image/png" | "image/webp" | "application/pdf",
+          dataBase64,
+        });
+      }
+      await refresh();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  };
+
+  const modeLabel = perPage === 2 ? t.imagesPerPage2 : perPage === 4 ? t.imagesPerPage4 : t.imagePerPage;
+
+  return (
+    <main className="page attachments-page">
+      <PageHeader lang={lang} title={t.attachments} onBack={onBack} />
+      <button type="button" className="attachment-mode-row tap-target" onClick={() => { buzz(8); setModeOpen(true); }}>
+        <span>{t.displayMode}</span>
+        <strong>{modeLabel}</strong>
+      </button>
+
+      <section className="attachment-section">
+        <h3>{t.attachedImages}</h3>
+        {images.length > 0 && (
+          <div className="attachment-grid">
+            {images.map((a) => (
+              <div key={a.id} className="attachment-thumb">
+                {a.url ? <img src={a.url} alt={a.fileName} loading="lazy" /> : <div className="attachment-thumb-fallback"><Icon size={22}><path d="M4 16l5-5 4 4 3-3 4 4M4 20h16M4 4h16v16H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon></div>}
+                <button type="button" className="attachment-delete" aria-label={t.deleteAttachment} onClick={() => { buzz(12); setDeleteId(a.id); }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" className="attachment-add" disabled={uploading} onClick={() => imageInputRef.current?.click()}>
+          <Icon size={18}><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></Icon>
+          <span>{uploading ? t.attachmentUploading : t.addImages}</span>
+        </button>
+        <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => void uploadFiles(e.target.files, "image")} />
+      </section>
+
+      <section className="attachment-section">
+        <h3>{t.attachedPdfs}</h3>
+        {pdfs.length > 0 && (
+          <div className="attachment-pdf-list">
+            {pdfs.map((a) => (
+              <div key={a.id} className="attachment-pdf-row">
+                <Icon size={18}><path d="M6 2h9l5 5v15H6zM14 2v6h6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+                <span>{a.fileName || "document.pdf"}</span>
+                <button type="button" className="attachment-delete-inline" aria-label={t.deleteAttachment} onClick={() => { buzz(12); setDeleteId(a.id); }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" className="attachment-add" disabled={uploading} onClick={() => pdfInputRef.current?.click()}>
+          <Icon size={18}><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></Icon>
+          <span>{uploading ? t.attachmentUploading : t.addPdf}</span>
+        </button>
+        <input ref={pdfInputRef} type="file" accept="application/pdf" hidden onChange={(e) => void uploadFiles(e.target.files, "pdf")} />
+      </section>
+
+      {attachments.length === 0 && !query.isLoading && <p className="privacy-note">{t.noAttachments}</p>}
+      <p className="privacy-note">{t.attachmentHint}</p>
+      {uploadError && <p className="status error">{uploadError}</p>}
+
+      {modeOpen && (
+        <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setModeOpen(false); }}>
+          <section className="more-sheet" role="dialog" aria-modal="true" aria-label={t.displayMode}>
+            <div className="sheet-handle" />
+            <h2>{t.displayMode}</h2>
+            {([1, 2, 4] as const).map((n) => (
+              <button key={n} type="button" className={perPage === n ? "active" : ""} disabled={setPerPage.isPending} onClick={() => setPerPage.mutate(n)}>
+                <span>{n === 1 ? t.imagePerPage : n === 2 ? t.imagesPerPage2 : t.imagesPerPage4}</span>
+                {perPage === n && <CheckIcon />}
+              </button>
+            ))}
+          </section>
+        </div>
+      )}
+      {deleteId !== null && (
+        <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !remove.isPending) setDeleteId(null); }}>
+          <section className="more-sheet" role="dialog" aria-modal="true" aria-label={t.deleteAttachment}>
+            <div className="sheet-handle" />
+            <h2>{t.confirmDeleteAttachment}</h2>
+            <div className="delete-sheet-actions">
+              <button type="button" disabled={remove.isPending} onClick={() => setDeleteId(null)}>{t.attachmentCancel}</button>
+              <button type="button" className="danger-button" disabled={remove.isPending} onClick={() => remove.mutate(deleteId)}>{t.delete}</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
 function QuotePreview({
   lang,
   quoteId,
@@ -11122,7 +11359,9 @@ function QuotePreview({
   // Build 0.4 (item 3): Send opens the send-options sheet.
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
   useEscapeToClose(sendSheetOpen, () => setSendSheetOpen(false));
-  useEffect(() => { if (quote) void buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }).then(setBlob); }, [quote, settings, lang]);
+  const attachmentsQuery = useQuery({ queryKey: ["document-attachments", "quote", quoteId], queryFn: () => api.listDocumentAttachments({ docType: "quote", docId: quoteId }) });
+  // Build 0.6: the preview PDF includes appended attachment pages.
+  useEffect(() => { if (!quote) return; let cancelled = false; void (async () => { const base = await buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }); const final = await appendAttachmentsToBlob(base, attachmentsQuery.data); if (!cancelled) setBlob(final); })(); return () => { cancelled = true; }; }, [quote, settings, lang, attachmentsQuery.data]);
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);}});
   const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
   const [confirmConvert, setConfirmConvert] = useState(false);
@@ -11177,6 +11416,7 @@ function QuotePreview({
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${acceptedNow?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={()=>{buzz(8);setSendSheetOpen(true);}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
+    <DocumentAttachmentsRow lang={lang} docType="quote" docId={quote.id} onOpen={() => setScreen({ name: "quoteAttachments", quoteId: quote.id })} />
     {/* Build 4: auto-generated checkable materials list from the estimate's
         line items. Check state persists on-device per estimate. */}
     <MaterialsChecklist lang={lang} quoteId={quote.id} lineItems={quote.lineItems} />
@@ -11761,7 +12001,9 @@ function InvoicePreview({
   const [frequency,setFrequency]=useState<"none"|"daily"|"weekly"|"monthly"|"quarterly">("none");
   const [nextDue,setNextDue]=useState("");
   const [recurringEnd,setRecurringEnd]=useState("");
-  useEffect(()=>{if(invoice){void buildInvoicePdf(invoice,settings,lang,{discount:t.discount,tax:t.tax,paymentInstructions:t.paymentInstructions}).then(setBlob);setFrequency(invoice.recurringFrequency);setNextDue(invoice.nextDueDate);setRecurringEnd(invoice.recurringEndDate);}},[invoice,settings,lang]);
+  const invAttachmentsQuery = useQuery({ queryKey: ["document-attachments", "invoice", invoiceId], queryFn: () => api.listDocumentAttachments({ docType: "invoice", docId: invoiceId }) });
+  // Build 0.6: the preview PDF includes appended attachment pages.
+  useEffect(()=>{if(!invoice)return;let cancelled=false;void(async()=>{const base=await buildInvoicePdf(invoice,settings,lang,{discount:t.discount,tax:t.tax,paymentInstructions:t.paymentInstructions});const final=await appendAttachmentsToBlob(base,invAttachmentsQuery.data);if(!cancelled)setBlob(final);})();setFrequency(invoice.recurringFrequency);setNextDue(invoice.nextDueDate);setRecurringEnd(invoice.recurringEndDate);return()=>{cancelled=true;};},[invoice,settings,lang,invAttachmentsQuery.data]);
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["invoices"]});};
   const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);},onError:(e)=>handleLimitError(e,()=>{})});
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
@@ -11834,6 +12076,7 @@ function InvoicePreview({
     </section>
     <button className="primary-button send-document" disabled={!blob} onClick={sendInvoice}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
+    <DocumentAttachmentsRow lang={lang} docType="invoice" docId={invoice.id} onOpen={() => setScreen({ name: "invoiceAttachments", invoiceId: invoice.id })} />
     <section className="payment-section" aria-label={t.partialPayments}>
       <div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>
       {invoice.payments.filter((payment)=>payment.note!=="__paid_toggle__").map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)}{payment.method?` · ${payment.method}`:""}</small></span></div>)}

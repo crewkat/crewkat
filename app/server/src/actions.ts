@@ -2345,6 +2345,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     return { ok: true };
   } }),
   setDocumentImagesPerPage: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive(), perPage: z.union([z.literal(1), z.literal(2), z.literal(4)]) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
+    if (args.perPage !== 1 && args.perPage !== 2 && args.perPage !== 4) throw new Error("Images per page must be 1, 2, or 4.");
     await assertDocumentAttachmentAccess(ctx, args.docType, args.docId);
     const db = ctx.db<typeof schema>();
     const table = args.docType === "quote" ? schema.quotes : schema.invoices;
