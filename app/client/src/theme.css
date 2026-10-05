@@ -140,6 +140,8 @@ fieldset { padding: 0; border: 0; }
 /* Build 0.6: the "Saved" confirmation shrinks to a small pill so it never
    covers settings content. */
 .sticky-submit.saved-confirm { left: 50%; right: auto; transform: translateX(-50%); width: auto; max-width: none; padding: 8px 20px; font-size: 13px; border-radius: 999px; }
+/* Build 0.6: the Settings save button is a compact pill, not a full-width bar. */
+.settings-page button.sticky-submit:not(.saved-confirm) { left: 50%; right: auto; transform: translateX(-50%); width: auto; max-width: none; padding: 10px 28px; font-size: 14px; border-radius: 999px; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
 .status.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
 .social-notice { margin: -8px 0 22px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-weight: 700; line-height: 1.45; }
