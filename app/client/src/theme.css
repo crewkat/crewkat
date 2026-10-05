@@ -3480,6 +3480,8 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 /* Build 0.6 (items 1-7): new-quote builder refresh. */
 /* Items 1-2: small trigger buttons that open the floating template/assembly modals. */
 .b06-small-btn { justify-self: start; width: auto; min-height: 40px; padding: 8px 16px; font-size: 13px; border-radius: 999px; }
+/* b06: template + assembly buttons side by side */
+.b06-btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 /* Item 1: template rows inside the floating modal. */
 .b06-template-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 13px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; }
 .b06-template-row:last-child { border-bottom: 0; }

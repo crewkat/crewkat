@@ -10176,6 +10176,7 @@ function QuoteBuilder({
         <fieldset className="form-section">
           <legend>{t.lineItems}</legend>
           {/* Build 0.6 (item 1): the template picker lives in a floating modal now. */}
+          <div className="b06-btn-row">
           {(growth.data?.templates.length ?? 0) > 0 && (
             <button
               type="button"
@@ -10193,6 +10194,7 @@ function QuoteBuilder({
           >
             {lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
           </button>
+          </div>
           {(growth.data?.priceBook.length ?? 0) > 0 && (
             <div className="quick-add">
               <span>
