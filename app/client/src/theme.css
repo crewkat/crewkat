@@ -1372,9 +1372,11 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .market-card-placeholder > svg { width:46px; height:46px; stroke-width:1.6; }
 .market-card-photo b { position:absolute; right:7px; bottom:7px; padding:4px 6px; border-radius:5px; background:var(--accent); color:var(--accent-ink); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
 .market-promoted-badge { position:absolute; left:7px; top:7px; z-index:3; padding:4px 7px; border-radius:5px; background:#101827; color:#fff; font-size:9px; font-style:normal; font-weight:900; letter-spacing:.035em; text-transform:uppercase; box-shadow:0 1px 4px rgba(0,0,0,.24); }
-.market-card-copy { display:grid; gap:2px; padding-top:8px; }
-.market-card-copy h2 { min-height:34px; display:-webkit-box; overflow:hidden; margin:0; font-size:14px; line-height:1.2; font-weight:600; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-.market-card-copy p,.market-card-copy small { overflow:hidden; margin:0; color:var(--dim); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.market-card-copy { display:grid; gap:4px; padding:10px 2px 2px; }
+.market-card-copy h2 { min-height:36px; display:-webkit-box; overflow:hidden; margin:0; font-size:14px; line-height:1.25; font-weight:600; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.market-card-copy p { overflow:hidden; margin:0; color:var(--dim); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+/* Build 0.6: company name gets two lines instead of mid-word truncation. */
+.market-card-copy small { display:-webkit-box; overflow:hidden; margin:0; color:var(--dim); font-size:11px; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.3; }
 .market-price { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
 .market-price strong { font-size:16px; }
 .market-price del { color:var(--dim); font-size:12px; }
