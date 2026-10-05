@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
-import { and, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { execFile } from "node:child_process";
 import { randomInt } from "node:crypto";
@@ -1728,6 +1728,30 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
 const docPdfCache = new Map<string, { pdfBase64: string; filename: string; updatedAtMs: number }>();
 const DOC_PDF_CACHE_MAX = 30;
 
+// Build 0.6: document attachments (images + PDFs) on estimates/quotes and
+// invoices. Appended to the generated PDF after the main document pages.
+// All mutations bump the parent document's updatedAt so the server PDF cache
+// (keyed on updatedAtMs) invalidates automatically.
+const documentAttachmentSchema = z.object({ id: z.number(), docType: z.enum(["quote", "invoice"]), docId: z.number(), kind: z.enum(["image", "pdf"]), fileName: z.string(), contentType: z.string(), sortOrder: z.number(), url: z.string().nullable(), createdAt: z.string() });
+async function assertDocumentAttachmentAccess(ctx: Ctx, docType: "quote" | "invoice", docId: number) {
+  const db = ctx.db<typeof schema>();
+  const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+  const table = docType === "quote" ? schema.quotes : schema.invoices;
+  const row = (await db.select({ id: table.id, companyId: table.companyId }).from(table).where(eq(table.id, docId)).limit(1))[0];
+  if (!row || row.companyId !== companyId) throw new Error("Document not found.");
+  return companyId;
+}
+async function touchDocumentForAttachments(ctx: Ctx, docType: "quote" | "invoice", docId: number) {
+  const db = ctx.db<typeof schema>();
+  const table = docType === "quote" ? schema.quotes : schema.invoices;
+  await db.update(table).set({ updatedAt: new Date() }).where(eq(table.id, docId));
+}
+async function hydrateDocumentAttachment(ctx: Ctx, row: typeof schema.documentAttachments.$inferSelect) {
+  let url: string | null = null;
+  try { url = await ctx.blobs.getUrl(row.blobKey); } catch { url = null; }
+  return { id: row.id, docType: row.docType, docId: row.docId, kind: row.kind, fileName: row.fileName, contentType: row.contentType, sortOrder: row.sortOrder, url, createdAt: row.createdAt.toISOString() };
+}
+
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
@@ -2280,8 +2304,54 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   duplicateQuote: defineAction({ request:z.object({id:z.number().int().positive()}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const row=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!row)throw new Error("Estimate not found.");const now=new Date();const made=await db.insert(schema.quotes).values({...row,id:undefined,jobId:null,seriesId:null,parentQuoteId:row.id,versionNumber:1,superseded:false,accepted:false,sentAt:"",automationStatus:"awaiting",lostReason:null,lostNote:"",createdAt:now,updatedAt:now}).returning({id:schema.quotes.id});const next=made[0];if(!next)throw new Error("Could not duplicate estimate.");ctx.invalidateQueries();return{id:next.id};} }),
   updateInvoiceDocument: defineAction({ request:z.object({id:z.number().int().positive(),invoiceNumber:z.string().trim().min(1).max(40).optional(),issueDate:z.string().max(10).optional(),dueDate:z.string().max(10).optional(),lineItems:z.array(invoiceItemSchema).min(1).max(50),discountType:adjustmentTypeSchema,discountValue:z.string().max(80),taxType:adjustmentTypeSchema,taxValue:z.string().max(80),subtotal:z.string().max(80),total:z.string().max(80),footnote:z.string().max(3000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const {id,...values}=args;await ctx.db<typeof schema>().update(schema.invoices).set({...values,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),subtotal:normalizeMoney(args.subtotal,"0.00"),discountValue:normalizeMoney(args.discountValue,"0.00"),taxValue:normalizeMoney(args.taxValue,"0.00"),total:normalizeMoney(args.total,"0.00"),updatedAt:new Date()}).where(eq(schema.invoices.id,id));ctx.invalidateQueries();return{ok:true};} }),
   updateQuoteDocument: defineAction({ request:z.object({id:z.number().int().positive(),lineItems:z.array(quoteItemSchema).min(1).max(50),discountType:adjustmentTypeSchema,discountValue:z.string().max(80),taxType:adjustmentTypeSchema,taxValue:z.string().max(80),subtotal:z.string().max(80),total:z.string().max(80),footnote:z.string().max(3000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const {id,...values}=args;await ctx.db<typeof schema>().update(schema.quotes).set({...values,lineItemsJson:JSON.stringify(normalizeLineItems(args.lineItems)),subtotal:normalizeMoney(args.subtotal,"0.00"),discountValue:normalizeMoney(args.discountValue,"0.00"),taxValue:normalizeMoney(args.taxValue,"0.00"),total:normalizeMoney(args.total,"0.00"),updatedAt:new Date()}).where(eq(schema.quotes.id,id));ctx.invalidateQueries();return{ok:true};} }),
-  deleteInvoice: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const sigs=await db.select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"invoice"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const sig of sigs)await ctx.blobs.delete(sig.signatureBlobKey);await db.delete(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"invoice"),eq(schema.financialDocumentSignatures.documentId,args.id)));await db.delete(schema.invoices).where(eq(schema.invoices.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
-  deleteQuote: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const sigs=await db.select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"quote"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const sig of sigs)await ctx.blobs.delete(sig.signatureBlobKey);await db.delete(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"quote"),eq(schema.financialDocumentSignatures.documentId,args.id)));await db.delete(schema.quotes).where(eq(schema.quotes.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
+  deleteInvoice: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const sigs=await db.select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"invoice"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const sig of sigs)await ctx.blobs.delete(sig.signatureBlobKey);await db.delete(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"invoice"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const a of await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType,"invoice"),eq(schema.documentAttachments.docId,args.id)))){await ctx.blobs.delete(a.blobKey);}await db.delete(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType,"invoice"),eq(schema.documentAttachments.docId,args.id)));await db.delete(schema.invoices).where(eq(schema.invoices.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
+  deleteQuote: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const sigs=await db.select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"quote"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const sig of sigs)await ctx.blobs.delete(sig.signatureBlobKey);await db.delete(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,"quote"),eq(schema.financialDocumentSignatures.documentId,args.id)));for(const a of await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType,"quote"),eq(schema.documentAttachments.docId,args.id)))){await ctx.blobs.delete(a.blobKey);}await db.delete(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType,"quote"),eq(schema.documentAttachments.docId,args.id)));await db.delete(schema.quotes).where(eq(schema.quotes.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
+  // ---- Build 0.6: document attachments (images + PDFs) ----
+  uploadDocumentAttachment: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive(), kind: z.enum(["image", "pdf"]), fileName: z.string().trim().min(1).max(240), contentType: z.string().max(120), dataBase64: z.string().min(1).max(20_000_000) }), response: documentAttachmentSchema, async handler(ctx, args) {
+    const companyId = await assertDocumentAttachmentAccess(ctx, args.docType, args.docId);
+    if (args.kind === "image" && !["image/jpeg", "image/png", "image/webp"].includes(args.contentType)) throw new Error("Only JPEG, PNG, or WebP images are supported.");
+    if (args.kind === "pdf" && args.contentType !== "application/pdf") throw new Error("Only PDF files are supported here.");
+    const bytes = Buffer.from(args.dataBase64, "base64");
+    if (bytes.length > 15_000_000) throw new Error("That file is too large (15MB max).");
+    if (bytes.length < 10) throw new Error("That file looks empty.");
+    const db = ctx.db<typeof schema>();
+    const last = (await db.select({ sortOrder: schema.documentAttachments.sortOrder }).from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType, args.docType), eq(schema.documentAttachments.docId, args.docId))).orderBy(desc(schema.documentAttachments.sortOrder)).limit(1))[0];
+    const ext = args.kind === "pdf" ? "pdf" : args.contentType === "image/png" ? "png" : args.contentType === "image/webp" ? "webp" : "jpg";
+    const key = `attachments/${args.docType}/${args.docId}/${crypto.randomUUID()}.${ext}`;
+    await ctx.blobs.put(key, bytes, { contentType: args.contentType });
+    const made = (await db.insert(schema.documentAttachments).values({ companyId, docType: args.docType, docId: args.docId, kind: args.kind, blobKey: key, fileName: args.fileName, contentType: args.contentType, sortOrder: (last?.sortOrder ?? -1) + 1, createdAt: new Date() }).returning())[0];
+    if (!made) { await ctx.blobs.delete(key); throw new Error("The attachment could not be saved."); }
+    await touchDocumentForAttachments(ctx, args.docType, args.docId);
+    ctx.invalidateQueries();
+    return hydrateDocumentAttachment(ctx, made);
+  } }),
+  listDocumentAttachments: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive() }), response: z.object({ attachments: z.array(documentAttachmentSchema), imagesPerPage: z.number() }), async handler(ctx, args) {
+    const companyId = await assertDocumentAttachmentAccess(ctx, args.docType, args.docId);
+    const db = ctx.db<typeof schema>();
+    const table = args.docType === "quote" ? schema.quotes : schema.invoices;
+    const doc = (await db.select({ imagesPerPage: table.imagesPerPage }).from(table).where(eq(table.id, args.docId)).limit(1))[0];
+    const rows = await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType, args.docType), eq(schema.documentAttachments.docId, args.docId), eq(schema.documentAttachments.companyId, companyId))).orderBy(asc(schema.documentAttachments.sortOrder), asc(schema.documentAttachments.id));
+    return { attachments: await Promise.all(rows.map((r) => hydrateDocumentAttachment(ctx, r))), imagesPerPage: doc?.imagesPerPage ?? 1 };
+  } }),
+  deleteDocumentAttachment: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
+    const db = ctx.db<typeof schema>();
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    const row = (await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.id, args.id), eq(schema.documentAttachments.companyId, companyId))).limit(1))[0];
+    if (!row) throw new Error("Attachment not found.");
+    await db.delete(schema.documentAttachments).where(eq(schema.documentAttachments.id, args.id));
+    await ctx.blobs.delete(row.blobKey);
+    await touchDocumentForAttachments(ctx, row.docType, row.docId);
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  setDocumentImagesPerPage: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive(), perPage: z.union([z.literal(1), z.literal(2), z.literal(4)]) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
+    await assertDocumentAttachmentAccess(ctx, args.docType, args.docId);
+    const db = ctx.db<typeof schema>();
+    const table = args.docType === "quote" ? schema.quotes : schema.invoices;
+    await db.update(table).set({ imagesPerPage: args.perPage, updatedAt: new Date() }).where(eq(table.id, args.docId));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
   getFinancialSignature: defineAction({request:z.object({kind:z.enum(["invoice","quote"]),id:z.number().int().positive()}),response:z.object({signature:z.object({signerName:z.string(),signedAt:z.string(),url:z.string()}).nullable()}),async handler(ctx,args){const rows=await ctx.db<typeof schema>().select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,args.kind),eq(schema.financialDocumentSignatures.documentId,args.id))).limit(1);const row=rows[0];return{signature:row?{signerName:row.signerName,signedAt:row.signedAt.toISOString(),url:await ctx.blobs.getUrl(row.signatureBlobKey)}:null};} }),
   saveFinancialSignature: defineAction({request:z.object({kind:z.enum(["invoice","quote"]),id:z.number().int().positive(),signerName:z.string().trim().min(1).max(160),signatureDataBase64:z.string().min(1).max(5_000_000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const exists=args.kind==="invoice"?(await db.select({id:schema.invoices.id}).from(schema.invoices).where(eq(schema.invoices.id,args.id)).limit(1))[0]:(await db.select({id:schema.quotes.id}).from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!exists)throw new Error("Document not found.");const prior=(await db.select().from(schema.financialDocumentSignatures).where(and(eq(schema.financialDocumentSignatures.documentKind,args.kind),eq(schema.financialDocumentSignatures.documentId,args.id))).limit(1))[0];if(prior){await db.delete(schema.financialDocumentSignatures).where(eq(schema.financialDocumentSignatures.id,prior.id));await ctx.blobs.delete(prior.signatureBlobKey);}const key=`financial-signatures/${args.kind}/${args.id}/${crypto.randomUUID()}.png`;await ctx.blobs.put(key,Buffer.from(args.signatureDataBase64,"base64"),{contentType:"image/png"});await db.insert(schema.financialDocumentSignatures).values({documentKind:args.kind,documentId:args.id,signerName:args.signerName,signatureBlobKey:key,signedAt:new Date()});ctx.invalidateQueries();return{ok:true};} }),
 

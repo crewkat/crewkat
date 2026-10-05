@@ -120,6 +120,8 @@ export const quotes = sqliteTable("quotes", {
   showLogo: integer("show_logo", { mode: "boolean" }).notNull().default(true),
   showCompanyInfo: integer("show_company_info", { mode: "boolean" }).notNull().default(true),
   customizeJson: text("customize_json").notNull().default("{}"),
+  // Build 0.6: attachments display mode (images per PDF page: 1, 2, or 4).
+  imagesPerPage: integer("images_per_page").notNull().default(1),
   jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }),
   seriesId: integer("series_id"),
   parentQuoteId: integer("parent_quote_id"),
@@ -173,9 +175,29 @@ export const invoices = sqliteTable("invoices", {
   showLogo: integer("show_logo", { mode: "boolean" }).notNull().default(true),
   showCompanyInfo: integer("show_company_info", { mode: "boolean" }).notNull().default(true),
   customizeJson: text("customize_json").notNull().default("{}"),
+  // Build 0.6: attachments display mode (images per PDF page: 1, 2, or 4).
+  imagesPerPage: integer("images_per_page").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+// Build 0.6: images + PDF attachments on estimates/quotes and invoices.
+// Appended to the generated PDF after the main document pages.
+export const documentAttachments = sqliteTable("document_attachments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  docType: text("doc_type", { enum: ["quote", "invoice"] }).notNull(),
+  docId: integer("doc_id").notNull(),
+  kind: text("kind", { enum: ["image", "pdf"] }).notNull(),
+  blobKey: text("blob_key").notNull(),
+  fileName: text("file_name").notNull().default(""),
+  contentType: text("content_type").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("document_attachments_doc_idx").on(table.docType, table.docId),
+  index("document_attachments_company_idx").on(table.companyId),
+]);
 
 export const financialDocumentSignatures = sqliteTable("financial_document_signatures", {
   companyId: integer("company_id").notNull().default(1),

@@ -2,7 +2,7 @@
 // Chrome on Android cannot render blob: PDF URLs inside an <iframe>, so the
 // client link now embeds GET /doc/:token/pdf, which is served from here with
 // Content-Type: application/pdf and Content-Disposition: inline.
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Ctx } from "@hatch/space-sdk";
 import {
   buildInvoicePdf,
@@ -11,6 +11,7 @@ import {
   type PdfLang,
   type PdfStrings,
 } from "../../client/src/financialPdf";
+import { appendAttachmentsToPdf, type AttachmentForPdf } from "../../client/src/pdfAttachments";
 import * as schema from "./schema";
 
 declare module "@hatch/space-sdk" {
@@ -172,5 +173,35 @@ export async function buildDocumentLinkPdf(
   }
   const safeNum = (payload.invoiceNumber || String(payload.documentId)).replace(/[^A-Za-z0-9-]+/g, "") || String(payload.documentId);
   const filename = payload.kind === "invoice" ? `invoice-${safeNum}.pdf` : `estimate-${payload.documentId}.pdf`;
+
+  // Build 0.6: append attachment pages (images grouped per imagesPerPage,
+  // then attached PDF pages) after the main document.
+  try {
+    const table = payload.kind === "quote" ? schema.quotes : schema.invoices;
+    const docRow = (await db.select({ companyId: table.companyId, imagesPerPage: table.imagesPerPage }).from(table).where(eq(table.id, payload.documentId)).limit(1))[0];
+    if (docRow) {
+      const attRows = await db
+        .select()
+        .from(schema.documentAttachments)
+        .where(and(eq(schema.documentAttachments.docType, payload.kind), eq(schema.documentAttachments.docId, payload.documentId), eq(schema.documentAttachments.companyId, docRow.companyId)))
+        .orderBy(schema.documentAttachments.sortOrder, schema.documentAttachments.id);
+      if (attRows.length > 0) {
+        const atts: AttachmentForPdf[] = [];
+        for (const a of attRows) {
+          try {
+            const data = await ctx.blobs.get(a.blobKey);
+            if (data && data.length > 0) atts.push({ kind: a.kind, contentType: a.contentType, bytes: new Uint8Array(data) });
+          } catch {
+            // skip unreadable blobs
+          }
+        }
+        const perPage = docRow.imagesPerPage === 2 ? 2 : docRow.imagesPerPage === 4 ? 4 : 1;
+        const merged = await appendAttachmentsToPdf(bytes, atts, perPage as 1 | 2 | 4);
+        return { bytes: merged, filename };
+      }
+    }
+  } catch {
+    // Attachments are additive — never fail the main document for them.
+  }
   return { bytes, filename };
 }

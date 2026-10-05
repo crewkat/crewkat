@@ -428,6 +428,20 @@
       "when": 1791400000006,
       "tag": "0061_app_user_exit_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791400000007,
+      "tag": "0062_document_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791400000008,
+      "tag": "0063_rate_limit_events_backfill",
+      "breakpoints": true
     }
   ]
 }

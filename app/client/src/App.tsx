@@ -355,9 +355,11 @@ type Screen =
   | { name: "quotes" }
   | { name: "quoteNew"; clientId?: number; jobId?: number }
   | { name: "quotePreview"; quoteId: number }
+  | { name: "quoteAttachments"; quoteId: number }
   | { name: "invoices" }
   | { name: "invoiceNew"; jobId?: number }
   | { name: "invoicePreview"; invoiceId: number }
+  | { name: "invoiceAttachments"; invoiceId: number }
   | { name: "clients" }
   | { name: "clientNew" }
   | { name: "client"; clientId: number }
@@ -670,6 +672,23 @@ const copy = {
     openPdf: "Open PDF",
     linkSecureNote: "This is a secure, private link just for you.",
     forLabel: "For",
+    // Build 0.6: document attachments.
+    addImagesPdfs: "Add images & PDFs",
+    attachments: "Attachments",
+    displayMode: "Display mode",
+    imagePerPage: "1 image per page",
+    imagesPerPage2: "2 images per page",
+    imagesPerPage4: "4 images per page",
+    attachedImages: "Attached images",
+    addImages: "Add images",
+    attachedPdfs: "Attached PDFs",
+    addPdf: "Add PDF",
+    noAttachments: "No attachments yet.",
+    attachmentHint: "Images and PDFs are appended to the document PDF.",
+    deleteAttachment: "Delete attachment",
+    confirmDeleteAttachment: "Delete this attachment?",
+    attachmentTooLarge: "That file is too large (15MB max).",
+    attachmentUploading: "Uploading…",
   },
   es: {
     jobs: "Trabajos",
@@ -965,6 +984,23 @@ const copy = {
     openPdf: "Abrir PDF",
     linkSecureNote: "Este es un enlace seguro y privado solo para ti.",
     forLabel: "Para",
+    // Build 0.6: document attachments.
+    addImagesPdfs: "Agregar imágenes y PDFs",
+    attachments: "Adjuntos",
+    displayMode: "Modo de vista",
+    imagePerPage: "1 imagen por página",
+    imagesPerPage2: "2 imágenes por página",
+    imagesPerPage4: "4 imágenes por página",
+    attachedImages: "Imágenes adjuntas",
+    addImages: "Agregar imágenes",
+    attachedPdfs: "PDFs adjuntos",
+    addPdf: "Agregar PDF",
+    noAttachments: "Sin adjuntos todavía.",
+    attachmentHint: "Las imágenes y PDFs se agregan al PDF del documento.",
+    deleteAttachment: "Eliminar adjunto",
+    confirmDeleteAttachment: "¿Eliminar este adjunto?",
+    attachmentTooLarge: "Ese archivo es muy grande (máx. 15MB).",
+    attachmentUploading: "Subiendo…",
   },
 } as const;
 
@@ -3080,8 +3116,9 @@ function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: str
 // photos and huge PNGs (multi-MB) otherwise get embedded at full resolution
 // into every PDF, which balloons documents and exhausts server memory during
 // rendering. Logos are resized to max 800px (kept as PNG for transparency,
-// JPEG quality 0.85 otherwise); covers to max 1600px JPEG 0.82.
-function compressImageFile(file: File, kind: "logo" | "cover"): Promise<File> {
+// JPEG quality 0.85 otherwise); covers and attachment images to max 1600px
+// JPEG 0.82.
+function compressImageFile(file: File, kind: "logo" | "cover" | "attachment"): Promise<File> {
   const maxSide = kind === "logo" ? 800 : 1600;
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
