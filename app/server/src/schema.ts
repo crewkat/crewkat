@@ -310,6 +310,9 @@ export const settings = sqliteTable("settings", {
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
   listingBonus: integer("listing_bonus").notNull().default(0),
+  // Build 0.6 item 22: phone must be verified before listing on Marketplace.
+  // TODO: wire to a real SMS provider (e.g. Twilio) — currently self-attested.
+  marketplacePhoneVerified: integer("marketplace_phone_verified", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -848,6 +851,48 @@ export const listingBumpPurchases = sqliteTable("listing_bump_purchases", {
   stripeSessionId: text("stripe_session_id").notNull().default(""),
   purchasedAt: integer("purchased_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+// Build 0.6 item 22: marketplace contact unlock monetization (hybrid model).
+// - First 3 unlocks free per company (lifetime).
+// - Pro ($19/mo) includes 10 unlocks per calendar month.
+// - Credit packs (5/$9, 15/$19) are one-time Stripe purchases that never expire.
+// Unlocks are per (company, listing) — idempotent, never double-charged.
+export const marketplaceUnlocks = sqliteTable("marketplace_unlocks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  unlockedByUserId: integer("unlocked_by_user_id").notNull(),
+  listingId: integer("listing_id").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  unlockedAt: integer("unlocked_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  source: text("source", { enum: ["free", "pro_quota", "credit"] }).notNull(),
+}, (table) => [
+  index("marketplace_unlocks_company_idx").on(table.companyId),
+  uniqueIndex("marketplace_unlocks_company_listing_unique").on(table.companyId, table.listingId),
+]);
+
+export const marketplaceCredits = sqliteTable("marketplace_credits", {
+  companyId: integer("company_id").primaryKey(),
+  balance: integer("balance").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+export const marketplaceCreditPurchases = sqliteTable("marketplace_credit_purchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  stripeSessionId: text("stripe_session_id").notNull().default(""),
+  packSize: integer("pack_size").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  status: text("status").notNull().default("completed"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("marketplace_credit_purchases_session_unique").on(table.stripeSessionId),
+]);
+
+// Monthly Pro unlock quota, tracked per company on calendar-month cycles.
+export const marketplaceProQuota = sqliteTable("marketplace_pro_quota", {
+  companyId: integer("company_id").primaryKey(),
+  usedThisCycle: integer("used_this_cycle").notNull().default(0),
+  cycleStart: integer("cycle_start", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 // Phase 1: first-run activation checklist — one row per auth user; the steps

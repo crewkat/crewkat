@@ -4103,6 +4103,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <small>{refreshing ? text.refreshing : pullDistance >= 52 ? text.release : text.pull}</small>
     </div>}
     <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} />
+    <div className="market-unlock-status"><UnlockStatusPill lang={lang} /></div>
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-pills" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
       <button className="list-pill" onClick={() => openNewListing(listingType === "project" ? "project" : "job")}><PlusIcon/><span className="pill-label">{listingType === "project" ? text.listProject : text.list}</span></button>
@@ -4311,6 +4312,96 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
   </main>;
 }
 
+// Build 0.6 item 22: contact unlock UI (hybrid model: free -> Pro quota -> credits).
+type UnlockStatus = { freeRemaining: number; freeTotal: number; proQuotaRemaining: number; proQuotaTotal: number; creditBalance: number; isPro: boolean };
+
+function unlockSourceLabel(status: UnlockStatus, lang: Lang): string {
+  if (status.freeRemaining > 0) return lang === "es" ? `Usar 1 de ${status.freeRemaining} desbloqueos gratis` : `Use 1 of ${status.freeRemaining} free unlocks`;
+  if (status.proQuotaRemaining > 0) return lang === "es" ? `Usar cuota Pro (${status.proQuotaRemaining} restantes este mes)` : `Use Pro quota (${status.proQuotaRemaining} left this month)`;
+  if (status.creditBalance > 0) return lang === "es" ? `Usar 1 crédito (${status.creditBalance} disponibles)` : `Use 1 credit (${status.creditBalance} available)`;
+  return "";
+}
+
+function MarketplaceContactUnlock({ lang, listingId, listingName, onUnlocked }: { lang: Lang; listingId: number; listingName: string; onUnlocked: () => void }) {
+  const qc = useQueryClient();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [error, setError] = useState("");
+  useEscapeToClose(sheetOpen, () => setSheetOpen(false));
+  const statusQuery = useQuery({ queryKey: ["marketplace-unlock-status"], queryFn: () => api.getMarketplaceUnlockStatus({}), enabled: sheetOpen });
+  const status = statusQuery.data as UnlockStatus | undefined;
+  const unlock = useMutation({
+    mutationFn: () => api.unlockMarketplaceContact({ listingId }),
+    onSuccess: async () => {
+      setError("");
+      setSheetOpen(false);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["marketplace-listing", listingId] }),
+        qc.invalidateQueries({ queryKey: ["marketplace-unlock-status"] }),
+      ]);
+      onUnlocked();
+    },
+    onError: (caught) => {
+      const msg = actionErrorMessage(caught);
+      setError(msg === "NO_UNLOCKS_REMAINING"
+        ? (lang === "es" ? "Usaste todos tus desbloqueos. Hazte Pro o compra créditos." : "You've used all your unlocks. Go Pro or buy credits.")
+        : msg);
+    },
+  });
+  const buyPack = useMutation({
+    mutationFn: (pack: "5" | "15") => api.createCreditPackCheckout({ pack }),
+    onSuccess: (result) => {
+      if (result.checkoutUrl) window.location.href = result.checkoutUrl;
+      else setError(lang === "es" ? "El pago aún no está configurado." : "Checkout is not configured yet.");
+    },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { unlock: "Desbloquear contacto", title: "Desbloquear contacto", for: "para", confirm: "Desbloquear", cancel: "Cancelar", unlocking: "Desbloqueando…", noneLeft: "No te quedan desbloqueos", upsell: "Obtén más desbloqueos", goPro: "Hazte Pro", goProDetail: "10 desbloqueos/mes incluidos", buy5: "5 créditos — $9", buy15: "15 créditos — $19", oneTime: "Pago único, no vencen", close: "Cerrar" }
+    : { unlock: "Unlock contact", title: "Unlock contact", for: "for", confirm: "Unlock", cancel: "Cancel", unlocking: "Unlocking…", noneLeft: "No unlocks left", upsell: "Get more unlocks", goPro: "Go Pro", goProDetail: "10 unlocks/mo included", buy5: "5 credits — $9", buy15: "15 credits — $19", oneTime: "One-time, never expire", close: "Close" };
+  const sourceLabel = status ? unlockSourceLabel(status, lang) : "";
+  const hasUnlocks = !!status && (status.freeRemaining > 0 || status.proQuotaRemaining > 0 || status.creditBalance > 0);
+  return <>
+    <button className="primary-button" onClick={() => { setError(""); setSheetOpen(true); }}><Icon><path d="M12 2a5 5 0 0 1 5 5c0 2-1 3.5-2.5 4.5V14h-5v-2.5C8 10.5 7 9 7 7a5 5 0 0 1 5-5Zm-2 16h4v3h-4z" /></Icon>{t.unlock}</button>
+    {sheetOpen && <div className="sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !unlock.isPending) setSheetOpen(false); }}>
+      <section className="more-sheet unlock-sheet" role="dialog" aria-modal="true" aria-label={t.title} onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-title-row"><h2>{t.title}</h2><button aria-label={t.close} onClick={() => setSheetOpen(false)}>×</button></div>
+        <p className="unlock-listing-name">{listingName}</p>
+        {statusQuery.isLoading ? <div className="loading-block" /> : status && <>
+          {hasUnlocks ? <>
+            <p className="unlock-source">{sourceLabel}</p>
+            {error && <p className="status error" role="alert">{error}</p>}
+            <div className="delete-sheet-actions">
+              <button type="button" disabled={unlock.isPending} onClick={() => setSheetOpen(false)}>{t.cancel}</button>
+              <button type="button" className="primary-button" disabled={unlock.isPending} onClick={() => unlock.mutate()}>{unlock.isPending ? t.unlocking : t.confirm}</button>
+            </div>
+          </> : <>
+            <p className="unlock-none">{t.noneLeft}</p>
+            {error && <p className="status error" role="alert">{error}</p>}
+            <div className="unlock-upsell">
+              <button type="button" className="unlock-pro-row" onClick={() => setSheetOpen(false)}><strong>{t.goPro}</strong><span>{t.goProDetail}</span></button>
+              <button type="button" disabled={buyPack.isPending} onClick={() => buyPack.mutate("5")}><strong>{t.buy5}</strong><span>{t.oneTime}</span></button>
+              <button type="button" disabled={buyPack.isPending} onClick={() => buyPack.mutate("15")}><strong>{t.buy15}</strong><span>{t.oneTime}</span></button>
+            </div>
+          </>}
+        </>}
+      </section>
+    </div>}
+  </>;
+}
+
+function UnlockStatusPill({ lang }: { lang: Lang }) {
+  const statusQuery = useQuery({ queryKey: ["marketplace-unlock-status"], queryFn: () => api.getMarketplaceUnlockStatus({}), staleTime: 60_000 });
+  const s = statusQuery.data as UnlockStatus | undefined;
+  if (!s) return null;
+  const parts: string[] = [];
+  if (s.freeRemaining > 0) parts.push(lang === "es" ? `${s.freeRemaining} gratis` : `${s.freeRemaining} free`);
+  if (s.isPro) parts.push(`Pro ${s.proQuotaTotal - s.proQuotaRemaining}/${s.proQuotaTotal}`);
+  if (s.creditBalance > 0) parts.push(lang === "es" ? `${s.creditBalance} créditos` : `${s.creditBalance} credits`);
+  if (!parts.length) parts.push(lang === "es" ? "Sin desbloqueos" : "No unlocks left");
+  return <span className="unlock-status-pill" title={lang === "es" ? "Desbloqueos de contacto" : "Contact unlocks"}><Icon size={14}><path d="M12 2a5 5 0 0 1 5 5c0 2-1 3.5-2.5 4.5V14h-5v-2.5C8 10.5 7 9 7 7a5 5 0 0 1 5-5Zm-2 16h4v3h-4z" /></Icon>{parts.join(" · ")}</span>;
+}
+
 
 function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
@@ -4349,7 +4440,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
     <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
-    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2><strong>{listing.companyName}</strong>{listing.companyPhone ? <>{showPhone ? <p className="market-phone">{listing.companyPhone}</p> : <button className="primary-button" onClick={() => setShowPhone(true)}>{t.contact}</button>}</> : <p className="muted-note">{t.noPhone}</p>}</section>
+    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2><strong>{listing.companyName}</strong>{listing.contactUnlocked ? (listing.companyPhone ? (showPhone ? <p className="market-phone">{listing.companyPhone}</p> : <button className="primary-button" onClick={() => setShowPhone(true)}>{t.contact}</button>) : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactUnlock lang={lang} listingId={listingId} listingName={listing.title} onUnlocked={() => setShowPhone(true)} />}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
     {deleteOpen && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
     {reportOpen && <div className="sheet-backdrop" onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>

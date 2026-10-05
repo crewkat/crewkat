@@ -70,6 +70,17 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  createCreditPackCheckout: {
+    request: z.object({
+      userId: z.number().int().positive(),
+      companyId: z.number().int().positive(),
+      email: z.string().email().max(200),
+      pack: z.enum(["5", "15"]),
+    }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   createStripeCheckout: {
     request: z.object({ userId: z.number().int().positive(), companyId: z.number().int().positive(), email: z.string().email().max(200), plan: z.enum(["monthly", "annual", "lifetime"]).default("monthly") }),
     response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
@@ -91,6 +102,7 @@ export const privileged = definePrivilegedContracts({
       plan: z.string().nullable(),
       listingId: z.number().int().positive().nullable(),
       companyId: z.number().int().positive().nullable(),
+      packSize: z.number().int().nullable(),
       stripeSessionId: z.string().nullable(),
     }),
     capabilities: [],
@@ -303,6 +315,46 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url)) throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, checkoutUrl: result.url, missing: [] };
   },
+  // Build 0.6 item 22: one-time Stripe purchase for marketplace contact-unlock
+  // credit packs (5 for $9, 15 for $19). Credits never expire.
+  async createCreditPackCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const priceId = args.pack === "5" ? process.env.STRIPE_CREDIT_PACK_5_PRICE_ID?.trim() : process.env.STRIPE_CREDIT_PACK_15_PRICE_ID?.trim();
+    const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+    const priceEnvVar = args.pack === "5" ? "STRIPE_CREDIT_PACK_5_PRICE_ID" : "STRIPE_CREDIT_PACK_15_PRICE_ID";
+    const missing = [
+      !secretKey ? "STRIPE_SECRET_KEY" : "",
+      !priceId ? priceEnvVar : "",
+      !publicUrl ? "CREWKAT_PUBLIC_URL" : "",
+    ].filter(Boolean);
+    if (missing.length || !secretKey || !priceId || !publicUrl) return { configured: false, checkoutUrl: null, missing };
+    if (!/^https:\/\//i.test(publicUrl)) return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
+    const body = new URLSearchParams({
+      mode: "payment",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: args.email,
+      client_reference_id: String(args.userId),
+      "metadata[type]": "credit_pack",
+      "metadata[user_id]": String(args.userId),
+      "metadata[company_id]": String(args.companyId),
+      "metadata[pack_size]": args.pack,
+      success_url: `${publicUrl}/app/?credits=success`,
+      cancel_url: `${publicUrl}/app/?credits=cancelled`,
+      allow_promotion_codes: "true",
+    });
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe Checkout could not be started. Check the server billing configuration.");
+    const result = await response.json() as { url?: unknown };
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url)) throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
   async sendAuthEmail(args) {
     const apiKey = process.env.RESEND_API_KEY?.trim();
     if (!apiKey) return { delivery: "fallback" as const };
@@ -409,6 +461,8 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
     const companyIdValue = metadata.company_id;
     const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
+    const packSizeValue = metadata.pack_size;
+    const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
     return {
       eventId: event.id,
       eventType,
@@ -422,6 +476,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       plan: typeof metadata.plan === "string" ? metadata.plan : null,
       listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
       companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
+      packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
       stripeSessionId: event.type === "checkout.session.completed" && typeof object.id === "string" ? object.id : null,
     };
   },

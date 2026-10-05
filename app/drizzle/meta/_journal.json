@@ -449,6 +449,13 @@
       "when": 1791400000009,
       "tag": "0064_deposit_request",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791400000010,
+      "tag": "0065_marketplace_unlocks",
+      "breakpoints": true
     }
   ]
 }

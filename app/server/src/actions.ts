@@ -102,7 +102,7 @@ const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "
 const moderationStatusSchema = z.enum(["active", "auto_rejected", "pending_review", "removed"]);
 type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), conversationId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), outgoing: z.boolean(), senderName: z.string(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
@@ -306,10 +306,49 @@ function quoteDiff(previous: typeof schema.quotes.$inferSelect, next: typeof sch
 }
 function quoteShape(q: typeof schema.quotes.$inferSelect) { return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson) as Array<{ description: string; amount: string }>, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() }; }
 function invoiceShape(row: typeof schema.invoices.$inferSelect, paymentRows: Array<typeof schema.payments.$inferSelect> = [], fee: {type:"flat"|"percent";value:number;graceDays:number} = {type:"flat",value:0,graceDays:0}) { const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(row.total.replace(/[^0-9.-]/g, "") || 0); const due=row.dueDate?new Date(`${row.dueDate}T12:00:00`).getTime():0; const daysLate=due?Math.floor((Date.now()-due)/86400000)-fee.graceDays:0; const monthsLate=Math.max(0,Math.ceil(daysLate/30)); const lateFee=row.status!=="paid"&&monthsLate>0?(fee.type==="percent"?total*fee.value/100*monthsLate:fee.value):0; return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson) as Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee:(total+lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }; }
-async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>) {
+// Build 0.6 item 22: marketplace contact unlock quotas (hybrid model).
+const MARKETPLACE_FREE_UNLOCKS_TOTAL = 3;
+const MARKETPLACE_PRO_UNLOCKS_PER_MONTH = 10;
+
+function monthStartUtc(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+type UnlockStatusDb = ReturnType<Ctx["db"]>;
+async function getMarketplaceUnlockStatus(db: UnlockStatusDb, companyId: number, userId: number) {
+  const user = (await db.select({ tier: schema.authUsers.tier }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).limit(1))[0];
+  const isPro = user?.tier === "premium";
+  const freeUsed = (await db.select({ id: schema.marketplaceUnlocks.id }).from(schema.marketplaceUnlocks)
+    .where(and(eq(schema.marketplaceUnlocks.companyId, companyId), eq(schema.marketplaceUnlocks.source, "free")))).length;
+  const freeRemaining = Math.max(0, MARKETPLACE_FREE_UNLOCKS_TOTAL - freeUsed);
+  // Pro quota resets on calendar-month boundaries.
+  const cycleStart = monthStartUtc();
+  let quota = (await db.select().from(schema.marketplaceProQuota).where(eq(schema.marketplaceProQuota.companyId, companyId)).limit(1))[0];
+  if (quota && quota.cycleStart.getTime() < cycleStart.getTime()) {
+    await db.update(schema.marketplaceProQuota).set({ usedThisCycle: 0, cycleStart }).where(eq(schema.marketplaceProQuota.companyId, companyId));
+    quota = { ...quota, usedThisCycle: 0, cycleStart };
+  }
+  const proQuotaRemaining = isPro ? Math.max(0, MARKETPLACE_PRO_UNLOCKS_PER_MONTH - (quota?.usedThisCycle ?? 0)) : 0;
+  const creditRow = (await db.select().from(schema.marketplaceCredits).where(eq(schema.marketplaceCredits.companyId, companyId)).limit(1))[0];
+  return {
+    freeRemaining,
+    freeTotal: MARKETPLACE_FREE_UNLOCKS_TOTAL,
+    proQuotaRemaining,
+    proQuotaTotal: MARKETPLACE_PRO_UNLOCKS_PER_MONTH,
+    creditBalance: creditRow?.balance ?? 0,
+    isPro,
+  };
+}
+
+async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>, unlockedListingIds?: Set<number>) {
   const photos = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
   const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: row.companyPhone, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine: row.companyId === workspaceIdentity(ctx).workspaceCompanyId, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+  const isMine = row.companyId === myCompanyId;
+  // Build 0.6 item 22: contact phone is gated behind unlocks. Owners always
+  // see their own number; everyone else must unlock first.
+  const contactUnlocked = isMine || (unlockedListingIds?.has(row.id) ?? false);
+  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function marketplaceRequestShape(row: typeof schema.marketplaceRequests.$inferSelect) {
   return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -2132,6 +2171,26 @@ export const BaseActions = {
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
       }
+      // Build 0.6 item 22: marketplace credit pack purchase — one-time Stripe
+      // payment for contact-unlock credits (5/$9, 15/$19). Credits never expire.
+      // Idempotent via the unique stripe_session_id constraint.
+      if (event.eventType === "checkout.session.completed" && event.checkoutType === "credit_pack" && event.packSize && event.companyId && event.stripeSessionId) {
+        const now = new Date();
+        const amountCents = event.packSize === 5 ? 900 : 1900;
+        const existingPurchase = (await db.select({ id: schema.marketplaceCreditPurchases.id }).from(schema.marketplaceCreditPurchases).where(eq(schema.marketplaceCreditPurchases.stripeSessionId, event.stripeSessionId)).limit(1))[0];
+        if (!existingPurchase) {
+          await db.batch([
+            db.insert(schema.marketplaceCreditPurchases).values({ companyId: event.companyId, stripeSessionId: event.stripeSessionId, packSize: event.packSize, amountCents, status: "completed", createdAt: now }),
+            db.insert(schema.marketplaceCredits).values({ companyId: event.companyId, balance: event.packSize, updatedAt: now })
+              .onConflictDoUpdate({ target: schema.marketplaceCredits.companyId, set: { balance: sql`balance + ${event.packSize}`, updatedAt: now } }),
+            db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now }),
+          ]);
+        } else {
+          await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+        }
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: true };
+      }
       let user = event.userId ? (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, event.userId)).limit(1))[0] : undefined;
       if (!user && event.subscriptionId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeSubscriptionId, event.subscriptionId)).limit(1))[0];
       if (!user && event.customerId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeCustomerId, event.customerId)).limit(1))[0];
@@ -3297,7 +3356,12 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const area = args.serviceArea.toLowerCase();
       const categoryTerms: Record<z.infer<typeof marketplaceCategorySchema>, string> = { kitchens: "kitchen cabinet carpenter", bathrooms: "bathroom shower", plumbing: "plumbing plumber", electrical: "electrical electrician", hvac: "hvac air conditioning", roofing: "roof roofers roofing", tile_flooring: "tile flooring floor installer", painting: "painting painter", concrete: "concrete masonry", landscaping: "landscaping lawn", handyman: "handyman repair", equipment: "equipment trailer rental", materials: "materials supplies", other: "other" };
       const filtered = rows.filter((row) => row.moderationStatus === "active" && (!args.category || row.category === args.category) && (!search || [row.title, row.description, row.companyName, row.serviceArea, categoryTerms[row.category]].some((value) => value.toLowerCase().includes(search))) && (!area || row.serviceArea.toLowerCase().includes(area)));
-      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows))) };
+      // Build 0.6 item 22: batch-load unlocked listing IDs so the contact
+      // phone stays gated without an N+1 query.
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(eq(schema.marketplaceUnlocks.companyId, myCompanyId));
+      const unlockedIds = new Set(unlockedRows.map((r) => r.listingId));
+      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds))) };
     },
   }),
   getMarketplaceListing: defineAction({
@@ -3312,7 +3376,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // see the "under review" state); everyone else gets a not-found.
       if (row.moderationStatus !== "active" && row.companyId !== workspaceIdentity(ctx).workspaceCompanyId) return { listing: null };
       const photoRows = await db.select().from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, row.id)).orderBy(schema.marketplaceListingPhotos.sortOrder);
-      return { listing: await marketplaceListingShape(ctx, row, photoRows) };
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, myCompanyId), eq(schema.marketplaceUnlocks.listingId, row.id))).limit(1);
+      return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId))) };
     },
   }),
   createMarketplaceListing: defineAction({
@@ -3331,6 +3397,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>(); const now = new Date();
+      // Build 0.6 item 22: phone must be verified before listing (spam protection).
+      const settingsRow = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (!settingsRow?.marketplacePhoneVerified) throw new Error("PHONE_NOT_VERIFIED");
       await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
         const { effective, bonus } = await getEffectiveListingLimit(db);
@@ -3489,6 +3558,92 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (!listing || listing.companyId !== identity.workspaceCompanyId) throw new Error("Listing not found.");
       const until = listing.featuredUntil && listing.featuredUntil.getTime() > Date.now() ? listing.featuredUntil : null;
       return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
+    },
+  }),
+  // Build 0.6 item 22: marketplace contact unlock monetization (hybrid model).
+  // Consumption order: free (3 lifetime) -> Pro quota (10/month) -> credits.
+  getMarketplaceUnlockStatus: defineAction({
+    request: z.object({}),
+    response: z.object({ freeRemaining: z.number(), freeTotal: z.number(), proQuotaRemaining: z.number(), proQuotaTotal: z.number(), creditBalance: z.number(), isPro: z.boolean() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      return await getMarketplaceUnlockStatus(db, identity.workspaceCompanyId, identity.workspaceUserId);
+    },
+  }),
+  unlockMarketplaceContact: defineAction({
+    request: z.object({ listingId: z.number().int().positive() }),
+    response: z.object({ phone: z.string(), source: z.enum(["free", "pro_quota", "credit", "owner"]) }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const companyId = identity.workspaceCompanyId;
+      await requireMarketplaceEnabled(db);
+      const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+      if (!listing || listing.moderationStatus !== "active") throw new Error("This listing is no longer available.");
+      // Owners always see their own contact info — no unlock needed.
+      if (listing.companyId === companyId) return { phone: listing.companyPhone, source: "owner" as const };
+      if (!listing.companyPhone) throw new Error("This listing has no phone number.");
+      // Idempotent: already unlocked -> return phone, never double-charge.
+      const existing = (await db.select().from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, companyId), eq(schema.marketplaceUnlocks.listingId, args.listingId))).limit(1))[0];
+      if (existing) return { phone: listing.companyPhone, source: existing.source };
+      // Rate limit: max 20 unlocks/hour per company (spam protection).
+      const hourAgo = new Date(Date.now() - 3_600_000);
+      const recentUnlocks = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+        .where(and(eq(schema.rateLimitEvents.scope, "marketplace_unlock"), eq(schema.rateLimitEvents.key, String(companyId)), gte(schema.rateLimitEvents.occurredAt, hourAgo)));
+      if (recentUnlocks.length >= 20) throw new Error("You're unlocking contacts too fast. Try again in a bit.");
+      const status = await getMarketplaceUnlockStatus(db, companyId, identity.workspaceUserId);
+      const now = new Date();
+      let source: "free" | "pro_quota" | "credit";
+      if (status.freeRemaining > 0) {
+        source = "free";
+      } else if (status.proQuotaRemaining > 0) {
+        source = "pro_quota";
+        await db.insert(schema.marketplaceProQuota).values({ companyId, usedThisCycle: 1, cycleStart: monthStartUtc() })
+          .onConflictDoUpdate({ target: schema.marketplaceProQuota.companyId, set: { usedThisCycle: sql`used_this_cycle + 1` } });
+      } else if (status.creditBalance > 0) {
+        source = "credit";
+        const updated = await db.update(schema.marketplaceCredits).set({ balance: sql`balance - 1`, updatedAt: now })
+          .where(and(eq(schema.marketplaceCredits.companyId, companyId), sql`balance > 0`));
+        if (Number((updated as unknown as { rowsAffected?: number }).rowsAffected ?? 0) === 0) throw new Error("NO_UNLOCKS_REMAINING");
+      } else {
+        throw new Error("NO_UNLOCKS_REMAINING");
+      }
+      await db.batch([
+        db.insert(schema.marketplaceUnlocks).values({ companyId, unlockedByUserId: identity.workspaceUserId, listingId: args.listingId, source, unlockedAt: now }),
+        db.insert(schema.rateLimitEvents).values({ scope: "marketplace_unlock", key: String(companyId), occurredAt: now }),
+      ]);
+      ctx.invalidateQueries();
+      return { phone: listing.companyPhone, source };
+    },
+  }),
+  createCreditPackCheckout: defineAction({
+    request: z.object({ pack: z.enum(["5", "15"]) }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
+    privileged: [privileged.createCreditPackCheckout],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      return await ctx.executePrivileged(privileged.createCreditPackCheckout, { userId: user.id, companyId: identity.workspaceCompanyId, email: user.email, pack: args.pack });
+    },
+  }),
+  // Build 0.6 item 22: phone verification gate for Marketplace listings.
+  // TODO: wire to a real SMS provider (e.g. Twilio Verify). Until then this
+  // self-attests the company's phone number from Settings.
+  verifyMarketplacePhone: defineAction({
+    request: z.object({}),
+    response: z.object({ ok: z.literal(true), verified: z.boolean() }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const settingsRow = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (!settingsRow || !settingsRow.phone.trim()) throw new Error("Add your company phone number in Settings first.");
+      // TODO: send a real SMS code via Twilio (or similar) and verify it here.
+      await db.update(schema.settings).set({ marketplacePhoneVerified: true, updatedAt: new Date() }).where(eq(schema.settings.id, settingsRow.id));
+      ctx.invalidateQueries();
+      return { ok: true as const, verified: true };
     },
   }),
   startMarketplaceConversation: defineAction({
