@@ -14927,6 +14927,32 @@ function ReferralsScreen({
   );
 }
 
+// Build 0.6: "actions worth your attention" opens a floating options page.
+function AttentionSheet({ lang, onClose, setScreen, rows }: {
+  lang: Lang;
+  onClose: () => void;
+  setScreen: (s: Screen) => void;
+  rows: Array<{ icon: ReactNode; label: string; count: number; target: Screen }>;
+}) {
+  useEscapeToClose(true, onClose);
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Acciones pendientes" : "Actions needing attention"}>
+        <div className="sheet-handle" />
+        <h2>{lang === "es" ? "Acciones pendientes" : "Needs your attention"}</h2>
+        {rows.length === 0 && <p className="dim small">{lang === "es" ? "Todo al día." : "You're all caught up."}</p>}
+        {rows.map((row, i) => (
+          <button key={i} type="button" onClick={() => { buzz(8); onClose(); setScreen(row.target); }}>
+            <span className="option-row-icon"><Icon>{row.icon}</Icon></span>
+            <span><strong>{row.count}</strong> {row.label}</span>
+            <BackIcon />
+          </button>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 function TodayScreen({
   lang,
   settings,
@@ -14955,6 +14981,9 @@ function TodayScreen({
   const notificationsHomeQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
   const pinnedTools = pinsQuery.data?.tools ?? [];
+  // Build 0.6: attention sheet — "actions worth your attention" opens a
+  // floating options page instead of scrolling.
+  const [attentionOpen, setAttentionOpen] = useState(false);
   // Home must never sit on an endless spinner: if the automation query fails,
   // render the full Home shell with empty activity data plus a retry banner.
   type AutomationCenterData = NonNullable<typeof query.data>;
@@ -15204,6 +15233,8 @@ function TodayScreen({
           </section>
         );
       })()}
+      {/* Build 0.6: money cards sit near the top of Home. */}
+      <TodayMoneySnapshot lang={lang} setScreen={setScreen} />
       <section className="home-jobs-section">
         <header><h2>{lang === "es" ? "Trabajos" : "Jobs"}</h2><button type="button" onClick={() => setScreen({ name: "jobs" })}>{lang === "es" ? "Ver todo" : "View all"}</button></header>
         <div className="home-job-list">
@@ -15257,10 +15288,26 @@ function TodayScreen({
         </span>
         <BackIcon />
       </button>
-      <button type="button" className="home-attention-card" onClick={() => { const target = document.querySelector(".automation-group, .today-clear, .today-field-strip"); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
+      <button type="button" className="home-attention-card" onClick={() => { buzz(8); setAttentionOpen(true); }}>
         <span><strong>{actionCount}</strong><small>{lang === "es" ? "acciones que merecen atención" : "actions worth your attention"}</small></span><BackIcon />
       </button>
-      <TodayMoneySnapshot lang={lang} setScreen={setScreen} />
+      {attentionOpen && (
+        <AttentionSheet
+          lang={lang}
+          onClose={() => setAttentionOpen(false)}
+          setScreen={setScreen}
+          rows={[
+            paymentEscalations.length > 0 && { icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, label: lang === "es" ? "Facturas vencidas" : "Overdue invoices", count: paymentEscalations.length, target: { name: "invoices" } as Screen },
+            quoteChase.length > 0 && { icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, label: lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval", count: quoteChase.length, target: { name: "quotes" } as Screen },
+            d.appointments.length > 0 && { icon: <circle cx="12" cy="12" r="9" />, label: lang === "es" ? "Citas" : "Appointments", count: d.appointments.length, target: { name: "crewDay" } as Screen },
+            d.materials.length > 0 && { icon: <path d="M5 4h14v16H5zM8 8h8M8 12h8" />, label: lang === "es" ? "Materiales por ordenar" : "Materials to order", count: d.materials.length, target: { name: "jobs" } as Screen },
+            d.quoteExpiry.length > 0 && { icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, label: lang === "es" ? "Estimados por vencer" : "Estimates expiring soon", count: d.quoteExpiry.length, target: { name: "quotes" } as Screen },
+            d.reviews.length > 0 && { icon: <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8-6.1-3.4-6.1 3.4 1.4-6.8L2.2 9.1l6.9-.8z" />, label: lang === "es" ? "Reseñas por pedir" : "Reviews to request", count: d.reviews.length, target: { name: "clients" } as Screen },
+            d.reminders.length > 0 && { icon: <path d="M12 7v5l3 2" />, label: lang === "es" ? "Recordatorios" : "Reminders", count: d.reminders.length, target: { name: "crewDay" } as Screen },
+            d.reengagement.length > 0 && { icon: <path d="M4 21c0-4 3-7 8-7s8 3 8 7" />, label: lang === "es" ? "Clientes por reactivar" : "Clients to re-engage", count: d.reengagement.length, target: { name: "clients" } as Screen },
+          ].filter(Boolean) as Array<{ icon: ReactNode; label: string; count: number; target: Screen }>}
+        />
+      )}
       {!settings?.simpleMode && fieldIntel && (
         proAttentionCount > 0 ? <section className="today-field-strip">
           <div className="section-heading"><div><span>PRO</span><h2>{lang === "es" ? "Operaciones que necesitan atención" : "Operations needing attention"}</h2></div><button onClick={() => setScreen({ name: "fieldIntelligence" })}>{lang === "es" ? "Abrir" : "Open"}<BackIcon /></button></div>
