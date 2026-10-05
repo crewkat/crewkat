@@ -753,7 +753,7 @@ const server = createServer(async (req, res) => {
           const meta = await documentLinkMeta(rows.rows[0]);
           const title = escapeHtmlAttr(meta.title);
           const description = escapeHtmlAttr(meta.description);
-          const image = escapeHtmlAttr(`${base}/marketing/og-image.jpg`);
+          const image = escapeHtmlAttr(`${base}/marketing/og-image-v2.jpg`);
           const html =
             `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
             `<title>${title}</title>` +

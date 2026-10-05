@@ -3334,6 +3334,9 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 /* 8. Client-facing document link: show the actual generated PDF */
 .client-doc-pdf { width: 100%; height: min(78vh, 900px); border: 1px solid var(--border); border-radius: 12px; background: #fff; }
 .client-doc-pdf-fallback { margin: 12px 0; }
+/* Build 0.6: PDF.js-rendered pages on the client document link. */
+.pdf-pages { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; align-items: center; }
+.pdf-page-canvas { width: 100%; max-width: 800px; height: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
 /* Build 0.4: server-rendered client PDF (object) — visible "Open PDF" control below it. */
 .client-doc-pdf-open { display: grid; gap: 10px; justify-items: center; padding: 28px 16px; text-align: center; }
 .client-doc-pdf-open p { margin: 0; font-size: 14px; color: var(--muted); }

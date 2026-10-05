@@ -21512,6 +21512,58 @@ function OnMyWayScreen({
   );
 }
 
+// Build 0.6: renders actual PDF pages inline via PDF.js. Embedded
+// <object>/<iframe> PDF viewers do not work inside the installed app (TWA),
+// so pages are drawn to canvas instead. Loaded on demand to keep it out of
+// the main bundle.
+function PdfPageView({ url, title }: { url: string; title: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "error">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+          "pdfjs-dist/build/pdf.worker.min.mjs",
+          import.meta.url
+        ).toString();
+        const pdf = await pdfjs.getDocument({ url }).promise;
+        if (cancelled) return;
+        const container = containerRef.current;
+        if (!container) return;
+        container.innerHTML = "";
+        const scale = 1.6;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          if (cancelled) return;
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.className = "pdf-page-canvas";
+          canvas.setAttribute("aria-label", `${title} — page ${i}`);
+          container.appendChild(canvas);
+          await page.render({ canvas, viewport }).promise;
+        }
+        if (!cancelled) setStatus("loading");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url, title]);
+  if (status === "error") {
+    return (
+      <div className="client-doc-pdf-open">
+        <p>The PDF couldn't be shown here.</p>
+        <a className="secondary-button" href={url}>Open PDF</a>
+      </div>
+    );
+  }
+  return <div ref={containerRef} className="pdf-pages" aria-label={title} />;
+}
+
 function ClientDocumentScreen({ token }: { token: string }) {
   const [lang, setLang] = useState<Lang>("en");
   const t = copy[lang];
@@ -21636,15 +21688,6 @@ function ClientDocumentScreen({ token }: { token: string }) {
         customizeJson: doc.customizeJson || "{}",
       }
     : null;
-  const previewSettings = {
-    logoUrl: c.logoUrl,
-    companyName: c.name,
-    phone: c.phone,
-    email: c.email,
-    website: c.website,
-    licenseNumber: c.licenseNumber,
-    address: "",
-  } as unknown as Settings;
   const downloadPdf = () => {
     // Server-rendered PDF (cached); falls back to opening in a new tab.
     window.open(serverPdfUrl, "_blank", "noopener");
@@ -21682,14 +21725,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </div>
       </header>
       {previewDoc && financialKind ? (
-        <div className="client-doc-pdf-fallback">
-          <QuotePaper
-            quote={previewDoc}
-            settings={previewSettings}
-            lang={lang}
-            kind={financialKind}
-          />
-        </div>
+        <PdfPageView url={serverPdfUrl} title={doc.title} />
       ) : (
         <article className="quote-paper">
           <div className="quote-paper-title-row">
