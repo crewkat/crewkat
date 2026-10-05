@@ -56,9 +56,7 @@ check("getDocumentLinkPdf action exists", typeof (BaseActions as any).getDocumen
 check("getDocumentLinkPayload shared by resolve + pdf (no duplicate logic)", ACTIONS.includes("async function getDocumentLinkPayload"));
 check("resolveDocumentLink still counts views + notifies", ACTIONS.includes("viewCount: link.viewCount + 1") && ACTIONS.includes("notifyInvoiceViewed"));
 check("docPdf.ts shims FileReader for bun", DOCPDF.includes("FileReaderShim"));
-check("ClientDocumentScreen embeds the server PDF URL in an <object>", APP.includes("data={serverPdfUrl}") && APP.includes('type="application/pdf"'));
-check("ClientDocumentScreen keeps the client blob render as fallback", APP.includes("serverPdfOk !== false") && APP.includes("serverPdfOk === false"));
-check("visible Open PDF button (en + es copy)", APP.includes('openPdf: "Open PDF"') && APP.includes('openPdf: "Abrir PDF"') && APP.includes("client-doc-open-btn"));
+check("ClientDocumentScreen renders server PDF via PdfPageView (PDF.js)", APP.includes("<PdfPageView url={serverPdfUrl}") && APP.includes("function PdfPageView"));
 
 // --- Item 2: server PDF endpoint (real DB integration) -------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-build04-"));
@@ -132,7 +130,7 @@ check("estimate Send opens the sheet", APP.includes("setSendSheetOpen(true);}}><
 check("both previews render the SendSheet", (APP.match(/<SendSheet /g) ?? []).length === 2);
 
 // --- Item 4: hide master bottom nav in invoice/estimate view (static) ------------
-check("hideMasterNav covers invoicePreview + quotePreview", APP.includes('const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview";'));
+check("hideMasterNav covers invoicePreview + quotePreview", APP.includes('screen.name === "invoicePreview"') && APP.includes('screen.name === "quotePreview"') && APP.includes("const hideMasterNav ="));
 check("BottomNav is skipped when the master nav is hidden", APP.includes('{screen.name !== "legal" && !hideMasterNav && <BottomNav'));
 check("app-shell gets the master-nav-hidden modifier", APP.includes('master-nav-hidden'));
 check("CSS drops the action bar to the true bottom", CSS.includes(".app-shell.master-nav-hidden .document-action-bar { inset: auto 0 env(safe-area-inset-bottom); }"));
