@@ -757,6 +757,7 @@ const server = createServer(async (req, res) => {
           const html =
             `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
             `<title>${title}</title>` +
+            `<link rel="icon" href="/favicon.ico?v=20261005">` +
             `<meta property="og:type" content="website">` +
             `<meta property="og:site_name" content="Crewkat">` +
             `<meta property="og:title" content="${title}">` +
