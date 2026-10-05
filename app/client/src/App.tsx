@@ -10694,6 +10694,9 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [editorPreview, setEditorPreview] = useState<Blob | null>(null);
+  // Build 0.6: preview Send opens explicit options (PDF/messages/link/email)
+  // instead of nativeShare, which silently degrades to a download in the TWA.
+  const [sendSheetOpen, setSendSheetOpen] = useState(false);
   const editorPreviewUrl = useMemo(() => (editorPreview ? URL.createObjectURL(editorPreview) : null), [editorPreview]);
   useEffect(() => () => { if (editorPreviewUrl) URL.revokeObjectURL(editorPreviewUrl); }, [editorPreviewUrl]);
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
@@ -10735,9 +10738,114 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
-    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setEditorPreview(null);}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del PDF" : "PDF preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>setEditorPreview(null)}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={()=>{const blob=editorPreview;setEditorPreview(null);if(blob)void nativeShare(blob, `${kind}-${document.id}.pdf`, lang === "es" ? "Enviar PDF" : "Send PDF", lang === "es" ? "Documento" : "Document");}}>{lang === "es" ? "Enviar" : "Send"}</button></span></header><iframe className="editor-preview-iframe" title={lang === "es" ? "Vista previa del PDF" : "PDF preview"} src={editorPreviewUrl ?? undefined}/></section></div>}
+    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setEditorPreview(null);}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del PDF" : "PDF preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>setEditorPreview(null)}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header><iframe className="editor-preview-iframe" title={lang === "es" ? "Vista previa del PDF" : "PDF preview"} src={editorPreviewUrl ?? undefined}/></section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); setEditorPreview(null); }} />}</div>}
     </section>
   </div>;
+}
+
+// Build 0.6: the editor preview's Send button opens explicit send options
+// (PDF via messages / link / email) instead of nativeShare, which silently
+// degrades to a download inside the installed app.
+function PreviewSendSheet({ lang, kind, document, pdfBlob, onClose, onSent }: {
+  lang: Lang;
+  kind: "invoice" | "quote";
+  document: FinancialDocument & { id: number };
+  pdfBlob: Blob;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const t = copy[lang];
+  const estTerms = estimateTerms(lang, null);
+  const kindLabel = kind === "invoice" ? t.invoices : capFirst(estTerms.singular);
+  const docNumber = kind === "invoice"
+    ? (document.invoiceNumber || `INV-${String(document.id).padStart(4, "0")}`)
+    : `${estTerms.singular.toUpperCase()}-${String(document.id).padStart(4, "0")}`;
+  const filename = `${safeName(document.clientName)}-${kind}-${document.id}.pdf`;
+  const freshLinkUrl = async () => {
+    const res = await api.createDocumentLink({ kind, id: document.id });
+    return `${window.location.origin}/d/${res.shortCode}`;
+  };
+  const fail = (e: unknown) => {
+    showUndoToast(actionErrorMessage(e), t.close, () => {}, 4000);
+    setBusy(false);
+  };
+  const sendPdf = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await nativeShare(pdfBlob, filename, `${kindLabel} ${docNumber}`);
+        onSent();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  const sendLink = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const link = await freshLinkUrl();
+        if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+          try {
+            await navigator.share({
+              title: `${kindLabel} ${docNumber}`,
+              text: lang === "es" ? `Aquí está tu ${estTerms.singular} ${docNumber}` : `Here is your ${kindLabel.toLowerCase()} ${docNumber}`,
+              url: link,
+            });
+            onSent();
+            return;
+          } catch (e) {
+            // User dismissed the sheet — don't fall through to copy.
+            if (e instanceof DOMException && e.name === "AbortError") { onClose(); return; }
+          }
+        }
+        const ok = await copyText(link);
+        showUndoToast(
+          ok ? t.linkCopied : lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link",
+          t.close,
+          () => {},
+          3500,
+        );
+        onSent();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  const sendByEmail = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const link = await freshLinkUrl();
+        const subject = `${kindLabel} ${docNumber}`;
+        const body =
+          lang === "es"
+            ? `Hola ${document.clientName || "cliente"},\n\nAquí está tu ${estTerms.singular} ${docNumber}.\nVer documento: ${link}`
+            : `Hi ${document.clientName || "there"},\n\nHere is your ${kindLabel.toLowerCase()} ${docNumber}.\nView document: ${link}`;
+        window.location.href = `mailto:${encodeURIComponent(document.clientEmail ?? "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        onSent();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="more-sheet send-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Enviar" : "Send"}>
+        <div className="sheet-handle" />
+        <button type="button" disabled={busy} onClick={() => void sendPdf()}>
+          <ShareIcon /><span>{lang === "es" ? "Enviar PDF por mensajes" : "Send PDF via messages"}</span>
+        </button>
+        <button type="button" disabled={busy} onClick={() => void sendLink()}>
+          <LinkIcon /><span>{lang === "es" ? "Enviar enlace" : "Send link"}</span>
+        </button>
+        <button type="button" disabled={busy} onClick={() => void sendByEmail()}>
+          <MailIcon /><span>{lang === "es" ? "Enviar por Email" : "Send by Email"}</span>
+        </button>
+      </section>
+    </div>
+  );
 }
 
 function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice"|"quote";id:number;onClose:()=>void;onSaved:()=>void}){
