@@ -45297,6 +45297,27 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  deleteAppUser: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const current = (await db.select().from(appUsers).where(eq(appUsers.isCurrent, true)).limit(1))[0];
+    if (!current || current.role !== "owner")
+      throw new Error("Owner access required.");
+    const target = (await db.select().from(appUsers).where(eq(appUsers.id, args.id)).limit(1))[0];
+    if (!target)
+      throw new Error("User not found.");
+    if (target.isCurrent)
+      throw new Error("You cannot delete your own account.");
+    if (/stallions/i.test(target.name))
+      throw new Error("The Stallions account cannot be deleted.");
+    if (target.role === "owner" && target.active) {
+      const owners = await db.select({ id: appUsers.id }).from(appUsers).where(and(eq(appUsers.role, "owner"), eq(appUsers.active, true)));
+      if (owners.length <= 1)
+        throw new Error("You cannot delete the last owner account.");
+    }
+    await db.delete(appUsers).where(eq(appUsers.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
   updateAdminParameters: defineAction({ request: object({ paymentDay1: number2().int().min(1).max(365), paymentDay2: number2().int().min(1).max(365), paymentDay3: number2().int().min(1).max(365), reviewDelayDays: number2().int().min(0).max(90), reengagementMonth1: number2().int().min(1).max(120), reengagementMonth2: number2().int().min(1).max(120), quoteExpiryWarningDays: number2().int().min(0).max(90), materialLeadTimeDays: number2().int().min(0).max(730), defaultTaxRate: string2().trim().max(20), hourlyLaborCost: string2().trim().max(80) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     if (!(args.paymentDay1 < args.paymentDay2 && args.paymentDay2 < args.paymentDay3))
       throw new Error("Payment days must increase.");
@@ -47829,6 +47850,7 @@ var PREMIUM_ACTIONS = new Set([
   "updateSupportReport",
   "addAppUser",
   "updateAppUser",
+  "deleteAppUser",
   "updateAdminParameters",
   "createPortalLink",
   "revokePortalLink",

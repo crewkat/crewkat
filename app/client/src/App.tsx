@@ -9156,6 +9156,17 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     }) => api.updateAppUser(value),
     onSuccess: refresh,
   });
+  // Build 0.6: delete an app user with 2-step confirmation. The current user
+  // and the Stallions account are never offered a delete button.
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const deleteUser = useMutation({
+    mutationFn: (id: number) => api.deleteAppUser({ id }),
+    onSuccess: () => {
+      setDeleteConfirmId(null);
+      refresh();
+    },
+    onError: () => setDeleteConfirmId(null),
+  });
   const saveParameters = useMutation({
     mutationFn: (value: AdminParameters) => api.updateAdminParameters(value),
     onSuccess: () => {
@@ -9485,6 +9496,29 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
                         ? "Activar"
                         : "Activate"}
                   </button>
+                )}
+                {!user.isCurrent && !/stallions/i.test(user.name) && (
+                  deleteConfirmId === user.id ? (
+                    <span className="admin-delete-confirm">
+                      <button
+                        className="danger-button"
+                        disabled={deleteUser.isPending}
+                        onClick={() => deleteUser.mutate(user.id)}
+                      >
+                        {lang === "es" ? "Confirmar" : "Confirm"}
+                      </button>
+                      <button onClick={() => setDeleteConfirmId(null)}>
+                        {lang === "es" ? "Cancelar" : "Cancel"}
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="text-button danger-text"
+                      onClick={() => setDeleteConfirmId(user.id)}
+                    >
+                      {lang === "es" ? "Eliminar" : "Delete"}
+                    </button>
+                  )
                 )}
               </article>
             ))}
@@ -21796,6 +21830,17 @@ function ClientDocumentScreen({ token }: { token: string }) {
   );
 }
 
+// Build 0.6: "seen" double-check icon (replaces the eye emoji for consistency
+// with the viewed badges elsewhere).
+function SeenIcon({ size = 12 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="m3 12.5 4 4L15 7" />
+      <path d="m10 13.5 2.5 2.5L20 8" />
+    </Icon>
+  );
+}
+
 function ViewedBadge({
   lang,
   kind,
@@ -22125,16 +22170,21 @@ function DocumentLinkPanel({
     <details className="doc-link-panel">
       <summary>
         🔗 {t.clientLink}
-        {link && link.viewCount > 0 ? ` · 👁 ${t.viewed}` : ""}
+        {link && link.viewCount > 0 ? (
+          <> · <SeenIcon size={11} /> {t.viewed}</>
+        ) : (
+          ""
+        )}
       </summary>
       <div className="doc-link-body">
         <p className="dim">{t.clientLinkIntro}</p>
         {link ? (
           <>
             <p className="doc-link-status">
+              <SeenIcon size={11} />{" "}
               {link.viewCount > 0
-                ? `👁 ${t.viewed} · ${link.viewCount} ${t.viewCount}`
-                : `👁 ${t.notViewed}`}
+                ? `${t.viewed} · ${link.viewCount} ${t.viewCount}`
+                : t.notViewed}
               {` · ${t.linkExpires}: ${formatDate(link.expiresAt.slice(0, 10), lang)}`}
             </p>
             {url && (

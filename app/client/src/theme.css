@@ -137,6 +137,9 @@ fieldset { padding: 0; border: 0; }
 .app-shell.master-nav-hidden .form-page .sticky-submit { bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); }
 /* Build 3: "Saved" confirmation state on the settings save button. */
 .primary-button.saved-confirm { background: var(--green); border-color: var(--green); color: #fff; }
+/* Build 0.6: the "Saved" confirmation shrinks to a small pill so it never
+   covers settings content. */
+.sticky-submit.saved-confirm { left: 50%; right: auto; transform: translateX(-50%); width: auto; max-width: none; padding: 8px 20px; font-size: 13px; border-radius: 999px; }
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
 .status.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
 .social-notice { margin: -8px 0 22px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-weight: 700; line-height: 1.45; }
@@ -896,6 +899,11 @@ html[data-theme="dark"] .warranty-status.active{background:#183d29;color:#a9e8c1
 .admin-note{padding:13px 14px;border-radius:12px;background:var(--surface-muted)}.admin-note strong{font-size:13px}.admin-note p{margin:5px 0 0;color:var(--dim);font-size:12px;line-height:1.45}
 .admin-user-form{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(100px,.8fr);gap:10px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}.admin-user-form button{grid-column:1/-1}
 .admin-users{display:grid;gap:8px}.admin-users article{display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:8px;align-items:center;padding:12px 13px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.admin-users article>div{display:grid;gap:3px;min-width:0}.admin-users article small{color:var(--dim)}.admin-users article>button{grid-column:2;padding:5px;border:0;background:transparent;color:var(--accent);font-size:11px;font-weight:700}
+/* Build 0.6: delete-user two-step confirmation. */
+.admin-users article .danger-text { color: var(--danger, #c0392b); }
+.admin-delete-confirm { display: flex; gap: 6px; align-items: center; grid-column: 2; }
+.admin-delete-confirm button { padding: 5px 8px; font-size: 11px; font-weight: 700; border-radius: 8px; }
+.admin-delete-confirm .danger-button { background: var(--danger, #c0392b); color: #fff; border: 0; }
 .parameter-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.parameter-input{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}.parameter-input input{width:100%;border:0!important;border-radius:0!important;background:transparent!important}.parameter-input small{padding:0 9px;color:var(--dim);font-size:10px}
 .data-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.data-tables button{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 8px;min-width:0;padding:11px 12px;text-align:left;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text)}.data-tables button.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.data-tables span{overflow:hidden;font-size:11px;font-weight:700;text-transform:capitalize;text-overflow:ellipsis;white-space:nowrap}.data-tables strong{grid-row:1/3;grid-column:2;font-size:19px}.data-tables small{color:var(--dim);font-size:9px}
 .recent-data{display:grid;gap:0;border-top:1px solid var(--border)}.recent-data h2{margin:2px 0 9px;font-size:14px;text-transform:capitalize}.recent-data article{display:flex;justify-content:space-between;gap:12px;padding:11px 2px;border-bottom:1px solid var(--border)}.recent-data article>div{display:grid;gap:3px;min-width:0}.recent-data article strong{font-size:12px}.recent-data article span,.recent-data article small{color:var(--dim);font-size:10px}.recent-data article span{overflow:hidden;max-width:220px;text-overflow:ellipsis;white-space:nowrap}
