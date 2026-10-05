@@ -10245,7 +10245,7 @@ function QuoteBuilder({
                 onPointerCancel={endGripDrag}
                 onKeyDown={(e) => onGripKeyDown(e, i)}
               >
-                <Icon size={18}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
+                <Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
               </span>
               <div className="b06-line-fields">
                 <input

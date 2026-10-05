@@ -3479,7 +3479,7 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 
 /* Build 0.6 (items 1-7): new-quote builder refresh. */
 /* Items 1-2: small trigger buttons that open the floating template/assembly modals. */
-.b06-small-btn { justify-self: start; width: auto; min-height: 40px; padding: 8px 16px; font-size: 13px; border-radius: 999px; }
+.b06-small-btn { justify-self: start; width: auto; min-height: 34px; padding: 6px 12px; font-size: 12px; border-radius: 999px; }
 /* b06: template + assembly buttons side by side */
 .b06-btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 /* Item 1: template rows inside the floating modal. */
@@ -3495,14 +3495,14 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 /* Item 3: work-item rows — grip handle, name + description, amount, remove. */
 .b06-line-list { display: grid; gap: 10px; }
 .b06-quote-line { grid-template-columns: auto minmax(0,1fr) 96px auto; align-items: start; }
-.b06-grip { display: inline-flex; align-items: center; justify-content: center; width: 34px; min-height: 44px; color: var(--dim); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 8px; }
+.b06-grip { display: inline-flex; align-items: center; justify-content: center; width: 34px; min-height: 52px; color: color-mix(in srgb, var(--text) 55%, transparent); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 8px; }
 .b06-grip:active { cursor: grabbing; color: var(--text); background: var(--surface-2); }
 .b06-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .b06-quote-line.b06-dragging { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .b06-line-fields { display: grid; gap: 6px; min-width: 0; }
-.b06-line-fields input, .b06-line-description { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.b06-line-fields input, .b06-line-description { width: 100%; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
 .b06-line-description { resize: vertical; }
-.b06-line-amount { min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.b06-line-amount { min-width: 0; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
 .b06-line-remove { width: 34px; min-height: 44px; border: 0; border-radius: 999px; background: var(--bg); color: var(--dim); font-size: 22px; line-height: 1; cursor: pointer; }
 /* Item 4: compact discount/tax editors — type select sized to content, value
    input visibly larger, both smaller than the old full-width boxes. */
