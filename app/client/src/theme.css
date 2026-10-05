@@ -1160,10 +1160,10 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .switch-row input { flex: none; }
 .switch-row input:not([role="switch"]) { width: 23px !important; height: 23px; accent-color: var(--accent); }
 /* b06: simple small pill toggles — the 23px !important above was crushing the pill track */
-.switch-row input[role="switch"], .more-option-row input[role="switch"], .pa-switch input[role="switch"] { appearance:none !important; width:44px !important; height:26px !important; padding:2px !important; border:0 !important; border-radius:14px !important; background:var(--border); cursor:pointer; transition:background .15s ease; }
-.switch-row input[role="switch"]::before, .more-option-row input[role="switch"]::before, .pa-switch input[role="switch"]::before { content:""; display:block; width:22px; height:22px; border-radius:50%; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; }
+.switch-row input[role="switch"], .more-option-row input[role="switch"], .pa-switch input[role="switch"] { appearance:none !important; width:38px !important; height:22px !important; padding:2px !important; border:0 !important; border-radius:12px !important; background:var(--border); cursor:pointer; transition:background .15s ease; }
+.switch-row input[role="switch"]::before, .more-option-row input[role="switch"]::before, .pa-switch input[role="switch"]::before { content:""; display:block; width:18px; height:18px; border-radius:50%; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; }
 .switch-row input[role="switch"]:checked, .more-option-row input[role="switch"]:checked, .pa-switch input[role="switch"]:checked { background:var(--green); }
-.switch-row input[role="switch"]:checked::before, .more-option-row input[role="switch"]:checked::before, .pa-switch input[role="switch"]:checked::before { transform:translateX(18px); }
+.switch-row input[role="switch"]:checked::before, .more-option-row input[role="switch"]:checked::before, .pa-switch input[role="switch"]:checked::before { transform:translateX(16px); }
 .muted-note { color: var(--dim); line-height: 1.4; }
 .editor-delete { justify-self: stretch; }
 .customize-overlay { grid-template-rows: auto minmax(0,1fr) auto; z-index: 190; }
