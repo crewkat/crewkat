@@ -340,6 +340,43 @@ async function getMarketplaceUnlockStatus(db: UnlockStatusDb, companyId: number,
   };
 }
 
+// Build 0.6 item 22: shared unlock consumption. Idempotent — if this company
+// already unlocked this listing, returns the existing source without charging.
+// Otherwise consumes free -> pro quota -> credit, in that order. Throws
+// NO_UNLOCKS_REMAINING when exhausted. Used by both contact reveal and
+// conversation start so messaging can't bypass the unlock system.
+async function consumeMarketplaceUnlock(db: UnlockStatusDb, companyId: number, userId: number, listingId: number): Promise<"free" | "pro_quota" | "credit"> {
+  const existing = (await db.select().from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, companyId), eq(schema.marketplaceUnlocks.listingId, listingId))).limit(1))[0];
+  if (existing) return existing.source;
+  // Rate limit: max 20 unlocks/hour per company (spam protection).
+  const hourAgo = new Date(Date.now() - 3_600_000);
+  const recentUnlocks = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "marketplace_unlock"), eq(schema.rateLimitEvents.key, String(companyId)), gte(schema.rateLimitEvents.occurredAt, hourAgo)));
+  if (recentUnlocks.length >= 20) throw new Error("You're unlocking contacts too fast. Try again in a bit.");
+  const status = await getMarketplaceUnlockStatus(db, companyId, userId);
+  const now = new Date();
+  let source: "free" | "pro_quota" | "credit";
+  if (status.freeRemaining > 0) {
+    source = "free";
+  } else if (status.proQuotaRemaining > 0) {
+    source = "pro_quota";
+    await db.insert(schema.marketplaceProQuota).values({ companyId, usedThisCycle: 1, cycleStart: monthStartUtc() })
+      .onConflictDoUpdate({ target: schema.marketplaceProQuota.companyId, set: { usedThisCycle: sql`used_this_cycle + 1` } });
+  } else if (status.creditBalance > 0) {
+    source = "credit";
+    const updated = await db.update(schema.marketplaceCredits).set({ balance: sql`balance - 1`, updatedAt: now })
+      .where(and(eq(schema.marketplaceCredits.companyId, companyId), sql`balance > 0`));
+    if (Number((updated as unknown as { rowsAffected?: number }).rowsAffected ?? 0) === 0) throw new Error("NO_UNLOCKS_REMAINING");
+  } else {
+    throw new Error("NO_UNLOCKS_REMAINING");
+  }
+  await db.batch([
+    db.insert(schema.marketplaceUnlocks).values({ companyId, unlockedByUserId: userId, listingId, source, unlockedAt: now }),
+    db.insert(schema.rateLimitEvents).values({ scope: "marketplace_unlock", key: String(companyId), occurredAt: now }),
+  ]);
+  return source;
+}
+
 async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>, unlockedListingIds?: Set<number>) {
   const photos = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
   const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
@@ -3584,35 +3621,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Owners always see their own contact info — no unlock needed.
       if (listing.companyId === companyId) return { phone: listing.companyPhone, source: "owner" as const };
       if (!listing.companyPhone) throw new Error("This listing has no phone number.");
-      // Idempotent: already unlocked -> return phone, never double-charge.
-      const existing = (await db.select().from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, companyId), eq(schema.marketplaceUnlocks.listingId, args.listingId))).limit(1))[0];
-      if (existing) return { phone: listing.companyPhone, source: existing.source };
-      // Rate limit: max 20 unlocks/hour per company (spam protection).
-      const hourAgo = new Date(Date.now() - 3_600_000);
-      const recentUnlocks = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
-        .where(and(eq(schema.rateLimitEvents.scope, "marketplace_unlock"), eq(schema.rateLimitEvents.key, String(companyId)), gte(schema.rateLimitEvents.occurredAt, hourAgo)));
-      if (recentUnlocks.length >= 20) throw new Error("You're unlocking contacts too fast. Try again in a bit.");
-      const status = await getMarketplaceUnlockStatus(db, companyId, identity.workspaceUserId);
-      const now = new Date();
-      let source: "free" | "pro_quota" | "credit";
-      if (status.freeRemaining > 0) {
-        source = "free";
-      } else if (status.proQuotaRemaining > 0) {
-        source = "pro_quota";
-        await db.insert(schema.marketplaceProQuota).values({ companyId, usedThisCycle: 1, cycleStart: monthStartUtc() })
-          .onConflictDoUpdate({ target: schema.marketplaceProQuota.companyId, set: { usedThisCycle: sql`used_this_cycle + 1` } });
-      } else if (status.creditBalance > 0) {
-        source = "credit";
-        const updated = await db.update(schema.marketplaceCredits).set({ balance: sql`balance - 1`, updatedAt: now })
-          .where(and(eq(schema.marketplaceCredits.companyId, companyId), sql`balance > 0`));
-        if (Number((updated as unknown as { rowsAffected?: number }).rowsAffected ?? 0) === 0) throw new Error("NO_UNLOCKS_REMAINING");
-      } else {
-        throw new Error("NO_UNLOCKS_REMAINING");
-      }
-      await db.batch([
-        db.insert(schema.marketplaceUnlocks).values({ companyId, unlockedByUserId: identity.workspaceUserId, listingId: args.listingId, source, unlockedAt: now }),
-        db.insert(schema.rateLimitEvents).values({ scope: "marketplace_unlock", key: String(companyId), occurredAt: now }),
-      ]);
+      const source = await consumeMarketplaceUnlock(db, companyId, identity.workspaceUserId, args.listingId);
       ctx.invalidateQueries();
       return { phone: listing.companyPhone, source };
     },
@@ -3658,6 +3667,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (listing.companyId === myCompanyId) throw new Error("You can't message your own listing.");
       const existing = (await db.select({ id: schema.marketplaceConversations.id }).from(schema.marketplaceConversations).where(and(eq(schema.marketplaceConversations.listingId, args.listingId), eq(schema.marketplaceConversations.inquirerCompanyId, myCompanyId))).limit(1))[0];
       if (existing) { ctx.invalidateQueries(); return { conversationId: existing.id }; }
+      // Build 0.6 item 22: starting a conversation consumes a contact unlock
+      // (free -> pro quota -> credit), so messaging can't bypass the unlock system.
+      await consumeMarketplaceUnlock(db, myCompanyId, identity.workspaceUserId, args.listingId);
       try {
         const made = (await db.insert(schema.marketplaceConversations).values({ listingId: args.listingId, ownerCompanyId: listing.companyId, inquirerCompanyId: myCompanyId, lastMessageAt: new Date(), createdAt: new Date() }).returning({ id: schema.marketplaceConversations.id }))[0];
         if (!made) throw new Error("The conversation could not be started.");
