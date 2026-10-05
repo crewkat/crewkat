@@ -4383,7 +4383,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
 
 const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
-  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
 ]);
 
 const PREMIUM_ACTIONS = new Set([

@@ -278,20 +278,35 @@ export async function buildFinancialPdf(
     ry += 13;
   }
   let y = Math.max(infoY + 13 + clientLines.length * 10 + 14, ry + 10);
-  if (theme !== "minimal") {
-    if (theme === "classic") doc.setFillColor(23, 26, 28);
-    else if (theme === "bold") doc.setFillColor(r, g, b);
-    else doc.setFillColor(238, 241, 240);
-    doc.rect(margin, y - 13, w - margin * 2, 20, "F");
-    if (theme === "bold" || theme === "classic") doc.setTextColor(255, 255, 255);
-    else doc.setTextColor(24, 32, 30);
-  }
-  doc.setFont(font, "bold");
-  doc.setFontSize(9);
-  doc.text(labels.description, margin + 8, y);
-  if (custom.showQuantityUnitPrice) doc.text(lang === "es" ? "Cant. × Precio" : "Qty × Price", w - margin - 92, y, { align: "right" });
-  if (custom.showAmount) doc.text(labels.amount, w - margin - 8, y, { align: "right" });
-  y += 26;
+  // Build 0.6 (item 13): paginate long documents. Content must stay above the
+  // fixed footer zone (payment terms ~680, thank-you 742, license line 752):
+  // without page breaks the line items ran off the bottom of the page and
+  // the fixed footer printed on top of the flowing text.
+  const PAGE_BOTTOM = 648;
+  const drawTableHeaderRow = () => {
+    if (theme !== "minimal") {
+      if (theme === "classic") doc.setFillColor(23, 26, 28);
+      else if (theme === "bold") doc.setFillColor(r, g, b);
+      else doc.setFillColor(238, 241, 240);
+      doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+      if (theme === "bold" || theme === "classic") doc.setTextColor(255, 255, 255);
+      else doc.setTextColor(24, 32, 30);
+    }
+    doc.setFont(font, "bold");
+    doc.setFontSize(9);
+    doc.text(labels.description, margin + 8, y);
+    if (custom.showQuantityUnitPrice) doc.text(lang === "es" ? "Cant. × Precio" : "Qty × Price", w - margin - 92, y, { align: "right" });
+    if (custom.showAmount) doc.text(labels.amount, w - margin - 8, y, { align: "right" });
+    y += 26;
+  };
+  const ensureSpace = (needed: number) => {
+    if (y + needed <= PAGE_BOTTOM) return;
+    doc.addPage();
+    y = 40;
+    drawTableHeaderRow();
+  };
+  ensureSpace(40);
+  drawTableHeaderRow();
   doc.setTextColor(24, 32, 30);
   doc.setFont(font, "normal");
   doc.setFontSize(9);
@@ -303,9 +318,10 @@ export async function buildFinancialPdf(
       ? itemLabel
       : `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
     const lines = doc.splitTextToSize(detail, w - margin * 2 - 130) as string[];
+    const rowH = Math.max(20, lines.length * 11 + 6);
+    ensureSpace(rowH);
     doc.text(lines, margin + 8, y);
     if (custom.showAmount) doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
-    const rowH = Math.max(20, lines.length * 11 + 6);
     doc.setDrawColor(224, 227, 226);
     doc.setLineWidth(0.5);
     doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
@@ -320,6 +336,7 @@ export async function buildFinancialPdf(
     document.taxValue,
   );
   if (custom.showSummaryInfo) {
+  ensureSpace(120);
   doc.setDrawColor(r, g, b);
   doc.line(w - margin - 200, y, w - margin, y);
   y += 16;
@@ -383,6 +400,7 @@ export async function buildFinancialPdf(
   const dateValue = kind === "quote" ? document.expiryDate : document.dueDate;
   const dateLabel = labels.dueDate;
   if (custom.showDueDate && dateValue) {
+    ensureSpace(24);
     y += 6;
     doc.setFont(font, "normal");
     doc.setFontSize(9);
@@ -398,6 +416,7 @@ export async function buildFinancialPdf(
       document.footnote,
       w - margin * 2,
     ) as string[];
+    ensureSpace(lines.length * 10 + 12);
     doc.text(lines, margin, y);
     y += lines.length * 10 + 6;
   }

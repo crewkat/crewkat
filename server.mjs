@@ -10,8 +10,8 @@
 //   ctx.executePrivileged -> in-process dispatch to the compiled privileged
 //                            handlers (PDF rendering, Resend email, Stripe)
 //   ctx.emit / ctx.invalidateQueries -> no-ops (single instance)
-//   ctx.tool.weather      -> unavailable (the app already treats this as
-//                            optional and degrades gracefully)
+//   ctx.tool.weather      -> Open-Meteo (free, no API key) so appointment
+//                            weather badges actually load in production.
 //
 // Routes:
 //   POST /actions          -> action dispatch ({ action, args })
@@ -195,6 +195,101 @@ function executePrivileged(contract, args) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Standalone weather via Open-Meteo (free, no API key). The Hatch runtime
+// provides ctx.tool.weather in the private web artifact; the standalone
+// harness implements it here so appointment weather badges load in
+// production instead of always showing "Forecast unavailable".
+// ---------------------------------------------------------------------------
+const WEATHER_TIMEOUT_MS = 8000;
+// Fallback when a location can't be geocoded: Danny's service area.
+const DEFAULT_GEO = { latitude: 28.1731, longitude: -82.6719, name: "Trinity, FL" };
+
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEATHER_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "Crewkat/1.0" } });
+    if (!res.ok) throw new Error(`weather request failed: ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function geocodeLocation(query) {
+  const clean = String(query ?? "").trim();
+  const attempts = [];
+  if (clean) attempts.push(clean);
+  // Fallback: trailing "City, ST" portion of a street address.
+  const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) attempts.push(parts.slice(-2).join(", "));
+  for (const q of attempts) {
+    try {
+      const data = await fetchJson(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`
+      );
+      const hit = data?.results?.[0];
+      if (hit && typeof hit.latitude === "number" && typeof hit.longitude === "number") {
+        return {
+          latitude: hit.latitude,
+          longitude: hit.longitude,
+          name: [hit.name, hit.admin1, hit.country_code].filter(Boolean).join(", "),
+        };
+      }
+    } catch { /* try the next attempt */ }
+  }
+  return DEFAULT_GEO;
+}
+
+const WMO_SUMMARY = {
+  0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+  45: "Fog", 48: "Icy fog", 51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle",
+  56: "Freezing drizzle", 57: "Freezing drizzle", 61: "Light rain", 63: "Rain",
+  65: "Heavy rain", 66: "Freezing rain", 67: "Freezing rain", 71: "Light snow",
+  73: "Snow", 75: "Heavy snow", 77: "Snow grains", 80: "Light showers",
+  81: "Showers", 82: "Heavy showers", 85: "Snow showers", 86: "Snow showers",
+  95: "Thunderstorm", 96: "Storm with hail", 99: "Storm with hail",
+};
+
+// Shape matches what the getWeatherOutlook action reads:
+// content.forecast_days[].{date,precipitation_chance,summary,high,low},
+// content.summary, content.location, content.conditions.unit,
+// content.sources[0].title
+async function lookupWeather(query, opts = {}) {
+  const isoDate = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const since = isoDate(opts.since) ?? new Date().toISOString().slice(0, 10);
+  const until = isoDate(opts.until) ?? since;
+  // Callers pass "<location> weather forecast for <date>"; strip the suffix.
+  const location = String(query ?? "").replace(/\s+weather forecast for\s+\d{4}-\d{2}-\d{2}\s*$/i, "").trim();
+  const geo = await geocodeLocation(location);
+  const data = await fetchJson(
+    `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}` +
+    `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&temperature_unit=fahrenheit&timezone=auto&start_date=${since}&end_date=${until}`
+  );
+  const daily = data?.daily ?? {};
+  const times = Array.isArray(daily.time) ? daily.time : [];
+  const num = (arr, i) => (typeof arr?.[i] === "number" ? Math.round(arr[i]) : null);
+  const forecast_days = times.map((date, i) => ({
+    date,
+    precipitation_chance: typeof daily.precipitation_probability_max?.[i] === "number" ? daily.precipitation_probability_max[i] : null,
+    summary: WMO_SUMMARY[daily.weathercode?.[i]] ?? "—",
+    high: num(daily.temperature_2m_max, i),
+    low: num(daily.temperature_2m_min, i),
+  }));
+  const first = forecast_days[0];
+  return {
+    content: {
+      forecast_days,
+      summary: first ? `${first.summary}, high ${first.high ?? "—"}°F` : "",
+      location: geo.name,
+      conditions: { unit: "°F" },
+      sources: [{ title: "Open-Meteo" }],
+    },
+  };
+}
+
 function makeCtx(reqMeta) {
   return {
     slug: "tradesign",
@@ -222,9 +317,8 @@ function makeCtx(reqMeta) {
       },
     },
     tool: {
-      weather: async () => {
-        throw new Error("Weather lookup is unavailable in standalone mode.");
-      },
+      // Standalone weather via Open-Meteo (free, no API key needed).
+      weather: (query, opts) => lookupWeather(query, opts),
     },
     emit: () => {},
     invalidateQueries: () => {},
@@ -498,6 +592,68 @@ async function serveBlob(res, urlPath) {
 }
 
 // ---------------------------------------------------------------------------
+// Build 0.6 (item 11): unfurl branding for shared document links (/d/:code).
+// Link unfurlers (Messages, WhatsApp, …) fetch the URL without running JS,
+// so og:/twitter: tags must be present in the served HTML. Real browsers
+// follow the inline script to the client document page instantly.
+// ---------------------------------------------------------------------------
+
+function escapeHtmlAttr(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
+// Brand + document info for the unfurl tags. Deliberately excludes the
+// client name and amounts — the link itself is the credential, but the
+// preview shouldn't leak PII into chat threads.
+async function documentLinkMeta(linkRow) {
+  const kind = linkRow.document_kind;
+  const docId = Number(linkRow.document_id);
+  let docLabel = "Document";
+  let docNumber = "";
+  try {
+    if (kind === "invoice") {
+      const r = await libsql.execute({
+        sql: `SELECT invoice_number FROM invoices WHERE id = ? LIMIT 1`,
+        args: [docId],
+      });
+      docLabel = "Invoice";
+      docNumber = r.rows[0]?.invoice_number || `INV-${String(docId).padStart(4, "0")}`;
+    } else if (kind === "quote") {
+      docLabel = "Estimate";
+      docNumber = `EST${String(docId).padStart(4, "0")}`;
+    } else if (kind === "contract") {
+      docLabel = "Contract";
+    } else if (kind === "change_order") {
+      docLabel = "Change order";
+    }
+  } catch {
+    // keep the generic label
+  }
+  let company = "";
+  try {
+    const r = await libsql.execute({
+      sql: `SELECT company_name FROM settings WHERE id = 1 LIMIT 1`,
+    });
+    company = String(r.rows[0]?.company_name ?? "").trim();
+  } catch {
+    // keep generic
+  }
+  const title = docNumber
+    ? `${docLabel} ${docNumber}${company ? ` — ${company}` : ""}`
+    : company
+      ? `${docLabel} — ${company}`
+      : `${docLabel} · Crewkat`;
+  const description = `View your ${docLabel.toLowerCase()}${docNumber ? ` ${docNumber}` : ""}${company ? ` from ${company}` : ""} — sent with Crewkat.`;
+  return { title, description };
+}
+
+// ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
 
@@ -569,8 +725,10 @@ const server = createServer(async (req, res) => {
     }
 
     // Build 0.5 (items 2+3): short public document links (/d/:code).
-    // Looks up the link by its short alias and redirects to the #doc= client
-    // page (the fragment keeps the credential out of server logs). No view
+    // Build 0.6 (item 11): serve a tiny unfurl page (og:/twitter: tags) with
+    // a JS redirect instead of a bare 302 — unfurlers read the tags without
+    // running JS, while real browsers land on the #doc= client page instantly
+    // (the fragment keeps the credential out of server logs). No view
     // counting here — the client's resolveDocumentLink call owns that side
     // effect when the page loads. Unknown/expired codes fall through.
     const shortDocMatch = (req.method === "GET" || req.method === "HEAD") ? /^\/d\/([A-Za-z0-9]{8,24})$/.exec(path) : null;
@@ -578,14 +736,42 @@ const server = createServer(async (req, res) => {
       try {
         const code = shortDocMatch[1];
         const rows = await libsql.execute({
-          sql: `SELECT 1 FROM document_links WHERE short_code = ? AND revoked_at IS NULL AND expires_at > ? LIMIT 1`,
+          sql: `SELECT document_kind, document_id FROM document_links WHERE short_code = ? AND revoked_at IS NULL AND expires_at > ? LIMIT 1`,
           args: [code, Date.now()],
         });
         if (rows.rows.length) {
           const host = req.headers.host || "crewkat.com";
           const proto = req.headers["x-forwarded-proto"] || "https";
-          res.writeHead(302, { location: `${proto}://${host}/app/#doc=${encodeURIComponent(code)}`, "cache-control": "private, max-age=60" });
-          res.end();
+          const base = PUBLIC_URL || `${proto}://${host}`;
+          const pageUrl = `${base}/d/${encodeURIComponent(code)}`;
+          const target = `${proto}://${host}/app/#doc=${encodeURIComponent(code)}`;
+          const meta = await documentLinkMeta(rows.rows[0]);
+          const title = escapeHtmlAttr(meta.title);
+          const description = escapeHtmlAttr(meta.description);
+          const image = escapeHtmlAttr(`${base}/marketing/og-image.jpg`);
+          const html =
+            `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+            `<title>${title}</title>` +
+            `<meta property="og:type" content="website">` +
+            `<meta property="og:site_name" content="Crewkat">` +
+            `<meta property="og:title" content="${title}">` +
+            `<meta property="og:description" content="${description}">` +
+            `<meta property="og:image" content="${image}">` +
+            `<meta property="og:url" content="${escapeHtmlAttr(pageUrl)}">` +
+            `<meta name="twitter:card" content="summary_large_image">` +
+            `<meta name="twitter:title" content="${title}">` +
+            `<meta name="twitter:description" content="${description}">` +
+            `<meta name="twitter:image" content="${image}">` +
+            `<script>location.replace(${JSON.stringify(target)});</script>` +
+            `</head><body><p><a href="${escapeHtmlAttr(target)}">${title}</a></p></body></html>`;
+          const bytes = Buffer.from(html, "utf8");
+          res.writeHead(200, {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": bytes.length,
+            "x-content-type-options": "nosniff",
+            "cache-control": "private, max-age=60",
+          });
+          if (req.method === "GET") res.end(bytes); else res.end();
           return;
         }
       } catch { /* fall through to the SPA below */ }

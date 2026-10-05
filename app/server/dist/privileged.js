@@ -4407,7 +4407,7 @@ var privileged = definePrivilegedContracts({
     timeoutMs: 20000
   },
   createStripeCheckout: {
-    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual"]).default("monthly") }),
+    request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual", "lifetime"]).default("monthly") }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
     capabilities: [],
     timeoutMs: 20000
@@ -4424,6 +4424,7 @@ var privileged = definePrivilegedContracts({
       currentPeriodEnd: number2().int().nullable(),
       cancelAtPeriodEnd: boolean2(),
       checkoutType: string2().nullable(),
+      plan: string2().nullable(),
       listingId: number2().int().positive().nullable(),
       companyId: number2().int().positive().nullable(),
       stripeSessionId: string2().nullable()
@@ -4674,13 +4675,14 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
   async createStripeCheckout(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim();
+    const lifetime = args.plan === "lifetime";
     const annual = args.plan === "annual";
-    const priceId = annual ? process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID?.trim() : process.env.STRIPE_PREMIUM_PRICE_ID?.trim();
+    const priceId = lifetime ? process.env.STRIPE_FOUNDING_PRICE_ID?.trim() : annual ? process.env.STRIPE_PREMIUM_ANNUAL_PRICE_ID?.trim() : process.env.STRIPE_PREMIUM_PRICE_ID?.trim();
     const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
     const missing = [
       !publishableKey ? "STRIPE_PUBLISHABLE_KEY" : "",
       !secretKey ? "STRIPE_SECRET_KEY" : "",
-      !priceId ? annual ? "STRIPE_PREMIUM_ANNUAL_PRICE_ID" : "STRIPE_PREMIUM_PRICE_ID" : "",
+      !priceId ? lifetime ? "STRIPE_FOUNDING_PRICE_ID" : annual ? "STRIPE_PREMIUM_ANNUAL_PRICE_ID" : "STRIPE_PREMIUM_PRICE_ID" : "",
       !publicUrl ? "CREWKAT_PUBLIC_URL" : ""
     ].filter(Boolean);
     if (missing.length || !secretKey || !priceId || !publicUrl)
@@ -4688,15 +4690,18 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
     if (!/^https:\/\//i.test(publicUrl))
       return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
     const body = new URLSearchParams({
-      mode: "subscription",
+      mode: lifetime ? "payment" : "subscription",
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": "1",
       customer_email: args.email,
       client_reference_id: String(args.userId),
       "metadata[user_id]": String(args.userId),
       "metadata[company_id]": String(args.companyId),
-      "subscription_data[metadata][user_id]": String(args.userId),
-      "subscription_data[metadata][company_id]": String(args.companyId),
+      "metadata[plan]": lifetime ? "founding_member" : args.plan,
+      ...lifetime ? {} : {
+        "subscription_data[metadata][user_id]": String(args.userId),
+        "subscription_data[metadata][company_id]": String(args.companyId)
+      },
       success_url: `${publicUrl}?checkout=success`,
       cancel_url: `${publicUrl}?checkout=cancelled`,
       allow_promotion_codes: "true"
@@ -4761,6 +4766,7 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       currentPeriodEnd,
       cancelAtPeriodEnd: object2.cancel_at_period_end === true,
       checkoutType: typeof metadata.type === "string" ? metadata.type : null,
+      plan: typeof metadata.plan === "string" ? metadata.plan : null,
       listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
       companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
       stripeSessionId: event.type === "checkout.session.completed" && typeof object2.id === "string" ? object2.id : null

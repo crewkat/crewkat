@@ -1158,7 +1158,12 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 /* Build 3: keep long toggle labels inside the box on narrow phones. */
 .switch-row > span { min-width: 0; flex: 1 1 auto; overflow-wrap: break-word; }
 .switch-row input { flex: none; }
-.switch-row input { width: 23px !important; height: 23px; accent-color: var(--accent); }
+.switch-row input:not([role="switch"]) { width: 23px !important; height: 23px; accent-color: var(--accent); }
+/* b06: simple small pill toggles — the 23px !important above was crushing the pill track */
+.switch-row input[role="switch"], .more-option-row input[role="switch"], .pa-switch input[role="switch"] { appearance:none !important; width:44px !important; height:26px !important; padding:2px !important; border:0 !important; border-radius:14px !important; background:var(--border); cursor:pointer; transition:background .15s ease; }
+.switch-row input[role="switch"]::before, .more-option-row input[role="switch"]::before, .pa-switch input[role="switch"]::before { content:""; display:block; width:22px; height:22px; border-radius:50%; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; }
+.switch-row input[role="switch"]:checked, .more-option-row input[role="switch"]:checked, .pa-switch input[role="switch"]:checked { background:var(--green); }
+.switch-row input[role="switch"]:checked::before, .more-option-row input[role="switch"]:checked::before, .pa-switch input[role="switch"]:checked::before { transform:translateX(18px); }
 .muted-note { color: var(--dim); line-height: 1.4; }
 .editor-delete { justify-self: stretch; }
 .customize-overlay { grid-template-rows: auto minmax(0,1fr) auto; z-index: 190; }
@@ -3335,3 +3340,264 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .client-doc-open-btn { display: inline-flex; align-items: center; justify-content: center; margin: 10px 0 2px; text-decoration: none; }
 /* 11. Contract card: single action button spans full width, consistent style */
 .saved-section .row-actions:has(> :only-child) { grid-template-columns: 1fr; }
+
+/* Build 0.6 items 17-21 (b06- prefix: home money cards, Pro preview, pills). */
+/* Item 18: tappable home money cards — staggered entrance + color accents. */
+.b06-money .b06-money-card {
+  min-width: 0; padding: 15px 10px; display: grid; justify-items: center;
+  align-content: start; gap: 5px; text-align: center; border: 0;
+  background: transparent; color: var(--text); cursor: pointer;
+  font: inherit; transition: transform .16s ease, background .16s ease;
+}
+.b06-money .b06-money-card + .b06-money-card { border-left: 1px solid var(--border); }
+.b06-money .b06-money-card:active { transform: scale(.96); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.b06-money-icon { display: inline-flex; width: 20px; height: 20px; }
+.b06-money-icon svg { width: 20px; height: 20px; }
+.b06-accent-orange .b06-money-icon { color: var(--accent); }
+.b06-accent-sky .b06-money-icon { color: #4f9dd9; }
+.b06-accent-green .b06-money-icon { color: var(--green); }
+.b06-accent-orange strong { color: var(--accent); }
+.b06-money-label { color: var(--dim); font-size: 11px; line-height: 1.2; }
+.b06-money-card strong { font: 800 19px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Item 18: floating money-card detail modal with mini graphs. */
+.b06-money-backdrop { z-index: 90; }
+.b06-money-modal {
+  width: min(480px, calc(100vw - 32px)); max-height: min(84vh, 720px); overflow-y: auto;
+  margin: auto; padding: 0 18px 20px; border-radius: 18px;
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .35);
+  animation: sheet-spring .32s cubic-bezier(.2, .9, .25, 1.08);
+}
+.b06-money-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 6px 0 12px; }
+.b06-money-modal header > div { display: grid; gap: 2px; }
+.b06-money-modal header small { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.b06-money-modal header h2 { margin: 0; font: 800 22px/1.15 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.b06-money-modal header > button { border: 0; background: transparent; color: var(--dim); font-size: 26px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.b06-money-modal-total { color: var(--accent); font: 800 26px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
+.b06-money-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 14px; }
+.b06-money-stats > div { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.b06-money-stats dt { font-size: 11px; color: var(--dim); }
+.b06-money-stats dd { margin: 2px 0 0; font-weight: 800; font-size: 16px; }
+.b06-money-graph-title { margin: 14px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.b06-money-bars { display: grid; gap: 8px; }
+.b06-money-bar-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
+.b06-money-bar-row > span { color: var(--dim); }
+.b06-money-bar-row > strong { font-size: 12px; }
+.b06-money-bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.b06-money-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #ffb020)); transition: width .5s ease; }
+.b06-money-weekstrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; padding: 6px 2px 0; }
+.b06-money-daycol { display: grid; gap: 4px; justify-items: center; }
+.b06-money-daybar { height: 72px; width: 100%; max-width: 34px; display: flex; align-items: flex-end; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.b06-money-daybar > div { width: 100%; background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #7a2c00)); border-radius: 6px; min-height: 2px; transition: height .5s ease; }
+.b06-money-daycol > span { font-size: 11px; color: var(--dim); }
+.b06-money-list { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--border); }
+.b06-money-list li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.b06-money-list li > span { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b06-money-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.b06-money-actions button:not(.primary-button) { border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text); padding: 12px 8px; font-weight: 700; cursor: pointer; }
+/* Item 20: Pro preview mode — diagonal watermark overlay. */
+.b06-pro-preview { position: relative; }
+.b06-preview-watermark {
+  position: absolute; inset: 0; z-index: 5; overflow: hidden; pointer-events: none;
+  display: flex; flex-direction: column; justify-content: space-evenly;
+}
+.b06-preview-watermark span {
+  display: block; white-space: nowrap; text-align: center;
+  transform: rotate(-24deg) scale(1.15); transform-origin: center;
+  font: 900 54px/1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif;
+  letter-spacing: .18em; color: color-mix(in srgb, var(--accent) 16%, transparent);
+  user-select: none;
+}
+/* Item 20: preview upgrade call-to-action under the hero. */
+.b06-preview-upgrade-cta {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 0 14px; padding: 13px 16px; border: 0; border-radius: 12px; cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #7a2c00));
+  color: #fff; text-align: left;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.b06-preview-upgrade-cta strong { font-size: 15px; }
+.b06-preview-upgrade-cta small { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .9; }
+.b06-preview-upgrade-cta:active { transform: scale(.98); }
+/* Item 19: new Pro sections (Crew & booking panels + estimating toolbox). */
+.b06-pro-section { margin: 18px 0 4px; }
+.b06-pro-section .tool-group-heading h2 { font: 800 18px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; margin-bottom: 9px; }
+.b06-pro-section .pro-directory { margin-top: 4px; }
+.b06-pro-panel { margin: 10px 0; }
+.b06-pro-panel .action-details { margin: 0; }
+.b06-pro-panel-locked {
+  width: 100%; min-height: 72px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center; gap: 12px; padding: 10px 4px; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  color: var(--text); text-align: left; cursor: pointer;
+}
+.b06-pro-panel-locked > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.b06-pro-panel-locked strong { font-size: 15px; }
+.b06-pro-panel-locked small { color: var(--dim); font-size: 12px; line-height: 1.3; }
+.b06-pro-panel-locked > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
+.b06-pro-panel-locked:active { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+/* Item 21: PRO pill badge on every Pro tool card. */
+.b06-pro-card-title { display: inline-flex; align-items: center; gap: 8px; }
+.b06-pro-pill {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 2px 8px;
+  border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 10px; font-weight: 900; letter-spacing: .08em; line-height: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .b06-money-bar-fill, .b06-money-daybar > div { transition: none; }
+}
+
+/* Build 0.6 (item 9): the estimate detail's inline preview embeds the actual
+   generated PDF (same blob the client receives) instead of the HTML mock.
+   pointer-events:none lets taps reach the card to open the fullscreen preview. */
+.b06-pdf-embed { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; pointer-events: none; }
+.b06-pdf-embed-loading { position: absolute; inset: 0; background: var(--surface-2); }
+
+/* Build 0.6 (item 14): tiny viewed pill — the eye icon becomes a "seen"
+   double-check and the badge shrinks to a tiny pill. */
+.b06-viewed-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--dim); font-size: 9px; font-weight: 700; line-height: 1.6; white-space: nowrap; }
+.b06-viewed-badge svg { display: block; flex: none; }
+.b06-viewed-badge.is-viewed { background: #e5f3ec; color: #1f6b4a; }
+:root[data-theme="dark"] .b06-viewed-badge.is-viewed { background: rgba(52, 168, 112, 0.18); color: #8fdcab; }
+/* Build 0.6 (item 15): tap-to-expand invoice line items — name only until tapped. */
+.b06-line-head { display: flex; align-items: baseline; gap: 6px; width: 100%; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.b06-line-head:disabled { cursor: default; }
+.b06-line-head strong { min-width: 0; }
+.b06-line-caret { flex: none; font-size: 11px; color: var(--dim); transition: transform 0.15s ease; }
+.b06-line-open .b06-line-caret { transform: rotate(90deg); }
+.b06-line-desc { margin: 5px 0 3px; font-size: 12px; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .b06-line-caret { transition: none; }
+}
+/* Build 0.6 (item 24): map preview geocode refresh state — a translucent
+   overlay with a spinner while the ZIP is being geocoded, and a small
+   "centered on" caption when the embed is driven by coordinates. */
+.b06-map-wrap { position: relative; }
+.b06-map-refreshing { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px 12px 0 0; background: rgba(8, 12, 20, 0.55); color: #fff; font-size: 13px; font-weight: 600; }
+.b06-spinning { animation: market-refresh-spin 0.72s linear infinite; }
+.b06-map-centered { display: block; padding: 8px 10px 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+
+/* Build 0.6 (items 1-7): new-quote builder refresh. */
+/* Items 1-2: small trigger buttons that open the floating template/assembly modals. */
+.b06-small-btn { justify-self: start; width: auto; min-height: 40px; padding: 8px 16px; font-size: 13px; border-radius: 999px; }
+/* Item 1: template rows inside the floating modal. */
+.b06-template-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 13px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 14px; font-weight: 650; text-align: left; cursor: pointer; }
+.b06-template-row:last-child { border-bottom: 0; }
+.b06-template-row:active { background: var(--surface-2); }
+.b06-template-row b { color: var(--accent); font-size: 18px; font-weight: 800; }
+/* Item 2: small Save button at the top-right of the assembly modal. */
+.b06-popup-head-actions { display: inline-flex; align-items: center; gap: 4px; }
+.b06-popup-save { min-height: 36px; padding: 6px 16px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 14px; cursor: pointer; }
+.b06-popup-save:disabled { opacity: .45; cursor: default; }
+.b06-popup-input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font-size: 16px; }
+/* Item 3: work-item rows — grip handle, name + description, amount, remove. */
+.b06-line-list { display: grid; gap: 10px; }
+.b06-quote-line { grid-template-columns: auto minmax(0,1fr) 96px auto; align-items: start; }
+.b06-grip { display: inline-flex; align-items: center; justify-content: center; width: 34px; min-height: 44px; color: var(--dim); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 8px; }
+.b06-grip:active { cursor: grabbing; color: var(--text); background: var(--surface-2); }
+.b06-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.b06-quote-line.b06-dragging { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.b06-line-fields { display: grid; gap: 6px; min-width: 0; }
+.b06-line-fields input, .b06-line-description { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.b06-line-description { resize: vertical; }
+.b06-line-amount { min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.b06-line-remove { width: 34px; min-height: 44px; border: 0; border-radius: 999px; background: var(--bg); color: var(--dim); font-size: 22px; line-height: 1; cursor: pointer; }
+/* Item 4: compact discount/tax editors — type select sized to content, value
+   input visibly larger, both smaller than the old full-width boxes. */
+.b06-quote-builder-page .adjustment-field > div { display: flex; gap: 8px; align-items: center; }
+.b06-quote-builder-page .adjustment-field select { flex: 0 0 auto; width: auto; min-width: 0; }
+.b06-quote-builder-page .adjustment-field input { flex: 1 1 130px; min-width: 0; }
+/* Item 5: Save estimate as a small pill anchored bottom-right, like the
+   invoice builder's save pill. */
+.b06-quote-builder-page .sticky-submit { left: auto; right: 16px; width: auto; max-width: none; padding-left: 22px; padding-right: 22px; }
+.b06-quote-builder-page .job-form { padding-bottom: calc(210px + env(safe-area-inset-bottom)); }
+/* Item 7: collapsed "+ …" option rows mirroring the edit sheet. */
+.b06-adjust-toggle { min-height: 48px; display: flex; align-items: center; justify-content: flex-start; gap: 6px; border: 0; background: transparent; color: var(--accent); font-weight: 800; font-size: 15px; padding: 6px 2px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) {
+  .b06-quote-line.b06-dragging { outline-style: dashed; }
+}
+
+/* Build 0.6 item 23: appointment ⋯ popup menu on the home appointments card. */
+.b06-appt-menu-wrap { position: absolute; top: 1.9rem; right: .55rem; z-index: 6; }
+.b06-appt-menu-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--surface); color: var(--dim); cursor: pointer;
+}
+.b06-appt-menu-btn:active { background: var(--surface-2); color: var(--text); }
+.b06-appt-menu-scrim { position: fixed; inset: 0; z-index: 40; background: transparent; }
+.b06-appt-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 41;
+  min-width: 190px; padding: 6px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); box-shadow: 0 14px 34px rgba(0, 0, 0, .28);
+  display: grid; gap: 2px;
+  animation: sheet-spring .22s cubic-bezier(.2, .9, .25, 1.08);
+}
+.b06-appt-menu button[role="menuitem"] {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 12px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--text); font-size: 14px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.b06-appt-menu button[role="menuitem"]:active { background: var(--surface-2); }
+.b06-appt-menu button[role="menuitem"]:disabled { opacity: .55; }
+.b06-appt-menu button[role="menuitem"].b06-danger { color: var(--danger); }
+.b06-appt-menu button[role="menuitem"] svg { flex: none; }
+
+/* Build 0.6 (item 25): Job Operations page — compact small-pill/card treatment.
+   Scoped under .b06-job-ops so nothing else on the app is affected. */
+.b06-job-ops .profit-card { margin: 10px 0; padding: 12px 14px; border-radius: 10px; }
+.b06-job-ops .profit-card h2 { margin: 0 0 8px; font-size: 15px; }
+.b06-job-ops .profit-card > div { gap: 8px 10px; }
+.b06-job-ops .profit-card span { font-size: 10px; }
+.b06-job-ops .profit-card span strong { font-size: 14px; }
+.b06-job-ops .profit-card .profit-total { padding-top: 8px; font-size: 11px; }
+.b06-job-ops .profit-card .profit-total strong { font-size: 19px; }
+.b06-job-ops .profit-card > small { margin-top: 6px; font-size: 11px; }
+/* Tab row: smaller pill buttons (Selections / Daily log / Private notes / Payments). */
+.b06-job-ops .job-ops-tabs { margin: 10px 0; padding: 3px; gap: 3px; }
+.b06-job-ops .job-ops-tabs button { min-height: 36px; font-size: 12.5px; }
+/* Module headings + "Share summary" pill button. */
+.b06-job-ops .operation-module { padding: 12px 0; }
+.b06-job-ops .operation-module > h2,
+.b06-job-ops .module-heading h2 { margin: 0 0 8px; font-size: 17px; }
+.b06-job-ops .module-heading .small-button { min-height: 34px; padding: 0 10px; font-size: 12px; }
+.b06-job-ops .module-heading .small-button svg { width: 14px; height: 14px; }
+/* Compact forms: tighter boxes, still thumb-friendly on a phone. */
+.b06-job-ops .compact-form { gap: 10px; padding: 12px; }
+.b06-job-ops .compact-form label > span { font-size: 11px; }
+.b06-job-ops .compact-form input,
+.b06-job-ops .compact-form select,
+.b06-job-ops .compact-form textarea { min-height: 40px; padding: 7px 10px; }
+.b06-job-ops .compact-form .primary-button { min-height: 44px; font-size: 14px; }
+.b06-job-ops .field-pair { gap: 8px; }
+.b06-job-ops .privacy-note { margin: -4px 0 10px; font-size: 12px; }
+.b06-job-ops .market-bookable-switch span small { font-size: 11.5px; }
+/* List cards: selections, daily-log timeline, private notes, payment milestones. */
+.b06-job-ops .selection-list,
+.b06-job-ops .timeline-list,
+.b06-job-ops .private-note-list,
+.b06-job-ops .milestone-list { gap: 7px; margin-top: 12px; }
+.b06-job-ops .selection-list article { grid-template-columns: 48px minmax(0, 1fr); gap: 8px; padding: 8px; }
+.b06-job-ops .selection-list img { width: 48px; height: 48px; }
+.b06-job-ops .selection-list select { min-height: 38px; font-size: 12.5px; }
+.b06-job-ops .selection-list strong { font-size: 13px; }
+.b06-job-ops .timeline-list article { grid-template-columns: 72px minmax(0, 1fr); gap: 10px; padding: 10px; }
+.b06-job-ops .timeline-list time { font-size: 11px; }
+.b06-job-ops .timeline-list p { margin: 3px 0; font-size: 12.5px; }
+.b06-job-ops .private-note-list label { gap: 8px; padding: 10px; }
+.b06-job-ops .private-note-list input { width: 20px; height: 20px; }
+.b06-job-ops .private-note-list span strong { font-size: 13px; font-weight: 700; }
+.b06-job-ops .milestone-list article { gap: 8px; padding: 10px; }
+.b06-job-ops .milestone-list strong { font-size: 13.5px; }
+.b06-job-ops .row-actions { gap: 6px; }
+.b06-job-ops .row-actions select,
+.b06-job-ops .row-actions button { min-height: 36px; padding: .35rem .6rem; font-size: 12.5px; }
+
+/* Build 0.6 (item 26): Daily Log — smaller photo checkmarks + cleaner compact section.
+   Scoped under .b06-job-ops (photo-picker is also used on other screens). */
+.b06-job-ops .photo-picker { border: 0; padding: 0; margin: 0; }
+.b06-job-ops .photo-picker legend { padding: 0; margin-bottom: 4px; font-size: 11px; font-weight: 800; color: var(--dim); }
+.b06-job-ops .photo-picker > div { gap: 6px; margin-top: 4px; }
+.b06-job-ops .photo-picker img { border-radius: 6px; border: 1px solid var(--border); }
+.b06-job-ops .photo-picker input { top: 5px; right: 5px; width: 18px; height: 18px; }
+.b06-job-ops .photo-picker label:has(input:checked) img { outline: 2px solid var(--accent); outline-offset: -2px; }

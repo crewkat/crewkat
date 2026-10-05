@@ -16,6 +16,7 @@ YAxis,
 import {
 createContext,
 Fragment,
+useCallback,
 useContext,
 useEffect,
 useLayoutEffect,
@@ -2281,7 +2282,10 @@ function CrewkatApplication() {
     setScrollNavigationKey((key) => key + 1);
   };
   const setScreen = (next: Screen) => {
-    const premiumScreen = next.name === "proWorkspace" || next.name === "businessTools" || next.name === "admin" || next.name === "expansion" || next.name === "fieldIntelligence" || next.name === "reports" || next.name === "followups";
+    // Build 0.6 (item 20): the Pro tools page itself opens for everyone —
+    // free users see it in preview mode (watermarked, tools locked). The
+    // individual Pro tool screens below still redirect free users to upgrade.
+    const premiumScreen = next.name === "businessTools" || next.name === "admin" || next.name === "expansion" || next.name === "fieldIntelligence" || next.name === "reports" || next.name === "followups";
     const destination: Screen = auth.user.tier === "free" && premiumScreen ? { name: "upgrade" } : next;
     const currentIndex = Math.max(0, screenStack.length - 1);
     scrollSnapshotsRef.current[currentIndex] = captureNavigationScroll();
@@ -2324,6 +2328,19 @@ function CrewkatApplication() {
     // Overlays/editors get first refusal (close sheet, save editor, …).
     if (runHardwareBackInterceptor()) return;
     popScreenStack();
+  };
+  // Build 0.6 (item 17): tool detail pages always have a working back button.
+  // Pops the screen stack when there is history; otherwise falls back to the
+  // Tools home instead of stranding the user.
+  const goBackOrTools = () => {
+    if (screenStackRef.current.length > 1) {
+      goBack();
+      return;
+    }
+    scrollSnapshotsRef.current = [];
+    setScreenStack([{ name: "tools" }]);
+    screenStackRef.current = [{ name: "tools" }];
+    requestNavigationScroll({ mode: "top" });
   };
   const openRoot = (tab: RootTab) => {
     scrollSnapshotsRef.current = [];
@@ -2648,6 +2665,8 @@ function CrewkatApplication() {
           clientId={screen.clientId}
           jobId={screen.jobId}
           onBack={goBack}
+          // Build 0.6 (item 6): saving an estimate lands on the Estimates tab.
+          onSaved={() => setScreen({ name: "quotes" })}
         />
       )}
       {screen.name === "quotePreview" && (
@@ -2705,7 +2724,7 @@ function CrewkatApplication() {
         <FollowupsScreen
           lang={lang}
           settings={appSettings}
-          onBack={goBack}
+          onBack={goBackOrTools}
         />
       )}
       {screen.name === "gallery" && (
@@ -2724,13 +2743,13 @@ function CrewkatApplication() {
         <OperationsScreen
           lang={lang}
           settings={appSettings}
-          onBack={goBack}
+          onBack={goBackOrTools}
           setScreen={setScreen}
           initialTab={screen.tab}
         />
       )}
       {screen.name === "reports" && (
-        <ReportsScreen lang={lang} onBack={goBack} />
+        <ReportsScreen lang={lang} onBack={goBackOrTools} />
       )}
       {screen.name === "marketplace" && (
         <MarketplaceScreen lang={lang} settings={appSettings} setScreen={setScreen} />
@@ -2739,7 +2758,7 @@ function CrewkatApplication() {
         <BidBoardScreen lang={lang} onBack={goBack} />
       )}
       {screen.name === "dispatch" && (
-        <DispatchScreen lang={lang} onBack={goBack} />
+        <DispatchScreen lang={lang} onBack={goBackOrTools} />
       )}
       {screen.name === "marketplaceNew" && (
         <MarketplaceListingForm lang={lang} settings={appSettings} initialListingType={screen.listingType} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
@@ -2757,32 +2776,32 @@ function CrewkatApplication() {
         <ToolsHomeScreen lang={lang} setScreen={setScreen} />
       )}
       {screen.name === "proWorkspace" && (
-        <ProWorkspaceScreen lang={lang} onBack={goBack} setScreen={setScreen} />
+        <ProWorkspaceScreen lang={lang} onBack={goBackOrTools} setScreen={setScreen} />
       )}
       {screen.name === "upgrade" && (
         <UpgradeScreen lang={lang} onBack={goBack} />
       )}
       {screen.name === "toolbox" && (
-        <ToolboxScreen lang={lang} onBack={goBack} initialTab={screen.tab} />
+        <ToolboxScreen lang={lang} onBack={goBackOrTools} initialTab={screen.tab} />
       )}
       {screen.name === "businessTools" && (
-        <BusinessToolsScreen lang={lang} onBack={goBack} initialTab={screen.tab} />
+        <BusinessToolsScreen lang={lang} onBack={goBackOrTools} initialTab={screen.tab} />
       )}
-      {screen.name === "admin" && <AdminScreen lang={lang} onBack={goBack} />}
+      {screen.name === "admin" && <AdminScreen lang={lang} onBack={goBackOrTools} />}
       {screen.name === "platformAdmin" && <PlatformAdminScreen lang={lang} onBack={goBack} setScreen={setScreen} initialTab={screen.tab} initialRefundEmail={screen.refundEmail} />}
       {screen.name === "platformAdminUser" && <PAUserDetailScreen lang={lang} userId={screen.userId} onBack={goBack} setScreen={setScreen} />}
       {screen.name === "expansion" && (
         <ExpansionSuiteScreen
           lang={lang}
           settings={appSettings}
-          onBack={goBack}
+          onBack={goBackOrTools}
           initialTab={screen.tab}
         />
       )}
       {screen.name === "fieldIntelligence" && (
         <FieldIntelligenceScreen
           lang={lang}
-          onBack={goBack}
+          onBack={goBackOrTools}
           onOpenSettings={() => setScreen({ name: "settings" })}
           initialTab={screen.tab}
           onOpenJob={(jobId) => setScreen({ name: "detail", jobId })}
@@ -3739,6 +3758,23 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
   );
 }
 
+// Build 0.6 (item 24): keyless geocode for the Marketplace map preview. A
+// 5-digit US ZIP resolves via zippopotam.us into coordinates so the embed can
+// be centered explicitly (Google's text `q=` geocoding falls back to a world
+// view when it can't resolve a ZIP). Returns null for non-ZIP text (the
+// caller falls back to the text `q=` query) and throws on fetch failure so
+// the caller can keep the last good view.
+async function geocodeZipForMapPreview(value: string): Promise<{ lat: string; lon: string } | null> {
+  const zip = value.trim();
+  if (!/^\d{5}$/.test(zip)) return null;
+  const response = await fetch(`https://api.zippopotam.us/us/${zip}`);
+  if (!response.ok) throw new Error(`zippopotam ${response.status}`);
+  const data = await response.json() as { places?: Array<{ latitude?: string; longitude?: string }> };
+  const place = data.places?.[0];
+  if (!place?.latitude || !place?.longitude) throw new Error("zippopotam: no coordinates");
+  return { lat: place.latitude, lon: place.longitude };
+}
+
 function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings: Settings | null; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
@@ -3758,6 +3794,27 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   // of live-binding the iframe to every keystroke (mid-typing queries geocode
   // poorly and Google renders a zoomed-out world view).
   const [mapQuery, setMapQuery] = useState("Tampa, FL");
+  // Build 0.6 (item 24): explicit map center from keyless geocoding (the last
+  // good center is kept when a later geocode fails) plus a small refreshing
+  // indicator while the preview resolves a ZIP.
+  const [mapCenter, setMapCenter] = useState<{ lat: string; lon: string; label: string } | null>(null);
+  const [mapRefreshing, setMapRefreshing] = useState(false);
+  const mapGeocodeRef = useRef(0);
+  const recenterMapPreview = useCallback(async (value: string) => {
+    const requestId = ++mapGeocodeRef.current;
+    setMapRefreshing(true);
+    try {
+      const coords = await geocodeZipForMapPreview(value);
+      if (mapGeocodeRef.current !== requestId) return;
+      // ZIP → explicit coordinates; non-ZIP text → clear the center so the
+      // text `q=` fallback drives the embed.
+      setMapCenter(coords ? { ...coords, label: value.trim() } : null);
+    } catch {
+      // Keep the last good view (or the text fallback when there is none).
+    } finally {
+      if (mapGeocodeRef.current === requestId) setMapRefreshing(false);
+    }
+  }, []);
   const [savedIds, setSavedIds] = useState<number[]>(savedMarketplaceIds);
   const [promotionOpen, setPromotionOpen] = useState(false);
   const [promoteListingId, setPromoteListingId] = useState<number | null>(null);
@@ -3796,6 +3853,17 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       savedOnly,
     };
   }, [view, search, category, listingType, location, savedOnly]);
+  // Build 0.6 (item 24): reflect the location filter in the open preview.
+  // Debounced ~600ms so mid-typing keystrokes don't each fire a geocode.
+  useEffect(() => {
+    if (!mapPreviewOpen) return;
+    const value = location.trim() || "Tampa, FL";
+    const timer = window.setTimeout(() => {
+      setMapQuery(value);
+      void recenterMapPreview(value);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [mapPreviewOpen, location, recenterMapPreview]);
   const listings = useQuery({ queryKey: ["marketplace-listings", search, category, location], queryFn: () => api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: location }) });
   const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const requests = useQuery({ queryKey: ["marketplace-requests"], queryFn: () => api.listMarketplaceRequests({}) });
@@ -3913,11 +3981,11 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const unreadMarketplaceCount = (inbox.data?.unreadCount ?? 0) + (notifications.data?.unreadCount ?? 0);
   const sortText = lang === "es" ? {
     title: "Ordenar por", newest: "Más recientes primero", priceAsc: "Precio: de menor a mayor", priceDesc: "Precio: de mayor a menor",
-    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área o código postal.", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.",
+    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área o código postal.", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.", mapRefreshing: "Actualizando mapa…", mapCentered: "Centrado en {label}",
     inbox: "Bandeja de mensajes", inboxNote: "Conversaciones sobre tus publicaciones", sortBy: "Ordenar publicaciones",
   } : {
     title: "Sort by", newest: "Newest first", priceAsc: "Price: low to high", priceDesc: "Price: high to low",
-    locationTitle: "Location", locationHint: "Filter listings by service area or ZIP.", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.",
+    locationTitle: "Location", locationHint: "Filter listings by service area or ZIP.", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.", mapRefreshing: "Updating map…", mapCentered: "Centered on {label}",
     inbox: "Message inbox", inboxNote: "Conversations about your listings", sortBy: "Sort listings",
   };
   return <main className={`page marketplace-page${listingType === "project" ? " project-mode" : ""}`} onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
@@ -3997,9 +4065,9 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     {locationPopupOpen && <FloatPopup lang={lang} title={sortText.locationTitle} onClose={() => setLocationPopupOpen(false)}>{(close) => <>
       <p className="popup-hint">{sortText.locationHint}</p>
       <label className="popup-input"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder={text.location} aria-label={text.location}/></label>
-      <button className="secondary-button popup-map-button" onClick={() => { if (!mapPreviewOpen) setMapQuery(location.trim() || "Tampa, FL"); setMapPreviewOpen((open) => !open); }}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
-      {mapPreviewOpen && <div className="popup-map"><iframe key={mapQuery} title={sortText.showOnMap} src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><small>{sortText.mapNote}</small></div>}
-      <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setMapPreviewOpen(false); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
+      <button className="secondary-button popup-map-button" onClick={() => { if (!mapPreviewOpen) { setMapQuery(location.trim() || "Tampa, FL"); void recenterMapPreview(location.trim() || "Tampa, FL"); } setMapPreviewOpen((open) => !open); }}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
+      {mapPreviewOpen && <div className="popup-map b06-map-wrap">{mapRefreshing && <div className="b06-map-refreshing" role="status" aria-live="polite"><span className="market-refresh-spinner b06-spinning" aria-hidden="true"/>{sortText.mapRefreshing}</div>}<iframe key={mapQuery} title={sortText.showOnMap} src={mapCenter ? `https://maps.google.com/maps?q=${encodeURIComponent(`${mapCenter.lat},${mapCenter.lon}`)}&z=13&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />{mapCenter && <small className="b06-map-centered">{sortText.mapCentered.replace("{label}", mapCenter.label)}</small>}<small>{sortText.mapNote}</small></div>}
+      <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setMapPreviewOpen(false); setMapCenter(null); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
     </>}</FloatPopup>}
   </main>;
 }
@@ -4605,8 +4673,38 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   </main>;
 }
 
+// Build 0.6 (item 19): descriptions for the estimating toolbox tiles shown on
+// the Pro tools page. Titles and icons come from PUBLIC_TOOL_META.
+const TOOLBOX_BLURBS: Record<ToolboxTab, { en: string; es: string }> = {
+  loan: { en: "Calculate monthly payment and interest", es: "Calcula pago mensual e interés" },
+  materials: { en: "Save your material names, units, and prices", es: "Guarda nombres, unidades y precios de materiales" },
+  angle: { en: "Calculate angles and slopes", es: "Calcula ángulos y pendientes" },
+  convert: { en: "Convert job-site measurements", es: "Convierte medidas de obra" },
+  area: { en: "Add areas and estimate paint", es: "Suma áreas y estima pintura" },
+  yards: { en: "Cubic yards and bag counts", es: "Yardas cúbicas y bolsas" },
+  board: { en: "Calculate board feet", es: "Calcula pies tabla" },
+  drywall: { en: "Sheets, screws, and compound", es: "Hojas, tornillos y compuesto" },
+  roofing: { en: "Squares, waste, and bundles", es: "Cuadrados, desperdicio y paquetes" },
+  tile: { en: "Coverage, waste, and box count", es: "Cobertura, desperdicio y cajas" },
+  margin: { en: "Convert cost, margin, and markup", es: "Convierte costo, margen y recargo" },
+  paint: { en: "Gallons from wall area and coats", es: "Galones según área y manos" },
+  flooring: { en: "Coverage, waste, and box count", es: "Cobertura, desperdicio y cajas" },
+  fence: { en: "Pickets, posts, and rails", es: "Estacas, postes y rieles" },
+  block: { en: "Blocks and pavers by area", es: "Bloques y adoquines por área" },
+  gravel: { en: "Cubic yards and tons", es: "Yardas cúbicas y toneladas" },
+  stairs: { en: "Risers, treads, and layout", es: "Contrahuellas, huellas y trazado" },
+  insulation: { en: "Batts by wall or attic area", es: "Rollos según área de pared o ático" },
+  gutter: { en: "Gutter feet, downspouts, and elbows", es: "Pies de canalón, bajantes y codos" },
+  rate: { en: "Build your hourly rate", es: "Calcula tu tarifa por hora" },
+  punchlist: { en: "Per-job open-items checklist", es: "Pendientes por trabajo con estados" },
+};
 function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
   const [soon, setSoon] = useState<ToolTile | null>(null);
+  // Build 0.6 (item 20): preview mode — tapping a locked tool prompts the
+  // upgrade flow instead of opening the tool.
+  const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
   const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
   const tiles: ToolTile[] = lang === "es" ? [
     { title: "Pedidos esperando proveedores", description: "Compara cotizaciones, crea órdenes y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
@@ -4640,24 +4738,79 @@ function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: (
     { title: "Client portal", description: "Open a job → Client portal to create a secure link for your client", screen: { name: "jobs" }, icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
   ];
   const openTool = (tile: ToolTile) => {
+    // Build 0.6 (item 20): in preview mode tools are visible but not
+    // functional — tapping one opens the upgrade prompt instead.
+    if (!isPremium) { setLockedTool(tile); return; }
     if (tile.comingSoon) setSoon(tile);
     else if (tile.screen) setScreen(tile.screen);
   };
+  // Build 0.6 (item 19): the estimating toolbox lives on the Pro page too —
+  // every entry is wired to its real toolbox screen (no placeholders).
+  const estimatingTiles: ToolTile[] = PUBLIC_TOOL_ORDER.map((tab) => {
+    const meta = PUBLIC_TOOL_META[tab];
+    return {
+      title: lang === "es" ? meta.es : meta.en,
+      description: TOOLBOX_BLURBS[tab][lang],
+      screen: { name: "toolbox", tab },
+      icon: <span className="tool-tile-icon"><Icon><path d={meta.icon} /></Icon></span>,
+    };
+  });
+  // Build 0.6 (item 19): Crew GPS clock + Public estimate form reuse the same
+  // functional panels as the Tools home page for Premium users.
+  const featuredPanels: { id: string; title: string; description: string; panel: ReactNode }[] = [
+    { id: "crewClock", title: lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock", description: lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job.", panel: <CrewClockPanel lang={lang} /> },
+    { id: "bookingLink", title: lang === "es" ? "Formulario público de estimado" : "Public estimate form", description: lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website.", panel: <BookingLinkPanel lang={lang} /> },
+  ];
+  // Build 0.6 (item 21): every Pro tool card carries a small PRO pill badge.
+  const proCard = (tile: ToolTile) => (
+    <button key={tile.title} type="button" className="b06-pro-card" onClick={() => openTool(tile)}>
+      {tile.icon}<span><span className="b06-pro-card-title"><strong>{tile.title}</strong><span className="b06-pro-pill">PRO</span></span><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
+    </button>
+  );
   return (
-    <main className="page pro-workspace">
+    <main className={`page pro-workspace${isPremium ? "" : " b06-pro-preview"}`}>
+      {/* Build 0.6 (item 20): diagonal watermark over the whole page in preview mode. */}
+      {!isPremium && (
+        <div className="b06-preview-watermark" aria-hidden="true">
+          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
+          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
+          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
+        </div>
+      )}
       <PageHeader lang={lang} title={lang === "es" ? "Herramientas Pro" : "Pro Tools"} onBack={onBack} actions={<span className="pro-header-badge">PRO</span>} />
       <section className="pro-workspace-hero">
         <span className="pro-identity">PRO</span>
-        <div><h2>{lang === "es" ? "Control avanzado" : "Advanced control"}</h2><p>{lang === "es" ? "Cada herramienta muestra si funciona ahora o qué necesita para activarse." : "Every tool shows whether it works now or what it needs before it can turn on."}</p></div>
+        <div><h2>{lang === "es" ? "Control avanzado" : "Advanced control"}</h2><p>{isPremium ? (lang === "es" ? "Cada herramienta muestra si funciona ahora o qué necesita para activarse." : "Every tool shows whether it works now or what it needs before it can turn on.") : (lang === "es" ? "Vista previa: toca cualquier herramienta para ver Premium." : "Preview: tap any tool to see Premium.")}</p></div>
       </section>
+      {!isPremium && (
+        <button type="button" className="b06-preview-upgrade-cta" onClick={() => setScreen({ name: "upgrade" })}>
+          <strong>{lang === "es" ? "Desbloquea todas las herramientas Pro" : "Unlock every Pro tool"}</strong>
+          <small>{lang === "es" ? "Ver Premium" : "View Premium"}</small>
+        </button>
+      )}
       <div className="pro-directory">
-        {tiles.map((tile) => (
-          <button key={tile.title} type="button" onClick={() => openTool(tile)}>
-            {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
+        {tiles.map(proCard)}
+      </div>
+      <div className="b06-pro-section">
+        <div className="tool-group-heading"><h2>{lang === "es" ? "Equipo y reservas" : "Crew & booking"}</h2></div>
+        {featuredPanels.map((entry) => isPremium ? (
+          <div key={entry.id} className="b06-pro-panel">{entry.panel}</div>
+        ) : (
+          <button key={entry.id} type="button" className="b06-pro-panel-locked" onClick={() => openTool({ title: entry.title, description: entry.description, icon: null, pro: true })}>
+            <span className="tool-tile-icon"><Icon><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon></span>
+            <span><span className="b06-pro-card-title"><strong>{entry.title}</strong><span className="b06-pro-pill">PRO</span></span><small>{entry.description}</small></span>
+            <BackIcon />
           </button>
         ))}
       </div>
+      <div className="b06-pro-section">
+        <div className="tool-group-heading"><h2>{lang === "es" ? "Herramientas para estimar" : "Estimating toolbox"}</h2></div>
+        <div className="pro-directory">
+          {estimatingTiles.map(proCard)}
+        </div>
+      </div>
       {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
+      {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
     </main>
   );
 }
@@ -9662,12 +9815,15 @@ function QuoteBuilder({
   clientId,
   jobId,
   onBack,
+  onSaved,
 }: {
   lang: Lang;
   settings: Settings | null;
   clientId?: number;
   jobId?: number;
   onBack: () => void;
+  // Build 0.6 (item 6): when provided, saving navigates here instead of goBack().
+  onSaved?: () => void;
 }) {
   const t = copy[lang];
   const client = useQueryClient();
@@ -9720,7 +9876,9 @@ function QuoteBuilder({
     discountValue: "0",
     taxType: "percent" as AdjustmentType,
     taxValue: "0",
-    lineItems: [{ description: "", amount: "" }],
+    // Build 0.6 (item 3): work items split into name + description, like the
+    // invoice builder and the edit sheet.
+    lineItems: [{ name: "", description: "", amount: "" }],
   });
   useEffect(() => {
     if (settings && !defaultApplied.current) {
@@ -9748,6 +9906,9 @@ function QuoteBuilder({
         ...current,
         taxValue: documentParameters.data.defaultTaxRate,
       }));
+      // Build 0.6 (item 7): mirror the edit sheet — the tax row starts
+      // expanded when a nonzero default rate is configured.
+      if (money(documentParameters.data.defaultTaxRate) > 0) setShowTax(true);
       taxApplied.current = true;
     }
   }, [documentParameters.data]);
@@ -9777,12 +9938,24 @@ function QuoteBuilder({
         jobType: current.jobType || j.jobType,
       }));
   }, [leadJob.data, jobId, form.jobId]);
+  // Build 0.6 (items 1-2): template picker and assembly saver live in floating
+  // modals now; the inline controls became small trigger buttons.
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [assemblyOpen, setAssemblyOpen] = useState(false);
+  useEscapeToClose(templateOpen, () => setTemplateOpen(false));
+  useEscapeToClose(assemblyOpen, () => setAssemblyOpen(false));
+  // Build 0.6 (item 7): create mode mirrors the edit sheet — discount/tax
+  // start as collapsed "+ …" rows (FinancialEditor's showDiscount/showTax).
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [showTax, setShowTax] = useState(false);
+  // Build 0.6 (item 3): index of the work-item row currently being dragged.
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const totals = financialTotals(
     form.lineItems,
     form.discountType,
-    form.discountValue,
+    showDiscount ? form.discountValue : "0",
     form.taxType,
-    form.taxValue,
+    showTax ? form.taxValue : "0",
   );
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -9791,37 +9964,133 @@ function QuoteBuilder({
   const [applyMode, setApplyMode] = useState<"append" | "replace">("append");
   const [assemblyName, setAssemblyName] = useState("");
   const [assemblyNotice, setAssemblyNotice] = useState("");
+  // Build 0.6 (item 3): a work item counts when it has a name or a
+  // description — the same rule as the invoice builder and the edit sheet.
+  const validLineItems = () =>
+    form.lineItems
+      .filter((i) => i.description.trim() || (i.name ?? "").trim())
+      .map((i) => ({ ...i, description: i.description.trim() || (i.name ?? "").trim() }));
+  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string }>) =>
+    setForm((current) => ({
+      ...current,
+      lineItems: current.lineItems.map((x, j) => (j === index ? { ...x, ...patch } : x)),
+    }));
+  const removeLineItem = (index: number) =>
+    setForm((current) => ({ ...current, lineItems: current.lineItems.filter((_, i) => i !== index) }));
+  const moveLineItem = (from: number, to: number) => {
+    setForm((current) => {
+      if (from === to || to < 0 || to >= current.lineItems.length) return current;
+      const next = [...current.lineItems];
+      const [moved] = next.splice(from, 1);
+      if (moved) next.splice(to, 0, moved);
+      return { ...current, lineItems: next };
+    });
+  };
+  // Build 0.6 (item 3): drag-to-reorder via the grip handle. Pointer events
+  // cover touch and mouse; rows swap live as the pointer crosses midpoints.
+  // Arrow keys on a focused grip move the row for keyboard users.
+  const lineListRef = useRef<HTMLDivElement>(null);
+  const dragFromRef = useRef<number | null>(null);
+  const onGripPointerDown = (e: React.PointerEvent<HTMLSpanElement>, index: number) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    dragFromRef.current = index;
+    setDraggingIdx(index);
+    buzz(8);
+  };
+  const onGripPointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const from = dragFromRef.current;
+    if (from === null) return;
+    const rows = lineListRef.current?.querySelectorAll<HTMLElement>("[data-b06-line]");
+    if (!rows || rows.length === 0) return;
+    let target = rows.length - 1;
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i]!.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) { target = i; break; }
+    }
+    if (target !== from) {
+      dragFromRef.current = target;
+      setDraggingIdx(target);
+      moveLineItem(from, target);
+    }
+  };
+  const endGripDrag = () => { dragFromRef.current = null; setDraggingIdx(null); };
+  const onGripKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>, index: number) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    moveLineItem(index, index + (e.key === "ArrowUp" ? -1 : 1));
+    buzz(8);
+  };
+  // Build 0.6 (item 1): applying a template from the floating modal.
+  const applyTemplate = (template: { lineItems: Array<{ description: string; amount: string }> }) => {
+    const items = template.lineItems.map((item) => ({
+      name: "",
+      description: item.description,
+      amount: item.amount,
+    }));
+    setForm({
+      ...form,
+      lineItems: applyMode === "append" ? [...form.lineItems, ...items] : items,
+    });
+    if (applyMode === "append") celebrate(lang === "es" ? "Plantilla añadida" : "Template added");
+  };
+  // Build 0.6 (item 2): saving the assembly from the floating modal.
+  const canSaveAssembly =
+    assemblyName.trim().length > 0 &&
+    form.lineItems.some((i) => i.description.trim() || (i.name ?? "").trim());
+  const saveAssembly = async () => {
+    if (!canSaveAssembly) return;
+    buzz(8);
+    try {
+      await api.saveQuoteTemplate({
+        id: null,
+        name: assemblyName.trim(),
+        lineItems: validLineItems().map((i) => ({ description: i.description, amount: i.amount })),
+      });
+      setAssemblyName("");
+      setAssemblyNotice("");
+      setAssemblyOpen(false);
+      celebrate(lang === "es" ? "Ensamblaje guardado" : "Assembly saved");
+      await client.invalidateQueries({ queryKey: ["growth-toolkit"] });
+    } catch {
+      setAssemblyNotice(lang === "es" ? "No se pudo guardar" : "Could not save");
+    }
+  };
   const save = useMutation({
     mutationFn: () =>
       api.saveQuote({
         ...form,
-        lineItems: form.lineItems.filter((i) => i.description.trim()),
+        lineItems: validLineItems(),
+        discountValue: showDiscount ? form.discountValue : "0",
+        taxValue: showTax ? form.taxValue : "0",
         subtotal: usd(totals.subtotal),
         total: usd(totals.total),
       }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["quotes"] });
       client.invalidateQueries({ queryKey: ["clients"] });
-      onBack();
+      // Build 0.6 (item 6): saving an estimate lands on the Estimates tab.
+      if (onSaved) onSaved();
+      else onBack();
     },
     onError: () => setError(t.error),
   });
   const preview: FinancialDocument = {
     ...form,
+    lineItems: validLineItems(),
+    discountValue: showDiscount ? form.discountValue : "0",
+    taxValue: showTax ? form.taxValue : "0",
     subtotal: usd(totals.subtotal),
     total: usd(totals.total),
   };
   return (
-    <main className="page form-page">
+    <main className="page form-page b06-quote-builder-page">
       <PageHeader lang={lang} title={t.newQuote} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
       <form
         className="job-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (
-            !form.clientName.trim() ||
-            !form.lineItems.some((i) => i.description.trim())
-          ) {
+          if (!form.clientName.trim() || validLineItems().length === 0) {
             setError(t.required);
             return;
           }
@@ -9906,82 +10175,24 @@ function QuoteBuilder({
         </div>
         <fieldset className="form-section">
           <legend>{t.lineItems}</legend>
+          {/* Build 0.6 (item 1): the template picker lives in a floating modal now. */}
           {(growth.data?.templates.length ?? 0) > 0 && (
-            <label>
-              <span>
-                {lang === "es" ? "Aplicar plantilla" : "Apply template"}
-              </span>
-              <div className="segmented-control" role="group" aria-label={lang === "es" ? "Modo de aplicación" : "Apply mode"}>
-                <button type="button" className={applyMode === "append" ? "active" : ""} onClick={() => setApplyMode("append")}>
-                  {lang === "es" ? "Añadir" : "Add"}
-                </button>
-                <button type="button" className={applyMode === "replace" ? "active" : ""} onClick={() => setApplyMode("replace")}>
-                  {lang === "es" ? "Reemplazar" : "Replace"}
-                </button>
-              </div>
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  const template = growth.data?.templates.find(
-                    (row) => row.id === Number(e.target.value),
-                  );
-                  if (template) {
-                    const items = template.lineItems.map((item) => ({
-                      ...item,
-                    }));
-                    setForm({
-                      ...form,
-                      lineItems: applyMode === "append" ? [...form.lineItems, ...items] : items,
-                    });
-                    if (applyMode === "append") celebrate(lang === "es" ? "Plantilla añadida" : "Template added");
-                  }
-                  e.currentTarget.value = "";
-                }}
-              >
-                <option value="">
-                  {lang === "es" ? "Elegir plantilla…" : "Choose template…"}
-                </option>
-                {growth.data?.templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {/* Phase 1: save the current line items as a reusable trade assembly. */}
-          <div className="assembly-save">
-            <input
-              value={assemblyName}
-              onChange={(e) => { setAssemblyName(e.target.value); setAssemblyNotice(""); }}
-              placeholder={lang === "es" ? "Nombre del ensamblaje…" : "Assembly name…"}
-              maxLength={160}
-              aria-label={lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
-            />
             <button
               type="button"
-              className="secondary-button"
-              disabled={!assemblyName.trim() || !form.lineItems.some((i) => i.description.trim())}
-              onClick={async () => {
-                buzz(8);
-                try {
-                  await api.saveQuoteTemplate({
-                    id: null,
-                    name: assemblyName.trim(),
-                    lineItems: form.lineItems.filter((i) => i.description.trim()).map((i) => ({ description: i.description.trim(), amount: i.amount })),
-                  });
-                  setAssemblyName("");
-                  setAssemblyNotice(lang === "es" ? "Ensamblaje guardado" : "Assembly saved");
-                  await client.invalidateQueries({ queryKey: ["growth-toolkit"] });
-                } catch {
-                  setAssemblyNotice(lang === "es" ? "No se pudo guardar" : "Could not save");
-                }
-              }}
+              className="secondary-button b06-small-btn"
+              onClick={() => setTemplateOpen(true)}
             >
-              {lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
+              {lang === "es" ? "Aplicar plantilla" : "Apply template"}
             </button>
-            {assemblyNotice && <small className="status" role="status">{assemblyNotice}</small>}
-          </div>
+          )}
+          {/* Build 0.6 (item 2): the assembly saver lives in a floating modal now. */}
+          <button
+            type="button"
+            className="secondary-button b06-small-btn"
+            onClick={() => { setAssemblyNotice(""); setAssemblyOpen(true); }}
+          >
+            {lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
+          </button>
           {(growth.data?.priceBook.length ?? 0) > 0 && (
             <div className="quick-add">
               <span>
@@ -9999,14 +10210,11 @@ function QuoteBuilder({
                         ...form,
                         lineItems: [
                           ...form.lineItems.filter(
-                            (line) => line.description || line.amount,
+                            (line) => line.name || line.description || line.amount,
                           ),
                           {
-                            description:
-                              item.name +
-                              (item.description
-                                ? ` — ${item.description}`
-                                : ""),
+                            name: item.name,
+                            description: item.description ?? "",
                             amount: item.unitPrice,
                           },
                         ],
@@ -10019,65 +10227,105 @@ function QuoteBuilder({
               </div>
             </div>
           )}
+          {/* Build 0.6 (item 3): work items split into name + description, with a
+              drag-to-reorder grip handle — like the invoice builder / edit sheet. */}
+          <div className="b06-line-list" ref={lineListRef}>
           {form.lineItems.map((item, i) => (
-            <div className="line-item" key={i}>
+            <div className={`line-item b06-quote-line${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
+              <span
+                className="b06-grip"
+                role="button"
+                tabIndex={0}
+                aria-label={lang === "es" ? `Arrastrar para reordenar la partida ${i + 1}` : `Drag to reorder item ${i + 1}`}
+                onPointerDown={(e) => onGripPointerDown(e, i)}
+                onPointerMove={onGripPointerMove}
+                onPointerUp={endGripDrag}
+                onPointerCancel={endGripDrag}
+                onKeyDown={(e) => onGripKeyDown(e, i)}
+              >
+                <Icon size={18}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
+              </span>
+              <div className="b06-line-fields">
+                <input
+                  aria-label={`${lang === "es" ? "Nombre de partida" : "Item name"} ${i + 1}`}
+                  placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}
+                  value={item.name ?? ""}
+                  onChange={(e) => updateLine(i, { name: e.target.value })}
+                />
+                <textarea
+                  className="b06-line-description"
+                  rows={2}
+                  aria-label={`${lang === "es" ? "Descripción" : "Description"} ${i + 1}`}
+                  placeholder={lang === "es" ? "Describe esta partida (opcional)" : "Describe this item (optional)"}
+                  value={item.description}
+                  onChange={(e) => updateLine(i, { description: e.target.value })}
+                />
+              </div>
               <input
-                placeholder={t.item}
-                value={item.description}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    lineItems: form.lineItems.map((x, j) =>
-                      j === i ? { ...x, description: e.target.value } : x,
-                    ),
-                  })
-                }
-              />
-              <input
+                className="b06-line-amount"
+                aria-label={`${t.amount} ${i + 1}`}
                 placeholder="$0.00"
                 inputMode="decimal"
                 value={item.amount}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    lineItems: form.lineItems.map((x, j) =>
-                      j === i ? { ...x, amount: e.target.value } : x,
-                    ),
-                  })
-                }
+                onChange={(e) => updateLine(i, { amount: e.target.value })}
               />
+              {form.lineItems.length > 1 && (
+                <button
+                  type="button"
+                  className="b06-line-remove"
+                  aria-label={lang === "es" ? `Eliminar partida ${i + 1}` : `Remove item ${i + 1}`}
+                  onClick={() => removeLineItem(i)}
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))}
+          </div>
           <button
-            className="secondary-button"
+            className="primary-button add-item-wide"
             type="button"
             onClick={() =>
               setForm({
                 ...form,
-                lineItems: [...form.lineItems, { description: "", amount: "" }],
+                lineItems: [...form.lineItems, { name: "", description: "", amount: "" }],
               })
             }
           >
             <PlusIcon />
             {t.addLine}
           </button>
+          {/* Build 0.6 (item 7): like the edit sheet, discount/tax start as
+              collapsed "+ …" rows that expand into the compact editors. */}
           <div className="field-pair">
-            <AdjustmentField
-              lang={lang}
-              label={t.discount}
-              type={form.discountType}
-              value={form.discountValue}
-              onType={(discountType) => setForm({ ...form, discountType })}
-              onValue={(discountValue) => setForm({ ...form, discountValue })}
-            />
-            <AdjustmentField
-              lang={lang}
-              label={t.tax}
-              type={form.taxType}
-              value={form.taxValue}
-              onType={(taxType) => setForm({ ...form, taxType })}
-              onValue={(taxValue) => setForm({ ...form, taxValue })}
-            />
+            {!showDiscount ? (
+              <button type="button" className="b06-adjust-toggle" onClick={() => setShowDiscount(true)}>
+                + {t.discount}
+              </button>
+            ) : (
+              <AdjustmentField
+                lang={lang}
+                label={t.discount}
+                type={form.discountType}
+                value={form.discountValue}
+                onType={(discountType) => setForm({ ...form, discountType })}
+                onValue={(discountValue) => setForm({ ...form, discountValue })}
+              />
+            )}
+            {!showTax ? (
+              <button type="button" className="b06-adjust-toggle" onClick={() => setShowTax(true)}>
+                + {t.tax}
+              </button>
+            ) : (
+              <AdjustmentField
+                lang={lang}
+                label={t.tax}
+                type={form.taxType}
+                value={form.taxValue}
+                onType={(taxType) => setForm({ ...form, taxType })}
+                onValue={(taxValue) => setForm({ ...form, taxValue })}
+              />
+            )}
           </div>
           <div className="calculation-summary">
             <span>
@@ -10119,6 +10367,66 @@ function QuoteBuilder({
         </button>
       </form>
       {previewOpen && <DocumentDesignOverlay lang={lang} kind="quote" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
+      {/* Build 0.6 (item 1): template picker as a floating modal. Selecting a
+          template applies it and closes; the × at top-right just closes. */}
+      {templateOpen && (
+        <FloatPopup lang={lang} title={lang === "es" ? "Aplicar plantilla" : "Apply template"} onClose={() => setTemplateOpen(false)}>
+          {(close) => (
+            <>
+              <div className="segmented-control" role="group" aria-label={lang === "es" ? "Modo de aplicación" : "Apply mode"}>
+                <button type="button" className={applyMode === "append" ? "active" : ""} onClick={() => setApplyMode("append")}>
+                  {lang === "es" ? "Añadir" : "Add"}
+                </button>
+                <button type="button" className={applyMode === "replace" ? "active" : ""} onClick={() => setApplyMode("replace")}>
+                  {lang === "es" ? "Reemplazar" : "Replace"}
+                </button>
+              </div>
+              {(growth.data?.templates ?? []).map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="b06-template-row"
+                  onClick={() => { applyTemplate(template); close(); }}
+                >
+                  <span>{template.name}</span>
+                  <b aria-hidden="true">›</b>
+                </button>
+              ))}
+            </>
+          )}
+        </FloatPopup>
+      )}
+      {/* Build 0.6 (item 2): assembly saver as a floating modal with a small
+          Save button at the top-right. */}
+      {assemblyOpen && (
+        <div className="float-popup-backdrop" role="presentation" onClick={() => setAssemblyOpen(false)}>
+          <section className="float-popup" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"} onClick={(e) => e.stopPropagation()}>
+            <header className="float-popup-header">
+              <h2>{lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}</h2>
+              <span className="b06-popup-head-actions">
+                <button type="button" className="b06-popup-save" disabled={!canSaveAssembly} onClick={() => void saveAssembly()}>
+                  {t.save}
+                </button>
+                <button type="button" className="icon-button" onClick={() => setAssemblyOpen(false)} aria-label={lang === "es" ? "Cerrar" : "Close"}>
+                  ×
+                </button>
+              </span>
+            </header>
+            <div className="float-popup-body">
+              <input
+                className="b06-popup-input"
+                value={assemblyName}
+                onChange={(e) => { setAssemblyName(e.target.value); setAssemblyNotice(""); }}
+                placeholder={lang === "es" ? "Nombre del ensamblaje…" : "Assembly name…"}
+                maxLength={160}
+                aria-label={lang === "es" ? "Nombre del ensamblaje" : "Assembly name"}
+                autoFocus
+              />
+              {assemblyNotice && <small className="status" role="status">{assemblyNotice}</small>}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -10251,6 +10559,24 @@ function PdfFrame({ blob, title }: { blob: Blob | null; title: string }) {
       )}
     </section>
   );
+}
+// Build 0.6 (item 9): the estimate detail's inline preview embeds the ACTUAL
+// generated PDF (the same blob the client receives) instead of the HTML
+// QuotePaper mock, so paragraphs and layout match the real document. Taps
+// pass through to the surrounding card to open the fullscreen preview.
+function PdfEmbed({ blob, title }: { blob: Blob | null; title: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!blob) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [blob]);
+  if (!url) return <div className="b06-pdf-embed-loading" aria-hidden="true" />;
+  return <embed className="b06-pdf-embed" src={url} type="application/pdf" title={title} />;
 }
 function documentDesignOf(document: FinancialDocument): DocumentDesign {
   return { theme: document.theme, font: document.font, accentColor: document.accentColor, showTaxLine: document.showTaxLine, showDiscountLine: document.showDiscountLine, showPaidLine: document.showPaidLine, showPaymentTerms: document.showPaymentTerms, showFooterNotes: document.showFooterNotes, showLogo: document.showLogo, showCompanyInfo: document.showCompanyInfo, customizeJson: document.customizeJson || "{}" };
@@ -10557,7 +10883,7 @@ function QuotePreview({
         ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
         : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
     ]} />
-    <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><QuotePaper quote={quote} settings={settings} lang={lang}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
+    <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><PdfEmbed blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`}/><span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
     <section className="document-detail-summary"><div><span>{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`status-chip ${acceptedNow?"paid":quote.sentAt?"sent":"draft"}`}>{status}</span><ViewedBadge lang={lang} kind="quote" id={quote.id} /><div className="record-links"><button onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button>{quote.jobId && <button onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <button className="primary-button send-document" disabled={!blob} onClick={()=>{buzz(8);setSendSheetOpen(true);}}><ShareIcon/>{lang==="es"?`Enviar ${estTerms.singular}`:`Send ${estTerms.singular}`}</button>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
@@ -11041,6 +11367,68 @@ function PaymentSheet({
   );
 }
 
+// Build 0.6 (item 15): invoice preview line items show only the essential
+// info (the line-item name); tap the row to expand the full description.
+function B06LineItem({
+  lang,
+  item,
+  lineTotal,
+  qtyLabel,
+}: {
+  lang: Lang;
+  item: Invoice["lineItems"][number];
+  lineTotal: number;
+  qtyLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const name = (item.name ?? "").trim();
+  const description = (item.description ?? "").trim();
+  const expandable = description.length > 0 && description !== name;
+  const headline =
+    name ||
+    (expandable
+      ? description.length > 64
+        ? `${description.slice(0, 64)}…`
+        : description
+      : lang === "es"
+        ? "Artículo"
+        : "Item");
+  return (
+    <li className={open && expandable ? "b06-line-open" : undefined}>
+      <div>
+        <button
+          type="button"
+          className="b06-line-head"
+          disabled={!expandable}
+          aria-expanded={expandable ? open : undefined}
+          aria-label={
+            expandable
+              ? open
+                ? lang === "es"
+                  ? "Ocultar descripción"
+                  : "Hide description"
+                : lang === "es"
+                  ? "Mostrar descripción"
+                  : "Show description"
+              : undefined
+          }
+          onClick={() => setOpen((v) => !v)}
+        >
+          <strong>{headline}</strong>
+          {expandable && (
+            <span className="b06-line-caret" aria-hidden="true">
+              ▸
+            </span>
+          )}
+        </button>
+        <small>{qtyLabel}</small>
+        {open && expandable && <p className="b06-line-desc">{description}</p>}
+      </div>
+      <span>{usd(lineTotal)}</span>
+    </li>
+  );
+}
+
 function InvoicePreview({
   lang,
   invoiceId,
@@ -11077,6 +11465,9 @@ function InvoicePreview({
   // Build 0.4 (item 3): Send opens the send-options sheet.
   const [sendSheetOpen,setSendSheetOpen]=useState(false);
   useEscapeToClose(sendSheetOpen,()=>setSendSheetOpen(false));
+  // Build 0.6 (item 16): "Send payment receipt" opens its own share sheet.
+  const [receiptSheetOpen,setReceiptSheetOpen]=useState(false);
+  useEscapeToClose(receiptSheetOpen,()=>setReceiptSheetOpen(false));
   const [frequency,setFrequency]=useState<"none"|"daily"|"weekly"|"monthly"|"quarterly">("none");
   const [nextDue,setNextDue]=useState("");
   const [recurringEnd,setRecurringEnd]=useState("");
@@ -11133,12 +11524,7 @@ function InvoicePreview({
         {invoice.lineItems.map((item, idx) => {
           const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount));
           const unitLabel = item.unit === "hours" ? (lang === "es" ? "h" : "hrs") : item.unit === "days" ? (lang === "es" ? "días" : "days") : "";
-          return (
-            <li key={idx}>
-              <div><strong>{item.name || item.description}</strong><small>{item.quantity}{unitLabel ? ` ${unitLabel}` : ""} × {usd(money(item.amount))}</small></div>
-              <span>{usd(lineTotal)}</span>
-            </li>
-          );
+          return <B06LineItem key={idx} lang={lang} item={item} lineTotal={lineTotal} qtyLabel={`${item.quantity}${unitLabel ? ` ${unitLabel}` : ""} × ${usd(money(item.amount))}`} />;
         })}
       </ul>
       <div className="ck-inv-totals">
@@ -11171,9 +11557,10 @@ function InvoicePreview({
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="invoice" id={invoice.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","invoice",invoiceId]});setSignatureOpen(false);}}/>}
-    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{const receipt=buildPaymentReceipt(invoice,settings,lang);void nativeShare(receipt,`${safeName(invoice.clientName)}-receipt-${invoice.id}.pdf`,lang==="es"?"Recibo de pago":"Payment receipt");}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{buzz(8);setMoreOpen(false);setReceiptSheetOpen(true);}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
 {paymentSheetOpen&&invoice&&<PaymentSheet lang={lang} invoice={invoice} onClose={()=>setPaymentSheetOpen(false)} onSaved={async()=>{await refresh();}}/>}
 {sendSheetOpen&&<SendSheet lang={lang} kind="invoice" id={invoice.id} docLabel={lang==="es"?"Factura":"Invoice"} docNumber={invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4,"0")}`} clientName={invoice.clientName} clientEmail={invoice.clientEmail} companyName={settings?.companyName ?? ""} blob={blob} filename={filename} title={t.invoices} markSent={markInvoiceSent} onClose={()=>setSendSheetOpen(false)}/>}
+{receiptSheetOpen&&<ReceiptSendSheet lang={lang} invoice={invoice} settings={settings} onClose={()=>setReceiptSheetOpen(false)}/>}
   </main>;
 }
 
@@ -14763,7 +15150,7 @@ function TodayScreen({
       <button type="button" className="home-attention-card" onClick={() => { const target = document.querySelector(".automation-group, .today-clear, .today-field-strip"); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
         <span><strong>{actionCount}</strong><small>{lang === "es" ? "acciones que merecen atención" : "actions worth your attention"}</small></span><BackIcon />
       </button>
-      <TodayMoneySnapshot lang={lang} />
+      <TodayMoneySnapshot lang={lang} setScreen={setScreen} />
       {!settings?.simpleMode && fieldIntel && (
         proAttentionCount > 0 ? <section className="today-field-strip">
           <div className="section-heading"><div><span>PRO</span><h2>{lang === "es" ? "Operaciones que necesitan atención" : "Operations needing attention"}</h2></div><button onClick={() => setScreen({ name: "fieldIntelligence" })}>{lang === "es" ? "Abrir" : "Open"}<BackIcon /></button></div>
@@ -14877,12 +15264,14 @@ function TodayScreen({
           ))}
         </AutomationGroup>
       )}
-      {d.appointments.length > 0 && (
+      {d.appointments.some((a) => a.status !== "completed" && a.status !== "cancelled") && (
         <AutomationGroup
           title={lang === "es" ? "Citas de hoy" : "Today’s appointments"}
-          count={d.appointments.length}
+          count={d.appointments.filter((a) => a.status !== "completed" && a.status !== "cancelled").length}
         >
-          {d.appointments.map((a) => (
+          {d.appointments.map((a) =>
+            // Build 0.6 (item 23): completed/cancelled appointments leave the home card.
+            a.status === "completed" || a.status === "cancelled" ? null : (
             <TapArticle
               key={a.id}
               onTap={
@@ -14901,6 +15290,7 @@ function TodayScreen({
                 }).format(new Date(a.startsAt))}
               </time>
               <h3>{a.clientName}</h3>
+              <AppointmentCardMenu lang={lang} appointment={a} />
               <p>{a.notes || "—"}</p>
               {a.exteriorWork && (
                 <WeatherBadge appointmentId={a.id} lang={lang} />
@@ -14931,7 +15321,8 @@ function TodayScreen({
                 )}
               </div>
             </TapArticle>
-          ))}
+            )
+          )}
         </AutomationGroup>
       )}
       {d.quoteExpiry.length > 0 && (
@@ -15426,9 +15817,157 @@ function TapArticle({
   );
 }
 
-function TodayMoneySnapshot({ lang }: { lang: Lang }) {
+type MoneyCardId = "collect" | "week" | "month";
+
+// Build 0.6 (item 18): detail data for the tappable home money cards.
+type MoneyCardStats = {
+  outstandingRows: { name: string; balance: number; due: string }[];
+  outstandingCount: number;
+  oldestOverdueDays: number | null;
+  buckets: { label: string; total: number }[];
+  weekRows: { name: string; balance: number; due: string; daysLeft: number }[];
+  weekDays: { label: string; total: number }[];
+  months: { label: string; total: number }[];
+};
+
+function MoneyCardModal({
+  lang,
+  card,
+  stats,
+  total,
+  onClose,
+  setScreen,
+}: {
+  lang: Lang;
+  card: MoneyCardId;
+  stats: MoneyCardStats;
+  total: string;
+  onClose: () => void;
+  setScreen: (s: Screen) => void;
+}) {
+  useEscapeToClose(true, onClose);
+  const go = (s: Screen) => { onClose(); setScreen(s); };
+  const meta = card === "collect"
+    ? {
+        title: lang === "es" ? "Por cobrar" : "Money to collect",
+        kicker: lang === "es" ? "Facturas sin pagar" : "Unpaid invoices",
+        statRows: [
+          { label: lang === "es" ? "Facturas abiertas" : "Open invoices", value: String(stats.outstandingCount) },
+          { label: lang === "es" ? "Vencida más antigua" : "Oldest overdue", value: stats.oldestOverdueDays === null ? "—" : lang === "es" ? `${stats.oldestOverdueDays} días` : `${stats.oldestOverdueDays} days` },
+        ],
+        actions: [
+          { label: lang === "es" ? "Ver facturas" : "View invoices", screen: { name: "invoices" } as Screen },
+          { label: lang === "es" ? "Cobros y seguimientos" : "Collections & follow-ups", screen: { name: "followups" } as Screen },
+        ],
+      }
+    : card === "week"
+      ? {
+          title: lang === "es" ? "Vence esta semana" : "Due this week",
+          kicker: lang === "es" ? "Próximos 7 días" : "Next 7 days",
+          statRows: [
+            { label: lang === "es" ? "Facturas por vencer" : "Invoices coming due", value: String(stats.weekRows.length) },
+          ],
+          actions: [
+            { label: lang === "es" ? "Ver facturas" : "View invoices", screen: { name: "invoices" } as Screen },
+            { label: lang === "es" ? "Ver calendario" : "View schedule", screen: { name: "operations", tab: "calendar" } as Screen },
+          ],
+        }
+      : {
+          title: lang === "es" ? "Facturado este mes" : "Billed this month",
+          kicker: lang === "es" ? "Últimos 6 meses" : "Last 6 months",
+          statRows: [
+            { label: lang === "es" ? "Promedio mensual" : "Monthly average", value: usd(stats.months.reduce((s, m) => s + m.total, 0) / Math.max(1, stats.months.length)) },
+          ],
+          actions: [
+            { label: lang === "es" ? "Ver facturas" : "View invoices", screen: { name: "invoices" } as Screen },
+            { label: lang === "es" ? "Ver informes" : "View reports", screen: { name: "reports" } as Screen },
+          ],
+        };
+  const maxBucket = Math.max(1, ...stats.buckets.map((b) => b.total));
+  const maxWeekDay = Math.max(1, ...stats.weekDays.map((d) => d.total));
+  const maxMonth = Math.max(1, ...stats.months.map((m) => m.total));
+  const primaryActionLabel = meta.actions[0]?.label;
+  return (
+    <div className="sheet-backdrop b06-money-backdrop" role="presentation" onClick={onClose}>
+      <section className="b06-money-modal" role="dialog" aria-modal="true" aria-label={meta.title} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" />
+        <header>
+          <div><small>{meta.kicker}</small><h2>{meta.title}</h2><strong className="b06-money-modal-total">{total}</strong></div>
+          <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
+        </header>
+        <dl className="b06-money-stats">
+          {meta.statRows.map((row) => (
+            <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+          ))}
+        </dl>
+        {card === "collect" && (
+          <>
+            <h3 className="b06-money-graph-title">{lang === "es" ? "Antigüedad de saldos" : "Balance aging"}</h3>
+            <div className="b06-money-bars">
+              {stats.buckets.map((b) => (
+                <div key={b.label} className="b06-money-bar-row">
+                  <span>{b.label}</span>
+                  <div className="b06-money-bar-track"><div className="b06-money-bar-fill" style={{ width: `${Math.round((b.total / maxBucket) * 100)}%` }} /></div>
+                  <strong>{usd(b.total)}</strong>
+                </div>
+              ))}
+            </div>
+            {stats.outstandingRows.length > 0 && (
+              <ul className="b06-money-list">
+                {stats.outstandingRows.slice(0, 5).map((row, i) => (
+                  <li key={`${row.name}-${i}`}><span>{row.name}</span><strong>{usd(row.balance)}</strong></li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+        {card === "week" && (
+          <>
+            <h3 className="b06-money-graph-title">{lang === "es" ? "Por día" : "By day"}</h3>
+            <div className="b06-money-weekstrip" aria-hidden="true">
+              {stats.weekDays.map((d, i) => (
+                <div key={i} className="b06-money-daycol">
+                  <div className="b06-money-daybar"><div style={{ height: `${Math.round((d.total / maxWeekDay) * 100)}%` }} /></div>
+                  <span>{d.label}</span>
+                </div>
+              ))}
+            </div>
+            {stats.weekRows.length > 0 && (
+              <ul className="b06-money-list">
+                {stats.weekRows.slice(0, 5).map((row, i) => (
+                  <li key={`${row.name}-${i}`}><span>{row.name}</span><strong>{usd(row.balance)}</strong></li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+        {card === "month" && (
+          <>
+            <h3 className="b06-money-graph-title">{lang === "es" ? "Facturado por mes" : "Billed by month"}</h3>
+            <div className="b06-money-weekstrip" aria-hidden="true">
+              {stats.months.map((m, i) => (
+                <div key={i} className="b06-money-daycol">
+                  <div className="b06-money-daybar"><div style={{ height: `${Math.round((m.total / maxMonth) * 100)}%` }} /></div>
+                  <span>{m.label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="b06-money-actions">
+          {meta.actions.map((action) => (
+            <button key={action.label} type="button" className={action.label === primaryActionLabel ? "primary-button" : ""} onClick={() => go(action.screen)}>{action.label}</button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Screen) => void }) {
   const dashboard = useQuery({ queryKey: ["dashboard"], queryFn: () => api.getDashboard({}) });
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const [openCard, setOpenCard] = useState<MoneyCardId | null>(null);
   if (!dashboard.data || !invoices.data) return <div className="money-snapshot loading-block"/>;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -15437,11 +15976,78 @@ function TodayMoneySnapshot({ lang }: { lang: Lang }) {
   const month = today.toLocaleDateString("en-CA").slice(0, 7);
   const dueThisWeek = invoices.data.invoices.filter((invoice) => invoice.status !== "paid" && invoice.dueDate && new Date(`${invoice.dueDate}T00:00:00`) >= today && new Date(`${invoice.dueDate}T00:00:00`) <= weekEnd).reduce((sum, invoice) => sum + Number(invoice.balanceRemaining), 0);
   const monthInvoiced = invoices.data.invoices.filter((invoice) => invoice.issueDate.slice(0, 7) === month).reduce((sum, invoice) => sum + money(invoice.totalWithLateFee), 0);
-  return <section className="money-snapshot" aria-label={lang === "es" ? "Resumen de dinero" : "Money snapshot"}>
-    <article><Icon><path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" /></Icon><span>{lang === "es" ? "Por cobrar" : "Money to collect"}</span><strong>{usd(dashboard.data.outstanding)}</strong></article>
-    <article><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" /></Icon><span>{lang === "es" ? "Vence esta semana" : "Due this week"}</span><strong>{usd(dueThisWeek)}</strong></article>
-    <article><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon><span>{lang === "es" ? "Facturado este mes" : "Billed this month"}</span><strong>{usd(monthInvoiced)}</strong></article>
-  </section>;
+  // Build 0.6 (item 18): detail stats for the tappable cards.
+  const outstandingRows = invoices.data.invoices
+    .filter((invoice) => invoice.status !== "paid" && Number(invoice.balanceRemaining) > 0)
+    .map((invoice) => ({ name: invoice.clientName, balance: Number(invoice.balanceRemaining), due: invoice.dueDate ?? "" }))
+    .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+  const overdueDays = outstandingRows
+    .filter((row) => row.due)
+    .map((row) => Math.floor((today.getTime() - new Date(`${row.due}T00:00:00`).getTime()) / 86400000))
+    .filter((days) => days > 0);
+  const bucketDefs = lang === "es"
+    ? [{ label: "Al día", test: (d: number) => d <= 0 }, { label: "1–30 días", test: (d: number) => d > 0 && d <= 30 }, { label: "31–60 días", test: (d: number) => d > 30 && d <= 60 }, { label: "61+ días", test: (d: number) => d > 60 }]
+    : [{ label: "Current", test: (d: number) => d <= 0 }, { label: "1–30 days", test: (d: number) => d > 0 && d <= 30 }, { label: "31–60 days", test: (d: number) => d > 30 && d <= 60 }, { label: "61+ days", test: (d: number) => d > 60 }];
+  const buckets = bucketDefs.map((def) => ({
+    label: def.label,
+    total: outstandingRows
+      .filter((row) => row.due && def.test(Math.floor((today.getTime() - new Date(`${row.due}T00:00:00`).getTime()) / 86400000)))
+      .reduce((sum, row) => sum + row.balance, 0),
+  }));
+  const weekRows = outstandingRows
+    .filter((row) => row.due && new Date(`${row.due}T00:00:00`) >= today && new Date(`${row.due}T00:00:00`) <= weekEnd)
+    .map((row) => ({ ...row, daysLeft: Math.round((new Date(`${row.due}T00:00:00`).getTime() - today.getTime()) / 86400000) }));
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(today);
+    day.setDate(day.getDate() + i);
+    const key = day.toLocaleDateString("en-CA");
+    return {
+      label: day.toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "narrow" }),
+      total: weekRows.filter((row) => row.due === key).reduce((sum, row) => sum + row.balance, 0),
+    };
+  });
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const day = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1);
+    const key = day.toLocaleDateString("en-CA").slice(0, 7);
+    return {
+      label: day.toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short" }),
+      total: invoices.data!.invoices.filter((invoice) => invoice.issueDate.slice(0, 7) === key).reduce((sum, invoice) => sum + money(invoice.totalWithLateFee), 0),
+    };
+  });
+  const stats: MoneyCardStats = {
+    outstandingRows,
+    outstandingCount: outstandingRows.length,
+    oldestOverdueDays: overdueDays.length ? Math.max(...overdueDays) : null,
+    buckets,
+    weekRows,
+    weekDays,
+    months,
+  };
+  // Build 0.6 (item 18): tappable cards with staggered entrance + color accents.
+  const cards: { id: MoneyCardId; label: string; value: string; icon: ReactNode; accent: string }[] = [
+    { id: "collect", label: lang === "es" ? "Por cobrar" : "Money to collect", value: usd(dashboard.data.outstanding), icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, accent: "orange" },
+    { id: "week", label: lang === "es" ? "Vence esta semana" : "Due this week", value: usd(dueThisWeek), icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, accent: "sky" },
+    { id: "month", label: lang === "es" ? "Facturado este mes" : "Billed this month", value: usd(monthInvoiced), icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, accent: "green" },
+  ];
+  const openMeta: Record<MoneyCardId, string> = {
+    collect: usd(dashboard.data.outstanding),
+    week: usd(dueThisWeek),
+    month: usd(monthInvoiced),
+  };
+  return <>
+    <section className="money-snapshot b06-money" aria-label={lang === "es" ? "Resumen de dinero" : "Money snapshot"}>
+      {cards.map((card, index) => (
+        <button key={card.id} type="button" className={`b06-money-card stagger-in b06-accent-${card.accent}`} style={{ animationDelay: `${index * 80}ms` }} onClick={() => setOpenCard(card.id)} aria-haspopup="dialog">
+          <span className="b06-money-icon"><Icon>{card.icon}</Icon></span>
+          <span className="b06-money-label">{card.label}</span>
+          <strong>{card.value}</strong>
+        </button>
+      ))}
+    </section>
+    {openCard && (
+      <MoneyCardModal lang={lang} card={openCard} stats={stats} total={openMeta[openCard]} onClose={() => setOpenCard(null)} setScreen={setScreen} />
+    )}
+  </>;
 }
 
 type RevenueDetail = {
@@ -15976,6 +16582,129 @@ function WeatherBadge({
         }).format(new Date(w.asOf))}
       </em>
     </small>
+  );
+}
+
+type HomeAppointment = {
+  id: number;
+  jobId: number | null;
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  startsAt: string;
+  notes: string;
+  exteriorWork: boolean;
+  status: string;
+  crewMember: string;
+  etaMinutes: number | null;
+};
+
+// Build 0.6 (item 23): ⋯ popup menu on each home appointment card —
+// mark completed or delete without leaving the Home screen.
+function AppointmentCardMenu({ lang, appointment }: { lang: Lang; appointment: HomeAppointment }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  useEscapeToClose(open, () => setOpen(false));
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["automation-center"] });
+    qc.invalidateQueries({ queryKey: ["appointments"] });
+    qc.invalidateQueries({ queryKey: ["crew-day"] });
+  };
+  const complete = useMutation({
+    mutationFn: () =>
+      api.saveAppointment({
+        id: appointment.id,
+        jobId: appointment.jobId,
+        clientId: appointment.clientId,
+        clientName: appointment.clientName,
+        clientPhone: appointment.clientPhone ?? "",
+        startsAt: appointment.startsAt,
+        notes: appointment.notes ?? "",
+        exteriorWork: appointment.exteriorWork,
+        status: "completed",
+        crewMember: appointment.crewMember ?? "",
+        etaMinutes: appointment.etaMinutes,
+      }),
+    onSuccess: () => {
+      setOpen(false);
+      buzz(10);
+      refresh();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () => api.deleteAppointment({ id: appointment.id }),
+    onSuccess: () => {
+      setOpen(false);
+      buzz(8);
+      refresh();
+    },
+  });
+  const busy = complete.isPending || remove.isPending;
+  return (
+    <div className="b06-appt-menu-wrap">
+      <button
+        type="button"
+        className="b06-appt-menu-btn"
+        aria-label={lang === "es" ? "Opciones de la cita" : "Appointment options"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <Icon size={18}><path d="M5 12h.01M12 12h.01M19 12h.01" /></Icon>
+      </button>
+      {open && (
+        <>
+          <div
+            className="b06-appt-menu-scrim"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="b06-appt-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation();
+                complete.mutate();
+              }}
+            >
+              <Icon size={16}><path d="m5 12 4 4L19 6" /></Icon>
+              {complete.isPending
+                ? lang === "es" ? "Guardando…" : "Saving…"
+                : lang === "es" ? "Marcar completada" : "Mark completed"}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="b06-danger"
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (
+                  window.confirm(
+                    lang === "es"
+                      ? `¿Eliminar la cita con ${appointment.clientName}?`
+                      : `Delete the appointment with ${appointment.clientName}?`
+                  )
+                )
+                  remove.mutate();
+              }}
+            >
+              <Icon size={16}><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" /></Icon>
+              {remove.isPending
+                ? lang === "es" ? "Eliminando…" : "Deleting…"
+                : lang === "es" ? "Eliminar cita" : "Delete appointment"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -18188,7 +18917,7 @@ function JobOperationsScreen({
     else await copyText(text);
   };
   return (
-    <main className="page job-ops-page">
+    <main className="page job-ops-page b06-job-ops">
       <PageHeader
         lang={lang}
         title={lang === "es" ? "Operaciones del trabajo" : "Job operations"}
@@ -20942,14 +21671,24 @@ function ViewedBadge({
   const viewed = link.viewCount > 0;
   return (
     <span
-      className={`viewed-badge${viewed ? " is-viewed" : ""}`}
+      className={`b06-viewed-badge${viewed ? " is-viewed" : ""}`}
       title={
         viewed && link.firstViewedAt
           ? `${t.firstViewed}: ${formatDate(link.firstViewedAt.slice(0, 10), lang)}`
           : t.notViewed
       }
     >
-      <span aria-hidden="true">👁</span>{" "}
+      {/* Build 0.6 (item 14): "seen" double-check instead of the eye icon. */}
+      {viewed ? (
+        <Icon size={10}>
+          <path d="m3 12.5 4 4L15 7" />
+          <path d="m10 13.5 2.5 2.5L20 8" />
+        </Icon>
+      ) : (
+        <Icon size={10}>
+          <path d="m5 12 4 4L19 6" />
+        </Icon>
+      )}{" "}
       {viewed
         ? `${t.viewed}${link.viewCount > 1 ? ` · ${link.viewCount}` : ""}`
         : t.notViewed}
@@ -21066,6 +21805,112 @@ function SendSheet({
         </button>
         <button type="button" disabled={busy || !blob} onClick={() => void sendPdf()}>
           <FileIcon /><span>{lang === "es" ? "Enviar PDF" : "Send PDF"}</span>
+        </button>
+      </section>
+    </div>
+  );
+}
+// Build 0.6 (item 16): "Send payment receipt" opens a share sheet like the
+// Send bottom sheet above — send the receipt PDF via messages, send a link,
+// or email it.
+function ReceiptSendSheet({
+  lang,
+  invoice,
+  settings,
+  onClose,
+}: {
+  lang: Lang;
+  invoice: Invoice;
+  settings: Settings | null;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const title = lang === "es" ? "Recibo de pago" : "Payment receipt";
+  const docNumber = invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4, "0")}`;
+  const companyName = settings?.companyName ?? "";
+  const clientName = invoice.clientName;
+  const clientEmail = invoice.clientEmail;
+  const filename = `${safeName(clientName)}-receipt-${invoice.id}.pdf`;
+  const freshLinkUrl = async () => {
+    const res = await api.createDocumentLink({ kind: "invoice", id: invoice.id });
+    return `${window.location.origin}/d/${res.shortCode}`;
+  };
+  const fail = (e: unknown) => {
+    showUndoToast(actionErrorMessage(e), copy[lang].close, () => {}, 4000);
+    setBusy(false);
+  };
+  const sendPdf = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await nativeShare(buildPaymentReceipt(invoice, settings, lang), filename, title);
+        onClose();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  const sendLink = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const link = await freshLinkUrl();
+        if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+          try {
+            await navigator.share({
+              title: `${title} — ${docNumber} — ${companyName}`.trim(),
+              text: lang === "es" ? `Aquí está tu recibo de pago de la factura ${docNumber}` : `Here is your payment receipt for invoice ${docNumber}`,
+              url: link,
+            });
+            onClose();
+            return;
+          } catch (e) {
+            // User dismissed the sheet — don't fall through to copy.
+            if (e instanceof DOMException && e.name === "AbortError") { onClose(); return; }
+          }
+        }
+        const ok = await copyText(link);
+        showUndoToast(
+          ok ? copy[lang].linkCopied : lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link",
+          copy[lang].close,
+          () => {},
+          3500,
+        );
+        onClose();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  const sendByEmail = () =>
+    (async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const link = await freshLinkUrl();
+        const subject = `${title} — ${docNumber} — ${companyName}`.trim();
+        const body =
+          lang === "es"
+            ? `Hola ${clientName || "cliente"},\n\nAquí está tu recibo de pago de la factura ${docNumber}.\nPagado: ${usd(Number(invoice.paidToDate))} · Saldo: ${usd(Number(invoice.balanceRemaining))}\nVer factura: ${link}`
+            : `Hi ${clientName || "there"},\n\nHere is your payment receipt for invoice ${docNumber}.\nPaid: ${usd(Number(invoice.paidToDate))} · Balance: ${usd(Number(invoice.balanceRemaining))}\nView invoice: ${link}`;
+        window.location.href = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        onClose();
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <section className="more-sheet send-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Enviar recibo" : "Send receipt"}>
+        <div className="sheet-handle" />
+        <button type="button" disabled={busy} onClick={() => void sendPdf()}>
+          <ShareIcon /><span>{lang === "es" ? "Enviar PDF por mensajes" : "Send PDF via messages"}</span>
+        </button>
+        <button type="button" disabled={busy} onClick={() => void sendLink()}>
+          <LinkIcon /><span>{lang === "es" ? "Enviar enlace" : "Send link"}</span>
+        </button>
+        <button type="button" disabled={busy} onClick={() => void sendByEmail()}>
+          <MailIcon /><span>{lang === "es" ? "Enviar por Email" : "Send by Email"}</span>
         </button>
       </section>
     </div>
