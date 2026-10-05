@@ -3076,6 +3076,39 @@ function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: str
 // ---------------------------------------------------------------------------
 
 /** Tiny haptic tap on key confirmations; silent when reduced-motion is set. */
+// Build 0.6: compress branding images client-side before upload. Phone
+// photos and huge PNGs (multi-MB) otherwise get embedded at full resolution
+// into every PDF, which balloons documents and exhausts server memory during
+// rendering. Logos are resized to max 800px (kept as PNG for transparency,
+// JPEG quality 0.85 otherwise); covers to max 1600px JPEG 0.82.
+function compressImageFile(file: File, kind: "logo" | "cover"): Promise<File> {
+  const maxSide = kind === "logo" ? 800 : 1600;
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const longest = Math.max(img.naturalWidth, img.naturalHeight);
+      if (longest <= maxSide && file.size <= 400 * 1024) { resolve(file); return; }
+      const scale = Math.min(1, maxSide / longest);
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx2d = canvas.getContext("2d");
+      if (!ctx2d) { resolve(file); return; }
+      ctx2d.drawImage(img, 0, 0, w, h);
+      const keepPng = file.type === "image/png" && kind === "logo";
+      canvas.toBlob((blob) => {
+        if (!blob || blob.size >= file.size) { resolve(file); return; }
+        resolve(new File([blob], file.name.replace(/\.[a-z]+$/i, keepPng ? ".png" : ".jpg"), { type: keepPng ? "image/png" : "image/jpeg" }));
+      }, keepPng ? "image/png" : "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 function buzz(pattern: number | number[] = 12) {
   try {
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -7260,9 +7293,10 @@ function CompanyProfileEditor({ lang, value, saving, onBack, onSave }: { lang: L
       return;
     }
     setImageError("");
-    const data = await fileToBase64(file);
-    if (kind === "logo") await api.uploadLogo({ filename: file.name, contentType: file.type, dataBase64: data.dataBase64 });
-    else await api.uploadCompanyCover({ filename: file.name, contentType: file.type, dataBase64: data.dataBase64 });
+    const compressed = await compressImageFile(file, kind);
+    const data = await fileToBase64(compressed);
+    if (kind === "logo") await api.uploadLogo({ filename: compressed.name, contentType: compressed.type as "image/jpeg" | "image/png", dataBase64: data.dataBase64 });
+    else await api.uploadCompanyCover({ filename: compressed.name, contentType: compressed.type as "image/jpeg" | "image/png", dataBase64: data.dataBase64 });
     await qc.invalidateQueries({ queryKey: ["settings"] });
   };
   const logoUpload = useMutation({ mutationFn: (file: File) => uploadImage(file, "logo"), onError: () => setImageError(lang === "es" ? "No se pudo subir el logo." : "The logo could not be uploaded.") });
@@ -7453,10 +7487,11 @@ function SettingsScreen({
   }, [openSettingsSection, morePanel]);
   const logo = useMutation({
     mutationFn: async (file: File) => {
-      const data = await fileToBase64(file);
+      const compressed = await compressImageFile(file, "logo");
+      const data = await fileToBase64(compressed);
       return api.uploadLogo({
-        filename: file.name,
-        contentType: file.type as "image/jpeg" | "image/png",
+        filename: compressed.name,
+        contentType: compressed.type as "image/jpeg" | "image/png",
         dataBase64: data.dataBase64,
       });
     },
@@ -10710,6 +10745,9 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // Build 0.6: preview Send opens explicit options (PDF/messages/link/email)
   // instead of nativeShare, which silently degrades to a download in the TWA.
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
+  // Build 0.6: the preview sheet renders the document as HTML (QuotePaper) —
+  // blob: PDF URLs do not render inside <iframe> in the installed app.
+  const [editorPreviewDoc, setEditorPreviewDoc] = useState<FinancialDocument | null>(null);
   const editorPreviewUrl = useMemo(() => (editorPreview ? URL.createObjectURL(editorPreview) : null), [editorPreview]);
   useEffect(() => () => { if (editorPreviewUrl) URL.revokeObjectURL(editorPreviewUrl); }, [editorPreviewUrl]);
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
@@ -10727,10 +10765,12 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote };
     const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
     const pdf = kind === "invoice" ? await buildInvoicePdf(doc, settings ?? null, lang, strings) : await buildQuotePdf(doc, settings ?? null, lang, strings);
+    setEditorPreviewDoc(doc as FinancialDocument);
     setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
   };
   useEscapeToClose(true,()=>{if(!saving)onCancel();});
-  useEscapeToClose(editorPreview!==null,()=>setEditorPreview(null));
+  const closeEditorPreview = () => { setEditorPreview(null); setEditorPreviewDoc(null); };
+  useEscapeToClose(editorPreview!==null,()=>closeEditorPreview());
   // Build 0.3 (item 7): hardware back while editing saves the document, then
   // closes the sheet — one press never loses work. The sheet closes when the
   // save settles either way, so a failing save can't trap the back button.
@@ -10751,7 +10791,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
-    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setEditorPreview(null);}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del PDF" : "PDF preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>setEditorPreview(null)}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header><iframe className="editor-preview-iframe" title={lang === "es" ? "Vista previa del PDF" : "PDF preview"} src={editorPreviewUrl ?? undefined}/></section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); setEditorPreview(null); }} />}</div>}
+    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewDoc ? <div className="editor-preview-paper"><QuotePaper quote={editorPreviewDoc} settings={settings ?? null} lang={lang} kind={kind}/></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
   </div>;
 }
@@ -21518,92 +21558,10 @@ function ClientDocumentScreen({ token }: { token: string }) {
     },
     onError: (e) => setSignError(e instanceof Error ? e.message : t.linkInvalid),
   });
-  // Build 0.4 (item 2): server-rendered PDF for the client link. Chrome on
-  // Android cannot render blob: PDF URLs inside an <iframe>, so financial
-  // documents embed GET /doc/:token/pdf (Content-Disposition: inline) instead.
-  // The client-side blob render stays as the fallback if the endpoint fails.
-  const docData = q.data ?? null;
+  // Build 0.6: the document renders as HTML (QuotePaper) — embedded PDFs
+  // (<object>/<iframe>) do not render inside the installed app, so the PDF
+  // is offered via Download/Share/Print instead of an inline embed.
   const serverPdfUrl = `/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`;
-  const [serverPdfOk, setServerPdfOk] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!docData || (docData.kind !== "invoice" && docData.kind !== "quote")) { setServerPdfOk(null); return; }
-    let cancelled = false;
-    setServerPdfOk(null);
-    (async () => {
-      try {
-        const r = await fetch(`/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`, { method: "HEAD" });
-        if (!cancelled) setServerPdfOk(r.ok);
-      } catch {
-        if (!cancelled) setServerPdfOk(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [docData, token, lang]);
-  const [docPdf, setDocPdf] = useState<Blob | null>(null);
-  const [docPdfFailed, setDocPdfFailed] = useState(false);
-  const docPdfUrl = useMemo(() => (docPdf ? URL.createObjectURL(docPdf) : null), [docPdf]);
-  useEffect(() => () => { if (docPdfUrl) URL.revokeObjectURL(docPdfUrl); }, [docPdfUrl]);
-  useEffect(() => {
-    const d = docData;
-    if (!d || (d.kind !== "invoice" && d.kind !== "quote")) return;
-    // Only render client-side when the server PDF endpoint is unavailable.
-    if (serverPdfOk !== false) return;
-    let cancelled = false;
-    const financialKind = d.kind;
-    (async () => {
-      try {
-        const settings = {
-          logoUrl: d.company.logoUrl, companyName: d.company.name, phone: d.company.phone,
-          email: d.company.email, website: d.company.website, licenseNumber: d.company.licenseNumber, address: "",
-        } as unknown as Settings;
-        const pd: FinancialDocument = {
-          id: d.documentId,
-          clientName: d.clientName,
-          jobAddress: d.jobAddress,
-          jobType: d.jobType,
-          lineItems: d.lineItems.map((item) => ({
-            name: item.name ?? "", description: item.description, amount: item.amount,
-            quantity: item.quantity ?? 1, discount: item.discount ?? "0",
-            unit: (item.unit === "days" || item.unit === "hours" ? item.unit : "none") as "none" | "days" | "hours",
-          })),
-          invoiceNumber: d.invoiceNumber || undefined,
-          issueDate: d.issueDate || undefined,
-          dueDate: d.dueDate || undefined,
-          expiryDate: d.expiryDate || undefined,
-          status: (d.status as InvoiceStatus) || undefined,
-          subtotal: d.subtotal,
-          discountType: (d.discountType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
-          discountValue: d.discountValue,
-          taxType: (d.taxType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
-          taxValue: d.taxValue,
-          total: d.total,
-          footnote: d.footnote,
-          theme: (["classic", "modern", "bold", "minimal"].includes(d.theme) ? d.theme : "classic") as QuoteTheme,
-          font: (["helvetica", "times", "courier", "palatino"].includes(d.font) ? d.font : "helvetica") as DocumentFont,
-          accentColor: d.accentColor || "#1f5a4a",
-          showTaxLine: d.showTaxLine,
-          showDiscountLine: d.showDiscountLine,
-          showPaidLine: d.showPaidLine,
-          showPaymentTerms: d.showPaymentTerms,
-          showFooterNotes: d.showFooterNotes,
-          showLogo: d.showLogo,
-          showCompanyInfo: d.showCompanyInfo,
-          customizeJson: d.customizeJson || "{}",
-        };
-        const strings = { discount: copy[lang].discount, tax: copy[lang].tax, paymentInstructions: copy[lang].paymentInstructions };
-        const pdf = financialKind === "invoice"
-          ? await buildInvoicePdf(pd, settings, lang, strings)
-          : await buildQuotePdf(pd, settings, lang, strings);
-        if (!cancelled) {
-          setDocPdf(new Blob([pdf], { type: "application/pdf" }));
-          setDocPdfFailed(false);
-        }
-      } catch {
-        if (!cancelled) setDocPdfFailed(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [docData, lang, serverPdfOk]);
   const langToggle = (
     <div className="client-lang-toggle">
       <button
@@ -21688,8 +21646,8 @@ function ClientDocumentScreen({ token }: { token: string }) {
     address: "",
   } as unknown as Settings;
   const downloadPdf = () => {
-    if (!docPdf || !financialKind) return;
-    downloadBlob(docPdf, `${financialKind}-${doc.documentId}.pdf`);
+    // Server-rendered PDF (cached); falls back to opening in a new tab.
+    window.open(serverPdfUrl, "_blank", "noopener");
   };
   const shareDoc = async () => {
     // Build 0.5 (item 3): share the short /d/:code URL when known.
@@ -21706,10 +21664,10 @@ function ClientDocumentScreen({ token }: { token: string }) {
     <main className="page public-page client-doc-page">
       {langToggle}
       <div className="client-doc-actions">
-        {serverPdfOk && financialKind ? (
+        {financialKind ? (
           <a className="secondary-button" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</a>
         ) : (
-          <button type="button" className="secondary-button" onClick={downloadPdf} disabled={!docPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+          <button type="button" className="secondary-button" onClick={downloadPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
         )}
         <button type="button" className="secondary-button" onClick={shareDoc}>{lang === "es" ? "Compartir" : "Share"}</button>
         <button type="button" className="secondary-button" onClick={printDoc}>{lang === "es" ? "Imprimir" : "Print"}</button>
@@ -21724,34 +21682,14 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </div>
       </header>
       {previewDoc && financialKind ? (
-        serverPdfOk ? (
-          <>
-            <object className="client-doc-pdf" data={serverPdfUrl} type="application/pdf" title={doc.title}>
-              <div className="client-doc-pdf-open">
-                <p>{lang === "es" ? "No se pudo mostrar el PDF aquí." : "The PDF couldn't be shown here."}</p>
-                <a className="secondary-button" href={serverPdfUrl}>{t.openPdf}</a>
-              </div>
-            </object>
-            <a className="secondary-button client-doc-open-btn" href={serverPdfUrl}>{t.openPdf}</a>
-          </>
-        ) : serverPdfOk === false ? (
-          docPdfUrl ? (
-            <iframe className="client-doc-pdf" title={doc.title} src={docPdfUrl} />
-          ) : docPdfFailed ? (
-            <div className="client-doc-pdf-fallback">
-              <QuotePaper
-                quote={previewDoc}
-                settings={previewSettings}
-                lang={lang}
-                kind={financialKind}
-              />
-            </div>
-          ) : (
-            <div className="loading-block" />
-          )
-        ) : (
-          <div className="loading-block" />
-        )
+        <div className="client-doc-pdf-fallback">
+          <QuotePaper
+            quote={previewDoc}
+            settings={previewSettings}
+            lang={lang}
+            kind={financialKind}
+          />
+        </div>
       ) : (
         <article className="quote-paper">
           <div className="quote-paper-title-row">

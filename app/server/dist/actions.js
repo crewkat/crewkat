@@ -41660,6 +41660,18 @@ async function checkPortalRateLimit(ctx, tokenHash) {
     db.insert(rateLimitEvents).values({ scope: "portal:token", key: tokenHash, occurredAt: new Date })
   ]);
 }
+var LOGIN_IP_LIMIT_PER_15MIN = 30;
+async function checkLoginIpRateLimit(ctx) {
+  const db = ctx.db();
+  const now = Date.now();
+  const ip = (ctx.clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60000);
+  const hits = await db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "login:ip"), eq(rateLimitEvents.key, ip), gte(rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= LOGIN_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many sign-in attempts from this network. Try again in 15 minutes.");
+  }
+  await db.insert(rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date });
+}
 async function requirePortalAccess(ctx, token, opts) {
   const db = ctx.db();
   const hash = await hashPortalToken(token);
@@ -43211,6 +43223,7 @@ var BaseActions = {
     request: object({ email: string2().trim().email().max(200), password: string2().min(1).max(200) }),
     response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()) }),
     async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
       const db = ctx.db();
       const email = normalizedEmail(args.email);
       const cutoff = Date.now() - 15 * 60000;

@@ -231,6 +231,24 @@ async function checkPortalRateLimit(ctx: Ctx, tokenHash: string): Promise<void> 
   ]);
 }
 
+// ---- Auth hardening (build 0.6) ----
+// Per-IP login rate limit: the per-email lockout stops targeted guessing,
+// but an attacker could spray one password across many accounts. Cap each
+// IP to 30 login attempts per 15 minutes (generous for shared office IPs).
+const LOGIN_IP_LIMIT_PER_15MIN = 30;
+async function checkLoginIpRateLimit(ctx: Ctx): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const now = Date.now();
+  const ip = ((ctx as { clientIp?: string }).clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60_000);
+  const hits = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "login:ip"), eq(schema.rateLimitEvents.key, ip), gte(schema.rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= LOGIN_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many sign-in attempts from this network. Try again in 15 minutes.");
+  }
+  await db.insert(schema.rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date() });
+}
+
 type PortalTokenRow = typeof schema.portalTokens.$inferSelect;
 
 async function requirePortalAccess(ctx: Ctx, token: string, opts: { logView: boolean }): Promise<PortalTokenRow> {
@@ -1812,6 +1830,7 @@ export const BaseActions = {
     request: z.object({ email: z.string().trim().email().max(200), password: z.string().min(1).max(200) }),
     response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
     async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
       const db = ctx.db<typeof schema>(); const email = normalizedEmail(args.email); const cutoff = Date.now() - 15 * 60_000;
       const attempts = await db.select().from(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email)).orderBy(desc(schema.authLoginAttempts.attemptedAt));
       if (attempts.filter((row) => row.attemptedAt.getTime() >= cutoff).length >= 5) throw new Error("Too many sign-in attempts. Try again in 15 minutes.");

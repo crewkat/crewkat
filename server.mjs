@@ -658,6 +658,11 @@ async function documentLinkMeta(linkRow) {
 // ---------------------------------------------------------------------------
 
 const server = createServer(async (req, res) => {
+  // Build 0.6: baseline security headers on every response.
+  res.setHeader("strict-transport-security", "max-age=31536000; includeSubDomains");
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("x-frame-options", "SAMEORIGIN");
+  res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
   try {
     const url = new URL(req.url, "http://localhost");
     const path = url.pathname;
