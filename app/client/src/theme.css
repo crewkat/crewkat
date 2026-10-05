@@ -1142,6 +1142,9 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .sheet-handle { width: 44px; height: 4px; margin: 1px auto 10px; border-radius: 99px; background: var(--border); }
 .more-sheet h2 { margin: 2px 4px 8px; font-size: 20px; }
 .more-sheet > button { min-height: 50px; display: grid; grid-template-columns: 26px minmax(0,1fr); align-items: center; gap: 11px; padding: 9px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-weight: 750; }
+/* Build 0.6: display-mode picker — single-line options, label left, check right. */
+.more-sheet .display-mode-option { display: flex; align-items: center; justify-content: space-between; grid-template-columns: none; }
+.more-sheet .display-mode-option span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .more-sheet > button:disabled { opacity: .45; }
 .more-sheet .duplicate-action { color: var(--accent); font-weight: 850; }
 .more-sheet .danger-row { color: var(--danger); }
@@ -3644,6 +3647,30 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .attachment-section { margin: 0 0 16px; }
 .attachment-section h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 0 0 8px; }
 .attachment-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+/* Deposit request row on the estimate builder (compact, Invoice Fly style). */
+.deposit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin-bottom: 12px; }
+.deposit-row-label { font-size: 13px; font-weight: 600; flex: 1 1 auto; }
+.deposit-type-picker { display: flex; gap: 4px; }
+.deposit-type-picker button { padding: 6px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; }
+.deposit-type-picker button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.deposit-value-label { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; font-size: 12px; }
+.deposit-value-label input { flex: 1; padding: 8px 10px; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; }
+/* Tap-to-expand photo lightbox (attachment viewer). */
+.attachment-thumb-view { display: block; width: 100%; padding: 0; border: none; background: none; cursor: pointer; }
+.attachment-thumb-view img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.lightbox-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.92); display: flex; align-items: center; justify-content: center; }
+.lightbox-image { max-width: 96vw; max-height: 88vh; object-fit: contain; }
+.lightbox-close { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
+.lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 28px; line-height: 1; cursor: pointer; }
+.lightbox-prev { left: 10px; }
+.lightbox-next { right: 10px; }
+.lightbox-counter { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: rgba(255, 255, 255, 0.8); font-size: 13px; }
+/* Attached photos gallery on shared document links. */
+.client-doc-gallery { margin: 16px 0; padding: 0 16px; }
+.client-doc-gallery h3 { font-size: 14px; margin: 0 0 8px; }
+.client-doc-gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.client-doc-gallery-thumb { padding: 0; border: none; background: none; cursor: pointer; }
+.client-doc-gallery-thumb img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 .attachment-thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--bg); }
 .attachment-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .attachment-thumb-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--dim); }

@@ -442,6 +442,13 @@
       "when": 1791400000008,
       "tag": "0063_rate_limit_events_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791400000009,
+      "tag": "0064_deposit_request",
+      "breakpoints": true
     }
   ]
 }

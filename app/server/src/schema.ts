@@ -122,6 +122,9 @@ export const quotes = sqliteTable("quotes", {
   customizeJson: text("customize_json").notNull().default("{}"),
   // Build 0.6: attachments display mode (images per PDF page: 1, 2, or 4).
   imagesPerPage: integer("images_per_page").notNull().default(1),
+  // Deposit carried over from the estimate on conversion.
+  depositType: text("deposit_type", { enum: ["none", "percent", "fixed"] }).notNull().default("none"),
+  depositValue: text("deposit_value").notNull().default("0"),
   jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }),
   seriesId: integer("series_id"),
   parentQuoteId: integer("parent_quote_id"),
@@ -177,6 +180,9 @@ export const invoices = sqliteTable("invoices", {
   customizeJson: text("customize_json").notNull().default("{}"),
   // Build 0.6: attachments display mode (images per PDF page: 1, 2, or 4).
   imagesPerPage: integer("images_per_page").notNull().default(1),
+  // Deposit carried over from the estimate on conversion.
+  depositType: text("deposit_type", { enum: ["none", "percent", "fixed"] }).notNull().default("none"),
+  depositValue: text("deposit_value").notNull().default("0"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

@@ -455,6 +455,9 @@ const copy = {
     progress: "Progress update",
     texts: "Client texts",
     deposit: "Deposit request",
+    depositOff: "Off",
+    depositPercentLabel: "Percent (%)",
+    depositFixedLabel: "Fixed amount ($)",
     annotations: "Annotate",
     galleryPick: "Gallery pick",
     amountDue: "Amount due",
@@ -682,6 +685,7 @@ const copy = {
     attachedImages: "Attached images",
     addImages: "Add images",
     attachedPdfs: "Attached PDFs",
+    attachedPhotos: "Attached photos",
     addPdf: "Add PDF",
     noAttachments: "No attachments yet.",
     attachmentHint: "Images and PDFs are appended to the document PDF.",
@@ -768,6 +772,9 @@ const copy = {
     progress: "Actualización",
     texts: "Textos al cliente",
     deposit: "Solicitud de depósito",
+    depositOff: "No",
+    depositPercentLabel: "Porcentaje (%)",
+    depositFixedLabel: "Monto fijo ($)",
     annotations: "Anotar",
     galleryPick: "Elegir para galería",
     amountDue: "Saldo pendiente",
@@ -995,6 +1002,7 @@ const copy = {
     attachedImages: "Imágenes adjuntas",
     addImages: "Agregar imágenes",
     attachedPdfs: "PDFs adjuntos",
+    attachedPhotos: "Fotos adjuntas",
     addPdf: "Agregar PDF",
     noAttachments: "Sin adjuntos todavía.",
     attachmentHint: "Las imágenes y PDFs se agregan al PDF del documento.",
@@ -10069,6 +10077,8 @@ function QuoteBuilder({
     discountValue: "0",
     taxType: "percent" as AdjustmentType,
     taxValue: "0",
+    depositType: "none" as "none" | "percent" | "fixed",
+    depositValue: "0",
     // Build 0.6 (item 3): work items split into name + description, like the
     // invoice builder and the edit sheet.
     lineItems: [{ name: "", description: "", amount: "" }],
@@ -10553,6 +10563,32 @@ function QuoteBuilder({
             onChange={(e) => setForm({ ...form, footnote: e.target.value })}
           />
         </label>
+        <div className="deposit-row">
+          <span className="deposit-row-label">{t.deposit}</span>
+          <div className="segmented-control deposit-type-picker" role="group" aria-label={t.deposit}>
+            {(["none", "percent", "fixed"] as const).map((dt) => (
+              <button
+                key={dt}
+                type="button"
+                className={form.depositType === dt ? "active" : ""}
+                onClick={() => { buzz(8); setForm({ ...form, depositType: dt }); }}
+              >
+                {dt === "none" ? t.depositOff : dt === "percent" ? "%" : "$"}
+              </button>
+            ))}
+          </div>
+          {form.depositType !== "none" && (
+            <label className="deposit-value-label">
+              <span>{form.depositType === "percent" ? t.depositPercentLabel : t.depositFixedLabel}</span>
+              <input
+                inputMode="decimal"
+                value={form.depositValue}
+                onChange={(e) => setForm({ ...form, depositValue: e.target.value.replace(/[^0-9.]/g, "") })}
+                aria-label={form.depositType === "percent" ? t.depositPercentLabel : t.depositFixedLabel}
+              />
+            </label>
+          )}
+        </div>
         {error && <p className="status error">{error}</p>}
         <button
           className="primary-button sticky-submit"
@@ -10902,7 +10938,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // missing. Keep an item when it has either, and fall back to the name when
   // the description is blank (same rule as the new-invoice form).
   const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const}));
-  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
   // the current (unsaved) form values.
   const previewPdf = async () => {
@@ -11191,10 +11227,12 @@ function DocumentAttachmentsScreen({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   useEscapeToClose(modeOpen, () => setModeOpen(false));
   useEscapeToClose(deleteId !== null, () => setDeleteId(null));
+  useEscapeToClose(lightboxIndex !== null, () => setLightboxIndex(null));
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["document-attachments", docType, docId] });
 
@@ -11253,9 +11291,16 @@ function DocumentAttachmentsScreen({
         <h3>{t.attachedImages}</h3>
         {images.length > 0 && (
           <div className="attachment-grid">
-            {images.map((a) => (
+            {images.map((a, idx) => (
               <div key={a.id} className="attachment-thumb">
-                {a.url ? <img src={a.url} alt={a.fileName} loading="lazy" /> : <div className="attachment-thumb-fallback"><Icon size={22}><path d="M4 16l5-5 4 4 3-3 4 4M4 20h16M4 4h16v16H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon></div>}
+                <button
+                  type="button"
+                  className="attachment-thumb-view"
+                  aria-label={a.fileName}
+                  onClick={() => { buzz(8); setLightboxIndex(idx); }}
+                >
+                  {a.url ? <img src={a.url} alt={a.fileName} loading="lazy" /> : <div className="attachment-thumb-fallback"><Icon size={22}><path d="M4 16l5-5 4 4 3-3 4 4M4 20h16M4 4h16v16H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon></div>}
+                </button>
                 <button type="button" className="attachment-delete" aria-label={t.deleteAttachment} onClick={() => { buzz(12); setDeleteId(a.id); }}>×</button>
               </div>
             ))}
@@ -11298,7 +11343,7 @@ function DocumentAttachmentsScreen({
             <div className="sheet-handle" />
             <h2>{t.displayMode}</h2>
             {([1, 2, 4] as const).map((n) => (
-              <button key={n} type="button" className={perPage === n ? "active" : ""} disabled={setPerPage.isPending} onClick={() => setPerPage.mutate(n)}>
+              <button key={n} type="button" className={`display-mode-option${perPage === n ? " active" : ""}`} disabled={setPerPage.isPending} onClick={() => setPerPage.mutate(n)}>
                 <span>{n === 1 ? t.imagePerPage : n === 2 ? t.imagesPerPage2 : t.imagesPerPage4}</span>
                 {perPage === n && <CheckIcon />}
               </button>
@@ -11316,6 +11361,19 @@ function DocumentAttachmentsScreen({
               <button type="button" className="danger-button" disabled={remove.isPending} onClick={() => remove.mutate(deleteId)}>{t.delete}</button>
             </div>
           </section>
+        </div>
+      )}
+      {lightboxIndex !== null && images[lightboxIndex] && (
+        <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label={images[lightboxIndex].fileName} onClick={(e) => { if (e.target === e.currentTarget) setLightboxIndex(null); }}>
+          <button type="button" className="lightbox-close" aria-label={t.close} onClick={() => setLightboxIndex(null)}>×</button>
+          {images.length > 1 && (
+            <>
+              <button type="button" className="lightbox-nav lightbox-prev" aria-label="‹" onClick={() => { buzz(8); setLightboxIndex((lightboxIndex - 1 + images.length) % images.length); }}>‹</button>
+              <button type="button" className="lightbox-nav lightbox-next" aria-label="›" onClick={() => { buzz(8); setLightboxIndex((lightboxIndex + 1) % images.length); }}>›</button>
+            </>
+          )}
+          <img className="lightbox-image" src={images[lightboxIndex].url ?? ""} alt={images[lightboxIndex].fileName} />
+          <span className="lightbox-counter">{lightboxIndex + 1} / {images.length}</span>
         </div>
       )}
     </main>
@@ -21940,6 +21998,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
   const [signerName, setSignerName] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState("");
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const q = useQuery({
     queryKey: ["client-document", token],
     queryFn: () =>
@@ -22095,7 +22154,27 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </div>
       </header>
       {previewDoc && financialKind ? (
-        <PdfPageView url={serverPdfUrl} title={doc.title} />
+        <>
+          <PdfPageView url={serverPdfUrl} title={doc.title} />
+          {(doc.attachedImages ?? []).length > 0 && (
+            <section className="client-doc-gallery">
+              <h3>{t.attachedPhotos}</h3>
+              <div className="client-doc-gallery-grid">
+                {(doc.attachedImages ?? []).map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="client-doc-gallery-thumb"
+                    onClick={() => setGalleryIndex(idx)}
+                    aria-label={img.fileName}
+                  >
+                    <img src={img.url} alt={img.fileName} loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       ) : (
         <article className="quote-paper">
           <div className="quote-paper-title-row">
@@ -22161,6 +22240,18 @@ function ClientDocumentScreen({ token }: { token: string }) {
           <h2>✓ {t.alreadySigned}</h2>
           <p>{t.signedThanks}</p>
         </section>
+      )}
+      {galleryIndex !== null && (doc.attachedImages ?? [])[galleryIndex] && (
+        <div className="lightbox-backdrop" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) setGalleryIndex(null); }}>
+          <button type="button" className="lightbox-close" aria-label={t.close} onClick={() => setGalleryIndex(null)}>×</button>
+          {(doc.attachedImages ?? []).length > 1 && (
+            <>
+              <button type="button" className="lightbox-nav lightbox-prev" onClick={() => setGalleryIndex((galleryIndex - 1 + (doc.attachedImages ?? []).length) % (doc.attachedImages ?? []).length)}>‹</button>
+              <button type="button" className="lightbox-nav lightbox-next" onClick={() => setGalleryIndex((galleryIndex + 1) % (doc.attachedImages ?? []).length)}>›</button>
+            </>
+          )}
+          {(() => { const g = (doc.attachedImages ?? [])[galleryIndex]; return g ? <img className="lightbox-image" src={g.url} alt={g.fileName} /> : null; })()}
+        </div>
       )}
     </main>
   );

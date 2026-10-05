@@ -82,6 +82,8 @@ export interface DocumentLinkPdfPayload {
   showLogo: boolean;
   showCompanyInfo: boolean;
   customizeJson: string;
+  depositType: string;
+  depositValue: string;
 }
 
 const asPdfLang = (lang: "en" | "es"): PdfLang => lang;
@@ -148,6 +150,8 @@ export async function buildDocumentLinkPdf(
     issueDate: payload.issueDate || undefined,
     dueDate: payload.dueDate || undefined,
     status: (["draft", "sent", "paid", "overdue"] as const).includes(payload.status as never) ? (payload.status as FinancialDocument["status"]) : undefined,
+    depositType: (payload.depositType === "percent" || payload.depositType === "fixed" ? payload.depositType : "none") as FinancialDocument["depositType"],
+    depositValue: payload.depositValue || "0",
   };
 
   const companySettings = {

@@ -157,6 +157,69 @@ check("server PDF builder appends attachments", docPdfSrc.includes("appendAttach
 check("client preview appends attachments", clientSrc.includes("appendAttachmentsToBlob"));
 check("attachments row is on quote + invoice previews", clientSrc.includes("DocumentAttachmentsRow"));
 
+// --- 7. deposit request + conversion carryover ---------------------------------
+const quoteCols = (await sqlite.execute("PRAGMA table_info(quotes)")).rows.map((r: any) => r[1] as string);
+check("0064 adds deposit_type to quotes", quoteCols.includes("deposit_type"));
+check("0064 adds deposit_value to quotes", quoteCols.includes("deposit_value"));
+const invCols = (await sqlite.execute("PRAGMA table_info(invoices)")).rows.map((r: any) => r[1] as string);
+check("0064 adds deposit_type to invoices", invCols.includes("deposit_type"));
+check("0064 adds deposit_value to invoices", invCols.includes("deposit_value"));
+
+// saveQuote with deposit
+const depQuote = await (BaseActions.saveQuote as any).handler(ctx, {
+  clientId: null, jobId: null, clientName: "Deposit Test", clientPhone: "", clientEmail: "",
+  jobAddress: "", shippingAddress: "", jobType: "Remodel",
+  lineItems: [{ name: "Work", description: "Bath remodel", amount: "6500" }],
+  subtotal: "6500", discountType: "percent", discountValue: "0",
+  taxType: "percent", taxValue: "0", total: "6500", footnote: "",
+  expiryDate: "", sentAt: "", theme: "classic", font: "helvetica",
+  accentColor: "#1f5a4a", customizeJson: "{}",
+  showTaxLine: true, showDiscountLine: true, showPaidLine: true,
+  showPaymentTerms: true, showFooterNotes: true, showLogo: true, showCompanyInfo: true,
+  depositType: "percent", depositValue: "50",
+});
+check("saveQuote stores deposit fields", depQuote.id > 0);
+const depRow = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, depQuote.id)).limit(1))[0];
+check("depositType persisted on quote", depRow?.depositType === "percent", String(depRow?.depositType));
+check("depositValue persisted on quote", depRow?.depositValue === "50.00", String(depRow?.depositValue));
+
+// invalid deposit rejected
+let badDep = false;
+try {
+  await (BaseActions.saveQuote as any).handler(ctx, {
+    clientId: null, jobId: null, clientName: "Bad Dep", clientPhone: "", clientEmail: "",
+    jobAddress: "", shippingAddress: "", jobType: "",
+    lineItems: [{ name: "W", description: "d", amount: "100" }],
+    subtotal: "100", discountType: "percent", discountValue: "0",
+    taxType: "percent", taxValue: "0", total: "100", footnote: "",
+    expiryDate: "", sentAt: "", theme: "classic", font: "helvetica",
+    accentColor: "#1f5a4a", customizeJson: "{}",
+    showTaxLine: true, showDiscountLine: true, showPaidLine: true,
+    showPaymentTerms: true, showFooterNotes: true, showLogo: true, showCompanyInfo: true,
+    depositType: "percent", depositValue: "150",
+  });
+} catch { badDep = true; }
+check("deposit percent > 100 is rejected", badDep);
+
+// conversion carries attachments + deposit
+await (BaseActions.uploadDocumentAttachment as any).handler(ctx, {
+  docType: "quote", docId: depQuote.id, kind: "image",
+  fileName: "photo.jpg", contentType: "image/jpeg", dataBase64: pngBase64,
+});
+const conv = await (BaseActions.convertQuoteToInvoice as any).handler(ctx, { quoteId: depQuote.id, today: "2026-10-05" });
+check("conversion creates invoice", conv.invoiceId > 0);
+const invRow = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, conv.invoiceId)).limit(1))[0];
+check("conversion copies depositType", invRow?.depositType === "percent", String(invRow?.depositType));
+check("conversion copies depositValue", invRow?.depositValue === "50.00", String(invRow?.depositValue));
+check("conversion copies imagesPerPage", invRow?.imagesPerPage === 1);
+const invAtts = await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType, "invoice"), eq(schema.documentAttachments.docId, conv.invoiceId)));
+check("conversion copies attachments", invAtts.length === 1, String(invAtts.length));
+
+// static guards for new UI
+check("in-app lightbox exists", clientSrc.includes("lightbox-backdrop") && clientSrc.includes("setLightboxIndex"));
+check("shared gallery exists", clientSrc.includes("client-doc-gallery") && clientSrc.includes("attachedImages"));
+check("deposit PDF line exists", (await readFile("client/src/financialPdf.ts", "utf8")).includes("Deposit due"));
+
 if (failures > 0) {
   console.error(`\n${failures} FAILURE(S)`);
   process.exit(1);

@@ -152,6 +152,8 @@ export type FinancialDocument = {
   issueDate?: string;
   dueDate?: string;
   status?: InvoiceStatus;
+  depositType?: "none" | "percent" | "fixed";
+  depositValue?: string;
 };
 
 export async function buildFinancialPdf(
@@ -394,6 +396,26 @@ export async function buildFinancialPdf(
       align: "right",
     });
   }
+  }
+  // Deposit request line (estimates): "Deposit due (50%): $3,250.00" + balance.
+  const depType = document.depositType === "percent" || document.depositType === "fixed" ? document.depositType : "none";
+  const depVal = Number(document.depositValue ?? "0");
+  if (depType !== "none" && depVal > 0) {
+    const totalNum = money(kind === "invoice" ? String(document.totalWithLateFee ?? document.total) : String(totals.total));
+    const depAmount = depType === "percent" ? (totalNum * depVal) / 100 : depVal;
+    const depLabel = lang === "es" ? "Anticipo requerido" : "Deposit due";
+    const depDetail = depType === "percent" ? ` (${depVal}%)` : "";
+    y += 16;
+    doc.setFont(font, "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(70, 78, 76);
+    doc.text(`${depLabel}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
+    const balance = Math.max(0, totalNum - depAmount);
+    y += 14;
+    doc.setFont(font, "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(r, g, b);
+    doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}: ${usd(balance)}`, w - margin, y, { align: "right" });
   }
   y += 24;
   doc.setTextColor(70, 78, 76);
