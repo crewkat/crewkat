@@ -296,6 +296,14 @@ fieldset { padding: 0; border: 0; }
 .quote-list { display:grid; gap:10px; }
 .quote-list article { display:grid; gap:12px; padding:15px; border:1px solid var(--border); border-radius:11px; background:var(--surface); }
 .quote-list h2, .quote-list p { margin:0; }
+/* Build 0.6: compact quote cards — tappable, smaller text and buttons. */
+.quote-list article.quote-card-compact { gap: 8px; padding: 11px 12px; cursor: pointer; }
+.quote-card-compact h2 { font-size: 15px; }
+.quote-card-compact p { font-size: 13px; }
+.quote-card-compact small { font-size: 11px; }
+.quote-card-compact .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.quote-card-compact .row-actions button { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+.quote-card-compact .row-actions span { font-size: 12px; }
 .quote-list p, .quote-list small { color:var(--dim); }
 .row-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }
 .row-actions span { display:inline-flex; gap:5px; align-items:center; color:var(--green); font-weight:800; }
@@ -904,6 +912,16 @@ html[data-theme="dark"] .warranty-status.active{background:#183d29;color:#a9e8c1
 .admin-delete-confirm { display: flex; gap: 6px; align-items: center; grid-column: 2; }
 .admin-delete-confirm button { padding: 5px 8px; font-size: 11px; font-weight: 700; border-radius: 8px; }
 .admin-delete-confirm .danger-button { background: var(--danger, #c0392b); color: #fff; border: 0; }
+/* Build 0.6: exit-reason picker + "why they left" list. */
+.exit-reason-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.exit-reason-options button { padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 13px; font-weight: 600; }
+.exit-reason-options button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.admin-exit-list { margin-top: 16px; display: grid; gap: 8px; }
+.admin-exit-list h3 { font-size: 13px; color: var(--dim); margin: 0; }
+.admin-exit-list article { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.admin-exit-list article>div { display: grid; gap: 2px; min-width: 0; }
+.admin-exit-list small { color: var(--dim); font-size: 11px; }
+.admin-exit-list time { font-size: 11px; color: var(--dim); white-space: nowrap; }
 .parameter-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.parameter-input{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}.parameter-input input{width:100%;border:0!important;border-radius:0!important;background:transparent!important}.parameter-input small{padding:0 9px;color:var(--dim);font-size:10px}
 .data-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.data-tables button{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 8px;min-width:0;padding:11px 12px;text-align:left;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text)}.data-tables button.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.data-tables span{overflow:hidden;font-size:11px;font-weight:700;text-transform:capitalize;text-overflow:ellipsis;white-space:nowrap}.data-tables strong{grid-row:1/3;grid-column:2;font-size:19px}.data-tables small{color:var(--dim);font-size:9px}
 .recent-data{display:grid;gap:0;border-top:1px solid var(--border)}.recent-data h2{margin:2px 0 9px;font-size:14px;text-transform:capitalize}.recent-data article{display:flex;justify-content:space-between;gap:12px;padding:11px 2px;border-bottom:1px solid var(--border)}.recent-data article>div{display:grid;gap:3px;min-width:0}.recent-data article strong{font-size:12px}.recent-data article span,.recent-data article small{color:var(--dim);font-size:10px}.recent-data article span{overflow:hidden;max-width:220px;text-overflow:ellipsis;white-space:nowrap}

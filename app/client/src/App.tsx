@@ -9112,6 +9112,22 @@ function PAAuditTab({ lang }: { lang: Lang }) {
   </div>;
 }
 
+// Build 0.6: human-readable exit reason labels (shared with the admin
+// "why they left" list).
+function exitReasonLabel(reason: string, lang: Lang): string {
+  const map: Record<string, { en: string; es: string }> = {
+    too_expensive: { en: "Too expensive", es: "Muy caro" },
+    not_using_enough: { en: "Not using enough", es: "No lo usa lo suficiente" },
+    missing_features: { en: "Missing features", es: "Faltan funciones" },
+    switched_tool: { en: "Switched tools", es: "Cambió de herramienta" },
+    business_closed: { en: "Business closed", es: "Cerró el negocio" },
+    temporary_break: { en: "Temporary break", es: "Pausa temporal" },
+    other: { en: "Other", es: "Otro" },
+  };
+  const entry = map[reason] ?? map.other!;
+  return lang === "es" ? entry.es : entry.en;
+}
+
 function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<AdminTab>("inbox");
@@ -9158,14 +9174,18 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   });
   // Build 0.6: delete an app user with 2-step confirmation. The current user
   // and the Stallions account are never offered a delete button.
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteReason, setDeleteReason] = useState<"too_expensive" | "not_using_enough" | "missing_features" | "switched_tool" | "business_closed" | "temporary_break" | "other">("other");
+  const [deleteDetails, setDeleteDetails] = useState("");
   const deleteUser = useMutation({
-    mutationFn: (id: number) => api.deleteAppUser({ id }),
+    mutationFn: () => api.deleteAppUser({ id: deleteTarget!.id, reason: deleteReason, details: deleteDetails.trim() }),
     onSuccess: () => {
-      setDeleteConfirmId(null);
+      setDeleteTarget(null);
+      setDeleteReason("other");
+      setDeleteDetails("");
       refresh();
     },
-    onError: () => setDeleteConfirmId(null),
+    onError: () => setDeleteTarget(null),
   });
   const saveParameters = useMutation({
     mutationFn: (value: AdminParameters) => api.updateAdminParameters(value),
@@ -9498,31 +9518,30 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
                   </button>
                 )}
                 {!user.isCurrent && !/stallions/i.test(user.name) && (
-                  deleteConfirmId === user.id ? (
-                    <span className="admin-delete-confirm">
-                      <button
-                        className="danger-button"
-                        disabled={deleteUser.isPending}
-                        onClick={() => deleteUser.mutate(user.id)}
-                      >
-                        {lang === "es" ? "Confirmar" : "Confirm"}
-                      </button>
-                      <button onClick={() => setDeleteConfirmId(null)}>
-                        {lang === "es" ? "Cancelar" : "Cancel"}
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      className="text-button danger-text"
-                      onClick={() => setDeleteConfirmId(user.id)}
-                    >
-                      {lang === "es" ? "Eliminar" : "Delete"}
-                    </button>
-                  )
+                  <button
+                    className="text-button danger-text"
+                    onClick={() => setDeleteTarget({ id: user.id, name: user.name })}
+                  >
+                    {lang === "es" ? "Eliminar" : "Delete"}
+                  </button>
                 )}
               </article>
             ))}
           </div>
+          {(data.exitFeedback?.length ?? 0) > 0 && (
+            <div className="admin-exit-list">
+              <h3>{lang === "es" ? "Por qué se fueron" : "Why they left"}</h3>
+              {data.exitFeedback!.map((fb) => (
+                <article key={fb.id}>
+                  <div>
+                    <strong>{fb.userName}</strong>
+                    <small>{exitReasonLabel(fb.reason, lang)}{fb.details ? ` — ${fb.details}` : ""}</small>
+                  </div>
+                  <time>{formatDate(fb.createdAt.slice(0, 10), lang)}</time>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       )}
       {tab === "parameters" && (
@@ -9735,6 +9754,43 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           </section>
         </div>
       )}
+      {deleteTarget && (
+        <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget && !deleteUser.isPending) setDeleteTarget(null); }}>
+          <section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Eliminar usuario" : "Delete user"}>
+            <div className="sheet-handle" />
+            <h2>{lang === "es" ? `Eliminar a ${deleteTarget.name}?` : `Delete ${deleteTarget.name}?`}</h2>
+            <p className="dim small">{lang === "es" ? "¿Por qué se van? Esto se guarda en Controles del dueño." : "Why are they leaving? This is saved in Owner controls."}</p>
+            <div className="exit-reason-options">
+              {(["not_using_enough", "missing_features", "switched_tool", "business_closed", "temporary_break", "other"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className={deleteReason === r ? "active" : ""}
+                  onClick={() => setDeleteReason(r)}
+                >
+                  {exitReasonLabel(r, lang)}
+                </button>
+              ))}
+            </div>
+            <textarea
+              aria-label={lang === "es" ? "Detalles opcionales" : "Optional details"}
+              placeholder={lang === "es" ? "Detalles (opcional)" : "Details (optional)"}
+              value={deleteDetails}
+              onChange={(e) => setDeleteDetails(e.target.value)}
+              rows={2}
+              maxLength={1000}
+            />
+            <div className="sheet-actions">
+              <button type="button" disabled={deleteUser.isPending} onClick={() => setDeleteTarget(null)}>
+                {lang === "es" ? "Cancelar" : "Cancel"}
+              </button>
+              <button type="button" className="danger-button" disabled={deleteUser.isPending} onClick={() => deleteUser.mutate()}>
+                {deleteUser.isPending ? (lang === "es" ? "Eliminando…" : "Deleting…") : (lang === "es" ? "Eliminar" : "Delete")}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -9850,7 +9906,7 @@ function QuotesScreen({
       <section className="quote-list">
         {query.isLoading && <SkeletonList rows={5} />}
         {query.data?.quotes.map((q) => (
-          <article key={q.id}>
+          <article key={q.id} className="quote-card-compact" onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: q.id }); }}>
             <div>
               <h2>{q.clientName}</h2>
               <p>
@@ -9860,7 +9916,7 @@ function QuotesScreen({
                 {q.sentAt ? `${t.sentDate}: ${formatDate(q.sentAt, lang)}` : ""}
               </small>
             </div>
-            <div className="row-actions">
+            <div className="row-actions" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() =>
                   setScreen({ name: "quotePreview", quoteId: q.id })

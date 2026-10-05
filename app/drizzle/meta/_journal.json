@@ -421,6 +421,13 @@
       "when": 1791400000005,
       "tag": "0060_document_link_short_code",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791400000006,
+      "tag": "0061_app_user_exit_feedback",
+      "breakpoints": true
     }
   ]
 }

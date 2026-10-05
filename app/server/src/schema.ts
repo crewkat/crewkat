@@ -1033,6 +1033,21 @@ export const cancellationFeedback = sqliteTable("cancellation_feedback", {
   index("cancellation_feedback_created_idx").on(table.createdAt),
 ]);
 
+// Build 0.6: exit feedback when an app user (team member) is deleted.
+// Shown in Admin -> Users so the owner sees why people left.
+export const appUserExitFeedback = sqliteTable("app_user_exit_feedback", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1),
+  userName: text("user_name").notNull(),
+  role: text("role", { enum: ["owner", "crew"] }).notNull(),
+  reason: text("reason", { enum: ["too_expensive", "not_using_enough", "missing_features", "switched_tool", "business_closed", "temporary_break", "other"] }).notNull(),
+  details: text("details").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("app_user_exit_feedback_company_idx").on(table.companyId),
+  index("app_user_exit_feedback_created_idx").on(table.createdAt),
+]);
+
 // Platform support inbox: reports sent from Settings -> Customer support land
 // here server-side so Danny sees them in the platform admin console. The local
 // per-device `supportReports` table above stays for the contractor's own crew

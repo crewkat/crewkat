@@ -2675,6 +2675,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       currentUser: z.object({ id: z.number(), name: z.string(), role: z.enum(["owner", "crew"]) }).nullable(),
       inbox: z.array(z.object({ id: z.number(), kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string(), message: z.string(), language: languageSchema, status: z.enum(["open", "resolved"]), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable() })),
       users: z.array(z.object({ id: z.number(), name: z.string(), role: z.enum(["owner", "crew"]), isCurrent: z.boolean(), active: z.boolean(), createdAt: z.string() })),
+      exitFeedback: z.array(z.object({ id: z.number(), userName: z.string(), role: z.string(), reason: z.string(), details: z.string(), createdAt: z.string() })),
       parameters: z.object({ paymentDay1: z.number(), paymentDay2: z.number(), paymentDay3: z.number(), reviewDelayDays: z.number(), reengagementMonth1: z.number(), reengagementMonth2: z.number(), quoteExpiryWarningDays: z.number(), materialLeadTimeDays: z.number(), defaultTaxRate: z.string(), hourlyLaborCost: z.string() }),
       tables: z.array(z.object({ key: z.string(), count: z.number() })),
       recentRows: z.array(z.object({ id: z.string(), title: z.string(), detail: z.string(), date: z.string() })),
@@ -2687,7 +2688,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         userRows = await db.select().from(schema.appUsers).orderBy(schema.appUsers.id);
       }
       const current = userRows.find((user) => user.isCurrent && user.active) ?? null;
-      if (!current || current.role !== "owner") return { allowed: false, currentUser: current ? { id: current.id, name: current.name, role: current.role } : null, inbox: [], users: [], parameters: { paymentDay1: 3, paymentDay2: 14, paymentDay3: 30, reviewDelayDays: 1, reengagementMonth1: 6, reengagementMonth2: 12, quoteExpiryWarningDays: 3, materialLeadTimeDays: 14, defaultTaxRate: "0", hourlyLaborCost: "0" }, tables: [], recentRows: [] };
+      if (!current || current.role !== "owner") return { allowed: false, currentUser: current ? { id: current.id, name: current.name, role: current.role } : null, inbox: [], users: [], exitFeedback: [], parameters: { paymentDay1: 3, paymentDay2: 14, paymentDay3: 30, reviewDelayDays: 1, reengagementMonth1: 6, reengagementMonth2: 12, quoteExpiryWarningDays: 3, materialLeadTimeDays: 14, defaultTaxRate: "0", hourlyLaborCost: "0" }, tables: [], recentRows: [] };
       let parameter = (await db.select().from(schema.adminParameters).where(eq(schema.adminParameters.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
       if (!parameter) {
         await db.insert(schema.adminParameters).values({ updatedAt: new Date() });
@@ -2711,11 +2712,13 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         return { id, title, detail, date };
       });
       const inboxRows = await db.select().from(schema.supportReports).orderBy(desc(schema.supportReports.createdAt));
+      const exitRows = await db.select().from(schema.appUserExitFeedback).orderBy(desc(schema.appUserExitFeedback.createdAt)).limit(20);
       return {
         allowed: true,
         currentUser: { id: current.id, name: current.name, role: current.role },
         inbox: inboxRows.map((row) => ({ id: row.id, kind: row.kind, subject: row.subject, message: row.message, language: row.language, status: row.status, isUnread: row.isUnread, createdAt: row.createdAt.toISOString(), resolvedAt: row.resolvedAt?.toISOString() ?? null })),
         users: userRows.map((row) => ({ id: row.id, name: row.name, role: row.role, isCurrent: row.isCurrent, active: row.active, createdAt: row.createdAt.toISOString() })),
+        exitFeedback: exitRows.map((row) => ({ id: row.id, userName: row.userName, role: row.role, reason: row.reason, details: row.details, createdAt: row.createdAt.toISOString() })),
         parameters: { paymentDay1: parameter.paymentDay1, paymentDay2: parameter.paymentDay2, paymentDay3: parameter.paymentDay3, reviewDelayDays: parameter.reviewDelayDays, reengagementMonth1: parameter.reengagementMonth1, reengagementMonth2: parameter.reengagementMonth2, quoteExpiryWarningDays: parameter.quoteExpiryWarningDays, materialLeadTimeDays: parameter.materialLeadTimeDays, defaultTaxRate: parameter.defaultTaxRate, hourlyLaborCost: parameter.hourlyLaborCost },
         tables,
         recentRows,
@@ -2728,7 +2731,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // Build 0.6: delete an app user with 2-step client confirmation. Protected:
   // never the current user, never the Stallions (primary) account, and never
   // the last active owner (prevents lockout).
-  deleteAppUser: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
+  deleteAppUser: defineAction({ request: z.object({ id: z.number().int().positive(), reason: z.enum(["too_expensive", "not_using_enough", "missing_features", "switched_tool", "business_closed", "temporary_break", "other"]).default("other"), details: z.string().trim().max(1000).default("") }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
     const db = ctx.db<typeof schema>();
     const current = (await db.select().from(schema.appUsers).where(eq(schema.appUsers.isCurrent, true)).limit(1))[0];
     if (!current || current.role !== "owner") throw new Error("Owner access required.");
@@ -2740,6 +2743,15 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const owners = await db.select({ id: schema.appUsers.id }).from(schema.appUsers).where(and(eq(schema.appUsers.role, "owner"), eq(schema.appUsers.active, true)));
       if (owners.length <= 1) throw new Error("You cannot delete the last owner account.");
     }
+    // Record why they left so it shows in Admin -> Users.
+    await db.insert(schema.appUserExitFeedback).values({
+      companyId: target.companyId,
+      userName: target.name,
+      role: target.role,
+      reason: args.reason,
+      details: args.details,
+      createdAt: new Date(),
+    });
     await db.delete(schema.appUsers).where(eq(schema.appUsers.id, args.id));
     ctx.invalidateQueries();
     return { ok: true };
