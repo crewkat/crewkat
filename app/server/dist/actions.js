@@ -43091,13 +43091,13 @@ async function getDocumentLinkPayload(ctx, token) {
     const row = (await db.select().from(invoices).where(eq(invoices.id, link.documentId)).limit(1))[0];
     if (!row)
       throw new Error("This document is no longer available.");
-    return { link, payload: { ...base, ...designOf(row), title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status } };
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status } };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(quotes).where(eq(quotes.id, link.documentId)).limit(1))[0];
     if (!row)
       throw new Error("This document is no longer available.");
-    return { link, payload: { ...base, ...designOf(row), title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate } };
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate } };
   }
   const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind)
@@ -43105,6 +43105,8 @@ async function getDocumentLinkPayload(ctx, token) {
   const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
   return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10) } };
 }
+var docPdfCache = new Map;
+var DOC_PDF_CACHE_MAX = 30;
 var BaseActions = {
   ...playBillingActions,
   getAuthBootstrap: defineAction({
@@ -45469,8 +45471,27 @@ If that was you, just sign in again. If not, we recommend changing your password
     const kind = payload.kind;
     if (kind !== "invoice" && kind !== "quote")
       throw new Error("This document is only available as a web page.");
+    const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
+    const hit = docPdfCache.get(cacheKey);
+    if (hit && hit.updatedAtMs === payload.updatedAtMs) {
+      return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+    }
     const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, args.lang);
-    return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
+    const pdfBase64 = Buffer.from(bytes).toString("base64");
+    if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
+      const oldest = docPdfCache.keys().next().value;
+      if (oldest)
+        docPdfCache.delete(oldest);
+    }
+    docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: payload.updatedAtMs ?? 0 });
+    return { pdfBase64, filename, kind };
+  } }),
+  validateDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ ok: literal(true), kind: string2() }), async handler(ctx, args) {
+    const { payload } = await getDocumentLinkPayload(ctx, args.token);
+    const kind = payload.kind;
+    if (kind !== "invoice" && kind !== "quote")
+      throw new Error("This document is only available as a web page.");
+    return { ok: true, kind };
   } }),
   submitDocumentSignature: defineAction({ request: object({ token: string2().min(8).max(200), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000), signedPdfDataBase64: string2().min(1).max(30000000), userAgent: string2().max(500).default("") }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -47755,6 +47776,7 @@ var PUBLIC_ACTIONS = new Set([
   "portalSignChangeOrder",
   "resolveDocumentLink",
   "getDocumentLinkPdf",
+  "validateDocumentLinkPdf",
   "submitDocumentSignature",
   "submitEstimateRequest",
   "portalListJobMessages",

@@ -3790,6 +3790,19 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
   const [sortBy, setSortBy] = useState<MarketplaceSort>("newest");
   const [locationPopupOpen, setLocationPopupOpen] = useState(false);
   const [mapPreviewOpen, setMapPreviewOpen] = useState(false);
+  // Build 0.6: the tab badge includes system notifications (not just
+  // messages), so opening Marketplace marks them read — otherwise the badge
+  // never clears for users who only check the inbox.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await api.markNotificationsRead({ ids: [] });
+        if (!cancelled) await qc.invalidateQueries({ queryKey: ["marketplace-notifications"] });
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [qc]);
   // Build 0.5 (item 4): snapshot the map query when the preview opens instead
   // of live-binding the iframe to every keystroke (mid-typing queries geocode
   // poorly and Google renders a zoomed-out world view).

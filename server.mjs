@@ -784,6 +784,31 @@ const server = createServer(async (req, res) => {
     if (docPdfMatch) {
       let token = "";
       try { token = decodeURIComponent(docPdfMatch[1]); } catch { token = ""; }
+      // Build 0.6: HEAD is a lightweight probe — validate the token WITHOUT
+      // generating the PDF (jsPDF is memory-heavy; generating for HEAD
+      // doubled the cost of every client-link view and OOM'd the instance).
+      if (req.method === "HEAD") {
+        try {
+          const { status } = await dispatchAction("validateDocumentLinkPdf", { token }, {
+            userAgent: req.headers["user-agent"] ?? "",
+            clientIp: clientIp(req),
+          });
+          if (status === 200) {
+            res.writeHead(200, {
+              "content-type": "application/pdf",
+              "x-content-type-options": "nosniff",
+              "cache-control": "private, max-age=3600",
+            });
+          } else {
+            res.writeHead(404, { "x-content-type-options": "nosniff" });
+          }
+          res.end();
+        } catch {
+          res.writeHead(404, { "x-content-type-options": "nosniff" });
+          res.end();
+        }
+        return;
+      }
       try {
         const lang = url.searchParams.get("lang") === "es" ? "es" : "en";
         const { status, body } = await dispatchAction("getDocumentLinkPdf", { token, lang }, {
