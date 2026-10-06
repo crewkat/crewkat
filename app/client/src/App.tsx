@@ -2904,6 +2904,8 @@ function CrewkatApplication() {
           </button>
         </div>
       )}
+      {/* b07: one-time push opt-in prompt for first-time installers. */}
+      <PushPromptSheet lang={lang} />
     </div>
       {limitKind && <LimitReachedSheet lang={lang} kind={limitKind} onClose={dismissLimitHit} onUpgrade={() => { dismissLimitHit(); setScreen({ name: "upgrade" }); }} />}
     </ToolsNavigationContext.Provider>
@@ -7324,6 +7326,58 @@ function PushToggle({ lang }: { lang: Lang }) {
       <span>{lang === "es" ? "Notificaciones push" : "Push notifications"}<small>{hint}</small></span>
       <input type="checkbox" role="switch" checked={enabled} disabled={status === "checking" || status === "unavailable"} onChange={toggle} />
     </label>
+  );
+}
+// b07: one-time push opt-in prompt. Shows once per device, shortly after the
+// app settles, only when push is supported + configured and the browser
+// permission is still undecided ("default"). "Not now" remembers the choice;
+// the Settings toggle remains the permanent home for this setting.
+const PUSH_PROMPT_SEEN_KEY = "crewkat:push-prompt-seen";
+function PushPromptSheet({ lang }: { lang: Lang }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const sheet = useAnimatedDismiss(open);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (localStorage.getItem(PUSH_PROMPT_SEEN_KEY)) return;
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+        if (Notification.permission !== "default") return;
+        const { publicKey } = await api.getVapidPublicKey({});
+        if (!publicKey || cancelled) return;
+        window.setTimeout(() => { if (!cancelled) setOpen(true); }, 1500);
+      } catch { /* never block the app over a prompt */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const dismiss = () => {
+    try { localStorage.setItem(PUSH_PROMPT_SEEN_KEY, "1"); } catch { /* private mode */ }
+    setOpen(false);
+  };
+  useEscapeToClose(sheet.render, dismiss);
+  const enable = async () => {
+    setBusy(true);
+    try { await requestPushPermissionAndSubscribe(); } catch { /* status surfaces in Settings */ }
+    setBusy(false);
+    dismiss();
+  };
+  if (!sheet.render) return null;
+  const t = lang === "es"
+    ? { title: "Activa las notificaciones", body: "Recibe avisos cuando un cliente vea tu portal, pague una factura o te escriba en el Marketplace.", enable: "Activar", enabling: "Activando…", notNow: "Ahora no" }
+    : { title: "Turn on notifications", body: "Get alerts when a client views your portal, pays an invoice, or messages you on Marketplace.", enable: "Turn on", enabling: "Turning on…", notNow: "Not now" };
+  return (
+    <div className={`sheet-backdrop${sheet.closing ? " closing" : ""}`} role="presentation" onClick={dismiss}>
+      <section className="more-sheet push-prompt-sheet" role="dialog" aria-modal="true" aria-label={t.title} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" />
+        <div className="sheet-title-row"><h2>{t.title}</h2></div>
+        <p className="muted-note">{t.body}</p>
+        <div className="push-prompt-actions">
+          <button type="button" className="primary-button" disabled={busy} onClick={enable}>{busy ? t.enabling : t.enable}</button>
+          <button type="button" className="secondary-button" onClick={dismiss}>{t.notNow}</button>
+        </div>
+      </section>
+    </div>
   );
 }
 // Chunk D: referral loop panel — invite friends, earn bonus Marketplace listings.

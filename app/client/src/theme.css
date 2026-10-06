@@ -1258,6 +1258,9 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 input[role="switch"] { width:38px !important; height:22px !important; padding:2px !important; border-radius:12px !important; }
 input[role="switch"]::before { width:18px !important; height:18px !important; }
 input[role="switch"]:checked::before { transform:translateX(16px) !important; }
+/* b07: one-time push opt-in prompt actions. */
+.push-prompt-sheet .push-prompt-actions { display:grid; gap:10px; margin-top:16px; }
+.push-prompt-sheet .primary-button, .push-prompt-sheet .secondary-button { min-height:50px; width:100%; }
 .option-row-icon { display:grid; place-items:center; width:30px; height:30px; color:var(--green); }
 .option-row-icon svg { width:22px; height:22px; }
 .option-row-icon.email { color:#3b82b8; }
