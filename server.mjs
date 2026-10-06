@@ -454,13 +454,15 @@ const CLIENT_DIST = join(APP_DIR, "client/dist");
 
 const MARKETING_DIST = join(CLIENT_DIST, "marketing");
 
-async function sendFile(res, filePath) {
+async function sendFile(res, filePath, cacheControl) {
   const bytes = await readFile(filePath);
-  res.writeHead(200, {
+  const headers = {
     "content-type": mimeFor(filePath),
     "content-length": bytes.length,
     "x-content-type-options": "nosniff",
-  });
+  };
+  if (cacheControl) headers["cache-control"] = cacheControl;
+  res.writeHead(200, headers);
   res.end(bytes);
 }
 
@@ -498,7 +500,7 @@ async function serveStatic(res, urlPath) {
   // Public calculator funnel pages (/tools, /tools/<slug>): shareable no-login
   // pages rendered by the app bundle's public tools screen.
   if (urlPath === "/tools" || urlPath === "/tools/" || urlPath.startsWith("/tools/")) {
-    return sendFile(res, join(CLIENT_DIST, "index.html"));
+    return sendFile(res, join(CLIENT_DIST, "index.html"), "no-store");
   }
   if (urlPath === "/app" || urlPath.startsWith("/app/")) {
     const relative = urlPath === "/app" ? "/index.html" : urlPath.slice(4) || "/index.html";
@@ -526,9 +528,17 @@ async function serveStatic(res, urlPath) {
         res.end();
         return;
       }
-      return sendFile(res, join(CLIENT_DIST, "index.html"));
+      return sendFile(res, join(CLIENT_DIST, "index.html"), "no-store");
     }
-    return sendFile(res, filePath);
+    // b07: the app shell HTML and service worker must never be HTTP-cached —
+    // otherwise a deploy can sit invisible behind a stale shell/SW for hours.
+    // Hashed /assets/* files are content-addressed, so they cache for a year.
+    const noStore = relative === "/index.html" || relative === "/sw.js"
+      ? "no-store"
+      : relative.startsWith("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : undefined;
+    return sendFile(res, filePath, noStore);
   }
   if (urlPath.startsWith("/marketing/")) {
     const filePath = safeJoin(MARKETING_DIST, urlPath.slice(10) || "/index.html");
