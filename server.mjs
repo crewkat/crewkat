@@ -880,7 +880,9 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET") {
+    // b07 dogfood: HEAD must behave like GET on static pages (Node strips the
+    // body automatically). Monitors and link checkers HEAD these routes.
+    if (req.method === "GET" || req.method === "HEAD") {
       await serveStatic(res, path);
       return;
     }
