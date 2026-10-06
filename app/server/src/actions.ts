@@ -343,9 +343,11 @@ async function getMarketplaceUnlockStatus(db: UnlockStatusDb, companyId: number,
 // Build 0.6 item 22: shared unlock consumption. Idempotent — if this company
 // already unlocked this listing, returns the existing source without charging.
 // Otherwise consumes free -> pro quota -> credit, in that order. Throws
-// NO_UNLOCKS_REMAINING when exhausted. Used by both contact reveal and
-// conversation start so messaging can't bypass the unlock system.
-async function consumeMarketplaceUnlock(db: UnlockStatusDb, companyId: number, userId: number, listingId: number): Promise<"free" | "pro_quota" | "credit"> {
+// NO_UNLOCKS_REMAINING when exhausted.
+// Build 0.7: monetization is PAUSED, so nothing calls this right now. It is
+// exported (and kept, with its tables) so Danny can re-enable the model later
+// without reconstructing it.
+export async function consumeMarketplaceUnlock(db: UnlockStatusDb, companyId: number, userId: number, listingId: number): Promise<"free" | "pro_quota" | "credit"> {
   const existing = (await db.select().from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, companyId), eq(schema.marketplaceUnlocks.listingId, listingId))).limit(1))[0];
   if (existing) return existing.source;
   // Rate limit: max 20 unlocks/hour per company (spam protection).
@@ -3424,7 +3426,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
-      companyName: z.string().trim().min(1).max(180), companyPhone: z.string().trim().max(80),
+      companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
       bookable: z.boolean().default(false), dailyRate: z.string().trim().max(80).default(""),
       photos: z.array(z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) })).max(8),
     }),
@@ -3434,9 +3436,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (args.bookable && !args.dailyRate.trim()) throw new Error("Enter a daily rate for this bookable listing.");
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>(); const now = new Date();
-      // Build 0.6 item 22: phone must be verified before listing (spam protection).
-      const settingsRow = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
-      if (!settingsRow?.marketplacePhoneVerified) throw new Error("PHONE_NOT_VERIFIED");
+      // Build 0.7: the phone-verification gate is removed — listing creation
+      // no longer requires phone verification.
       await requireMarketplaceEnabled(db);
       if (identity.workspaceTier === "free") {
         const { effective, bonus } = await getEffectiveListingLimit(db);
@@ -3477,7 +3478,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
-      companyName: z.string().trim().min(1).max(180), companyPhone: z.string().trim().max(80),
+      companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
       bookable: z.boolean().default(false), dailyRate: z.string().trim().max(80).default(""),
       replacePhotos: z.boolean().default(false),
       photos: z.array(z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) })).max(8),
@@ -3598,6 +3599,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     },
   }),
   // Build 0.6 item 22: marketplace contact unlock monetization (hybrid model).
+  // Build 0.7: monetization PAUSED — reveals and messaging are free for
+  // everyone; unlock tables/status are kept intact for a future re-enable.
   // Consumption order: free (3 lifetime) -> Pro quota (10/month) -> credits.
   getMarketplaceUnlockStatus: defineAction({
     request: z.object({}),
@@ -3620,10 +3623,11 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (!listing || listing.moderationStatus !== "active") throw new Error("This listing is no longer available.");
       // Owners always see their own contact info — no unlock needed.
       if (listing.companyId === companyId) return { phone: listing.companyPhone, source: "owner" as const };
-      if (!listing.companyPhone) throw new Error("This listing has no phone number.");
-      const source = await consumeMarketplaceUnlock(db, companyId, identity.workspaceUserId, args.listingId);
+      // Build 0.7: marketplace monetization is paused — contact reveals are
+      // free for everyone. No unlock is consumed; an empty phone is the
+      // client's cue to show a gentle "message instead" note.
       ctx.invalidateQueries();
-      return { phone: listing.companyPhone, source };
+      return { phone: listing.companyPhone ?? "", source: "free" as const };
     },
   }),
   createCreditPackCheckout: defineAction({
@@ -3667,9 +3671,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (listing.companyId === myCompanyId) throw new Error("You can't message your own listing.");
       const existing = (await db.select({ id: schema.marketplaceConversations.id }).from(schema.marketplaceConversations).where(and(eq(schema.marketplaceConversations.listingId, args.listingId), eq(schema.marketplaceConversations.inquirerCompanyId, myCompanyId))).limit(1))[0];
       if (existing) { ctx.invalidateQueries(); return { conversationId: existing.id }; }
-      // Build 0.6 item 22: starting a conversation consumes a contact unlock
-      // (free -> pro quota -> credit), so messaging can't bypass the unlock system.
-      await consumeMarketplaceUnlock(db, myCompanyId, identity.workspaceUserId, args.listingId);
+      // Build 0.7: marketplace monetization is paused — starting a
+      // conversation is always free; no contact unlock is consumed.
       try {
         const made = (await db.insert(schema.marketplaceConversations).values({ listingId: args.listingId, ownerCompanyId: listing.companyId, inquirerCompanyId: myCompanyId, lastMessageAt: new Date(), createdAt: new Date() }).returning({ id: schema.marketplaceConversations.id }))[0];
         if (!made) throw new Error("The conversation could not be started.");
@@ -3840,7 +3843,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   }),
   listMarketplaceRequests: defineAction({ request: z.object({}), response: z.object({ requests: z.array(marketplaceRequestSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.marketplaceRequests).orderBy(desc(schema.marketplaceRequests.createdAt)); return { requests: rows.map(marketplaceRequestShape) }; }}),
   createMarketplaceRequest: defineAction({
-    request: z.object({ title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160), neededBy: z.string().trim().max(80), companyName: z.string().trim().min(1).max(180), companyPhone: z.string().trim().max(80) }),
+    request: z.object({ title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160), neededBy: z.string().trim().max(80), companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80) }),
     response: z.object({ id: z.number() }),
     async handler(ctx, args) { const now = new Date(); const made = (await ctx.db<typeof schema>().insert(schema.marketplaceRequests).values({ ...args, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceRequests.id }))[0]; if (!made) throw new Error("The request could not be saved."); ctx.invalidateQueries(); return { id: made.id }; },
   }),

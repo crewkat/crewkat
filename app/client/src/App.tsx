@@ -3110,6 +3110,38 @@ function useEscapeToClose(open: boolean, close: () => void) {
   }, [open, close]);
 }
 
+// Build 0.7: animated dismiss for bottom sheets. The parent keeps flipping its
+// `open` state exactly as before — no handler changes needed. When `open`
+// goes falsy, the hook keeps the sheet mounted for one exit-animation beat
+// (`.closing` class -> CSS reverses the entrance), then unmounts it.
+// `value` freezes the last truthy `open` so sheet content can keep rendering
+// (and stay type-narrowed) during the exit beat.
+// Transform/opacity only; honors prefers-reduced-motion via the global CSS guard.
+function useAnimatedDismiss<T>(open: T, duration = 180): { render: boolean; closing: boolean; value: NonNullable<T> } {
+  const [render, setRender] = useState(!!open);
+  const [closing, setClosing] = useState(false);
+  const frozen = useRef(open);
+  const timer = useRef(0);
+  useEffect(() => {
+    if (open) {
+      frozen.current = open;
+      window.clearTimeout(timer.current);
+      setRender(true);
+      setClosing(false);
+    } else if (render) {
+      setClosing(true);
+      timer.current = window.setTimeout(() => {
+        setRender(false);
+        setClosing(false);
+      }, duration);
+    }
+    return () => window.clearTimeout(timer.current);
+  }, [open, render, duration]);
+  // Invariant: `render` is only true after `open` was truthy, so `frozen`
+  // always holds a non-null value while the sheet is mounted.
+  return { render, closing, value: frozen.current as NonNullable<T> };
+}
+
 function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: string; onClose: () => void; children: (close: () => void) => ReactNode }) {
   const [closing, setClosing] = useState(false);
   const close = () => {
@@ -3804,6 +3836,8 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
 }) {
   const [targetId, setTargetId] = useState<number | null>(listingId);
   useEffect(() => setTargetId(listingId), [listingId]);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
   const status = useQuery({
     queryKey: ["listing-bump", targetId],
     queryFn: () => api.getListingBumpStatus({ listingId: targetId as number }),
@@ -3817,7 +3851,7 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
   });
   const featuredUntil = status.data?.featuredUntil ? new Date(status.data.featuredUntil).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} onClick={close}>
       <section className="more-sheet market-bump-sheet sheet-spring" role="dialog" aria-modal="true" aria-label={text.promote} onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" />
         <h2>★ {text.promote}</h2>
@@ -3848,7 +3882,7 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
             </button>
           </>
         )}
-        <button type="button" className="secondary-button" onClick={onClose}>{text.close}</button>
+        <button type="button" className="secondary-button" onClick={close}>{text.close}</button>
       </section>
     </div>
   );
@@ -3945,6 +3979,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
     }
   }, []);
   const [deleteTarget, setDeleteTarget] = useState<MarketplaceListing | null>(null);
+  const deleteTargetSheet = useAnimatedDismiss(deleteTarget);
   useEscapeToClose(deleteTarget !== null, () => setDeleteTarget(null));
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -4103,7 +4138,6 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <small>{refreshing ? text.refreshing : pullDistance >= 52 ? text.release : text.pull}</small>
     </div>}
     <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} />
-    <div className="market-unlock-status"><UnlockStatusPill lang={lang} /></div>
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-pills" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
       <button className="list-pill" onClick={() => openNewListing(listingType === "project" ? "project" : "job")}><PlusIcon/><span className="pill-label">{listingType === "project" ? text.listProject : text.list}</span></button>
@@ -4118,7 +4152,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
           <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}{listing.promoted && <em className="market-promoted-badge">{text.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {text.featured}</em>}{listing.justListed && <b>{text.just}</b>}<span className={`listing-type-badge ${listing.listingType}`}><Icon>{listing.listingType === "job" ? <><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></> : <><path d="M4 20h16M6 20V9l6-5 6 5v11"/></>}</Icon>{listing.listingType === "job" ? (lang === "es" ? "EMPLEO" : "JOB") : (lang === "es" ? "PROYECTO" : "PROJECT")}</span></div>
-          <div className="market-card-copy"><div className="market-price"><strong>{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div><h2>{listing.title}</h2><p>{listing.serviceArea}</p><small>{listing.companyName}</small></div>
+          <div className="market-card-copy"><div className="market-price"><strong>{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div><h2>{listing.title}</h2><p>{listing.serviceArea}</p></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : (lang === "es" ? "Guardar publicación" : "Save listing")}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
       </article>)}</div> : <div className="market-empty"><span><Icon size={32}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon></span><h2>{text.emptyTitle}</h2><p>{text.emptyBody}</p>{!savedOnly && <button className="primary-button" onClick={() => openNewListing("job")}><PlusIcon/>{text.list}</button>}</div>}
@@ -4148,7 +4182,7 @@ function MarketplaceScreen({ lang, settings, setScreen }: { lang: Lang; settings
       <p className="market-inbox-note">{lang === "es" ? "Las notificaciones push llegarán con las cuentas públicas en el lanzamiento." : "Push notifications arrive with public accounts at launch."}</p>
     </section>}
     {view === "alerts" && <AlertsView lang={lang} setScreen={setScreen} />}
-    {deleteTarget && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteTarget(null)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="delete-listing-title">{text.removeTitle}</h2><strong>{deleteTarget.title}</strong><p>{text.removeBody}</p>{removeListing.isError && <p className="status error">{text.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteTarget(null)}>{text.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate(deleteTarget.id)}>{removeListing.isPending ? text.deleting : text.remove}</button></div></section></div>}
+    {deleteTargetSheet.render && deleteTargetSheet.value && <div className={`sheet-backdrop${deleteTargetSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteTarget(null)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="delete-listing-title">{text.removeTitle}</h2><strong>{deleteTargetSheet.value.title}</strong><p>{text.removeBody}</p>{removeListing.isError && <p className="status error">{text.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteTarget(null)}>{text.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate(deleteTargetSheet.value.id)}>{removeListing.isPending ? text.deleting : text.remove}</button></div></section></div>}
     {bumpJustPaid && (
       <div className="bump-success-banner pop-in" role="status">
         <Confetti burstKey={1} />
@@ -4189,7 +4223,7 @@ function MarketplaceRequestsView({ lang, settings, requests, loading }: { lang: 
   const [form, setForm] = useState({ title: "", category: "other" as MarketplaceCategory, listingType: "project" as "job" | "project", description: "", serviceArea: "", neededBy: "", companyName: settings?.companyName ?? "", companyPhone: settings?.phone ?? "" });
   useEffect(() => setForm((current) => ({ ...current, companyName: current.companyName || settings?.companyName || "", companyPhone: current.companyPhone || settings?.phone || "" })), [settings]);
   const save = useMutation({ mutationFn: () => api.createMarketplaceRequest(form), onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["marketplace-requests"] }); setOpen(false); setForm((current) => ({ ...current, title: "", description: "", neededBy: "" })); }, onError: () => setError(lang === "es" ? "No se pudo guardar la solicitud." : "The request could not be saved.") });
-  const t = lang === "es" ? { title: "Solicitudes de empresas", intro: "Empresas que buscan una mano para un trabajo específico.", post: "Publicar una solicitud", empty: "Aún no hay solicitudes", emptyBody: "Las solicitudes aparecerán aquí a medida que se unan empresas.", requestTitle: "¿Qué ayuda necesitas?", category: "Categoría", description: "Detalles", area: "Área o código postal", needed: "Fecha o plazo", company: "Empresa", phone: "Teléfono (opcional)", save: "Publicar", cancel: "Cancelar", contact: "Contacto" } : { title: "Company requests", intro: "Companies looking for a hand with a specific job.", post: "Post a request", empty: "No requests yet", emptyBody: "Requests will appear here as companies join.", requestTitle: "What help do you need?", category: "Category", description: "Details", area: "Service area or ZIP", needed: "Needed by", company: "Company name", phone: "Phone (optional)", save: "Post request", cancel: "Cancel", contact: "Contact" };
+  const t = lang === "es" ? { title: "Solicitudes de empresas", intro: "Empresas que buscan una mano para un trabajo específico.", post: "Publicar una solicitud", empty: "Aún no hay solicitudes", emptyBody: "Las solicitudes aparecerán aquí a medida que se unan empresas.", requestTitle: "¿Qué ayuda necesitas?", category: "Categoría", description: "Detalles", area: "Área o código postal", needed: "Fecha o plazo", company: "Empresa (opcional)", phone: "Teléfono (opcional)", save: "Publicar", cancel: "Cancelar", contact: "Contacto" } : { title: "Company requests", intro: "Companies looking for a hand with a specific job.", post: "Post a request", empty: "No requests yet", emptyBody: "Requests will appear here as companies join.", requestTitle: "What help do you need?", category: "Category", description: "Details", area: "Service area or ZIP", needed: "Needed by", company: "Company name (optional)", phone: "Phone (optional)", save: "Post request", cancel: "Cancel", contact: "Contact" };
   return <section className="market-looking">
     <div className="market-section-heading"><div><h2>{t.title}</h2><p>{t.intro}</p></div><button onClick={() => setOpen((value) => !value)}><PlusIcon/>{t.post}</button></div>
     {open && <form className="wanted-form" onSubmit={(event) => { event.preventDefault(); setError(""); save.mutate(); }}>
@@ -4199,11 +4233,11 @@ function MarketplaceRequestsView({ lang, settings, requests, loading }: { lang: 
       <label><span>{t.description}</span><textarea rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })}/></label>
       <label><span>{t.area}</span><input required aria-label={t.area} value={form.serviceArea} onChange={(event) => setForm({ ...form, serviceArea: event.target.value })}/></label>
       <label><span>{t.needed}</span><input value={form.neededBy} onChange={(event) => setForm({ ...form, neededBy: event.target.value })}/></label>
-      <label><span>{t.company}</span><input required aria-label={t.company} value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })}/></label>
+      <label><span>{t.company}</span><input aria-label={t.company} value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })}/></label>
       <label><span>{t.phone}</span><input type="tel" aria-label={t.phone} value={form.companyPhone} onChange={(event) => setForm({ ...form, companyPhone: event.target.value })}/></label>
       {error && <p className="status error">{error}</p>}<div className="wanted-actions"><button type="button" onClick={() => setOpen(false)}>{t.cancel}</button><button className="primary-button" disabled={save.isPending}>{t.save}</button></div>
     </form>}
-    {loading ? <div className="loading-block"/> : requests.length ? <div className="wanted-feed">{requests.map((request) => <article key={request.id}><span className="wanted-mark"><Icon><path d="M12 21s-7-4-7-11a7 7 0 0 1 14 0c0 7-7 11-7 11Z"/><circle cx="12" cy="10" r="2"/></Icon></span><div><div className="wanted-badges"><span className={`inline-listing-type ${request.listingType}`}>{request.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span><span className="wanted-category">{marketplaceCategoryLabel(request.category, lang)}</span></div><h3>{request.title}</h3>{request.description && <p>{request.description}</p>}<small>{request.companyName} · {request.serviceArea}{request.neededBy ? ` · ${request.neededBy}` : ""}</small>{request.companyPhone && <p className="wanted-contact"><strong>{t.contact}:</strong> {request.companyPhone}</p>}</div></article>)}</div> : !open && <div className="market-empty compact"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>}
+    {loading ? <div className="loading-block"/> : requests.length ? <div className="wanted-feed">{requests.map((request) => <article key={request.id}><span className="wanted-mark"><Icon><path d="M12 21s-7-4-7-11a7 7 0 0 1 14 0c0 7-7 11-7 11Z"/><circle cx="12" cy="10" r="2"/></Icon></span><div><div className="wanted-badges"><span className={`inline-listing-type ${request.listingType}`}>{request.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span><span className="wanted-category">{marketplaceCategoryLabel(request.category, lang)}</span></div><h3>{request.title}</h3>{request.description && <p>{request.description}</p>}<small>{[request.companyName, request.serviceArea, request.neededBy].filter(Boolean).join(" · ")}</small>{request.companyPhone && <p className="wanted-contact"><strong>{t.contact}:</strong> {request.companyPhone}</p>}</div></article>)}</div> : !open && <div className="market-empty compact"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>}
   </section>;
 }
 
@@ -4227,7 +4261,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     if (listingId) return api.updateMarketplaceListing({ id: listingId, ...form, replacePhotos: photos.length > 0, photos: encoded });
     return api.createMarketplaceListing({ ...form, photos: encoded });
   }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else { if (!listingId) celebrate(lang === "es" ? "Publicación en vivo" : "Listing is live"); onSaved(result.id); } }, onError: (caught) => setError(friendlyActionMessage(caught, lang)) });
-  const t = lang === "es" ? { heading: listingId ? "Editar publicación" : form.listingType === "project" ? "Publicar un proyecto" : "Publicar un empleo", listingType: "Tipo de publicación", job: "Empleo", jobHelp: "Contratar a un empleado", project: "Proyecto", projectHelp: "Un subcontratista para una tarea", employment: "Condiciones de empleo", fullTime: "Tiempo completo", partTime: "Medio tiempo", temporary: "Temporal", payUnit: "Tipo de pago", hourly: "Por hora", salary: "Salario", title: "Título", titleHint: "Ej. Instalación de gabinetes disponible", category: "Categoría", priceType: "Precio", amount: "Precio actual", original: "Precio original (opcional)", fixed: "Precio fijo", free: "Gratis", contact: "Consultar precio", photos: "Fotos", photoHint: "Hasta 8 fotos JPG, PNG o WebP", keepPhotos: "Tus fotos actuales se conservarán. Elige nuevas fotos solo si quieres reemplazarlas.", replacePhotos: "Las fotos nuevas reemplazarán las actuales.", description: "Descripción", area: "Área de servicio o código postal", company: "Nombre de la empresa", phone: "Teléfono de contacto (opcional)", bookable: "Permitir reservas", bookableHelp: "Para alquileres de remolques, equipos u otros artículos por día", dailyRate: "Precio por día", publish: listingId ? "Guardar cambios" : "Publicar", required: "Agrega un título, área de servicio y empresa.", loading: "Cargando publicación…", notFound: "No se encontró esta publicación." } : { heading: listingId ? "Edit listing" : form.listingType === "project" ? "List a project" : "List a job", listingType: "Listing type", job: "Job", jobHelp: "Hiring an employee", project: "Project", projectHelp: "A subcontractor for one task", employment: "Employment terms", fullTime: "Full-time", partTime: "Part-time", temporary: "Temporary", payUnit: "Pay type", hourly: "Hourly", salary: "Salary", title: "Title", titleHint: "e.g. Cabinet installation available", category: "Trade category", priceType: "Price", amount: "Current price", original: "Original price (optional)", fixed: "Set a price", free: "Free", contact: "Contact for price", photos: "Photos", photoHint: "Up to 8 JPG, PNG, or WebP images", keepPhotos: "Your current photos will stay. Choose new photos only if you want to replace them.", replacePhotos: "New photos will replace the current ones.", description: "Description", area: "Service area or ZIP", company: "Company name", phone: "Contact phone (optional)", bookable: "Allow bookings", bookableHelp: "For trailers, equipment, or other items rented by the day", dailyRate: "Price per day", publish: listingId ? "Save changes" : "Publish listing", required: "Add a title, service area, and company name.", loading: "Loading listing…", notFound: "This listing could not be found." };
+  const t = lang === "es" ? { heading: listingId ? "Editar publicación" : form.listingType === "project" ? "Publicar un proyecto" : "Publicar un empleo", listingType: "Tipo de publicación", job: "Empleo", jobHelp: "Contratar a un empleado", project: "Proyecto", projectHelp: "Un subcontratista para una tarea", employment: "Condiciones de empleo", fullTime: "Tiempo completo", partTime: "Medio tiempo", temporary: "Temporal", payUnit: "Tipo de pago", hourly: "Por hora", salary: "Salario", title: "Título", titleHint: "Ej. Instalación de gabinetes disponible", category: "Categoría", priceType: "Precio", amount: "Precio actual", original: "Precio original (opcional)", fixed: "Precio fijo", free: "Gratis", contact: "Consultar precio", photos: "Fotos", photoHint: "Hasta 8 fotos JPG, PNG o WebP", keepPhotos: "Tus fotos actuales se conservarán. Elige nuevas fotos solo si quieres reemplazarlas.", replacePhotos: "Las fotos nuevas reemplazarán las actuales.", description: "Descripción", area: "Área de servicio o código postal", company: "Nombre de la empresa (opcional)", phone: "Teléfono de contacto (opcional)", bookable: "Permitir reservas", bookableHelp: "Para alquileres de remolques, equipos u otros artículos por día", dailyRate: "Precio por día", publish: listingId ? "Guardar cambios" : "Publicar", required: "Agrega un título y área de servicio.", loading: "Cargando publicación…", notFound: "No se encontró esta publicación." } : { heading: listingId ? "Edit listing" : form.listingType === "project" ? "List a project" : "List a job", listingType: "Listing type", job: "Job", jobHelp: "Hiring an employee", project: "Project", projectHelp: "A subcontractor for one task", employment: "Employment terms", fullTime: "Full-time", partTime: "Part-time", temporary: "Temporary", payUnit: "Pay type", hourly: "Hourly", salary: "Salary", title: "Title", titleHint: "e.g. Cabinet installation available", category: "Trade category", priceType: "Price", amount: "Current price", original: "Original price (optional)", fixed: "Set a price", free: "Free", contact: "Contact for price", photos: "Photos", photoHint: "Up to 8 JPG, PNG, or WebP images", keepPhotos: "Your current photos will stay. Choose new photos only if you want to replace them.", replacePhotos: "New photos will replace the current ones.", description: "Description", area: "Service area or ZIP", company: "Company name (optional)", phone: "Contact phone (optional)", bookable: "Allow bookings", bookableHelp: "For trailers, equipment, or other items rented by the day", dailyRate: "Price per day", publish: listingId ? "Save changes" : "Publish listing", required: "Add a title and service area.", loading: "Loading listing…", notFound: "This listing could not be found." };
   if (listingId && existing.isLoading) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="loading-block" aria-label={t.loading}/></main>;
   if (listingId && !existing.data?.listing) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty"><h2>{t.notFound}</h2></div></main>;
   if (moderationNotice) return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><div className="market-empty moderation-notice">
@@ -4238,7 +4272,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     <button type="button" className="primary-button" onClick={() => onSaved(moderationNotice.id)}>{lang === "es" ? "Continuar" : "Continue"}</button>
   </div></main>;
   const currentPhotos = existing.data?.listing?.photos ?? [];
-  return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><form className="job-form marketplace-form" onSubmit={(event) => { event.preventDefault(); setError(""); if (!form.title.trim() || !form.serviceArea.trim() || !form.companyName.trim()) { setError(t.required); return; } save.mutate(); }}>
+  return <main className="page form-page marketplace-form-page"><PageHeader lang={lang} title={t.heading} onBack={onBack}/><form className="job-form marketplace-form" onSubmit={(event) => { event.preventDefault(); setError(""); if (!form.title.trim() || !form.serviceArea.trim()) { setError(t.required); return; } save.mutate(); }}>
     <fieldset className="listing-type-choice"><legend>{t.listingType}</legend><button type="button" className={form.listingType === "job" ? "active job" : "job"} onClick={() => setForm({ ...form, listingType: "job", priceKind: form.priceKind === "free" ? "contact" : form.priceKind, bookable: false, dailyRate: "" })}><Icon><path d="M5 8h14v11H5zM9 8V5h6v3M5 12h14"/></Icon><span><strong>{t.job}</strong><small>{t.jobHelp}</small></span></button><button type="button" className={form.listingType === "project" ? "active project" : "project"} onClick={() => setForm({ ...form, listingType: "project" })}><Icon><path d="M4 20h16M6 20V9l6-5 6 5v11"/></Icon><span><strong>{t.project}</strong><small>{t.projectHelp}</small></span></button></fieldset>
     <label><span>{t.title}</span><input required aria-label={t.title} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder={t.titleHint}/></label>
     <label><span>{t.category}</span><select aria-label={t.category} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as MarketplaceCategory })}>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>
@@ -4251,7 +4285,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     <label className="market-photo-picker"><span>{listingId && currentPhotos.length ? (lang === "es" ? "Reemplazar fotos" : "Replace photos") : t.photos}</span><input type="file" aria-label={listingId && currentPhotos.length ? (lang === "es" ? "Reemplazar fotos" : "Replace photos") : t.photos} accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const next = Array.from(event.target.files ?? []).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type)).slice(0, 8); setPhotos(next); }}/><small>{photos.length ? photos.map((file) => file.name).join(", ") : t.photoHint}</small></label>
     <label><span>{t.description}</span><textarea rows={6} aria-label={t.description} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })}/></label>
     <label><span>{t.area}</span><input required aria-label={t.area} value={form.serviceArea} onChange={(event) => setForm({ ...form, serviceArea: event.target.value })}/></label>
-    <label><span>{t.company}</span><input required aria-label={t.company} value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })}/></label>
+    <label><span>{t.company}</span><input aria-label={t.company} value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })}/></label>
     <label><span>{t.phone}</span><input type="tel" aria-label={t.phone} value={form.companyPhone} onChange={(event) => setForm({ ...form, companyPhone: event.target.value })}/></label>
     {error && <p className="status error">{error}</p>}<button className="primary-button" disabled={save.isPending}>{save.isPending ? copy[lang].saving : t.publish}</button>
   </form></main>;
@@ -4312,81 +4346,30 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
   </main>;
 }
 
-// Build 0.6 item 22: contact unlock UI (hybrid model: free -> Pro quota -> credits).
+// Build 0.7: marketplace monetization is paused — contact reveals are free for
+// everyone. No bottom sheet, no unlock consumption, no upsell. The unlock
+// status type/pill stay for the Profile screen (informational only).
 type UnlockStatus = { freeRemaining: number; freeTotal: number; proQuotaRemaining: number; proQuotaTotal: number; creditBalance: number; isPro: boolean };
 
-function unlockSourceLabel(status: UnlockStatus, lang: Lang): string {
-  if (status.freeRemaining > 0) return lang === "es" ? `Usar 1 de ${status.freeRemaining} desbloqueos gratis` : `Use 1 of ${status.freeRemaining} free unlocks`;
-  if (status.proQuotaRemaining > 0) return lang === "es" ? `Usar cuota Pro (${status.proQuotaRemaining} restantes este mes)` : `Use Pro quota (${status.proQuotaRemaining} left this month)`;
-  if (status.creditBalance > 0) return lang === "es" ? `Usar 1 crédito (${status.creditBalance} disponibles)` : `Use 1 credit (${status.creditBalance} available)`;
-  return "";
-}
-
-function MarketplaceContactUnlock({ lang, listingId, listingName, onUnlocked }: { lang: Lang; listingId: number; listingName: string; onUnlocked: () => void }) {
-  const qc = useQueryClient();
-  const [sheetOpen, setSheetOpen] = useState(false);
+function MarketplaceContactReveal({ lang, listingId }: { lang: Lang; listingId: number }) {
+  const [phone, setPhone] = useState<string | null>(null);
   const [error, setError] = useState("");
-  useEscapeToClose(sheetOpen, () => setSheetOpen(false));
-  const statusQuery = useQuery({ queryKey: ["marketplace-unlock-status"], queryFn: () => api.getMarketplaceUnlockStatus({}), enabled: sheetOpen });
-  const status = statusQuery.data as UnlockStatus | undefined;
-  const unlock = useMutation({
+  const reveal = useMutation({
     mutationFn: () => api.unlockMarketplaceContact({ listingId }),
-    onSuccess: async () => {
-      setError("");
-      setSheetOpen(false);
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["marketplace-listing", listingId] }),
-        qc.invalidateQueries({ queryKey: ["marketplace-unlock-status"] }),
-      ]);
-      onUnlocked();
-    },
-    onError: (caught) => {
-      const msg = actionErrorMessage(caught);
-      setError(msg === "NO_UNLOCKS_REMAINING"
-        ? (lang === "es" ? "Usaste todos tus desbloqueos. Hazte Pro o compra créditos." : "You've used all your unlocks. Go Pro or buy credits.")
-        : msg);
-    },
-  });
-  const buyPack = useMutation({
-    mutationFn: (pack: "5" | "15") => api.createCreditPackCheckout({ pack }),
-    onSuccess: (result) => {
-      if (result.checkoutUrl) window.location.href = result.checkoutUrl;
-      else setError(lang === "es" ? "El pago aún no está configurado." : "Checkout is not configured yet.");
-    },
+    onSuccess: (result) => { setError(""); setPhone(result.phone ?? ""); },
     onError: (caught) => setError(actionErrorMessage(caught)),
   });
   const t = lang === "es"
-    ? { unlock: "Desbloquear contacto", title: "Desbloquear contacto", for: "para", confirm: "Desbloquear", cancel: "Cancelar", unlocking: "Desbloqueando…", noneLeft: "No te quedan desbloqueos", upsell: "Obtén más desbloqueos", goPro: "Hazte Pro", goProDetail: "10 desbloqueos/mes incluidos", buy5: "5 créditos — $9", buy15: "15 créditos — $19", oneTime: "Pago único, no vencen", close: "Cerrar" }
-    : { unlock: "Unlock contact", title: "Unlock contact", for: "for", confirm: "Unlock", cancel: "Cancel", unlocking: "Unlocking…", noneLeft: "No unlocks left", upsell: "Get more unlocks", goPro: "Go Pro", goProDetail: "10 unlocks/mo included", buy5: "5 credits — $9", buy15: "15 credits — $19", oneTime: "One-time, never expire", close: "Close" };
-  const sourceLabel = status ? unlockSourceLabel(status, lang) : "";
-  const hasUnlocks = !!status && (status.freeRemaining > 0 || status.proQuotaRemaining > 0 || status.creditBalance > 0);
+    ? { show: "Ver contacto", showing: "Mostrando…", noPhone: "No hay un número de teléfono publicado — envíale un mensaje." }
+    : { show: "Show contact", showing: "Loading…", noPhone: "No phone number listed — send them a message instead." };
+  if (phone !== null) {
+    return phone
+      ? <p className="market-phone">{phone}</p>
+      : <p className="muted-note">{t.noPhone}</p>;
+  }
   return <>
-    <button className="primary-button" onClick={() => { setError(""); setSheetOpen(true); }}><Icon><path d="M12 2a5 5 0 0 1 5 5c0 2-1 3.5-2.5 4.5V14h-5v-2.5C8 10.5 7 9 7 7a5 5 0 0 1 5-5Zm-2 16h4v3h-4z" /></Icon>{t.unlock}</button>
-    {sheetOpen && <div className="sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !unlock.isPending) setSheetOpen(false); }}>
-      <section className="more-sheet unlock-sheet" role="dialog" aria-modal="true" aria-label={t.title} onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-handle" />
-        <div className="sheet-title-row"><h2>{t.title}</h2><button aria-label={t.close} onClick={() => setSheetOpen(false)}>×</button></div>
-        <p className="unlock-listing-name">{listingName}</p>
-        {statusQuery.isLoading ? <div className="loading-block" /> : status && <>
-          {hasUnlocks ? <>
-            <p className="unlock-source">{sourceLabel}</p>
-            {error && <p className="status error" role="alert">{error}</p>}
-            <div className="delete-sheet-actions">
-              <button type="button" disabled={unlock.isPending} onClick={() => setSheetOpen(false)}>{t.cancel}</button>
-              <button type="button" className="primary-button" disabled={unlock.isPending} onClick={() => unlock.mutate()}>{unlock.isPending ? t.unlocking : t.confirm}</button>
-            </div>
-          </> : <>
-            <p className="unlock-none">{t.noneLeft}</p>
-            {error && <p className="status error" role="alert">{error}</p>}
-            <div className="unlock-upsell">
-              <button type="button" className="unlock-pro-row" onClick={() => setSheetOpen(false)}><strong>{t.goPro}</strong><span>{t.goProDetail}</span></button>
-              <button type="button" disabled={buyPack.isPending} onClick={() => buyPack.mutate("5")}><strong>{t.buy5}</strong><span>{t.oneTime}</span></button>
-              <button type="button" disabled={buyPack.isPending} onClick={() => buyPack.mutate("15")}><strong>{t.buy15}</strong><span>{t.oneTime}</span></button>
-            </div>
-          </>}
-        </>}
-      </section>
-    </div>}
+    <button className="primary-button" disabled={reveal.isPending} onClick={() => { setError(""); reveal.mutate(); }}><Icon><path d="M12 2a5 5 0 0 1 5 5c0 2-1 3.5-2.5 4.5V14h-5v-2.5C8 10.5 7 9 7 7a5 5 0 0 1 5-5Zm-2 16h4v3h-4z" /></Icon>{reveal.isPending ? t.showing : t.show}</button>
+    {error && <p className="status error" role="alert">{error}</p>}
   </>;
 }
 
@@ -4406,14 +4389,17 @@ function UnlockStatusPill({ lang }: { lang: Lang }) {
 function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["marketplace-listing", listingId], queryFn: () => api.getMarketplaceListing({ id: listingId }) });
-  const [showPhone, setShowPhone] = useState(false);
   const [saved, setSaved] = useState(() => savedMarketplaceIds().includes(listingId));
   const [bookingOpen, setBookingOpen] = useState(false);
+  const bookingOpenSheet = useAnimatedDismiss(bookingOpen);
   const [convoPickerOpen, setConvoPickerOpen] = useState(false);
+  const convoPickerOpenSheet = useAnimatedDismiss(convoPickerOpen);
   const [booking, setBooking] = useState({ startDate: "", endDate: "", note: "" });
   const [sentBooking, setSentBooking] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const deleteOpenSheet = useAnimatedDismiss(deleteOpen);
   const [reportOpen, setReportOpen] = useState(false);
+  const reportOpenSheet = useAnimatedDismiss(reportOpen);
   useEscapeToClose(deleteOpen, () => setDeleteOpen(false));
   useEscapeToClose(reportOpen, () => setReportOpen(false));
   useEscapeToClose(bookingOpen, () => setBookingOpen(false));
@@ -4423,8 +4409,6 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   const [reportDetails, setReportDetails] = useState("");
   const [reportError, setReportError] = useState("");
   const [reportDone, setReportDone] = useState(false);
-  const [messageNeedsUnlock, setMessageNeedsUnlock] = useState(false);
-  useEscapeToClose(messageNeedsUnlock, () => setMessageNeedsUnlock(false));
   const reportListing = useMutation({
     mutationFn: () => api.marketplaceListingFlag({ listingId, reason: reportReason, details: reportDetails }),
     onSuccess: () => { setReportConfirm(false); setReportDone(true); setReportError(""); },
@@ -4433,8 +4417,8 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   const myConvos = useQuery({ queryKey: ["marketplace-convos-for-listing", listingId], queryFn: async () => { const inbox = await api.marketplaceConversations({}); return inbox.conversations.filter((conversation) => conversation.listingId === listingId); }, enabled: convoPickerOpen });
   const startConvo = useMutation({
     mutationFn: () => api.startMarketplaceConversation({ listingId }),
-    onSuccess: (result) => { setMessageNeedsUnlock(false); onOpenThread(result.conversationId); },
-    onError: (caught) => { if (actionErrorMessage(caught) === "NO_UNLOCKS_REMAINING") setMessageNeedsUnlock(true); },
+    onSuccess: (result) => { onOpenThread(result.conversationId); },
+    onError: () => {},
   });
   const requestBooking = useMutation({ mutationFn: () => api.createMarketplaceBooking({ listingId, ...booking }), onSuccess: () => setSentBooking(true) });
   const removeListing = useMutation({ mutationFn: () => api.deleteMarketplaceListing({ id: listingId }), onSuccess: async () => { const next = savedMarketplaceIds().filter((id) => id !== listingId); window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); await qc.invalidateQueries({ queryKey: ["marketplace-listings"] }); onDeleted(); } });
@@ -4444,12 +4428,12 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <img key={photo.id} className={index === 0 ? "primary" : ""} src={photo.url} alt={`${listing.title} ${index + 1}`}/>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
-    <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && !messageNeedsUnlock && <p className="status error">{t.startError}</p>}
+    <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
-    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2><strong>{listing.companyName}</strong>{listing.contactUnlocked ? (listing.companyPhone ? (showPhone ? <p className="market-phone">{listing.companyPhone}</p> : <button className="primary-button" onClick={() => setShowPhone(true)}>{t.contact}</button>) : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactUnlock lang={lang} listingId={listingId} listingName={listing.title} onUnlocked={() => setShowPhone(true)} />}</section>
+    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}</strong> : null}{listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
-    {deleteOpen && <div className="sheet-backdrop" onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
-    {reportOpen && <div className="sheet-backdrop" onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
+    {deleteOpenSheet.render && <div className={`sheet-backdrop${deleteOpenSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
+    {reportOpenSheet.render && <div className={`sheet-backdrop${reportOpenSheet.closing ? " closing" : ""}`} onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
       <div className="sheet-handle"/><div className="sheet-title-row"><h2 id="report-listing-title">{t.reportTitle}</h2><button aria-label={t.close} onClick={() => setReportOpen(false)}>×</button></div>
       {reportDone ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.reportThanks}</h3><p>{t.reportThanksBody}</p><button className="primary-button" onClick={() => setReportOpen(false)}>{t.close}</button></div>
       : reportConfirm ? <><p>{t.reportConfirmBody}</p><strong>{listing.title}</strong>{reportError && <p className="status error">{reportError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={reportListing.isPending} onClick={() => setReportConfirm(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={reportListing.isPending} onClick={() => reportListing.mutate()}>{reportListing.isPending ? (lang === "es" ? "Enviando…" : "Sending…") : t.reportConfirmYes}</button></div></>
@@ -4458,9 +4442,8 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
       {reportError && <p className="status error">{reportError}</p>}
       <div className="delete-sheet-actions"><button type="button" onClick={() => setReportOpen(false)}>{t.cancel}</button><button type="button" className="primary-button" onClick={() => { setReportError(""); setReportConfirm(true); }}>{t.reportSubmit}</button></div></>}
     </section></div>}
-    {convoPickerOpen && <div className="sheet-backdrop" onClick={() => setConvoPickerOpen(false)}><section className="more-sheet conversation-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-convos-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><div className="sheet-title-row"><h2 id="detail-convos-title">{t.convosTitle}</h2><button aria-label={t.close} onClick={() => setConvoPickerOpen(false)}>×</button></div>{myConvos.isLoading ? <div className="loading-block"/> : (myConvos.data ?? []).length ? <div className="convo-picker-list">{(myConvos.data ?? []).map((conversation) => <button key={conversation.id} type="button" className="convo-picker-row" onClick={() => { setConvoPickerOpen(false); onOpenThread(conversation.id); }}><span className="inbox-copy"><strong>{conversation.otherPartyName}</strong><span className="inbox-preview">{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</span></span>{conversation.unreadCount > 0 && <span className="unread-badge">{conversation.unreadCount}</span>}</button>)}</div> : <p className="thread-empty">{t.convosEmpty}</p>}</section></div>}
-    {messageNeedsUnlock && <div className="sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setMessageNeedsUnlock(false); }}><section className="more-sheet unlock-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Desbloquear para enviar mensajes" : "Unlock to message"} onClick={(e) => e.stopPropagation()}><div className="sheet-handle" /><div className="sheet-title-row"><h2>{lang === "es" ? "Desbloquea para enviar mensajes" : "Unlock to message"}</h2><button aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setMessageNeedsUnlock(false)}>×</button></div><p className="unlock-listing-name">{listing?.title}</p><p className="muted-note">{lang === "es" ? "Enviar mensajes usa uno de tus desbloqueos de contacto." : "Messaging uses one of your contact unlocks."}</p><MarketplaceContactUnlock lang={lang} listingId={listingId} listingName={listing?.title ?? ""} onUnlocked={() => { setMessageNeedsUnlock(false); startConvo.mutate(); }} /></section></div>}
-    {bookingOpen && <div className="sheet-backdrop"><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
+    {convoPickerOpenSheet.render && <div className={`sheet-backdrop${convoPickerOpenSheet.closing ? " closing" : ""}`} onClick={() => setConvoPickerOpen(false)}><section className="more-sheet conversation-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-convos-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><div className="sheet-title-row"><h2 id="detail-convos-title">{t.convosTitle}</h2><button aria-label={t.close} onClick={() => setConvoPickerOpen(false)}>×</button></div>{myConvos.isLoading ? <div className="loading-block"/> : (myConvos.data ?? []).length ? <div className="convo-picker-list">{(myConvos.data ?? []).map((conversation) => <button key={conversation.id} type="button" className="convo-picker-row" onClick={() => { setConvoPickerOpen(false); onOpenThread(conversation.id); }}><span className="inbox-copy"><strong>{conversation.otherPartyName}</strong><span className="inbox-preview">{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</span></span>{conversation.unreadCount > 0 && <span className="unread-badge">{conversation.unreadCount}</span>}</button>)}</div> : <p className="thread-empty">{t.convosEmpty}</p>}</section></div>}
+    {bookingOpenSheet.render && <div className={`sheet-backdrop${bookingOpenSheet.closing ? " closing" : ""}`}><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
   </>}</main>;
 }
 
@@ -4518,9 +4501,11 @@ function ComingSoonSheet({
   tool: ToolTile;
   onClose: () => void;
 }) {
-  useEscapeToClose(true, onClose);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
+  useEscapeToClose(true, close);
   return (
-    <div className="sheet-backdrop" role="presentation" onClick={onClose}>
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={close}>
       <section
         className="more-sheet tool-coming-sheet"
         role="dialog"
@@ -4532,7 +4517,7 @@ function ComingSoonSheet({
         <ToolStatus lang={lang} comingSoon={tool.comingSoon} pro={tool.pro} />
         <h2 id="tool-coming-title">{tool.title}</h2>
         <p>{tool.comingSoon}</p>
-        <button className="primary-button" type="button" onClick={onClose}>
+        <button className="primary-button" type="button" onClick={close}>
           {lang === "es" ? "Entendido" : "Got it"}
         </button>
       </section>
@@ -7762,6 +7747,7 @@ function SettingsScreen({
             <SettingsAccordion title={auth.user.name} icon={<Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0" /></Icon>}>
               <div className="account-settings">
                 <div><strong>{auth.user.email}</strong><small>{auth.user.tier === "premium" ? (lang === "es" ? "Propietario verificado · Premium" : "Verified owner · Premium") : (lang === "es" ? "Propietario verificado · Gratis" : "Verified owner · Free")}</small></div>
+                <div className="unlock-status-row"><span>{lang === "es" ? "Desbloqueos de contacto del mercado" : "Marketplace contact unlocks"}</span><UnlockStatusPill lang={lang} /></div>
                 <AccountNameEditor lang={lang} />
                 <button type="button" className="secondary-button" onClick={() => setScreen({ name: "upgrade" })}>{lang === "es" ? "Ver plan" : "View plan"}</button>
                 <button type="button" className="secondary-button account-signout" onClick={() => void auth.signOut()}>{lang === "es" ? "Cerrar sesión" : "Sign out"}</button>
@@ -8915,6 +8901,7 @@ function PAQueueTab({ lang }: { lang: Lang }) {
   const query = useQuery({ queryKey: ["pa-queue"], queryFn: () => api.adminModerationQueue({}) });
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [confirm, setConfirm] = useState<{ id: number; title: string } | null>(null);
+  const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const decide = useMutation({
@@ -8949,9 +8936,9 @@ function PAQueueTab({ lang }: { lang: Lang }) {
         </div>
       </article>
     ))}
-    {confirm && <div className="sheet-backdrop" onClick={() => !decide.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-      <div className="sheet-handle" /><h2>{t.removeTitle}</h2><strong>{confirm.title}</strong><p>{t.removeBody}</p>
-      <div className="delete-sheet-actions"><button type="button" disabled={decide.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={decide.isPending} onClick={() => decide.mutate({ listingId: confirm.id, decision: "remove", note: notes[confirm.id] ?? "" })}>{t.confirmRemove}</button></div>
+    {confirmSheet.render && confirmSheet.value && <div className={`sheet-backdrop${confirmSheet.closing ? " closing" : ""}`} onClick={() => !decide.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{t.removeTitle}</h2><strong>{confirmSheet.value.title}</strong><p>{t.removeBody}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={decide.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={decide.isPending} onClick={() => decide.mutate({ listingId: confirmSheet.value.id, decision: "remove", note: notes[confirmSheet.value.id] ?? "" })}>{t.confirmRemove}</button></div>
     </section></div>}
   </div>;
 }
@@ -8964,6 +8951,7 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   useEffect(() => { const timer = window.setTimeout(() => { setSearch(searchInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [searchInput]);
   const query = useQuery({ queryKey: ["pa-users", search, page], queryFn: () => api.adminUsersList({ search, page, pageSize: 20 }) });
   const [confirm, setConfirm] = useState<{ id: number; name: string; email: string; suspend: boolean } | null>(null);
+  const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const toggle = useMutation({
@@ -8992,9 +8980,9 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
       ))}
       <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>
     </>}
-    {confirm && <div className="sheet-backdrop" onClick={() => !toggle.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-      <div className="sheet-handle" /><h2>{confirm.suspend ? t.suspendTitle : t.unsuspendTitle}</h2><strong>{confirm.name}</strong><p>{confirm.email}</p><p>{confirm.suspend ? t.suspendBody : t.unsuspendBody}</p>
-      <div className="delete-sheet-actions"><button type="button" disabled={toggle.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirm.suspend ? "danger-button" : "primary-button"} disabled={toggle.isPending} onClick={() => toggle.mutate({ id: confirm.id, suspend: confirm.suspend })}>{confirm.suspend ? t.confirmSuspend : t.confirmUnsuspend}</button></div>
+    {confirmSheet.render && confirmSheet.value && <div className={`sheet-backdrop${confirmSheet.closing ? " closing" : ""}`} onClick={() => !toggle.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{confirmSheet.value.suspend ? t.suspendTitle : t.unsuspendTitle}</h2><strong>{confirmSheet.value.name}</strong><p>{confirmSheet.value.email}</p><p>{confirmSheet.value.suspend ? t.suspendBody : t.unsuspendBody}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={toggle.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirmSheet.value.suspend ? "danger-button" : "primary-button"} disabled={toggle.isPending} onClick={() => toggle.mutate({ id: confirmSheet.value.id, suspend: confirmSheet.value.suspend })}>{confirmSheet.value.suspend ? t.confirmSuspend : t.confirmUnsuspend}</button></div>
     </section></div>}
   </div>;
 }
@@ -9004,6 +8992,7 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-user-detail", userId], queryFn: () => api.adminUserDetail({ userId }) });
   const [confirm, setConfirm] = useState<null | { kind: "suspend" } | { kind: "revokeSessions" } | { kind: "tier"; to: "free" | "premium" }>(null);
+  const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
   const runAction = useMutation({
@@ -9120,9 +9109,9 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
         </>;
       })()}
     </div>
-    {confirm && <div className="sheet-backdrop" onClick={() => !runAction.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+    {confirmSheet.render && confirmSheet.value && <div className={`sheet-backdrop${confirmSheet.closing ? " closing" : ""}`} onClick={() => !runAction.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
       <div className="sheet-handle" /><h2>{confirmTitle}</h2><p>{confirmBody}</p>
-      <div className="delete-sheet-actions"><button type="button" disabled={runAction.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirm.kind === "suspend" && !query.data?.user.suspended ? "danger-button" : "primary-button"} disabled={runAction.isPending} onClick={() => runAction.mutate(confirm)}>{t.confirmBtn}</button></div>
+      <div className="delete-sheet-actions"><button type="button" disabled={runAction.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirmSheet.value.kind === "suspend" && !query.data?.user.suspended ? "danger-button" : "primary-button"} disabled={runAction.isPending} onClick={() => runAction.mutate(confirmSheet.value)}>{t.confirmBtn}</button></div>
     </section></div>}
   </main>;
 }
@@ -9135,6 +9124,7 @@ function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
   const [error, setError] = useState("");
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<{ chargeId: string; amountCents?: number; label: string } | null>(null);
+  const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [done, setDone] = useState("");
   const lookup = async () => {
@@ -9173,9 +9163,9 @@ function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
         }}>{t.refund}</button></div>}
       </article>;
     })}
-    {confirm && <div className="sheet-backdrop" onClick={() => !refund.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-      <div className="sheet-handle" /><h2>{t.refundTitle}</h2><strong>{confirm.label}</strong><p className="mono">{confirm.chargeId}</p>
-      <div className="delete-sheet-actions"><button type="button" disabled={refund.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={refund.isPending} onClick={() => refund.mutate({ chargeId: confirm.chargeId, amountCents: confirm.amountCents, reason: "" })}>{t.confirmRefund}</button></div>
+    {confirmSheet.render && confirmSheet.value && <div className={`sheet-backdrop${confirmSheet.closing ? " closing" : ""}`} onClick={() => !refund.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{t.refundTitle}</h2><strong>{confirmSheet.value.label}</strong><p className="mono">{confirmSheet.value.chargeId}</p>
+      <div className="delete-sheet-actions"><button type="button" disabled={refund.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={refund.isPending} onClick={() => refund.mutate({ chargeId: confirmSheet.value.chargeId, amountCents: confirmSheet.value.amountCents, reason: "" })}>{t.confirmRefund}</button></div>
     </section></div>}
   </div>;
 }
@@ -11021,6 +11011,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [editorPreview, setEditorPreview] = useState<Blob | null>(null);
+  const editorPreviewSheet = useAnimatedDismiss(editorPreview);
   // Build 0.6: preview Send opens explicit options (PDF/messages/link/email)
   // instead of nativeShare, which silently degrades to a download in the TWA.
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
@@ -11070,7 +11061,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
-    {editorPreview && <div className="sheet-backdrop editor-preview-overlay" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewDoc ? <div className="editor-preview-paper"><QuotePaper quote={editorPreviewDoc} settings={settings ?? null} lang={lang} kind={kind}/></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
+    {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewDoc ? <div className="editor-preview-paper"><QuotePaper quote={editorPreviewDoc} settings={settings ?? null} lang={lang} kind={kind}/></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
   </div>;
 }
@@ -11182,8 +11173,10 @@ function PreviewSendSheet({ lang, kind, document, pdfBlob, onClose, onSent }: {
 
 function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice"|"quote";id:number;onClose:()=>void;onSaved:()=>void}){
  const [name,setName]=useState("");const [signature,setSignature]=useState("");const [saving,setSaving]=useState(false);
- useEscapeToClose(true,()=>{if(!saving)onClose();});
- return <div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget&&!saving)onClose();}}><section className="signature-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Firma del cliente":"Client signature"}><div className="sheet-handle"/><div className="section-title-row"><h2>{lang==="es"?"Firma del cliente":"Client signature"}</h2><button onClick={onClose}>{copy[lang].close}</button></div><label><span>{lang==="es"?"Nombre del firmante":"Signer name"}</span><input value={name} onChange={(e)=>setName(e.target.value)}/></label><SignaturePad label={copy[lang].signature} clearLabel={copy[lang].clear} onChange={setSignature}/><button className="primary-button" disabled={!name.trim()||!signature||saving} onClick={async()=>{setSaving(true);try{await api.saveFinancialSignature({kind,id,signerName:name,signatureDataBase64:signature});onSaved();}finally{setSaving(false);}}}>{saving?copy[lang].saving:(lang==="es"?"Guardar firma":"Save signature")}</button></section></div>;
+ const [closing,setClosing]=useState(false);
+ const close=()=>{if(closing||saving)return;setClosing(true);window.setTimeout(onClose,180);};
+ useEscapeToClose(true,()=>{if(!saving)close();});
+ return <div className={`sheet-backdrop${closing?" closing":""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)close();}}><section className="signature-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Firma del cliente":"Client signature"}><div className="sheet-handle"/><div className="section-title-row"><h2>{lang==="es"?"Firma del cliente":"Client signature"}</h2><button onClick={close}>{copy[lang].close}</button></div><label><span>{lang==="es"?"Nombre del firmante":"Signer name"}</span><input value={name} onChange={(e)=>setName(e.target.value)}/></label><SignaturePad label={copy[lang].signature} clearLabel={copy[lang].clear} onChange={setSignature}/><button className="primary-button" disabled={!name.trim()||!signature||saving} onClick={async()=>{setSaving(true);try{await api.saveFinancialSignature({kind,id,signerName:name,signatureDataBase64:signature});onSaved();}finally{setSaving(false);}}}>{saving?copy[lang].saving:(lang==="es"?"Guardar firma":"Save signature")}</button></section></div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -11507,6 +11500,7 @@ function QuotePreview({
   const [designOpen, setDesignOpen] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const moreOpenSheet = useAnimatedDismiss(moreOpen);
   useEscapeToClose(fullScreen, () => setFullScreen(false));
   useEscapeToClose(moreOpen, () => setMoreOpen(false));
   const [editing, setEditing] = useState(false);
@@ -11585,7 +11579,7 @@ function QuotePreview({
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="quote" id={quote.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","quote",quoteId]});setSignatureOpen(false);}}/>}
     {sendSheetOpen&&<SendSheet lang={lang} kind="quote" id={quote.id} docLabel={capFirst(estTerms.singular)} docNumber={`#${quote.id}`} clientName={quote.clientName} clientEmail={quote.clientEmail} companyName={settings?.companyName ?? ""} blob={blob} filename={filename} title={capFirst(estTerms.singular)} markSent={async()=>{if(!quote.sentAt)await api.sendQuoteVersion({id:quote.id});await refresh();}} onClose={()=>setSendSheetOpen(false)}/>}
-    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?`Opciones de ${estTerms.singular}`:`${capFirst(estTerms.singular)} options`}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?`Convertir ${estTerms.singular} en factura`:`Convert ${estTerms.singular} to invoice`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,capFirst(estTerms.singular))}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?`Duplicar ${estTerms.singular}`:`Duplicate ${estTerms.singular}`}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?`Eliminar ${estTerms.singular}`:`Delete ${estTerms.singular}`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+    {moreOpenSheet.render && <div className={`sheet-backdrop${moreOpenSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?`Opciones de ${estTerms.singular}`:`${capFirst(estTerms.singular)} options`}</h2>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura creada":"View created invoice"}</span></button>:!confirmConvert?<button onClick={()=>setConfirmConvert(true)}><FileIcon/><span>{lang==="es"?`Convertir ${estTerms.singular} en factura`:`Convert ${estTerms.singular} to invoice`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?`¿Crear factura por ${usd(money(quote.total))} para ${quote.clientName}?`:`Create a ${usd(money(quote.total))} invoice for ${quote.clientName}?`}</strong><button className="primary-button" disabled={convert.isPending} onClick={()=>{setConfirmConvert(false);convert.mutate();}}>{lang==="es"?"Sí, crear factura":"Yes, create invoice"}</button><button onClick={()=>setConfirmConvert(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}<button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,capFirst(estTerms.singular))}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button><button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?`Duplicar ${estTerms.singular}`:`Duplicate ${estTerms.singular}`}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?`Eliminar ${estTerms.singular}`:`Delete ${estTerms.singular}`}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
   </main>;
 }
 
@@ -11962,7 +11956,9 @@ function PaymentSheet({
   onSaved: () => Promise<void>;
 }) {
   const t = copy[lang];
-  useEscapeToClose(true, onClose);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
+  useEscapeToClose(true, close);
   const total = money(invoice.totalWithLateFee);
   const paid = Number(invoice.paidToDate ?? 0);
   const balance = Math.max(0, total - paid);
@@ -12011,10 +12007,10 @@ function PaymentSheet({
   };
   const visiblePayments = invoice.payments.filter((p) => p.note !== "__paid_toggle__");
   return (
-    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <section className="more-sheet payment-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Registrar pago" : "Record payment"}>
         <div className="sheet-handle" />
-        <header className="sheet-header-row"><h2>{lang === "es" ? "Registrar pago" : "Record payment"}</h2><button type="button" className="icon-button" onClick={onClose} aria-label={t.close}>×</button></header>
+        <header className="sheet-header-row"><h2>{lang === "es" ? "Registrar pago" : "Record payment"}</h2><button type="button" className="icon-button" onClick={close} aria-label={t.close}>×</button></header>
         <div className="payment-summary">
           <div><span>{t.total}</span><strong>{usd(total)}</strong></div>
           <div><span>{t.paidToDate}</span><strong>{usd(paid)}</strong></div>
@@ -12141,6 +12137,7 @@ function InvoicePreview({
   const [designOpen,setDesignOpen]=useState(false);
   const [fullScreen,setFullScreen]=useState(false);
   const [moreOpen,setMoreOpen]=useState(false);
+  const moreOpenSheet = useAnimatedDismiss(moreOpen);
   useEscapeToClose(fullScreen,()=>setFullScreen(false));
   useEscapeToClose(moreOpen,()=>setMoreOpen(false));
   const [editing,setEditing]=useState(false);
@@ -12246,7 +12243,7 @@ function InvoicePreview({
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="invoice" id={invoice.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","invoice",invoiceId]});setSignatureOpen(false);}}/>}
-    {moreOpen&&<div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{buzz(8);setMoreOpen(false);setReceiptSheetOpen(true);}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
+    {moreOpenSheet.render && <div className={`sheet-backdrop${moreOpenSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)setMoreOpen(false);}}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang==="es"?"Más acciones":"More actions"}><div className="sheet-handle"/><h2>{lang==="es"?"Opciones de factura":"Invoice options"}</h2><button disabled={invoice.payments.length===0} onClick={()=>{buzz(8);setMoreOpen(false);setReceiptSheetOpen(true);}}><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></Icon><span>{lang==="es"?"Enviar recibo de pago":"Send payment receipt"}</span></button><button disabled={!blob} onClick={()=>blob&&nativeShare(blob,filename,t.invoices)}><ShareIcon/><span>{lang==="es"?"Compartir PDF":"Share PDF"}</span></button><button disabled={!blob} onClick={()=>blob&&downloadPdfAsImage(blob,filename)}><CameraIcon/><span>{lang==="es"?"Descargar como imagen":"Download as image"}</span></button>{settings?.onlineSignatureEnabled !== false && <button onClick={()=>{setMoreOpen(false);setSignatureOpen(true);}}><Icon><path d="M4 18c5-7 8 3 16-8M5 21h14"/></Icon><span>{signature.data?.signature?(lang==="es"?"Actualizar firma":"Update client signature"):(lang==="es"?"Obtener firma del cliente":"Collect client signature")}</span></button>}<button className="duplicate-action" disabled={duplicate.isPending} onClick={()=>duplicate.mutate()}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang==="es"?"Duplicar factura":"Duplicate invoice"}</span></button>{!confirmDelete?<button className="danger-row" onClick={()=>setConfirmDelete(true)}><TrashIcon/><span>{lang==="es"?"Eliminar factura":"Delete invoice"}</span></button>:<div className="sheet-delete-confirm"><strong>{lang==="es"?"¿Eliminar permanentemente?":"Delete permanently?"}</strong><button className="danger-button" onClick={()=>remove.mutate()}>{lang==="es"?"Sí, eliminar":"Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>}</section></div>}
 {paymentSheetOpen&&invoice&&<PaymentSheet lang={lang} invoice={invoice} onClose={()=>setPaymentSheetOpen(false)} onSaved={async()=>{await refresh();}}/>}
 {sendSheetOpen&&<SendSheet lang={lang} kind="invoice" id={invoice.id} docLabel={lang==="es"?"Factura":"Invoice"} docNumber={invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4,"0")}`} clientName={invoice.clientName} clientEmail={invoice.clientEmail} companyName={settings?.companyName ?? ""} blob={blob} filename={filename} title={t.invoices} markSent={markInvoiceSent} onClose={()=>setSendSheetOpen(false)}/>}
 {receiptSheetOpen&&<ReceiptSendSheet lang={lang} invoice={invoice} settings={settings} onClose={()=>setReceiptSheetOpen(false)}/>}
@@ -15513,9 +15510,11 @@ function AttentionSheet({ lang, onClose, setScreen, rows }: {
   setScreen: (s: Screen) => void;
   rows: Array<{ icon: ReactNode; label: string; count: number; target: Screen }>;
 }) {
-  useEscapeToClose(true, onClose);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
+  useEscapeToClose(true, close);
   return (
-    <div className="sheet-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <section className="more-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Acciones pendientes" : "Actions needing attention"}>
         <div className="sheet-handle" />
         <h2>{lang === "es" ? "Acciones pendientes" : "Needs your attention"}</h2>
@@ -16581,7 +16580,9 @@ function MoneyCardModal({
   onClose: () => void;
   setScreen: (s: Screen) => void;
 }) {
-  useEscapeToClose(true, onClose);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
+  useEscapeToClose(true, close);
   const go = (s: Screen) => { onClose(); setScreen(s); };
   const meta = card === "collect"
     ? {
@@ -16624,12 +16625,12 @@ function MoneyCardModal({
   const maxMonth = Math.max(1, ...stats.months.map((m) => m.total));
   const primaryActionLabel = meta.actions[0]?.label;
   return (
-    <div className="sheet-backdrop b06-money-backdrop" role="presentation" onClick={onClose}>
+    <div className={`sheet-backdrop b06-money-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={close}>
       <section className="b06-money-modal" role="dialog" aria-modal="true" aria-label={meta.title} onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" />
         <header>
           <div><small>{meta.kicker}</small><h2>{meta.title}</h2><strong className="b06-money-modal-total">{total}</strong></div>
-          <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
+          <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={close}>×</button>
         </header>
         <dl className="b06-money-stats">
           {meta.statRows.map((row) => (
@@ -16984,7 +16985,7 @@ function HistoryPanel({
               {(kind === "revenue" || kind === "comparison") && (
                 <Bar
                   dataKey="revenue"
-                  fill="var(--green)"
+                  fill="var(--chart-green)"
                   radius={[4, 4, 0, 0]}
                   name="revenue"
                 />
@@ -17254,7 +17255,7 @@ function ReportsScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
               </div>
               <div>
                 <dt>{lang === "es" ? "Diferencia" : "Variance"}</dt>
-                <dd>
+                <dd className={row.variance < 0 ? "variance-neg" : "variance-pos"}>
                   {row.variance >= 0 ? "+" : ""}
                   {usd(row.variance)}
                 </dd>

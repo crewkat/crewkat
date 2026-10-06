@@ -4406,6 +4406,17 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  createCreditPackCheckout: {
+    request: object({
+      userId: number2().int().positive(),
+      companyId: number2().int().positive(),
+      email: string2().email().max(200),
+      pack: _enum(["5", "15"])
+    }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createStripeCheckout: {
     request: object({ userId: number2().int().positive(), companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual", "lifetime"]).default("monthly") }),
     response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
@@ -4427,6 +4438,7 @@ var privileged = definePrivilegedContracts({
       plan: string2().nullable(),
       listingId: number2().int().positive().nullable(),
       companyId: number2().int().positive().nullable(),
+      packSize: number2().int().nullable(),
       stripeSessionId: string2().nullable()
     }),
     capabilities: [],
@@ -4639,6 +4651,48 @@ var privilegedHandlers = definePrivilegedHandlers(privileged, {
       throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, checkoutUrl: result.url, missing: [] };
   },
+  async createCreditPackCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const priceId = args.pack === "5" ? process.env.STRIPE_CREDIT_PACK_5_PRICE_ID?.trim() : process.env.STRIPE_CREDIT_PACK_15_PRICE_ID?.trim();
+    const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+    const priceEnvVar = args.pack === "5" ? "STRIPE_CREDIT_PACK_5_PRICE_ID" : "STRIPE_CREDIT_PACK_15_PRICE_ID";
+    const missing = [
+      !secretKey ? "STRIPE_SECRET_KEY" : "",
+      !priceId ? priceEnvVar : "",
+      !publicUrl ? "CREWKAT_PUBLIC_URL" : ""
+    ].filter(Boolean);
+    if (missing.length || !secretKey || !priceId || !publicUrl)
+      return { configured: false, checkoutUrl: null, missing };
+    if (!/^https:\/\//i.test(publicUrl))
+      return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
+    const body = new URLSearchParams({
+      mode: "payment",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: args.email,
+      client_reference_id: String(args.userId),
+      "metadata[type]": "credit_pack",
+      "metadata[user_id]": String(args.userId),
+      "metadata[company_id]": String(args.companyId),
+      "metadata[pack_size]": args.pack,
+      success_url: `${publicUrl}/app/?credits=success`,
+      cancel_url: `${publicUrl}/app/?credits=cancelled`,
+      allow_promotion_codes: "true"
+    });
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Stripe Checkout could not be started. Check the server billing configuration.");
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url))
+      throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
   async sendAuthEmail(args) {
     const apiKey = process.env.RESEND_API_KEY?.trim();
     if (!apiKey)
@@ -4756,6 +4810,8 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
     const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
     const companyIdValue = metadata.company_id;
     const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
+    const packSizeValue = metadata.pack_size;
+    const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
     return {
       eventId: event.id,
       eventType,
@@ -4769,6 +4825,7 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       plan: typeof metadata.plan === "string" ? metadata.plan : null,
       listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
       companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
+      packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
       stripeSessionId: event.type === "checkout.session.completed" && typeof object2.id === "string" ? object2.id : null
     };
   },

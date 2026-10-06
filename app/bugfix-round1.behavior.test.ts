@@ -217,7 +217,7 @@ check("client passes local day when converting quotes", clientSrc.includes("toda
 
 const escapeTargets = [
   ["payment sheet", "function PaymentSheet"],
-  ["signature dialog", 'useEscapeToClose(true,()=>{if(!saving)onClose();});'],
+  ["signature dialog", 'useEscapeToClose(true,()=>{if(!saving)close();});'],
   ["marketplace promotion sheet", 'useEscapeToClose(promotionOpen'],
   ["marketplace map preview", 'useEscapeToClose(mapPreviewOpen'],
   ["quote fullscreen preview", 'useEscapeToClose(fullScreen'],
@@ -247,6 +247,15 @@ check("material guide describes editable material prices (EN)",
   clientSrc.includes("Save your material names, units, and prices"));
 check("material guide describes editable material prices (ES)",
   clientSrc.includes("Guarda nombres, unidades y precios de materiales"));
+
+// --- Build 0.7 motion system static guards -----------------------------------
+check("motion: shared easing/duration vars", cssSrc.includes("--ease-out") && cssSrc.includes("--dur-fast"));
+check("motion: dialog pop keyframes", cssSrc.includes("dialog-pop-in"));
+check("motion: sheet closing reverses entrance", cssSrc.includes(".sheet-backdrop.closing > section"));
+check("motion: press feedback app-wide", cssSrc.includes(".bottom-nav button:active"));
+check("motion: stagger utility", cssSrc.includes(".stagger-children"));
+check("motion: useAnimatedDismiss hook", clientSrc.includes("function useAnimatedDismiss"));
+check("motion: vivid chart palette", cssSrc.includes("--chart-green") && clientSrc.includes('fill="var(--chart-green)"'));
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
