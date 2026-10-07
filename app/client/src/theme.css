@@ -4064,3 +4064,35 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="dark"] .b06-money-icon { background: rgba(224,123,26,.14); }
 :root[data-theme="dark"] .b06-accent-sky .b06-money-icon { background: rgba(47,127,208,.14); }
 :root[data-theme="dark"] .b06-accent-green .b06-money-icon { background: rgba(46,160,90,.14); }
+
+/* === condensed pass (2026-10-07): slimmer, denser content everywhere === */
+/* Fix: two-row home header — date/actions on top, greeting full-width below (no truncation) */
+.home-header { display: block; min-height: 0; }
+.home-header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.home-header-top > span { color: var(--dim); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .085em; }
+.home-greeting { display: block; font-size: 28px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; margin-top: 2px; }
+/* Fix: "Text first" badge flows above the title instead of overlapping it */
+.text-first { position: static; display: inline-flex; border-radius: 999px; margin: 0 0 8px; }
+/* Condensed: hero + tiles */
+.home-summary-card { padding: 14px 16px; }
+.home-summary-card > strong { font-size: 44px; }
+.glance-card { min-height: 88px; padding: 10px 8px; gap: 4px; }
+.glance-card strong { font-size: 24px; }
+.glance-card small { font-size: 11.5px; }
+.glance-icon { width: 34px; height: 34px; }
+.glance-icon svg { width: 19px; height: 19px; }
+.today-page .money-snapshot.b06-money .glance-card { min-height: 88px; }
+/* Condensed: job rows */
+.home-job-row, .job-row { min-height: 60px; }
+/* Condensed: job detail stepper + tabs */
+.flow-dot { width: 32px; height: 32px; }
+.flow-dot i { font-size: 14px; }
+.flow-dot svg { width: 16px; height: 16px; }
+.flow-label { font-size: 11px; }
+.workspace-tabs button { padding: 8px 14px; font-size: 13px; }
+/* Condensed: chase queue buttons */
+.quote-chase .automation-actions a,
+.quote-chase .automation-actions button,
+.quote-chase .automation-actions span.status { min-height: 44px; font-size: 13.5px; }
+.quote-chase .automation-card { padding: 12px 14px; }
+.quote-chase .automation-card h3 { font-size: 16px; }

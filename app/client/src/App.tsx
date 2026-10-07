@@ -16189,11 +16189,14 @@ function TodayScreen({
     return (
       <main className="page today-page" aria-busy="true">
         <header className="home-header">
-          <div><span>{dateHeading}</span><strong>{greeting}</strong></div>
-          <div className="home-header-actions">
-            <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
-            <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
+          <div className="home-header-top">
+            <span>{dateHeading}</span>
+            <div className="home-header-actions">
+              <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+              <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
+            </div>
           </div>
+          <strong className="home-greeting">{greeting}</strong>
         </header>
         <div className="home-summary-card home-summary-loading"><span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span><strong>—</strong><small>{lang === "es" ? "Cargando actividad…" : "Loading activity…"}</small></div>
         <div className="loading-block" aria-label={lang === "es" ? "Cargando inicio" : "Loading home"} />
@@ -16203,15 +16206,15 @@ function TodayScreen({
     <main className="page today-page">
       <PullToRefresh lang={lang} refreshing={homeRefreshing} onRefresh={refreshAll}>
       <header className="home-header">
-        <div>
+        <div className="home-header-top">
           <span>{dateHeading}</span>
-          <strong>{greeting}</strong>
+          <div className="home-header-actions">
+            <button className="icon-button" type="button" onClick={() => { buzz(8); setSearchOpen(true); }} aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}><Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon></button>
+            <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+            <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
+          </div>
         </div>
-        <div className="home-header-actions">
-          <button className="icon-button" type="button" onClick={() => { buzz(8); setSearchOpen(true); }} aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}><Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon></button>
-          <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
-          <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
-        </div>
+        <strong className="home-greeting">{greeting}</strong>
       </header>
       {/* Phase 1: first-run activation checklist — dismissible, live from real data. */}
       <ActivationChecklist lang={lang} setScreen={setScreen} />
