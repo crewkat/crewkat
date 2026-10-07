@@ -1,6 +1,7 @@
 import { SafeAreaTopScrim, bytesToBase64, fileToBase64 } from "@hatch/space-sdk/client";
 import { compressImageFile } from "./imageCompress";
 import { Switch } from "./switch";
+import { DEFAULT_RADIUS_MILES, RADIUS_OPTIONS, extractZipFromServiceArea, geocodeZip, isZipQuery, listingWithinRadius, radiusZoom } from "./marketplaceGeo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PDFDocument } from "pdf-lib";
 import { gzipSync, gunzipSync, strFromU8, zipSync, strToU8 } from "fflate";
@@ -2969,6 +2970,7 @@ type MarketplaceUiState = {
   category: MarketplaceCategory | "all";
   intentFilter: "all" | MarketplaceIntent;
   location: string;
+  radius: number;
   searchOpen: boolean;
   locationOpen: boolean;
   savedOnly: boolean;
@@ -2979,6 +2981,7 @@ let marketplaceUiStateCache: MarketplaceUiState = {
   category: "all",
   intentFilter: "all",
   location: "",
+  radius: DEFAULT_RADIUS_MILES,
   searchOpen: false,
   locationOpen: false,
   savedOnly: false,
@@ -3876,13 +3879,12 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
 // the caller can keep the last good view.
 async function geocodeZipForMapPreview(value: string): Promise<{ lat: string; lon: string } | null> {
   const zip = value.trim();
-  if (!/^\d{5}$/.test(zip)) return null;
-  const response = await fetch(`https://api.zippopotam.us/us/${zip}`);
-  if (!response.ok) throw new Error(`zippopotam ${response.status}`);
-  const data = await response.json() as { places?: Array<{ latitude?: string; longitude?: string }> };
-  const place = data.places?.[0];
-  if (!place?.latitude || !place?.longitude) throw new Error("zippopotam: no coordinates");
-  return { lat: place.latitude, lon: place.longitude };
+  // Non-ZIP text → null so the text `q=` fallback drives the embed.
+  if (!isZipQuery(zip)) return null;
+  const coords = await geocodeZip(zip);
+  // Failed ZIP geocode → throw so the caller keeps the last good view.
+  if (!coords) throw new Error("zippopotam: no coordinates");
+  return { lat: String(coords.lat), lon: String(coords.lon) };
 }
 
 function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
@@ -3894,6 +3896,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
   const [category, setCategory] = useState<MarketplaceCategory | "all">(marketplaceUiStateCache.category);
   const [intentFilter, setIntentFilter] = useState<"all" | MarketplaceIntent>(marketplaceUiStateCache.intentFilter);
   const [location, setLocation] = useState(marketplaceUiStateCache.location);
+  const [radius, setRadius] = useState(marketplaceUiStateCache.radius ?? DEFAULT_RADIUS_MILES);
   const [savedOnly, setSavedOnly] = useState(marketplaceUiStateCache.savedOnly);
   const [moreOpen, setMoreOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -3972,11 +3975,12 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       category,
       intentFilter,
       location,
+      radius,
       searchOpen: false,
       locationOpen: false,
       savedOnly,
     };
-  }, [view, search, category, intentFilter, location, savedOnly]);
+  }, [view, search, category, intentFilter, location, radius, savedOnly]);
   // Build 0.6 (item 24): reflect the location filter in the open preview.
   // Debounced ~600ms so mid-typing keystrokes don't each fire a geocode.
   useEffect(() => {
@@ -3988,7 +3992,34 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     }, 600);
     return () => window.clearTimeout(timer);
   }, [mapPreviewOpen, location, recenterMapPreview]);
-  const listings = useQuery({ queryKey: ["marketplace-listings", search, category, location], queryFn: () => api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: location }) });
+  const zipMode = isZipQuery(location.trim());
+  const listings = useQuery({
+    queryKey: ["marketplace-listings", search, category, zipMode ? "" : location, zipMode ? radius : 0],
+    queryFn: async () => {
+      // Radius mode: bypass the server's substring filter (it would drop
+      // nearby listings whose area text doesn't literally contain the ZIP)
+      // and do a real Haversine distance filter client-side instead.
+      const data = await api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: zipMode ? "" : location });
+      if (!zipMode) return data;
+      const center = await geocodeZip(location.trim());
+      if (!center) {
+        // Geocode failed: graceful fallback to the old substring behavior.
+        const q = location.trim().toLowerCase();
+        return { listings: data.listings.filter((listing) => listing.serviceArea.toLowerCase().includes(q)) };
+      }
+      // Geocode each unique listing ZIP once (cached), then keep listings
+      // within the radius. Listings with no parseable ZIP can't be placed
+      // and are excluded while a radius filter is active.
+      const zips = [...new Set(data.listings.map((listing) => extractZipFromServiceArea(listing.serviceArea)).filter((zip): zip is string => Boolean(zip)))];
+      const resolved = await Promise.all(zips.map(async (zip) => [zip, await geocodeZip(zip)] as const));
+      const coordsForZip = new Map(resolved);
+      return {
+        listings: data.listings.filter((listing) =>
+          listingWithinRadius(listing.serviceArea, center, (zip) => coordsForZip.get(zip) ?? null, radius),
+        ),
+      };
+    },
+  });
   const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   // Chunk D: saved keyword alerts + in-app notifications (polled for freshness).
@@ -4106,11 +4137,11 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
   const unreadMarketplaceCount = (inbox.data?.unreadCount ?? 0) + (notifications.data?.unreadCount ?? 0);
   const sortText = lang === "es" ? {
     title: "Ordenar por", newest: "Más recientes primero", priceAsc: "Precio: de menor a mayor", priceDesc: "Precio: de mayor a menor",
-    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área o código postal.", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.", mapRefreshing: "Actualizando mapa…", mapCentered: "Centrado en {label}",
+    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área o código postal.", radius: "Radio (millas)", radiusZipHint: "Ingresa un código postal para filtrar por radio.", miUnit: "millas", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.", mapRefreshing: "Actualizando mapa…", mapCentered: "Centrado en {label}",
     inbox: "Bandeja de mensajes", inboxNote: "Conversaciones sobre tus publicaciones", sortBy: "Ordenar publicaciones",
   } : {
     title: "Sort by", newest: "Newest first", priceAsc: "Price: low to high", priceDesc: "Price: high to low",
-    locationTitle: "Location", locationHint: "Filter listings by service area or ZIP.", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.", mapRefreshing: "Updating map…", mapCentered: "Centered on {label}",
+    locationTitle: "Location", locationHint: "Filter listings by service area or ZIP.", radius: "Radius (miles)", radiusZipHint: "Enter a ZIP code to filter by radius.", miUnit: "mi", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.", mapRefreshing: "Updating map…", mapCentered: "Centered on {label}",
     inbox: "Message inbox", inboxNote: "Conversations about your listings", sortBy: "Sort listings",
   };
   return <main className="page marketplace-page" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
@@ -4133,15 +4164,15 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <button type="button" className={`market-tab${view === "explore" ? " active" : ""}`} onClick={() => { setView("explore"); setSavedOnly(false); }}><span>{text.explore}</span></button>
       <button type="button" className="market-tab" onClick={() => setMoreOpen(true)}><span>{text.more}</span>{unreadMarketplaceCount > 0 && <b className="tab-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}</button>
       <span className="market-tabs-spacer" aria-hidden="true" />
-      <button type="button" className="market-location-tab" aria-label={text.areaFilter} onClick={() => setLocationPopupOpen(true)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{location ? <span>{location}</span> : null}</button>
+      <button type="button" className="market-location-tab" aria-label={text.areaFilter} onClick={() => setLocationPopupOpen(true)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{location ? <span>{location}{zipMode ? ` · ${radius} ${sortText.miUnit}` : ""}</span> : null}</button>
     </nav>
     {view === "explore" && <section className="market-explore">
       <div className="intent-filters" role="group" aria-label={lang === "es" ? "Filtrar por intención" : "Filter by intent"}><button className={intentFilter === "all" ? "active" : ""} onClick={() => setIntentFilter("all")}><Icon><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></Icon><span>{text.all}</span></button><button className={intentFilter === "need" ? "active need" : "need"} onClick={() => setIntentFilter(intentFilter === "need" ? "all" : "need")}><Icon><path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z"/></Icon><span>{text.wanted}</span></button><button className={intentFilter === "offer" ? "active offer" : "offer"} onClick={() => setIntentFilter(intentFilter === "offer" ? "all" : "offer")}><Icon><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="9" cy="9" r="1.6"/></Icon><span>{text.available}</span></button><span className="intent-filters-spacer" aria-hidden="true" /><button className={`sort-icon-button${sortBy !== "newest" ? " active" : ""}`} type="button" aria-label={sortText.sortBy} title={sortText.sortBy} onClick={() => setSortOpen(true)}><Icon><path d="M7 4v13M7 17l-3-3M7 17l3-3M17 20V7M17 7l-3 3M17 7l3 3"/></Icon></button></div>
-      <div className="market-filter-row"><label><span className="sr-only">{lang === "es" ? "Categoría" : "Category"}</span><select value={category} onChange={(event) => { setCategory(event.target.value as MarketplaceCategory | "all"); setSavedOnly(false); }}><option value="all">{text.all}</option>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>{(category !== "all" || intentFilter !== "all" || location || search || savedOnly) && <button onClick={() => { setCategory("all"); setIntentFilter("all"); setLocation(""); setSearch(""); setSavedOnly(false); }}>{text.clear}</button>}</div>
+      <div className="market-filter-row"><label><span className="sr-only">{lang === "es" ? "Categoría" : "Category"}</span><select value={category} onChange={(event) => { setCategory(event.target.value as MarketplaceCategory | "all"); setSavedOnly(false); }}><option value="all">{text.all}</option>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>{(category !== "all" || intentFilter !== "all" || location || search || savedOnly) && <button onClick={() => { setCategory("all"); setIntentFilter("all"); setLocation(""); setRadius(DEFAULT_RADIUS_MILES); setSearch(""); setSavedOnly(false); }}>{text.clear}</button>}</div>
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
           <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}<span className="card-badges"><span className={`intent-pill ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "SE BUSCA" : "WANTED") : (lang === "es" ? "DISPONIBLE" : "AVAILABLE")}</span>{listing.justListed && <b className="just-listed-pill">{text.just}</b>}{listing.promoted && <em className="market-promoted-badge">{text.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {text.featured}</em>}</span></div>
-          <div className="market-card-copy"><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}</span><span className="market-card-id"><Icon><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="9" cy="9" r="1.6"/></Icon>ID {listing.id}</span></div>
+          <div className="market-card-copy"><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}</span></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : (lang === "es" ? "Guardar publicación" : "Save listing")}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
       </article>)}
@@ -4199,9 +4230,11 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     {locationPopupOpen && <FloatPopup lang={lang} title={sortText.locationTitle} onClose={() => setLocationPopupOpen(false)}>{(close) => <>
       <p className="popup-hint">{sortText.locationHint}</p>
       <label className="popup-input"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder={text.location} aria-label={text.location}/></label>
+      <div className="radius-filter"><span id="market-radius-label">{sortText.radius}</span><div className="radius-chips" role="group" aria-labelledby="market-radius-label">{RADIUS_OPTIONS.map((mi) => <button key={mi} type="button" className={radius === mi ? "active" : ""} disabled={!zipMode} onClick={() => setRadius(mi)} aria-pressed={radius === mi}>{mi}</button>)}</div></div>
+      {!zipMode && <p className="radius-hint">{sortText.radiusZipHint}</p>}
       <button className="secondary-button popup-map-button" onClick={() => { if (!mapPreviewOpen) { setMapQuery(location.trim() || "Tampa, FL"); void recenterMapPreview(location.trim() || "Tampa, FL"); } setMapPreviewOpen((open) => !open); }}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
-      {mapPreviewOpen && <div className="popup-map b06-map-wrap">{mapRefreshing && <div className="b06-map-refreshing" role="status" aria-live="polite"><span className="market-refresh-spinner b06-spinning" aria-hidden="true"/>{sortText.mapRefreshing}</div>}<iframe key={mapQuery} title={sortText.showOnMap} src={mapCenter ? `https://maps.google.com/maps?q=${encodeURIComponent(`${mapCenter.lat},${mapCenter.lon}`)}&z=13&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />{mapCenter && <small className="b06-map-centered">{sortText.mapCentered.replace("{label}", mapCenter.label)}</small>}<small>{sortText.mapNote}</small></div>}
-      <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setMapPreviewOpen(false); setMapCenter(null); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
+      {mapPreviewOpen && <div className="popup-map b06-map-wrap">{mapRefreshing && <div className="b06-map-refreshing" role="status" aria-live="polite"><span className="market-refresh-spinner b06-spinning" aria-hidden="true"/>{sortText.mapRefreshing}</div>}<iframe key={mapQuery} title={sortText.showOnMap} src={mapCenter ? `https://maps.google.com/maps?q=${encodeURIComponent(`${mapCenter.lat},${mapCenter.lon}`)}&z=${zipMode ? radiusZoom(radius) : 13}&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />{mapCenter && <small className="b06-map-centered">{sortText.mapCentered.replace("{label}", mapCenter.label)}</small>}<small>{sortText.mapNote}</small></div>}
+      <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setRadius(DEFAULT_RADIUS_MILES); setMapPreviewOpen(false); setMapCenter(null); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
     </>}</FloatPopup>}
   </main>;
 }
