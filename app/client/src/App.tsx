@@ -16239,14 +16239,17 @@ function TodayScreen({
         return (
           <section className="glance-strip" aria-label={lang === "es" ? "De un vistazo" : "At a glance"}>
             <button type="button" className={`glance-card${paymentEscalations.length > 0 ? " alert" : ""}`} onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
+              <span className="glance-icon tone-red" aria-hidden="true"><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M12 15v4M10 17h4" /></Icon></span>
               <strong><CountUp value={paymentEscalations.length} format={(n) => String(Math.round(n))} /></strong>
               <small>{lang === "es" ? "Facturas vencidas" : "Overdue invoices"}</small>
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen(upcomingJobs[0] ? { name: "detail", jobId: upcomingJobs[0].id } : { name: "jobs" }); }}>
+              <span className="glance-icon tone-blue" aria-hidden="true"><Icon><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" /></Icon></span>
               <strong><CountUp value={upcomingJobs.length} format={(n) => String(Math.round(n))} /></strong>
               <small>{lang === "es" ? "Trabajos hoy y mañana" : "Jobs today & tomorrow"}</small>
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
+              <span className="glance-icon tone-orange" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
               <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
               <small>{lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval"}</small>
             </button>
@@ -16563,6 +16566,7 @@ function TodayScreen({
         </AutomationGroup>
       )}
       {quoteChase.length > 0 && (
+        <div className="quote-chase">
         <AutomationGroup
           title={lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}
           count={quoteChase.length}
@@ -16624,6 +16628,7 @@ function TodayScreen({
             </TapArticle>
           ))}
         </AutomationGroup>
+        </div>
       )}
       {d.reminders.length + d.reviews.length + d.reengagement.length > 0 && (
         <AutomationGroup

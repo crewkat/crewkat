@@ -3971,3 +3971,96 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .reminder-section { margin-top: 16px; }
 .reminder-section h2, .saved-section h2 { font-size: 17px; }
 .reminder-section article { min-height: 60px; padding: 10px 0; }
+
+/* === b12 visual audit (2026-10-07): close the gap with Invoice Fly references ===
+   Danny: "Go through every page yourself and see the difference vs the examples."
+   References: /tmp/b12-imgs/word/media/image1.jpg (home), image2.jpg (job detail),
+   image4.jpg (quote chase), image5.jpg (invoices). All 784px wide = 390pt @2x.
+   Principle: match reference proportions; min 36px touch targets; nothing removed. */
+
+/* ---- HOME: greeting header (ref: ~38pt greeting, ~13pt date) ---- */
+.home-header > div:first-child > span { font-size: 12px; }
+.home-header > div:first-child > strong { font-size: 32px; }
+
+/* ---- HOME: dark hero card (ref: ~78pt tall, ~60pt number, ~18pt radius) ---- */
+.home-summary-card { padding: 20px; border-radius: 20px; }
+.home-summary-card > strong { font-size: 56px; }
+.home-summary-card > span, .home-summary-card > small { font-size: 13px; }
+
+/* ---- HOME: glance tiles (ref: ~92pt tall tiles, 36pt icon circles, 32pt numbers) ---- */
+.glance-strip { gap: 10px; }
+.glance-card {
+  padding: 14px 10px; min-height: 108px; border-radius: 16px;
+  align-items: center; text-align: center; gap: 6px;
+}
+.glance-icon {
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 50%; margin-bottom: 2px;
+}
+.glance-icon svg { width: 22px; height: 22px; }
+.glance-icon.tone-red { background: #fdeceb; color: #d34a3a; }
+.glance-icon.tone-blue { background: #e8f3fd; color: #2f7fd0; }
+.glance-icon.tone-orange { background: #fff3e8; color: #e07b1a; }
+.glance-card strong { font-size: 30px; }
+.glance-card small { font-size: 12.5px; }
+
+/* ---- HOME: money tiles → 3 white tiles like the reference (was a divider strip) ---- */
+.today-page .money-snapshot.b06-money {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  background: transparent; border: 0; box-shadow: none; border-radius: 0;
+}
+.b06-money .b06-money-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(15,23,42,.06);
+  padding: 14px 10px; min-height: 108px; gap: 6px; align-content: center;
+}
+.b06-money .b06-money-card + .b06-money-card { border-left: 0; }
+.b06-money-icon {
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 50%; background: #fff3e8; margin-bottom: 2px;
+}
+.b06-money-icon svg { width: 22px; height: 22px; }
+.b06-accent-sky .b06-money-icon { background: #e8f3fd; }
+.b06-accent-green .b06-money-icon { background: #e6f6ec; }
+.b06-money-label { font-size: 12.5px; }
+.b06-money-card strong { font-size: 22px; }
+.b06-accent-orange strong { color: var(--text); }
+
+/* ---- HOME: job rows (ref: ~75pt tall rows, 44pt icon squares) ---- */
+.home-job-card { min-height: 68px; padding: 11px 14px; gap: 12px; }
+.home-job-card strong { font-size: 16px; }
+.home-job-card small { font-size: 12px; }
+.home-jobs-section h2 { font-size: 20px; }
+.home-jobs-section > header button { font-size: 13px; }
+
+/* ---- JOB DETAIL: stepper (ref: ~44pt dots, ~13pt labels) ---- */
+.flow-dot { width: 40px; height: 40px; }
+.flow-dot i { font-size: 16px; }
+.flow-dot svg { width: 19px; height: 19px; }
+.flow-label { font-size: 12px; }
+.flow-step.current .flow-dot { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* ---- JOB DETAIL: tab pills (ref: ~48pt tall pills) ---- */
+.workspace-tabs button { padding: 12px 18px; font-size: 14px; }
+
+/* ---- QUOTE CHASE: 3-col button grid + full-width View estimate (ref image4) ---- */
+.quote-chase .automation-card { padding: 14px 16px; border-radius: 16px; }
+.quote-chase .automation-card h3 { font-size: 18px; }
+.quote-chase .automation-actions {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px;
+}
+.quote-chase .automation-actions > :last-child { grid-column: 1 / -1; }
+.quote-chase .automation-actions a,
+.quote-chase .automation-actions button,
+.quote-chase .automation-actions span.status {
+  min-height: 48px; font-size: 14px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---- Dark-mode coherence for the new tile treatments ---- */
+:root[data-theme="dark"] .glance-icon.tone-red { background: rgba(211,74,58,.16); }
+:root[data-theme="dark"] .glance-icon.tone-blue { background: rgba(47,127,208,.16); }
+:root[data-theme="dark"] .glance-icon.tone-orange { background: rgba(224,123,26,.16); }
+:root[data-theme="dark"] .b06-money-icon { background: rgba(224,123,26,.14); }
+:root[data-theme="dark"] .b06-accent-sky .b06-money-icon { background: rgba(47,127,208,.14); }
+:root[data-theme="dark"] .b06-accent-green .b06-money-icon { background: rgba(46,160,90,.14); }

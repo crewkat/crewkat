@@ -97,3 +97,75 @@ describe("audit fix: follow-ups reminder rows", () => {
     expect(lastRuleBody(".reminder-section h2, .saved-section h2")).toContain("font-size: 17px");
   });
 });
+
+// Exact-selector variant: the selector must start at a line boundary, so
+// `.flow-dot {` doesn't match `.flow-step.current .flow-dot {`.
+function exactRuleBody(selector: string): string {
+  const needle = `\n${selector} {`;
+  const idx = CSS.lastIndexOf(needle);
+  if (idx < 0) throw new Error(`selector ${selector} not found in theme.css`);
+  const end = CSS.indexOf("}", idx);
+  return CSS.slice(idx, end);
+}
+
+describe("visual audit: home hero matches reference", () => {
+  test("greeting is 32px, hero number is 56px", () => {
+    expect(exactRuleBody(".home-header > div:first-child > strong")).toContain("font-size: 32px");
+    expect(exactRuleBody(".home-summary-card > strong")).toContain("font-size: 56px");
+    expect(exactRuleBody(".home-summary-card")).toContain("padding: 20px");
+  });
+});
+
+describe("visual audit: glance tiles have icons and reference proportions", () => {
+  test("tiles are tall with 40px icon circles and 30px numbers", () => {
+    const card = exactRuleBody(".glance-card");
+    expect(card).toContain("min-height: 108px");
+    expect(card).toContain("padding: 14px 10px");
+    expect(exactRuleBody(".glance-icon")).toContain("width: 40px");
+    expect(exactRuleBody(".glance-card strong")).toContain("font-size: 30px");
+  });
+
+  test("glance icons exist in JSX", () => {
+    const tsx = readFileSync(join(import.meta.dir, "client/src/App.tsx"), "utf8");
+    expect(tsx).toContain("glance-icon tone-red");
+    expect(tsx).toContain("glance-icon tone-blue");
+    expect(tsx).toContain("glance-icon tone-orange");
+  });
+});
+
+describe("visual audit: money tiles are 3 white cards", () => {
+  test("money snapshot is a 3-col tile grid, not a divider strip", () => {
+    const sec = exactRuleBody(".today-page .money-snapshot.b06-money");
+    expect(sec).toContain("grid-template-columns: repeat(3, 1fr)");
+    expect(sec).toContain("gap: 10px");
+    expect(exactRuleBody(".b06-money-icon")).toContain("width: 40px");
+    expect(exactRuleBody(".b06-money-card strong")).toContain("font-size: 22px");
+  });
+});
+
+describe("visual audit: job detail stepper and tabs", () => {
+  test("stepper dots are 40px with 12px labels", () => {
+    expect(exactRuleBody(".flow-dot")).toContain("width: 40px");
+    expect(exactRuleBody(".flow-dot")).toContain("height: 40px");
+    expect(exactRuleBody(".flow-label")).toContain("font-size: 12px");
+  });
+
+  test("tab pills are larger", () => {
+    const tabs = exactRuleBody(".workspace-tabs button");
+    expect(tabs).toContain("padding: 12px 18px");
+    expect(tabs).toContain("font-size: 14px");
+  });
+});
+
+describe("visual audit: quote chase button grid", () => {
+  test("actions are a 3-col grid with full-width last button at 48px", () => {
+    const actions = exactRuleBody(".quote-chase .automation-actions");
+    expect(actions).toContain("grid-template-columns: repeat(3, 1fr)");
+    expect(exactRuleBody(".quote-chase .automation-actions > :last-child")).toContain("grid-column: 1 / -1");
+  });
+
+  test("quote chase wrapper exists in JSX", () => {
+    const tsx = readFileSync(join(import.meta.dir, "client/src/App.tsx"), "utf8");
+    expect(tsx).toContain('className="quote-chase"');
+  });
+});
