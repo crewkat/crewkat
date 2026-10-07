@@ -1213,19 +1213,21 @@ function PageHeader({
   onBack,
   actions,
   minimal,
+  leadingSettings,
 }: {
   lang: Lang;
   title: string;
   onBack?: () => void;
   actions?: ReactNode;
   minimal?: boolean;
+  leadingSettings?: boolean;
 }) {
   const openSettings = useContext(SettingsNavigationContext);
   const openTools = useContext(ToolsNavigationContext);
   return (
     <header className="app-header">
       <div className="header-side">
-        {onBack && (
+        {onBack ? (
           <button
             className="icon-button"
             onClick={onBack}
@@ -1233,7 +1235,15 @@ function PageHeader({
           >
             <BackIcon />
           </button>
-        )}
+        ) : leadingSettings && openSettings ? (
+          <button
+            className="icon-button"
+            onClick={openSettings}
+            aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}
+          >
+            <GearIcon />
+          </button>
+        ) : null}
       </div>
       <h1>
         {title === APP_INFO.name ? (
@@ -4107,7 +4117,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <span className="market-refresh-spinner" aria-hidden="true"/>
       <small>{refreshing ? text.refreshing : pullDistance >= 52 ? text.release : text.pull}</small>
     </div>}
-    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} minimal actions={<>
+    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} minimal leadingSettings actions={<>
       <button className="icon-button header-bell-button" type="button" aria-label={lang === "es" ? "Bandeja" : "Inbox"} onClick={() => { setView("inbox"); }}>
         <Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon>
         {unreadMarketplaceCount > 0 && <b className="header-unread-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}
@@ -7100,7 +7110,7 @@ function EditJobForm({
       }}
     >
       <JobFields lang={lang} form={form} setForm={setForm} />
-      <button className="primary-button" disabled={save.isPending}>
+      <button className="primary-button compact-save" disabled={save.isPending}>
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
@@ -9293,7 +9303,7 @@ function PASettingsTab({ lang }: { lang: Lang }) {
         )}
       </div>;
     })}
-    <button type="button" className="primary-button" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
+    <button type="button" className="primary-button compact-save" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
   </div>;
 }
 
