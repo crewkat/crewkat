@@ -156,7 +156,7 @@ check("build.mjs stamps build id into the app", buildMjs.includes("__CREWKAT_BUI
 check("Settings About shows the build id", appSrc.includes("appBuildId()") && appSrc.includes("Build"));
 check("Settings About flags a waiting update", appSrc.includes("Update ready") && appSrc.includes("updateAvailable={swUpdateAvailable}"));
 
-check("light theme sets light background", cssSrc.includes('[data-theme="light"]') && cssSrc.includes("--bg: #f4f2ed"));
+check("light theme sets light background", cssSrc.includes('[data-theme="light"]') && cssSrc.includes("--bg: #f7f7f5")); // b12: near-white (was #f4f2ed)
 check("orange accent is a true orange", cssSrc.includes("--accent: #f97316"));
 check("red accent is distinct from orange", cssSrc.includes('--accent: #dc2626'));
 check("accent swatches match the theme colors", appSrc.includes('{ value: "orange", color: "#f97316"') && appSrc.includes('{ value: "red", color: "#dc2626"'));
