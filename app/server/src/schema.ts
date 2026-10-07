@@ -804,9 +804,17 @@ export const authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
+  // Google Sign-In subject ("sub" claim). Set when the user signs in with
+  // Google; null for password-only accounts.
+  googleSub: text("google_sub"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-});
+}, (table) => [
+  // Google Sign-In: nullable unique — one Google account links to one user;
+  // SQLite permits multiple NULLs in a unique index, so password-only users
+  // (google_sub IS NULL) are unaffected.
+  uniqueIndex("auth_users_google_sub_unique").on(table.googleSub),
+]);
 
 // Phase 4: Google Play Billing — one row per verified Play purchase. The
 // purchase_token unique index makes verification idempotent: re-verifying the

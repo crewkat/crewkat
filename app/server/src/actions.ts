@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { OAuth2Client } from "google-auth-library";
 import * as schema from "./schema";
 import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
@@ -252,6 +253,54 @@ async function checkLoginIpRateLimit(ctx: Ctx): Promise<void> {
   }
   await db.insert(schema.rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date() });
 }
+
+// Google Sign-In rate limit: same shape as the password-login limiter but on
+// its own scope, so a burst of Google attempts can't eat the password-login
+// budget for a shared office IP (and vice versa).
+const GOOGLE_SIGNIN_IP_LIMIT_PER_15MIN = 30;
+async function checkGoogleSignInRateLimit(ctx: Ctx): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const now = Date.now();
+  const ip = ((ctx as { clientIp?: string }).clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60_000);
+  const hits = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "google-signin:ip"), eq(schema.rateLimitEvents.key, ip), gte(schema.rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= GOOGLE_SIGNIN_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many sign-in attempts from this network. Try again in 15 minutes.");
+  }
+  await db.insert(schema.rateLimitEvents).values({ scope: "google-signin:ip", key: ip, occurredAt: new Date() });
+}
+
+// ---- Google Sign-In (Identity Services ID tokens) ----
+// The OAuth client ID is public by design (it ships in the web client), but
+// the ID token is only trusted after full server-side verification:
+// signature against Google's certs, audience == our client ID, valid issuer,
+// not expired. The client-provided email is never trusted on its own.
+export interface GoogleIdTokenPayload { sub: string; email: string; emailVerified: boolean; name: string; }
+function googleClientId(): string { return (process.env.GOOGLE_CLIENT_ID ?? "").trim(); }
+// Exported as a mutable object so tests can stub verification without
+// touching Google's servers.
+export const googleAuth = {
+  async verifyIdToken(idToken: string): Promise<GoogleIdTokenPayload> {
+    const clientId = googleClientId();
+    if (!clientId) throw new Error("Google sign-in is not configured.");
+    const client = new OAuth2Client(clientId);
+    let payload;
+    try {
+      const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+      payload = ticket.getPayload();
+    } catch {
+      throw new Error("Google sign-in failed. Try again.");
+    }
+    if (!payload?.sub) throw new Error("Google sign-in failed. Try again.");
+    const iss = payload.iss ?? "";
+    if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com") throw new Error("Google sign-in failed. Try again.");
+    const email = (payload.email ?? "").trim().toLowerCase();
+    if (!email) throw new Error("Google sign-in failed. Try again.");
+    const name = (payload.name ?? "").trim().slice(0, 120) || email.split("@")[0] || email;
+    return { sub: payload.sub, email, emailVerified: payload.email_verified === true, name };
+  },
+};
 
 type PortalTokenRow = typeof schema.portalTokens.$inferSelect;
 
@@ -1965,6 +2014,68 @@ export const BaseActions = {
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
+      const session = await issueSession(ctx, user.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
+    },
+  }),
+  // Public client-ID lookup (same pattern as getVapidPublicKey): the OAuth
+  // client ID is public by design. The client hides the Google button when
+  // this returns null so unconfigured deploys never show a dead button.
+  getGoogleClientId: defineAction({
+    request: z.object({}),
+    response: z.object({ clientId: z.string().nullable() }),
+    async handler() {
+      const id = googleClientId();
+      return { clientId: id || null };
+    },
+  }),
+  // Sign in (or sign up) with a Google Identity Services ID token. Public.
+  googleSignIn: defineAction({
+    request: z.object({ idToken: z.string().min(1).max(8000) }),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
+    async handler(ctx, args) {
+      if (!googleClientId()) throw new Error("Google sign-in is not configured.");
+      await checkGoogleSignInRateLimit(ctx);
+      const payload = await googleAuth.verifyIdToken(args.idToken);
+      if (!payload.emailVerified) throw new Error("Your Google account's email is not verified.");
+      const db = ctx.db<typeof schema>();
+      const now = new Date();
+      // 1. Known Google subject → straight in.
+      let user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.googleSub, payload.sub)).limit(1))[0];
+      // 2. Verified email matches a password account → link it. A
+      // Google-verified email proves ownership, so linking is safe.
+      if (!user) {
+        const existing = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, payload.email)).limit(1))[0];
+        if (existing) {
+          await db.update(schema.authUsers).set({ googleSub: payload.sub, emailVerifiedAt: existing.emailVerifiedAt ?? now, updatedAt: now }).where(eq(schema.authUsers.id, existing.id));
+          user = { ...existing, googleSub: payload.sub, emailVerifiedAt: existing.emailVerifiedAt ?? now, updatedAt: now };
+        }
+      }
+      // 3. Brand-new user → create the account (mirrors signUp's company
+      // logic). Email is Google-verified, so no verification code step. The
+      // Marketplace terms gate on the client collects terms acceptance.
+      if (!user) {
+        if (!(await getBooleanPlatformSetting(db, "registration_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
+        const users = await db.select({ id: schema.authUsers.id, companyId: schema.authUsers.companyId }).from(schema.authUsers);
+        const firstAccount = users.length === 0;
+        const companyId = firstAccount ? 1 : Math.max(1, ...users.map((u) => u.companyId)) + 1;
+        const salt = randomHex(16);
+        const referralCode = await uniqueReferralCode(db);
+        const made = (await db.insert(schema.authUsers).values({
+          name: payload.name, email: payload.email,
+          // Unusable password: 32 random bytes through the normal KDF, so a
+          // Google-created account can never be password-logged-into.
+          passwordHash: await derivePassword(randomHex(32), salt, AUTH_PASSWORD_ITERATIONS),
+          passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS,
+          emailVerifiedAt: now, dataClaimedAt: now, googleSub: payload.sub,
+          companyId, role: "owner", tier: firstAccount ? "premium" : "free",
+          subscriptionStatus: firstAccount ? "founder" : "inactive",
+          referralCode, createdAt: now, updatedAt: now,
+        }).returning())[0];
+        if (!made) throw new Error("The account could not be created.");
+        user = made;
+      }
+      if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     },

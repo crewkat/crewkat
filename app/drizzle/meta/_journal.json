@@ -470,6 +470,13 @@
       "when": 1791400000012,
       "tag": "0067_marketplace_zip_code",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791400000013,
+      "tag": "0068_google_sign_in",
+      "breakpoints": true
     }
   ]
 }

@@ -1755,8 +1755,90 @@ function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" 
   </div>;
 }
 
+// Google "G" mark (brand asset) for the Continue-with-Google button.
+function GoogleGLogo() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81z" />
+    <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.07.72-2.44 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A12 12 0 0 0 12 24z" />
+    <path fill="#FBBC05" d="M5.27 14.28A7.2 7.2 0 0 1 4.89 12c0-.79.14-1.56.38-2.28v-3.1H1.29a12 12 0 0 0 0 10.76l3.98-3.1z" />
+    <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.8l3.44-3.44A11.98 11.98 0 0 0 12 0 12 12 0 0 0 1.29 6.62l3.98 3.1C6.22 6.88 8.87 4.77 12 4.77z" />
+  </svg>;
+}
+
+// "Continue with Google" — Google Identity Services ID-token flow. The GIS
+// script loads only when a client ID is configured; the button hides entirely
+// otherwise (and if the script fails to load) so unconfigured deploys never
+// show a dead button. The ID token goes to api.googleSignIn, which verifies
+// it server-side before creating any session.
+function GoogleSignInButton({ clientId, disabled, onSuccess, onError }: {
+  clientId: string;
+  disabled?: boolean;
+  onSuccess: (result: { sessionToken: string; user: AuthUser } & Record<string, unknown>) => void;
+  onError: (message: string) => void;
+}) {
+  const [gisReady, setGisReady] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const busyRef = useRef(false);
+  useEffect(() => {
+    if (window.google?.accounts?.id) { setGisReady(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGisReady(Boolean(window.google?.accounts?.id));
+    script.onerror = () => setGisReady(false);
+    document.head.appendChild(script);
+    return () => { try { window.google?.accounts?.id.cancel(); } catch { /* noop */ } };
+  }, []);
+  if (!gisReady) return null;
+  const start = () => {
+    if (busyRef.current || disabled) return;
+    busyRef.current = true;
+    setWaiting(true);
+    const done = () => { busyRef.current = false; setWaiting(false); };
+    try {
+      const id = window.google?.accounts?.id;
+      if (!id) throw new Error("unavailable");
+      id.initialize({
+        client_id: clientId,
+        auto_select: false,
+        callback: (response) => {
+          void (async () => {
+            try {
+              const result = await api.googleSignIn({ idToken: response.credential });
+              done();
+              onSuccess(result as { sessionToken: string; user: AuthUser } & Record<string, unknown>);
+            } catch (caught) {
+              done();
+              onError(actionErrorMessage(caught));
+            }
+          })();
+        },
+      });
+      id.prompt((notification) => {
+        // One Tap suppressed (previously dismissed, third-party cookies
+        // blocked, etc.) — tell the user instead of hanging on "waiting".
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          done();
+          onError("Google sign-in was blocked by your browser. Allow third-party sign-in for this site and try again.");
+        }
+      });
+    } catch {
+      done();
+      onError("Google sign-in could not start. Check your connection and try again.");
+    }
+  };
+  return <button type="button" className="google-signin-button" onClick={start} disabled={disabled || waiting}>
+    <GoogleGLogo />
+    <span>{waiting ? "Waiting for Google…" : "Continue with Google"}</span>
+  </button>;
+}
+
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
   const bootstrap = useQuery({ queryKey: ["auth-bootstrap"], queryFn: () => api.getAuthBootstrap({}), retry: false });
+  // Google Sign-In client ID (public by design). The Google button renders
+  // only when this returns a client ID — unconfigured deploys show nothing.
+  const googleCfg = useQuery({ queryKey: ["google-client-id"], queryFn: () => api.getGoogleClientId({}), retry: false, staleTime: Infinity });
   const [restoring, setRestoring] = useState(true);
   // Restore the previous session so the owner stays signed in across app
   // restarts: first a legacy pre-cookie token (transition window), otherwise
@@ -1914,6 +1996,19 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar mi correo en su lugar" : "Verify my email instead"}</button>}
         <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
+      {(mode === "login" || mode === "signup") && googleCfg.data?.clientId && <div className="auth-google">
+        <div className="auth-divider" aria-hidden="true"><span>or</span></div>
+        <GoogleSignInButton
+          clientId={googleCfg.data.clientId}
+          disabled={busy || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}
+          onSuccess={(result) => {
+            if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
+            else persistLegacySessionToken(result.sessionToken);
+            onAuthenticated(result.user);
+          }}
+          onError={(message) => setError(message)}
+        />
+      </div>}
       <div className="auth-links">
         {mode === "login" && <button type="button" onClick={() => move("forgot")}>Forgot password?</button>}
         {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar correo / reenviar código" : "Verify email / resend code"}</button>}
