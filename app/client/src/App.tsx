@@ -1,7 +1,7 @@
 import { SafeAreaTopScrim, bytesToBase64, fileToBase64 } from "@hatch/space-sdk/client";
 import { compressImageFile } from "./imageCompress";
 import { Switch } from "./switch";
-import { DEFAULT_RADIUS_MILES, RADIUS_OPTIONS, extractZipFromServiceArea, geocodeZip, isZipQuery, listingWithinRadius, radiusZoom } from "./marketplaceGeo";
+import { DEFAULT_RADIUS_MILES, RADIUS_OPTIONS, extractZipFromServiceArea, geocodeZip, isRadiusQuery, listingWithinRadius, parseLocationQuery, radiusZoom, resolveLocationCenter } from "./marketplaceGeo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PDFDocument } from "pdf-lib";
 import { gzipSync, gunzipSync, strFromU8, zipSync, strToU8 } from "fflate";
@@ -3872,17 +3872,17 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
 }
 
 // Build 0.6 (item 24): keyless geocode for the Marketplace map preview. A
-// 5-digit US ZIP resolves via zippopotam.us into coordinates so the embed can
-// be centered explicitly (Google's text `q=` geocoding falls back to a world
-// view when it can't resolve a ZIP). Returns null for non-ZIP text (the
-// caller falls back to the text `q=` query) and throws on fetch failure so
-// the caller can keep the last good view.
-async function geocodeZipForMapPreview(value: string): Promise<{ lat: string; lon: string } | null> {
-  const zip = value.trim();
-  // Non-ZIP text → null so the text `q=` fallback drives the embed.
-  if (!isZipQuery(zip)) return null;
-  const coords = await geocodeZip(zip);
-  // Failed ZIP geocode → throw so the caller keeps the last good view.
+// 5-digit US ZIP or a "City, ST" query resolves via zippopotam.us into
+// coordinates so the embed can be centered explicitly (Google's text `q=`
+// geocoding falls back to a world view when it can't resolve the query).
+// Returns null for free text (the caller falls back to the text `q=` query)
+// and throws on fetch failure so the caller can keep the last good view.
+async function geocodeLocationForMapPreview(value: string): Promise<{ lat: string; lon: string } | null> {
+  const query = parseLocationQuery(value);
+  // Free text → null so the text `q=` fallback drives the embed.
+  if (query.kind === "text") return null;
+  const coords = await resolveLocationCenter(query);
+  // Failed geocode → throw so the caller keeps the last good view.
   if (!coords) throw new Error("zippopotam: no coordinates");
   return { lat: String(coords.lat), lon: String(coords.lon) };
 }
@@ -3930,7 +3930,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     const requestId = ++mapGeocodeRef.current;
     setMapRefreshing(true);
     try {
-      const coords = await geocodeZipForMapPreview(value);
+      const coords = await geocodeLocationForMapPreview(value);
       if (mapGeocodeRef.current !== requestId) return;
       // ZIP → explicit coordinates; non-ZIP text → clear the center so the
       // text `q=` fallback drives the embed.
@@ -3992,30 +3992,36 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     }, 600);
     return () => window.clearTimeout(timer);
   }, [mapPreviewOpen, location, recenterMapPreview]);
-  const zipMode = isZipQuery(location.trim());
+  // Radius mode: the location query is a ZIP or a city ("City, ST"), so the
+  // radius filter drives listing selection by real distance.
+  const locationQuery = parseLocationQuery(location.trim());
+  const radiusMode = isRadiusQuery(location.trim());
   const listings = useQuery({
-    queryKey: ["marketplace-listings", search, category, zipMode ? "" : location, zipMode ? radius : 0],
+    queryKey: ["marketplace-listings", search, category, radiusMode ? "" : location, radiusMode ? radius : 0],
     queryFn: async () => {
       // Radius mode: bypass the server's substring filter (it would drop
-      // nearby listings whose area text doesn't literally contain the ZIP)
-      // and do a real Haversine distance filter client-side instead.
-      const data = await api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: zipMode ? "" : location });
-      if (!zipMode) return data;
-      const center = await geocodeZip(location.trim());
+      // nearby listings whose area text doesn't literally contain the query)
+      // and do a real distance filter client-side instead.
+      const data = await api.listMarketplaceListings({ search, category: category === "all" ? null : category, serviceArea: radiusMode ? "" : location });
+      if (!radiusMode) return data;
+      const center = await resolveLocationCenter(locationQuery);
       if (!center) {
-        // Geocode failed: graceful fallback to the old substring behavior.
+        // Geocode failed (bad ZIP, unresolvable city): graceful fallback to
+        // the old substring behavior.
         const q = location.trim().toLowerCase();
         return { listings: data.listings.filter((listing) => listing.serviceArea.toLowerCase().includes(q)) };
       }
       // Geocode each unique listing ZIP once (cached), then keep listings
-      // within the radius. Listings with no parseable ZIP can't be placed
-      // and are excluded while a radius filter is active.
+      // within the radius. A listing that names the query city counts as
+      // local; listings that resolve to neither are excluded while a radius
+      // filter is active.
+      const queryCity = locationQuery.kind === "city" ? locationQuery.city : null;
       const zips = [...new Set(data.listings.map((listing) => extractZipFromServiceArea(listing.serviceArea)).filter((zip): zip is string => Boolean(zip)))];
       const resolved = await Promise.all(zips.map(async (zip) => [zip, await geocodeZip(zip)] as const));
       const coordsForZip = new Map(resolved);
       return {
         listings: data.listings.filter((listing) =>
-          listingWithinRadius(listing.serviceArea, center, (zip) => coordsForZip.get(zip) ?? null, radius),
+          listingWithinRadius(listing.serviceArea, center, (zip) => coordsForZip.get(zip) ?? null, radius, queryCity),
         ),
       };
     },
@@ -4137,11 +4143,11 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
   const unreadMarketplaceCount = (inbox.data?.unreadCount ?? 0) + (notifications.data?.unreadCount ?? 0);
   const sortText = lang === "es" ? {
     title: "Ordenar por", newest: "Más recientes primero", priceAsc: "Precio: de menor a mayor", priceDesc: "Precio: de mayor a menor",
-    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área o código postal.", radius: "Radio (millas)", radiusZipHint: "Ingresa un código postal para filtrar por radio.", miUnit: "millas", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.", mapRefreshing: "Actualizando mapa…", mapCentered: "Centrado en {label}",
+    locationTitle: "Ubicación", locationHint: "Filtra las publicaciones por área de servicio, código postal o ciudad.", radius: "Radio (millas)", radiusZipHint: "Ingresa un código postal o una ciudad para filtrar por radio.", miUnit: "millas", showOnMap: "Ver en mapa", apply: "Aplicar", clear: "Borrar", mapNote: "Vista previa del mapa centrada en tu ubicación.", mapRefreshing: "Actualizando mapa…", mapCentered: "Centrado en {label}",
     inbox: "Bandeja de mensajes", inboxNote: "Conversaciones sobre tus publicaciones", sortBy: "Ordenar publicaciones",
   } : {
     title: "Sort by", newest: "Newest first", priceAsc: "Price: low to high", priceDesc: "Price: high to low",
-    locationTitle: "Location", locationHint: "Filter listings by service area or ZIP.", radius: "Radius (miles)", radiusZipHint: "Enter a ZIP code to filter by radius.", miUnit: "mi", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.", mapRefreshing: "Updating map…", mapCentered: "Centered on {label}",
+    locationTitle: "Location", locationHint: "Filter listings by service area, ZIP, or city.", radius: "Radius (miles)", radiusZipHint: "Enter a ZIP code or city to filter by radius.", miUnit: "mi", showOnMap: "Show on map", apply: "Apply", clear: "Clear", mapNote: "Map preview centered on your location.", mapRefreshing: "Updating map…", mapCentered: "Centered on {label}",
     inbox: "Message inbox", inboxNote: "Conversations about your listings", sortBy: "Sort listings",
   };
   return <main className="page marketplace-page" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
@@ -4164,7 +4170,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <button type="button" className={`market-tab${view === "explore" ? " active" : ""}`} onClick={() => { setView("explore"); setSavedOnly(false); }}><span>{text.explore}</span></button>
       <button type="button" className="market-tab" onClick={() => setMoreOpen(true)}><span>{text.more}</span>{unreadMarketplaceCount > 0 && <b className="tab-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}</button>
       <span className="market-tabs-spacer" aria-hidden="true" />
-      <button type="button" className="market-location-tab" aria-label={text.areaFilter} onClick={() => setLocationPopupOpen(true)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{location ? <span>{location}{zipMode ? ` · ${radius} ${sortText.miUnit}` : ""}</span> : null}</button>
+      <button type="button" className="market-location-tab" aria-label={text.areaFilter} onClick={() => setLocationPopupOpen(true)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{location ? <span>{location}{radiusMode ? ` · ${radius} ${sortText.miUnit}` : ""}</span> : null}</button>
     </nav>
     {view === "explore" && <section className="market-explore">
       <div className="intent-filters" role="group" aria-label={lang === "es" ? "Filtrar por intención" : "Filter by intent"}><button className={intentFilter === "all" ? "active" : ""} onClick={() => setIntentFilter("all")}><Icon><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></Icon><span>{text.all}</span></button><button className={intentFilter === "need" ? "active need" : "need"} onClick={() => setIntentFilter(intentFilter === "need" ? "all" : "need")}><Icon><path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z"/></Icon><span>{text.wanted}</span></button><button className={intentFilter === "offer" ? "active offer" : "offer"} onClick={() => setIntentFilter(intentFilter === "offer" ? "all" : "offer")}><Icon><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="9" cy="9" r="1.6"/></Icon><span>{text.available}</span></button><span className="intent-filters-spacer" aria-hidden="true" /><button className={`sort-icon-button${sortBy !== "newest" ? " active" : ""}`} type="button" aria-label={sortText.sortBy} title={sortText.sortBy} onClick={() => setSortOpen(true)}><Icon><path d="M7 4v13M7 17l-3-3M7 17l3-3M17 20V7M17 7l-3 3M17 7l3 3"/></Icon></button></div>
@@ -4230,10 +4236,10 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     {locationPopupOpen && <FloatPopup lang={lang} title={sortText.locationTitle} onClose={() => setLocationPopupOpen(false)}>{(close) => <>
       <p className="popup-hint">{sortText.locationHint}</p>
       <label className="popup-input"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder={text.location} aria-label={text.location}/></label>
-      <div className="radius-filter"><span id="market-radius-label">{sortText.radius}</span><div className="radius-chips" role="group" aria-labelledby="market-radius-label">{RADIUS_OPTIONS.map((mi) => <button key={mi} type="button" className={radius === mi ? "active" : ""} disabled={!zipMode} onClick={() => setRadius(mi)} aria-pressed={radius === mi}>{mi}</button>)}</div></div>
-      {!zipMode && <p className="radius-hint">{sortText.radiusZipHint}</p>}
+      <div className="radius-filter"><span id="market-radius-label">{sortText.radius}</span><div className="radius-chips" role="group" aria-labelledby="market-radius-label">{RADIUS_OPTIONS.map((mi) => <button key={mi} type="button" className={radius === mi ? "active" : ""} disabled={!radiusMode} onClick={() => setRadius(mi)} aria-pressed={radius === mi}>{mi}</button>)}</div></div>
+      {!radiusMode && <p className="radius-hint">{sortText.radiusZipHint}</p>}
       <button className="secondary-button popup-map-button" onClick={() => { if (!mapPreviewOpen) { setMapQuery(location.trim() || "Tampa, FL"); void recenterMapPreview(location.trim() || "Tampa, FL"); } setMapPreviewOpen((open) => !open); }}><Icon><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></Icon>{sortText.showOnMap}</button>
-      {mapPreviewOpen && <div className="popup-map b06-map-wrap">{mapRefreshing && <div className="b06-map-refreshing" role="status" aria-live="polite"><span className="market-refresh-spinner b06-spinning" aria-hidden="true"/>{sortText.mapRefreshing}</div>}<iframe key={mapQuery} title={sortText.showOnMap} src={mapCenter ? `https://maps.google.com/maps?q=${encodeURIComponent(`${mapCenter.lat},${mapCenter.lon}`)}&z=${zipMode ? radiusZoom(radius) : 13}&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />{mapCenter && <small className="b06-map-centered">{sortText.mapCentered.replace("{label}", mapCenter.label)}</small>}<small>{sortText.mapNote}</small></div>}
+      {mapPreviewOpen && <div className="popup-map b06-map-wrap">{mapRefreshing && <div className="b06-map-refreshing" role="status" aria-live="polite"><span className="market-refresh-spinner b06-spinning" aria-hidden="true"/>{sortText.mapRefreshing}</div>}<iframe key={mapQuery} title={sortText.showOnMap} src={mapCenter ? `https://maps.google.com/maps?q=${encodeURIComponent(`${mapCenter.lat},${mapCenter.lon}`)}&z=${radiusMode ? radiusZoom(radius) : 13}&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />{mapCenter && <small className="b06-map-centered">{sortText.mapCentered.replace("{label}", mapCenter.label)}</small>}<small>{sortText.mapNote}</small></div>}
       <div className="popup-actions"><button className="secondary-button" onClick={() => { setLocation(""); setRadius(DEFAULT_RADIUS_MILES); setMapPreviewOpen(false); setMapCenter(null); }}>{sortText.clear}</button><button className="primary-button" onClick={() => { setMapPreviewOpen(false); close(); }}>{sortText.apply}</button></div>
     </>}</FloatPopup>}
   </main>;
