@@ -3926,3 +3926,48 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
   .floating-doc-backdrop.closing .floating-doc-sheet, .more-sheet.editor-sheet { animation: none !important; }
   .doc-line-card.b06-dragging { outline-style: dashed; }
 }
+
+/* === b12 refinement (2026-10-07): Invoice Fly similarity pass + full theme audit ===
+   Danny's verdict on the 1.2 deploy: "Not all pages have been updated. I need
+   smaller button and more similarities to the example." Reference: Invoice Fly
+   "Invoices & estimates" screen. Principle: smaller + tighter, min 36px targets. */
+
+/* Compact app header (matches reference: small chevron, centered title, small icons) */
+.app-header { min-height: 50px; }
+.app-header h1 { font-size: 20px; }
+.app-header .icon-button { min-width: 36px; height: 36px; }
+.app-header .icon-button svg { width: 18px; height: 18px; }
+
+/* Segmented Invoices | Estimates: ~44px tall */
+.document-tabs { margin: 8px 0 10px; padding: 3px; }
+.document-tabs button { min-height: 38px; font-size: 13px; }
+
+/* Totals hero: tighter, no divider line (like the reference) */
+.document-hero { margin: 4px 0 8px; padding: 8px 2px; gap: 2px; border-bottom: 0; }
+.document-hero > span, .document-hero small { font-size: 12px; }
+.document-hero > strong { font-size: 30px; }
+
+/* CREATE button: slimmer ~52px, keep the orange */
+.page-actions.document-create { margin: 8px 0; }
+.page-actions.document-create .primary-button { min-height: 52px; font-size: 14px; border-radius: 10px; }
+
+/* Search + All filter row: compact ~46-48px */
+.ck-invoice-toolbar { margin: 10px 0 8px; }
+.ck-search input { min-height: 44px; font-size: 13px; }
+.ck-invoice-toolbar select.ck-btn-sm { min-height: 46px; font-size: 13px; }
+
+/* Invoice cards: tighter, smaller status circle, 15px title, slim action buttons */
+.document-list { gap: 6px; }
+.document-tap.ck-invoice-row { padding: 10px 12px; }
+.ck-check { width: 34px; height: 34px; }
+.ck-check svg { width: 16px; height: 16px; }
+.ck-invoice-row-copy strong { font-size: 15px; }
+.ck-invoice-row-copy > small { font-size: 12px; }
+.ck-invoice-row-amount { font-size: 14px; }
+.document-list .row-actions button,
+.document-list .row-actions select { min-height: 38px; padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+
+/* Audit fix: Follow-ups reminder rows never got the 1.2 density pass */
+.reminder-section { margin-top: 16px; }
+.reminder-section h2, .saved-section h2 { font-size: 17px; }
+.reminder-section article { min-height: 60px; padding: 10px 0; }
