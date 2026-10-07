@@ -4096,3 +4096,26 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .quote-chase .automation-actions span.status { min-height: 44px; font-size: 13.5px; }
 .quote-chase .automation-card { padding: 12px 14px; }
 .quote-chase .automation-card h3 { font-size: 16px; }
+
+/* === Danny 2026-10-07: white text on orange, skinny buttons/cards, less rounding, tight === */
+.primary-button { color: #fff; min-height: 44px; border-radius: 6px; }
+.primary-button svg { color: #fff; }
+.secondary-button, .small-button { border-radius: 6px; min-height: 40px; }
+.page-actions.document-create { margin: 6px 0; }
+.page-actions.document-create .primary-button { min-height: 44px; font-size: 14px; border-radius: 6px; }
+/* Cards: tighter + less round */
+.document-tap, .document-tap.ck-invoice-row { border-radius: 8px; padding: 8px 10px; }
+.document-list, .quote-list { gap: 8px; }
+.glance-card { border-radius: 8px; }
+.home-summary-card { border-radius: 12px; }
+/* Segmented tabs: skinny + less round */
+.document-tabs { border-radius: 8px; margin: 6px 0 8px; }
+.document-tabs button { border-radius: 6px; min-height: 36px; font-size: 14px; }
+/* Invoice card buttons: skinny */
+.ck-invoice-row .row-actions button, .ck-invoice-row .row-actions select { min-height: 34px; border-radius: 6px; font-size: 13px; padding: 0 10px; }
+.ck-invoice-row .row-actions { margin-top: 4px; gap: 6px; }
+/* Hero: tighter */
+.document-hero { padding: 8px 0; gap: 2px; }
+/* Invoice/estimate switch: a lot smaller */
+.document-tabs { padding: 2px; }
+.document-tabs button { min-height: 28px; font-size: 13px; padding: 0 10px; }
