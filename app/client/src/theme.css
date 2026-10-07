@@ -4119,3 +4119,7 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* Invoice/estimate switch: a lot smaller */
 .document-tabs { padding: 2px; }
 .document-tabs button { min-height: 28px; font-size: 13px; padding: 0 10px; }
+/* Job detail action buttons: less round, white text on orange, skinny */
+.quick-rail-action { border-radius: 8px; min-height: 44px; padding: 8px 14px; }
+.quick-rail-action.primary { color: #fff; }
+.quick-rail-action.primary svg { color: #fff; }
