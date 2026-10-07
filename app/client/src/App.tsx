@@ -1279,6 +1279,68 @@ function PageHeader({
     </header>
   );
 }
+// Build 1.2 (part A): floating document forms (new estimate, new invoice,
+// edit-existing-document) share one header — X (left) | title (center) |
+// Preview + Save (right). No wrench/gear here: those open the global Tools /
+// Settings screens, which stay one tap away on every parent screen's header
+// (QuotesScreen, InvoicesScreen, job detail, …), so nothing is removed.
+function FloatingDocHeader({
+  lang,
+  title,
+  onExit,
+  onPreview,
+  saveLabel,
+  saving,
+  saveType = "submit",
+  onSave,
+}: {
+  lang: Lang;
+  title: string;
+  // Build 1.2: the exit X runs the same path as Save ("the exit button,
+  // which also is the save").
+  onExit: () => void;
+  onPreview: () => void;
+  saveLabel: string;
+  saving: boolean;
+  saveType?: "submit" | "button";
+  onSave?: () => void;
+}) {
+  const t = copy[lang];
+  return (
+    <header className="floating-doc-header">
+      <button
+        type="button"
+        className="icon-button floating-doc-exit"
+        aria-label={t.close}
+        onClick={onExit}
+        disabled={saving}
+      >
+        ×
+      </button>
+      <h2>{title}</h2>
+      <span className="floating-doc-header-actions">
+        <button
+          type="button"
+          className="small-button preview-trigger"
+          onClick={onPreview}
+          disabled={saving}
+        >
+          <FileIcon />
+          {t.previewPdf}
+        </button>
+        {saveType === "submit" ? (
+          <button type="submit" className="sheet-save-btn" disabled={saving}>
+            {saving ? t.saving : saveLabel}
+          </button>
+        ) : (
+          <button type="button" className="sheet-save-btn" onClick={onSave} disabled={saving}>
+            {saving ? t.saving : saveLabel}
+          </button>
+        )}
+      </span>
+    </header>
+  );
+}
 function formatDate(value: string, lang: Lang) {
   if (!value) return "—";
   return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
@@ -10179,6 +10241,10 @@ function AdjustmentField({
   value,
   onType,
   onValue,
+  // Build 1.2 (part A): when provided, the editor renders a Done button that
+  // collapses it — closing commits the current value automatically, no extra
+  // save tap.
+  onCollapse,
 }: {
   lang: Lang;
   label: string;
@@ -10186,11 +10252,19 @@ function AdjustmentField({
   value: string;
   onType: (v: AdjustmentType) => void;
   onValue: (v: string) => void;
+  onCollapse?: () => void;
 }) {
   const t = copy[lang];
   return (
-    <fieldset className="adjustment-field">
-      <legend>{label}</legend>
+    <fieldset className={`adjustment-field${onCollapse ? " collapsible" : ""}`}>
+      <legend>
+        <span>{label}</span>
+        {onCollapse && (
+          <button type="button" className="adjustment-collapse" onClick={onCollapse}>
+            {t.done}
+          </button>
+        )}
+      </legend>
       <div>
         <select
           value={type}
@@ -10372,7 +10446,9 @@ function QuoteBuilder({
     depositValue: "0",
     // Build 0.6 (item 3): work items split into name + description, like the
     // invoice builder and the edit sheet.
-    lineItems: [{ name: "", description: "", amount: "" }],
+    // Build 1.2 (part A): line items also carry a quantity so the Price |
+    // Quantity row matches the invoice builder / edit sheet.
+    lineItems: [{ name: "", description: "", amount: "", quantity: 1 }],
   });
   useEffect(() => {
     if (settings && !defaultApplied.current) {
@@ -10464,7 +10540,7 @@ function QuoteBuilder({
     form.lineItems
       .filter((i) => i.description.trim() || (i.name ?? "").trim())
       .map((i) => ({ ...i, description: i.description.trim() || (i.name ?? "").trim() }));
-  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string }>) =>
+  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number }>) =>
     setForm((current) => ({
       ...current,
       lineItems: current.lineItems.map((x, j) => (j === index ? { ...x, ...patch } : x)),
@@ -10521,6 +10597,7 @@ function QuoteBuilder({
       name: "",
       description: item.description,
       amount: item.amount,
+      quantity: 1,
     }));
     setForm({
       ...form,
@@ -10550,6 +10627,16 @@ function QuoteBuilder({
       setAssemblyNotice(lang === "es" ? "No se pudo guardar" : "Could not save");
     }
   };
+  // Build 1.2 (part A): the builder is a floating window now. X, backdrop tap
+  // and Escape all run the same submit path as Save (validation errors show
+  // inline, exactly like pressing Save on an empty form); a successful save
+  // plays the exit animation before navigating away.
+  const [docOpen, setDocOpen] = useState(true);
+  const docDismiss = useAnimatedDismiss(docOpen);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const submitForm = () => { formRef.current?.requestSubmit(); };
+  const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
+  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen, submitForm);
   const save = useMutation({
     mutationFn: () =>
       api.saveQuote({
@@ -10563,9 +10650,13 @@ function QuoteBuilder({
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["quotes"] });
       client.invalidateQueries({ queryKey: ["clients"] });
-      // Build 0.6 (item 6): saving an estimate lands on the Estimates tab.
-      if (onSaved) onSaved();
-      else onBack();
+      // Build 1.2 (part A): play the floating window's exit animation, then
+      // navigate. Build 0.6 (item 6): saving an estimate lands on the
+      // Estimates tab.
+      closeAfterSave(() => {
+        if (onSaved) onSaved();
+        else onBack();
+      });
     },
     onError: () => setError(t.error),
   });
@@ -10578,10 +10669,15 @@ function QuoteBuilder({
     total: usd(totals.total),
   };
   return (
-    <main className="page form-page b06-quote-builder-page">
-      <PageHeader lang={lang} title={t.newQuote} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
+    <div
+      className={`sheet-backdrop floating-doc-backdrop${docDismiss.closing ? " closing" : ""}`}
+      role="presentation"
+      onClick={(e) => { if (e.target === e.currentTarget) submitForm(); }}
+    >
+      <section className="floating-doc-sheet b06-quote-builder-page" role="dialog" aria-modal="true" aria-label={t.newQuote}>
       <form
-        className="job-form"
+        ref={formRef}
+        className="job-form floating-doc-form"
         onSubmit={(e) => {
           e.preventDefault();
           if (!form.clientName.trim() || validLineItems().length === 0) {
@@ -10591,6 +10687,15 @@ function QuoteBuilder({
           save.mutate();
         }}
       >
+        <FloatingDocHeader
+          lang={lang}
+          title={t.newQuote}
+          onExit={submitForm}
+          onPreview={() => setPreviewOpen(true)}
+          saveLabel={estTerms.saveDoc}
+          saving={save.isPending}
+        />
+        <div className="floating-doc-body">
         <ClientPicker
           lang={lang}
           value={form.clientName}
@@ -10712,6 +10817,7 @@ function QuoteBuilder({
                             name: item.name,
                             description: item.description ?? "",
                             amount: item.unitPrice,
+                            quantity: 1,
                           },
                         ],
                       })
@@ -10723,60 +10829,83 @@ function QuoteBuilder({
               </div>
             </div>
           )}
-          {/* Build 0.6 (item 3): work items split into name + description, with a
-              drag-to-reorder grip handle — like the invoice builder / edit sheet. */}
+          {/* Build 1.2 (part A): big line-item fields — full-width name on its
+              own row, a large description area, and Price | Quantity
+              side-by-side. Grip (drag reorder) and remove stay on the card. */}
           <div className="b06-line-list" ref={lineListRef}>
-          {form.lineItems.map((item, i) => (
-            <div className={`line-item b06-quote-line${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
-              <span
-                className="b06-grip"
-                role="button"
-                tabIndex={0}
-                aria-label={lang === "es" ? `Arrastrar para reordenar la partida ${i + 1}` : `Drag to reorder item ${i + 1}`}
-                onPointerDown={(e) => onGripPointerDown(e, i)}
-                onPointerMove={onGripPointerMove}
-                onPointerUp={endGripDrag}
-                onPointerCancel={endGripDrag}
-                onKeyDown={(e) => onGripKeyDown(e, i)}
-              >
-                <Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
-              </span>
-              <div className="b06-line-fields">
-                <input
-                  aria-label={`${lang === "es" ? "Nombre de partida" : "Item name"} ${i + 1}`}
-                  placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}
-                  value={item.name ?? ""}
-                  onChange={(e) => updateLine(i, { name: e.target.value })}
-                />
-                <textarea
-                  className="b06-line-description"
-                  rows={2}
-                  aria-label={`${lang === "es" ? "Descripción" : "Description"} ${i + 1}`}
-                  placeholder={lang === "es" ? "Describe esta partida (opcional)" : "Describe this item (optional)"}
-                  value={item.description}
-                  onChange={(e) => updateLine(i, { description: e.target.value })}
-                />
+          {form.lineItems.map((item, i) => {
+            const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1));
+            return (
+            <div className={`doc-line-card${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
+              <div className="doc-line-top">
+                <span
+                  className="b06-grip"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={lang === "es" ? `Arrastrar para reordenar la partida ${i + 1}` : `Drag to reorder item ${i + 1}`}
+                  onPointerDown={(e) => onGripPointerDown(e, i)}
+                  onPointerMove={onGripPointerMove}
+                  onPointerUp={endGripDrag}
+                  onPointerCancel={endGripDrag}
+                  onKeyDown={(e) => onGripKeyDown(e, i)}
+                >
+                  <Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
+                </span>
+                <span className="doc-line-index">{t.item} {i + 1}</span>
+                <span className="doc-line-total">{usd(lineTotal)}</span>
+                {form.lineItems.length > 1 && (
+                  <button
+                    type="button"
+                    className="b06-line-remove"
+                    aria-label={lang === "es" ? `Eliminar partida ${i + 1}` : `Remove item ${i + 1}`}
+                    onClick={() => removeLineItem(i)}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
               <input
-                className="b06-line-amount"
-                aria-label={`${t.amount} ${i + 1}`}
-                placeholder="$0.00"
-                inputMode="decimal"
-                value={item.amount}
-                onChange={(e) => updateLine(i, { amount: e.target.value })}
+                className="doc-line-name"
+                aria-label={`${lang === "es" ? "Nombre de partida" : "Item name"} ${i + 1}`}
+                placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}
+                value={item.name ?? ""}
+                onChange={(e) => updateLine(i, { name: e.target.value })}
               />
-              {form.lineItems.length > 1 && (
-                <button
-                  type="button"
-                  className="b06-line-remove"
-                  aria-label={lang === "es" ? `Eliminar partida ${i + 1}` : `Remove item ${i + 1}`}
-                  onClick={() => removeLineItem(i)}
-                >
-                  ×
-                </button>
-              )}
+              <textarea
+                className="doc-line-desc"
+                rows={4}
+                aria-label={`${lang === "es" ? "Descripción" : "Description"} ${i + 1}`}
+                placeholder={lang === "es" ? "Describe esta partida (opcional)" : "Describe this item (optional)"}
+                value={item.description}
+                onChange={(e) => updateLine(i, { description: e.target.value })}
+              />
+              <div className="doc-price-qty">
+                <label>
+                  <span>{lang === "es" ? "Precio" : "Price"}</span>
+                  <input
+                    aria-label={`${lang === "es" ? "Precio" : "Price"} ${i + 1}`}
+                    placeholder="$0.00"
+                    inputMode="decimal"
+                    value={item.amount}
+                    onChange={(e) => updateLine(i, { amount: e.target.value })}
+                  />
+                </label>
+                <label>
+                  <span>{lang === "es" ? "Cantidad" : "Quantity"}</span>
+                  <input
+                    aria-label={`${lang === "es" ? "Cantidad" : "Quantity"} ${i + 1}`}
+                    inputMode="decimal"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={item.quantity ?? 1}
+                    onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
+                  />
+                </label>
+              </div>
             </div>
-          ))}
+            );
+          })}
           </div>
           <button
             className="primary-button add-item-wide"
@@ -10784,7 +10913,7 @@ function QuoteBuilder({
             onClick={() =>
               setForm({
                 ...form,
-                lineItems: [...form.lineItems, { name: "", description: "", amount: "" }],
+                lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1 }],
               })
             }
           >
@@ -10806,6 +10935,9 @@ function QuoteBuilder({
                 value={form.discountValue}
                 onType={(discountType) => setForm({ ...form, discountType })}
                 onValue={(discountValue) => setForm({ ...form, discountValue })}
+                // Build 1.2 (part A): Done collapses the editor and the value
+                // is kept automatically — no separate save tap.
+                onCollapse={() => setShowDiscount(false)}
               />
             )}
             {!showTax ? (
@@ -10820,6 +10952,9 @@ function QuoteBuilder({
                 value={form.taxValue}
                 onType={(taxType) => setForm({ ...form, taxType })}
                 onValue={(taxValue) => setForm({ ...form, taxValue })}
+                // Build 1.2 (part A): Done collapses the editor and the value
+                // is kept automatically — no separate save tap.
+                onCollapse={() => setShowTax(false)}
               />
             )}
           </div>
@@ -10881,12 +11016,9 @@ function QuoteBuilder({
           )}
         </div>
         {error && <p className="status error">{error}</p>}
-        <button
-          className="primary-button sticky-submit"
-          disabled={save.isPending}
-        >
-          {save.isPending ? t.saving : estTerms.saveDoc}
-        </button>
+        {/* Build 1.2 (part A): Save lives in the floating header now — the
+            bottom sticky pill is gone. */}
+        </div>
       </form>
       {previewOpen && <DocumentDesignOverlay lang={lang} kind="quote" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
       {/* Build 0.6 (item 1): template picker as a floating modal. Selecting a
@@ -10949,7 +11081,8 @@ function QuoteBuilder({
           </section>
         </div>
       )}
-    </main>
+      </section>
+    </div>
   );
 }
 
@@ -11241,7 +11374,15 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     setEditorPreviewDoc(doc as FinancialDocument);
     setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
   };
-  useEscapeToClose(true,()=>{if(!saving)onCancel();});
+  // Build 1.2 (part A): the exit X runs the same path as Save ("the exit
+  // button, which also is the save") — mirrors the hardware-back interceptor
+  // below: the save settles either way, then the sheet closes.
+  const exitAndSave = () => { if (saving) return; buzz(8); void Promise.resolve(save()).catch(() => {}).finally(() => onCancel()); };
+  // Build 1.2 (part A): Done on the discount/tax editor collapses it and
+  // persists the document automatically — no separate save tap.
+  const collapseDiscount = () => { setShowDiscount(false); exitAndSave(); };
+  const collapseTax = () => { setShowTax(false); exitAndSave(); };
+  useEscapeToClose(true, exitAndSave);
   const closeEditorPreview = () => { setEditorPreview(null); setEditorPreviewDoc(null); };
   useEscapeToClose(editorPreview!==null,()=>closeEditorPreview());
   // Build 0.3 (item 7): hardware back while editing saves the document, then
@@ -11253,13 +11394,85 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     void Promise.resolve(saveRef.current()).catch(() => {}).finally(() => cancelRef.current());
     return true;
   }), []);
-  return <div className="sheet-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget&&!saving)onCancel();}}>
+  return <div className="sheet-backdrop floating-doc-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)exitAndSave();}}>
     <section className="more-sheet editor-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
     <div className="sheet-handle" />
-    <header className="sheet-header-row editor-header"><button type="button" className="text-button" onClick={onCancel} disabled={saving}>{t.close}</button><h2>{kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn editor-preview-btn" onClick={() => void previewPdf()} disabled={saving}>{lang === "es" ? "Vista previa" : "Preview PDF"}</button><button type="button" className="sheet-save-btn" onClick={() => void save()} disabled={saving}>{saving ? t.saving : t.save}</button></span></header>
+    <FloatingDocHeader
+      lang={lang}
+      title={kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}
+      onExit={exitAndSave}
+      onPreview={() => void previewPdf()}
+      saveLabel={t.save}
+      saving={saving}
+      saveType="button"
+      onSave={() => void save()}
+    />
     <div className="financial-editor">
-      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=><article className={`editor-line-item${reorder?"":" no-reorder"}`} key={index}>{reorder && <div className="reorder-buttons"><button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button><button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button></div>}<div className="line-item-fields"><label className="field-label"><span>{t.item}</span><input aria-label={`${t.item} ${index+1}`} placeholder={lang === "es" ? "Ej. Trabajo / Material" : "e.g. Work / Material"} value={item.name ?? ""} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,name:e.target.value}:x)})}/></label><label className="field-label"><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="line-item-description" aria-label={`${lang === "es" ? "Descripción" : "Description"} ${index+1}`} placeholder={lang === "es" ? "Describe este artículo (opcional)" : "Describe this item (optional)"} value={item.description} rows={2} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x)})}/><ResizeGrip /></span></label><small>1 × {usd(money(item.amount))}</small></div><label className="field-label amount-label"><span>{t.amount}</span><input className="amount-input" aria-label={`${t.amount} ${index+1}`} placeholder="0.00" inputMode="decimal" value={item.amount} onChange={(e)=>setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,amount:e.target.value}:x)})}/></label></article>)}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
-      <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
+      <section className="editor-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=>{
+        const qty = item.quantity ?? 1;
+        const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
+        const setItem = (patch: Partial<{ name: string; description: string; amount: string; quantity: number }>) =>
+          setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,...patch}:x)});
+        return <article className="doc-line-card" key={index}>
+          <div className="doc-line-top">
+            {reorder ? (
+              <div className="reorder-buttons">
+                <button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button>
+                <button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button>
+              </div>
+            ) : (
+              <span className="doc-line-index">{t.item} {index+1}</span>
+            )}
+            <span className="doc-line-total">{usd(lineTotal)}</span>
+          </div>
+          <input
+            className="doc-line-name"
+            aria-label={`${t.item} ${index+1}`}
+            placeholder={lang === "es" ? "Ej. Trabajo / Material" : "e.g. Work / Material"}
+            value={item.name ?? ""}
+            onChange={(e)=>setItem({name:e.target.value})}
+          />
+          <label>
+            <span>{lang === "es" ? "Descripción" : "Description"}</span>
+            <span className="textarea-grip-wrap">
+              <textarea
+                className="doc-line-desc"
+                aria-label={`${lang === "es" ? "Descripción" : "Description"} ${index+1}`}
+                placeholder={lang === "es" ? "Describe este artículo (opcional)" : "Describe this item (optional)"}
+                value={item.description}
+                rows={4}
+                onChange={(e)=>setItem({description:e.target.value})}
+              />
+              <ResizeGrip />
+            </span>
+          </label>
+          <div className="doc-price-qty">
+            <label>
+              <span>{lang === "es" ? "Precio" : "Price"}</span>
+              <input
+                aria-label={`${lang === "es" ? "Precio" : "Price"} ${index+1}`}
+                placeholder="0.00"
+                inputMode="decimal"
+                value={item.amount}
+                onChange={(e)=>setItem({amount:e.target.value})}
+              />
+            </label>
+            <label>
+              <span>{lang === "es" ? "Cantidad" : "Quantity"}</span>
+              <input
+                aria-label={`${lang === "es" ? "Cantidad" : "Quantity"} ${index+1}`}
+                inputMode="decimal"
+                type="number"
+                min="0"
+                step="any"
+                value={qty}
+                onChange={(e)=>setItem({quantity:Number(e.target.value)})}
+              />
+            </label>
+          </div>
+        </article>;
+      })}<button className="primary-button add-item-wide" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
       {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
@@ -12018,7 +12231,6 @@ function InvoiceBuilder({
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const [activeSheet, setActiveSheet] = useState<"details" | "discount" | "tax" | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
-  useEscapeToClose(activeSheet !== null, () => closeSheet());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState("");
   // Build 0.5 fix: "New invoice" always opens blank. An interrupted draft is
@@ -12085,18 +12297,39 @@ function InvoiceBuilder({
   }, [invoicesQuery.data, form.invoiceNumber]);
   const totals = financialTotals(form.lineItems, form.discountType, discountEnabled ? form.discountValue : "0", form.taxType, taxEnabled ? form.taxValue : "0");
   const closeSheet = () => { setSheetClosing(true); window.setTimeout(() => { setActiveSheet(null); setSheetClosing(false); }, 180); };
+  // Build 1.2 (part A): closing the discount/tax editor commits its value
+  // automatically — the adjustment turns on with whatever is typed (zero or
+  // empty keeps it off). No separate Add tap needed.
+  const commitAdjustmentAndClose = () => {
+    if (activeSheet === "discount") setDiscountEnabled(money(form.discountValue) > 0);
+    else if (activeSheet === "tax") setTaxEnabled(money(form.taxValue) > 0);
+    closeSheet();
+  };
+  useEscapeToClose(activeSheet !== null, () => commitAdjustmentAndClose());
+  // Build 1.2 (part A): floating window — X, backdrop tap and Escape run the
+  // same submit path as Save (inline validation, like pressing Save on an
+  // empty form); a successful save plays the exit animation first. The
+  // localStorage draft keeps autosaving underneath, unchanged.
+  const [docOpen, setDocOpen] = useState(true);
+  const docDismiss = useAnimatedDismiss(docOpen);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const submitForm = () => { formRef.current?.requestSubmit(); };
+  const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
+  useEscapeToClose(docOpen && !activeSheet && !previewOpen, submitForm);
   const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
-    onSuccess: () => { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); onBack(); },
+    onSuccess: () => { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
-  return <main className="page form-page invoice-builder-page">
-    <PageHeader lang={lang} title={t.newInvoice} onBack={onBack} actions={<button className="small-button preview-trigger" type="button" onClick={() => setPreviewOpen(true)}><FileIcon />{t.previewPdf}</button>} />
-    <form className="job-form invoice-fly-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
+  return <div className={`sheet-backdrop floating-doc-backdrop${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) submitForm(); }}>
+    <section className="floating-doc-sheet invoice-builder-page" role="dialog" aria-modal="true" aria-label={t.newInvoice}>
+    <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
+      <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={submitForm} onPreview={() => setPreviewOpen(true)} saveLabel={t.saveInvoice} saving={save.isPending} />
+      <div className="floating-doc-body">
       <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
       {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
       <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
@@ -12107,13 +12340,14 @@ function InvoiceBuilder({
         {settings?.addShippingAddress && <label><span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span><input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}/></label>}
       </div></details>
       <fieldset className="form-section invoice-items-section"><legend>{t.lineItems}</legend>
-        {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card" key={index}>
-          <div className="invoice-line-head"><strong>{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</strong>{form.lineItems.length > 1 && <button type="button" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
-          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}/></label>
-          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="resize-vertical" rows={2} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/><ResizeGrip /></span></label>
-          <div className="invoice-line-grid trio"><label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={item.amount} onChange={(e) => updateItem(index, { amount: e.target.value })} placeholder="$0.00"/></label><label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={item.quantity} onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}/></label><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label></div>
-          <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label>
-          <div className="invoice-line-total"><span>{lang === "es" ? "Total de partida" : "Item total"}</span><strong>{usd(lineTotal)}</strong></div>
+        {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card doc-line-card" key={index}>
+          {/* Build 1.2 (part A): big line-item fields — full-width name on its
+              own row, a large description area, Price | Quantity side-by-side. */}
+          <div className="doc-line-top"><span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span><span className="doc-line-total">{usd(lineTotal)}</span>{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
+          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input className="doc-line-name" value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}/></label>
+          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="doc-line-desc" rows={4} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/><ResizeGrip /></span></label>
+          <div className="doc-price-qty"><label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={item.amount} onChange={(e) => updateItem(index, { amount: e.target.value })} placeholder="$0.00"/></label><label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={item.quantity} onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}/></label></div>
+          <div className="doc-price-qty"><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label><label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label></div>
         </article>})}
         <button className="secondary-button" type="button" onClick={() => setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] })}><PlusIcon />{t.addLine}</button>
       </fieldset>
@@ -12129,13 +12363,16 @@ function InvoiceBuilder({
       </div></details>
       <label><span>{t.footnote}</span><textarea rows={3} value={form.footnote} onChange={(e) => setForm({ ...form, footnote: e.target.value })}/></label>
       {error && <p className="status error">{error}</p>}
-      <button className="primary-button sticky-submit" disabled={save.isPending}>{save.isPending ? t.saving : t.saveInvoice}</button>
+      {/* Build 1.2 (part A): Save lives in the floating header now — the
+          bottom sticky pill is gone. */}
+      </div>
     </form>
-    {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" className="sheet-save-btn" onClick={closeSheet}>{lang === "es" ? "Guardar" : "Save"}</button></header>
-      {activeSheet === "details" ? <div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Número de factura" : "Invoice number"}</span><input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}/><small>{lang === "es" ? "Asignado automáticamente; puedes cambiarlo." : "Assigned automatically — you can change it."}</small></label></div> : <div className="invoice-adjustment-sheet"><AdjustmentField lang={lang} label={activeSheet === "discount" ? t.discount : t.tax} type={activeSheet === "discount" ? form.discountType : form.taxType} value={activeSheet === "discount" ? form.discountValue : form.taxValue} onType={(value) => activeSheet === "discount" ? setForm({ ...form, discountType: value }) : setForm({ ...form, taxType: value })} onValue={(value) => activeSheet === "discount" ? setForm({ ...form, discountValue: value }) : setForm({ ...form, taxValue: value })}/><button type="button" className="primary-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(true) : setTaxEnabled(true); closeSheet(); }}>{lang === "es" ? "Agregar" : "Add"} {activeSheet === "discount" ? t.discount.toLowerCase() : t.tax.toLowerCase()}</button><button type="button" className="text-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(false) : setTaxEnabled(false); closeSheet(); }}>{lang === "es" ? "Quitar" : "Remove"}</button></div>}
+    {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) commitAdjustmentAndClose(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" className="sheet-save-btn" onClick={commitAdjustmentAndClose}>{t.done}</button></header>
+      {activeSheet === "details" ? <div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Número de factura" : "Invoice number"}</span><input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}/><small>{lang === "es" ? "Asignado automáticamente; puedes cambiarlo." : "Assigned automatically — you can change it."}</small></label></div> : <div className="invoice-adjustment-sheet"><AdjustmentField lang={lang} label={activeSheet === "discount" ? t.discount : t.tax} type={activeSheet === "discount" ? form.discountType : form.taxType} value={activeSheet === "discount" ? form.discountValue : form.taxValue} onType={(value) => activeSheet === "discount" ? setForm({ ...form, discountType: value }) : setForm({ ...form, taxType: value })} onValue={(value) => activeSheet === "discount" ? setForm({ ...form, discountValue: value }) : setForm({ ...form, taxValue: value })} onCollapse={commitAdjustmentAndClose}/><button type="button" className="primary-button" onClick={commitAdjustmentAndClose}>{lang === "es" ? "Agregar" : "Add"} {activeSheet === "discount" ? t.discount.toLowerCase() : t.tax.toLowerCase()}</button><button type="button" className="text-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(false) : setTaxEnabled(false); closeSheet(); }}>{lang === "es" ? "Quitar" : "Remove"}</button></div>}
     </section></div>}
-    {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }}/>} 
-  </main>;
+    {previewOpen && <DocumentDesignOverlay lang={lang} kind="invoice" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }}/>}
+    </section>
+  </div>;
 }
 // Bug-fix: payment sheet — recording a payment now collects amount, date,
 // method and note, always shows totals + history (even in Simple Mode), and
