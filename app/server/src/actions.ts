@@ -102,7 +102,11 @@ const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "
 const moderationStatusSchema = z.enum(["active", "auto_rejected", "pending_review", "removed"]);
 type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, intent: z.enum(["need", "offer"]), neededBy: z.string(), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
+// Build 0.7: ZIP code is required on every marketplace listing (drives the
+// radius filter). Accepts ZIP+4, normalized to 5 digits by normalizeZipCode.
+export const marketplaceZipCodeSchema = z.string().trim().regex(/^\d{5}(-\d{4})?$/, "Enter a valid 5-digit ZIP code.");
+export function normalizeZipCode(zip: string): string { return zip.trim().slice(0, 5); }
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, intent: z.enum(["need", "offer"]), neededBy: z.string(), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), zipCode: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), conversationId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), outgoing: z.boolean(), senderName: z.string(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
 const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(), startDate: z.string(), endDate: z.string(), note: z.string(), status: z.enum(["requested", "confirmed", "declined"]), createdAt: z.string() });
@@ -386,7 +390,7 @@ async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceL
   // Build 0.6 item 22: contact phone is gated behind unlocks. Owners always
   // see their own number; everyone else must unlock first.
   const contactUnlocked = isMine || (unlockedListingIds?.has(row.id) ?? false);
-  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, zipCode: row.zipCode, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 type BackupScalar = string | number | null;
@@ -3421,6 +3425,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       intent: z.enum(["need", "offer"]), neededBy: z.string().trim().max(80).default(""), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
+      zipCode: marketplaceZipCodeSchema,
       companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
       bookable: z.boolean().default(false), dailyRate: z.string().trim().max(80).default(""),
       photos: z.array(z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(30_000_000) })).max(8),
@@ -3448,7 +3453,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
       const moderationReason = scan.clean ? "" : scan.reasons.join("; ");
-      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
+      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
       if (!made) throw new Error("The listing could not be saved.");
       const storedKeys: string[] = [];
       try {
@@ -3479,6 +3484,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       intent: z.enum(["need", "offer"]), neededBy: z.string().trim().max(80).default(""), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
+      zipCode: marketplaceZipCodeSchema,
       companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
       bookable: z.boolean().default(false), dailyRate: z.string().trim().max(80).default(""),
       replacePhotos: z.boolean().default(false),
@@ -3508,7 +3514,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             newPhotos.push({ blobKey: key, filename: photo.filename, contentType: photo.contentType, sortOrder: index });
           }
         }
-        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
+        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
         if (args.replacePhotos) {
           await db.delete(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id));
           for (const photo of newPhotos) await db.insert(schema.marketplaceListingPhotos).values({ listingId: args.id, ...photo, createdAt: now });

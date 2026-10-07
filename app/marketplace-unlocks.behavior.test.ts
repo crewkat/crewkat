@@ -166,7 +166,7 @@ const ctx3: any = { ...ctx, workspaceCompanyId: 3, workspaceUserId: 3 };
 const madeListing = await (BaseActions.createMarketplaceListing as any).handler(ctx3, {
   title: "Test", category: "plumbing", intent: "offer", employmentType: "full_time",
   payUnit: "hourly", priceKind: "contact", price: "", originalPrice: "", description: "Call 8135550300 for details",
-  serviceArea: "Tampa", companyName: "", companyPhone: "", photos: [],
+  serviceArea: "Tampa", zipCode: "33647", companyName: "", companyPhone: "", photos: [],
 });
 check("listing succeeds without phone verification and without company name", typeof madeListing?.id === "number");
 const stored = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, madeListing.id)).limit(1))[0];
@@ -182,7 +182,7 @@ check("verifyMarketplacePhone still sets the flag", verified?.verified === true)
 const edited = await (BaseActions.updateMarketplaceListing as any).handler(ctx3, {
   id: madeListing.id, title: "Test", category: "plumbing", intent: "offer", employmentType: "full_time",
   payUnit: "hourly", priceKind: "contact", price: "", originalPrice: "", description: "d",
-  serviceArea: "Tampa", companyName: "", companyPhone: "", bookable: false, dailyRate: "",
+  serviceArea: "Tampa", zipCode: "33647", companyName: "", companyPhone: "", bookable: false, dailyRate: "",
   replacePhotos: false, photos: [],
 });
 check("edit succeeds with empty company name", edited?.id === madeListing.id);

@@ -52,6 +52,15 @@ export function extractZipFromServiceArea(serviceArea: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * Preferred location text for geo lookups: the listing's dedicated ZIP code
+ * (required since build 0.7) first, falling back to the free-text service
+ * area for older listings posted before the requirement.
+ */
+export function listingGeoText(listing: { zipCode?: string | null; serviceArea: string }): string {
+  return listing.zipCode?.trim() || listing.serviceArea;
+}
+
 /** Great-circle distance in miles. */
 export function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const rad = (deg: number) => (deg * Math.PI) / 180;

@@ -701,6 +701,7 @@ export const marketplaceListings = sqliteTable("marketplace_listings", {
   originalPrice: text("original_price").notNull().default(""),
   description: text("description").notNull().default(""),
   serviceArea: text("service_area").notNull(),
+  zipCode: text("zip_code").notNull().default(""),
   companyName: text("company_name").notNull(),
   companyPhone: text("company_phone").notNull().default(""),
   bookable: integer("bookable", { mode: "boolean" }).notNull().default(false),
