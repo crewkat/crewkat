@@ -4123,3 +4123,24 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .quick-rail-action { border-radius: 8px; min-height: 44px; padding: 8px 14px; }
 .quick-rail-action.primary { color: #fff; }
 .quick-rail-action.primary svg { color: #fff; }
+
+/* === APP-WIDE theme (Danny): 8px cards, 6px buttons, white on orange, tight === */
+.photo-card, .document-preview-card, .home-summary-card, .home-job-card,
+.home-invoice-card, .invoice-line-card, .glance-card, .crew-day-card,
+.activation-card, .bid-card, .pro-feature-card, .ck-compact-card,
+.profit-card, .doc-line-card, .document-tap, .quote-card, .job-card,
+.marketplace-card, .client-card, .tool-card, .automation-card,
+.selection-list article, .kanban-column article, .calendar-list article,
+.toolkit-summary article, .operation-editor, .loss-sheet, .video-grid article {
+  border-radius: 8px;
+}
+/* Every solid button: 6px corners */
+.primary-button, .secondary-button, .small-button,
+.row-actions button, .row-actions select, .row-actions a {
+  border-radius: 6px;
+}
+/* White text on any orange/accent button */
+.primary-button, .primary-button *,
+.quick-rail-action.primary, .quick-rail-action.primary * {
+  color: #fff;
+}
