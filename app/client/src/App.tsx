@@ -4471,6 +4471,7 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
   const [messageImage, setMessageImage] = useState<File | null>(null);
+  const [viewerImage, setViewerImage] = useState<{ url: string; alt: string } | null>(null);
   const [error, setError] = useState("");
   const threadRef = useRef<HTMLDivElement | null>(null);
   const thread = useQuery({ queryKey: ["marketplace-thread", conversationId], queryFn: () => api.marketplaceConversation({ conversationId }), refetchInterval: 5000 });
@@ -4495,7 +4496,7 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
     <div className="message-thread page-thread" ref={threadRef}>
       {convo.messages.length ? convo.messages.map((item) => <article key={item.id} className={item.outgoing ? "outgoing" : "incoming"}>
         {!item.outgoing && <span className="message-sender">{item.senderName}</span>}
-        {item.imageUrl && <img src={item.imageUrl} alt={item.imageFilename || t.attached}/>}
+        {item.imageUrl && <button type="button" className="message-image-button" onClick={() => { buzz(8); setViewerImage({ url: item.imageUrl as string, alt: item.imageFilename || t.attached }); }} aria-label={lang === "es" ? "Ampliar imagen" : "Expand image"}><img src={item.imageUrl} alt={item.imageFilename || t.attached}/></button>}
         {item.body && <p>{item.body}</p>}
         <time>{new Date(item.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</time>
       </article>) : <p className="thread-empty">{t.noMessages}</p>}
@@ -4506,6 +4507,7 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
       <label><Icon><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon>{messageImage?.name || t.addPhoto}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setMessageImage(event.target.files?.[0] ?? null)}/></label>
       <button className="primary-button" disabled={send.isPending || (!message.trim() && !messageImage)}>{send.isPending ? t.sending : t.send}</button>
     </form>
+    {viewerImage && <ChatImageViewer lang={lang} src={viewerImage.url} alt={viewerImage.alt} onClose={() => setViewerImage(null)} />}
   </main>;
 }
 
@@ -4592,6 +4594,43 @@ function PhotoLightbox({ lang, photos, index, closing, onClose }: {
         ))}
       </div>
       {photos.length > 1 && <span className="lightbox-counter">{current + 1} / {photos.length}</span>}
+    </div>
+  );
+}
+
+// Chat image viewer: tap a message photo to expand it fullscreen in a floating
+// viewer; double-tap toggles zoom (scroll to pan while zoomed); X or backdrop
+// tap closes. Follows the 0.7 motion system.
+function ChatImageViewer({ lang, src, alt, onClose }: {
+  lang: Lang; src: string; alt: string; onClose: () => void;
+}) {
+  const [zoomed, setZoomed] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const close = () => {
+    setClosing(true);
+    window.setTimeout(onClose, 160);
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div
+      className={`lightbox-backdrop chat-image-viewer${closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt}
+      onClick={(event) => { if (event.target === event.currentTarget) close(); }}
+    >
+      <button type="button" className="lightbox-close" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={close}>×</button>
+      <div
+        className={`chat-image-stage${zoomed ? " zoomed" : ""}`}
+        onDoubleClick={() => { buzz(8); setZoomed((z) => !z); }}
+      >
+        <img src={src} alt={alt} draggable={false} />
+      </div>
+      <span className="chat-image-hint">{lang === "es" ? "Toca dos veces para acercar o alejar" : "Double-tap to zoom in or out"}</span>
     </div>
   );
 }

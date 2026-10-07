@@ -4144,3 +4144,15 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .quick-rail-action.primary, .quick-rail-action.primary * {
   color: #fff;
 }
+
+/* Chat image viewer: floating fullscreen, double-tap zoom */
+.message-image-button { border: 0; background: none; padding: 0; cursor: zoom-in; display: block; max-width: 100%; }
+.message-image-button img { display: block; max-width: 100%; border-radius: 8px; }
+.chat-image-viewer { animation: lightbox-backdrop-in .18s ease-out; flex-direction: column; }
+.chat-image-viewer.closing { animation: lightbox-backdrop-out .16s ease-in; }
+.chat-image-stage { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 48px 8px 40px; cursor: zoom-in; }
+.chat-image-stage.zoomed { cursor: zoom-out; }
+.chat-image-stage img { max-width: 96vw; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; animation: lightbox-image-in .18s ease-out; }
+.chat-image-stage.zoomed img { max-width: none; width: 220vw; max-height: none; }
+.chat-image-viewer.closing .chat-image-stage img { animation: lightbox-image-out .16s ease-in; }
+.chat-image-hint { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: rgba(255,255,255,.65); font-size: 12px; font-weight: 600; pointer-events: none; }
