@@ -692,7 +692,8 @@ export const marketplaceListings = sqliteTable("marketplace_listings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   category: text("category", { enum: ["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"] }).notNull(),
-  listingType: text("listing_type", { enum: ["job", "project"] }).notNull().default("project"),
+  intent: text("intent", { enum: ["need", "offer"] }).notNull().default("offer"),
+  neededBy: text("needed_by").notNull().default(""),
   employmentType: text("employment_type", { enum: ["full_time", "part_time", "temporary"] }).notNull().default("full_time"),
   payUnit: text("pay_unit", { enum: ["hourly", "salary"] }).notNull().default("hourly"),
   priceKind: text("price_kind", { enum: ["amount", "free", "contact"] }).notNull().default("contact"),
@@ -774,21 +775,6 @@ export const marketplaceBookingRequests = sqliteTable("marketplace_booking_reque
   note: text("note").notNull().default(""),
   status: text("status", { enum: ["requested", "confirmed", "declined"] }).notNull().default("requested"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-});
-
-export const marketplaceRequests = sqliteTable("marketplace_requests", {
-  companyId: integer("company_id").notNull().default(1),
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull(),
-  category: text("category", { enum: ["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"] }).notNull(),
-  listingType: text("listing_type", { enum: ["job", "project"] }).notNull().default("project"),
-  description: text("description").notNull().default(""),
-  serviceArea: text("service_area").notNull(),
-  neededBy: text("needed_by").notNull().default(""),
-  companyName: text("company_name").notNull(),
-  companyPhone: text("company_phone").notNull().default(""),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
 export const authUsers = sqliteTable("auth_users", {
@@ -1065,7 +1051,7 @@ export const bidBoardItems = sqliteTable("bid_board_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   listingId: integer("listing_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
-  requestId: integer("request_id").references(() => marketplaceRequests.id, { onDelete: "set null" }),
+  requestId: integer("request_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   stage: text("stage", { enum: ["interested", "estimating", "submitted", "won", "lost"] }).notNull().default("interested"),
   dueDate: text("due_date").notNull().default(""),

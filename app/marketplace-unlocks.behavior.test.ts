@@ -164,7 +164,7 @@ await db.insert(schema.authUsers).values({ companyId: 3, name: "Third", email: "
 await db.insert(schema.settings).values({ companyId: 3, companyName: "Third Co", phone: "8135550300" });
 const ctx3: any = { ...ctx, workspaceCompanyId: 3, workspaceUserId: 3 };
 const madeListing = await (BaseActions.createMarketplaceListing as any).handler(ctx3, {
-  title: "Test", category: "plumbing", listingType: "project", employmentType: "full_time",
+  title: "Test", category: "plumbing", intent: "offer", employmentType: "full_time",
   payUnit: "hourly", priceKind: "contact", price: "", originalPrice: "", description: "Call 8135550300 for details",
   serviceArea: "Tampa", companyName: "", companyPhone: "", photos: [],
 });
@@ -180,7 +180,7 @@ const verified = await (BaseActions.verifyMarketplacePhone as any).handler(ctx3,
 check("verifyMarketplacePhone still sets the flag", verified?.verified === true);
 // Edit path: company name can be cleared on edit too.
 const edited = await (BaseActions.updateMarketplaceListing as any).handler(ctx3, {
-  id: madeListing.id, title: "Test", category: "plumbing", listingType: "project", employmentType: "full_time",
+  id: madeListing.id, title: "Test", category: "plumbing", intent: "offer", employmentType: "full_time",
   payUnit: "hourly", priceKind: "contact", price: "", originalPrice: "", description: "d",
   serviceArea: "Tampa", companyName: "", companyPhone: "", bookable: false, dailyRate: "",
   replacePhotos: false, photos: [],

@@ -1423,20 +1423,6 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .market-section-heading p { margin:4px 0 0; color:var(--dim); font-size:12px; }
 .market-section-heading > button { min-height:40px; flex:0 0 auto; display:flex; align-items:center; gap:5px; padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--green); font-size:12px; font-weight:800; }
 .market-section-heading > button svg { width:16px; }
-.wanted-form { display:grid; gap:13px; margin-bottom:18px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
-.wanted-form label { display:grid; gap:5px; }
-.wanted-form label > span { color:var(--dim); font-size:12px; font-weight:800; }
-.wanted-form input,.wanted-form select,.wanted-form textarea { min-height:44px; padding:9px 11px; }
-.wanted-actions { display:grid; grid-template-columns:1fr 1.4fr; gap:8px; }
-.wanted-actions > button:first-child { border:1px solid var(--border); border-radius:9px; background:var(--surface-2); font-weight:800; }
-.wanted-feed { display:grid; gap:10px; }
-.wanted-feed article { display:grid; grid-template-columns:42px minmax(0,1fr); gap:11px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
-.wanted-mark { width:40px; height:40px; display:grid; place-items:center; border-radius:8px; background:color-mix(in srgb,var(--accent) 12%,var(--surface-2)); color:var(--accent); }
-.wanted-feed h3 { margin:3px 0 5px; font-size:16px; line-height:1.25; }
-.wanted-feed p { margin:0 0 6px; color:var(--dim); font-size:13px; line-height:1.4; }
-.wanted-feed small { color:var(--dim); font-size:11px; }
-.wanted-category { color:var(--green); font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
-.wanted-contact { margin-top:8px!important; color:var(--text)!important; }
 .marketplace-form select { min-height:52px; padding:10px 12px; }
 .price-choice { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-top:7px; }
 .price-choice button { min-height:46px; padding:6px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-size:12px; font-weight:800; }
@@ -1598,37 +1584,34 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 @media (min-width:720px) { .profile-cover-preview { min-height:210px; } .profile-cover-preview > img { height:230px; } .company-profile-form .sticky-save { position:static; width:auto; min-width:190px; justify-self:end; } }
 
 /* Marketplace listing type system */
-.listing-type-filters { display:flex; flex-wrap:wrap; gap:8px; padding:2px 0 4px; }
-.listing-type-filters button { min-height:38px; display:flex; align-items:center; gap:6px; padding:7px 13px; border:1px solid var(--border); border-radius:999px; background:var(--surface); color:var(--dim); font-size:13px; font-weight:850; }
-.listing-type-filters button svg { width:16px; height:16px; }
-.listing-type-filters button.active { border-color:var(--text); color:var(--text); box-shadow:inset 0 0 0 1px var(--text); }
-.listing-type-filters button.job.active { border-color:#2877bd; background:color-mix(in srgb,#2877bd 12%,var(--surface)); color:#1d67a4; box-shadow:none; }
-.listing-type-filters button.project.active { border-color:#c45527; background:color-mix(in srgb,#e1642f 12%,var(--surface)); color:#b5481e; box-shadow:none; }
-.listing-type-badge { position:absolute; left:7px; bottom:7px; z-index:2; display:flex; align-items:center; gap:4px; padding:4px 7px; border-radius:5px; color:#fff; font-size:9px; font-weight:950; letter-spacing:.04em; box-shadow:0 1px 4px rgba(0,0,0,.22); }
-.listing-type-badge svg { width:12px; height:12px; }
-.listing-type-badge.job { background:#2877bd; }
-.listing-type-badge.project { background:#c45527; }
-.inline-listing-type { display:inline-flex; align-items:center; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:900; }
-.inline-listing-type.job { background:color-mix(in srgb,#2877bd 15%,var(--surface)); color:#2877bd; }
-.inline-listing-type.project { background:color-mix(in srgb,#e1642f 15%,var(--surface)); color:#b5481e; }
-.listing-type-choice { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:0; border:0; }
-.listing-type-choice legend { grid-column:1/-1; margin-bottom:7px; color:var(--dim); font-size:13px; font-weight:850; }
-.listing-type-choice button { min-height:76px; display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; gap:9px; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); text-align:left; }
-.listing-type-choice button > svg { width:22px; height:22px; color:var(--dim); }
-.listing-type-choice button > span { display:grid; gap:3px; }
-.listing-type-choice button small { color:var(--dim); font-size:11px; line-height:1.3; }
-.listing-type-choice button.active.job { border-color:#2877bd; background:color-mix(in srgb,#2877bd 9%,var(--surface)); }
-.listing-type-choice button.active.job > svg { color:#2877bd; }
-.listing-type-choice button.active.project { border-color:#c45527; background:color-mix(in srgb,#e1642f 9%,var(--surface)); }
-.listing-type-choice button.active.project > svg { color:#c45527; }
+.intent-filters { display:flex; flex-wrap:wrap; gap:8px; padding:2px 0 4px; }
+.intent-filters button { min-height:38px; display:flex; align-items:center; gap:6px; padding:7px 13px; border:1px solid var(--border); border-radius:999px; background:var(--surface); color:var(--dim); font-size:13px; font-weight:850; }
+.intent-filters button.active { border-color:var(--text); color:var(--text); box-shadow:inset 0 0 0 1px var(--text); }
+.intent-filters button.need.active { border-color:#d97706; background:color-mix(in srgb,#d97706 12%,var(--surface)); color:#b45309; box-shadow:none; }
+.intent-filters button.offer.active { border-color:#16a34a; background:color-mix(in srgb,#16a34a 12%,var(--surface)); color:#15803d; box-shadow:none; }
+.intent-pill { position:absolute; left:7px; bottom:7px; z-index:2; display:flex; align-items:center; gap:4px; padding:4px 7px; border-radius:5px; color:#fff; font-size:9px; font-weight:950; letter-spacing:.04em; box-shadow:0 1px 4px rgba(0,0,0,.22); }
+.intent-pill.need { background:#d97706; }
+.intent-pill.offer { background:#16a34a; }
+.inline-intent { display:inline-flex; align-items:center; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:900; }
+.inline-intent.need { background:color-mix(in srgb,#d97706 15%,var(--surface)); color:#b45309; }
+.inline-intent.offer { background:color-mix(in srgb,#16a34a 15%,var(--surface)); color:#15803d; }
+.intent-choice { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:0; border:0; }
+.intent-choice legend { grid-column:1/-1; margin-bottom:7px; color:var(--dim); font-size:13px; font-weight:850; }
+.intent-choice button { min-height:76px; display:grid; grid-template-columns:24px minmax(0,1fr); align-items:center; gap:9px; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); text-align:left; }
+.intent-choice button > svg { width:22px; height:22px; color:var(--dim); }
+.intent-choice button > span { display:grid; gap:3px; }
+.intent-choice button small { color:var(--dim); font-size:11px; line-height:1.3; }
+.intent-choice button.active.need { border-color:#2877bd; background:color-mix(in srgb,#2877bd 9%,var(--surface)); }
+.intent-choice button.active.need > svg { color:#2877bd; }
+.intent-choice button.active.offer { border-color:#c45527; background:color-mix(in srgb,#e1642f 9%,var(--surface)); }
+.intent-choice button.active.offer > svg { color:#c45527; }
 .market-employment-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .market-employment-fields label { display:grid; gap:6px; }
 .market-employment-fields label span { color:var(--dim); font-size:13px; font-weight:800; }
-.wanted-badges { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
-@media (max-width:360px) { .listing-type-choice,.market-employment-fields { grid-template-columns:1fr; } }
-@media (prefers-color-scheme:dark) { :root:not([data-theme]) .listing-type-filters button.job.active,:root:not([data-theme]) .inline-listing-type.job { color:#65a9e5; } :root:not([data-theme]) .listing-type-filters button.project.active,:root:not([data-theme]) .inline-listing-type.project { color:#ef8c61; } }
-html[data-theme="dark"] .listing-type-filters button.job.active,html[data-theme="dark"] .inline-listing-type.job { color:#65a9e5; }
-html[data-theme="dark"] .listing-type-filters button.project.active,html[data-theme="dark"] .inline-listing-type.project { color:#ef8c61; }
+@media (max-width:360px) { .intent-choice,.market-employment-fields { grid-template-columns:1fr; } }
+@media (prefers-color-scheme:dark) { :root:not([data-theme]) .intent-filters button.need.active,:root:not([data-theme]) .inline-intent.need { color:#f0b35e; } :root:not([data-theme]) .intent-filters button.offer.active,:root:not([data-theme]) .inline-intent.offer { color:#5fce8a; } }
+html[data-theme="dark"] .intent-filters button.need.active,html[data-theme="dark"] .inline-intent.need { color:#f0b35e; }
+html[data-theme="dark"] .intent-filters button.offer.active,html[data-theme="dark"] .inline-intent.offer { color:#5fce8a; }
 
 /* Tool availability: every row is explicit about what works in this build. */
 .tool-status { width: max-content; display: inline-flex; align-items: center; min-height: 22px; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 10px !important; font-weight: 800; letter-spacing: .01em; }
@@ -2363,6 +2346,10 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .switch-row span small { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
 
 /* Chunk D: marketplace alerts + notifications. */
+.wanted-form { display:grid; gap:13px; margin-bottom:18px; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.wanted-form label { display:grid; gap:5px; }
+.wanted-form label > span { color:var(--dim); font-size:12px; font-weight:800; }
+.wanted-form input,.wanted-form select,.wanted-form textarea { min-height:44px; padding:9px 11px; }
 .market-alerts .wanted-form { margin-bottom: 16px; }
 .alerts-list { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .alerts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
@@ -2386,7 +2373,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 @keyframes page-in { from { opacity: .35; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 button { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease; }
 .icon-button:active, .primary-button:active, .secondary-button:active,
-.market-pills button:active, .listing-type-filters button:active,
+.market-pills button:active, .intent-filters button:active,
 .sort-option-row:active, .market-menu-row:active { transform: scale(.96); }
 /* Floating sheets get an open animation like the other windows in the app. */
 .more-sheet, .signature-sheet { animation: client-sheet-in .22s cubic-bezier(.2,.72,.2,1) both; }
@@ -2447,13 +2434,6 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 .sort-icon-button.active { border-color: var(--accent); color: var(--accent); box-shadow: none; }
 
 /* ---- 3. Jobs vs Projects: the whole Marketplace page shifts accent in project mode ---- */
-.marketplace-page.project-mode { --accent: #0284c7; --accent-ink: #f0f9ff; }
-:root[data-theme="dark"] .marketplace-page.project-mode { --accent: #38bdf8; --accent-ink: #082f49; }
-.marketplace-page.project-mode .listing-type-filters .project.active { border-color: #0284c7; background: color-mix(in srgb, #0284c7 14%, var(--surface)); color: #0369a1; box-shadow: none; }
-:root[data-theme="dark"] .marketplace-page.project-mode .listing-type-filters .project.active { color: #7dd3fc; }
-/* Build 3: in project mode the listing badges read blue to match the accent. */
-.marketplace-page.project-mode .listing-type-badge.project { background: #0284c7; }
-:root[data-theme="dark"] .marketplace-page.project-mode .listing-type-badge.project { background: #0369a1; }
 
 /* ---- 7. Accent color themes: genuinely distinct palettes ---- */
 :root[data-accent="blue"] { --accent: #2563eb; --accent-ink: #ffffff; }

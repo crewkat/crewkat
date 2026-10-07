@@ -102,8 +102,7 @@ const marketplaceCategorySchema = z.enum(["kitchens", "bathrooms", "plumbing", "
 const moderationStatusSchema = z.enum(["active", "auto_rejected", "pending_review", "removed"]);
 type ModerationStatus = z.infer<typeof moderationStatusSchema>;
 const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filename: z.string() });
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
-const marketplaceRequestSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string(), serviceArea: z.string(), neededBy: z.string(), companyName: z.string(), companyPhone: z.string(), createdAt: z.string(), updatedAt: z.string() });
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, intent: z.enum(["need", "offer"]), neededBy: z.string(), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), conversationId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), outgoing: z.boolean(), senderName: z.string(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
 const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(), startDate: z.string(), endDate: z.string(), note: z.string(), status: z.enum(["requested", "confirmed", "declined"]), createdAt: z.string() });
@@ -387,10 +386,7 @@ async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceL
   // Build 0.6 item 22: contact phone is gated behind unlocks. Owners always
   // see their own number; everyone else must unlock first.
   const contactUnlocked = isMine || (unlockedListingIds?.has(row.id) ?? false);
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
-}
-function marketplaceRequestShape(row: typeof schema.marketplaceRequests.$inferSelect) {
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 type BackupScalar = string | number | null;
@@ -712,7 +708,6 @@ type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number;
 const GLOBAL_MARKETPLACE_READ_TABLES = new Set<unknown>([
   schema.marketplaceListings,
   schema.marketplaceListingPhotos,
-  schema.marketplaceRequests,
   schema.marketplaceMessages,
 ]);
 
@@ -3375,7 +3370,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const db = ctx.db();
       const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
       const { base, bonus, effective } = await getEffectiveListingLimit(db);
-      const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
+      const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.intent, "offer"), eq(schema.marketplaceListings.moderationStatus, "active")));
       return { enabled, freeListingLimit: base, bonusListings: bonus, effectiveListingLimit: effective, myActiveListingCount: mine.length };
     },
   }),
@@ -3423,7 +3418,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   createMarketplaceListing: defineAction({
     request: z.object({
       title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema,
-      listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
+      intent: z.enum(["need", "offer"]), neededBy: z.string().trim().max(80).default(""), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
       companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
@@ -3439,15 +3434,21 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Build 0.7: the phone-verification gate is removed — listing creation
       // no longer requires phone verification.
       await requireMarketplaceEnabled(db);
-      if (identity.workspaceTier === "free") {
+      if (args.intent === "need") {
+        // Wanted posts are quota-exempt (unified marketplace decision) — a
+        // light anti-spam cap of 10 per company per day applies instead.
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60_000);
+        const recentNeeds = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.intent, "need"), gte(schema.marketplaceListings.createdAt, dayAgo)));
+        if (recentNeeds.length >= 10) throw new Error("You've reached the daily limit for Wanted posts. Try again tomorrow.");
+      } else if (identity.workspaceTier === "free") {
         const { effective, bonus } = await getEffectiveListingLimit(db);
-        const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.moderationStatus, "active")));
+        const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.intent, "offer"), eq(schema.marketplaceListings.moderationStatus, "active")));
         if (mine.length >= effective) throw new Error(`Your free plan includes ${effective} active Marketplace listing${effective === 1 ? "" : "s"}${bonus > 0 ? ` (${bonus} bonus from referrals)` : ""}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
       const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
       const moderationReason = scan.clean ? "" : scan.reasons.join("; ");
-      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
+      const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
       if (!made) throw new Error("The listing could not be saved.");
       const storedKeys: string[] = [];
       try {
@@ -3475,7 +3476,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({
       id: z.number().int().positive(),
       title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema,
-      listingType: z.enum(["job", "project"]), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
+      intent: z.enum(["need", "offer"]), neededBy: z.string().trim().max(80).default(""), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]),
       priceKind: z.enum(["amount", "free", "contact"]), price: z.string().trim().max(80), originalPrice: z.string().trim().max(80),
       description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160),
       companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80),
@@ -3507,7 +3508,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             newPhotos.push({ blobKey: key, filename: photo.filename, contentType: photo.contentType, sortOrder: index });
           }
         }
-        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
+        await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
         if (args.replacePhotos) {
           await db.delete(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id));
           for (const photo of newPhotos) await db.insert(schema.marketplaceListingPhotos).values({ listingId: args.id, ...photo, createdAt: now });
@@ -3841,13 +3842,6 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     response: z.object({ bookings: z.array(marketplaceBookingSchema) }),
     async handler(ctx, args) { const rows = await ctx.db<typeof schema>().select().from(schema.marketplaceBookingRequests).orderBy(desc(schema.marketplaceBookingRequests.createdAt)); return { bookings: rows.filter((row) => !args.listingId || row.listingId === args.listingId).map((row) => ({ id: row.id, listingId: row.listingId, startDate: row.startDate, endDate: row.endDate, note: row.note, status: row.status, createdAt: row.createdAt.toISOString() })) }; },
   }),
-  listMarketplaceRequests: defineAction({ request: z.object({}), response: z.object({ requests: z.array(marketplaceRequestSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.marketplaceRequests).orderBy(desc(schema.marketplaceRequests.createdAt)); return { requests: rows.map(marketplaceRequestShape) }; }}),
-  createMarketplaceRequest: defineAction({
-    request: z.object({ title: z.string().trim().min(1).max(180), category: marketplaceCategorySchema, listingType: z.enum(["job", "project"]), description: z.string().trim().max(5000), serviceArea: z.string().trim().min(1).max(160), neededBy: z.string().trim().max(80), companyName: z.string().trim().max(180), companyPhone: z.string().trim().max(80) }),
-    response: z.object({ id: z.number() }),
-    async handler(ctx, args) { const now = new Date(); const made = (await ctx.db<typeof schema>().insert(schema.marketplaceRequests).values({ ...args, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceRequests.id }))[0]; if (!made) throw new Error("The request could not be saved."); ctx.invalidateQueries(); return { id: made.id }; },
-  }),
-
   // -------------------------------------------------------------------------
   // Chunk D: referral loop, marketplace alerts, notifications, web push.
   // -------------------------------------------------------------------------
