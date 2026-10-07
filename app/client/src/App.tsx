@@ -1,4 +1,5 @@
 import { SafeAreaTopScrim, bytesToBase64, fileToBase64 } from "@hatch/space-sdk/client";
+import { compressImageFile } from "./imageCompress";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PDFDocument } from "pdf-lib";
 import { gzipSync, gunzipSync, strFromU8, zipSync, strToU8 } from "fflate";
@@ -3172,40 +3173,6 @@ function FloatPopup({ lang, title, onClose, children }: { lang: Lang; title: str
 // ---------------------------------------------------------------------------
 
 /** Tiny haptic tap on key confirmations; silent when reduced-motion is set. */
-// Build 0.6: compress branding images client-side before upload. Phone
-// photos and huge PNGs (multi-MB) otherwise get embedded at full resolution
-// into every PDF, which balloons documents and exhausts server memory during
-// rendering. Logos are resized to max 800px (kept as PNG for transparency,
-// JPEG quality 0.85 otherwise); covers and attachment images to max 1600px
-// JPEG 0.82.
-function compressImageFile(file: File, kind: "logo" | "cover" | "attachment"): Promise<File> {
-  const maxSide = kind === "logo" ? 800 : 1600;
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const longest = Math.max(img.naturalWidth, img.naturalHeight);
-      if (longest <= maxSide && file.size <= 400 * 1024) { resolve(file); return; }
-      const scale = Math.min(1, maxSide / longest);
-      const w = Math.max(1, Math.round(img.naturalWidth * scale));
-      const h = Math.max(1, Math.round(img.naturalHeight * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      const ctx2d = canvas.getContext("2d");
-      if (!ctx2d) { resolve(file); return; }
-      ctx2d.drawImage(img, 0, 0, w, h);
-      const keepPng = file.type === "image/png" && kind === "logo";
-      canvas.toBlob((blob) => {
-        if (!blob || blob.size >= file.size) { resolve(file); return; }
-        resolve(new File([blob], file.name.replace(/\.[a-z]+$/i, keepPng ? ".png" : ".jpg"), { type: keepPng ? "image/png" : "image/jpeg" }));
-      }, keepPng ? "image/png" : "image/jpeg", 0.85);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
-
 function buzz(pattern: number | number[] = 12) {
   try {
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -4259,7 +4226,7 @@ function MarketplaceListingForm({ lang, settings, listingId, initialListingType 
     setForm({ title: listing.title, category: listing.category, listingType: listing.listingType, employmentType: listing.employmentType, payUnit: listing.payUnit, priceKind: listing.priceKind, price: listing.price, originalPrice: listing.originalPrice, description: listing.description, serviceArea: listing.serviceArea, companyName: listing.companyName, companyPhone: listing.companyPhone, bookable: listing.bookable, dailyRate: listing.dailyRate });
   }, [existing.data?.listing, listingId]);
   const save = useMutation({ mutationFn: async () => {
-    const encoded = await Promise.all(photos.map(async (file) => ({ filename: file.name, contentType: file.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(file)).dataBase64 })));
+    const encoded = await Promise.all(photos.map(async (file) => { const compressed = await compressImageFile(file, "photo"); return { filename: compressed.name, contentType: compressed.type as "image/jpeg", dataBase64: (await fileToBase64(compressed)).dataBase64 }; }));
     if (listingId) return api.updateMarketplaceListing({ id: listingId, ...form, replacePhotos: photos.length > 0, photos: encoded });
     return api.createMarketplaceListing({ ...form, photos: encoded });
   }, onSuccess: async (result) => { await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-listings"] }), qc.invalidateQueries({ queryKey: ["marketplace-listing", result.id] })]); if (result.moderation.flagged) setModerationNotice({ id: result.id, reasons: result.moderation.reasons }); else { if (!listingId) celebrate(lang === "es" ? "Publicación en vivo" : "Listing is live"); onSaved(result.id); } }, onError: (caught) => setError(friendlyActionMessage(caught, lang)) });
@@ -4318,7 +4285,7 @@ function MarketplaceThreadScreen({ lang, conversationId, onBack }: { lang: Lang;
   useEffect(() => { if (latestId !== null) markRead.mutate(); }, [conversationId, latestId]);
   useEffect(() => { const el = threadRef.current; if (el) el.scrollTop = el.scrollHeight; }, [latestId]);
   const send = useMutation({
-    mutationFn: async () => api.sendMarketplaceMessage({ conversationId, body: message, image: messageImage ? { filename: messageImage.name, contentType: messageImage.type as "image/jpeg" | "image/png" | "image/webp", dataBase64: (await fileToBase64(messageImage)).dataBase64 } : null }),
+    mutationFn: async () => { const compressedMessageImage = messageImage ? await compressImageFile(messageImage, "photo") : null; return api.sendMarketplaceMessage({ conversationId, body: message, image: compressedMessageImage ? { filename: compressedMessageImage.name, contentType: compressedMessageImage.type as "image/jpeg", dataBase64: (await fileToBase64(compressedMessageImage)).dataBase64 } : null }); },
     onSuccess: async () => { setMessage(""); setMessageImage(null); setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["marketplace-thread", conversationId] }), qc.invalidateQueries({ queryKey: ["marketplace-inbox"] })]); },
     onError: (caught) => setError(actionErrorMessage(caught)),
   });
@@ -4388,6 +4355,53 @@ function UnlockStatusPill({ lang }: { lang: Lang }) {
 }
 
 
+// Build 0.7: fullscreen swipeable photo lightbox for marketplace listings.
+// Tap any listing photo to open it; swipe/scroll horizontally to move through
+// every photo in the listing. Entrance/exit follow the 0.7 motion system
+// (transform + opacity, closing beat driven by useAnimatedDismiss); the
+// global prefers-reduced-motion guard stills it.
+function PhotoLightbox({ lang, photos, index, closing, onClose }: {
+  lang: Lang;
+  photos: Array<{ url: string; alt: string }>;
+  index: number;
+  closing: boolean;
+  onClose: () => void;
+}) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [current, setCurrent] = useState(index);
+  useEffect(() => {
+    // Jump straight to the tapped photo (no animation) when the lightbox opens.
+    const strip = stripRef.current;
+    if (strip) strip.scrollTo({ left: index * strip.clientWidth, behavior: "instant" as ScrollBehavior });
+    setCurrent(index);
+  }, [index]);
+  const handleScroll = () => {
+    const strip = stripRef.current;
+    if (!strip || strip.clientWidth <= 0) return;
+    const next = Math.min(photos.length - 1, Math.max(0, Math.round(strip.scrollLeft / strip.clientWidth)));
+    setCurrent((prev) => (prev === next ? prev : next));
+  };
+  return (
+    <div
+      className={`lightbox-backdrop photo-lightbox${closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={lang === "es" ? "Visor de fotos" : "Photo viewer"}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <button type="button" className="lightbox-close" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
+      <div ref={stripRef} className="photo-lightbox-strip" onScroll={handleScroll}>
+        {photos.map((photo, i) => (
+          <div key={i} className="photo-lightbox-slide">
+            <img src={photo.url} alt={photo.alt} draggable={false} />
+          </div>
+        ))}
+      </div>
+      {photos.length > 1 && <span className="lightbox-counter">{current + 1} / {photos.length}</span>}
+    </div>
+  );
+}
+
 function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["marketplace-listing", listingId], queryFn: () => api.getMarketplaceListing({ id: listingId }) });
@@ -4406,6 +4420,9 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   useEscapeToClose(reportOpen, () => setReportOpen(false));
   useEscapeToClose(bookingOpen, () => setBookingOpen(false));
   useEscapeToClose(convoPickerOpen, () => setConvoPickerOpen(false));
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const lightboxSheet = useAnimatedDismiss(lightboxIndex);
+  useEscapeToClose(lightboxIndex !== null, () => setLightboxIndex(null));
   const [reportConfirm, setReportConfirm] = useState(false);
   const [reportReason, setReportReason] = useState<"spam" | "explicit" | "illegal" | "scam" | "misleading" | "other">("spam");
   const [reportDetails, setReportDetails] = useState("");
@@ -4428,7 +4445,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   const t = lang === "es" ? { notFound: "No se encontró esta publicación.", just: "Recién publicado", about: "Detalles", company: "Publicado por", contact: "Ver teléfono", noPhone: "Esta empresa no agregó un teléfono.", save: "Guardar", saved: "Guardado", preview: "Vista previa local", message: "Mensaje", book: "Reservar", conversation: "Conversación", convosTitle: "Conversaciones sobre esta publicación", convosEmpty: "Aún no hay mensajes sobre esta publicación.", starting: "Abriendo conversación…", startError: "No se pudo abrir la conversación. Inténtalo de nuevo.", bookingTitle: "Solicitar reserva", start: "Fecha de inicio", end: "Fecha final", note: "Nota para el propietario", submit: "Enviar solicitud", bookingSent: "Solicitud guardada", bookingSentBody: "Tu solicitud de reserva ha sido enviada. El propietario confirmará pronto.", close: "Cerrar", perDay: "por día", noMessages: "Inicia la conversación sobre esta publicación.", manage: "Administrar publicación", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", report: "Reportar esta publicación", reportTitle: "Reportar publicación", reportReason: "Motivo", reportDetails: "Detalles (opcional)", reportSubmit: "Continuar", reportConfirmTitle: "¿Reportar esta publicación?", reportConfirmBody: "Nuestro equipo revisará esta publicación. Los reportes falsos pueden afectar tu cuenta.", reportConfirmYes: "Sí, reportar", reportThanks: "Gracias por tu reporte.", reportThanksBody: "Nuestro equipo revisará esta publicación pronto." } : { notFound: "This listing could not be found.", just: "Just listed", about: "About this listing", company: "Listed by", contact: "Show phone number", noPhone: "This company did not add a phone number.", save: "Save", saved: "Saved", preview: "Local preview", message: "Message", book: "Book", conversation: "Conversation", convosTitle: "Conversations about this listing", convosEmpty: "No messages about this listing yet.", starting: "Opening conversation…", startError: "The conversation could not be opened. Try again.", bookingTitle: "Request booking", start: "Start date", end: "End date", note: "Note for the owner", submit: "Send request", bookingSent: "Request saved", bookingSentBody: "Your booking request has been sent. The owner will confirm shortly.", close: "Close", perDay: "per day", noMessages: "Start the conversation about this listing.", manage: "Manage listing", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", report: "Report this listing", reportTitle: "Report listing", reportReason: "Reason", reportDetails: "Details (optional)", reportSubmit: "Continue", reportConfirmTitle: "Report this listing?", reportConfirmBody: "Our team will review this listing. False reports can affect your account.", reportConfirmYes: "Yes, report it", reportThanks: "Thanks for the report.", reportThanksBody: "Our team will review this listing soon." };
   const toggle = () => { const ids = savedMarketplaceIds(); const next = ids.includes(listingId) ? ids.filter((id) => id !== listingId) : [...ids, listingId]; window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); setSaved(next.includes(listingId)); };
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
-    <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <img key={photo.id} className={index === 0 ? "primary" : ""} src={photo.url} alt={`${listing.title} ${index + 1}`}/>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
+    <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <button type="button" key={photo.id} className={`market-detail-photo${index === 0 ? " primary" : ""}`} onClick={() => { buzz(8); setLightboxIndex(index); }} aria-label={lang === "es" ? `Ver foto ${index + 1}` : `View photo ${index + 1}`}><img src={photo.url} alt={`${listing.title} ${index + 1}`} loading="lazy"/></button>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-listing-type ${listing.listingType}`}>{listing.listingType === "job" ? (lang === "es" ? "Empleo" : "Job") : (lang === "es" ? "Proyecto" : "Project")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
     <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
@@ -4446,6 +4463,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     </section></div>}
     {convoPickerOpenSheet.render && <div className={`sheet-backdrop${convoPickerOpenSheet.closing ? " closing" : ""}`} onClick={() => setConvoPickerOpen(false)}><section className="more-sheet conversation-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-convos-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><div className="sheet-title-row"><h2 id="detail-convos-title">{t.convosTitle}</h2><button aria-label={t.close} onClick={() => setConvoPickerOpen(false)}>×</button></div>{myConvos.isLoading ? <div className="loading-block"/> : (myConvos.data ?? []).length ? <div className="convo-picker-list">{(myConvos.data ?? []).map((conversation) => <button key={conversation.id} type="button" className="convo-picker-row" onClick={() => { setConvoPickerOpen(false); onOpenThread(conversation.id); }}><span className="inbox-copy"><strong>{conversation.otherPartyName}</strong><span className="inbox-preview">{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</span></span>{conversation.unreadCount > 0 && <span className="unread-badge">{conversation.unreadCount}</span>}</button>)}</div> : <p className="thread-empty">{t.convosEmpty}</p>}</section></div>}
     {bookingOpenSheet.render && <div className={`sheet-backdrop${bookingOpenSheet.closing ? " closing" : ""}`}><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
+    {lightboxSheet.render && listing.photos.length > 0 && <PhotoLightbox lang={lang} photos={listing.photos.map((photo, i) => ({ url: photo.url, alt: `${listing.title} ${i + 1}` }))} index={lightboxSheet.value} closing={lightboxSheet.closing} onClose={() => setLightboxIndex(null)} />}
   </>}</main>;
 }
 
@@ -5523,12 +5541,11 @@ function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
     mutationFn: async () => {
       let imagePayload: { filename: string; contentType: string; dataBase64: string } | null = null;
       if (image) {
-        const enc = await fileToBase64(image);
+        const compressedImage = await compressImageFile(image, "photo");
+        const enc = await fileToBase64(compressedImage);
         imagePayload = {
-          filename: image.name,
-          contentType: (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(image.type)
-            ? image.type
-            : "image/jpeg") as "image/jpeg",
+          filename: compressedImage.name,
+          contentType: compressedImage.type,
           dataBase64: enc.dataBase64,
         };
       }
@@ -6267,12 +6284,11 @@ function PortalMessages({ lang, token }: { lang: Lang; token: string }) {
     mutationFn: async () => {
       let payload: { filename: string; contentType: string; dataBase64: string } | null = null;
       if (image) {
-        const enc = await fileToBase64(image);
+        const compressedImage = await compressImageFile(image, "photo");
+        const enc = await fileToBase64(compressedImage);
         payload = {
-          filename: image.name,
-          contentType: (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(image.type)
-            ? image.type
-            : "image/jpeg") as "image/jpeg",
+          filename: compressedImage.name,
+          contentType: compressedImage.type,
           dataBase64: enc.dataBase64,
         };
       }
@@ -6560,13 +6576,14 @@ function JobDetail({
       file: File;
       annotatedFromId?: number | null;
     }) => {
-      const data = await fileToBase64(file);
+      const compressed = await compressImageFile(file, "photo");
+      const data = await fileToBase64(compressed);
       return api.addPhoto({
         jobId,
         stage,
         caption: "",
-        filename: file.name,
-        contentType: file.type as
+        filename: compressed.name,
+        contentType: compressed.type as
           "image/jpeg" | "image/png" | "image/webp" | "image/gif",
         capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
         dataBase64: data.dataBase64,
@@ -11015,7 +11032,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
       <aside className="design-panel custom-design-panel" aria-live="polite">
         <div key={tab} className="custom-tab-content">
           {tab === "template" && <><div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}><Icon><path d="M7 10v11H3V10h4Zm0 9h10a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 10h-5l1-5-2-2-5 7"/></Icon></button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}><Icon><path d="M7 14V3H3v11h4Zm0-9h10a2 2 0 0 1 2 1.6l1 5A2 2 0 0 1 18 14h-5l1 5-2 2-5-7"/></Icon></button></div></div><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><label className="design-font"><span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></>}
-          {tab === "logo" && <div className="logo-custom-grid"><div><strong>{text.logo}</strong><label className="logo-edit-control">{logoPreview ? <img src={logoPreview} alt={text.logo}/> : <span>{text.noLogo}</span>}<i aria-hidden="true"><Icon><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM13.5 7l3.5 3.5"/></Icon></i><input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const data=await fileToBase64(file);await api.uploadLogo({filename:file.name,contentType:file.type as "image/png"|"image/jpeg",dataBase64:data.dataBase64});setLogoPreview(URL.createObjectURL(file));setDesign((current)=>({...current,showLogo:true}));await qc.invalidateQueries({queryKey:["settings"]});}}/></label>{checkRow(lang === "es" ? "Mostrar logo" : "Show logo", design.showLogo, (v) => setDesign({ ...design, showLogo: v }))}</div><div><strong>{text.size}</strong><div className="logo-size-list">{(["huge", "big", "medium", "small"] as const).map((size)=><button type="button" key={size} onClick={()=>updateCustom("logoSize",size)}><span>{text[size]}</span>{custom.logoSize===size&&<CheckIcon/>}</button>)}</div></div><div><strong>{text.removeBg}</strong><input role="switch" aria-label={text.removeBg} type="checkbox" checked={custom.removeLogoBackground} onChange={(e)=>updateCustom("removeLogoBackground",e.target.checked)}/></div></div>}
+          {tab === "logo" && <div className="logo-custom-grid"><div><strong>{text.logo}</strong><label className="logo-edit-control">{logoPreview ? <img src={logoPreview} alt={text.logo}/> : <span>{text.noLogo}</span>}<i aria-hidden="true"><Icon><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM13.5 7l3.5 3.5"/></Icon></i><input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const compressed=await compressImageFile(file,"logo");const data=await fileToBase64(compressed);await api.uploadLogo({filename:compressed.name,contentType:compressed.type as "image/png"|"image/jpeg",dataBase64:data.dataBase64});setLogoPreview(URL.createObjectURL(compressed));setDesign((current)=>({...current,showLogo:true}));await qc.invalidateQueries({queryKey:["settings"]});}}/></label>{checkRow(lang === "es" ? "Mostrar logo" : "Show logo", design.showLogo, (v) => setDesign({ ...design, showLogo: v }))}</div><div><strong>{text.size}</strong><div className="logo-size-list">{(["huge", "big", "medium", "small"] as const).map((size)=><button type="button" key={size} onClick={()=>updateCustom("logoSize",size)}><span>{text[size]}</span>{custom.logoSize===size&&<CheckIcon/>}</button>)}</div></div><div><strong>{text.removeBg}</strong><input role="switch" aria-label={text.removeBg} type="checkbox" checked={custom.removeLogoBackground} onChange={(e)=>updateCustom("removeLogoBackground",e.target.checked)}/></div></div>}
           {tab === "color" && <><div className="segmented-control"><button type="button" className={custom.colorMode === "solid" ? "active" : ""} onClick={()=>updateCustom("colorMode","solid")}>{text.solid}</button><button type="button" className={custom.colorMode === "gradient" ? "active" : ""} onClick={()=>updateCustom("colorMode","gradient")}>{text.gradient}</button></div><div className="palette-grid">{palettes.map((color)=><button key={color} type="button" className={design.accentColor.toLowerCase()===color?"active":""} style={{background:color}} aria-label={`${text.color} ${color}`} aria-pressed={design.accentColor.toLowerCase()===color} onClick={()=>setDesign({...design,accentColor:color})}/>)}</div><label className="custom-color-row"><span>{text.custom}</span><input type="color" value={design.accentColor} onChange={(e)=>setDesign({...design,accentColor:e.target.value})}/></label></>}
           {tab === "options" && <div className="custom-options">{optionHeading(text.content,<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>)}{checkRow(text.showQty,custom.showQuantityUnitPrice,(v)=>updateCustom("showQuantityUnitPrice",v))}{checkRow(text.showDiscount,custom.showDiscount,(v)=>{updateCustom("showDiscount",v);setDesign({...design,showDiscountLine:v});})}{checkRow(text.showTax,custom.showTax,(v)=>{updateCustom("showTax",v);setDesign({...design,showTaxLine:v});})}{checkRow(text.showAmount,custom.showAmount,(v)=>updateCustom("showAmount",v))}{optionHeading(text.summary,<Icon><path d="M5 5h14M5 12h14M12 19h7"/></Icon>)}{navRow(text.summaryInfo,"summary")}{checkRow(text.paidStamp,custom.showPaidStamp,(v)=>updateCustom("showPaidStamp",v))}{checkRow(text.businessSignature,custom.showBusinessSignature,(v)=>updateCustom("showBusinessSignature",v))}{checkRow(text.thankYou,custom.showThankYou,(v)=>updateCustom("showThankYou",v))}{optionHeading(text.header,<Icon><path d="M4 6h16M7 10v9M17 10v9M7 14h10"/></Icon>)}{navRow(text.headline,"headline",custom.headline)}{checkRow(text.businessName,custom.showBusinessName,(v)=>{updateCustom("showBusinessName",v);setDesign({...design,showCompanyInfo:v});})}{checkRow(text.shortName,custom.showShortBusinessName,(v)=>updateCustom("showShortBusinessName",v))}{checkRow(text.license,custom.showLicenseNumber,(v)=>updateCustom("showLicenseNumber",v))}{checkRow(text.dueDate,custom.showDueDate,(v)=>updateCustom("showDueDate",v))}{navRow(text.dateFormat,"date",formatDocumentDate("2026-09-27",custom.dateFormat,lang))}</div>}
           {tab === "info" && <div className="info-options">{navRow(text.businessInfo,"business",undefined,logoPreview || undefined)}{navRow(text.businessSignature,"signature",undefined,custom.signatureDataUrl?`data:image/png;base64,${custom.signatureDataUrl}`:undefined)}{navRow(text.terms,"terms",custom.termsConditions?`${custom.termsConditions.slice(0,28)}${custom.termsConditions.length>28?"…":""}`:undefined)}{navRow(text.labels,"labels")}<div className="control-row"><span>{text.fontSize}</span><div className="mini-segments">{(["s","m","l","xl"] as const).map(size=><button type="button" key={size} className={custom.fontSize===size?"active":""} onClick={()=>updateCustom("fontSize",size)}>{size.toUpperCase()}</button>)}</div></div><div className="control-row"><span>{text.lineSpacing}</span><div className="density-buttons">{(["compact","comfortable","roomy"] as const).map((space,index)=><button type="button" key={space} className={custom.lineSpacing===space?"active":""} aria-label={text[space]} onClick={()=>updateCustom("lineSpacing",space)}><Icon><path d={index===0?"M5 8h14M5 12h14M5 16h14":index===1?"M5 6h14M5 12h14M5 18h14":"M5 4h14M5 12h14M5 20h14"}/></Icon></button>)}</div></div>{checkRow(text.highContrast,custom.highContrast,(v)=>updateCustom("highContrast",v))}</div>}
@@ -13933,13 +13950,14 @@ function PhotoAnnotator({
         `markup-${photo.filename.replace(/\.[^.]+$/, "")}.png`,
         { type: "image/png" },
       );
-      const data64 = await fileToBase64(file);
+      const compressedMarkup = await compressImageFile(file, "photo");
+      const data64 = await fileToBase64(compressedMarkup);
       return api.addPhoto({
         jobId: photo.jobId,
         stage: photo.stage,
         caption: `${photo.caption}${photo.caption ? " \u2014 " : ""}${lang === "es" ? "Con anotaciones" : "Marked up"}`,
-        filename: file.name,
-        contentType: "image/png",
+        filename: compressedMarkup.name,
+        contentType: compressedMarkup.type as "image/jpeg" | "image/png",
         capturedAt: new Date().toISOString(),
         dataBase64: data64.dataBase64,
         annotatedFromId: photo.id,
@@ -14998,15 +15016,16 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
   const save = useMutation({
     mutationFn: async () => {
       if (!file || !job) throw new Error();
-      const encoded = await fileToBase64(file);
+      const compressedReceipt = await compressImageFile(file, "photo");
+      const encoded = await fileToBase64(compressedReceipt);
       return api.addReceipt({
         jobId: job.id,
         vendor,
         amount,
         purchaseDate,
         note,
-        filename: file.name,
-        contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
+        filename: compressedReceipt.name,
+        contentType: compressedReceipt.type as "image/jpeg" | "image/png" | "image/webp",
         dataBase64: encoded.dataBase64,
       });
     },
@@ -19809,13 +19828,14 @@ function JobOperationsScreen({
               e.preventDefault();
               if (!selection.category || !selection.item) return;
               let encoded = { dataBase64: "" };
-              if (selectionFile) encoded = await fileToBase64(selectionFile);
+              const compressedSelection = selectionFile ? await compressImageFile(selectionFile, "photo") : null;
+              if (compressedSelection) encoded = await fileToBase64(compressedSelection);
               await api.saveSelection({
                 id: null,
                 jobId,
                 ...selection,
-                photoFilename: selectionFile?.name ?? "",
-                photoContentType: (selectionFile?.type ?? "") as
+                photoFilename: compressedSelection?.name ?? "",
+                photoContentType: (compressedSelection?.type ?? "") as
                   "" | "image/jpeg" | "image/png" | "image/webp",
                 photoDataBase64: encoded.dataBase64,
               });
