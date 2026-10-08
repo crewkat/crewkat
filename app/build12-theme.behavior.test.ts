@@ -23,17 +23,15 @@ function baseRuleBody(selector: string): string {
 describe("bottom nav", () => {
   const nav = baseRuleBody(".bottom-nav");
 
-  test("nav is a full-width bottom bar, not a floating pill", () => {
-    // Flush to the bottom edge, full width.
-    expect(nav).toContain("inset: auto 0 0 0");
-    // Hairline top border instead of a pill outline.
-    expect(nav).toContain("border-top: 1px solid var(--border)");
-    expect(nav).toContain("border-radius: 0");
-    // No pill shadow.
-    expect(nav).toContain("box-shadow: none");
-    // Old floating-pill styles are gone from the base rule.
+  test("nav is a floating pill with slight rounding", () => {
+    // Detached from the bottom edge, inset on the sides.
+    expect(nav).toContain("inset: auto 14px calc(12px + env(safe-area-inset-bottom)) 14px");
+    // Slight rounding, not fully round.
+    expect(nav).toContain("border-radius: 20px");
     expect(nav).not.toContain("border-radius: 999px");
-    expect(nav).not.toContain("inset: auto 14px");
+    // Elevated shadow, not flat.
+    expect(nav).not.toContain("box-shadow: none");
+    expect(nav).not.toContain("border-radius: 0");
   });
 
   test("desktop keeps a centered bar", () => {
