@@ -88,7 +88,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .page { width: min(100%, 920px); min-height: 100%; margin: 0 auto; padding: 0 16px 36px; }
 /* Screens with the floating pill nav need enough bottom clearance that the last
    row can scroll fully into view. Pill footprint ≈ 84-96px above the safe area. */
-.app-shell.has-bottom-nav .page { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+.app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 .app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; padding-top: max(6px, env(safe-area-inset-top)); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent); }
 .app-header h1 { margin: 0; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
@@ -1085,7 +1085,7 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .app-shell { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 /* b12: floating pill nav (Invoice Fly) — detached from the bottom edge, elevated shadow.
    Zero functionality change: same 5 slots, same center + button, badges, active states. */
-.bottom-nav { position: fixed; inset: auto 14px calc(12px + env(safe-area-inset-bottom)) 14px; z-index: 80; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr)); min-height: 66px; padding: 6px 10px; overflow: visible; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.bottom-nav { position: fixed; inset: auto 0 0 0; z-index: 80; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr)); min-height: 64px; padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); overflow: visible; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: var(--surface); box-shadow: none; }
 .bottom-nav button { min-width: 0; min-height: 56px; display: grid; place-items: center; align-content: center; gap: 3px; border: 0; border-radius: 9px; background: transparent; color: var(--dim); font-size: 10px; font-weight: 750; cursor: pointer; }
 .bottom-nav button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .bottom-nav svg { width: 22px; height: 22px; }
@@ -1143,7 +1143,7 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 
 @media (min-width: 760px) {
   /* b12: floating pill stays a centered pill on desktop — narrower than the page. */
-  .bottom-nav { left: 50%; right: auto; width: min(560px, calc(100% - 28px)); transform: translateX(-50%); }
+  .bottom-nav { left: 50%; right: auto; width: min(640px, 100%); transform: translateX(-50%); }
   .tool-directory { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); }
   .tool-row { border-bottom: 0; background: var(--bg); }
   .money-snapshot strong { font-size: 25px; }
@@ -2241,11 +2241,11 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 
 /* Marketing-mockup home and raised quick-create navigation */
 .bottom-nav {
-  min-height: 72px;
+  min-height: 64px;
   padding-top: 6px;
   overflow: visible;
-  /* b12: base rule is now a floating pill; this keeps the elevated treatment. */
-  background: color-mix(in srgb, var(--surface) 98%, transparent);
+  /* Home render: standard flush tab bar, not a floating pill. */
+  background: var(--surface);
 }
 .bottom-nav > button { min-height: 58px; border-radius: 12px; }
 .bottom-nav > button.active { color: var(--accent); background: transparent; }
@@ -2253,19 +2253,19 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .bottom-nav .bottom-nav-add {
   position: relative;
   z-index: 2;
-  align-self: start;
-  width: 62px;
-  min-width: 62px;
-  height: 62px;
-  min-height: 62px;
-  margin: -25px auto 0;
+  align-self: center;
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  min-height: 52px;
+  margin: 0 auto;
   display: grid;
   place-items: center;
-  border: 6px solid var(--surface);
+  border: 0;
   border-radius: 50%;
   background: var(--accent);
   color: #1d1008;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent), 0 4px 12px rgba(19, 21, 25, .16);
+  box-shadow: none;
 }
 .bottom-nav .bottom-nav-add:active { transform: translateY(1px); }
 .bottom-nav .bottom-nav-add > span { display: block; overflow: visible; font-size: 34px; line-height: 1; font-weight: 500; transform: translateY(-1px); }
@@ -2291,7 +2291,10 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .home-header-actions { display: flex; align-items: center; gap: 4px; }
 .home-avatar { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 50%; background: #1a2433; color: #fff; font-size: 14px; font-weight: 850; box-shadow: 0 3px 10px rgba(23,31,43,.16); }
 /* b12: denser hero — same dark navy card, less air around it. */
-.home-summary-card { display: grid; gap: 3px; margin: 4px 0 14px; padding: 16px; border-radius: 18px; background: #1a2433; color: #fff; box-shadow: 0 12px 30px rgba(26,36,51,.18); }
+.home-summary-card { position: relative; overflow: hidden; display: grid; gap: 3px; margin: 4px 0 14px; padding: 16px; border-radius: 18px; background: #1a2433; color: #fff; box-shadow: 0 12px 30px rgba(26,36,51,.18); }
+/* Home render: subtle construction line-art on the right of the hero card. */
+.home-summary-art { position: absolute; top: 0; right: 0; bottom: 0; width: 46%; height: 100%; pointer-events: none; opacity: .5; }
+.home-summary-art svg { width: 100%; height: 100%; }
 .home-summary-card > span, .home-summary-card > small { color: #aeb6c2; font-size: 12px; font-weight: 700; }
 .home-summary-card > strong { margin: 2px 0; color: var(--accent); font: 850 42px/.95 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.04em; }
 .home-error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, #c0392b 9%, var(--surface)); }
@@ -2305,21 +2308,21 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .home-jobs-section > header button { min-height: 40px; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 850; }
 .home-job-list { display: grid; gap: 6px; }
 /* b12: denser job rows — same icon, copy, chevron. */
-.home-job-card { width: 100%; min-height: 62px; display: grid; grid-template-columns: 40px minmax(0,1fr) 18px; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 9%, transparent); }
+.home-job-card { width: 100%; min-height: 62px; display: grid; grid-template-columns: 32px minmax(0,1fr) 18px; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; box-shadow: none; }
 .home-job-card > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
 .home-job-card strong, .home-job-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-job-card strong { font-size: 15px; }
 .home-job-card small { color: var(--dim); font-size: 11px; }
 .home-job-card > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
-.home-job-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
-.home-job-icon.alternate { background: color-mix(in srgb, #1a2433 12%, var(--surface)); color: #526073; }
-.home-job-icon svg { width: 21px; height: 21px; }
-.home-invoice-card { width: 100%; min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 10px 0; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--border) 68%, transparent); border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; }
+.home-job-icon { width: 28px; height: 28px; display: grid; place-items: center; background: transparent; color: var(--accent); }
+.home-job-icon.alternate { background: transparent; color: #526073; }
+.home-job-icon svg { width: 22px; height: 22px; }
+.home-invoice-card { width: 100%; min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 10px 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; box-shadow: none; }
 .home-invoice-card > span { min-width: 0; display: grid; gap: 3px; }
 .home-invoice-card small { color: var(--dim); font-size: 11px; }
 .home-invoice-card strong { font: 850 21px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
 .home-quick-access { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 10px 0; }
-.home-quick-access > button { position: relative; min-width: 0; min-height: 84px; display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 10px; padding: 11px; border: 0; border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 8%, transparent); }
+.home-quick-access > button { position: relative; min-width: 0; min-height: 84px; display: grid; grid-template-columns: 30px minmax(0,1fr); align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; box-shadow: none; }
 .home-quick-access > button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .home-quick-access strong, .home-quick-access small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-quick-access strong { font-size: 14px; }
@@ -2338,14 +2341,18 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .home-pin-remove { position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--dim); font-size: 15px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
 .home-pin-remove:active { transform: scale(0.9); }
 .home-pin-remove:disabled { opacity: 0.5; }
-.home-access-icon { position: relative; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); }
-.home-access-icon.alternate { background: color-mix(in srgb, #1a2433 12%, var(--surface)); color: #526073; }
-.home-access-icon svg { width: 20px; }
+.home-access-icon { position: relative; width: 28px; height: 28px; display: grid; place-items: center; background: transparent; color: var(--accent); }
+.home-access-icon.qa-orange { color: #e07b1a; }
+.home-access-icon.qa-purple { color: #7c5cd6; }
+.home-access-icon.qa-blue { color: #2f7fd0; }
+.home-access-icon.qa-green { color: #2e9e5b; }
+.home-access-icon.alternate { background: transparent; color: #526073; }
+.home-access-icon svg { width: 22px; }
 .home-access-icon > b { position: absolute; top: -8px; right: -8px; min-width: 19px; height: 19px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--surface); border-radius: 999px; background: #c9342c; color: #fff; font-size: 9px; }
-.home-attention-card { width: 100%; min-height: 54px; display: grid; grid-template-columns: minmax(0,1fr) 18px; align-items: center; gap: 10px; margin: 12px 0 8px; padding: 8px 2px; border: 0; border-block: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; }
-.home-attention-card > span { display: flex; align-items: baseline; gap: 9px; }
-.home-attention-card strong { color: var(--accent); font: 850 25px/1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
-.home-attention-card small { color: var(--dim); font-size: 12px; font-weight: 750; }
+.home-attention-card { width: 100%; min-height: 54px; display: grid; grid-template-columns: minmax(0,1fr) 18px; align-items: center; gap: 10px; margin: 12px 0 8px; padding: 8px 2px; border: 0; background: transparent; color: var(--text); text-align: left; }
+.home-attention-card > span { display: flex; align-items: baseline; gap: 6px; }
+.home-attention-card strong { color: var(--text); font-size: 16px; font-weight: 800; }
+.home-attention-card small { color: var(--text); font-size: 16px; font-weight: 800; }
 .home-attention-card > svg { width: 18px; transform: rotate(180deg); color: var(--dim); }
 .today-page .money-snapshot { overflow: hidden; border: 0; border-radius: 15px; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 7%, transparent); }
 .today-page .automation-card, .today-page .today-field-strip, .today-page .crew-compose { border-color: color-mix(in srgb, var(--border) 72%, transparent); border-radius: 15px; box-shadow: 0 3px 14px color-mix(in srgb, #1a2433 7%, transparent); }
@@ -2602,7 +2609,7 @@ button { -webkit-tap-highlight-color: transparent; }
 
 /* ---- 5. Today "at a glance" strip (b12: denser) ---- */
 .glance-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
-.glance-card { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 4px rgba(15,23,42,.06); padding: 10px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer; text-align: left; color: var(--text); }
+.glance-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: none; padding: 10px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer; text-align: left; color: var(--text); }
 .glance-card strong { font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .glance-card small { font-size: 11.5px; color: var(--dim); font-weight: 700; line-height: 1.3; }
 .glance-card.alert strong { color: var(--danger, #c0392b); }
@@ -2771,14 +2778,13 @@ button { -webkit-tap-highlight-color: transparent; }
 .home-referral-banner {
   display: flex; align-items: center; gap: 12px; width: 100%;
   margin: 14px 0 4px; padding: 14px 16px; text-align: left;
-  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--hairline));
-  border-radius: 18px; cursor: pointer; color: var(--text);
-  transition: transform .16s ease, box-shadow .2s ease;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border: 0; border-radius: 16px; cursor: pointer; color: var(--text);
 }
-.home-referral-banner:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.1); }
 .home-referral-banner:active { transform: scale(.98); }
-.home-referral-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: var(--accent); color: #fff; flex: none; }
+.home-referral-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #fff; flex: none; }
+.home-referral-icon svg { width: 22px; height: 22px; }
+.home-referral-banner > svg:last-child { color: var(--accent); }
 .home-referral-banner strong { display: block; font-size: .95rem; }
 .home-referral-banner small { color: var(--muted); font-size: .82rem; }
 
@@ -3455,22 +3461,6 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 
 /* Build 0.6 items 17-21 (b06- prefix: home money cards, Pro preview, pills). */
 /* Item 18: tappable home money cards — staggered entrance + color accents. */
-.b06-money .b06-money-card {
-  min-width: 0; padding: 15px 10px; display: grid; justify-items: center;
-  align-content: start; gap: 5px; text-align: center; border: 0;
-  background: transparent; color: var(--text); cursor: pointer;
-  font: inherit; transition: transform .16s ease, background .16s ease;
-}
-.b06-money .b06-money-card + .b06-money-card { border-left: 1px solid var(--border); }
-.b06-money .b06-money-card:active { transform: scale(.96); background: color-mix(in srgb, var(--accent) 7%, transparent); }
-.b06-money-icon { display: inline-flex; width: 20px; height: 20px; }
-.b06-money-icon svg { width: 20px; height: 20px; }
-.b06-accent-orange .b06-money-icon { color: var(--accent); }
-.b06-accent-sky .b06-money-icon { color: #4f9dd9; }
-.b06-accent-green .b06-money-icon { color: var(--green); }
-.b06-accent-orange strong { color: var(--accent); }
-.b06-money-label { color: var(--dim); font-size: 11px; line-height: 1.2; }
-.b06-money-card strong { font: 800 19px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 /* Item 18: floating money-card detail modal with mini graphs. */
 .b06-money-backdrop { z-index: 90; }
 .b06-money-modal {
@@ -3990,41 +3980,53 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* ---- HOME: glance tiles (ref: ~92pt tall tiles, 36pt icon circles, 32pt numbers) ---- */
 .glance-strip { gap: 10px; }
 .glance-card {
-  padding: 14px 10px; min-height: 108px; border-radius: 16px;
+  padding: 14px 10px; min-height: 108px; border-radius: 12px;
   align-items: center; text-align: center; gap: 6px;
 }
 .glance-icon {
-  width: 40px; height: 40px; display: grid; place-items: center;
-  border-radius: 50%; margin-bottom: 2px;
+  width: 28px; height: 28px; display: grid; place-items: center;
+  background: transparent; margin-bottom: 2px;
 }
-.glance-icon svg { width: 22px; height: 22px; }
-.glance-icon.tone-red { background: #fdeceb; color: #d34a3a; }
-.glance-icon.tone-blue { background: #e8f3fd; color: #2f7fd0; }
-.glance-icon.tone-orange { background: #fff3e8; color: #e07b1a; }
+.glance-icon svg { width: 24px; height: 24px; }
+.glance-icon.tone-red { color: #d34a3a; }
+.glance-icon.tone-blue { color: #2f7fd0; }
+.glance-icon.tone-orange { color: #e07b1a; }
+.glance-icon.tone-purple { color: #7c5cd6; }
 .glance-card strong { font-size: 30px; }
 .glance-card small { font-size: 12.5px; }
 
-/* ---- HOME: money tiles → 3 white tiles like the reference (was a divider strip) ---- */
+/* ---- HOME: money tiles → 3 flat white cards like the reference ---- */
 .today-page .money-snapshot.b06-money {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
   background: transparent; border: 0; box-shadow: none; border-radius: 0;
 }
 .b06-money .b06-money-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-  box-shadow: 0 1px 4px rgba(15,23,42,.06);
-  padding: 14px 10px; min-height: 108px; gap: 6px; align-content: center;
+  min-width: 0; padding: 14px 8px; display: grid; justify-items: center;
+  align-content: start; gap: 4px; text-align: center; cursor: pointer; font: inherit;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: none; color: var(--text); transition: transform .16s ease;
 }
-.b06-money .b06-money-card + .b06-money-card { border-left: 0; }
+.b06-money .b06-money-card + .b06-money-card { border-left: 1px solid var(--border); }
+.b06-money .b06-money-card:active { transform: scale(.96); }
 .b06-money-icon {
-  width: 40px; height: 40px; display: grid; place-items: center;
-  border-radius: 50%; background: #fff3e8; margin-bottom: 2px;
+  width: 26px; height: 26px; display: grid; place-items: center;
+  background: transparent; margin-bottom: 2px;
 }
-.b06-money-icon svg { width: 22px; height: 22px; }
-.b06-accent-sky .b06-money-icon { background: #e8f3fd; }
-.b06-accent-green .b06-money-icon { background: #e6f6ec; }
-.b06-money-label { font-size: 12.5px; }
-.b06-money-card strong { font-size: 22px; }
+.b06-money-icon svg { width: 24px; height: 24px; }
+.b06-accent-orange .b06-money-icon { color: var(--accent); background: transparent; }
+.b06-accent-sky .b06-money-icon { color: #4f9dd9; background: transparent; }
+.b06-accent-green .b06-money-icon { color: var(--green); background: transparent; }
+.b06-money-label { color: var(--text); font-size: 12.5px; font-weight: 700; line-height: 1.25; }
+.b06-money-card strong {
+  font: 800 17px/1.15 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif;
+  color: var(--text); white-space: nowrap; max-width: 100%;
+  overflow: visible; text-overflow: clip; font-variant-numeric: tabular-nums;
+}
 .b06-accent-orange strong { color: var(--text); }
+.b06-money-sub { font-size: 11.5px; font-weight: 700; line-height: 1.2; }
+.b06-accent-orange .b06-money-sub { color: var(--accent); }
+.b06-accent-sky .b06-money-sub { color: #6b7d94; }
+.b06-accent-green .b06-money-sub { color: var(--green); }
 
 /* ---- HOME: job rows (ref: ~75pt tall rows, 44pt icon squares) ---- */
 .home-job-card { min-height: 68px; padding: 11px 14px; gap: 12px; }
@@ -4079,8 +4081,8 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .glance-card { min-height: 88px; padding: 10px 8px; gap: 4px; }
 .glance-card strong { font-size: 24px; }
 .glance-card small { font-size: 11.5px; }
-.glance-icon { width: 34px; height: 34px; }
-.glance-icon svg { width: 19px; height: 19px; }
+.glance-icon { width: 28px; height: 28px; }
+.glance-icon svg { width: 22px; height: 22px; }
 .today-page .money-snapshot.b06-money .glance-card { min-height: 88px; }
 /* Condensed: job rows */
 .home-job-row, .job-row { min-height: 60px; }

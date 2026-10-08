@@ -117,19 +117,20 @@ describe("visual audit: home hero matches reference", () => {
 });
 
 describe("visual audit: glance tiles have icons and reference proportions", () => {
-  test("tiles are tall with 40px icon circles and 30px numbers", () => {
-    const card = exactRuleBody(".glance-card");
-    expect(card).toContain("min-height: 108px");
-    expect(card).toContain("padding: 14px 10px");
-    expect(exactRuleBody(".glance-icon")).toContain("width: 40px");
-    expect(exactRuleBody(".glance-card strong")).toContain("font-size: 30px");
+  test("tiles are flat bordered cards with plain icons", () => {
+    // Final cascade: skinny pass sets 8px radius (standing less-rounding rule).
+    expect(exactRuleBody(".glance-card")).toContain("border-radius: 8px");
+    expect(exactRuleBody(".glance-icon")).toContain("width: 28px");
+    expect(exactRuleBody(".glance-card strong")).toContain("font-size: 24px");
+    // No tinted circle backgrounds behind glance icons in light mode.
+    expect(CSS).toContain(".glance-icon.tone-red { color: #d34a3a; }");
   });
 
   test("glance icons exist in JSX", () => {
     const tsx = readFileSync(join(import.meta.dir, "client/src/App.tsx"), "utf8");
     expect(tsx).toContain("glance-icon tone-red");
     expect(tsx).toContain("glance-icon tone-blue");
-    expect(tsx).toContain("glance-icon tone-orange");
+    expect(tsx).toContain("glance-icon tone-purple");
   });
 });
 
@@ -138,8 +139,11 @@ describe("visual audit: money tiles are 3 white cards", () => {
     const sec = exactRuleBody(".today-page .money-snapshot.b06-money");
     expect(sec).toContain("grid-template-columns: repeat(3, 1fr)");
     expect(sec).toContain("gap: 10px");
-    expect(exactRuleBody(".b06-money-icon")).toContain("width: 40px");
-    expect(exactRuleBody(".b06-money-card strong")).toContain("font-size: 22px");
+    expect(exactRuleBody(".b06-money-icon")).toContain("width: 26px");
+    expect(exactRuleBody(".b06-money-card strong")).toContain("800 17px/1.15");
+    // Amounts never truncate (regression guard: "$38,18...").
+    expect(exactRuleBody(".b06-money-card strong")).toContain("text-overflow: clip");
+    expect(exactRuleBody(".b06-money-card strong")).not.toContain("text-overflow: ellipsis");
   });
 });
 

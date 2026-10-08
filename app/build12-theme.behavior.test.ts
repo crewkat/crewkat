@@ -1,6 +1,7 @@
-// Build 1.2 (part B): app-wide Invoice Fly theme — floating pill bottom nav,
-// near-white light-mode background, denser cards/lists. Zero functionality
-// removed: same 5 tabs, center + button, badges, quick-create sheet.
+// Build 1.2 (part B): app-wide Invoice Fly theme — standard flush bottom tab bar,
+// near-white light-mode background, denser cards/lists. Home restyle (Oct 7):
+// flat bordered 12px cards, plain colored icons, hero line-art, full amounts.
+// Zero functionality removed: same 5 tabs, center + button, badges, quick-create sheet.
 //
 // Static assertions on App.tsx + theme.css.
 // Run from app/:  bun test build12-theme.behavior.test.ts
@@ -19,31 +20,31 @@ function baseRuleBody(selector: string): string {
   return CSS.slice(idx, end);
 }
 
-describe("floating bottom nav", () => {
+describe("bottom nav", () => {
   const nav = baseRuleBody(".bottom-nav");
 
-  test("nav is a floating pill, not a full-width bottom bar", () => {
-    // Pill shape.
-    expect(nav).toContain("border-radius: 999px");
-    // Detached from the bottom edge with side margins + safe-area margin.
-    expect(nav).toContain("inset: auto 14px calc(12px + env(safe-area-inset-bottom)) 14px");
-    // Elevated soft shadow (the old bar used a top-edge 0 -8px shadow).
-    expect(nav).toContain("box-shadow: 0 14px 34px");
-    // Old full-width bar styles are gone from the base rule.
-    expect(nav).not.toContain("inset: auto 0 0");
-    expect(nav).not.toContain("border-top");
+  test("nav is a full-width bottom bar, not a floating pill", () => {
+    // Flush to the bottom edge, full width.
+    expect(nav).toContain("inset: auto 0 0 0");
+    // Hairline top border instead of a pill outline.
+    expect(nav).toContain("border-top: 1px solid var(--border)");
+    expect(nav).toContain("border-radius: 0");
+    // No pill shadow.
+    expect(nav).toContain("box-shadow: none");
+    // Old floating-pill styles are gone from the base rule.
+    expect(nav).not.toContain("border-radius: 999px");
+    expect(nav).not.toContain("inset: auto 14px");
   });
 
-  test("desktop keeps a centered floating pill", () => {
-    expect(CSS).toContain(".bottom-nav { left: 50%; right: auto; width: min(560px, calc(100% - 28px)); transform: translateX(-50%); }");
+  test("desktop keeps a centered bar", () => {
+    expect(CSS).toContain(".bottom-nav { left: 50%; right: auto; width: min(640px, 100%); transform: translateX(-50%); }");
   });
 
-  test("content clears the floating pill (bottom padding rules)", () => {
-    // Old 152px clearance for the tall bar is gone; ~104px clears the ~90px pill footprint.
-    expect(CSS).toContain(".app-shell.has-bottom-nav .page { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }");
+  test("content clears the bottom bar (bottom padding rules)", () => {
+    // ~84px clears the ~70px flush bar footprint.
+    expect(CSS).toContain(".app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }");
+    expect(CSS).not.toContain("padding-bottom: calc(104px + env(safe-area-inset-bottom))");
     expect(CSS).not.toContain("padding-bottom: calc(152px + env(safe-area-inset-bottom))");
-    // The shell no longer reserves the old bar height.
-    expect(CSS).not.toContain("padding-bottom: calc(76px + env(safe-area-inset-bottom))");
     // Floating overlays that used to sit above the tall bar moved up with the pill.
     expect(CSS).toContain(".sticky-submit { position: fixed; left: auto; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)");
     expect(CSS).toContain(".update-toast { position: fixed; left: 16px; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom))");
@@ -74,8 +75,8 @@ describe("denser cards and lists", () => {
   });
 
   test("home dashboard cards are denser", () => {
+    expect(CSS).toContain(".home-summary-card { position: relative; overflow: hidden; display: grid; gap: 3px; margin: 4px 0 14px; padding: 16px;");
     expect(CSS).toContain(".home-job-card { width: 100%; min-height: 62px;");
-    expect(CSS).toContain(".home-summary-card { display: grid; gap: 3px; margin: 4px 0 14px; padding: 16px;");
     expect(CSS).toContain(".home-quick-access > button { position: relative; min-width: 0; min-height: 84px;");
     expect(CSS).toContain(".glance-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }");
   });

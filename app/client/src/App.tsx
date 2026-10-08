@@ -16267,6 +16267,19 @@ function TodayScreen({
         </div>
       )}
       <section className="home-summary-card" aria-label={lang === "es" ? "Resumen de trabajos" : "Job summary"}>
+        <span className="home-summary-art" aria-hidden="true">
+          <svg viewBox="0 0 200 120" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 112V64h24v48" />
+            <path d="M36 112V48h28v64" />
+            <path d="M16 76h8M16 88h8M44 60h12M44 72h12M44 84h12" />
+            <path d="M120 112V20" />
+            <path d="M84 20h96" />
+            <path d="M120 36l10-8M130 36l-10-8M120 54l10-8M130 54l-10-8M120 72l10-8M130 72l-10-8M120 90l10-8M130 90l-10-8" />
+            <path d="M125 20V8M125 8l-29 12M125 8l39 12" />
+            <path d="M150 20v24M144 44h12" />
+            <path d="M4 112h192" />
+          </svg>
+        </span>
         <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
@@ -16291,7 +16304,7 @@ function TodayScreen({
               <small>{lang === "es" ? "Trabajos hoy y mañana" : "Jobs today & tomorrow"}</small>
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
-              <span className="glance-icon tone-orange" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
+              <span className="glance-icon tone-purple" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
               <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
               <small>{lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval"}</small>
             </button>
@@ -16318,10 +16331,10 @@ function TodayScreen({
         <b className={`status-chip ${latestInvoice.status}`}>{invoiceStatusLabel(latestInvoice.status)}</b>
       </button>}
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
-        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
-        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon alternate"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Trabajos, citas y vencidos" : "Jobs, appointments & overdue"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
+        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Trabajos, citas y vencidos" : "Jobs, appointments & overdue"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
       {pinnedTools.length > 0 && (
         <section className="home-pinned" aria-label={lang === "es" ? "Fijados" : "Pinned"}>
@@ -17250,10 +17263,15 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
     months,
   };
   // Build 0.6 (item 18): tappable cards with staggered entrance + color accents.
-  const cards: { id: MoneyCardId; label: string; value: string; icon: ReactNode; accent: string }[] = [
-    { id: "collect", label: lang === "es" ? "Por cobrar" : "Money to collect", value: usd(dashboard.data.outstanding), icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, accent: "orange" },
-    { id: "week", label: lang === "es" ? "Vence esta semana" : "Due this week", value: usd(dueThisWeek), icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, accent: "sky" },
-    { id: "month", label: lang === "es" ? "Facturado este mes" : "Billed this month", value: usd(monthInvoiced), icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, accent: "green" },
+  // Home render: each money card shows its invoice count under the amount.
+  const invoiceCountLabel = (n: number) => lang === "es"
+    ? `${n} ${n === 1 ? "factura" : "facturas"}`
+    : `${n} ${n === 1 ? "invoice" : "invoices"}`;
+  const monthCount = invoices.data.invoices.filter((invoice) => invoice.issueDate.slice(0, 7) === month).length;
+  const cards: { id: MoneyCardId; label: string; value: string; sub: string; icon: ReactNode; accent: string }[] = [
+    { id: "collect", label: lang === "es" ? "Por cobrar" : "Money to collect", value: usd(dashboard.data.outstanding), sub: invoiceCountLabel(outstandingRows.length), icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, accent: "orange" },
+    { id: "week", label: lang === "es" ? "Vence esta semana" : "Due this week", value: usd(dueThisWeek), sub: invoiceCountLabel(weekRows.length), icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, accent: "sky" },
+    { id: "month", label: lang === "es" ? "Facturado este mes" : "Billed this month", value: usd(monthInvoiced), sub: invoiceCountLabel(monthCount), icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, accent: "green" },
   ];
   const openMeta: Record<MoneyCardId, string> = {
     collect: usd(dashboard.data.outstanding),
@@ -17267,6 +17285,7 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
           <span className="b06-money-icon"><Icon>{card.icon}</Icon></span>
           <span className="b06-money-label">{card.label}</span>
           <strong>{card.value}</strong>
+          <span className="b06-money-sub">{card.sub}</span>
         </button>
       ))}
     </section>
