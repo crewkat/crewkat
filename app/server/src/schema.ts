@@ -1152,3 +1152,72 @@ export const platformSupportReplies = sqliteTable("platform_support_replies", {
   index("platform_support_replies_report_idx").on(table.reportId),
   index("platform_support_replies_created_idx").on(table.createdAt),
 ]);
+
+// Platform admin suite (2026-10-07): broadcast pushes, business verification,
+// feature flags, and abuse controls. All writes happen through admin-gated
+// actions in platform-admin.ts; reads of flags are public via getFeatureFlags.
+
+// Broadcast push history: one row per admin-composed broadcast.
+export const broadcastLog = sqliteTable("broadcast_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  segment: text("segment", { enum: ["all", "pro", "free"] }).notNull(),
+  sentCount: integer("sent_count").notNull().default(0),
+  createdBy: integer("created_by").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("broadcast_log_created_idx").on(table.createdAt),
+]);
+
+// Business verification: one row per company (workspace). License numbers
+// come from the per-company `settings` row; status is admin-reviewed.
+export const businessVerifications = sqliteTable("business_verifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().unique(),
+  licenseNumber: text("license_number").notNull().default(""),
+  status: text("status", { enum: ["pending", "verified", "rejected"] }).notNull().default("pending"),
+  note: text("note").notNull().default(""),
+  reviewedBy: integer("reviewed_by"),
+  reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Feature flags: the canonical store for platform-wide switches. Public
+// clients read the safe subset via getFeatureFlags; only admins can toggle.
+export const featureFlags = sqliteTable("feature_flags", {
+  key: text("key").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  description: text("description").notNull().default(""),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Abuse controls: per-user send caps (overrides of the platform defaults).
+export const sendCaps = sqliteTable("send_caps", {
+  userId: integer("user_id").primaryKey(),
+  maxSmsPerDay: integer("max_sms_per_day").notNull(),
+  maxPushPerDay: integer("max_push_per_day").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Accounts auto- or manually blocked from sending (SMS log + push).
+export const blockedSenders = sqliteTable("blocked_senders", {
+  userId: integer("user_id").primaryKey(),
+  reason: text("reason").notNull().default(""),
+  blockedBy: integer("blocked_by"),
+  blockedAt: integer("blocked_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Send accounting: per-user, per-channel, per day/hour counters.
+export const sendUsage = sqliteTable("send_usage", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  channel: text("channel", { enum: ["sms", "push"] }).notNull(),
+  period: text("period", { enum: ["day", "hour"] }).notNull(),
+  periodStart: integer("period_start", { mode: "timestamp_ms" }).notNull(),
+  count: integer("count").notNull().default(0),
+}, (table) => [
+  uniqueIndex("send_usage_user_channel_period_start_unique").on(table.userId, table.channel, table.period, table.periodStart),
+  index("send_usage_user_idx").on(table.userId, table.channel),
+]);

@@ -6,6 +6,7 @@
 import { createCipheriv, createECDH, createHmac, createPrivateKey, createSign, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as schema from "./schema";
+import { recordSendAttempt } from "./platform-admin";
 
 export interface PushMessage {
   titleEn: string;
@@ -130,6 +131,13 @@ export interface PushSendResult { sent: number; removed: number; skipped: boolea
  * removed, and a missing VAPID config skips silently.
  */
 export async function sendPushToUser(db: any, userId: number, message: PushMessage): Promise<PushSendResult> {
+  // Abuse controls: blocked or over-cap users never send.
+  try {
+    const check = await recordSendAttempt(db, userId, "push");
+    if (!check.allowed) return { sent: 0, removed: 0, skipped: true };
+  } catch {
+    // Usage tables missing (pre-migration DB) — fall through to the send.
+  }
   const config = getVapidConfig();
   if (!config) return { sent: 0, removed: 0, skipped: true };
   let subs: Array<{ id: number; endpoint: string; p256dh: string; auth: string }>;

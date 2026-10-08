@@ -119,6 +119,18 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  getStripeRevenueStats: {
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      mrrCents: z.number().nullable(),
+      activeSubscriptions: z.number().nullable(),
+      trialing: z.number().nullable(),
+      failedPayments: z.number().nullable(),
+    }),
+    capabilities: [],
+    timeoutMs: 30_000,
+  },
   // Phase 4: Google Play Billing (TWA, package com.crewkat.app). Verifies a
   // subscription purchase token against the Play Developer API
   // (purchases.subscriptionsv2.get). Never grants anything itself — it only

@@ -13,6 +13,7 @@ import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
+import { isFeatureEnabled, platformAdminActions, recordSendAttempt } from "./platform-admin";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -107,7 +108,7 @@ const marketplacePhotoSchema = z.object({ id: z.number(), url: z.string(), filen
 // radius filter). Accepts ZIP+4, normalized to 5 digits by normalizeZipCode.
 export const marketplaceZipCodeSchema = z.string().trim().regex(/^\d{5}(-\d{4})?$/, "Enter a valid 5-digit ZIP code.");
 export function normalizeZipCode(zip: string): string { return zip.trim().slice(0, 5); }
-const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, intent: z.enum(["need", "offer"]), neededBy: z.string(), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), zipCode: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
+const marketplaceListingSchema = z.object({ id: z.number(), title: z.string(), category: marketplaceCategorySchema, intent: z.enum(["need", "offer"]), neededBy: z.string(), employmentType: z.enum(["full_time", "part_time", "temporary"]), payUnit: z.enum(["hourly", "salary"]), priceKind: z.enum(["amount", "free", "contact"]), price: z.string(), originalPrice: z.string(), description: z.string(), serviceArea: z.string(), zipCode: z.string(), companyName: z.string(), companyPhone: z.string(), contactUnlocked: z.boolean(), verified: z.boolean(), bookable: z.boolean(), dailyRate: z.string(), promoted: z.boolean(), featured: z.boolean(), featuredUntil: z.string().nullable(), isMine: z.boolean(), moderationStatus: moderationStatusSchema, photos: z.array(marketplacePhotoSchema), justListed: z.boolean(), createdAt: z.string(), updatedAt: z.string() });
 const marketplaceMessageSchema = z.object({ id: z.number(), conversationId: z.number(), body: z.string(), imageUrl: z.string().nullable(), imageFilename: z.string(), outgoing: z.boolean(), senderName: z.string(), createdAt: z.string() });
 const marketplaceInboxRowSchema = z.object({ id: z.number(), listingId: z.number(), listingTitle: z.string(), otherPartyName: z.string(), lastMessage: z.string(), lastMessageAt: z.string(), unreadCount: z.number(), isInquiry: z.boolean().default(false) });
 const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(), startDate: z.string(), endDate: z.string(), note: z.string(), status: z.enum(["requested", "confirmed", "declined"]), createdAt: z.string() });
@@ -431,7 +432,17 @@ export async function consumeMarketplaceUnlock(db: UnlockStatusDb, companyId: nu
   return source;
 }
 
-async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>, unlockedListingIds?: Set<number>) {
+// Platform admin suite: companies whose business license was verified.
+export async function verifiedCompanyIdSet(db: ReturnType<Ctx["db"]>): Promise<Set<number>> {
+  try {
+    const rows = await db.select({ companyId: schema.businessVerifications.companyId }).from(schema.businessVerifications).where(eq(schema.businessVerifications.status, "verified"));
+    return new Set(rows.map((r) => r.companyId));
+  } catch {
+    return new Set(); // pre-migration DB
+  }
+}
+
+async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceListings.$inferSelect, photoRows: Array<typeof schema.marketplaceListingPhotos.$inferSelect>, unlockedListingIds?: Set<number>, verifiedCompanyIds?: Set<number>) {
   const photos = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
   const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
   const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
@@ -439,7 +450,7 @@ async function marketplaceListingShape(ctx: Ctx, row: typeof schema.marketplaceL
   // Build 0.6 item 22: contact phone is gated behind unlocks. Owners always
   // see their own number; everyone else must unlock first.
   const contactUnlocked = isMine || (unlockedListingIds?.has(row.id) ?? false);
-  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, zipCode: row.zipCode, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, zipCode: row.zipCode, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, verified: verifiedCompanyIds?.has(row.companyId) ?? false, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus as ModerationStatus, photos, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 type BackupScalar = string | number | null;
@@ -856,7 +867,7 @@ export function workspaceIdentity(ctx: Ctx) {
 // Platform admin (Danny): guard + audit log + platform settings.
 // ---------------------------------------------------------------------------
 
-async function requirePlatformAdmin(ctx: Ctx) {
+export async function requirePlatformAdmin(ctx: Ctx) {
   const identity = workspaceIdentity(ctx);
   const db = ctx.db<typeof schema>();
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
@@ -868,17 +879,17 @@ async function requirePlatformAdmin(ctx: Ctx) {
 // The workspace ctx's `db` proxy auto-filters every table that has a
 // company_id column down to the admin's own company, so admin handlers
 // use this unscoped db instead.
-function platformDb(ctx: Ctx): ReturnType<Ctx["db"]> {
+export function platformDb(ctx: Ctx): ReturnType<Ctx["db"]> {
   const scoped = ctx as WorkspaceCtx;
   if (typeof scoped.unscopedDb === "function") return scoped.unscopedDb();
   return ctx.db<typeof schema>();
 }
 
-async function logAdminAction(db: ReturnType<Ctx["db"]>, adminUserId: number, action: string, targetType: string, targetId: string, details: string) {
+export async function logAdminAction(db: ReturnType<Ctx["db"]>, adminUserId: number, action: string, targetType: string, targetId: string, details: string) {
   await db.insert(schema.adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date() });
 }
 
-async function getPlatformSetting(db: ReturnType<Ctx["db"]>, key: string, fallback: string): Promise<string> {
+export async function getPlatformSetting(db: ReturnType<Ctx["db"]>, key: string, fallback: string): Promise<string> {
   const row = (await db.select().from(schema.platformSettings).where(eq(schema.platformSettings.key, key)).limit(1))[0];
   return row?.value ?? fallback;
 }
@@ -894,10 +905,10 @@ interface PlatformSettingDef { type: PlatformSettingType; labelEn: string; label
 const PLATFORM_SETTING_DEFS: Record<string, PlatformSettingDef> = {
   auto_moderation_enabled: { type: "boolean", labelEn: "Automatic listing moderation", labelEs: "Moderación automática de publicaciones", fallback: "1" },
   flag_threshold: { type: "int", labelEn: "Flags before review", labelEs: "Reportes antes de revisión", min: 1, max: 10, fallback: "3" },
-  registration_enabled: { type: "boolean", labelEn: "New registrations", labelEs: "Nuevos registros", fallback: "1" },
-  marketplace_enabled: { type: "boolean", labelEn: "Marketplace", labelEs: "Marketplace", fallback: "1" },
   free_listing_limit: { type: "int", labelEn: "Free plan active listings", labelEs: "Publicaciones activas del plan gratis", min: 1, max: 100, fallback: "3" },
   announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" },
+  default_max_sms_per_day: { type: "int", labelEn: "Default max SMS per day", labelEs: "Máx. SMS por día (defecto)", min: 1, max: 100000, fallback: "50" },
+  default_max_push_per_day: { type: "int", labelEn: "Default max pushes per day", labelEs: "Máx. notificaciones por día (defecto)", min: 1, max: 100000, fallback: "100" },
 };
 
 function normalizePlatformSetting(key: string, raw: string): string {
@@ -919,10 +930,6 @@ function normalizePlatformSetting(key: string, raw: string): string {
   return text;
 }
 
-async function getBooleanPlatformSetting(db: ReturnType<Ctx["db"]>, key: string): Promise<boolean> {
-  return (await getPlatformSetting(db, key, PLATFORM_SETTING_DEFS[key]?.fallback ?? "0")) === "1";
-}
-
 async function getIntPlatformSetting(db: ReturnType<Ctx["db"]>, key: string): Promise<number> {
   const fallback = Number.parseInt(PLATFORM_SETTING_DEFS[key]?.fallback ?? "0", 10);
   const parsed = Number.parseInt(await getPlatformSetting(db, key, String(fallback)), 10);
@@ -934,7 +941,7 @@ async function getIntPlatformSetting(db: ReturnType<Ctx["db"]>, key: string): Pr
 }
 
 async function requireMarketplaceEnabled(db: ReturnType<Ctx["db"]>): Promise<void> {
-  if (!(await getBooleanPlatformSetting(db, "marketplace_enabled"))) throw new Error("MARKETPLACE_DISABLED");
+  if (!(await isFeatureEnabled(db, "marketplace_enabled"))) throw new Error("MARKETPLACE_DISABLED");
 }
 
 async function isAutoModerationEnabled(db: ReturnType<Ctx["db"]>): Promise<boolean> {
@@ -1906,6 +1913,9 @@ export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
   ...playBillingActions,
+  // Platform admin suite (2026-10-07): broadcasts, verification, revenue,
+  // flags, support view, abuse controls.
+  ...platformAdminActions,
   getAuthBootstrap: defineAction({
     request: z.object({}),
     response: z.object({ hasAccount: z.boolean(), ownerClaimAvailable: z.boolean(), recordCounts: z.object({ jobs: z.number(), clients: z.number(), invoices: z.number() }) }),
@@ -1927,7 +1937,7 @@ export const BaseActions = {
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
       const db = ctx.db<typeof schema>();
-      if (!(await getBooleanPlatformSetting(db, "registration_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
+      if (!(await isFeatureEnabled(db, "signups_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
       const users = await db.select({ id: schema.authUsers.id, companyId: schema.authUsers.companyId }).from(schema.authUsers);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.email, email)).limit(1))[0];
@@ -2055,7 +2065,7 @@ export const BaseActions = {
       // logic). Email is Google-verified, so no verification code step. The
       // Marketplace terms gate on the client collects terms acceptance.
       if (!user) {
-        if (!(await getBooleanPlatformSetting(db, "registration_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
+        if (!(await isFeatureEnabled(db, "signups_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
         const users = await db.select({ id: schema.authUsers.id, companyId: schema.authUsers.companyId }).from(schema.authUsers);
         const firstAccount = users.length === 0;
         const companyId = firstAccount ? 1 : Math.max(1, ...users.map((u) => u.companyId)) + 1;
@@ -2818,7 +2828,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     }
 
   }),
-  logAutomationSend: defineAction({ request:z.object({kind:z.enum(["quote_chase","payment","review","reengagement","quote_expiry","crew"]),entityId:z.number().int().positive(),stage:z.string().max(40)}), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().insert(schema.automationLogs).values({...args,channel:"sms",sentAt:new Date()});ctx.invalidateQueries();return{ok:true};} }),
+  logAutomationSend: defineAction({ request:z.object({kind:z.enum(["quote_chase","payment","review","reengagement","quote_expiry","crew"]),entityId:z.number().int().positive(),stage:z.string().max(40)}), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{const identity=workspaceIdentity(ctx);const db=ctx.db<typeof schema>();const check=await recordSendAttempt(db,identity.workspaceUserId,"sms");if(!check.allowed)throw new Error(check.reason ?? "Send limit reached.");await db.insert(schema.automationLogs).values({...args,channel:"sms",sentAt:new Date()});ctx.invalidateQueries();return{ok:true};} }),
   updateQuoteAutomationStatus: defineAction({ request:z.object({id:z.number().int().positive(),status:z.enum(["awaiting","won","lost"]),lostReason:z.enum(["price","timing","competitor","no_response","other"]).nullable().default(null),lostNote:z.string().trim().max(1000).default("")}), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.quotes).set({automationStatus:args.status,lostReason:args.status==="lost"?args.lostReason:null,lostNote:args.status==="lost"?args.lostNote:"",updatedAt:new Date()}).where(eq(schema.quotes.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
   updateSelectionLeadTime: defineAction({ request:z.object({id:z.number().int().positive(),leadTimeDays:z.number().int().min(0).max(730)}), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.selections).set({leadTimeDays:args.leadTimeDays,updatedAt:new Date()}).where(eq(schema.selections.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
 
@@ -3483,7 +3493,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
-      const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
+      const enabled = await isFeatureEnabled(db, "marketplace_enabled");
       const { base, bonus, effective } = await getEffectiveListingLimit(db);
       const mine = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, identity.workspaceCompanyId), eq(schema.marketplaceListings.intent, "offer"), eq(schema.marketplaceListings.moderationStatus, "active")));
       return { enabled, freeListingLimit: base, bonusListings: bonus, effectiveListingLimit: effective, myActiveListingCount: mine.length };
@@ -3510,7 +3520,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(eq(schema.marketplaceUnlocks.companyId, myCompanyId));
       const unlockedIds = new Set(unlockedRows.map((r) => r.listingId));
-      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds))) };
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds, verifiedIds))) };
     },
   }),
   getMarketplaceListing: defineAction({
@@ -3527,7 +3538,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const photoRows = await db.select().from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, row.id)).orderBy(schema.marketplaceListingPhotos.sortOrder);
       const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, myCompanyId), eq(schema.marketplaceUnlocks.listingId, row.id))).limit(1);
-      return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId))) };
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId)), verifiedIds) };
     },
   }),
   createMarketplaceListing: defineAction({
@@ -4544,7 +4556,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     },
   }),
   adminAuditLog: defineAction({
-    request: z.object({ page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(25) }),
+    request: z.object({ page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(25), action: z.string().trim().max(80).default(""), actorId: z.number().int().positive().nullable().default(null), since: z.string().max(30).default(""), until: z.string().max(30).default("") }),
     response: z.object({
       entries: z.array(z.object({ id: z.number(), adminUserId: z.number(), adminName: z.string(), action: z.string(), targetType: z.string(), targetId: z.string(), details: z.string(), createdAt: z.string() })),
       total: z.number(), page: z.number(), pageSize: z.number(),
@@ -4552,9 +4564,16 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
       const db = platformDb(ctx);
-      const all = await db.select().from(schema.adminAuditLog).orderBy(desc(schema.adminAuditLog.createdAt));
-      const total = all.length;
-      const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
+      const conditions = [];
+      if (args.action) conditions.push(like(schema.adminAuditLog.action, `%${args.action.replace(/[%_]/g, "")}%`));
+      if (args.actorId) conditions.push(eq(schema.adminAuditLog.adminUserId, args.actorId));
+      const sinceMs = Date.parse(args.since);
+      if (args.since && Number.isFinite(sinceMs)) conditions.push(gte(schema.adminAuditLog.createdAt, new Date(sinceMs)));
+      const untilMs = Date.parse(args.until);
+      if (args.until && Number.isFinite(untilMs)) conditions.push(lte(schema.adminAuditLog.createdAt, new Date(untilMs)));
+      const where = conditions.length ? and(...conditions) : undefined;
+      const total = (await db.select({ n: sql<number>`count(*)` }).from(schema.adminAuditLog).where(where))[0]?.n ?? 0;
+      const page = await db.select().from(schema.adminAuditLog).where(where).orderBy(desc(schema.adminAuditLog.createdAt), desc(schema.adminAuditLog.id)).limit(args.pageSize).offset((args.page - 1) * args.pageSize);
       const adminIds = [...new Set(page.map((row) => row.adminUserId))];
       const admins = adminIds.length ? await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, adminIds)) : [];
       const nameById = new Map(admins.map((row) => [row.id, row.name]));
@@ -4836,6 +4855,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
 const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
   "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  "getFeatureFlags",
 ]);
 
 const PREMIUM_ACTIONS = new Set([

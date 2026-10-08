@@ -125,6 +125,20 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Platform admin suite: live revenue stats for the admin dashboard.
+  // Unconfigured -> configured:false (graceful, no crash).
+  getStripeRevenueStats: {
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      mrrCents: z.number().nullable(),
+      activeSubscriptions: z.number().nullable(),
+      trialing: z.number().nullable(),
+      failedPayments: z.number().nullable(),
+    }),
+    capabilities: [],
+    timeoutMs: 30_000,
+  },
   // Phase 4: Google Play Billing (TWA, package com.crewkat.app). Verifies a
   // subscription purchase token against the Play Developer API
   // (purchases.subscriptionsv2.get). Never grants anything itself — it only
@@ -546,6 +560,63 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       currency: typeof result.currency === "string" ? result.currency : "usd",
       status: typeof result.status === "string" ? result.status : "unknown",
     };
+  },
+  // Platform admin suite: live revenue stats for the admin dashboard.
+  // Unconfigured -> configured:false (graceful, no crash, no throw).
+  async getStripeRevenueStats() {
+    const unconfigured = { configured: false, mrrCents: null, activeSubscriptions: null, trialing: null, failedPayments: null };
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return unconfigured;
+    const authHeader = { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
+    try {
+      // Active subscriptions (paginated, capped) for MRR.
+      let mrrCents = 0;
+      let activeSubscriptions = 0;
+      let startingAfter: string | null = null;
+      for (let page = 0; page < 5; page++) {
+        const params = new URLSearchParams({ status: "active", limit: "100", "expand[]": "data.items" });
+        if (startingAfter) params.set("starting_after", startingAfter);
+        const response = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
+          method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) throw new Error(`Stripe subscriptions request failed: ${response.status}`);
+        const result = await response.json() as {
+          data?: Array<{ id?: unknown; items?: { data?: Array<{ quantity?: unknown; price?: { unit_amount?: unknown; recurring?: { interval?: unknown } } }> } }>;
+          has_more?: unknown;
+        };
+        const subs = result.data ?? [];
+        activeSubscriptions += subs.length;
+        for (const sub of subs) {
+          for (const item of sub.items?.data ?? []) {
+            const qty = typeof item.quantity === "number" ? item.quantity : 1;
+            const unit = typeof item.price?.unit_amount === "number" ? Math.round(item.price.unit_amount) : 0;
+            const interval = item.price?.recurring?.interval;
+            mrrCents += interval === "month" ? unit * qty : interval === "year" ? Math.round((unit * qty) / 12) : 0;
+          }
+        }
+        if (result.has_more !== true || !subs.length) break;
+        const lastId = subs[subs.length - 1]?.id;
+        if (typeof lastId !== "string") break;
+        startingAfter = lastId;
+      }
+      // Counts via total_count (limit=1 keeps these cheap).
+      const count = async (path: string): Promise<number | null> => {
+        const response = await fetch(`https://api.stripe.com${path}`, {
+          method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) return null;
+        const result = await response.json() as { total_count?: unknown };
+        return typeof result.total_count === "number" ? Math.round(result.total_count) : null;
+      };
+      const [trialing, failedPayments] = await Promise.all([
+        count("/v1/subscriptions?status=trialing&limit=1"),
+        count("/v1/invoices?status=open&limit=1"),
+      ]);
+      return { configured: true, mrrCents, activeSubscriptions, trialing, failedPayments };
+    } catch (error) {
+      console.error("[crewkat][platform-admin] Stripe revenue stats failed:", error);
+      return unconfigured;
+    }
   },
   // Phase 4: Google Play Billing verification. Reads the service-account
   // credential from PLAY_SERVICE_ACCOUNT_JSON (inline JSON) or

@@ -771,6 +771,31 @@ fieldset { padding: 0; border: 0; }
 .pa-badges-row { display:flex; gap:8px; flex-wrap:wrap; }
 .pa-badge.premium { background:rgba(230,160,40,.14); color:#d99a2b; border-color:rgba(230,160,40,.35); }
 .pa-badge.admin { background:rgba(120,120,200,.14); color:#8b8bd4; border-color:rgba(120,120,200,.35); }
+.pa-badge.status-verified { background:rgba(70,180,90,.14); color:#5cb874; border-color:rgba(70,180,90,.35); }
+.pa-badge.status-pending { background:rgba(230,160,40,.14); color:#d99a2b; border-color:rgba(230,160,40,.35); }
+.pa-badge.status-rejected { background:rgba(220,60,60,.14); color:#e0685f; border-color:rgba(220,60,60,.35); }
+/* Platform admin suite (2026-10-07): broadcasts, verification, revenue, flags, abuse. */
+.verified-badge { display:inline-flex; align-items:center; gap:3px; margin-left:6px; padding:2px 8px; border-radius:999px; background:rgba(70,180,90,.14); color:#2e9e5b; border:1px solid rgba(70,180,90,.35); font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; vertical-align:middle; }
+.verified-badge svg { width:12px; height:12px; }
+.pa-section-title { margin:6px 2px 0; font-size:14px; font-weight:800; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+.pa-filters { display:grid; gap:8px; }
+.pa-form-row { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+.pa-form-row .pa-field { flex:1 1 120px; }
+.pa-form-row .secondary-button, .pa-form-row .danger-button { flex:none; min-height:44px; }
+.pa-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--border); }
+.pa-row > div { display:grid; gap:2px; min-width:0; }
+.pa-row small { color:var(--dim); font-size:12px; }
+.pa-note-input { width:100%; min-height:40px; padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--bg); color:var(--text); font-size:14px; }
+.pa-actions-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pa-actions-row button { flex:1 1 90px; min-height:42px; }
+.pa-hint { color:var(--dim); font-size:12px; margin:0; }
+.pa-desc { margin:0; color:var(--dim); font-size:13.5px; line-height:1.45; }
+.pa-support-snapshot { display:grid; gap:10px; }
+.pa-support-snapshot section { border-top:1px solid var(--border); padding-top:8px; display:grid; gap:4px; }
+.pa-support-snapshot h4 { margin:0; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+.pa-support-snapshot p { margin:0; font-size:13.5px; }
+.pa-field textarea, .pa-field select { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--bg); color:var(--text); font-size:15px; font:inherit; }
+.pa-field textarea { resize:vertical; }
 .pa-card h3 { margin:0 0 2px; font-size:15px; }
 .pa-dl { margin:0; display:grid; gap:8px; }
 .pa-dl > div { display:flex; justify-content:space-between; gap:12px; font-size:13.5px; }

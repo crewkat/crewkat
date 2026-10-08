@@ -1159,14 +1159,18 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
+  // Platform admin suite: hide the Marketplace tab entirely when the flag is off.
+  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), staleTime: 5 * 60_000 });
+  const marketplaceEnabled = flagsQuery.data?.marketplace_enabled ?? true;
   // Chunk D: the Marketplace badge covers both unread messages and notifications.
   const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
-  const items: Array<{ tab: RootTab; label: string; icon: ReactNode; badge?: number }> = [
+  const allItems: Array<{ tab: RootTab; label: string; icon: ReactNode; badge?: number }> = [
     { tab: "today", label: lang === "es" ? "Inicio" : "Home", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
     { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
     { tab: "invoices", label: lang === "es" ? "Facturas" : "Invoices", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
     { tab: "marketplace", label: lang === "es" ? "Mercado" : "Marketplace", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>, badge: unreadMarketplace },
   ];
+  const items = allItems.filter((item) => item.tab !== "marketplace" || marketplaceEnabled);
   const quickActions: Array<{ label: string; destination: Screen; icon: ReactNode }> = [
     { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
     { label: lang === "es" ? "Nuevo estimado" : "New estimate", destination: { name: "quoteNew" }, icon: <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon> },
@@ -1901,6 +1905,10 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   // Google Sign-In client ID (public by design). The Google button renders
   // only when this returns a client ID — unconfigured deploys show nothing.
   const googleCfg = useQuery({ queryKey: ["google-client-id"], queryFn: () => api.getGoogleClientId({}), retry: false, staleTime: Infinity });
+  // Platform admin suite: when signups are disabled, show a friendly notice
+  // instead of the registration form.
+  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), retry: false, staleTime: 5 * 60_000 });
+  const signupsEnabled = flagsQuery.data?.signups_enabled ?? true;
   const [restoring, setRestoring] = useState(true);
   // Restore the previous session so the owner stays signed in across app
   // restarts: first a legacy pre-cookie token (transition window), otherwise
@@ -2043,6 +2051,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       </div>
       <h1>{title}</h1>
       <p className="auth-intro">{mode === "login" ? "Sign in to manage your jobs, invoices, and clients." : mode === "signup" ? "Create a secure owner account and an empty company workspace." : mode === "verify" ? `Enter the 6-digit code for ${email}.` : "Use a one-time code to choose a new password."}</p>
+      {mode === "signup" && !signupsEnabled && <div className="auth-claim"><strong>Registrations are closed</strong><span>New accounts are temporarily disabled. Please check back soon.</span></div>}
       {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>Your existing workspace is ready</strong><span>{bootstrap.data.recordCounts.jobs} jobs · {bootstrap.data.recordCounts.clients} clients · {bootstrap.data.recordCounts.invoices} invoices</span><small>These records will stay intact and attach to the owner account.</small></div>}
       {mode === "signup" && referralCode && <div className="auth-claim"><strong>Invited by a friend</strong><span>You were invited with code {referralCode} — your friend earns bonus Marketplace listings when you join.</span></div>}
       <form className="auth-form" onSubmit={submit}>
@@ -2056,7 +2065,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
         {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar mi correo en su lugar" : "Verify my email instead"}</button>}
-        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
+        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
       {(mode === "login" || mode === "signup") && googleCfg.data?.clientId && <div className="auth-google">
         <div className="auth-divider" aria-hidden="true"><span>or</span></div>
@@ -4335,7 +4344,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
           <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}<span className="card-badges"><span className={`intent-pill ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "SE BUSCA" : "WANTED") : (lang === "es" ? "DISPONIBLE" : "AVAILABLE")}</span>{listing.justListed && <b className="just-listed-pill">{text.just}</b>}{listing.promoted && <em className="market-promoted-badge">{text.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {text.featured}</em>}</span></div>
-          <div className="market-card-copy"><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}</span></div>
+          <div className="market-card-copy"><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : (lang === "es" ? "Guardar publicación" : "Save listing")}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
       </article>)}
@@ -4682,7 +4691,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-intent ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "Se busca" : "Wanted") : (lang === "es" ? "Disponible" : "Available")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
     <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
-    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}</strong> : null}{listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />}</section>
+    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
     {deleteOpenSheet.render && <div className={`sheet-backdrop${deleteOpenSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
     {reportOpenSheet.render && <div className={`sheet-backdrop${reportOpenSheet.closing ? " closing" : ""}`} onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
@@ -8805,7 +8814,7 @@ const ADMIN_DEFAULTS: AdminParameters = {
   hourlyLaborCost: "0",
 };
 
-type PlatformAdminTab = "analytics" | "support" | "queue" | "users" | "refunds" | "settings" | "audit";
+type PlatformAdminTab = "analytics" | "support" | "queue" | "users" | "refunds" | "settings" | "audit" | "broadcasts" | "verification" | "revenue" | "flags" | "abuse";
 
 function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefundEmail }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void; initialTab?: PlatformAdminTab; initialRefundEmail?: string }) {
   const auth = useContext(AuthContext);
@@ -8814,8 +8823,8 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => { if (initialRefundEmail !== undefined) setRefundEmail(initialRefundEmail); }, [initialRefundEmail]);
   const t = lang === "es"
-    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", support: "Soporte", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro" }
-    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log" };
+    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", support: "Soporte", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro", broadcasts: "Difusión", verification: "Verificación", revenue: "Ingresos", flags: "Flags", abuse: "Abuso" }
+    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log", broadcasts: "Broadcasts", verification: "Verification", revenue: "Revenue", flags: "Flags", abuse: "Abuse" };
   const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}), enabled: !!auth?.user.isPlatformAdmin, staleTime: 15000 });
   const supportUnread = inboxBadge.data?.unreadCount ?? 0;
   if (!auth?.user.isPlatformAdmin) {
@@ -8824,7 +8833,7 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
   return <main className="page pa-page">
     <PageHeader lang={lang} title={t.title} onBack={onBack} />
     <nav className="pa-tabs" aria-label={t.title}>
-      {(["analytics", "support", "queue", "users", "refunds", "settings", "audit"] as PlatformAdminTab[]).map((value) => (
+      {(["analytics", "support", "queue", "users", "refunds", "settings", "audit", "broadcasts", "verification", "revenue", "flags", "abuse"] as PlatformAdminTab[]).map((value) => (
         <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}{value === "support" && supportUnread > 0 && <span className="pa-tab-badge">{supportUnread}</span>}</button>
       ))}
     </nav>
@@ -8835,6 +8844,11 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
     {tab === "refunds" && <PARefundsTab lang={lang} initialEmail={refundEmail} />}
     {tab === "settings" && <PASettingsTab lang={lang} />}
     {tab === "audit" && <PAAuditTab lang={lang} />}
+    {tab === "broadcasts" && <PABroadcastsTab lang={lang} />}
+    {tab === "verification" && <PAVerificationTab lang={lang} />}
+    {tab === "revenue" && <PARevenueTab lang={lang} />}
+    {tab === "flags" && <PAFlagsTab lang={lang} />}
+    {tab === "abuse" && <PAAbuseTab lang={lang} />}
   </main>;
 }
 
@@ -9247,6 +9261,46 @@ function PAQueueTab({ lang }: { lang: Lang }) {
   </div>;
 }
 
+// Read-only support snapshot: profile, subscription, counts, recent activity.
+// Every view is written to the admin audit log server-side.
+function PASupportView({ lang }: { lang: Lang }) {
+  const [email, setEmail] = useState("");
+  const [lookup, setLookup] = useState("");
+  const t = lang === "es"
+    ? { title: "Vista de soporte", hint: "Solo lectura. Cada consulta queda registrada.", ph: "correo@ejemplo.com", view: "Ver", notFound: "Sin resultados para ese correo.", profile: "Perfil", subscription: "Suscripción", counts: "Contenido", activity: "Actividad reciente", tier: "Plan", status: "Estado", provider: "Proveedor", periodEnd: "Fin del período", cancelAtEnd: "Cancela al final", suspended: "Suspendido", admin: "Admin", created: "Creado", jobs: "Trabajos", clients: "Clientes", invoices: "Facturas", quotes: "Cotizaciones", loadError: "No se pudo cargar.", yes: "Sí", no: "No" }
+    : { title: "Support view", hint: "Read-only. Every lookup is audit-logged.", ph: "user@example.com", view: "View", notFound: "No user with that email.", profile: "Profile", subscription: "Subscription", counts: "Content", activity: "Recent activity", tier: "Tier", status: "Status", provider: "Provider", periodEnd: "Period end", cancelAtEnd: "Cancels at end", suspended: "Suspended", admin: "Admin", created: "Created", jobs: "Jobs", clients: "Clients", invoices: "Invoices", quotes: "Quotes", loadError: "Could not load.", yes: "Yes", no: "No" };
+  const query = useQuery({ queryKey: ["pa-support-view", lookup], queryFn: () => api.adminSupportView({ email: lookup }), enabled: lookup.length > 0 });
+  const submit = () => { const v = email.trim(); if (v) setLookup(v); };
+  return <article className="pa-card">
+    <div className="pa-card-head"><div><h3>{t.title}</h3><small>{t.hint}</small></div></div>
+    <div className="pa-form-row">
+      <label className="pa-field"><span><strong>Email</strong></span><input type="email" value={email} placeholder={t.ph} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} /></label>
+      <button type="button" className="secondary-button" onClick={submit}>{t.view}</button>
+    </div>
+    {query.isError && <p className="status error">{t.loadError}</p>}
+    {query.data && !query.data.found && <p className="pa-desc">{t.notFound}</p>}
+    {query.data?.found && query.data.profile && query.data.counts && (
+      <div className="pa-support-snapshot">
+        <section><h4>{t.profile}</h4>
+          <p><strong>{query.data.profile.name}</strong> · {query.data.profile.email}</p>
+          <p>{t.tier}: {query.data.profile.tier} · {t.created}: {new Date(query.data.profile.createdAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</p>
+          <p>{t.suspended}: {query.data.profile.suspended ? t.yes : t.no} · {t.admin}: {query.data.profile.isPlatformAdmin ? t.yes : t.no}</p>
+        </section>
+        <section><h4>{t.subscription}</h4>
+          <p>{t.status}: {query.data.profile.subscriptionStatus} · {t.provider}: {query.data.profile.provider}</p>
+          <p>{t.periodEnd}: {query.data.profile.currentPeriodEnd ? new Date(query.data.profile.currentPeriodEnd).toLocaleDateString(lang === "es" ? "es-US" : "en-US") : "—"} · {t.cancelAtEnd}: {query.data.profile.cancelAtPeriodEnd ? t.yes : t.no}</p>
+        </section>
+        <section><h4>{t.counts}</h4>
+          <p>{t.jobs}: {query.data.counts.jobs} · {t.clients}: {query.data.counts.clients} · {t.invoices}: {query.data.counts.invoices} · {t.quotes}: {query.data.counts.quotes}</p>
+        </section>
+        {!!query.data.recentActivity?.length && <section><h4>{t.activity}</h4>
+          {query.data.recentActivity.map((a, i) => <p key={i} className="pa-desc">{a.kind} · {a.channel} · {new Date(a.sentAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</p>)}
+        </section>}
+      </div>
+    )}
+  </article>;
+}
+
 function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
@@ -9269,6 +9323,7 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   return <div className="pa-list">
+    <PASupportView lang={lang} />
     <label className="pa-search"><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
     {error && <p className="status error">{error}</p>}
     {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : query.isError ? <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div> : !data?.users.length ? <div className="market-empty"><h2>{t.empty}</h2></div> : <>
@@ -9508,14 +9563,12 @@ function PASettingsTab({ lang }: { lang: Lang }) {
     onError: (caught) => { setError(actionErrorMessage(caught)); setSaved(false); },
   });
   const help: Record<string, { en: string; es: string }> = {
-    registration_enabled: { en: "When off, nobody can create a new account.", es: "Si está apagado, nadie puede crear una cuenta nueva." },
-    marketplace_enabled: { en: "When off, the Marketplace is hidden and all listing actions are blocked.", es: "Si está apagado, el Marketplace se oculta y todas las acciones se bloquean." },
     announcement_banner: { en: "Shown to every signed-in user at the top of the app. Empty = no banner.", es: "Se muestra a todos los usuarios al inicio de la app. Vacío = sin anuncio." },
     auto_moderation_enabled: { en: "Screen listing text on create and update. Violations are auto-rejected.", es: "Revisar el texto de las publicaciones al crearlas o editarlas. Las que violen las reglas se rechazan automáticamente." },
     flag_threshold: { en: "Reports needed to send a listing to review.", es: "Reportes necesarios para enviar una publicación a revisión." },
     free_listing_limit: { en: "Max active Marketplace listings per company on the free plan. Premium is unlimited.", es: "Máximo de publicaciones activas por empresa en el plan gratis. Premium es ilimitado." },
   };
-  const order = ["registration_enabled", "marketplace_enabled", "announcement_banner", "auto_moderation_enabled", "flag_threshold", "free_listing_limit"];
+  const order = ["announcement_banner", "auto_moderation_enabled", "flag_threshold", "free_listing_limit", "default_max_sms_per_day", "default_max_push_per_day"];
   const t = lang === "es"
     ? { loading: "Cargando…", loadError: "No se pudieron cargar los ajustes.", retry: "Reintentar", save: "Guardar ajustes", saving: "Guardando…", saved: "Ajustes guardados.", on: "Activado", off: "Apagado", bannerPlaceholder: "Escribe el anuncio…" }
     : { loading: "Loading…", loadError: "Could not load settings.", retry: "Retry", save: "Save settings", saving: "Saving…", saved: "Settings saved.", on: "On", off: "Off", bannerPlaceholder: "Type the announcement…" };
@@ -9546,16 +9599,39 @@ function PASettingsTab({ lang }: { lang: Lang }) {
 
 function PAAuditTab({ lang }: { lang: Lang }) {
   const [page, setPage] = useState(1);
-  const query = useQuery({ queryKey: ["pa-audit", page], queryFn: () => api.adminAuditLog({ page, pageSize: 25 }) });
+  const [actionFilter, setActionFilter] = useState("");
+  const [actionInput, setActionInput] = useState("");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
+  useEffect(() => { const timer = window.setTimeout(() => { setActionFilter(actionInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [actionInput]);
+  const query = useQuery({ queryKey: ["pa-audit", page, actionFilter, since, until], queryFn: () => api.adminAuditLog({ page, pageSize: 25, action: actionFilter, actorId: null, since, until }) });
   const t = lang === "es"
-    ? { loading: "Cargando…", empty: "Sin actividad registrada.", loadError: "No se pudo cargar el registro.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", of: "de" }
-    : { loading: "Loading…", empty: "No admin activity yet.", loadError: "Could not load the audit log.", retry: "Retry", prev: "Previous", next: "Next", of: "of" };
+    ? { loading: "Cargando…", empty: "Sin actividad registrada.", loadError: "No se pudo cargar el registro.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", of: "de", actionPh: "Filtrar por acción…", since: "Desde", until: "Hasta", clear: "Limpiar" }
+    : { loading: "Loading…", empty: "No admin activity yet.", loadError: "Could not load the audit log.", retry: "Retry", prev: "Previous", next: "Next", of: "of", actionPh: "Filter by action…", since: "From", until: "To", clear: "Clear" };
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
-  if (!data?.entries.length) return <div className="market-empty"><h2>{t.empty}</h2></div>;
+  if (!data?.entries.length) return <div className="pa-list">
+    <div className="pa-filters">
+      <input className="pa-note-input" value={actionInput} placeholder={t.actionPh} onChange={(e) => setActionInput(e.target.value)} />
+      <div className="pa-form-row">
+        <label className="pa-field"><span><strong>{t.since}</strong></span><input type="date" value={since} onChange={(e) => { setSince(e.target.value); setPage(1); }} /></label>
+        <label className="pa-field"><span><strong>{t.until}</strong></span><input type="date" value={until} onChange={(e) => { setUntil(e.target.value); setPage(1); }} /></label>
+      </div>
+      {(actionInput || since || until) && <button type="button" className="secondary-button" onClick={() => { setActionInput(""); setSince(""); setUntil(""); setPage(1); }}>{t.clear}</button>}
+    </div>
+    <div className="market-empty"><h2>{t.empty}</h2></div>
+  </div>;
   return <div className="pa-list">
+    <div className="pa-filters">
+      <input className="pa-note-input" value={actionInput} placeholder={t.actionPh} onChange={(e) => setActionInput(e.target.value)} />
+      <div className="pa-form-row">
+        <label className="pa-field"><span><strong>{t.since}</strong></span><input type="date" value={since} onChange={(e) => { setSince(e.target.value); setPage(1); }} /></label>
+        <label className="pa-field"><span><strong>{t.until}</strong></span><input type="date" value={until} onChange={(e) => { setUntil(e.target.value); setPage(1); }} /></label>
+      </div>
+      {(actionInput || since || until) && <button type="button" className="secondary-button" onClick={() => { setActionInput(""); setSince(""); setUntil(""); setPage(1); }}>{t.clear}</button>}
+    </div>
     {data.entries.map((entry) => (
       <article key={entry.id} className="pa-card pa-audit">
         <div className="pa-card-head"><div><h3>{entry.action}</h3><small>{entry.adminName} · {new Date(entry.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</small></div></div>
@@ -9564,6 +9640,243 @@ function PAAuditTab({ lang }: { lang: Lang }) {
       </article>
     ))}
     <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>
+  </div>;
+}
+
+
+// Platform admin suite (2026-10-07): broadcasts, verification, revenue,
+// flags, abuse controls.
+
+function PABroadcastsTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [segment, setSegment] = useState<"all" | "pro" | "free">("all");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  const [sentNote, setSentNote] = useState("");
+  const t = lang === "es"
+    ? { compose: "Nueva difusión", title: "Título", body: "Mensaje", segment: "Segmento", all: "Todos", pro: "Solo Pro", free: "Solo gratis", send: "Enviar difusión", sending: "Enviando…", sent: "Difusión enviada", delivered: "entregadas", of: "de", history: "Historial", loading: "Cargando…", empty: "Sin difusiones todavía.", loadError: "No se pudo cargar.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", needBoth: "Escribe un título y un mensaje." }
+    : { compose: "New broadcast", title: "Title", body: "Message", segment: "Segment", all: "Everyone", pro: "Pro only", free: "Free only", send: "Send broadcast", sending: "Sending…", sent: "Broadcast sent", delivered: "delivered", of: "of", history: "History", loading: "Loading…", empty: "No broadcasts yet.", loadError: "Could not load.", retry: "Retry", prev: "Previous", next: "Next", needBoth: "Write a title and a message first." };
+  const history = useQuery({ queryKey: ["pa-broadcasts", page], queryFn: () => api.adminBroadcastHistory({ page, pageSize: 15 }) });
+  const send = useMutation({
+    mutationFn: () => {
+      if (!title.trim() || !body.trim()) throw new Error(t.needBoth);
+      return api.adminBroadcastSend({ title: title.trim(), body: body.trim(), segment });
+    },
+    onSuccess: async (res) => { setTitle(""); setBody(""); setError(""); setSentNote(`${t.sent}: ${res.sentCount} ${t.of} ${res.totalUsers}`); await qc.invalidateQueries({ queryKey: ["pa-broadcasts"] }); },
+    onError: (caught) => { setError(actionErrorMessage(caught)); setSentNote(""); },
+  });
+  const data = history.data;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  return <div className="pa-list">
+    <article className="pa-card">
+      <div className="pa-card-head"><div><h3>{t.compose}</h3></div></div>
+      {error && <p className="status error">{error}</p>}
+      {sentNote && <p className="status auth-success">{sentNote}</p>}
+      <label className="pa-field"><span><strong>{t.title}</strong></span><input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} /></label>
+      <label className="pa-field"><span><strong>{t.body}</strong></span><textarea value={body} maxLength={500} rows={3} onChange={(e) => setBody(e.target.value)} /></label>
+      <label className="pa-field"><span><strong>{t.segment}</strong></span>
+        <select value={segment} onChange={(e) => setSegment(e.target.value as "all" | "pro" | "free")}>
+          <option value="all">{t.all}</option>
+          <option value="pro">{t.pro}</option>
+          <option value="free">{t.free}</option>
+        </select>
+      </label>
+      <button type="button" className="primary-button" disabled={send.isPending} onClick={() => send.mutate()}>{send.isPending ? t.sending : t.send}</button>
+    </article>
+    <h3 className="pa-section-title">{t.history}</h3>
+    {history.isLoading && <div className="loading-block" aria-label={t.loading} />}
+    {history.isError && <div className="market-empty"><p>{t.loadError}</p><button type="button" className="primary-button" onClick={() => history.refetch()}>{t.retry}</button></div>}
+    {data && !data.entries.length && <div className="market-empty"><p>{t.empty}</p></div>}
+    {data?.entries.map((entry) => (
+      <article key={entry.id} className="pa-card">
+        <div className="pa-card-head"><div><h3>{entry.title}</h3><small>{new Date(entry.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")} · {entry.segment} · {entry.sentCount} {t.delivered}</small></div></div>
+        <p className="pa-desc">{entry.body}</p>
+      </article>
+    ))}
+    {data && data.total > data.pageSize && <div className="pa-pager"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>{t.prev}</button><span>{page} {t.of} {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t.next}</button></div>}
+  </div>;
+}
+
+function PAVerificationTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
+  const t = lang === "es"
+    ? { loading: "Cargando…", empty: "Sin empresas todavía.", loadError: "No se pudo cargar.", retry: "Reintentar", license: "Licencia", pending: "Pendiente", verified: "Verificado", rejected: "Rechazado", verify: "Verificar", reject: "Rechazar", reset: "Pendiente", notePh: "Nota (opcional)…", reviewedBy: "Revisado por" }
+    : { loading: "Loading…", empty: "No businesses yet.", loadError: "Could not load.", retry: "Retry", license: "License", pending: "Pending", verified: "Verified", rejected: "Rejected", verify: "Verify", reject: "Reject", reset: "Reset", notePh: "Note (optional)…", reviewedBy: "Reviewed by" };
+  const query = useQuery({ queryKey: ["pa-verification"], queryFn: () => api.adminVerificationList({}) });
+  const decide = useMutation({
+    mutationFn: (args: { companyId: number; status: "pending" | "verified" | "rejected"; note: string }) => api.adminVerificationSet(args),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-verification"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  if (!query.data.businesses.length) return <div className="market-empty"><p>{t.empty}</p></div>;
+  const statusLabel = (s: string) => s === "verified" ? t.verified : s === "rejected" ? t.rejected : t.pending;
+  return <div className="pa-list">
+    {error && <p className="status error">{error}</p>}
+    {query.data.businesses.map((b) => (
+      <article key={b.companyId} className="pa-card">
+        <div className="pa-card-head">
+          <div><h3>{b.companyName}</h3><small>{t.license}: {b.licenseNumber || "—"}{b.reviewedAt && ` · ${t.reviewedBy} ${b.reviewedByName ?? ""}`}</small></div>
+          <span className={`pa-badge status-${b.status}`}>{statusLabel(b.status)}</span>
+        </div>
+        {b.note && <p className="pa-desc">{b.note}</p>}
+        <input className="pa-note-input" value={notes[b.companyId] ?? ""} placeholder={t.notePh} maxLength={500} onChange={(e) => setNotes((n) => ({ ...n, [b.companyId]: e.target.value }))} />
+        <div className="pa-actions-row">
+          <button type="button" className="secondary-button" disabled={decide.isPending} onClick={() => decide.mutate({ companyId: b.companyId, status: "verified", note: notes[b.companyId] ?? "" })}>{t.verify}</button>
+          <button type="button" className="secondary-button" disabled={decide.isPending} onClick={() => decide.mutate({ companyId: b.companyId, status: "rejected", note: notes[b.companyId] ?? "" })}>{t.reject}</button>
+          <button type="button" disabled={decide.isPending} onClick={() => decide.mutate({ companyId: b.companyId, status: "pending", note: notes[b.companyId] ?? "" })}>{t.reset}</button>
+        </div>
+      </article>
+    ))}
+  </div>;
+}
+
+function PARevenueTab({ lang }: { lang: Lang }) {
+  const t = lang === "es"
+    ? { loading: "Cargando…", loadError: "No se pudo cargar.", retry: "Reintentar", mrr: "Ingresos mensuales (Stripe)", active: "Suscripciones activas", trialing: "En prueba", failed: "Pagos fallidos", local: "Premium en la app", unconfigured: "Stripe no está configurado en el servidor.", cached: "Actualizado" }
+    : { loading: "Loading…", loadError: "Could not load.", retry: "Retry", mrr: "MRR (Stripe)", active: "Active subscriptions", trialing: "Trialing", failed: "Failed payments", local: "Premium in app", unconfigured: "Stripe is not configured on the server.", cached: "Updated" };
+  const query = useQuery({ queryKey: ["pa-revenue"], queryFn: () => api.adminRevenueDashboard({}), staleTime: 60_000 });
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><p>{query.isError ? actionErrorMessage(query.error) : ""}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  const d = query.data;
+  const money = d.mrrDollars != null ? `$${d.mrrDollars.toFixed(0)}` : "—";
+  return <div className="pa-list">
+    {!d.configured && <p className="status error">{t.unconfigured}</p>}
+    <div className="pa-stat-grid">
+      <div className="pa-stat"><span className="pa-stat-value">{money}</span><span className="pa-stat-label">{t.mrr}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{d.activeSubscriptions ?? "—"}</span><span className="pa-stat-label">{t.active}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{d.trialing ?? "—"}</span><span className="pa-stat-label">{t.trialing}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{d.failedPayments ?? "—"}</span><span className="pa-stat-label">{t.failed}</span></div>
+      <div className="pa-stat"><span className="pa-stat-value">{d.localActivePremium}</span><span className="pa-stat-label">{t.local}</span></div>
+    </div>
+    <p className="pa-hint">{t.cached}: {new Date(d.cachedAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</p>
+    <button type="button" className="secondary-button" onClick={() => query.refetch()}>{t.retry}</button>
+  </div>;
+}
+
+function PAFlagsTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [error, setError] = useState("");
+  const t = lang === "es"
+    ? { loading: "Cargando…", loadError: "No se pudo cargar.", retry: "Reintentar" }
+    : { loading: "Loading…", loadError: "Could not load.", retry: "Retry" };
+  const query = useQuery({ queryKey: ["pa-flags"], queryFn: () => api.adminFeatureFlags({}) });
+  const toggle = useMutation({
+    mutationFn: (args: { key: "marketplace_enabled" | "signups_enabled" | "broadcasts_enabled"; enabled: boolean }) => api.adminFeatureFlagSet(args),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-flags"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const flagLabel: Record<string, { en: string; es: string }> = {
+    marketplace_enabled: { en: "Marketplace", es: "Marketplace" },
+    signups_enabled: { en: "New registrations", es: "Nuevos registros" },
+    broadcasts_enabled: { en: "Broadcast pushes", es: "Difusiones push" },
+  };
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  return <div className="pa-list">
+    {error && <p className="status error">{error}</p>}
+    {query.data.flags.map((flag) => {
+      const entry = flagLabel[flag.key];
+      const label = entry ? (lang === "es" ? entry.es : entry.en) : flag.key;
+      return <div className="pa-card" key={flag.key}>
+        <label className="pa-switch"><span><strong>{label}</strong><small>{flag.description}</small></span><Switch checked={flag.enabled} onChange={(next) => toggle.mutate({ key: flag.key as "marketplace_enabled" | "signups_enabled" | "broadcasts_enabled", enabled: next })} /></label>
+      </div>;
+    })}
+  </div>;
+}
+
+function PAAbuseTab({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const [defSms, setDefSms] = useState("");
+  const [defPush, setDefPush] = useState("");
+  const [capUserId, setCapUserId] = useState("");
+  const [capSms, setCapSms] = useState("");
+  const [capPush, setCapPush] = useState("");
+  const [blockUserId, setBlockUserId] = useState("");
+  const [blockReason, setBlockReason] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const t = lang === "es"
+    ? { loading: "Cargando…", loadError: "No se pudo cargar.", retry: "Reintentar", defaults: "Límites por defecto", smsDay: "SMS por día", pushDay: "Push por día", save: "Guardar", saved: "Guardado.", overrides: "Límites por usuario", noOverrides: "Sin límites personalizados.", userId: "ID de usuario", block: "Bloquear", unblock: "Desbloquear", blocked: "Bloqueados", noBlocked: "Nadie bloqueado.", reason: "Motivo", reasonPh: "Motivo (opcional)…", add: "Añadir" }
+    : { loading: "Loading…", loadError: "Could not load.", retry: "Retry", defaults: "Default caps", smsDay: "SMS per day", pushDay: "Pushes per day", save: "Save", saved: "Saved.", overrides: "Per-user caps", noOverrides: "No per-user overrides.", userId: "User ID", block: "Block", unblock: "Unblock", blocked: "Blocked", noBlocked: "Nobody blocked.", reason: "Reason", reasonPh: "Reason (optional)…", add: "Add" };
+  const query = useQuery({ queryKey: ["pa-abuse"], queryFn: () => api.adminAbuseOverview({}) });
+  const refresh = async () => { await qc.invalidateQueries({ queryKey: ["pa-abuse"] }); };
+  const num = (v: string) => { const n = Number.parseInt(v, 10); return Number.isFinite(n) && n >= 1 ? n : null; };
+  const saveDefaults = useMutation({
+    mutationFn: () => {
+      const sms = num(defSms), push = num(defPush);
+      if (sms == null || push == null) throw new Error(`${t.smsDay} / ${t.pushDay}`);
+      return api.adminAbuseDefaultsSet({ maxSmsPerDay: sms, maxPushPerDay: push });
+    },
+    onSuccess: async () => { setError(""); setSaved(t.saved); setDefSms(""); setDefPush(""); await refresh(); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const saveCap = useMutation({
+    mutationFn: () => {
+      const uid = num(capUserId), sms = num(capSms), push = num(capPush);
+      if (uid == null || sms == null || push == null) throw new Error(t.userId);
+      return api.adminAbuseCapSet({ userId: uid, maxSmsPerDay: sms, maxPushPerDay: push });
+    },
+    onSuccess: async () => { setError(""); setSaved(t.saved); setCapUserId(""); setCapSms(""); setCapPush(""); await refresh(); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const block = useMutation({
+    mutationFn: (args: { userId: number; reason: string }) => api.adminBlockUser(args),
+    onSuccess: async () => { setError(""); await refresh(); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const unblock = useMutation({
+    mutationFn: (userId: number) => api.adminUnblockUser({ userId }),
+    onSuccess: async () => { setError(""); await refresh(); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
+  const d = query.data;
+  return <div className="pa-list">
+    {error && <p className="status error">{error}</p>}
+    {saved && <p className="status auth-success">{saved}</p>}
+    <article className="pa-card">
+      <div className="pa-card-head"><div><h3>{t.defaults}</h3><small>{t.smsDay}: {d.defaults.maxSmsPerDay} · {t.pushDay}: {d.defaults.maxPushPerDay}</small></div></div>
+      <div className="pa-form-row">
+        <label className="pa-field"><span><strong>{t.smsDay}</strong></span><input inputMode="numeric" value={defSms} placeholder={String(d.defaults.maxSmsPerDay)} onChange={(e) => setDefSms(e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
+        <label className="pa-field"><span><strong>{t.pushDay}</strong></span><input inputMode="numeric" value={defPush} placeholder={String(d.defaults.maxPushPerDay)} onChange={(e) => setDefPush(e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
+      </div>
+      <button type="button" className="secondary-button" disabled={saveDefaults.isPending} onClick={() => saveDefaults.mutate()}>{t.save}</button>
+    </article>
+    <article className="pa-card">
+      <div className="pa-card-head"><div><h3>{t.overrides}</h3></div></div>
+      {d.overrides.length === 0 && <p className="pa-desc">{t.noOverrides}</p>}
+      {d.overrides.map((o) => (
+        <div key={o.userId} className="pa-row"><div><strong>{o.userName}</strong><small>{o.userEmail} · {t.smsDay}: {o.maxSmsPerDay} · {t.pushDay}: {o.maxPushPerDay}</small></div></div>
+      ))}
+      <div className="pa-form-row">
+        <label className="pa-field"><span><strong>{t.userId}</strong></span><input inputMode="numeric" value={capUserId} onChange={(e) => setCapUserId(e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
+        <label className="pa-field"><span><strong>{t.smsDay}</strong></span><input inputMode="numeric" value={capSms} onChange={(e) => setCapSms(e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
+        <label className="pa-field"><span><strong>{t.pushDay}</strong></span><input inputMode="numeric" value={capPush} onChange={(e) => setCapPush(e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
+      </div>
+      <button type="button" className="secondary-button" disabled={saveCap.isPending} onClick={() => saveCap.mutate()}>{t.add}</button>
+    </article>
+    <article className="pa-card">
+      <div className="pa-card-head"><div><h3>{t.blocked}</h3></div></div>
+      {d.blocked.length === 0 && <p className="pa-desc">{t.noBlocked}</p>}
+      {d.blocked.map((b) => (
+        <div key={b.userId} className="pa-row">
+          <div><strong>{b.userName}</strong><small>{b.userEmail}{b.reason ? ` · ${b.reason}` : ""}</small></div>
+          <button type="button" className="secondary-button" disabled={unblock.isPending} onClick={() => unblock.mutate(b.userId)}>{t.unblock}</button>
+        </div>
+      ))}
+      <div className="pa-form-row">
+        <label className="pa-field"><span><strong>{t.userId}</strong></span><input inputMode="numeric" value={blockUserId} onChange={(e) => setBlockUserId(e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
+        <label className="pa-field"><span><strong>{t.reason}</strong></span><input value={blockReason} maxLength={300} placeholder={t.reasonPh} onChange={(e) => setBlockReason(e.target.value)} /></label>
+      </div>
+      <button type="button" className="danger-button" disabled={block.isPending || !num(blockUserId)} onClick={() => { const uid = num(blockUserId); if (uid != null) { block.mutate({ userId: uid, reason: blockReason.trim() }); setBlockUserId(""); setBlockReason(""); } }}>{t.block}</button>
+    </article>
   </div>;
 }
 

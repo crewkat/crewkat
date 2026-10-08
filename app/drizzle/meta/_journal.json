@@ -1,482 +1,489 @@
 {
-  "version": "7",
-  "dialect": "sqlite",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "6",
-      "when": 1790373244265,
-      "tag": "0001_initial",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1790373244265,
-      "tag": "0002_create_jobs_photos_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1790374116033,
-      "tag": "0003_add_sharing_invoicing_fields",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1790374300189,
-      "tag": "0004_add_social_offer_setting",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1790375264337,
-      "tag": "0005_add_field_tools_quotes_signatures",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1790376172643,
-      "tag": "0006_add_clients_drafts_quote_themes",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1790376609260,
-      "tag": "0007_add_company_email_and_address_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1790378021737,
-      "tag": "0008_add_invoices_and_document_options",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1790380975513,
-      "tag": "0009_add_field_operations_payments_recurring_referrals",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1790383260184,
-      "tag": "0010_add_operations_dashboard_pipeline",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1790385854130,
-      "tag": "0011_add_automation_center",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1790386584134,
-      "tag": "0012_add_support_reports",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1790388148673,
-      "tag": "0013_add_growth_toolkit_features",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1790388307958,
-      "tag": "0014_seed_quote_starter_templates",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1790388484329,
-      "tag": "0015_normalize_starter_template_amounts",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
-      "when": 1790389461447,
-      "tag": "0016_add_operations_expansion_suite",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "6",
-      "when": 1790390091752,
-      "tag": "0017_add_admin_console",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "6",
-      "when": 1790393225505,
-      "tag": "0018_fix_qa_money_maintenance_scans",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "6",
-      "when": 1790393225505,
-      "tag": "0019_add_launch_workflows",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "6",
-      "when": 1790393225505,
-      "tag": "0020_add_toolbox_materials",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "6",
-      "when": 1790396909875,
-      "tag": "0021_add_field_intelligence_suite",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "6",
-      "when": 1790428666626,
-      "tag": "0022_add_document_design_visibility",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "6",
-      "when": 1790429857015,
-      "tag": "0023_add_financial_document_signatures",
-      "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "6",
-      "when": 1790437294786,
-      "tag": "0024_add_more_options_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "6",
-      "when": 1790437896613,
-      "tag": "0025_add_simple_mode",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "6",
-      "when": 1790441815130,
-      "tag": "0026_add_marketplace_preview",
-      "breakpoints": true
-    },
-    {
-      "idx": 26,
-      "version": "6",
-      "when": 1790442545312,
-      "tag": "0027_marketplace_messaging_and_bookings",
-      "breakpoints": true
-    },
-    {
-      "idx": 27,
-      "version": "6",
-      "when": 1790444043278,
-      "tag": "0028_add_marketplace_company_profile",
-      "breakpoints": true
-    },
-    {
-      "idx": 28,
-      "version": "6",
-      "when": 1790444349075,
-      "tag": "0029_add_marketplace_promotion_flag",
-      "breakpoints": true
-    },
-    {
-      "idx": 29,
-      "version": "6",
-      "when": 1790445851392,
-      "tag": "0030_marketplace_message_inbox",
-      "breakpoints": true
-    },
-    {
-      "idx": 30,
-      "version": "6",
-      "when": 1790449000000,
-      "tag": "0031_document_links",
-      "breakpoints": true
-    },
-    {
-      "idx": 31,
-      "version": "6",
-      "when": 1790450982701,
-      "tag": "0032_add_secure_account_authentication",
-      "breakpoints": true
-    },
-    {
-      "idx": 32,
-      "version": "6",
-      "when": 1790455785307,
-      "tag": "0033_add_workspaces_and_subscriptions",
-      "breakpoints": true
-    },
-    {
-      "idx": 33,
-      "version": "6",
-      "when": 1790558400000,
-      "tag": "0034_automated_backups",
-      "breakpoints": true
-    },
-    {
-      "idx": 34,
-      "version": "6",
-      "when": 1790668800000,
-      "tag": "0035_secure_persistent_login",
-      "breakpoints": true
-    },
-    {
-      "idx": 35,
-      "version": "6",
-      "when": 1790668800000,
-      "tag": "0036_portal_link_hardening",
-      "breakpoints": true
-    },
-    {
-      "idx": 36,
-      "version": "6",
-      "when": 1790668800001,
-      "tag": "0037_add_client_tags",
-      "breakpoints": true
-    },
-    {
-      "idx": 37,
-      "version": "6",
-      "when": 1790668800002,
-      "tag": "0038_add_invoice_numbers",
-      "breakpoints": true
-    },
-    {
-      "idx": 38,
-      "version": "6",
-      "when": 1790668800003,
-      "tag": "0039_add_document_customization",
-      "breakpoints": true
-    },
-    {
-      "idx": 39,
-      "version": "6",
-      "when": 1790668800004,
-      "tag": "0040_add_sender_company_id",
-      "breakpoints": true
-    },
-    {
-      "idx": 40,
-      "version": "6",
-      "when": 1790668800005,
-      "tag": "0041_marketplace_moderation_flags",
-      "breakpoints": true
-    },
-    {
-      "idx": 41,
-      "version": "6",
-      "when": 1790668800006,
-      "tag": "0042_platform_admin",
-      "breakpoints": true
-    },
-    {
-      "idx": 42,
-      "version": "6",
-      "when": 1790668800007,
-      "tag": "0043_platform_settings_round2",
-      "breakpoints": true
-    },
-    {
-      "idx": 43,
-      "version": "6",
-      "when": 1790668800008,
-      "tag": "0044_user_home_pins",
-      "breakpoints": true
-    },
-    {
-      "idx": 44,
-      "version": "6",
-      "when": 1790668800009,
-      "tag": "0045_quote_conversion_recurring_logs",
-      "breakpoints": true
-    },
-    {
-      "idx": 45,
-      "version": "6",
-      "when": 1790668800010,
-      "tag": "0046_referral_loop",
-      "breakpoints": true
-    },
-    {
-      "idx": 46,
-      "version": "6",
-      "when": 1790668800011,
-      "tag": "0047_marketplace_alerts",
-      "breakpoints": true
-    },
-    {
-      "idx": 47,
-      "version": "6",
-      "when": 1790668800012,
-      "tag": "0048_push_subscriptions",
-      "breakpoints": true
-    },
-    {
-      "idx": 48,
-      "version": "6",
-      "when": 1790668800100,
-      "tag": "0049_notification_preferences",
-      "breakpoints": true
-    },
-    {
-      "idx": 49,
-      "version": "6",
-      "when": 1790900000000,
-      "tag": "0050_bump_portal_nudge",
-      "breakpoints": true
-    },
-    {
-      "idx": 50,
-      "version": "6",
-      "when": 1791000000000,
-      "tag": "0051_review_checklist",
-      "breakpoints": true
-    },
-    {
-      "idx": 51,
-      "version": "6",
-      "when": 1791100000000,
-      "tag": "0052_play_billing",
-      "breakpoints": true
-    },
-    {
-      "idx": 52,
-      "version": "6",
-      "when": 1791200000000,
-      "tag": "0053_phase2_workspace",
-      "breakpoints": true
-    },
-    {
-      "idx": 53,
-      "version": "6",
-      "when": 1791300000000,
-      "tag": "0054_phase3_dispatch",
-      "breakpoints": true
-    },
-    {
-      "idx": 54,
-      "version": "6",
-      "when": 1791400000000,
-      "tag": "0055_add_appearance_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 55,
-      "version": "6",
-      "when": 1791400000001,
-      "tag": "0056_add_analytics_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 56,
-      "version": "6",
-      "when": 1791400000002,
-      "tag": "0057_platform_support_inbox",
-      "breakpoints": true
-    },
-    {
-      "idx": 57,
-      "version": "6",
-      "when": 1791400000003,
-      "tag": "0058_marketplace_conversations",
-      "breakpoints": true
-    },
-    {
-      "idx": 58,
-      "version": "6",
-      "when": 1791400000004,
-      "tag": "0059_sample_job_flag",
-      "breakpoints": true
-    },
-    {
-      "idx": 59,
-      "version": "6",
-      "when": 1791400000005,
-      "tag": "0060_document_link_short_code",
-      "breakpoints": true
-    },
-    {
-      "idx": 60,
-      "version": "7",
-      "when": 1791400000006,
-      "tag": "0061_app_user_exit_feedback",
-      "breakpoints": true
-    },
-    {
-      "idx": 61,
-      "version": "7",
-      "when": 1791400000007,
-      "tag": "0062_document_attachments",
-      "breakpoints": true
-    },
-    {
-      "idx": 62,
-      "version": "7",
-      "when": 1791400000008,
-      "tag": "0063_rate_limit_events_backfill",
-      "breakpoints": true
-    },
-    {
-      "idx": 63,
-      "version": "7",
-      "when": 1791400000009,
-      "tag": "0064_deposit_request",
-      "breakpoints": true
-    },
-    {
-      "idx": 64,
-      "version": "7",
-      "when": 1791400000010,
-      "tag": "0065_marketplace_unlocks",
-      "breakpoints": true
-    },
-    {
-      "idx": 65,
-      "version": "7",
-      "when": 1791400000011,
-      "tag": "0066_marketplace_intent_unified",
-      "breakpoints": true
-    },
-    {
-      "idx": 66,
-      "version": "7",
-      "when": 1791400000012,
-      "tag": "0067_marketplace_zip_code",
-      "breakpoints": true
-    },
-    {
-      "idx": 67,
-      "version": "7",
-      "when": 1791400000013,
-      "tag": "0068_google_sign_in",
-      "breakpoints": true
-    }
-  ]
+ "version": "7",
+ "dialect": "sqlite",
+ "entries": [
+  {
+   "idx": 0,
+   "version": "6",
+   "when": 1790373244265,
+   "tag": "0001_initial",
+   "breakpoints": true
+  },
+  {
+   "idx": 1,
+   "version": "6",
+   "when": 1790373244265,
+   "tag": "0002_create_jobs_photos_settings",
+   "breakpoints": true
+  },
+  {
+   "idx": 2,
+   "version": "6",
+   "when": 1790374116033,
+   "tag": "0003_add_sharing_invoicing_fields",
+   "breakpoints": true
+  },
+  {
+   "idx": 3,
+   "version": "6",
+   "when": 1790374300189,
+   "tag": "0004_add_social_offer_setting",
+   "breakpoints": true
+  },
+  {
+   "idx": 4,
+   "version": "6",
+   "when": 1790375264337,
+   "tag": "0005_add_field_tools_quotes_signatures",
+   "breakpoints": true
+  },
+  {
+   "idx": 5,
+   "version": "6",
+   "when": 1790376172643,
+   "tag": "0006_add_clients_drafts_quote_themes",
+   "breakpoints": true
+  },
+  {
+   "idx": 6,
+   "version": "6",
+   "when": 1790376609260,
+   "tag": "0007_add_company_email_and_address_settings",
+   "breakpoints": true
+  },
+  {
+   "idx": 7,
+   "version": "6",
+   "when": 1790378021737,
+   "tag": "0008_add_invoices_and_document_options",
+   "breakpoints": true
+  },
+  {
+   "idx": 8,
+   "version": "6",
+   "when": 1790380975513,
+   "tag": "0009_add_field_operations_payments_recurring_referrals",
+   "breakpoints": true
+  },
+  {
+   "idx": 9,
+   "version": "6",
+   "when": 1790383260184,
+   "tag": "0010_add_operations_dashboard_pipeline",
+   "breakpoints": true
+  },
+  {
+   "idx": 10,
+   "version": "6",
+   "when": 1790385854130,
+   "tag": "0011_add_automation_center",
+   "breakpoints": true
+  },
+  {
+   "idx": 11,
+   "version": "6",
+   "when": 1790386584134,
+   "tag": "0012_add_support_reports",
+   "breakpoints": true
+  },
+  {
+   "idx": 12,
+   "version": "6",
+   "when": 1790388148673,
+   "tag": "0013_add_growth_toolkit_features",
+   "breakpoints": true
+  },
+  {
+   "idx": 13,
+   "version": "6",
+   "when": 1790388307958,
+   "tag": "0014_seed_quote_starter_templates",
+   "breakpoints": true
+  },
+  {
+   "idx": 14,
+   "version": "6",
+   "when": 1790388484329,
+   "tag": "0015_normalize_starter_template_amounts",
+   "breakpoints": true
+  },
+  {
+   "idx": 15,
+   "version": "6",
+   "when": 1790389461447,
+   "tag": "0016_add_operations_expansion_suite",
+   "breakpoints": true
+  },
+  {
+   "idx": 16,
+   "version": "6",
+   "when": 1790390091752,
+   "tag": "0017_add_admin_console",
+   "breakpoints": true
+  },
+  {
+   "idx": 17,
+   "version": "6",
+   "when": 1790393225505,
+   "tag": "0018_fix_qa_money_maintenance_scans",
+   "breakpoints": true
+  },
+  {
+   "idx": 18,
+   "version": "6",
+   "when": 1790393225505,
+   "tag": "0019_add_launch_workflows",
+   "breakpoints": true
+  },
+  {
+   "idx": 19,
+   "version": "6",
+   "when": 1790393225505,
+   "tag": "0020_add_toolbox_materials",
+   "breakpoints": true
+  },
+  {
+   "idx": 20,
+   "version": "6",
+   "when": 1790396909875,
+   "tag": "0021_add_field_intelligence_suite",
+   "breakpoints": true
+  },
+  {
+   "idx": 21,
+   "version": "6",
+   "when": 1790428666626,
+   "tag": "0022_add_document_design_visibility",
+   "breakpoints": true
+  },
+  {
+   "idx": 22,
+   "version": "6",
+   "when": 1790429857015,
+   "tag": "0023_add_financial_document_signatures",
+   "breakpoints": true
+  },
+  {
+   "idx": 23,
+   "version": "6",
+   "when": 1790437294786,
+   "tag": "0024_add_more_options_settings",
+   "breakpoints": true
+  },
+  {
+   "idx": 24,
+   "version": "6",
+   "when": 1790437896613,
+   "tag": "0025_add_simple_mode",
+   "breakpoints": true
+  },
+  {
+   "idx": 25,
+   "version": "6",
+   "when": 1790441815130,
+   "tag": "0026_add_marketplace_preview",
+   "breakpoints": true
+  },
+  {
+   "idx": 26,
+   "version": "6",
+   "when": 1790442545312,
+   "tag": "0027_marketplace_messaging_and_bookings",
+   "breakpoints": true
+  },
+  {
+   "idx": 27,
+   "version": "6",
+   "when": 1790444043278,
+   "tag": "0028_add_marketplace_company_profile",
+   "breakpoints": true
+  },
+  {
+   "idx": 28,
+   "version": "6",
+   "when": 1790444349075,
+   "tag": "0029_add_marketplace_promotion_flag",
+   "breakpoints": true
+  },
+  {
+   "idx": 29,
+   "version": "6",
+   "when": 1790445851392,
+   "tag": "0030_marketplace_message_inbox",
+   "breakpoints": true
+  },
+  {
+   "idx": 30,
+   "version": "6",
+   "when": 1790449000000,
+   "tag": "0031_document_links",
+   "breakpoints": true
+  },
+  {
+   "idx": 31,
+   "version": "6",
+   "when": 1790450982701,
+   "tag": "0032_add_secure_account_authentication",
+   "breakpoints": true
+  },
+  {
+   "idx": 32,
+   "version": "6",
+   "when": 1790455785307,
+   "tag": "0033_add_workspaces_and_subscriptions",
+   "breakpoints": true
+  },
+  {
+   "idx": 33,
+   "version": "6",
+   "when": 1790558400000,
+   "tag": "0034_automated_backups",
+   "breakpoints": true
+  },
+  {
+   "idx": 34,
+   "version": "6",
+   "when": 1790668800000,
+   "tag": "0035_secure_persistent_login",
+   "breakpoints": true
+  },
+  {
+   "idx": 35,
+   "version": "6",
+   "when": 1790668800000,
+   "tag": "0036_portal_link_hardening",
+   "breakpoints": true
+  },
+  {
+   "idx": 36,
+   "version": "6",
+   "when": 1790668800001,
+   "tag": "0037_add_client_tags",
+   "breakpoints": true
+  },
+  {
+   "idx": 37,
+   "version": "6",
+   "when": 1790668800002,
+   "tag": "0038_add_invoice_numbers",
+   "breakpoints": true
+  },
+  {
+   "idx": 38,
+   "version": "6",
+   "when": 1790668800003,
+   "tag": "0039_add_document_customization",
+   "breakpoints": true
+  },
+  {
+   "idx": 39,
+   "version": "6",
+   "when": 1790668800004,
+   "tag": "0040_add_sender_company_id",
+   "breakpoints": true
+  },
+  {
+   "idx": 40,
+   "version": "6",
+   "when": 1790668800005,
+   "tag": "0041_marketplace_moderation_flags",
+   "breakpoints": true
+  },
+  {
+   "idx": 41,
+   "version": "6",
+   "when": 1790668800006,
+   "tag": "0042_platform_admin",
+   "breakpoints": true
+  },
+  {
+   "idx": 42,
+   "version": "6",
+   "when": 1790668800007,
+   "tag": "0043_platform_settings_round2",
+   "breakpoints": true
+  },
+  {
+   "idx": 43,
+   "version": "6",
+   "when": 1790668800008,
+   "tag": "0044_user_home_pins",
+   "breakpoints": true
+  },
+  {
+   "idx": 44,
+   "version": "6",
+   "when": 1790668800009,
+   "tag": "0045_quote_conversion_recurring_logs",
+   "breakpoints": true
+  },
+  {
+   "idx": 45,
+   "version": "6",
+   "when": 1790668800010,
+   "tag": "0046_referral_loop",
+   "breakpoints": true
+  },
+  {
+   "idx": 46,
+   "version": "6",
+   "when": 1790668800011,
+   "tag": "0047_marketplace_alerts",
+   "breakpoints": true
+  },
+  {
+   "idx": 47,
+   "version": "6",
+   "when": 1790668800012,
+   "tag": "0048_push_subscriptions",
+   "breakpoints": true
+  },
+  {
+   "idx": 48,
+   "version": "6",
+   "when": 1790668800100,
+   "tag": "0049_notification_preferences",
+   "breakpoints": true
+  },
+  {
+   "idx": 49,
+   "version": "6",
+   "when": 1790900000000,
+   "tag": "0050_bump_portal_nudge",
+   "breakpoints": true
+  },
+  {
+   "idx": 50,
+   "version": "6",
+   "when": 1791000000000,
+   "tag": "0051_review_checklist",
+   "breakpoints": true
+  },
+  {
+   "idx": 51,
+   "version": "6",
+   "when": 1791100000000,
+   "tag": "0052_play_billing",
+   "breakpoints": true
+  },
+  {
+   "idx": 52,
+   "version": "6",
+   "when": 1791200000000,
+   "tag": "0053_phase2_workspace",
+   "breakpoints": true
+  },
+  {
+   "idx": 53,
+   "version": "6",
+   "when": 1791300000000,
+   "tag": "0054_phase3_dispatch",
+   "breakpoints": true
+  },
+  {
+   "idx": 54,
+   "version": "6",
+   "when": 1791400000000,
+   "tag": "0055_add_appearance_settings",
+   "breakpoints": true
+  },
+  {
+   "idx": 55,
+   "version": "6",
+   "when": 1791400000001,
+   "tag": "0056_add_analytics_tables",
+   "breakpoints": true
+  },
+  {
+   "idx": 56,
+   "version": "6",
+   "when": 1791400000002,
+   "tag": "0057_platform_support_inbox",
+   "breakpoints": true
+  },
+  {
+   "idx": 57,
+   "version": "6",
+   "when": 1791400000003,
+   "tag": "0058_marketplace_conversations",
+   "breakpoints": true
+  },
+  {
+   "idx": 58,
+   "version": "6",
+   "when": 1791400000004,
+   "tag": "0059_sample_job_flag",
+   "breakpoints": true
+  },
+  {
+   "idx": 59,
+   "version": "6",
+   "when": 1791400000005,
+   "tag": "0060_document_link_short_code",
+   "breakpoints": true
+  },
+  {
+   "idx": 60,
+   "version": "7",
+   "when": 1791400000006,
+   "tag": "0061_app_user_exit_feedback",
+   "breakpoints": true
+  },
+  {
+   "idx": 61,
+   "version": "7",
+   "when": 1791400000007,
+   "tag": "0062_document_attachments",
+   "breakpoints": true
+  },
+  {
+   "idx": 62,
+   "version": "7",
+   "when": 1791400000008,
+   "tag": "0063_rate_limit_events_backfill",
+   "breakpoints": true
+  },
+  {
+   "idx": 63,
+   "version": "7",
+   "when": 1791400000009,
+   "tag": "0064_deposit_request",
+   "breakpoints": true
+  },
+  {
+   "idx": 64,
+   "version": "7",
+   "when": 1791400000010,
+   "tag": "0065_marketplace_unlocks",
+   "breakpoints": true
+  },
+  {
+   "idx": 65,
+   "version": "7",
+   "when": 1791400000011,
+   "tag": "0066_marketplace_intent_unified",
+   "breakpoints": true
+  },
+  {
+   "idx": 66,
+   "version": "7",
+   "when": 1791400000012,
+   "tag": "0067_marketplace_zip_code",
+   "breakpoints": true
+  },
+  {
+   "idx": 67,
+   "version": "7",
+   "when": 1791400000013,
+   "tag": "0068_google_sign_in",
+   "breakpoints": true
+  },
+  {
+   "idx": 68,
+   "version": "7",
+   "when": 1791400000014,
+   "tag": "0069_platform_admin_suite",
+   "breakpoints": true
+  }
+ ]
 }

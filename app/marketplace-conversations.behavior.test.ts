@@ -51,7 +51,7 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0068_google_sign_in", last.tag === "0068_google_sign_in", last.tag);
+check("newest migration tag is 0069_platform_admin_suite", last.tag === "0069_platform_admin_suite", last.tag);
 check("0059 when is strictly newer than 0058 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Migration heuristic on a pre-0058 database ------------------------------
