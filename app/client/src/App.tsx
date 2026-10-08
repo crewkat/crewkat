@@ -16301,12 +16301,12 @@ function TodayScreen({
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen(upcomingJobs[0] ? { name: "detail", jobId: upcomingJobs[0].id } : { name: "jobs" }); }}>
               <span className="glance-icon tone-blue" aria-hidden="true"><Icon><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" /></Icon></span>
               <strong><CountUp value={upcomingJobs.length} format={(n) => String(Math.round(n))} /></strong>
-              <small>{lang === "es" ? "Trabajos hoy y mañana" : "Jobs today & tomorrow"}</small>
+              <small>{lang === "es" ? "Hoy y mañana" : "Today & tomorrow"}</small>
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
               <span className="glance-icon tone-purple" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
               <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
-              <small>{lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval"}</small>
+              <small>{lang === "es" ? "Estimados pendientes" : "Estimates pending"}</small>
             </button>
           </section>
         );
@@ -16376,7 +16376,7 @@ function TodayScreen({
           setScreen={setScreen}
           rows={[
             paymentEscalations.length > 0 && { icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, label: lang === "es" ? "Facturas vencidas" : "Overdue invoices", count: paymentEscalations.length, target: { name: "invoices" } as Screen },
-            quoteChase.length > 0 && { icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, label: lang === "es" ? "Estimados por aprobar" : "Estimates awaiting approval", count: quoteChase.length, target: { name: "quotes" } as Screen },
+            quoteChase.length > 0 && { icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, label: lang === "es" ? "Estimados pendientes" : "Estimates pending", count: quoteChase.length, target: { name: "quotes" } as Screen },
             d.appointments.length > 0 && { icon: <circle cx="12" cy="12" r="9" />, label: lang === "es" ? "Citas" : "Appointments", count: d.appointments.length, target: { name: "crewDay" } as Screen },
             d.materials.length > 0 && { icon: <path d="M5 4h14v16H5zM8 8h8M8 12h8" />, label: lang === "es" ? "Materiales por ordenar" : "Materials to order", count: d.materials.length, target: { name: "jobs" } as Screen },
             d.quoteExpiry.length > 0 && { icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, label: lang === "es" ? "Estimados por vencer" : "Estimates expiring soon", count: d.quoteExpiry.length, target: { name: "quotes" } as Screen },

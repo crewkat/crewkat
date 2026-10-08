@@ -4080,12 +4080,17 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* Home restyle follow-up (2026-10-07): pin header actions top-right; shorter
    cards + smaller type on the 6 tiles so more content fits on screen. */
 .home-header-actions { margin-left: auto; }
-.glance-card { min-height: 74px; padding: 8px 6px; gap: 2px; }
+/* Fix: stale `.home-header > div:first-child { display: grid }` beats
+   `.home-header-top` flex on specificity — force the row back to flex. */
+.home-header > .home-header-top:first-child { display: flex; }
+/* Equal-height tile rows (single-line labels now fit). */
+.glance-card, .b06-money .b06-money-card { min-height: 88px; }
+.glance-card { padding: 8px 6px; gap: 2px; }
 .glance-card strong { font-size: 20px; }
 .glance-card small { font-size: 10.5px; }
 .glance-icon { width: 24px; height: 24px; }
 .glance-icon svg { width: 20px; height: 20px; }
-.b06-money .b06-money-card { min-height: 74px; padding: 8px 6px; gap: 2px; }
+.b06-money .b06-money-card { min-height: 88px; padding: 8px 6px; gap: 2px; }
 .b06-money-label { font-size: 10.5px; }
 .b06-money-card strong { font: 800 15px/1.15 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
 .b06-money-sub { font-size: 10px; }
@@ -4106,7 +4111,7 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .quote-chase .automation-actions { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
 .quote-chase .automation-actions.no-phone { grid-template-columns: repeat(2, 1fr); }
 .quote-chase .automation-actions a,
-.quote-chase .automation-actions button { min-height: 44px; font-size: 13.5px; border-radius: 10px; }
+.quote-chase .automation-actions button { min-height: 44px; font-size: 13.5px; border-radius: 10px; white-space: nowrap; }
 /* App-wide: icon buttons + press colors on all automation actions. */
 .automation-actions a,
 .automation-actions button { gap: 6px; }
