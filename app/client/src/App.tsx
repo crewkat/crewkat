@@ -11163,7 +11163,7 @@ function QuoteBuilder({
   };
   return (
     <div
-      className={`sheet-backdrop floating-doc-backdrop${docDismiss.closing ? " closing" : ""}`}
+      className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`}
       role="presentation"
       onClick={(e) => { if (e.target === e.currentTarget) submitForm(); }}
     >
@@ -12818,7 +12818,7 @@ function InvoiceBuilder({
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
-  return <div className={`sheet-backdrop floating-doc-backdrop${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) submitForm(); }}>
+  return <div className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) submitForm(); }}>
     <section className="floating-doc-sheet invoice-builder-page" role="dialog" aria-modal="true" aria-label={t.newInvoice}>
     <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
       <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={submitForm} onPreview={() => setPreviewOpen(true)} saveLabel={t.saveInvoice} saving={save.isPending} />

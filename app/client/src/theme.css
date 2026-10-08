@@ -3890,6 +3890,11 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* The Preview & Customize overlay opens from inside the floating sheet —
    lift it above the floating backdrop. */
 .floating-doc-sheet .document-overlay { z-index: 200; }
+/* Full-screen document builders (New estimate / New invoice): no card inset,
+ * no dimmed margins — the builder is the whole window. */
+.floating-doc-backdrop.doc-fullscreen { padding: 0; background: var(--bg); }
+.floating-doc-backdrop.doc-fullscreen .floating-doc-sheet { width: 100%; max-width: none; height: 100dvh; max-height: none; border-radius: 0; box-shadow: none; }
+.floating-doc-backdrop.doc-fullscreen .floating-doc-header { border-radius: 0; }
 
 /* ---- Floating form header: X | title | Preview + Save ---- */
 .floating-doc-form { display: grid; padding: 0; }
