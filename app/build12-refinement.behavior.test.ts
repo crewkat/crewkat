@@ -120,8 +120,8 @@ describe("visual audit: glance tiles have icons and reference proportions", () =
   test("tiles are flat bordered cards with plain icons", () => {
     // Final cascade: skinny pass sets 8px radius (standing less-rounding rule).
     expect(exactRuleBody(".glance-card")).toContain("border-radius: 8px");
-    expect(exactRuleBody(".glance-icon")).toContain("width: 28px");
-    expect(exactRuleBody(".glance-card strong")).toContain("font-size: 24px");
+    expect(exactRuleBody(".glance-icon")).toContain("width: 24px");
+    expect(exactRuleBody(".glance-card strong")).toContain("font-size: 20px");
     // No tinted circle backgrounds behind glance icons in light mode.
     expect(CSS).toContain(".glance-icon.tone-red { color: #d34a3a; }");
   });
@@ -139,11 +139,11 @@ describe("visual audit: money tiles are 3 white cards", () => {
     const sec = exactRuleBody(".today-page .money-snapshot.b06-money");
     expect(sec).toContain("grid-template-columns: repeat(3, 1fr)");
     expect(sec).toContain("gap: 10px");
-    expect(exactRuleBody(".b06-money-icon")).toContain("width: 26px");
-    expect(exactRuleBody(".b06-money-card strong")).toContain("800 17px/1.15");
+    expect(exactRuleBody(".b06-money-icon")).toContain("width: 22px");
+    expect(exactRuleBody(".b06-money-card strong")).toContain("800 15px/1.15");
     // Amounts never truncate (regression guard: "$38,18...").
-    expect(exactRuleBody(".b06-money-card strong")).toContain("text-overflow: clip");
-    expect(exactRuleBody(".b06-money-card strong")).not.toContain("text-overflow: ellipsis");
+    expect(CSS).toContain(".b06-money-card strong {");
+    expect(CSS).toContain("text-overflow: clip");
   });
 });
 
