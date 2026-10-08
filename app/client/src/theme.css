@@ -4087,7 +4087,7 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .glance-card, .b06-money .b06-money-card { min-height: 88px; }
 .glance-card { padding: 8px 6px; gap: 2px; }
 .glance-card strong { font-size: 20px; }
-.glance-card small { font-size: 10.5px; }
+.glance-card small { font-size: 10px; white-space: nowrap; }
 .glance-icon { width: 24px; height: 24px; }
 .glance-icon svg { width: 20px; height: 20px; }
 .b06-money .b06-money-card { min-height: 88px; padding: 8px 6px; gap: 2px; }
