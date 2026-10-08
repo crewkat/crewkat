@@ -171,6 +171,16 @@ check("client: calls api.getGoogleClientId", clientSrc.includes("api.getGoogleCl
 check("client: button hidden without client ID", clientSrc.includes("googleCfg.data?.clientId &&"));
 check("client: G logo inline", clientSrc.includes("GoogleGLogo"));
 
+// Regression: the login screen has no session, so both actions must be
+// public in the protected Actions export (no _sessionToken required).
+// 2026-10-07: they were missing from PUBLIC_ACTIONS and the button could
+// never appear for logged-out users.
+import { Actions } from "./server/src/actions.ts";
+const pubCfg = (Actions as any).getGoogleClientId.request.safeParse({});
+check("prod: getGoogleClientId is public (no session required)", pubCfg.success, JSON.stringify(pubCfg.success ? null : pubCfg.error.issues));
+const pubSignIn = (Actions as any).googleSignIn.request.safeParse({ idToken: "x" });
+check("prod: googleSignIn is public (no session required)", pubSignIn.success, JSON.stringify(pubSignIn.success ? null : pubSignIn.error.issues));
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);

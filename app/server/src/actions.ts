@@ -4977,6 +4977,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
 
 const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
+  // Google Sign-In must be public: getGoogleClientId drives the login-screen
+  // button (no session exists yet), and googleSignIn IS the login.
+  "getGoogleClientId", "googleSignIn",
   "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
   "getFeatureFlags",
 ]);
