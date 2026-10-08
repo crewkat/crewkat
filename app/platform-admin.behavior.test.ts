@@ -202,6 +202,43 @@ const futureFiltered = await actions.adminAuditLog.handler(ctxFor(admin), { page
 check("audit date filter works", futureFiltered.entries.length === 0, String(futureFiltered.entries.length));
 await throwsAsync("non-admin blocked from adminAuditLog", () => actions.adminAuditLog.handler(ctxFor(user1), { page: 1, pageSize: 25, action: "", actorId: null, since: "", until: "" }));
 
+// --- 11. Self-service account deletion -----------------------------------------
+import { createHash } from "node:crypto";
+const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+const mkSession = (userId: number, token: string) =>
+  db.insert(schema.authSessions).values({
+    userId, tokenHash: sha256hex(token), tokenType: "legacy",
+    expiresAt: new Date(Date.now() + 86400000), lastSeenAt: new Date(),
+  });
+await mkUser("Delete Me", "deleteme@test.com", false);
+await db.update(schema.authUsers).set({ emailVerifiedAt: new Date(), companyId: 999 }).where(eq(schema.authUsers.email, "deleteme@test.com"));
+const delUser = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, "deleteme@test.com")).limit(1))[0];
+const delToken = `del-session-${"x".repeat(48)}`;
+await mkSession(delUser.id, delToken);
+await db.insert(schema.clients).values({ companyId: 999, name: "Doomed Client" });
+await db.insert(schema.jobs).values({ companyId: 999, clientName: "Doomed Client", jobAddress: "1 Test St", jobType: "Remodel", jobDate: "2026-10-07" });
+
+await throwsAsync("deletion blocked on email mismatch", () =>
+  actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, confirmEmail: "wrong@test.com" }));
+const adminToken = `admin-session-${"x".repeat(48)}`;
+await db.update(schema.authUsers).set({ emailVerifiedAt: new Date() }).where(eq(schema.authUsers.id, admin.id));
+await mkSession(admin.id, adminToken);
+await throwsAsync("platform admin cannot self-delete", () =>
+  actions.deleteMyAccount.handler(ctxFor(admin), { _sessionToken: adminToken, confirmEmail: "admin@test.com" }));
+
+const delResult = await actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, confirmEmail: "deleteme@test.com" });
+check("sole-user deletion succeeds", delResult.ok === true && delResult.tablesCleared > 0, JSON.stringify(delResult));
+const goneUser = await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, "deleteme@test.com")).limit(1);
+check("user row deleted", goneUser.length === 0);
+const goneSessions = await db.select().from(schema.authSessions).where(eq(schema.authSessions.userId, delUser.id)).limit(1);
+check("sessions deleted", goneSessions.length === 0);
+const goneClients = await db.select().from(schema.clients).where(eq(schema.clients.companyId, 999)).limit(1);
+check("sole user's company data cleared", goneClients.length === 0);
+const keptCompany = await db.select().from(schema.settings).where(eq(schema.settings.companyId, 1)).limit(1);
+check("other companies untouched", keptCompany.length === 1 && keptCompany[0].companyName === "Test Co");
+const auditDel = await db.select().from(schema.adminAuditLog).where(eq(schema.adminAuditLog.action, "account.deleted")).limit(1);
+check("deletion audit-logged", auditDel.length === 1 && (auditDel[0].targetId ?? "").includes("deleteme@test.com"), JSON.stringify(auditDel[0]?.details ?? ""));
+
 // --- done ------------------------------------------------------------------------------
 if (failures > 0) {
   console.error(`\n${failures} check(s) FAILED`);

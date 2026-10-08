@@ -1,5 +1,5 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, isTable, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { execFile } from "node:child_process";
 import { randomInt } from "node:crypto";
@@ -1927,6 +1927,75 @@ export const BaseActions = {
       const user = await requireSession(ctx, args._sessionToken);
       const db = ctx.db<typeof schema>();
       return checkSendCap(db, user.id, "sms");
+    },
+  }),
+  /** Self-service account deletion (Play Store data-deletion requirement).
+   *  2-step client confirmation (typed email). Cancels an active Stripe
+   *  subscription immediately, then deletes the account: if the user is the
+   *  only login on their company, all company-scoped data goes too;
+   *  otherwise only their personal rows are removed. Platform admins can't
+   *  self-delete through this path. */
+  deleteMyAccount: defineAction({
+    request: authEnvelopeSchema.extend({ confirmEmail: z.string().trim().min(3).max(320) }),
+    response: z.object({ ok: z.literal(true), tablesCleared: z.number() }),
+    async handler(ctx, args): Promise<{ ok: true; tablesCleared: number }> {
+      const db = ctx.db<typeof schema>();
+      const user = await requireSession(ctx, args._sessionToken);
+      if (user.isPlatformAdmin) throw new Error("Platform admin accounts can't be deleted from the app.");
+      if (args.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+        throw new Error("The confirmation email doesn't match your account email.");
+      }
+      // 1. Stop billing immediately: cancel an active Stripe subscription.
+      if (user.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
+        const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+        if (secretKey) {
+          try {
+            await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(user.stripeSubscriptionId)}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${secretKey}` },
+              redirect: "error",
+              signal: AbortSignal.timeout(15_000),
+            });
+          } catch {
+            // Best effort: continue with deletion even if Stripe is unreachable.
+          }
+        }
+      }
+      // 2. Wipe data: every company-scoped table via the schema column map
+      // (future-proof), plus personal userId rows. Sole login -> whole
+      // company goes; shared company -> only this user's rows.
+      const companyId = user.companyId;
+      const others = await db.select({ id: schema.authUsers.id }).from(schema.authUsers)
+        .where(and(eq(schema.authUsers.companyId, companyId), ne(schema.authUsers.id, user.id))).limit(1);
+      const soleUser = others.length === 0;
+      let tablesCleared = 0;
+      for (const table of Object.values(schema)) {
+        if (!isTable(table) || table === schema.authUsers || table === schema.adminAuditLog) continue;
+        const cols = getTableColumns(table) as Record<string, unknown>;
+        try {
+          if (soleUser && "companyId" in cols) {
+            await db.delete(table).where(eq(cols.companyId as never, companyId));
+            tablesCleared++;
+          } else if ("userId" in cols) {
+            await db.delete(table).where(eq(cols.userId as never, user.id));
+            tablesCleared++;
+          }
+        } catch (e) {
+          // Schema drift: schema.ts still defines tables/columns dropped by
+          // old migrations. Drizzle wraps the sqlite error, so check the
+          // cause chain. Skip drift; rethrow real errors.
+          const msg = e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : "";
+          if (/no such (table|column)/.test(msg)) continue;
+          throw e;
+        }
+      }
+      // 3. Sessions + the login itself.
+      await db.delete(schema.authSessions).where(eq(schema.authSessions.userId, user.id));
+      await db.delete(schema.authUsers).where(eq(schema.authUsers.id, user.id));
+      await logAdminAction(db, 0, "account.deleted", "user", user.email,
+        soleUser ? `self-service deletion; company ${companyId} data cleared (${tablesCleared} tables)` : "self-service deletion; personal rows removed, company kept for remaining users");
+      ctx.invalidateQueries();
+      return { ok: true as const, tablesCleared };
     },
   }),
   getAuthBootstrap: defineAction({

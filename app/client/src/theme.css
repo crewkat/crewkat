@@ -4160,6 +4160,15 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .sms-blocked-banner > button { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
 .sms-blocked-banner > button svg { width: 16px; height: 16px; }
 :root[data-theme="dark"] .sms-blocked-banner { background: rgba(211,74,58,.18); color: #ff8a80; }
+/* Account deletion danger zone (Settings > Account). */
+.danger-zone { margin-top: 12px; }
+.delete-account-confirm { display: grid; gap: 10px; padding: 12px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }
+.delete-account-confirm p { margin: 0; font-size: 13.5px; line-height: 1.45; }
+.delete-account-confirm label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
+.delete-account-confirm input { min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; }
+.delete-account-confirm .row-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.delete-account-confirm .danger-button { width: auto; }
+.delete-account-confirm .danger-button:disabled { opacity: .45; cursor: not-allowed; }
 .home-summary-card > strong { font-size: 44px; }
 .glance-card { min-height: 88px; padding: 10px 8px; gap: 4px; }
 .glance-card strong { font-size: 24px; }

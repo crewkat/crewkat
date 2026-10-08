@@ -7897,6 +7897,58 @@ function AccountNameEditor({ lang }: { lang: Lang }) {
   );
 }
 
+/** Self-service account deletion (Play Store data-deletion requirement).
+ *  2-step: danger button -> typed-email confirmation. Cancels Stripe
+ *  immediately and wipes the account; the session is dead afterwards, so we
+ *  sign out locally no matter what. */
+function DeleteAccountSection({ lang }: { lang: Lang }) {
+  const auth = useContext(AuthContext);
+  const [confirming, setConfirming] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [error, setError] = useState("");
+  const del = useMutation({
+    mutationFn: () => api.deleteMyAccount({ _sessionToken: "active", confirmEmail: emailInput.trim() }),
+    onSuccess: () => { void auth?.signOut(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  if (!auth || auth.user.isPlatformAdmin) return null;
+  const email = auth.user.email;
+  const matches = emailInput.trim().toLowerCase() === email.toLowerCase();
+  return (
+    <div className="danger-zone">
+      {!confirming ? (
+        <button type="button" className="danger-button" onClick={() => { setConfirming(true); setError(""); setEmailInput(""); }}>
+          {lang === "es" ? "Eliminar mi cuenta" : "Delete my account"}
+        </button>
+      ) : (
+        <div className="delete-account-confirm">
+          <p>{lang === "es"
+            ? "Esto cancelará tu suscripción de inmediato y borrará permanentemente tu cuenta y todos tus datos. No se puede deshacer."
+            : "This cancels your subscription immediately and permanently deletes your account and all of its data. This can't be undone."}</p>
+          <label>
+            <span>{lang === "es" ? `Escribe ${email} para confirmar` : `Type ${email} to confirm`}</span>
+            <input value={emailInput} onChange={(e) => setEmailInput(e.target.value)} placeholder={email} autoComplete="off" inputMode="email" />
+          </label>
+          {error && <p className="status error">{error}</p>}
+          <div className="row-actions">
+            <button type="button" className="secondary-button" onClick={() => { setConfirming(false); setEmailInput(""); setError(""); }}>
+              {lang === "es" ? "Cancelar" : "Cancel"}
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={del.isPending || !matches}
+              onClick={() => { setError(""); del.mutate(); }}
+            >
+              {del.isPending ? (lang === "es" ? "Eliminando…" : "Deleting…") : (lang === "es" ? "Eliminar definitivamente" : "Delete permanently")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsScreen({
   lang,
   value,
@@ -8130,6 +8182,7 @@ function SettingsScreen({
                 <AccountNameEditor lang={lang} />
                 <button type="button" className="secondary-button" onClick={() => setScreen({ name: "upgrade" })}>{lang === "es" ? "Ver plan" : "View plan"}</button>
                 <button type="button" className="secondary-button account-signout" onClick={() => void auth.signOut()}>{lang === "es" ? "Cerrar sesión" : "Sign out"}</button>
+                <DeleteAccountSection lang={lang} />
               </div>
             </SettingsAccordion>
             <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<Icon><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></Icon>}>
