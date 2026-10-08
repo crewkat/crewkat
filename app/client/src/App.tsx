@@ -16440,6 +16440,7 @@ function TodayScreen({
                     href={smsHref(i.clientPhone, paymentMessage(i))}
                     onClick={() => log("payment", i.id, String(i.stage))}
                   >
+                    <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                     {lang === "es" ? "Abrir texto" : "Open text"}
                   </a>
                 ) : (
@@ -16450,6 +16451,7 @@ function TodayScreen({
                     setScreen({ name: "invoicePreview", invoiceId: i.id })
                   }
                 >
+                  <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6" /></Icon>
                   {lang === "es" ? "Factura" : "Invoice"}
                 </button>
               </div>
@@ -16493,6 +16495,7 @@ function TodayScreen({
               <button
                 onClick={() => setScreen({ name: "jobOps", jobId: m.jobId })}
               >
+                <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>
                 {lang === "es" ? "Abrir selección" : "Open selection"}
               </button>
             </TapArticle>
@@ -16540,6 +16543,7 @@ function TodayScreen({
                         : `Hi ${a.clientName}, confirming our appointment today at ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(a.startsAt))}. — ${sig}`,
                     )}
                   >
+                    <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                     {lang === "es"
                       ? "Confirmar por texto"
                       : "Text confirmation"}
@@ -16551,6 +16555,7 @@ function TodayScreen({
                       setScreen({ name: "detail", jobId: a.jobId as number })
                     }
                   >
+                    <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>
                     {lang === "es" ? "Trabajo" : "Job"}
                   </button>
                 )}
@@ -16638,7 +16643,7 @@ function TodayScreen({
                 </div>
               )}
               <h3>
-                {q.clientName} · {usd(money(q.total))}
+                {q.clientName} · <span className="qc-amount">{usd(money(q.total))}</span>
               </h3>
               <p>
                 {q.daysWaiting}{" "}
@@ -16646,7 +16651,7 @@ function TodayScreen({
                 {lang === "es" ? "prioridad" : "priority"}{" "}
                 {Math.round(q.score).toLocaleString()}
               </p>
-              <div className="automation-actions">
+              <div className={`automation-actions${q.clientPhone ? "" : " no-phone"}`}>
                 {q.clientPhone ? (
                   <a
                     className="primary-button"
@@ -16655,12 +16660,14 @@ function TodayScreen({
                       log("quote_chase", q.id, String(q.daysWaiting))
                     }
                   >
+                    <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                     {lang === "es" ? "Abrir texto" : "Open text"}
                   </a>
                 ) : (
-                  <span className="status error">{copy[lang].noPhone}</span>
+                  <span className="qc-no-phone"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5M12 16.5h.01" /></Icon>{copy[lang].noPhone}</span>
                 )}
                 <button
+                  className="qc-won"
                   onClick={async () => {
                     await api.updateQuoteAutomationStatus({
                       id: q.id,
@@ -16671,12 +16678,15 @@ function TodayScreen({
                     refresh();
                   }}
                 >
+                  <Icon><path d="M4 12l5 5L20 6" /></Icon>
                   {lang === "es" ? "Ganada" : "Won"}
                 </button>
-                <button onClick={() => setLostQuote(q.id)}>
+                <button className="qc-lost" onClick={() => setLostQuote(q.id)}>
+                  <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>
                   {lang === "es" ? "Perdida" : "Lost"}
                 </button>
                 <button onClick={() => setScreen({ name: "quotePreview", quoteId: q.id })}>
+                  <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6" /></Icon>
                   {lang === "es" ? "Ver presupuesto" : "View estimate"}
                 </button>
               </div>
@@ -16747,6 +16757,7 @@ function TodayScreen({
                   href={smsHref(r.clientPhone, reviewMessage(r))}
                   onClick={() => log("review", r.jobId, "next_day")}
                 >
+                  <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                   {lang === "es" ? "Abrir texto" : "Open text"}
                 </a>
               ) : (
@@ -16789,6 +16800,7 @@ function TodayScreen({
                   href={smsHref(r.clientPhone, reengageMessage(r))}
                   onClick={() => log("reengagement", r.jobId, String(r.months))}
                 >
+                  <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                   {lang === "es" ? "Abrir texto" : "Open text"}
                 </a>
               ) : (

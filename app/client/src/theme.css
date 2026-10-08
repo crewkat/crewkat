@@ -4091,6 +4091,38 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .b06-money-sub { font-size: 10px; }
 .b06-money-icon { width: 22px; height: 22px; }
 .b06-money-icon svg { width: 20px; height: 20px; }
+
+/* === home restyle follow-up 3: compressed quote-chase cards, icon buttons, press colors === */
+.home-attention-card > span { position: relative; padding-bottom: 8px; }
+.home-attention-card > span::after { content: ""; position: absolute; left: 0; bottom: 0; width: 72px; height: 3px; border-radius: 2px; background: var(--accent); }
+.quote-chase .automation-group { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px; }
+.quote-chase .automation-group > header { padding: 2px 2px 8px; }
+.quote-chase .automation-group-icon { width: 34px; height: 34px; border-radius: 50%; }
+.quote-chase .automation-card { padding: 10px 12px; border-radius: 12px; box-shadow: none; }
+.quote-chase .automation-card h3 { font-size: 16px; }
+.quote-chase .automation-card p { font-size: 12.5px; }
+.quote-chase .qc-amount { color: var(--accent); }
+.quote-chase .text-first { background: none; border: 0; border-radius: 0; color: var(--accent); font-size: 12px; font-weight: 800; padding: 0; margin: 0 0 2px; letter-spacing: 0; }
+.quote-chase .automation-actions { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.quote-chase .automation-actions.no-phone { grid-template-columns: repeat(2, 1fr); }
+.quote-chase .automation-actions a,
+.quote-chase .automation-actions button { min-height: 44px; font-size: 13.5px; border-radius: 10px; }
+/* App-wide: icon buttons + press colors on all automation actions. */
+.automation-actions a,
+.automation-actions button { gap: 6px; }
+.automation-actions svg { width: 16px; height: 16px; }
+.automation-actions .qc-won svg { color: #2e9e5b; }
+.automation-actions .qc-lost svg { color: #d34a3a; }
+.automation-actions .qc-won:active { background: #2e9e5b; border-color: #2e9e5b; color: #fff; }
+.automation-actions .qc-won:active svg { color: #fff; }
+.automation-actions .qc-lost:active { background: #d34a3a; border-color: #d34a3a; color: #fff; }
+.automation-actions .qc-lost:active svg { color: #fff; }
+.automation-actions .primary-button:active { filter: brightness(.9); }
+/* App-wide: compressed automation cards on Home. */
+.today-page .automation-card { padding: 10px 12px; border-radius: 12px; box-shadow: none; }
+.quote-chase .qc-no-phone { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 0; background: #fdeceb; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
+.quote-chase .qc-no-phone svg { width: 18px; height: 18px; flex: none; }
+:root[data-theme="dark"] .quote-chase .qc-no-phone { background: rgba(211,74,58,.16); color: #ff8a80; }
 .home-summary-card > strong { font-size: 44px; }
 .glance-card { min-height: 88px; padding: 10px 8px; gap: 4px; }
 .glance-card strong { font-size: 24px; }
