@@ -13,7 +13,7 @@ import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
-import { isFeatureEnabled, platformAdminActions, recordSendAttempt } from "./platform-admin";
+import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt } from "./platform-admin";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -562,6 +562,7 @@ const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once p
 const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
+export { authEnvelopeSchema };
 const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string() });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
@@ -626,7 +627,7 @@ async function issueSession(ctx: Ctx, userId: number) {
   });
   return { proof, proofExpiresAt, setCookies: [refreshCookieHeader(cookieSecure(ctx), refreshToken)] };
 }
-async function requireSession(ctx: Ctx, token: string) {
+export async function requireSession(ctx: Ctx, token: string) {
   const db = ctx.db<typeof schema>();
   const session = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(token))).limit(1))[0];
   if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) throw new Error("Your session has expired. Sign in again.");
@@ -1916,6 +1917,18 @@ export const BaseActions = {
   // Platform admin suite (2026-10-07): broadcasts, verification, revenue,
   // flags, support view, abuse controls.
   ...platformAdminActions,
+  /** SMS cap pre-check (abuse controls): read-only check of the caller's own
+   *  daily SMS cap. The client runs this BEFORE opening the phone's SMS app,
+   *  so a capped user sees the error immediately. */
+  checkSmsCap: defineAction({
+    request: authEnvelopeSchema.extend({}),
+    response: z.object({ allowed: z.boolean(), reason: z.string().optional() }),
+    async handler(ctx, args) {
+      const user = await requireSession(ctx, args._sessionToken);
+      const db = ctx.db<typeof schema>();
+      return checkSendCap(db, user.id, "sms");
+    },
+  }),
   getAuthBootstrap: defineAction({
     request: z.object({}),
     response: z.object({ hasAccount: z.boolean(), ownerClaimAvailable: z.boolean(), recordCounts: z.object({ jobs: z.number(), clients: z.number(), invoices: z.number() }) }),

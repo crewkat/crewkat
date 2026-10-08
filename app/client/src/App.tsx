@@ -1457,6 +1457,70 @@ async function copyText(value: string) {
 function smsHref(phone: string, message: string) {
   return `sms:${phone.replace(/[^+0-9]/g, "")}?body=${encodeURIComponent(message)}`;
 }
+// SMS cap pre-check (abuse controls): verify the user's daily SMS cap BEFORE
+// opening the phone's messaging app, so a capped user sees the error
+// immediately instead of after their messaging app already opened.
+// Global notice store (same pattern as notifyLimitHit); the App root renders
+// the banner.
+let smsBlockedReason: string | null = null;
+const smsBlockedListeners = new Set<() => void>();
+function notifySmsBlocked(reason: string) {
+  smsBlockedReason = reason;
+  smsBlockedListeners.forEach((fn) => fn());
+}
+function dismissSmsBlocked() {
+  smsBlockedReason = null;
+  smsBlockedListeners.forEach((fn) => fn());
+}
+function subscribeSmsBlocked(fn: () => void) {
+  smsBlockedListeners.add(fn);
+  return () => { smsBlockedListeners.delete(fn); };
+}
+function getSmsBlocked() { return smsBlockedReason; }
+/** Guarded SMS open: checks the cap first; returns true when the SMS app was opened. Fails open on check errors. */
+async function guardedSmsOpen(href: string): Promise<boolean> {
+  try {
+    const check = await api.checkSmsCap({ _sessionToken: "active" });
+    if (!check.allowed) {
+      notifySmsBlocked(check.reason || "Daily text limit reached.");
+      buzz([30, 40, 30]);
+      return false;
+    }
+  } catch {
+    // Fail open: never block the user's texting workflow on a check error.
+  }
+  window.location.href = href;
+  return true;
+}
+/** Drop-in replacement for <a href={smsHref(...)}> — runs the cap pre-check first. */
+function SmsLink({ href, className, onOpen, children }: { href: string; className?: string; onOpen?: () => void; children: ReactNode }) {
+  return (
+    <a
+      className={className}
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        buzz(8);
+        guardedSmsOpen(href).then((ok) => { if (ok) onOpen?.(); });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+function SmsBlockedBanner({ lang }: { lang: Lang }) {
+  const reason = useSyncExternalStore(subscribeSmsBlocked, getSmsBlocked);
+  if (!reason) return null;
+  return (
+    <div className="sms-blocked-banner" role="alert">
+      <Icon><circle cx="12" cy="12" r="9" /><path d="M12 7v5M12 16.5h.01" /></Icon>
+      <span>{reason}</span>
+      <button type="button" onClick={dismissSmsBlocked} aria-label={lang === "es" ? "Descartar" : "Dismiss"}>
+        <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>
+      </button>
+    </div>
+  );
+}
 function companySignature(settings: Settings | null) {
   return [
     settings?.companyName,
@@ -3069,6 +3133,8 @@ function CrewkatApplication() {
       )}
       {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
       <CelebrationOverlay />
+      {/* SMS cap pre-check: shown when a text is blocked before the SMS app opens. */}
+      <SmsBlockedBanner lang={lang} />
       {/* Phase 1: forgiving undo toasts for optimistic status changes. */}
       <UndoToastHost lang={lang} />
       {/* Build 3: a new app version took over in the background — offer a refresh. */}
@@ -13501,12 +13567,12 @@ function FollowupsScreen({
                 </span>
               </div>
               {j.clientPhone ? (
-                <a
+                <SmsLink
                   className="small-button"
                   href={smsHref(j.clientPhone, message)}
                 >
                   {t.openSms}
-                </a>
+                </SmsLink>
               ) : (
                 <small>{t.noPhone}</small>
               )}
@@ -13530,12 +13596,12 @@ function FollowupsScreen({
                 </span>
               </div>
               {invoice.clientPhone ? (
-                <a
+                <SmsLink
                   className="small-button"
                   href={smsHref(invoice.clientPhone, message)}
                 >
                   {t.openSms}
-                </a>
+                </SmsLink>
               ) : (
                 <small>{t.noPhone}</small>
               )}
@@ -13561,12 +13627,12 @@ function FollowupsScreen({
                 <span>{t.sentDays.replace("{days}", String(days))}</span>
               </div>
               {q.clientPhone ? (
-                <a
+                <SmsLink
                   className="small-button"
                   href={smsHref(q.clientPhone, message)}
                 >
                   {t.followUp}
-                </a>
+                </SmsLink>
               ) : (
                 <small>{t.noPhone}</small>
               )}
@@ -14860,12 +14926,12 @@ function TextTemplates({
             <h2>{item.title}</h2>
             <p>{item.text}</p>
             {job.clientPhone ? (
-              <a
+              <SmsLink
                 className="primary-button"
                 href={smsHref(job.clientPhone, item.text)}
               >
                 {t.openSms}
-              </a>
+              </SmsLink>
             ) : (
               <span className="status error">{t.noPhone}</span>
             )}
@@ -14919,12 +14985,12 @@ function DepositRequest({
         {t.shareRequest}
       </button>
       {job.clientPhone && (
-        <a
+        <SmsLink
           className="secondary-button"
           href={smsHref(job.clientPhone, message)}
         >
           {t.openSms}
-        </a>
+        </SmsLink>
       )}
     </section>
   );
@@ -16748,14 +16814,14 @@ function TodayScreen({
               )}
               <div className="automation-actions">
                 {i.clientPhone ? (
-                  <a
+                  <SmsLink
                     className="primary-button"
                     href={smsHref(i.clientPhone, paymentMessage(i))}
-                    onClick={() => log("payment", i.id, String(i.stage))}
+                    onOpen={() => log("payment", i.id, String(i.stage))}
                   >
                     <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                     {lang === "es" ? "Abrir texto" : "Open text"}
-                  </a>
+                  </SmsLink>
                 ) : (
                   <span className="status error">{copy[lang].noPhone}</span>
                 )}
@@ -16848,7 +16914,7 @@ function TodayScreen({
               )}
               <div className="automation-actions">
                 {a.clientPhone && (
-                  <a
+                  <SmsLink
                     href={smsHref(
                       a.clientPhone,
                       lang === "es"
@@ -16860,7 +16926,7 @@ function TodayScreen({
                     {lang === "es"
                       ? "Confirmar por texto"
                       : "Text confirmation"}
-                  </a>
+                  </SmsLink>
                 )}
                 {a.jobId && (
                   <button
@@ -16909,14 +16975,14 @@ function TodayScreen({
               </h3>
               <div className="automation-actions">
                 {q.clientPhone && (
-                  <a
+                  <SmsLink
                     href={smsHref(q.clientPhone, expiryMessage(q))}
-                    onClick={() =>
+                    onOpen={() =>
                       log("quote_expiry", q.id, String(q.daysUntil))
                     }
                   >
                     {lang === "es" ? "Seguimiento" : "Follow up"}
-                  </a>
+                  </SmsLink>
                 )}
                 <button
                   onClick={async () => {
@@ -16966,16 +17032,16 @@ function TodayScreen({
               </p>
               <div className={`automation-actions${q.clientPhone ? "" : " no-phone"}`}>
                 {q.clientPhone ? (
-                  <a
+                  <SmsLink
                     className="primary-button"
                     href={smsHref(q.clientPhone, quoteMessage(q))}
-                    onClick={() =>
+                    onOpen={() =>
                       log("quote_chase", q.id, String(q.daysWaiting))
                     }
                   >
                     <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                     {lang === "es" ? "Abrir texto" : "Open text"}
-                  </a>
+                  </SmsLink>
                 ) : (
                   <span className="qc-no-phone"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5M12 16.5h.01" /></Icon>{copy[lang].noPhone}</span>
                 )}
@@ -17044,11 +17110,11 @@ function TodayScreen({
               onTap={
                 r.clientPhone
                   ? () => {
-                      log("review", r.jobId, "next_day");
-                      window.location.href = smsHref(
-                        r.clientPhone,
-                        reviewMessage(r),
-                      );
+                      guardedSmsOpen(
+                        smsHref(r.clientPhone, reviewMessage(r)),
+                      ).then((ok) => {
+                        if (ok) log("review", r.jobId, "next_day");
+                      });
                     }
                   : r.clientId != null
                     ? () =>
@@ -17065,14 +17131,14 @@ function TodayScreen({
               <h3>{r.clientName}</h3>
               <p>{r.jobType}</p>
               {r.clientPhone ? (
-                <a
+                <SmsLink
                   className="primary-button"
                   href={smsHref(r.clientPhone, reviewMessage(r))}
-                  onClick={() => log("review", r.jobId, "next_day")}
+                  onOpen={() => log("review", r.jobId, "next_day")}
                 >
                   <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                   {lang === "es" ? "Abrir texto" : "Open text"}
-                </a>
+                </SmsLink>
               ) : (
                 <span className="status error">{copy[lang].noPhone}</span>
               )}
@@ -17084,11 +17150,11 @@ function TodayScreen({
               onTap={
                 r.clientPhone
                   ? () => {
-                      log("reengagement", r.jobId, String(r.months));
-                      window.location.href = smsHref(
-                        r.clientPhone,
-                        reengageMessage(r),
-                      );
+                      guardedSmsOpen(
+                        smsHref(r.clientPhone, reengageMessage(r)),
+                      ).then((ok) => {
+                        if (ok) log("reengagement", r.jobId, String(r.months));
+                      });
                     }
                   : r.clientId != null
                     ? () =>
@@ -17108,14 +17174,14 @@ function TodayScreen({
                 {r.jobType}
               </p>
               {r.clientPhone ? (
-                <a
+                <SmsLink
                   className="primary-button"
                   href={smsHref(r.clientPhone, reengageMessage(r))}
-                  onClick={() => log("reengagement", r.jobId, String(r.months))}
+                  onOpen={() => log("reengagement", r.jobId, String(r.months))}
                 >
                   <Icon><path d="M4 5h16v11H8l-4 4zM8 9h8M8 12h5" /></Icon>
                   {lang === "es" ? "Abrir texto" : "Open text"}
-                </a>
+                </SmsLink>
               ) : (
                 <span className="status error">{copy[lang].noPhone}</span>
               )}
@@ -17135,13 +17201,13 @@ function TodayScreen({
           </strong>
         </div>
         {d.crew.length > 0 && (
-          <a
+          <SmsLink
             className="primary-button"
             href={smsHref("", crewText())}
-            onClick={() => log("crew", Number(today.replace(/-/g, "")), today)}
+            onOpen={() => log("crew", Number(today.replace(/-/g, "")), today)}
           >
             {lang === "es" ? "Redactar texto" : "Compose text"}
-          </a>
+          </SmsLink>
         )}
       </section>
       {expansion &&
@@ -17162,9 +17228,8 @@ function TodayScreen({
                   onTap={
                     w.clientPhone
                       ? () => {
-                          window.location.href = smsHref(
-                            w.clientPhone,
-                            warrantyMessage(w),
+                          guardedSmsOpen(
+                            smsHref(w.clientPhone, warrantyMessage(w)),
                           );
                         }
                       : w.clientId != null
@@ -17190,12 +17255,12 @@ function TodayScreen({
                     {w.jobLabel} · {formatDate(w.expiryDate, lang)}
                   </p>
                   {w.clientPhone && (
-                    <a
+                    <SmsLink
                       className="primary-button"
                       href={smsHref(w.clientPhone, warrantyMessage(w))}
                     >
                       {lang === "es" ? "Abrir texto" : "Open text"}
-                    </a>
+                    </SmsLink>
                   )}
                 </TapArticle>
               ))}
@@ -19239,12 +19304,12 @@ function OperationsScreen({
                 </div>
                 <div className="row-actions">
                   {a.clientPhone && (
-                    <a
+                    <SmsLink
                       className="small-button"
                       href={smsHref(a.clientPhone, reminder(a))}
                     >
                       {lang === "es" ? "Texto" : "Text"}
-                    </a>
+                    </SmsLink>
                   )}
                   {a.jobId && (
                     <button
@@ -21386,9 +21451,9 @@ function WarrantyManager({
                   {lang === "es" ? "Editar" : "Edit"}
                 </button>
                 {w.clientPhone && (
-                  <a href={smsHref(w.clientPhone, msg)}>
+                  <SmsLink href={smsHref(w.clientPhone, msg)}>
                     {lang === "es" ? "Texto" : "Text"}
-                  </a>
+                  </SmsLink>
                 )}
               </div>
             </article>

@@ -118,6 +118,31 @@ export async function recordSendAttempt(db: Db, userId: number, channel: "sms" |
   return { allowed: true };
 }
 
+/**
+ * Read-only cap check: does NOT bump usage. Used as a client-side pre-check
+ * before opening the phone's SMS app, so a capped user sees the error
+ * immediately instead of after their messaging app already opened.
+ */
+export async function checkSendCap(db: Db, userId: number, channel: "sms" | "push"): Promise<SendCheck> {
+  if (await isSenderBlocked(db, userId)) {
+    return { allowed: false, reason: "Sending is blocked on this account." };
+  }
+  const caps = await getSendCaps(db, userId);
+  const cap = channel === "sms" ? caps.maxSmsPerDay : caps.maxPushPerDay;
+  const now = new Date();
+  const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+  const row = (await db.select().from(schema.sendUsage).where(and(
+    eq(schema.sendUsage.userId, userId),
+    eq(schema.sendUsage.channel, channel),
+    eq(schema.sendUsage.period, "day"),
+    eq(schema.sendUsage.periodStart, dayStart),
+  )).limit(1))[0];
+  if ((row?.count ?? 0) >= cap) {
+    return { allowed: false, reason: `Daily ${channel} limit reached (${cap}/day).` };
+  }
+  return { allowed: true };
+}
+
 // ---------------------------------------------------------------------------
 // Actions.
 // ---------------------------------------------------------------------------

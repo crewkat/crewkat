@@ -21,9 +21,9 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { BaseActions, verifiedCompanyIdSet } from "./server/src/actions.ts";
-import { recordSendAttempt } from "./server/src/platform-admin.ts";
+import { checkSendCap, recordSendAttempt } from "./server/src/platform-admin.ts";
 import { privilegedHandlers } from "./server/src/privileged.ts";
 import * as schema from "./server/src/schema.ts";
 
@@ -156,6 +156,23 @@ await actions.adminAbuseDefaultsSet.handler(ctxFor(admin), { maxSmsPerDay: 60, m
 const overview2 = await actions.adminAbuseOverview.handler(ctxFor(admin), {});
 check("abuse defaults update", overview2.defaults.maxSmsPerDay === 60 && overview2.defaults.maxPushPerDay === 120, JSON.stringify(overview2.defaults));
 await throwsAsync("non-admin blocked from adminAbuseCapSet", () => actions.adminAbuseCapSet.handler(ctxFor(user1), { userId: user2.id, maxSmsPerDay: 5, maxPushPerDay: 5 }));
+
+// --- 7b. SMS cap pre-check (read-only, runs before the SMS app opens) ---------
+await actions.adminAbuseCapSet.handler(ctxFor(admin), { userId: user2.id, maxSmsPerDay: 3, maxPushPerDay: 100 });
+const pre1 = await checkSendCap(db, user2.id, "sms");
+check("pre-check allowed under cap", pre1.allowed === true, JSON.stringify(pre1));
+await recordSendAttempt(db, user2.id, "sms");
+await recordSendAttempt(db, user2.id, "sms");
+const pre2 = await checkSendCap(db, user2.id, "sms");
+check("pre-check blocked at cap", pre2.allowed === false && (pre2.reason ?? "").includes("Daily"), JSON.stringify(pre2));
+const usageBefore = (await db.select().from(schema.sendUsage).where(and(eq(schema.sendUsage.userId, user2.id), eq(schema.sendUsage.channel, "sms"), eq(schema.sendUsage.period, "day"))))[0]?.count ?? 0;
+await checkSendCap(db, user2.id, "sms");
+const usageAfter = (await db.select().from(schema.sendUsage).where(and(eq(schema.sendUsage.userId, user2.id), eq(schema.sendUsage.channel, "sms"), eq(schema.sendUsage.period, "day"))))[0]?.count ?? 0;
+check("pre-check does not bump usage", usageBefore === usageAfter && usageAfter === 3, `${usageBefore} -> ${usageAfter}`);
+await actions.adminBlockUser.handler(ctxFor(admin), { userId: user2.id, reason: "test block" });
+const pre3 = await checkSendCap(db, user2.id, "sms");
+check("pre-check blocked for blocked accounts", pre3.allowed === false && (pre3.reason ?? "").includes("blocked"), JSON.stringify(pre3));
+await actions.adminUnblockUser.handler(ctxFor(admin), { userId: user2.id });
 
 // --- 8. Support view ---------------------------------------------------------------
 await db.insert(schema.clients).values({ companyId: 1, name: "Test Client" });

@@ -4153,6 +4153,13 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .quote-chase .qc-no-phone { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 0; background: #fdeceb; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
 .quote-chase .qc-no-phone svg { width: 18px; height: 18px; flex: none; }
 :root[data-theme="dark"] .quote-chase .qc-no-phone { background: rgba(211,74,58,.16); color: #ff8a80; }
+/* SMS cap pre-check banner (abuse controls): fixed bottom-center, above the nav. */
+.sms-blocked-banner { position: fixed; left: 14px; right: 14px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 120; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #fdeceb; color: #b3261e; border: 1px solid color-mix(in srgb, #b3261e 30%, transparent); box-shadow: 0 10px 28px rgba(0,0,0,.14); font-size: 14px; font-weight: 600; }
+.sms-blocked-banner > svg { width: 20px; height: 20px; flex: none; }
+.sms-blocked-banner > span { flex: 1; }
+.sms-blocked-banner > button { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.sms-blocked-banner > button svg { width: 16px; height: 16px; }
+:root[data-theme="dark"] .sms-blocked-banner { background: rgba(211,74,58,.18); color: #ff8a80; }
 .home-summary-card > strong { font-size: 44px; }
 .glance-card { min-height: 88px; padding: 10px 8px; gap: 4px; }
 .glance-card strong { font-size: 24px; }
