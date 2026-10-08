@@ -3,7 +3,7 @@
 // Covers:
 //  1. Migration 0069 creates broadcast_log, business_verifications,
 //     feature_flags (+seed), send_caps, blocked_senders, send_usage.
-//  2. Journal: newest tag is 0069_platform_admin_suite, `when` strictly newer.
+//  2. Journal: newest tag is 0070_account_deletion_codes, `when` strictly newer.
 //  3. Feature flags: seeded values, admin list/set, non-admin blocked,
 //     public getFeatureFlags.
 //  4. Broadcasts: admin send writes history + audit log; disabled flag blocks.
@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { BaseActions, verifiedCompanyIdSet } from "./server/src/actions.ts";
 import { checkSendCap, recordSendAttempt } from "./server/src/platform-admin.ts";
 import { privilegedHandlers } from "./server/src/privileged.ts";
@@ -56,8 +56,8 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0069_platform_admin_suite", last.tag === "0069_platform_admin_suite", last.tag);
-check("0069 when is strictly newer than 0068 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
+check("newest migration tag is 0070_account_deletion_codes", last.tag === "0070_account_deletion_codes", last.tag);
+check("0070 when is strictly newer than 0069 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Fixtures ---------------------------------------------------------------
 const now = new Date();
@@ -218,15 +218,36 @@ await mkSession(delUser.id, delToken);
 await db.insert(schema.clients).values({ companyId: 999, name: "Doomed Client" });
 await db.insert(schema.jobs).values({ companyId: 999, clientName: "Doomed Client", jobAddress: "1 Test St", jobType: "Remodel", jobDate: "2026-10-07" });
 
-await throwsAsync("deletion blocked on email mismatch", () =>
-  actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, confirmEmail: "wrong@test.com" }));
 const adminToken = `admin-session-${"x".repeat(48)}`;
 await db.update(schema.authUsers).set({ emailVerifiedAt: new Date() }).where(eq(schema.authUsers.id, admin.id));
 await mkSession(admin.id, adminToken);
+await throwsAsync("platform admin cannot request deletion", () =>
+  actions.requestAccountDeletion.handler(ctxFor(admin), { _sessionToken: adminToken }));
 await throwsAsync("platform admin cannot self-delete", () =>
-  actions.deleteMyAccount.handler(ctxFor(admin), { _sessionToken: adminToken, confirmEmail: "admin@test.com" }));
+  actions.deleteMyAccount.handler(ctxFor(admin), { _sessionToken: adminToken, code: "123456" }));
 
-const delResult = await actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, confirmEmail: "deleteme@test.com" });
+const reqResult = await actions.requestAccountDeletion.handler(ctxFor(delUser), { _sessionToken: delToken });
+check("deletion code request succeeds", reqResult.ok === true, JSON.stringify(reqResult));
+await throwsAsync("deletion code rate-limited to 1/min", () =>
+  actions.requestAccountDeletion.handler(ctxFor(delUser), { _sessionToken: delToken }));
+await throwsAsync("deletion blocked on wrong code", () =>
+  actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, code: "000000" }));
+
+// Read the real code hash back out of the test DB to authorize deletion.
+const codeRow = (await db.select().from(schema.accountDeletionCodes).where(and(
+  eq(schema.accountDeletionCodes.userId, delUser.id),
+  isNull(schema.accountDeletionCodes.consumedAt),
+))).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+check("code stored hashed, not plaintext", !!codeRow && /^[0-9a-f]{64}$/.test(codeRow.codeHash), codeRow ? codeRow.codeHash.slice(0, 16) + "…" : "missing");
+// We can't reverse the hash in the test; verify the happy path by consuming
+// flow: re-issue directly with a known code.
+await db.update(schema.accountDeletionCodes).set({ consumedAt: new Date() }).where(eq(schema.accountDeletionCodes.userId, delUser.id));
+const knownCode = "654321";
+await db.insert(schema.accountDeletionCodes).values({
+  userId: delUser.id, codeHash: sha256hex(knownCode),
+  expiresAt: new Date(Date.now() + 30 * 60_000), createdAt: new Date(),
+});
+const delResult = await actions.deleteMyAccount.handler(ctxFor(delUser), { _sessionToken: delToken, code: knownCode });
 check("sole-user deletion succeeds", delResult.ok === true && delResult.tablesCleared > 0, JSON.stringify(delResult));
 const goneUser = await db.select().from(schema.authUsers).where(eq(schema.authUsers.email, "deleteme@test.com")).limit(1);
 check("user row deleted", goneUser.length === 0);

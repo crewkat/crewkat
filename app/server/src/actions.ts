@@ -1929,22 +1929,63 @@ export const BaseActions = {
       return checkSendCap(db, user.id, "sms");
     },
   }),
-  /** Self-service account deletion (Play Store data-deletion requirement).
-   *  2-step client confirmation (typed email). Cancels an active Stripe
-   *  subscription immediately, then deletes the account: if the user is the
-   *  only login on their company, all company-scoped data goes too;
-   *  otherwise only their personal rows are removed. Platform admins can't
-   *  self-delete through this path. */
+  /** Self-service account deletion, step 1 (Play Store data-deletion
+   *  requirement): emails the user a 6-digit confirmation code. The client
+   *  collects the code and calls deleteMyAccount. Rate-limited to 1/min. */
+  requestAccountDeletion: defineAction({
+    request: authEnvelopeSchema.extend({}),
+    response: z.object({ ok: z.literal(true), emailDelivery: z.enum(["sent", "failed"]) }),
+    async handler(ctx, args): Promise<{ ok: true; emailDelivery: "sent" | "failed" }> {
+      const db = ctx.db<typeof schema>();
+      const user = await requireSession(ctx, args._sessionToken);
+      if (user.isPlatformAdmin) throw new Error("Platform admin accounts can't be deleted from the app.");
+      const now = new Date();
+      const recent = (await db.select({ createdAt: schema.accountDeletionCodes.createdAt }).from(schema.accountDeletionCodes)
+        .where(eq(schema.accountDeletionCodes.userId, user.id))).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+      if (recent && now.getTime() - recent.createdAt.getTime() < 60_000) throw new Error("Please wait one minute before requesting another code.");
+      const code = randomCode();
+      await db.update(schema.accountDeletionCodes).set({ consumedAt: now })
+        .where(and(eq(schema.accountDeletionCodes.userId, user.id), isNull(schema.accountDeletionCodes.consumedAt)));
+      await db.insert(schema.accountDeletionCodes).values({
+        userId: user.id, codeHash: await sha256(code),
+        expiresAt: new Date(now.getTime() + 30 * 60_000), createdAt: now,
+      });
+      let emailDelivery: "sent" | "failed" = "failed";
+      try {
+        const result = await ctx.executePrivileged(privileged.sendSecurityAlert, {
+          to: user.email,
+          subject: "Confirm deleting your Crewkat account",
+          text: `You asked to delete your Crewkat account (${user.email}).\n\nYour confirmation code is: ${code}\n\nEnter it in the app within 30 minutes to permanently delete your account and all of its data. Your subscription will be cancelled immediately.\n\nIf you didn't ask for this, just ignore this email — nothing will be deleted.`,
+        });
+        emailDelivery = result.delivery;
+      } catch { /* fall through as failed */ }
+      return { ok: true as const, emailDelivery };
+    },
+  }),
+  /** Self-service account deletion, step 2 (Play Store data-deletion
+   *  requirement). Verifies the emailed 6-digit code (single-use, 30 min),
+   *  cancels an active Stripe subscription immediately, then deletes the
+   *  account: if the user is the only login on their company, all
+   *  company-scoped data goes too; otherwise only their personal rows are
+   *  removed. Platform admins can't self-delete through this path. */
   deleteMyAccount: defineAction({
-    request: authEnvelopeSchema.extend({ confirmEmail: z.string().trim().min(3).max(320) }),
+    request: authEnvelopeSchema.extend({ code: z.string().trim().regex(/^\d{6}$/) }),
     response: z.object({ ok: z.literal(true), tablesCleared: z.number() }),
     async handler(ctx, args): Promise<{ ok: true; tablesCleared: number }> {
       const db = ctx.db<typeof schema>();
       const user = await requireSession(ctx, args._sessionToken);
       if (user.isPlatformAdmin) throw new Error("Platform admin accounts can't be deleted from the app.");
-      if (args.confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
-        throw new Error("The confirmation email doesn't match your account email.");
+      const now = new Date();
+      const hash = await sha256(args.code.trim());
+      const valid = (await db.select().from(schema.accountDeletionCodes).where(and(
+        eq(schema.accountDeletionCodes.userId, user.id),
+        eq(schema.accountDeletionCodes.codeHash, hash),
+        isNull(schema.accountDeletionCodes.consumedAt),
+      )).orderBy(desc(schema.accountDeletionCodes.createdAt)).limit(1))[0];
+      if (!valid || valid.expiresAt.getTime() < now.getTime()) {
+        throw new Error("That code is invalid or expired. Request a new one.");
       }
+      await db.update(schema.accountDeletionCodes).set({ consumedAt: now }).where(eq(schema.accountDeletionCodes.id, valid.id));
       // 1. Stop billing immediately: cancel an active Stripe subscription.
       if (user.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
         const secretKey = process.env.STRIPE_SECRET_KEY?.trim();

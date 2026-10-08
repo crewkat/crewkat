@@ -484,6 +484,13 @@
    "when": 1791400000014,
    "tag": "0069_platform_admin_suite",
    "breakpoints": true
+  },
+  {
+   "idx": 69,
+   "version": "7",
+   "when": 1791400000015,
+   "tag": "0070_account_deletion_codes",
+   "breakpoints": true
   }
  ]
 }

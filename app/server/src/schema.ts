@@ -971,6 +971,19 @@ export const authLoginAttempts = sqliteTable("auth_login_attempts", {
   attemptedAt: integer("attempted_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// Account deletion (2026-10-07): email-based 2-step confirmation. A 6-digit
+// code is emailed; the user enters it to authorize deletion.
+export const accountDeletionCodes = sqliteTable("account_deletion_codes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  consumedAt: integer("consumed_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("account_deletion_codes_user_idx").on(table.userId),
+]);
+
 export const stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),
