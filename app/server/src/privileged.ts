@@ -125,6 +125,79 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Admin panel Phase 1: billing surfaces (all admin-gated at the action layer).
+  listStripeSubscriptions: {
+    request: z.object({ status: z.enum(["active", "trialing", "past_due", "canceled", "all"]).default("all"), limit: z.number().int().min(1).max(100).default(25), startingAfter: z.string().max(200).optional() }),
+    response: z.object({
+      configured: z.boolean(),
+      subscriptions: z.array(z.object({
+        id: z.string(), customerId: z.string(), customerEmail: z.string().nullable(),
+        status: z.string(), amountCents: z.number().int(), interval: z.string(),
+        currentPeriodEnd: z.number().int().nullable(), cancelAtPeriodEnd: z.boolean(),
+      })),
+      hasMore: z.boolean(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripePayments: {
+    request: z.object({ limit: z.number().int().min(1).max(100).default(25), startingAfter: z.string().max(200).optional() }),
+    response: z.object({
+      configured: z.boolean(),
+      charges: z.array(z.object({
+        id: z.string(), amount: z.number().int(), amountRefunded: z.number().int(),
+        currency: z.string(), created: z.number().int(), status: z.string(),
+        customerEmail: z.string().nullable(), description: z.string().nullable(),
+      })),
+      hasMore: z.boolean(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripeFailedPayments: {
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      failed: z.array(z.object({
+        invoiceId: z.string(), customerEmail: z.string().nullable(), amountCents: z.number().int(),
+        currency: z.string(), status: z.string(), attemptCount: z.number().int(),
+        nextRetryAt: z.number().int().nullable(), created: z.number().int(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  createStripeCoupon: {
+    request: z.object({
+      code: z.string().trim().min(2).max(40),
+      percentOff: z.number().min(1).max(100).optional(),
+      amountOffCents: z.number().int().positive().max(10_000_000).optional(),
+      duration: z.enum(["once", "repeating", "forever"]).default("once"),
+      durationInMonths: z.number().int().min(1).max(36).optional(),
+    }),
+    response: z.object({ id: z.string(), code: z.string().nullable(), percentOff: z.number().nullable(), amountOff: z.number().nullable(), duration: z.string() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripeCoupons: {
+    request: z.object({ limit: z.number().int().min(1).max(100).default(25) }),
+    response: z.object({
+      configured: z.boolean(),
+      coupons: z.array(z.object({
+        id: z.string(), code: z.string().nullable(), percentOff: z.number().nullable(),
+        amountOff: z.number().nullable(), currency: z.string().nullable(),
+        duration: z.string(), timesRedeemed: z.number().int(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  deleteStripeCoupon: {
+    request: z.object({ couponId: z.string().min(1).max(200) }),
+    response: z.object({ ok: z.literal(true), id: z.string() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   // Platform admin suite: live revenue stats for the admin dashboard.
   // Unconfigured -> configured:false (graceful, no crash).
   getStripeRevenueStats: {
@@ -167,6 +240,17 @@ export const privileged = definePrivilegedContracts({
     timeoutMs: 10_000,
   },
 });
+
+function stripeAdminAuthHeader(required: true): { Authorization: string };
+function stripeAdminAuthHeader(required: false): { Authorization: string } | null;
+function stripeAdminAuthHeader(required: boolean): { Authorization: string } | null {
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey) {
+    if (required) throw new Error("Stripe is not configured.");
+    return null;
+  }
+  return { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
+}
 
 export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
@@ -560,6 +644,170 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       currency: typeof result.currency === "string" ? result.currency : "usd",
       status: typeof result.status === "string" ? result.status : "unknown",
     };
+  },
+  // Admin panel Phase 1: billing surfaces. Unconfigured -> configured:false;
+  // mutating calls throw when Stripe is not configured (action layer is admin-only).
+  async listStripeSubscriptions(args) {
+    const unconfigured = { configured: false, subscriptions: [] as never[], hasMore: false };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader) return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit), "expand[]": "data.customer" });
+    if (args.status !== "all") params.set("status", args.status);
+    if (args.startingAfter) params.set("starting_after", args.startingAfter);
+    const response = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
+      method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not load Stripe subscriptions.");
+    const result = await response.json() as {
+      data?: Array<{
+        id?: unknown; customer?: unknown; status?: unknown; cancel_at_period_end?: unknown;
+        current_period_end?: unknown;
+        items?: { data?: Array<{ price?: { unit_amount?: unknown; recurring?: { interval?: unknown } } }> };
+      }>; has_more?: unknown;
+    };
+    const subscriptions = (result.data ?? []).map((sub) => {
+      const item = sub.items?.data?.[0];
+      const customer = sub.customer as { id?: unknown; email?: unknown } | string | undefined;
+      return {
+        id: typeof sub.id === "string" ? sub.id : "",
+        customerId: typeof customer === "object" && customer && typeof customer.id === "string" ? customer.id : (typeof sub.customer === "string" ? sub.customer : ""),
+        customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+        status: typeof sub.status === "string" ? sub.status : "unknown",
+        amountCents: typeof item?.price?.unit_amount === "number" ? Math.round(item.price.unit_amount) : 0,
+        interval: typeof item?.price?.recurring?.interval === "string" ? item.price.recurring.interval : "month",
+        currentPeriodEnd: typeof sub.current_period_end === "number" ? Math.round(sub.current_period_end) : null,
+        cancelAtPeriodEnd: sub.cancel_at_period_end === true,
+      };
+    }).filter((s) => s.id);
+    return { configured: true, subscriptions, hasMore: result.has_more === true };
+  },
+  async listStripePayments(args) {
+    const unconfigured = { configured: false, charges: [] as never[], hasMore: false };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader) return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit), "expand[]": "data.customer" });
+    if (args.startingAfter) params.set("starting_after", args.startingAfter);
+    const response = await fetch(`https://api.stripe.com/v1/charges?${params}`, {
+      method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not load Stripe payments.");
+    const result = await response.json() as {
+      data?: Array<{
+        id?: unknown; amount?: unknown; amount_refunded?: unknown; currency?: unknown;
+        created?: unknown; status?: unknown; description?: unknown; customer?: unknown;
+      }>; has_more?: unknown;
+    };
+    const charges = (result.data ?? []).map((charge) => {
+      const customer = charge.customer as { email?: unknown } | string | undefined;
+      return {
+        id: typeof charge.id === "string" ? charge.id : "",
+        amount: typeof charge.amount === "number" ? Math.round(charge.amount) : 0,
+        amountRefunded: typeof charge.amount_refunded === "number" ? Math.round(charge.amount_refunded) : 0,
+        currency: typeof charge.currency === "string" ? charge.currency : "usd",
+        created: typeof charge.created === "number" ? Math.round(charge.created) : 0,
+        status: typeof charge.status === "string" ? charge.status : "unknown",
+        customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+        description: typeof charge.description === "string" ? charge.description : null,
+      };
+    }).filter((c) => c.id);
+    return { configured: true, charges, hasMore: result.has_more === true };
+  },
+  async listStripeFailedPayments() {
+    const unconfigured = { configured: false, failed: [] as never[] };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader) return unconfigured;
+    // Past-due + payment-failed open invoices carry the dunning state.
+    const params = new URLSearchParams({ limit: "50", "expand[]": "data.customer" });
+    const response = await fetch(`https://api.stripe.com/v1/invoices?${params}`, {
+      method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not load Stripe invoices.");
+    const result = await response.json() as {
+      data?: Array<{
+        id?: unknown; customer?: unknown; amount_due?: unknown; currency?: unknown;
+        status?: unknown; attempt_count?: unknown; next_payment_attempt?: unknown; created?: unknown;
+      }>;
+    };
+    const failed = (result.data ?? [])
+      .filter((inv) => inv.status === "open" && (inv.attempt_count as number) > 0)
+      .map((inv) => {
+        const customer = inv.customer as { email?: unknown } | string | undefined;
+        return {
+          invoiceId: typeof inv.id === "string" ? inv.id : "",
+          customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+          amountCents: typeof inv.amount_due === "number" ? Math.round(inv.amount_due) : 0,
+          currency: typeof inv.currency === "string" ? inv.currency : "usd",
+          status: typeof inv.status === "string" ? inv.status : "unknown",
+          attemptCount: typeof inv.attempt_count === "number" ? Math.round(inv.attempt_count) : 0,
+          nextRetryAt: typeof inv.next_payment_attempt === "number" ? Math.round(inv.next_payment_attempt) : null,
+          created: typeof inv.created === "number" ? Math.round(inv.created) : 0,
+        };
+      }).filter((f) => f.invoiceId);
+    return { configured: true, failed };
+  },
+  async createStripeCoupon(args) {
+    const authHeader = stripeAdminAuthHeader(true);
+    if (!args.percentOff && !args.amountOffCents) throw new Error("Set a percent or an amount off.");
+    if (args.percentOff && args.amountOffCents) throw new Error("Set either percent or amount off, not both.");
+    const body = new URLSearchParams({ duration: args.duration });
+    body.set("id", `crewkat_${args.code.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`);
+    if (args.percentOff) body.set("percent_off", String(args.percentOff));
+    else body.set("amount_off", String(args.amountOffCents));
+    if (!args.percentOff) body.set("currency", "usd");
+    if (args.duration === "repeating") body.set("duration_in_months", String(args.durationInMonths ?? 3));
+    const response = await fetch("https://api.stripe.com/v1/coupons", {
+      method: "POST",
+      headers: { ...authHeader, "Content-Type": "application/x-www-form-urlencoded" },
+      body, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      let detail = "Stripe could not create this coupon.";
+      try {
+        const err = await response.json() as { error?: { message?: unknown } };
+        if (typeof err.error?.message === "string") detail = err.error.message;
+      } catch { /* keep default */ }
+      throw new Error(detail);
+    }
+    const result = await response.json() as { id?: unknown; percent_off?: unknown; amount_off?: unknown; duration?: unknown };
+    if (typeof result.id !== "string") throw new Error("Stripe did not return a valid coupon.");
+    return {
+      id: result.id,
+      code: args.code.toUpperCase(),
+      percentOff: typeof result.percent_off === "number" ? result.percent_off : null,
+      amountOff: typeof result.amount_off === "number" ? Math.round(result.amount_off) : null,
+      duration: typeof result.duration === "string" ? result.duration : args.duration,
+    };
+  },
+  async listStripeCoupons(args) {
+    const unconfigured = { configured: false, coupons: [] as never[] };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader) return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit) });
+    const response = await fetch(`https://api.stripe.com/v1/coupons?${params}`, {
+      method: "GET", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not load Stripe coupons.");
+    const result = await response.json() as {
+      data?: Array<{ id?: unknown; percent_off?: unknown; amount_off?: unknown; currency?: unknown; duration?: unknown; times_redeemed?: unknown }>;
+    };
+    const coupons = (result.data ?? []).map((c) => ({
+      id: typeof c.id === "string" ? c.id : "",
+      code: typeof c.id === "string" ? c.id.replace(/^crewkat_/, "").replace(/_/g, " ").toUpperCase() : null,
+      percentOff: typeof c.percent_off === "number" ? c.percent_off : null,
+      amountOff: typeof c.amount_off === "number" ? Math.round(c.amount_off) : null,
+      currency: typeof c.currency === "string" ? c.currency : null,
+      duration: typeof c.duration === "string" ? c.duration : "once",
+      timesRedeemed: typeof c.times_redeemed === "number" ? Math.round(c.times_redeemed) : 0,
+    })).filter((c) => c.id);
+    return { configured: true, coupons };
+  },
+  async deleteStripeCoupon(args) {
+    const authHeader = stripeAdminAuthHeader(true);
+    const response = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(args.couponId)}`, {
+      method: "DELETE", headers: authHeader, redirect: "error", signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe could not delete this coupon.");
+    return { ok: true as const, id: args.couponId };
   },
   // Platform admin suite: live revenue stats for the admin dashboard.
   // Unconfigured -> configured:false (graceful, no crash, no throw).

@@ -3,7 +3,7 @@
 // Covers:
 //  1. Migration 0069 creates broadcast_log, business_verifications,
 //     feature_flags (+seed), send_caps, blocked_senders, send_usage.
-//  2. Journal: newest tag is 0070_account_deletion_codes, `when` strictly newer.
+//  2. Journal: newest tag is 0071_admin_phase1, `when` strictly newer.
 //  3. Feature flags: seeded values, admin list/set, non-admin blocked,
 //     public getFeatureFlags.
 //  4. Broadcasts: admin send writes history + audit log; disabled flag blocks.
@@ -56,8 +56,8 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0070_account_deletion_codes", last.tag === "0070_account_deletion_codes", last.tag);
-check("0070 when is strictly newer than 0069 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
+check("newest migration tag is 0071_admin_phase1", last.tag === "0071_admin_phase1", last.tag);
+check("0071 when is strictly newer than 0070 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Fixtures ---------------------------------------------------------------
 const now = new Date();

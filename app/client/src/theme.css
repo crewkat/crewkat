@@ -743,7 +743,7 @@ fieldset { padding: 0; border: 0; }
 /* Platform admin */
 .pa-page { display:flex; flex-direction:column; gap:14px; }
 .pa-tabs { display:flex; gap:8px; overflow-x:auto; padding:2px 0 4px; }
-.pa-tabs button { flex:1 0 auto; min-height:40px; padding:8px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--dim); font:inherit; font-weight:700; font-size:14px; white-space:nowrap; }
+.pa-tabs button { flex:1 0 auto; min-height:40px; padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--dim); font:inherit; font-weight:700; font-size:14px; white-space:nowrap; }
 .pa-tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
 .pa-list { display:grid; gap:12px; padding-bottom:32px; }
 .pa-card { border:1px solid var(--border); border-radius:16px; background:var(--surface); padding:14px; display:grid; gap:10px; }
@@ -3280,11 +3280,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .pa-analytics { display: flex; flex-direction: column; gap: 18px; }
 .pa-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 @media (max-width: 560px) { .pa-stat-grid { grid-template-columns: repeat(2, 1fr); } }
-.pa-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.pa-stat-value { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; }
-.pa-stat-label { font-size: .72rem; color: var(--muted); text-align: center; }
-.pa-chart-section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+/* Phase 1 visual language (Danny's 2026-10-09 render): icon-left stat cards,
+   8px rounding, hairline borders. */
+.pa-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.pa-stat-icon { flex: none; color: var(--accent); display: flex; align-items: center; }
+.pa-stat-icon svg { width: 26px; height: 26px; }
+.pa-stat-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pa-stat-value { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.pa-stat-label { font-size: .72rem; color: var(--muted); }
+.pa-chart-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
 .pa-chart-section h3 { margin: 0 0 10px; font-size: .95rem; }
+.pa-chart-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: .95rem; font-weight: 700; }
+.pa-chart-dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+.pa-chart-svg { width: 100%; height: auto; display: block; }
+.pa-chart-axis { font-size: 8px; fill: var(--muted); }
+.pa-chart-grid { stroke: var(--border); stroke-width: .5; opacity: .6; }
+.pa-why-empty { border: 1px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; color: var(--muted); font-size: .85rem; margin: 0; }
 .pa-bars { display: flex; align-items: flex-end; gap: 3px; height: 110px; }
 .pa-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
 .pa-bar { width: 100%; max-width: 18px; border-radius: 3px 3px 0 0; background: var(--accent); }
@@ -3307,7 +3318,20 @@ button { -webkit-tap-highlight-color: transparent; }
 .pa-activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .pa-activity li { display: flex; align-items: center; gap: 8px; font-size: .82rem; flex-wrap: wrap; }
 .pa-muted { color: var(--muted); font-size: .75rem; }
-
+/* Impersonation banner: full-width orange strip while viewing as another user. */
+.pa-impersonating { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 10px; background: var(--accent); color: #fff; padding: 8px 14px; font-size: .82rem; font-weight: 700; }
+.pa-impersonating button { margin-left: auto; background: #fff; color: var(--accent); border: none; border-radius: 8px; padding: 6px 12px; font-weight: 800; font-size: .8rem; }
+/* Billing sections inside the Billing tab. */
+.pa-bill-section { margin-top: 14px; }
+.pa-bill-section > h3 { margin: 0 0 8px; font-size: .9rem; }
+/* Compact filter row for admin lists. */
+.pa-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pa-filters select, .pa-search input { min-height: 38px; }
+/* Keyword rule rows. */
+.pa-rule-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
+.pa-rule-row:last-child { border-bottom: none; }
+.pa-rule-row code { background: var(--background); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: .8rem; }
+.pa-rule-row .spacer { flex: 1; }
 /* Exit survey prompt for churned users */
 .exit-survey-sheet { position: fixed; inset: auto 0 0 0; z-index: 90; background: var(--surface); border-top: 1px solid var(--border); border-radius: 20px 20px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 32px rgba(0,0,0,.25); }
 .exit-survey-sheet h2 { margin: 0 0 6px; font-size: 1.15rem; }

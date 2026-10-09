@@ -13,7 +13,8 @@ import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
-import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt } from "./platform-admin";
+import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
+import { platformAdminPhase1Actions } from "./platform-admin-phase1";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -890,6 +891,65 @@ export async function logAdminAction(db: ReturnType<Ctx["db"]>, adminUserId: num
   await db.insert(schema.adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date() });
 }
 
+// Admin panel Phase 1: shared account-deletion core (extracted from the
+// self-service deleteMyAccount flow). Cancels an active Stripe subscription
+// (best effort), wipes company-scoped tables when the user is the sole login
+// on their company (otherwise only their personal rows), then deletes sessions
+// and the user row. Returns counts for the caller to audit-log.
+export async function deleteUserAccount(
+  db: ReturnType<Ctx["db"]>,
+  user: { id: number; companyId: number; stripeSubscriptionId: string | null; subscriptionStatus: string },
+): Promise<{ tablesCleared: number; soleUser: boolean }> {
+  // 1. Stop billing immediately: cancel an active Stripe subscription.
+  if (user.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (secretKey) {
+      try {
+        await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(user.stripeSubscriptionId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${secretKey}` },
+          redirect: "error",
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch {
+        // Best effort: continue with deletion even if Stripe is unreachable.
+      }
+    }
+  }
+  // 2. Wipe data: every company-scoped table via the schema column map
+  // (future-proof), plus personal userId rows. Sole login -> whole
+  // company goes; shared company -> only this user's rows.
+  const companyId = user.companyId;
+  const others = await db.select({ id: schema.authUsers.id }).from(schema.authUsers)
+    .where(and(eq(schema.authUsers.companyId, companyId), ne(schema.authUsers.id, user.id))).limit(1);
+  const soleUser = others.length === 0;
+  let tablesCleared = 0;
+  for (const table of Object.values(schema)) {
+    if (!isTable(table) || table === schema.authUsers || table === schema.adminAuditLog) continue;
+    const cols = getTableColumns(table) as Record<string, unknown>;
+    try {
+      if (soleUser && "companyId" in cols) {
+        await db.delete(table).where(eq(cols.companyId as never, companyId));
+        tablesCleared++;
+      } else if ("userId" in cols) {
+        await db.delete(table).where(eq(cols.userId as never, user.id));
+        tablesCleared++;
+      }
+    } catch (e) {
+      // Schema drift: schema.ts still defines tables/columns dropped by
+      // old migrations. Drizzle wraps the sqlite error, so check the
+      // cause chain. Skip drift; rethrow real errors.
+      const msg = e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : "";
+      if (/no such (table|column)/.test(msg)) continue;
+      throw e;
+    }
+  }
+  // 3. Sessions + the login itself.
+  await db.delete(schema.authSessions).where(eq(schema.authSessions.userId, user.id));
+  await db.delete(schema.authUsers).where(eq(schema.authUsers.id, user.id));
+  return { tablesCleared, soleUser };
+}
+
 export async function getPlatformSetting(db: ReturnType<Ctx["db"]>, key: string, fallback: string): Promise<string> {
   const row = (await db.select().from(schema.platformSettings).where(eq(schema.platformSettings.key, key)).limit(1))[0];
   return row?.value ?? fallback;
@@ -1492,8 +1552,53 @@ export async function runReviewRequestTick(ctx: Ctx): Promise<{ ran: boolean; em
 const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
 
 async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
-  if (!(await isAutoModerationEnabled(db))) return { clean: true, reasons: [] as string[] };
-  return scanListingText(input);
+  if (!(await isAutoModerationEnabled(db))) return { clean: true, held: false, flagBump: 0, reasons: [] as string[] };
+  const base = scanListingText(input);
+  // Admin panel Phase 1: DB keyword rules. "hold" -> pending_review (hidden
+  // until a moderator approves); "flag" -> +1 flag_count each so the
+  // threshold review path picks repeat offenders up.
+  let held = false;
+  let flagBump = 0;
+  const reasons = [...base.reasons];
+  try {
+    const rules = await db.select().from(schema.moderationKeywordRules);
+    if (rules.length) {
+      const haystack = `${input.title}\n${input.description}\n${input.companyName}\n${input.serviceArea}`.toLowerCase();
+      for (const rule of rules) {
+        const pattern = rule.pattern.trim().toLowerCase();
+        if (!pattern || !haystack.includes(pattern)) continue;
+        if (rule.action === "hold") {
+          held = true;
+          reasons.push(`Keyword rule: "${rule.pattern}"`);
+        } else {
+          flagBump += 1;
+          reasons.push(`Keyword flag: "${rule.pattern}"`);
+        }
+      }
+    }
+  } catch {
+    // Keyword table missing on pre-migration DBs — base scan still applies.
+  }
+  return { clean: base.clean, held, flagBump, reasons };
+}
+
+/** Admin panel Phase 1: new-user listing cap. Accounts younger than
+ * automod_new_user_days may create at most automod_new_user_listing_cap
+ * listings per rolling 24h. */
+async function checkNewUserListingCap(db: ReturnType<Ctx["db"]>, userCreatedAt: Date, companyId: number): Promise<void> {
+  const daysRaw = await getPlatformSetting(db, "automod_new_user_days", "7");
+  const capRaw = await getPlatformSetting(db, "automod_new_user_listing_cap", "3");
+  const days = Number.parseInt(daysRaw, 10);
+  const cap = Number.parseInt(capRaw, 10);
+  if (!Number.isFinite(days) || !Number.isFinite(cap) || days < 1 || cap < 1) return;
+  const ageMs = Date.now() - userCreatedAt.getTime();
+  if (ageMs > days * 24 * 60 * 60_000) return;
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60_000);
+  const recent = await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings)
+    .where(and(eq(schema.marketplaceListings.companyId, companyId), gte(schema.marketplaceListings.createdAt, dayAgo)));
+  if (recent.length >= cap) {
+    throw new Error(`New accounts can post ${cap} listings per day for their first ${days} days. Try again tomorrow.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1917,6 +2022,7 @@ export const BaseActions = {
   // Platform admin suite (2026-10-07): broadcasts, verification, revenue,
   // flags, support view, abuse controls.
   ...platformAdminActions,
+  ...platformAdminPhase1Actions,
   /** SMS cap pre-check (abuse controls): read-only check of the caller's own
    *  daily SMS cap. The client runs this BEFORE opening the phone's SMS app,
    *  so a capped user sees the error immediately. */
@@ -1986,55 +2092,9 @@ export const BaseActions = {
         throw new Error("That code is invalid or expired. Request a new one.");
       }
       await db.update(schema.accountDeletionCodes).set({ consumedAt: now }).where(eq(schema.accountDeletionCodes.id, valid.id));
-      // 1. Stop billing immediately: cancel an active Stripe subscription.
-      if (user.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
-        const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-        if (secretKey) {
-          try {
-            await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(user.stripeSubscriptionId)}`, {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${secretKey}` },
-              redirect: "error",
-              signal: AbortSignal.timeout(15_000),
-            });
-          } catch {
-            // Best effort: continue with deletion even if Stripe is unreachable.
-          }
-        }
-      }
-      // 2. Wipe data: every company-scoped table via the schema column map
-      // (future-proof), plus personal userId rows. Sole login -> whole
-      // company goes; shared company -> only this user's rows.
-      const companyId = user.companyId;
-      const others = await db.select({ id: schema.authUsers.id }).from(schema.authUsers)
-        .where(and(eq(schema.authUsers.companyId, companyId), ne(schema.authUsers.id, user.id))).limit(1);
-      const soleUser = others.length === 0;
-      let tablesCleared = 0;
-      for (const table of Object.values(schema)) {
-        if (!isTable(table) || table === schema.authUsers || table === schema.adminAuditLog) continue;
-        const cols = getTableColumns(table) as Record<string, unknown>;
-        try {
-          if (soleUser && "companyId" in cols) {
-            await db.delete(table).where(eq(cols.companyId as never, companyId));
-            tablesCleared++;
-          } else if ("userId" in cols) {
-            await db.delete(table).where(eq(cols.userId as never, user.id));
-            tablesCleared++;
-          }
-        } catch (e) {
-          // Schema drift: schema.ts still defines tables/columns dropped by
-          // old migrations. Drizzle wraps the sqlite error, so check the
-          // cause chain. Skip drift; rethrow real errors.
-          const msg = e instanceof Error ? `${e.message} ${(e as { cause?: { message?: string } }).cause?.message ?? ""}` : "";
-          if (/no such (table|column)/.test(msg)) continue;
-          throw e;
-        }
-      }
-      // 3. Sessions + the login itself.
-      await db.delete(schema.authSessions).where(eq(schema.authSessions.userId, user.id));
-      await db.delete(schema.authUsers).where(eq(schema.authUsers.id, user.id));
+      const { tablesCleared, soleUser } = await deleteUserAccount(db, user);
       await logAdminAction(db, 0, "account.deleted", "user", user.email,
-        soleUser ? `self-service deletion; company ${companyId} data cleared (${tablesCleared} tables)` : "self-service deletion; personal rows removed, company kept for remaining users");
+        soleUser ? `self-service deletion; company ${user.companyId} data cleared (${tablesCleared} tables)` : "self-service deletion; personal rows removed, company kept for remaining users");
       ctx.invalidateQueries();
       return { ok: true as const, tablesCleared };
     },
@@ -3685,6 +3745,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Build 0.7: the phone-verification gate is removed — listing creation
       // no longer requires phone verification.
       await requireMarketplaceEnabled(db);
+      // Admin panel Phase 1: new accounts are rate-limited on listings/day.
+      const creator = (await db.select({ createdAt: schema.authUsers.createdAt }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (creator) await checkNewUserListingCap(db, creator.createdAt, identity.workspaceCompanyId);
       if (args.intent === "need") {
         // Wanted posts are quota-exempt (unified marketplace decision) — a
         // light anti-spam cap of 10 per company per day applies instead.
@@ -3697,10 +3760,17 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         if (mine.length >= effective) throw new Error(`Your free plan includes ${effective} active Marketplace listing${effective === 1 ? "" : "s"}${bonus > 0 ? ` (${bonus} bonus from referrals)` : ""}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
-      const moderationStatus: ModerationStatus = scan.clean ? "active" : "auto_rejected";
-      const moderationReason = scan.clean ? "" : scan.reasons.join("; ");
+      const moderationStatus: ModerationStatus = scan.held ? "pending_review" : scan.clean ? "active" : "auto_rejected";
+      const moderationReason = scan.clean && !scan.held ? "" : scan.reasons.join("; ");
       const made = (await db.insert(schema.marketplaceListings).values({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id }))[0];
       if (!made) throw new Error("The listing could not be saved.");
+      if (scan.flagBump > 0) {
+        await db.update(schema.marketplaceListings).set({ flagCount: scan.flagBump, updatedAt: now }).where(eq(schema.marketplaceListings.id, made.id));
+        const threshold = await getFlagThreshold(db);
+        if (scan.flagBump >= threshold && moderationStatus === "active") {
+          await db.update(schema.marketplaceListings).set({ moderationStatus: "pending_review", updatedAt: now }).where(eq(schema.marketplaceListings.id, made.id));
+        }
+      }
       const storedKeys: string[] = [];
       try {
         for (const [index, photo] of args.photos.entries()) {
@@ -3747,8 +3817,8 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Re-scan on every edit. Flagged edits go to auto_rejected; clean edits
       // never self-promote a listing out of review — only an admin can do that.
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
-      const moderationStatus: ModerationStatus = scan.clean ? (existing.moderationStatus as ModerationStatus) : "auto_rejected";
-      const moderationReason = scan.clean ? existing.moderationReason : scan.reasons.join("; ");
+      const moderationStatus: ModerationStatus = scan.held ? "pending_review" : scan.clean ? (existing.moderationStatus as ModerationStatus) : "auto_rejected";
+      const moderationReason = scan.clean && !scan.held ? existing.moderationReason : scan.reasons.join("; ");
       const oldPhotos = args.replacePhotos ? await db.select().from(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id)) : [];
       const now = new Date();
       const newPhotos: Array<{ blobKey: string; filename: string; contentType: "image/jpeg" | "image/png" | "image/webp"; sortOrder: number }> = [];
@@ -3761,6 +3831,9 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           }
         }
         await db.update(schema.marketplaceListings).set({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
+        if (scan.flagBump > 0) {
+          await db.update(schema.marketplaceListings).set({ flagCount: sql`flag_count + ${scan.flagBump}`, updatedAt: now }).where(eq(schema.marketplaceListings.id, args.id));
+        }
         if (args.replacePhotos) {
           await db.delete(schema.marketplaceListingPhotos).where(eq(schema.marketplaceListingPhotos.listingId, args.id));
           for (const photo of newPhotos) await db.insert(schema.marketplaceListingPhotos).values({ listingId: args.id, ...photo, createdAt: now });
@@ -3958,7 +4031,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Company names are public (shown on every listing), so read them
       // unscoped; the workspace proxy would only return the caller's own row.
       const names = await marketplaceCompanyNames(platformDb(ctx), companyIds);
-      const messages = await db.select().from(schema.marketplaceMessages).where(inArray(schema.marketplaceMessages.conversationId, convoIds)).orderBy(desc(schema.marketplaceMessages.createdAt));
+      const messages = await db.select().from(schema.marketplaceMessages).where(and(inArray(schema.marketplaceMessages.conversationId, convoIds), eq(schema.marketplaceMessages.hidden, false))).orderBy(desc(schema.marketplaceMessages.createdAt));
       const latestByConvo = new Map<number, typeof messages[number]>();
       const messagesByConvo = new Map<number, typeof messages>();
       for (const message of messages) {
@@ -4006,7 +4079,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const names = await marketplaceCompanyNames(platformDb(ctx), [myCompanyId, otherCompanyId]);
       const otherPartyName = isInquiry ? (listing?.companyName || "Unknown company") : (names.get(otherCompanyId) || `Company ${otherCompanyId}`);
       const myName = names.get(myCompanyId) || "";
-      const rows = await db.select().from(schema.marketplaceMessages).where(eq(schema.marketplaceMessages.conversationId, convo.id)).orderBy(schema.marketplaceMessages.createdAt);
+      const rows = await db.select().from(schema.marketplaceMessages).where(and(eq(schema.marketplaceMessages.conversationId, convo.id), eq(schema.marketplaceMessages.hidden, false))).orderBy(schema.marketplaceMessages.createdAt);
       const messages = await Promise.all(rows.map(async (row) => {
         const outgoing = row.senderCompanyId === myCompanyId;
         return { id: row.id, conversationId: convo.id, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, outgoing, senderName: outgoing ? myName : otherPartyName, createdAt: row.createdAt.toISOString() };
@@ -4237,7 +4310,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       })),
     }),
     async handler(ctx) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "moderator");
       const db = platformDb(ctx);
       const rows = await db.select().from(schema.marketplaceListings).where(inArray(schema.marketplaceListings.moderationStatus, ["auto_rejected", "pending_review"])).orderBy(desc(schema.marketplaceListings.createdAt));
       const listingIds = rows.map((row) => row.id);
@@ -4275,7 +4348,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ listingId: z.number().int().positive(), decision: z.enum(["approve", "remove"]), note: z.string().trim().max(500).default("") }),
     response: z.object({ ok: z.literal(true), status: z.string() }),
     async handler(ctx, args): Promise<{ ok: true; status: string }> {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
       const db = platformDb(ctx); const now = new Date();
       const listing = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing) throw new Error("This listing could not be found.");
@@ -4451,16 +4524,22 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     },
   }),
   adminUsersList: defineAction({
-    request: z.object({ search: z.string().trim().max(120).default(""), page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(20) }),
+    request: z.object({ search: z.string().trim().max(120).default(""), tier: z.enum(["all", "free", "premium"]).default("all"), status: z.enum(["all", "active", "suspended", "founder"]).default("all"), page: z.number().int().min(1).default(1), pageSize: z.number().int().min(1).max(100).default(20) }),
     response: z.object({
       users: z.array(z.object({ id: z.number(), name: z.string(), email: z.string(), tier: z.string(), subscriptionStatus: z.string(), companyId: z.number(), companyName: z.string(), createdAt: z.string(), suspended: z.boolean(), isPlatformAdmin: z.boolean() })),
       total: z.number(), page: z.number(), pageSize: z.number(),
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const term = `%${args.search}%`;
-      const whereClause = args.search ? or(like(schema.authUsers.name, term), like(schema.authUsers.email, term)) : undefined;
+      const conds = [];
+      if (args.search) conds.push(or(like(schema.authUsers.name, term), like(schema.authUsers.email, term)));
+      if (args.tier !== "all") conds.push(eq(schema.authUsers.tier, args.tier));
+      if (args.status === "active") conds.push(isNull(schema.authUsers.suspendedAt));
+      else if (args.status === "suspended") conds.push(sql`${schema.authUsers.suspendedAt} IS NOT NULL`);
+      else if (args.status === "founder") conds.push(eq(schema.authUsers.subscriptionStatus, "founder"));
+      const whereClause = conds.length ? and(...conds) : undefined;
       const all = await db.select().from(schema.authUsers).where(whereClause).orderBy(desc(schema.authUsers.createdAt));
       const total = all.length;
       const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
@@ -4497,7 +4576,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       audit: z.array(z.object({ id: z.number(), action: z.string(), adminName: z.string(), details: z.string(), createdAt: z.string() })),
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
       if (!user) throw new Error("User not found.");
@@ -4570,7 +4649,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ userId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true), revoked: z.number() }),
     async handler(ctx, args): Promise<{ ok: true; revoked: number }> {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx); const now = new Date();
       if (admin.id === args.userId) throw new Error("You cannot revoke your own sessions from here.");
       const user = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
@@ -4586,7 +4665,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ userId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx); const now = new Date();
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
       if (!user) throw new Error("User not found.");
@@ -4603,7 +4682,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ userId: z.number().int().positive() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx); const now = new Date();
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
       if (!user) throw new Error("User not found.");
@@ -4739,7 +4818,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       unreadCount: z.number(),
     }),
     async handler(ctx) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const reports = await db.select().from(schema.platformSupportReports).orderBy(desc(schema.platformSupportReports.createdAt), desc(schema.platformSupportReports.id));
       const reportIds = reports.map((r) => r.id);
@@ -4769,7 +4848,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report) throw new Error("Report not found.");
@@ -4784,7 +4863,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ reportId: z.number().int().positive(), message: z.string().trim().min(1).max(5000) }),
     response: z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report) throw new Error("Report not found.");
@@ -4802,7 +4881,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ id: z.number().int().positive(), status: z.enum(["open", "resolved"]), isUnread: z.boolean() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const now = new Date();
       const current = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.id)).limit(1))[0];

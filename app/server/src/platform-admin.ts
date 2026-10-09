@@ -7,11 +7,38 @@
 import { defineAction, z, type Ctx } from "@hatch/space-sdk";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "./schema";
-import { getPlatformSetting, logAdminAction, platformDb, requirePlatformAdmin } from "./actions";
+import { getPlatformSetting, logAdminAction, platformDb, requirePlatformAdmin, workspaceIdentity } from "./actions";
 import { privileged } from "@space/privileged";
 import { sendPushToUser } from "./push";
 
 type Db = ReturnType<Ctx["db"]>;
+
+// ---------------------------------------------------------------------------
+// Team roles (Phase 1): Admin, Support, Moderator.
+// A platform admin (is_platform_admin) is implicitly "admin"; everyone else
+// needs a row in admin_team_roles. New Phase 1 actions gate on these roles;
+// widened read/support surfaces below use requireTeamRole too.
+// ---------------------------------------------------------------------------
+
+export const TEAM_ROLES = ["admin", "support", "moderator"] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
+
+export async function teamRoleOf(db: Db, user: { id: number; isPlatformAdmin: boolean }): Promise<TeamRole | null> {
+  if (user.isPlatformAdmin) return "admin";
+  const row = (await db.select({ role: schema.adminTeamRoles.role }).from(schema.adminTeamRoles).where(eq(schema.adminTeamRoles.userId, user.id)).limit(1))[0];
+  return row ? (row.role as TeamRole) : null;
+}
+
+/** Passes when the caller's effective team role is one of the allowed roles. */
+export async function requireTeamRole(ctx: Ctx, ...roles: TeamRole[]) {
+  const identity = workspaceIdentity(ctx);
+  const db = ctx.db<typeof schema>();
+  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user) throw new Error("Sign in to continue.");
+  const role = await teamRoleOf(db, user);
+  if (!role || !roles.includes(role)) throw new Error("Insufficient permissions for this action.");
+  return { identity, admin: user, role };
+}
 
 // ---------------------------------------------------------------------------
 // Feature flags (canonical store; legacy platform_settings fallbacks).

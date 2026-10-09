@@ -36,7 +36,7 @@ type PointerEvent,
 type ReactNode,
 type TouchEvent,
 } from "react";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, getStoredSessionToken, isCookieLoginResult, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
@@ -2855,6 +2855,7 @@ function CrewkatApplication() {
     >
     <div className={`app-shell${screen.name !== "legal" ? " has-bottom-nav" : ""}${hideMasterNav ? " master-nav-hidden" : ""}`} ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
+      <ImpersonationBanner lang={lang} />
       {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
         <div className="announcement-banner" role="status">
           <p>{auth.user.announcementBanner.trim()}</p>
@@ -8012,6 +8013,8 @@ function SettingsScreen({
   const help = HELP_CONTENT[lang];
   const client = useQueryClient();
   const auth = useContext(AuthContext);
+  const teamRoleQuery = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000, enabled: !!auth?.user });
+  const canAccessPlatformAdmin = !!auth?.user.isPlatformAdmin || !!teamRoleQuery.data?.role;
   const fallback: Settings = {
     companyName: "",
     licenseNumber: "",
@@ -8843,7 +8846,7 @@ function SettingsScreen({
               <BackIcon />
             </button>
           </SettingsAccordion>
-          {auth?.user.isPlatformAdmin && (
+          {canAccessPlatformAdmin && (
             <SettingsAccordion
               title={lang === "es" ? "Administración de la plataforma" : "Platform admin"}
               icon={
@@ -8967,6 +8970,32 @@ const ADMIN_DEFAULTS: AdminParameters = {
   hourlyLaborCost: "0",
 };
 
+// Admin panel Phase 1: global banner while impersonating another user.
+// End revokes the impersonation session server-side, restores the admin's
+// proof, and refreshes auth state.
+function ImpersonationBanner({ lang }: { lang: Lang }) {
+  const [, setTick] = useState(0);
+  const [ending, setEnding] = useState(false);
+  useEffect(() => {
+    const bump = () => setTick((t) => t + 1);
+    window.addEventListener(IMPERSONATION_EVENT, bump);
+    return () => window.removeEventListener(IMPERSONATION_EVENT, bump);
+  }, []);
+  if (!isImpersonating()) return null;
+  const end = async () => {
+    if (ending) return;
+    setEnding(true);
+    try { await api.adminImpersonateEnd({ _sessionToken: "impersonation" }); } catch { /* session may already be gone */ }
+    endImpersonationLocal();
+    setEnding(false);
+    window.location.reload();
+  };
+  return <div className="pa-impersonating" role="status">
+    <span>{lang === "es" ? `Viendo como ${impersonationTargetName()} — acciones registradas` : `Viewing as ${impersonationTargetName()} — actions are logged`}</span>
+    <button type="button" onClick={end} disabled={ending}>{ending ? (lang === "es" ? "Terminando…" : "Ending…") : (lang === "es" ? "Terminar" : "End")}</button>
+  </div>;
+}
+
 type PlatformAdminTab = "analytics" | "support" | "queue" | "users" | "refunds" | "settings" | "audit" | "broadcasts" | "verification" | "revenue" | "flags" | "abuse";
 
 function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefundEmail }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void; initialTab?: PlatformAdminTab; initialRefundEmail?: string }) {
@@ -8976,17 +9005,27 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => { if (initialRefundEmail !== undefined) setRefundEmail(initialRefundEmail); }, [initialRefundEmail]);
   const t = lang === "es"
-    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es solo para administradores de la plataforma.", analytics: "Analíticas", support: "Soporte", queue: "Moderación", users: "Usuarios", refunds: "Reembolsos", settings: "Ajustes", audit: "Registro", broadcasts: "Difusión", verification: "Verificación", revenue: "Ingresos", flags: "Flags", abuse: "Abuso" }
-    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for platform administrators only.", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Refunds", settings: "Settings", audit: "Audit log", broadcasts: "Broadcasts", verification: "Verification", revenue: "Revenue", flags: "Flags", abuse: "Abuse" };
-  const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}), enabled: !!auth?.user.isPlatformAdmin, staleTime: 15000 });
+    ? { title: "Administración de la plataforma", denied: "No disponible", deniedBody: "Esta área es para el equipo de la plataforma (admins, soporte, moderadores).", analytics: "Analíticas", support: "Soporte", queue: "Moderación", users: "Usuarios", refunds: "Facturación", settings: "Ajustes", audit: "Registro", broadcasts: "Difusión", verification: "Verificación", revenue: "Ingresos", flags: "Flags", abuse: "Abuso" }
+    : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for the platform team (admins, support, moderators).", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Billing", settings: "Settings", audit: "Audit log", broadcasts: "Broadcasts", verification: "Verification", revenue: "Revenue", flags: "Flags", abuse: "Abuse" };
+  const myRoleQuery = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000 });
+  const teamRole: string | null = auth?.user.isPlatformAdmin ? "admin" : (myRoleQuery.data?.role ?? null);
+  const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}), enabled: teamRole != null, staleTime: 15000 });
   const supportUnread = inboxBadge.data?.unreadCount ?? 0;
-  if (!auth?.user.isPlatformAdmin) {
+  // Phase 1 permission matrix: which tabs each team role may open.
+  const visibleTabs = (["analytics", "support", "queue", "users", "refunds", "settings", "audit", "broadcasts", "verification", "revenue", "flags", "abuse"] as PlatformAdminTab[]).filter((value) => {
+    if (teamRole === "admin") return true;
+    if (teamRole === "support") return value === "support" || value === "users";
+    if (teamRole === "moderator") return value === "support" || value === "queue" || value === "users";
+    return false;
+  });
+  useEffect(() => { if (teamRole && !visibleTabs.includes(tab)) setTab(teamRole === "admin" ? "analytics" : "support"); }, [teamRole]);
+  if (!teamRole) {
     return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.denied}</h2><p>{t.deniedBody}</p></div></main>;
   }
   return <main className="page pa-page">
     <PageHeader lang={lang} title={t.title} onBack={onBack} />
     <nav className="pa-tabs" aria-label={t.title}>
-      {(["analytics", "support", "queue", "users", "refunds", "settings", "audit", "broadcasts", "verification", "revenue", "flags", "abuse"] as PlatformAdminTab[]).map((value) => (
+      {visibleTabs.map((value) => (
         <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}{value === "support" && supportUnread > 0 && <span className="pa-tab-badge">{supportUnread}</span>}</button>
       ))}
     </nav>
@@ -8994,7 +9033,7 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
     {tab === "support" && <PASupportTab lang={lang} />}
     {tab === "queue" && <PAQueueTab lang={lang} />}
     {tab === "users" && <PAUsersTab lang={lang} setScreen={setScreen} />}
-    {tab === "refunds" && <PARefundsTab lang={lang} initialEmail={refundEmail} />}
+    {tab === "refunds" && <PABillingTab lang={lang} initialEmail={refundEmail} />}
     {tab === "settings" && <PASettingsTab lang={lang} />}
     {tab === "audit" && <PAAuditTab lang={lang} />}
     {tab === "broadcasts" && <PABroadcastsTab lang={lang} />}
@@ -9003,6 +9042,65 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
     {tab === "flags" && <PAFlagsTab lang={lang} />}
     {tab === "abuse" && <PAAbuseTab lang={lang} />}
   </main>;
+}
+
+// Platform admin Phase 1 visual language (Danny's 2026-10-09 render):
+// icon-left stat cards, SVG charts with real axes, dashed empty states.
+function PAStatIcon({ path }: { path: string }) {
+  return <span className="pa-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={path} /></svg></span>;
+}
+
+function niceChartStep(raw: number): number {
+  if (raw <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  if (n >= 5) return 5 * mag;
+  if (n >= 2) return 2 * mag;
+  return mag;
+}
+
+/** Minimal SVG chart with real axes: Y tick labels left, date labels bottom.
+ *  kind "bar" (signups) or "line" (subscriptions green, cancellations pink). */
+function PAChart({ data, kind, color, label }: { data: { date: string; count: number }[]; kind: "bar" | "line"; color: string; label: string }) {
+  const W = 320, H = 140, PL = 28, PR = 8, PT = 8, PB = 20;
+  const plotW = W - PL - PR, plotH = H - PT - PB;
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const step = niceChartStep(max / 4);
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  const ticks = [0, 1, 2, 3, 4].map((i) => i * step).filter((t) => t <= top);
+  const n = data.length;
+  const x = (i: number) => PL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const y = (v: number) => PT + (1 - v / top) * plotH;
+  const fmtDay = (iso: string) => {
+    const d = new Date(`${iso}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? iso.slice(5) : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+  const labelEvery = Math.max(1, Math.ceil(n / 5));
+  const barW = n > 0 ? Math.min(14, (plotW / n) * 0.62) : 0;
+  const linePts = data.map((d, i) => `${x(i).toFixed(1)},${y(d.count).toFixed(1)}`).join(" ");
+  return <svg className="pa-chart-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+    {ticks.map((t) => (
+      <g key={t}>
+        <line className="pa-chart-grid" x1={PL} y1={y(t)} x2={W - PR} y2={y(t)} />
+        <text className="pa-chart-axis" x={PL - 4} y={y(t) + 3} textAnchor="end">{t}</text>
+      </g>
+    ))}
+    {data.map((d, i) => (i % labelEvery === 0 || i === n - 1) && (
+      <text key={d.date} className="pa-chart-axis" x={x(i)} y={H - 6} textAnchor="middle">{fmtDay(d.date)}</text>
+    ))}
+    {kind === "bar" ? data.map((d, i) => (
+      <rect key={d.date} x={x(i) - barW / 2} y={y(d.count)} width={barW} height={Math.max(1.5, PT + plotH - y(d.count))} rx={1.5} fill={color}>
+        <title>{`${d.date}: ${d.count}`}</title>
+      </rect>
+    )) : <>
+      <polyline points={linePts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      {data.map((d, i) => (
+        <circle key={d.date} cx={x(i)} cy={y(d.count)} r={2.6} fill={color}>
+          <title>{`${d.date}: ${d.count}`}</title>
+        </circle>
+      ))}
+    </>}
+  </svg>;
 }
 
 function PAAnalyticsTab({ lang }: { lang: Lang }) {
@@ -9017,7 +9115,7 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         mrr: "Ingresos mensuales", founding: "Fundadores", cancelled: "Cancelados (30d)", churn: "Abandono",
         signupsChart: "Registros — últimos 30 días", subsChart: "Suscripciones — últimos 30 días", cancelChart: "Cancelaciones — últimos 30 días",
         whyLeave: "Por qué se van", recentSignups: "Registros recientes", recentEvents: "Actividad reciente",
-        noData: "Sin datos todavía", loading: "Cargando analíticas…",
+        noData: "Sin datos de cancelación todavía.", loading: "Cargando analíticas…",
       }
     : {
         users: "Total users", newToday: "New today", newWeek: "New this week", newMonth: "New this month",
@@ -9025,68 +9123,52 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         mrr: "Monthly revenue", founding: "Founders", cancelled: "Cancelled (30d)", churn: "Churn",
         signupsChart: "Signups — last 30 days", subsChart: "Subscriptions — last 30 days", cancelChart: "Cancellations — last 30 days",
         whyLeave: "Why they leave", recentSignups: "Recent signups", recentEvents: "Recent activity",
-        noData: "No data yet", loading: "Loading analytics…",
+        noData: "No cancellation data yet.", loading: "Loading analytics…",
       };
   const reasonLabels: Record<string, string> = lang === "es"
     ? { too_expensive: "Muy caro", not_using_enough: "No lo usa lo suficiente", missing_features: "Faltan funciones", switched_tool: "Cambió de herramienta", business_closed: "Cerró el negocio", temporary_break: "Pausa temporal", other: "Otro" }
     : { too_expensive: "Too expensive", not_using_enough: "Not using it enough", missing_features: "Missing features", switched_tool: "Switched tools", business_closed: "Business closed", temporary_break: "Temporary break", other: "Other" };
   if (overview.isLoading) return <div className="market-empty"><p>{t.loading}</p></div>;
   const o = overview.data;
-  const maxSignup = Math.max(1, ...(charts.data?.signups.map((s) => s.count) ?? [1]));
-  const maxSub = Math.max(1, ...(charts.data?.subscriptions.map((s) => s.count) ?? [1]));
-  const maxCancel = Math.max(1, ...(charts.data?.cancellations.map((s) => s.count) ?? [1]));
   const maxReason = Math.max(1, ...(cancellations.data?.byReason.map((r) => r.count) ?? [1]));
+  const stats: { icon: string; value: string; label: string }[] = [
+    { icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75", value: String(o?.totalUsers ?? "—"), label: t.users },
+    { icon: "M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM12 14v6M9 17h6", value: String(o?.newToday ?? "—"), label: t.newToday },
+    { icon: "M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM12 14v6M9 17h6", value: String(o?.newThisWeek ?? "—"), label: t.newWeek },
+    { icon: "M6 3h12l4 6-10 13L2 9l4-6zM2 9h20M12 22L8 9l4-6 4 6-4 13", value: String(o?.activePremium ?? "—"), label: t.premium },
+    { icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v12M15 9.5c-.7-1-2-1.5-3-1.5-1.7 0-3 .9-3 2.5 0 3.5 6 1.5 6 5 0 1.6-1.3 2.5-3 2.5-1 0-2.3-.5-3-1.5", value: `$${o?.mrr?.toFixed(0) ?? "—"}`, label: t.mrr },
+    { icon: "M12 2l8 3v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V5zM12 8l1.2 2.4 2.6.4-1.9 1.9.5 2.6-2.4-1.2-2.4 1.2.5-2.6-1.9-1.9 2.6-.4z", value: `${o?.foundingClaimed ?? "—"}/100`, label: t.founding },
+    { icon: "M23 6l-7 7-4-4-9 9M17 6h6v6", value: `${o?.churnRate ?? "—"}%`, label: t.churn },
+    { icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM9 9l6 6M15 9l-6 6", value: String(o?.cancelledLast30d ?? "—"), label: t.cancelled },
+  ];
   return <div className="pa-analytics">
     <div className="pa-stat-grid">
-      <div className="pa-stat"><span className="pa-stat-value">{o?.totalUsers ?? "—"}</span><span className="pa-stat-label">{t.users}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.newToday ?? "—"}</span><span className="pa-stat-label">{t.newToday}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.newThisWeek ?? "—"}</span><span className="pa-stat-label">{t.newWeek}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.activePremium ?? "—"}</span><span className="pa-stat-label">{t.premium}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">${o?.mrr?.toFixed(0) ?? "—"}</span><span className="pa-stat-label">{t.mrr}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.foundingClaimed ?? "—"}/100</span><span className="pa-stat-label">{t.founding}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.churnRate ?? "—"}%</span><span className="pa-stat-label">{t.churn}</span></div>
-      <div className="pa-stat"><span className="pa-stat-value">{o?.cancelledLast30d ?? "—"}</span><span className="pa-stat-label">{t.cancelled}</span></div>
+      {stats.map((s) => (
+        <div key={s.label} className="pa-stat">
+          <PAStatIcon path={s.icon} />
+          <div className="pa-stat-text"><span className="pa-stat-value">{s.value}</span><span className="pa-stat-label">{s.label}</span></div>
+        </div>
+      ))}
     </div>
 
     <section className="pa-chart-section">
-      <h3>{t.signupsChart}</h3>
-      <div className="pa-bars" role="img" aria-label={t.signupsChart}>
-        {(charts.data?.signups ?? []).map((s) => (
-          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count}`}>
-            <div className="pa-bar" style={{ height: `${Math.max(4, (s.count / maxSignup) * 100)}%` }} />
-            <span className="pa-bar-label">{s.date.slice(8)}</span>
-          </div>
-        ))}
-      </div>
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.signupsChart}</h3>
+      <PAChart data={charts.data?.signups ?? []} kind="bar" color="var(--accent)" label={t.signupsChart} />
     </section>
 
     <section className="pa-chart-section">
-      <h3>{t.subsChart}</h3>
-      <div className="pa-bars" role="img" aria-label={t.subsChart}>
-        {(charts.data?.subscriptions ?? []).map((s) => (
-          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count} (M:${s.monthly} A:${s.annual} L:${s.lifetime} P:${s.play})`}>
-            <div className="pa-bar green" style={{ height: `${Math.max(4, (s.count / maxSub) * 100)}%` }} />
-            <span className="pa-bar-label">{s.date.slice(8)}</span>
-          </div>
-        ))}
-      </div>
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#22c55e" }} />{t.subsChart}</h3>
+      <PAChart data={(charts.data?.subscriptions ?? []).map((s) => ({ date: s.date, count: s.count }))} kind="line" color="#22c55e" label={t.subsChart} />
     </section>
 
     <section className="pa-chart-section">
-      <h3>{t.cancelChart}</h3>
-      <div className="pa-bars" role="img" aria-label={t.cancelChart}>
-        {(charts.data?.cancellations ?? []).map((s) => (
-          <div key={s.date} className="pa-bar-col" title={`${s.date}: ${s.count}`}>
-            <div className="pa-bar red" style={{ height: `${Math.max(4, (s.count / maxCancel) * 100)}%` }} />
-            <span className="pa-bar-label">{s.date.slice(8)}</span>
-          </div>
-        ))}
-      </div>
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#f472b6" }} />{t.cancelChart}</h3>
+      <PAChart data={charts.data?.cancellations ?? []} kind="line" color="#f472b6" label={t.cancelChart} />
     </section>
 
     <section className="pa-chart-section">
-      <h3>{t.whyLeave} ({cancellations.data?.total ?? 0})</h3>
-      {(cancellations.data?.byReason.length ?? 0) === 0 && <p className="pa-muted">{t.noData}</p>}
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#f472b6" }} />{t.whyLeave} ({cancellations.data?.total ?? 0})</h3>
+      {(cancellations.data?.byReason.length ?? 0) === 0 && <p className="pa-why-empty">{t.noData}</p>}
       <div className="pa-reasons">
         {(cancellations.data?.byReason ?? []).map((r) => (
           <div key={r.reason} className="pa-reason-row">
@@ -9100,7 +9182,7 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         <div className="pa-feedback-list">
           {(cancellations.data?.recent.filter((r) => r.details) ?? []).slice(0, 5).map((r) => (
             <blockquote key={r.id} className="pa-feedback-quote">
-              <p>“{r.details}”</p>
+              <p>"{r.details}"</p>
               <cite>— {r.userName} · {reasonLabels[r.reason] ?? r.reason}</cite>
             </blockquote>
           ))}
@@ -9386,9 +9468,9 @@ function PAQueueTab({ lang }: { lang: Lang }) {
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
   const items = query.data?.queue ?? [];
-  if (!items.length) return <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>;
   return <div className="pa-list">
     {error && <p className="status error">{error}</p>}
+    {!items.length && <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>}
     {items.map(({ listing, flags }) => (
       <article key={listing.id} className="pa-card">
         <div className="pa-card-head">
@@ -9411,7 +9493,117 @@ function PAQueueTab({ lang }: { lang: Lang }) {
       <div className="sheet-handle" /><h2>{t.removeTitle}</h2><strong>{confirmSheet.value.title}</strong><p>{t.removeBody}</p>
       <div className="delete-sheet-actions"><button type="button" disabled={decide.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={decide.isPending} onClick={() => decide.mutate({ listingId: confirmSheet.value.id, decision: "remove", note: notes[confirmSheet.value.id] ?? "" })}>{t.confirmRemove}</button></div>
     </section></div>}
+    <PAUserReportsSection lang={lang} />
+    <PAKeywordRulesSection lang={lang} />
   </div>;
+}
+
+// Admin panel Phase 1: reports filed against users or marketplace messages.
+function PAUserReportsSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-user-reports"], queryFn: () => api.adminUserReports({}) });
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
+  const decide = useMutation({
+    mutationFn: (args: { reportId: number; decision: "reviewed_ok" | "reviewed_actioned"; note: string }) => api.adminUserReportDecide(args),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-user-reports"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const hide = useMutation({
+    mutationFn: (args: { kind: "listing" | "message"; id: number; reason: string }) => api.adminContentHide(args),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-user-reports"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const ban = useMutation({
+    mutationFn: (args: { userId: number; reason: string }) => api.adminBlockUser(args),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-user-reports"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { title: "Reportes de usuarios y mensajes", empty: "Sin reportes abiertos.", dismiss: "Descartar", actioned: "Actuar", hide: "Ocultar mensaje", ban: "Bloquear usuario", note: "Nota", by: "por" }
+    : { title: "User & message reports", empty: "No open reports.", dismiss: "Dismiss", actioned: "Mark actioned", hide: "Hide message", ban: "Ban user", note: "Note", by: "by" };
+  const reports = query.data?.reports ?? [];
+  return <section className="pa-bill-section"><h3>{t.title} ({reports.length})</h3>
+    {error && <p className="status error">{error}</p>}
+    {query.isLoading ? <div className="loading-block" /> : !reports.length ? <p className="pa-why-empty">{t.empty}</p> : reports.map((r) => (
+      <article key={r.id} className="pa-card">
+        <div className="pa-card-head"><div><h3>{r.targetType === "user" ? r.targetName : `"${r.targetName}"`}</h3><small>{r.targetType} #{r.targetId} · {t.by} {r.reporterName} · {new Date(r.createdAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</small></div>
+          <span className="pa-badge pending_review">{r.reason}</span></div>
+        {r.details && <p className="pa-desc">{r.details}</p>}
+        <label className="pa-note"><span>{t.note}</span><input value={notes[r.id] ?? ""} onChange={(e) => setNotes((c) => ({ ...c, [r.id]: e.target.value }))} maxLength={500} /></label>
+        <div className="pa-actions">
+          <button type="button" className="secondary-button" disabled={decide.isPending} onClick={() => decide.mutate({ reportId: r.id, decision: "reviewed_ok", note: notes[r.id] ?? "" })}>{t.dismiss}</button>
+          <button type="button" className="secondary-button" disabled={decide.isPending} onClick={() => decide.mutate({ reportId: r.id, decision: "reviewed_actioned", note: notes[r.id] ?? "" })}>{t.actioned}</button>
+          {r.targetType === "message"
+            ? <button type="button" className="danger-button" disabled={hide.isPending} onClick={() => hide.mutate({ kind: "message", id: r.targetId, reason: notes[r.id] ?? "" })}>{t.hide}</button>
+            : <button type="button" className="danger-button" disabled={ban.isPending} onClick={() => ban.mutate({ userId: r.targetId, reason: notes[r.id] ?? "Banned from moderation queue." })}>{t.ban}</button>}
+        </div>
+      </article>
+    ))}
+  </section>;
+}
+
+// Admin panel Phase 1: keyword auto-mod rules + new-user listing cap.
+function PAKeywordRulesSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-keyword-rules"], queryFn: () => api.adminKeywordRulesList({}) });
+  const [pattern, setPattern] = useState("");
+  const [action, setAction] = useState<"flag" | "hold">("flag");
+  const [cap, setCap] = useState("");
+  const [days, setDays] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (query.data) { setCap(String(query.data.newUserCap.listingsPerDay)); setDays(String(query.data.newUserCap.newUserDays)); }
+  }, [query.data]);
+  const add = useMutation({
+    mutationFn: () => api.adminKeywordRuleAdd({ pattern: pattern.trim(), action, note: "" }),
+    onSuccess: async () => { setPattern(""); setError(""); await qc.invalidateQueries({ queryKey: ["pa-keyword-rules"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const del = useMutation({
+    mutationFn: (id: number) => api.adminKeywordRuleDelete({ id }),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-keyword-rules"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const saveCap = useMutation({
+    mutationFn: () => api.adminAutomodCapSet({ listingsPerDay: Math.max(1, Number(cap) || 3), newUserDays: Math.max(1, Number(days) || 7) }),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-keyword-rules"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { title: "Reglas de palabras clave", empty: "Sin reglas. Las coincidencias distinguen mayúsculas parcialmente.", pattern: "Palabra o frase", flag: "Marcar", hold: "Retener para revisión", add: "Agregar", adding: "Agregando…",
+        capTitle: "Límite para cuentas nuevas", perDay: "publicaciones/día", forDays: "durante (días)", save: "Guardar" }
+    : { title: "Keyword rules", empty: "No rules yet. Matches are case-insensitive substrings.", pattern: "Word or phrase", flag: "Flag", hold: "Hold for review", add: "Add", adding: "Adding…",
+        capTitle: "New-account limit", perDay: "listings/day", forDays: "for (days)", save: "Save" };
+  return <section className="pa-bill-section"><h3>{t.title}</h3>
+    {error && <p className="status error">{error}</p>}
+    {query.isLoading ? <div className="loading-block" /> : <>
+      {(query.data?.rules ?? []).map((r) => (
+        <div key={r.id} className="pa-rule-row">
+          <code>{r.pattern}</code>
+          <span className={`pa-badge ${r.action === "hold" ? "pending_review" : ""}`}>{r.action === "hold" ? t.hold : t.flag}</span>
+          <span className="spacer" />
+          <button type="button" className="danger-button" disabled={del.isPending} onClick={() => del.mutate(r.id)}>×</button>
+        </div>
+      ))}
+      {!(query.data?.rules ?? []).length && <p className="pa-muted">{t.empty}</p>}
+      <div className="pa-filters" style={{ marginTop: 10 }}>
+        <input value={pattern} onChange={(e) => setPattern(e.target.value)} placeholder={t.pattern} maxLength={120} aria-label={t.pattern} style={{ flex: 1, minWidth: 140 }} />
+        <select value={action} onChange={(e) => setAction(e.target.value as typeof action)} aria-label={t.flag}>
+          <option value="flag">{t.flag}</option><option value="hold">{t.hold}</option>
+        </select>
+        <button type="button" className="primary-button" disabled={add.isPending || !pattern.trim()} onClick={() => add.mutate()}>{add.isPending ? t.adding : t.add}</button>
+      </div>
+      <h3 style={{ marginTop: 14 }}>{t.capTitle}</h3>
+      <div className="pa-filters">
+        <input inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} aria-label={t.perDay} style={{ maxWidth: 70 }} />
+        <span className="pa-muted">{t.perDay}</span>
+        <input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} aria-label={t.forDays} style={{ maxWidth: 70 }} />
+        <span className="pa-muted">{t.forDays}</span>
+        <button type="button" className="secondary-button" disabled={saveCap.isPending} onClick={() => saveCap.mutate()}>{t.save}</button>
+      </div>
+    </>}
+  </section>;
 }
 
 // Read-only support snapshot: profile, subscription, counts, recent activity.
@@ -9458,9 +9650,13 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [tier, setTier] = useState<"all" | "free" | "premium">("all");
+  const [status, setStatus] = useState<"all" | "active" | "suspended" | "founder">("all");
   const [page, setPage] = useState(1);
   useEffect(() => { const timer = window.setTimeout(() => { setSearch(searchInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [searchInput]);
-  const query = useQuery({ queryKey: ["pa-users", search, page], queryFn: () => api.adminUsersList({ search, page, pageSize: 20 }) });
+  const query = useQuery({ queryKey: ["pa-users", search, tier, status, page], queryFn: () => api.adminUsersList({ search, tier, status, page, pageSize: 20 }) });
+  const myRole = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000 });
+  const canSuspend = myRole.data?.role === "admin" || myRole.data?.role === "support";
   const [confirm, setConfirm] = useState<{ id: number; name: string; email: string; suspend: boolean } | null>(null);
   const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
@@ -9471,13 +9667,23 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
     onError: (caught) => setError(actionErrorMessage(caught)),
   });
   const t = lang === "es"
-    ? { search: "Buscar por nombre o correo…", loading: "Cargando…", empty: "Sin resultados.", loadError: "No se pudieron cargar los usuarios.", retry: "Reintentar", suspended: "Suspendido", admin: "Admin", active: "Activo", suspend: "Suspender", unsuspend: "Reactivar", suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.", cancel: "Cancelar", confirmSuspend: "Suspender cuenta", confirmUnsuspend: "Reactivar cuenta", prev: "Anterior", next: "Siguiente", of: "de", open: "Abrir ficha del usuario" }
-    : { search: "Search by name or email…", loading: "Loading…", empty: "No results.", loadError: "Could not load users.", retry: "Retry", suspended: "Suspended", admin: "Admin", active: "Active", suspend: "Suspend", unsuspend: "Unsuspend", suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.", cancel: "Cancel", confirmSuspend: "Suspend account", confirmUnsuspend: "Unsuspend account", prev: "Previous", next: "Next", of: "of", open: "Open user details" };
+    ? { search: "Buscar por nombre o correo…", loading: "Cargando…", empty: "Sin resultados.", loadError: "No se pudieron cargar los usuarios.", retry: "Reintentar", suspended: "Suspendido", admin: "Admin", active: "Activo", suspend: "Suspender", unsuspend: "Reactivar", suspendTitle: "¿Suspender esta cuenta?", suspendBody: "Se cerrarán todas sus sesiones de inmediato y no podrá iniciar sesión.", unsuspendTitle: "¿Reactivar esta cuenta?", unsuspendBody: "Podrá volver a iniciar sesión.", cancel: "Cancelar", confirmSuspend: "Suspender cuenta", confirmUnsuspend: "Reactivar cuenta", prev: "Anterior", next: "Siguiente", of: "de", open: "Abrir ficha del usuario",
+        allPlans: "Todos los planes", planFree: "Gratis", planPremium: "Premium", allStatuses: "Todos los estados", stActive: "Activo", stSuspended: "Suspendido", stFounder: "Fundadores" }
+    : { search: "Search by name or email…", loading: "Loading…", empty: "No results.", loadError: "Could not load users.", retry: "Retry", suspended: "Suspended", admin: "Admin", active: "Active", suspend: "Suspend", unsuspend: "Unsuspend", suspendTitle: "Suspend this account?", suspendBody: "All of their sessions will be revoked immediately and they won't be able to sign in.", unsuspendTitle: "Unsuspend this account?", unsuspendBody: "They will be able to sign in again.", cancel: "Cancel", confirmSuspend: "Suspend account", confirmUnsuspend: "Unsuspend account", prev: "Previous", next: "Next", of: "of", open: "Open user details",
+        allPlans: "All plans", planFree: "Free", planPremium: "Premium", allStatuses: "All statuses", stActive: "Active", stSuspended: "Suspended", stFounder: "Founders" };
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   return <div className="pa-list">
     <PASupportView lang={lang} />
     <label className="pa-search"><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t.search} aria-label={t.search} /></label>
+    <div className="pa-filters">
+      <select value={tier} onChange={(e) => { setTier(e.target.value as typeof tier); setPage(1); }} aria-label={t.allPlans}>
+        <option value="all">{t.allPlans}</option><option value="free">{t.planFree}</option><option value="premium">{t.planPremium}</option>
+      </select>
+      <select value={status} onChange={(e) => { setStatus(e.target.value as typeof status); setPage(1); }} aria-label={t.allStatuses}>
+        <option value="all">{t.allStatuses}</option><option value="active">{t.stActive}</option><option value="suspended">{t.stSuspended}</option><option value="founder">{t.stFounder}</option>
+      </select>
+    </div>
     {error && <p className="status error">{error}</p>}
     {query.isLoading ? <div className="loading-block" aria-label={t.loading} /> : query.isError ? <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div> : !data?.users.length ? <div className="market-empty"><h2>{t.empty}</h2></div> : <>
       {data.users.map((user) => (
@@ -9485,7 +9691,7 @@ function PAUsersTab({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
           <div className="pa-card-head"><div><h3>{user.name}</h3><small>{user.email}</small><small>{user.companyName} · {user.tier}{user.subscriptionStatus !== "inactive" ? ` · ${user.subscriptionStatus}` : ""}</small></div>
             <span className={`pa-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? t.suspended : t.active}</span></div>
           {user.isPlatformAdmin && <p className="pa-reason"><strong>{t.admin}</strong></p>}
-          {!user.isPlatformAdmin && (user.suspended
+          {canSuspend && !user.isPlatformAdmin && (user.suspended
             ? <div className="pa-actions"><button type="button" className="primary-button" disabled={toggle.isPending} onClick={(event) => { event.stopPropagation(); setConfirm({ id: user.id, name: user.name, email: user.email, suspend: false }); }}>{t.unsuspend}</button></div>
             : <div className="pa-actions"><button type="button" className="danger-button" disabled={toggle.isPending} onClick={(event) => { event.stopPropagation(); setConfirm({ id: user.id, name: user.name, email: user.email, suspend: true }); }}>{t.suspend}</button></div>)}
         </article>
@@ -9503,7 +9709,11 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
   const auth = useContext(AuthContext);
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-user-detail", userId], queryFn: () => api.adminUserDetail({ userId }) });
-  const [confirm, setConfirm] = useState<null | { kind: "suspend" } | { kind: "revokeSessions" } | { kind: "tier"; to: "free" | "premium" }>(null);
+  const myRole = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000 });
+  const isFullAdmin = myRole.data?.role === "admin";
+  const canSuspend = isFullAdmin || myRole.data?.role === "support";
+  const [confirm, setConfirm] = useState<null | { kind: "suspend" } | { kind: "revokeSessions" } | { kind: "tier"; to: "free" | "premium" } | { kind: "delete" } | { kind: "founder" } | { kind: "impersonate" }>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const confirmSheet = useAnimatedDismiss(confirm);
   useEscapeToClose(confirm !== null, () => setConfirm(null));
   const [error, setError] = useState("");
@@ -9515,9 +9725,20 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
         if (u?.suspended) await api.adminUserUnsuspend({ userId });
         else await api.adminUserSuspend({ userId });
       } else if (kind.kind === "revokeSessions") await api.adminUserRevokeSessions({ userId });
-      else await api.adminUserSetTier({ userId, tier: kind.to });
+      else if (kind.kind === "delete") { await api.adminUserDelete({ userId, reason: deleteReason.trim() }); }
+      else if (kind.kind === "founder") {
+        const isFounder = query.data?.user.subscriptionStatus === "founder";
+        if (isFounder) await api.adminUserRevokeFounder({ userId });
+        else await api.adminUserGrantFounder({ userId });
+      } else if (kind.kind === "impersonate") {
+        const res = await api.adminImpersonateStart({ userId });
+        startImpersonation(res.proof, res.userName);
+        setConfirm(null);
+        setScreen({ name: "today" });
+        return;
+      } else await api.adminUserSetTier({ userId, tier: kind.to });
     },
-    onSuccess: async () => { setConfirm(null); setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-user-detail", userId] }), qc.invalidateQueries({ queryKey: ["pa-users"] })]); },
+    onSuccess: async (_data, kind) => { setConfirm(null); setDeleteReason(""); setError(""); if (kind?.kind === "delete") { onBack(); return; } if (kind?.kind === "impersonate") return; await Promise.all([qc.invalidateQueries({ queryKey: ["pa-user-detail", userId] }), qc.invalidateQueries({ queryKey: ["pa-users"] })]); },
     onError: (caught) => { setConfirm(null); setError(actionErrorMessage(caught)); },
   });
   const t = lang === "es"
@@ -9532,7 +9753,14 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
         revokeTitle: "¿Cerrar todas las sesiones?", revokeBody: "El usuario tendrá que volver a iniciar sesión en todos sus dispositivos.",
         tierTitle: "¿Cambiar el plan?", tierToPremiumBody: "El usuario tendrá Premium sin pasar por Stripe. Quedará registrado en la auditoría.", tierToFreeBody: "El usuario volverá al plan gratis. Si tiene una suscripción de Stripe activa, cancélala en Stripe para no seguir cobrando.",
         stripeWarning: "Tiene suscripción de Stripe: cambia el plan en Stripe para no seguir cobrando.",
-        cancel: "Cancelar", confirmBtn: "Confirmar", lastSeen: "Última actividad", noSessions: "Sin sesiones activas.", noListings: "Sin publicaciones.", noFlags: "No ha enviado reportes.", noHistory: "Sin actividad registrada.", flags: "reportes", premium: "Premium", free: "Gratis" }
+        cancel: "Cancelar", confirmBtn: "Confirmar", lastSeen: "Última actividad", noSessions: "Sin sesiones activas.", noListings: "Sin publicaciones.", noFlags: "No ha enviado reportes.", noHistory: "Sin actividad registrada.", flags: "reportes", premium: "Premium", free: "Gratis",
+        deleteAccount: "Eliminar cuenta", grantFounder: "Dar Founders", revokeFounder: "Quitar Founders", impersonate: "Ver como usuario",
+        deleteTitle: "¿Eliminar esta cuenta permanentemente?", deleteBody: "Se borrará la cuenta y sus datos según las reglas de eliminación. Esta acción no se puede deshacer y quedará en la auditoría.",
+        deleteReasonLabel: "Motivo (opcional)",
+        founderTitle: "¿Cambiar estado Founders?", founderGrantBody: "El usuario tendrá Premium de por vida sin pasar por Stripe. Quedará registrado en la auditoría.",
+        founderRevokeBody: "Se quitará el estado Founders y volverá al plan gratis.",
+        impersonateTitle: "¿Ver como este usuario?", impersonateBody: "Verás la app como este usuario durante 30 minutos. La sesión queda registrada en la auditoría.",
+        founderBadge: "Founders" }
     : { title: "User details", loading: "Loading…", loadError: "Could not load the user.", retry: "Retry", notAdmin: "Not available", notAdminBody: "This area is for platform administrators only.",
         account: "Account", subscription: "Subscription", sessions: "Active sessions", listings: "Listings", flagsFiled: "Reports filed", history: "Admin history",
         id: "ID", name: "Name", email: "Email", company: "Company", companyId: "Company ID", created: "Created", updated: "Updated",
@@ -9544,13 +9772,20 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
         revokeTitle: "Revoke all sessions?", revokeBody: "The user will have to sign in again on all their devices.",
         tierTitle: "Change plan?", tierToPremiumBody: "The user will get Premium without going through Stripe. This is recorded in the audit log.", tierToFreeBody: "The user will go back to the free plan. If they have an active Stripe subscription, cancel it in Stripe so billing stops.",
         stripeWarning: "Has an active Stripe subscription — change the plan in Stripe so billing stops.",
-        cancel: "Cancel", confirmBtn: "Confirm", lastSeen: "Last seen", noSessions: "No active sessions.", noListings: "No listings.", noFlags: "No reports filed.", noHistory: "No recorded activity.", flags: "flags", premium: "Premium", free: "Free" };
+        cancel: "Cancel", confirmBtn: "Confirm", lastSeen: "Last seen", noSessions: "No active sessions.", noListings: "No listings.", noFlags: "No reports filed.", noHistory: "No recorded activity.", flags: "flags", premium: "Premium", free: "Free",
+        deleteAccount: "Delete account", grantFounder: "Grant Founders", revokeFounder: "Revoke Founders", impersonate: "Impersonate user",
+        deleteTitle: "Permanently delete this account?", deleteBody: "The account and its data will be wiped per the deletion rules. This can't be undone and is audit-logged.",
+        deleteReasonLabel: "Reason (optional)",
+        founderTitle: "Change Founders status?", founderGrantBody: "The user gets lifetime Premium without going through Stripe. This is recorded in the audit log.",
+        founderRevokeBody: "Founders status will be removed and the user returns to the free plan.",
+        impersonateTitle: "View as this user?", impersonateBody: "You'll see the app as this user for 30 minutes. The session is recorded in the audit log.",
+        founderBadge: "Founders" };
   if (!auth?.user.isPlatformAdmin) {
     return <main className="page"><PageHeader lang={lang} title={t.title} onBack={onBack} /><div className="market-empty"><h2>{t.notAdmin}</h2><p>{t.notAdminBody}</p></div></main>;
   }
   const fmtDate = (iso: string) => new Date(iso).toLocaleString(lang === "es" ? "es-US" : "en-US");
-  const confirmTitle = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendTitle : t.suspendTitle) : confirm.kind === "revokeSessions" ? t.revokeTitle : t.tierTitle;
-  const confirmBody = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendBody : t.suspendBody) : confirm.kind === "revokeSessions" ? t.revokeBody : confirm.to === "premium" ? t.tierToPremiumBody : t.tierToFreeBody;
+  const confirmTitle = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendTitle : t.suspendTitle) : confirm.kind === "revokeSessions" ? t.revokeTitle : confirm.kind === "delete" ? t.deleteTitle : confirm.kind === "founder" ? t.founderTitle : confirm.kind === "impersonate" ? t.impersonateTitle : t.tierTitle;
+  const confirmBody = !confirm ? "" : confirm.kind === "suspend" ? (query.data?.user.suspended ? t.unsuspendBody : t.suspendBody) : confirm.kind === "revokeSessions" ? t.revokeBody : confirm.kind === "delete" ? t.deleteBody : confirm.kind === "founder" ? (query.data?.user.subscriptionStatus === "founder" ? t.founderRevokeBody : t.founderGrantBody) : confirm.kind === "impersonate" ? t.impersonateBody : confirm.to === "premium" ? t.tierToPremiumBody : t.tierToFreeBody;
   return <main className="page pa-page pa-user-detail">
     <PageHeader lang={lang} title={t.title} onBack={onBack} />
     <div className="pa-list">
@@ -9562,16 +9797,21 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
           <article className="pa-card">
             <div className="pa-card-head"><div><h3>{user.name}</h3><small>{user.email}</small></div>
               <span className={`pa-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? t.suspended : t.active}</span></div>
-            <div className="pa-badges-row">{user.isPlatformAdmin && <span className="pa-badge admin">{t.platformAdmin}</span>}<span className={`pa-badge ${user.tier === "premium" ? "premium" : ""}`}>{user.tier === "premium" ? t.premium : t.free}</span></div>
+            <div className="pa-badges-row">{user.isPlatformAdmin && <span className="pa-badge admin">{t.platformAdmin}</span>}<span className={`pa-badge ${user.tier === "premium" ? "premium" : ""}`}>{user.subscriptionStatus === "founder" ? t.founderBadge : user.tier === "premium" ? t.premium : t.free}</span></div>
             {!isSelf && <div className="pa-actions">
-              {user.suspended
+              {canSuspend && (user.suspended
                 ? <button type="button" className="primary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "suspend" })}>{t.unsuspend}</button>
-                : <button type="button" className="danger-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "suspend" })}>{t.suspend}</button>}
-              <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "revokeSessions" })}>{t.revokeSessions}</button>
+                : <button type="button" className="danger-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "suspend" })}>{t.suspend}</button>)}
+              {canSuspend && <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "revokeSessions" })}>{t.revokeSessions}</button>}
               {user.tier === "premium"
                 ? <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "tier", to: "free" })}>{t.revokePremium}</button>
                 : <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "tier", to: "premium" })}>{t.makePremium}</button>}
-              <button type="button" className="secondary-button" onClick={() => setScreen({ name: "platformAdmin", tab: "refunds", refundEmail: user.email })}>{t.issueRefund}</button>
+              {isFullAdmin && <>
+                <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "founder" })}>{user.subscriptionStatus === "founder" ? t.revokeFounder : t.grantFounder}</button>
+                <button type="button" className="secondary-button" disabled={runAction.isPending} onClick={() => setConfirm({ kind: "impersonate" })}>{t.impersonate}</button>
+                <button type="button" className="secondary-button" onClick={() => setScreen({ name: "platformAdmin", tab: "refunds", refundEmail: user.email })}>{t.issueRefund}</button>
+                <button type="button" className="danger-button" disabled={runAction.isPending} onClick={() => { setDeleteReason(""); setConfirm({ kind: "delete" }); }}>{t.deleteAccount}</button>
+              </>}
             </div>}
           </article>
           <article className="pa-card"><h3>{t.account}</h3>
@@ -9623,12 +9863,46 @@ function PAUserDetailScreen({ lang, userId, onBack, setScreen }: { lang: Lang; u
     </div>
     {confirmSheet.render && confirmSheet.value && <div className={`sheet-backdrop${confirmSheet.closing ? " closing" : ""}`} onClick={() => !runAction.isPending && setConfirm(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
       <div className="sheet-handle" /><h2>{confirmTitle}</h2><p>{confirmBody}</p>
-      <div className="delete-sheet-actions"><button type="button" disabled={runAction.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={confirmSheet.value.kind === "suspend" && !query.data?.user.suspended ? "danger-button" : "primary-button"} disabled={runAction.isPending} onClick={() => runAction.mutate(confirmSheet.value)}>{t.confirmBtn}</button></div>
+      {confirmSheet.value.kind === "delete" && <label className="form-field"><span>{t.deleteReasonLabel}</span><input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} maxLength={500} /></label>}
+      <div className="delete-sheet-actions"><button type="button" disabled={runAction.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className={(confirmSheet.value.kind === "suspend" && !query.data?.user.suspended) || confirmSheet.value.kind === "delete" ? "danger-button" : "primary-button"} disabled={runAction.isPending} onClick={() => runAction.mutate(confirmSheet.value)}>{t.confirmBtn}</button></div>
     </section></div>}
   </main>;
 }
 
-function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: string }) {
+// Admin panel Phase 1: Billing tab — failed payments, payments,
+// subscriptions, promo codes, plans & pricing, and refunds (admin-only).
+function PABillingTab({ lang, initialEmail }: { lang: Lang; initialEmail?: string }) {
+  const t = lang === "es"
+    ? { failed: "Pagos fallidos", payments: "Pagos", subscriptions: "Suscripciones", promos: "Códigos promo", plans: "Planes y precios", refunds: "Reembolsos",
+        noFailed: "Sin pagos fallidos. 🎉", retry: "Reintento", attempts: "intentos", unconfigured: "Stripe no está configurado.",
+        all: "Todas", active: "Activas", trialing: "Prueba", pastDue: "Vencidas", canceled: "Canceladas",
+        customer: "Cliente", amount: "Monto", status: "Estado", periodEnd: "Fin del período", cancelAtEnd: "Se cancela",
+        code: "Código", percentOff: "% descuento", amountOff: "Monto desc. (USD)", duration: "Duración", once: "Una vez", repeating: "Repetido", forever: "Siempre",
+        months: "Meses", create: "Crear", creating: "Creando…", delete: "Eliminar", deleteTitle: "¿Eliminar este cupón?", cancel: "Cancelar", confirmDelete: "Eliminar",
+        planName: "Nombre del plan", planPrice: "Precio (USD/mes o año)", planInterval: "Intervalo", monthly: "Mensual", yearly: "Anual",
+        save: "Guardar", saved: "Guardado ✓", stripePriceNote: "El precio vivo de Stripe (price_1UK81ZAZoTlhRfFcUEqPjzxa) no se toca aquí — esto edita solo los metadatos del plan.",
+        timesRedeemed: "usos", loading: "Cargando…" }
+    : { failed: "Failed payments", payments: "Payments", subscriptions: "Subscriptions", promos: "Promo codes", plans: "Plans & pricing", refunds: "Refunds",
+        noFailed: "No failed payments. 🎉", retry: "Retry", attempts: "attempts", unconfigured: "Stripe is not configured.",
+        all: "All", active: "Active", trialing: "Trialing", pastDue: "Past due", canceled: "Canceled",
+        customer: "Customer", amount: "Amount", status: "Status", periodEnd: "Period ends", cancelAtEnd: "Cancels at end",
+        code: "Code", percentOff: "% off", amountOff: "Amount off (USD)", duration: "Duration", once: "Once", repeating: "Repeating", forever: "Forever",
+        months: "Months", create: "Create", creating: "Creating…", delete: "Delete", deleteTitle: "Delete this coupon?", cancel: "Cancel", confirmDelete: "Delete",
+        planName: "Plan name", planPrice: "Price (USD/mo or yr)", planInterval: "Interval", monthly: "Monthly", yearly: "Yearly",
+        save: "Save", saved: "Saved ✓", stripePriceNote: "The live Stripe Price (price_1UK81ZAZoTlhRfFcUEqPjzxa) is never rewritten here — this edits plan metadata only.",
+        timesRedeemed: "uses", loading: "Loading…" };
+  return <div className="pa-list">
+    <PAFailedPayments lang={lang} t={t} />
+    <PAPaymentsSection lang={lang} t={t} />
+    <PASubscriptionsSection lang={lang} t={t} />
+    <PAPromoSection lang={lang} t={t} />
+    <PAPlansSection lang={lang} t={t} />
+    <section className="pa-bill-section"><h3>{t.refunds}</h3><PARefundSection lang={lang} initialEmail={initialEmail} /></section>
+  </div>;
+}
+
+// The pre-existing refund lookup/issue UI, now a section of the Billing tab.
+function PARefundSection({ lang, initialEmail }: { lang: Lang; initialEmail?: string }) {
   const [email, setEmail] = useState(initialEmail ?? "");
   useEffect(() => { if (initialEmail !== undefined) setEmail(initialEmail); }, [initialEmail]);
   const [result, setResult] = useState<ApiResponse<typeof api, "adminRefundPreview"> | null>(null);
@@ -9654,7 +9928,7 @@ function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
     ? { email: "Correo del cliente", lookup: "Buscar cargos", looking: "Buscando…", noUser: "No hay cuenta con ese correo.", noCharges: "Sin cargos en Stripe para este cliente.", amount: "Monto USD (vacío = total)", refund: "Reembolsar", refundTitle: "¿Emitir reembolso?", cancel: "Cancelar", confirmRefund: "Emitir reembolso", refunded: "Restante por reembolsar", done: "Reembolso emitido:" }
     : { email: "Customer email", lookup: "Look up charges", looking: "Looking up…", noUser: "No account found with that email.", noCharges: "No Stripe charges for this customer.", amount: "Amount USD (blank = full)", refund: "Refund", refundTitle: "Issue refund?", cancel: "Cancel", confirmRefund: "Issue refund", refunded: "Refundable left", done: "Refund issued:" };
   const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-  return <div className="pa-list">
+  return <div>
     <div className="pa-search-row"><label><span>{t.email}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") lookup(); }} /></label><button type="button" className="primary-button" disabled={busy || !email.trim()} onClick={lookup}>{busy ? t.looking : t.lookup}</button></div>
     {error && <p className="status error">{error}</p>}
     {done && <p className="status auth-success">{t.done} {done}</p>}
@@ -9680,6 +9954,154 @@ function PARefundsTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
       <div className="delete-sheet-actions"><button type="button" disabled={refund.isPending} onClick={() => setConfirm(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={refund.isPending} onClick={() => refund.mutate({ chargeId: confirmSheet.value.chargeId, amountCents: confirmSheet.value.amountCents, reason: "" })}>{t.confirmRefund}</button></div>
     </section></div>}
   </div>;
+}
+
+function PAFailedPayments({ lang, t }: { lang: Lang; t: Record<string, string> }) {
+  const query = useQuery({ queryKey: ["pa-failed-payments"], queryFn: () => api.adminFailedPayments({}) });
+  if (query.isLoading) return <section className="pa-bill-section"><h3>{t.failed}</h3><div className="loading-block" /></section>;
+  if (!query.data?.configured) return <section className="pa-bill-section"><h3>{t.failed}</h3><p className="pa-muted">{t.unconfigured}</p></section>;
+  const failed = query.data.failed;
+  return <section className="pa-bill-section"><h3>{t.failed} ({failed.length})</h3>
+    {!failed.length ? <p className="pa-why-empty">{t.noFailed}</p> : failed.map((f) => (
+      <article key={f.invoiceId} className="pa-card">
+        <div className="pa-card-head"><div><h3>${(f.amountCents / 100).toFixed(2)} {f.currency.toUpperCase()}</h3><small>{f.customerEmail ?? "—"}</small><small className="mono">{f.invoiceId}</small></div>
+          <span className="pa-badge suspended">{f.status}</span></div>
+        <p className="pa-reason">{f.attemptCount} {t.attempts}{f.nextRetryAt ? ` · ${t.retry}: ${new Date(f.nextRetryAt * 1000).toLocaleString(lang === "es" ? "es-US" : "en-US")}` : ""}</p>
+      </article>
+    ))}
+  </section>;
+}
+
+function PAPaymentsSection({ lang, t }: { lang: Lang; t: Record<string, string> }) {
+  const query = useQuery({ queryKey: ["pa-payments"], queryFn: () => api.adminPaymentsList({ limit: 25 }) });
+  if (query.isLoading) return <section className="pa-bill-section"><h3>{t.payments}</h3><div className="loading-block" /></section>;
+  if (!query.data?.configured) return <section className="pa-bill-section"><h3>{t.payments}</h3><p className="pa-muted">{t.unconfigured}</p></section>;
+  return <section className="pa-bill-section"><h3>{t.payments}</h3>
+    {(query.data.charges ?? []).map((c) => (
+      <article key={c.id} className="pa-card">
+        <div className="pa-card-head"><div><h3>${(c.amount / 100).toFixed(2)} {c.currency.toUpperCase()}</h3><small>{c.customerEmail ?? "—"} · {new Date(c.created * 1000).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}{c.description ? ` · ${c.description}` : ""}</small></div>
+          <span className={`pa-badge ${c.status === "succeeded" ? "active" : "suspended"}`}>{c.status}</span></div>
+        {c.amountRefunded > 0 && <p className="pa-reason">Refunded: <strong>${(c.amountRefunded / 100).toFixed(2)}</strong></p>}
+      </article>
+    ))}
+  </section>;
+}
+
+function PASubscriptionsSection({ lang, t }: { lang: Lang; t: Record<string, string> }) {
+  const [status, setStatus] = useState<"active" | "trialing" | "past_due" | "canceled" | "all">("all");
+  const query = useQuery({ queryKey: ["pa-subscriptions", status], queryFn: () => api.adminSubscriptionsList({ status, limit: 25 }) });
+  return <section className="pa-bill-section"><h3>{t.subscriptions}</h3>
+    <div className="pa-filters">
+      <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label={t.status}>
+        {(["all", "active", "trialing", "past_due", "canceled"] as const).map((v) => <option key={v} value={v}>{t[v === "past_due" ? "pastDue" : v]}</option>)}
+      </select>
+    </div>
+    {query.isLoading ? <div className="loading-block" /> : !query.data?.configured ? <p className="pa-muted">{t.unconfigured}</p> :
+      (query.data.subscriptions ?? []).map((sub) => (
+        <article key={sub.id} className="pa-card">
+          <div className="pa-card-head"><div><h3>${(sub.amountCents / 100).toFixed(2)}/{sub.interval}</h3><small>{sub.customerEmail ?? sub.customerId}</small><small className="mono">{sub.id}</small></div>
+            <span className={`pa-badge ${sub.status === "active" ? "active" : sub.status === "trialing" ? "pending_review" : "suspended"}`}>{sub.status}</span></div>
+          <p className="pa-reason">{sub.currentPeriodEnd ? `${t.periodEnd}: ${new Date(sub.currentPeriodEnd * 1000).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}` : ""}{sub.cancelAtPeriodEnd ? ` · ${t.cancelAtEnd}` : ""}</p>
+        </article>
+      ))}
+  </section>;
+}
+
+function PAPromoSection({ t }: { lang: Lang; t: Record<string, string> }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-promos"], queryFn: () => api.adminPromoCodesList({}) });
+  const [code, setCode] = useState("");
+  const [mode, setMode] = useState<"percent" | "amount">("percent");
+  const [value, setValue] = useState("");
+  const [duration, setDuration] = useState<"once" | "repeating" | "forever">("once");
+  const [error, setError] = useState("");
+  const [del, setDel] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: () => {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num <= 0) throw new Error("Invalid value.");
+      return api.adminPromoCodeCreate({
+        code: code.trim(),
+        ...(mode === "percent" ? { percentOff: Math.min(100, Math.round(num)) } : { amountOffCents: Math.round(num * 100) }),
+        duration,
+        durationInMonths: 3,
+      });
+    },
+    onSuccess: async () => { setCode(""); setValue(""); setError(""); await qc.invalidateQueries({ queryKey: ["pa-promos"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const remove = useMutation({
+    mutationFn: (couponId: string) => api.adminPromoCodeDelete({ couponId }),
+    onSuccess: async () => { setDel(null); await qc.invalidateQueries({ queryKey: ["pa-promos"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  return <section className="pa-bill-section"><h3>{t.promos}</h3>
+    {error && <p className="status error">{error}</p>}
+    <article className="pa-card">
+      <div className="pa-search-row"><label><span>{t.code}</span><input value={code} onChange={(e) => setCode(e.target.value)} placeholder="WELCOME20" maxLength={40} /></label></div>
+      <div className="pa-filters">
+        <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} aria-label={t.percentOff}>
+          <option value="percent">{t.percentOff}</option><option value="amount">{t.amountOff}</option>
+        </select>
+        <input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder={mode === "percent" ? "20" : "5.00"} aria-label={mode === "percent" ? t.percentOff : t.amountOff} style={{ maxWidth: 110 }} />
+        <select value={duration} onChange={(e) => setDuration(e.target.value as typeof duration)} aria-label={t.duration}>
+          <option value="once">{t.once}</option><option value="repeating">{t.repeating}</option><option value="forever">{t.forever}</option>
+        </select>
+        <button type="button" className="primary-button" disabled={create.isPending || !code.trim() || !value.trim()} onClick={() => create.mutate()}>{create.isPending ? t.creating : t.create}</button>
+      </div>
+    </article>
+    {query.isLoading ? <div className="loading-block" /> : !query.data?.configured ? <p className="pa-muted">{t.unconfigured}</p> :
+      (query.data.coupons ?? []).map((c) => (
+        <div key={c.id} className="pa-rule-row">
+          <code>{c.code ?? c.id}</code>
+          <span>{c.percentOff ? `${c.percentOff}%` : c.amountOff ? `$${(c.amountOff / 100).toFixed(2)}` : "—"}</span>
+          <span className="pa-muted">{c.duration} · {c.timesRedeemed} {t.timesRedeemed}</span>
+          <span className="spacer" />
+          <button type="button" className="danger-button" disabled={remove.isPending} onClick={() => setDel(c.id)}>{t.delete}</button>
+        </div>
+      ))}
+    {del && <div className="sheet-backdrop" onClick={() => setDel(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div className="sheet-handle" /><h2>{t.deleteTitle}</h2><p className="mono">{del}</p>
+      <div className="delete-sheet-actions"><button type="button" onClick={() => setDel(null)}>{t.cancel}</button><button type="button" className="danger-button" disabled={remove.isPending} onClick={() => remove.mutate(del)}>{t.confirmDelete}</button></div>
+    </section></div>}
+  </section>;
+}
+
+function PAPlansSection({ t }: { lang: Lang; t: Record<string, string> }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-plans"], queryFn: () => api.adminPlansGet({}) });
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [interval, setInterval] = useState<"month" | "year">("month");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (query.data) { setName(query.data.name); setPrice((query.data.priceCents / 100).toFixed(2)); setInterval(query.data.interval === "year" ? "year" : "month"); }
+  }, [query.data]);
+  const save = useMutation({
+    mutationFn: () => {
+      const cents = Math.round(Number(price) * 100);
+      if (!Number.isFinite(cents) || cents < 100) throw new Error("Invalid price.");
+      return api.adminPlansUpdate({ name: name.trim(), priceCents: cents, interval });
+    },
+    onSuccess: async () => { setSaved(true); setError(""); await qc.invalidateQueries({ queryKey: ["pa-plans"] }); window.setTimeout(() => setSaved(false), 2500); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  return <section className="pa-bill-section"><h3>{t.plans}</h3>
+    {error && <p className="status error">{error}</p>}
+    {saved && <p className="status auth-success">{t.saved}</p>}
+    <p className="pa-muted">{t.stripePriceNote}</p>
+    {query.isLoading ? <div className="loading-block" /> : <article className="pa-card">
+      <div className="pa-search-row"><label><span>{t.planName}</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></label></div>
+      <div className="pa-filters">
+        <label><span className="pa-muted">{t.planPrice}</span><input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} style={{ maxWidth: 110 }} /></label>
+        <select value={interval} onChange={(e) => setInterval(e.target.value as typeof interval)} aria-label={t.planInterval}>
+          <option value="month">{t.monthly}</option><option value="year">{t.yearly}</option>
+        </select>
+        <button type="button" className="primary-button" disabled={save.isPending || !name.trim()} onClick={() => save.mutate()}>{t.save}</button>
+      </div>
+    </article>}
+  </section>;
 }
 
 function PASettingsTab({ lang }: { lang: Lang }) {
@@ -9747,44 +10169,101 @@ function PASettingsTab({ lang }: { lang: Lang }) {
       </div>;
     })}
     <button type="button" className="primary-button compact-save" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
+    <PATeamSection lang={lang} />
   </div>;
+}
+
+// Admin panel Phase 1: team roles (Admin, Support, Moderator). Admin-only.
+function PATeamSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-team"], queryFn: () => api.adminTeamList({}) });
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"support" | "moderator">("support");
+  const [error, setError] = useState("");
+  const lookup = useQuery({
+    queryKey: ["pa-team-lookup", email.trim().toLowerCase()],
+    queryFn: () => api.adminUsersList({ search: email.trim(), tier: "all", status: "all", page: 1, pageSize: 5 }),
+    enabled: false,
+  });
+  const setRoleMut = useMutation({
+    mutationFn: (args: { userId: number; role: "support" | "moderator" }) => api.adminTeamSetRole(args),
+    onSuccess: async () => { setError(""); setEmail(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-team"] }), qc.invalidateQueries({ queryKey: ["pa-my-team-role"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const removeMut = useMutation({
+    mutationFn: (userId: number) => api.adminTeamRemoveRole({ userId }),
+    onSuccess: async () => { setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-team"] }), qc.invalidateQueries({ queryKey: ["pa-my-team-role"] })]); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { title: "Equipo", empty: "Sin miembros todavía.", emailPh: "correo@ejemplo.com", support: "Soporte", moderator: "Moderador", admin: "Admin", grant: "Dar acceso", remove: "Quitar", grantedBy: "por", loadError: "No se pudo cargar el equipo." }
+    : { title: "Team", empty: "No team members yet.", emailPh: "user@example.com", support: "Support", moderator: "Moderator", admin: "Admin", grant: "Grant access", remove: "Remove", grantedBy: "by", loadError: "Could not load the team." };
+  const roleLabel = (r: string) => r === "admin" ? t.admin : r === "moderator" ? t.moderator : t.support;
+  return <section className="pa-bill-section"><h3>{t.title}</h3>
+    {error && <p className="status error">{error}</p>}
+    {query.isLoading ? <div className="loading-block" /> : query.isError ? <p className="status error">{t.loadError}</p> : <>
+      {(query.data?.members ?? []).map((m) => (
+        <div key={m.userId} className="pa-rule-row">
+          <div><strong>{m.name}</strong><br /><small className="pa-muted">{m.email}</small></div>
+          <span className={`pa-badge ${m.role === "admin" ? "admin" : ""}`}>{roleLabel(m.role)}</span>
+          <span className="spacer" />
+          {m.role !== "admin" && <button type="button" className="danger-button" disabled={removeMut.isPending} onClick={() => removeMut.mutate(m.userId)}>{t.remove}</button>}
+        </div>
+      ))}
+      {!(query.data?.members ?? []).filter((m) => m.role !== "admin").length && <p className="pa-muted">{t.empty}</p>}
+      <div className="pa-filters" style={{ marginTop: 10 }}>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.emailPh} aria-label={t.emailPh} style={{ flex: 1, minWidth: 150 }} />
+        <select value={role} onChange={(e) => setRole(e.target.value as typeof role)} aria-label={t.grant}>
+          <option value="support">{t.support}</option><option value="moderator">{t.moderator}</option>
+        </select>
+        <button type="button" className="primary-button" disabled={setRoleMut.isPending || !email.trim()} onClick={async () => {
+          setError("");
+          const res = await lookup.refetch();
+          const match = res.data?.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase()) ?? res.data?.users[0];
+          if (!match) { setError(lang === "es" ? "Sin resultados para ese correo." : "No user with that email."); return; }
+          setRoleMut.mutate({ userId: match.id, role });
+        }}>{t.grant}</button>
+      </div>
+    </>}
+  </section>;
 }
 
 function PAAuditTab({ lang }: { lang: Lang }) {
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [actionInput, setActionInput] = useState("");
-  const [since, setSince] = useState("");
-  const [until, setUntil] = useState("");
+  const [targetType, setTargetType] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   useEffect(() => { const timer = window.setTimeout(() => { setActionFilter(actionInput); setPage(1); }, 500); return () => window.clearTimeout(timer); }, [actionInput]);
-  const query = useQuery({ queryKey: ["pa-audit", page, actionFilter, since, until], queryFn: () => api.adminAuditLog({ page, pageSize: 25, action: actionFilter, actorId: null, since, until }) });
+  const query = useQuery({
+    queryKey: ["pa-audit", page, actionFilter, targetType, from, to],
+    queryFn: () => api.adminAuditLogSearch({
+      page, pageSize: 25, action: actionFilter, targetType,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    }),
+  });
   const t = lang === "es"
-    ? { loading: "Cargando…", empty: "Sin actividad registrada.", loadError: "No se pudo cargar el registro.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", of: "de", actionPh: "Filtrar por acción…", since: "Desde", until: "Hasta", clear: "Limpiar" }
-    : { loading: "Loading…", empty: "No admin activity yet.", loadError: "Could not load the audit log.", retry: "Retry", prev: "Previous", next: "Next", of: "of", actionPh: "Filter by action…", since: "From", until: "To", clear: "Clear" };
+    ? { loading: "Cargando…", empty: "Sin actividad registrada.", loadError: "No se pudo cargar el registro.", retry: "Reintentar", prev: "Anterior", next: "Siguiente", of: "de", actionPh: "Filtrar por acción…", targetPh: "Tipo de objetivo…", from: "Desde", to: "Hasta", clear: "Limpiar" }
+    : { loading: "Loading…", empty: "No admin activity yet.", loadError: "Could not load the audit log.", retry: "Retry", prev: "Previous", next: "Next", of: "of", actionPh: "Filter by action…", targetPh: "Target type…", from: "From", to: "To", clear: "Clear" };
   const data = query.data;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const clear = () => { setActionInput(""); setTargetType(""); setFrom(""); setTo(""); setPage(1); };
+  const filters = <div className="pa-filters">
+    <input className="pa-note-input" value={actionInput} placeholder={t.actionPh} onChange={(e) => setActionInput(e.target.value)} />
+    <input className="pa-note-input" value={targetType} placeholder={t.targetPh} onChange={(e) => { setTargetType(e.target.value); setPage(1); }} style={{ maxWidth: 150 }} />
+    <div className="pa-form-row">
+      <label className="pa-field"><span><strong>{t.from}</strong></span><input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} /></label>
+      <label className="pa-field"><span><strong>{t.to}</strong></span><input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} /></label>
+    </div>
+    {(actionInput || targetType || from || to) && <button type="button" className="secondary-button" onClick={clear}>{t.clear}</button>}
+  </div>;
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
-  if (!data?.entries.length) return <div className="pa-list">
-    <div className="pa-filters">
-      <input className="pa-note-input" value={actionInput} placeholder={t.actionPh} onChange={(e) => setActionInput(e.target.value)} />
-      <div className="pa-form-row">
-        <label className="pa-field"><span><strong>{t.since}</strong></span><input type="date" value={since} onChange={(e) => { setSince(e.target.value); setPage(1); }} /></label>
-        <label className="pa-field"><span><strong>{t.until}</strong></span><input type="date" value={until} onChange={(e) => { setUntil(e.target.value); setPage(1); }} /></label>
-      </div>
-      {(actionInput || since || until) && <button type="button" className="secondary-button" onClick={() => { setActionInput(""); setSince(""); setUntil(""); setPage(1); }}>{t.clear}</button>}
-    </div>
-    <div className="market-empty"><h2>{t.empty}</h2></div>
-  </div>;
+  if (!data?.entries.length) return <div className="pa-list">{filters}<div className="market-empty"><h2>{t.empty}</h2></div></div>;
   return <div className="pa-list">
-    <div className="pa-filters">
-      <input className="pa-note-input" value={actionInput} placeholder={t.actionPh} onChange={(e) => setActionInput(e.target.value)} />
-      <div className="pa-form-row">
-        <label className="pa-field"><span><strong>{t.since}</strong></span><input type="date" value={since} onChange={(e) => { setSince(e.target.value); setPage(1); }} /></label>
-        <label className="pa-field"><span><strong>{t.until}</strong></span><input type="date" value={until} onChange={(e) => { setUntil(e.target.value); setPage(1); }} /></label>
-      </div>
-      {(actionInput || since || until) && <button type="button" className="secondary-button" onClick={() => { setActionInput(""); setSince(""); setUntil(""); setPage(1); }}>{t.clear}</button>}
-    </div>
+    {filters}
     {data.entries.map((entry) => (
       <article key={entry.id} className="pa-card pa-audit">
         <div className="pa-card-head"><div><h3>{entry.action}</h3><small>{entry.adminName} · {new Date(entry.createdAt).toLocaleString(lang === "es" ? "es-US" : "en-US")}</small></div></div>

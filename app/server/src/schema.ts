@@ -750,6 +750,9 @@ export const marketplaceMessages = sqliteTable("marketplace_messages", {
   sender: text("sender", { enum: ["me", "other"] }).notNull().default("me"),
   senderCompanyId: integer("sender_company_id"),
   readAt: integer("read_at", { mode: "timestamp_ms" }),
+  // Admin panel Phase 1: moderation hide flag (hidden messages are filtered
+  // from conversation reads; the row is kept for the audit trail).
+  hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -953,6 +956,9 @@ export const authSessions = sqliteTable("auth_sessions", {
   lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  // Admin panel Phase 1: set when this session was minted via impersonation
+  // (adminImpersonateStart). Points at the admin who opened the session.
+  impersonatedBy: integer("impersonated_by").references(() => authUsers.id, { onDelete: "set null" }),
 });
 
 export const authTokens = sqliteTable("auth_tokens", {
@@ -1234,3 +1240,62 @@ export const sendUsage = sqliteTable("send_usage", {
   uniqueIndex("send_usage_user_channel_period_start_unique").on(table.userId, table.channel, table.period, table.periodStart),
   index("send_usage_user_idx").on(table.userId, table.channel),
 ]);
+
+// ---------------------------------------------------------------------------
+// Admin panel Phase 1 (2026-10-09): team roles, impersonation marker,
+// keyword auto-mod rules, user/message reports, promo-code log.
+// ---------------------------------------------------------------------------
+
+// Team roles for the admin panel. A platform admin (auth_users.is_platform_admin)
+// is implicitly role "admin"; everyone else needs a row here.
+export const adminTeamRoles = sqliteTable("admin_team_roles", {
+  userId: integer("user_id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["admin", "support", "moderator"] }).notNull(),
+  grantedBy: integer("granted_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Reports filed against users or marketplace messages. (Listing flags live in
+// marketplace_flags.) Status transitions are decided in the moderation queue.
+export const userReports = sqliteTable("user_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  targetType: text("target_type", { enum: ["user", "message"] }).notNull(),
+  targetId: integer("target_id").notNull(),
+  reporterUserId: integer("reporter_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+  reason: text("reason", { enum: ["spam", "explicit", "illegal", "scam", "misleading", "other"] }).notNull().default("other"),
+  details: text("details").notNull().default(""),
+  status: text("status", { enum: ["open", "reviewed_ok", "reviewed_actioned"] }).notNull().default("open"),
+  decidedBy: integer("decided_by").references(() => authUsers.id, { onDelete: "set null" }),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+  decisionNote: text("decision_note").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("user_reports_status_idx").on(table.status, table.createdAt),
+  index("user_reports_target_idx").on(table.targetType, table.targetId),
+]);
+
+// Keyword auto-moderation rules, evaluated on marketplace listing create/update.
+// action "hold" -> moderation_status='held' (hidden until reviewed);
+// "flag" -> bumps flag_count so the threshold review path picks it up.
+export const moderationKeywordRules = sqliteTable("moderation_keyword_rules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  pattern: text("pattern").notNull(),
+  action: text("action", { enum: ["flag", "hold"] }).notNull().default("flag"),
+  note: text("note").notNull().default(""),
+  createdBy: integer("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Local log of Stripe coupons created from the admin panel (Stripe is source
+// of truth; this exists for the admin UI + audit trail).
+export const promoCodeLog = sqliteTable("promo_code_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  stripeCouponId: text("stripe_coupon_id").notNull().unique(),
+  code: text("code").notNull().default(""),
+  percentOff: integer("percent_off"),
+  amountOffCents: integer("amount_off_cents"),
+  duration: text("duration").notNull().default("once"),
+  createdBy: integer("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});

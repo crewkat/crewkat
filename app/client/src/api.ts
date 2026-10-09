@@ -68,6 +68,39 @@ export function clearActiveSessionToken() {
 
 const AUTH_ERROR_PATTERN = /session has expired|sign in to continue|unusual sign-in activity/i;
 
+// Admin panel Phase 1: impersonation. While active, every API call goes out
+// with the impersonation proof instead of the admin's own, so the app behaves
+// as the target user. Silent refresh is disabled in this mode (the admin's
+// refresh cookie would otherwise silently restore the admin identity), and
+// the admin's proof is parked in memory to be restored on End.
+let impersonationProof: string | null = null;
+let parkedAdminProof = "";
+let impersonationName = "";
+export const IMPERSONATION_EVENT = "crewkat:impersonation";
+
+export function startImpersonation(proof: string, userName: string) {
+  parkedAdminProof = activeSessionProof;
+  impersonationProof = proof;
+  impersonationName = userName;
+  window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+}
+
+export function endImpersonationLocal() {
+  impersonationProof = null;
+  activeSessionProof = parkedAdminProof;
+  parkedAdminProof = "";
+  impersonationName = "";
+  window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+}
+
+export function isImpersonating() {
+  return impersonationProof != null;
+}
+
+export function impersonationTargetName() {
+  return impersonationName;
+}
+
 function isAuthErrorBody(body: unknown): boolean {
   return !!body && typeof body === "object" && "error" in body &&
     typeof (body as { error?: unknown }).error === "string" &&
@@ -76,9 +109,12 @@ function isAuthErrorBody(body: unknown): boolean {
 
 // Single-flight silent refresh: concurrent expired requests share one
 // refreshSession call, so a rotation is never mistaken for token theft.
+// Disabled while impersonating (the admin's cookie would restore the admin
+// identity and silently drop the impersonation session).
 let lastEndpoint: RequestInfo | URL = "/actions";
 let refreshPromise: Promise<boolean> | null = null;
 export function trySilentRefresh(force = false): Promise<boolean> {
+  if (isImpersonating()) return Promise.resolve(false);
   if (!force) {
     try {
       if (window.localStorage.getItem(COOKIE_SESSION_MARKER_KEY) !== "1") return Promise.resolve(false);
@@ -122,7 +158,7 @@ const authenticatedFetch = (async (input: RequestInfo | URL, init?: RequestInit)
     credentials: "same-origin",
     body: JSON.stringify({ ...payload, args: { ...(payload.args ?? {}), ...(proof ? { _sessionToken: proof } : {}) } }),
   });
-  let response = await send(activeSessionProof);
+  let response = await send(impersonationProof ?? activeSessionProof);
   let authFailed = false;
   try {
     authFailed = isAuthErrorBody(await response.clone().json());
@@ -131,7 +167,7 @@ const authenticatedFetch = (async (input: RequestInfo | URL, init?: RequestInit)
   // The proof expired or was revoked: one silent cookie refresh, then a
   // single retry with the fresh proof.
   if (await trySilentRefresh()) {
-    response = await send(activeSessionProof);
+    response = await send(impersonationProof ?? activeSessionProof);
     try {
       if (!isAuthErrorBody(await response.clone().json())) return response;
     } catch { return response; }

@@ -119,6 +119,79 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Admin panel Phase 1: billing surfaces (all admin-gated at the action layer).
+  listStripeSubscriptions: {
+    request: z.object({ status: z.enum(["active", "trialing", "past_due", "canceled", "all"]).default("all"), limit: z.number().int().min(1).max(100).default(25), startingAfter: z.string().max(200).optional() }),
+    response: z.object({
+      configured: z.boolean(),
+      subscriptions: z.array(z.object({
+        id: z.string(), customerId: z.string(), customerEmail: z.string().nullable(),
+        status: z.string(), amountCents: z.number().int(), interval: z.string(),
+        currentPeriodEnd: z.number().int().nullable(), cancelAtPeriodEnd: z.boolean(),
+      })),
+      hasMore: z.boolean(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripePayments: {
+    request: z.object({ limit: z.number().int().min(1).max(100).default(25), startingAfter: z.string().max(200).optional() }),
+    response: z.object({
+      configured: z.boolean(),
+      charges: z.array(z.object({
+        id: z.string(), amount: z.number().int(), amountRefunded: z.number().int(),
+        currency: z.string(), created: z.number().int(), status: z.string(),
+        customerEmail: z.string().nullable(), description: z.string().nullable(),
+      })),
+      hasMore: z.boolean(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripeFailedPayments: {
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      failed: z.array(z.object({
+        invoiceId: z.string(), customerEmail: z.string().nullable(), amountCents: z.number().int(),
+        currency: z.string(), status: z.string(), attemptCount: z.number().int(),
+        nextRetryAt: z.number().int().nullable(), created: z.number().int(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  createStripeCoupon: {
+    request: z.object({
+      code: z.string().trim().min(2).max(40),
+      percentOff: z.number().min(1).max(100).optional(),
+      amountOffCents: z.number().int().positive().max(10_000_000).optional(),
+      duration: z.enum(["once", "repeating", "forever"]).default("once"),
+      durationInMonths: z.number().int().min(1).max(36).optional(),
+    }),
+    response: z.object({ id: z.string(), code: z.string().nullable(), percentOff: z.number().nullable(), amountOff: z.number().nullable(), duration: z.string() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  listStripeCoupons: {
+    request: z.object({ limit: z.number().int().min(1).max(100).default(25) }),
+    response: z.object({
+      configured: z.boolean(),
+      coupons: z.array(z.object({
+        id: z.string(), code: z.string().nullable(), percentOff: z.number().nullable(),
+        amountOff: z.number().nullable(), currency: z.string().nullable(),
+        duration: z.string(), timesRedeemed: z.number().int(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  deleteStripeCoupon: {
+    request: z.object({ couponId: z.string().min(1).max(200) }),
+    response: z.object({ ok: z.literal(true), id: z.string() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   getStripeRevenueStats: {
     request: z.object({}),
     response: z.object({
