@@ -959,6 +959,8 @@ export const authSessions = sqliteTable("auth_sessions", {
   // Admin panel Phase 1: set when this session was minted via impersonation
   // (adminImpersonateStart). Points at the admin who opened the session.
   impersonatedBy: integer("impersonated_by").references(() => authUsers.id, { onDelete: "set null" }),
+  // Admin panel Phase 2: proof session issued pending TOTP verification.
+  totpPending: integer("totp_pending", { mode: "boolean" }).notNull().default(false),
 });
 
 export const authTokens = sqliteTable("auth_tokens", {
@@ -1151,13 +1153,53 @@ export const platformSupportReports = sqliteTable("platform_support_reports", {
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   isUnread: integer("is_unread", { mode: "boolean" }).notNull().default(true),
   resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+  // Admin panel Phase 2: ticket priority + assignment.
+  priority: text("priority", { enum: ["low", "normal", "high", "urgent"] }).notNull().default("normal"),
+  assignedTo: integer("assigned_to").references(() => authUsers.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("platform_support_reports_user_idx").on(table.userId),
   index("platform_support_reports_created_idx").on(table.createdAt),
   index("platform_support_reports_status_idx").on(table.status),
+  index("platform_support_reports_priority_idx").on(table.priority),
+  index("platform_support_reports_assigned_idx").on(table.assignedTo),
 ]);
+
+// Admin panel Phase 2: team-only internal notes on a support ticket. Never
+// shown to the user.
+export const platformSupportNotes = sqliteTable("platform_support_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  reportId: integer("report_id").notNull().references(() => platformSupportReports.id, { onDelete: "cascade" }),
+  authorId: integer("author_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("platform_support_notes_report_idx").on(table.reportId),
+]);
+
+// Admin panel Phase 2: terms/privacy version history. Latest row per kind is
+// the current published version.
+export const platformPolicyVersions = sqliteTable("platform_policy_versions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: ["terms", "privacy"] }).notNull(),
+  version: text("version").notNull(),
+  url: text("url").notNull().default(""),
+  effectiveAt: integer("effective_at", { mode: "timestamp_ms" }),
+  publishedBy: integer("published_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("platform_policy_versions_kind_idx").on(table.kind),
+]);
+
+// Admin panel Phase 2: TOTP 2FA secrets for platform team logins.
+export const adminTotpSecrets = sqliteTable("admin_totp_secrets", {
+  userId: integer("user_id").primaryKey().notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  secret: text("secret").notNull(),
+  verified: integer("verified", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  verifiedAt: integer("verified_at", { mode: "timestamp_ms" }),
+});
 
 // Two-way replies on a support report. `sender` is who wrote it; there are
 // deliberately no read receipts — only Danny's unread badge on the inbox.

@@ -15,6 +15,7 @@ import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
 import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
 import { platformAdminPhase1Actions } from "./platform-admin-phase1";
+import { platformAdminPhase2Actions } from "./platform-admin-phase2";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -558,6 +559,7 @@ const AUTH_PASSWORD_ITERATIONS = 210_000;
 // Secure persistent login: 15-minute in-memory session proof + 30-day absolute
 // HttpOnly refresh-token cookie with rotation + reuse theft detection.
 const AUTH_PROOF_MINUTES = 15;
+const TOTP_PENDING_MINUTES = 5; // pending proof lifetime for the login 2FA step
 const AUTH_REFRESH_DAYS = 30;
 const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once per hour
 const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
@@ -605,7 +607,7 @@ function refreshRateLimited(key: string): boolean {
   return times.length > AUTH_REFRESH_RATE_LIMIT;
 }
 
-async function issueSession(ctx: Ctx, userId: number) {
+export async function issueSession(ctx: Ctx, userId: number) {
   const meta = authMeta(ctx);
   const db = ctx.db<typeof schema>();
   const now = new Date();
@@ -632,6 +634,9 @@ export async function requireSession(ctx: Ctx, token: string) {
   const db = ctx.db<typeof schema>();
   const session = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, await sha256(token))).limit(1))[0];
   if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) throw new Error("Your session has expired. Sign in again.");
+  // Admin panel Phase 2: a TOTP-pending proof is not a usable session until
+  // verifyTotpLogin completes it.
+  if (session.totpPending) throw new Error("Enter your authenticator code to finish signing in.");
   // Refresh tokens are never valid as general API credentials (cookie-only).
   if (session.tokenType === "refresh") throw new Error("Sign in to continue.");
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
@@ -707,7 +712,7 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, material, 256);
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
-function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
+export function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
   return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
@@ -877,6 +882,14 @@ export async function requirePlatformAdmin(ctx: Ctx) {
   return { identity, admin: user };
 }
 
+// Admin panel Phase 2: platform-team membership = is_platform_admin OR a row
+// in admin_team_roles (used by the login TOTP gate).
+export async function isPlatformTeamMember(db: ReturnType<Ctx["db"]>, user: { id: number; isPlatformAdmin: boolean }): Promise<boolean> {
+  if (user.isPlatformAdmin) return true;
+  const row = (await db.select({ userId: schema.adminTeamRoles.userId }).from(schema.adminTeamRoles).where(eq(schema.adminTeamRoles.userId, user.id)).limit(1))[0];
+  return !!row;
+}
+
 // Platform-admin actions must see and change rows across ALL companies.
 // The workspace ctx's `db` proxy auto-filters every table that has a
 // company_id column down to the admin's own company, so admin handlers
@@ -970,6 +983,14 @@ const PLATFORM_SETTING_DEFS: Record<string, PlatformSettingDef> = {
   announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" },
   default_max_sms_per_day: { type: "int", labelEn: "Default max SMS per day", labelEs: "Máx. SMS por día (defecto)", min: 1, max: 100000, fallback: "50" },
   default_max_push_per_day: { type: "int", labelEn: "Default max pushes per day", labelEs: "Máx. notificaciones por día (defecto)", min: 1, max: 100000, fallback: "100" },
+  // Admin panel Phase 2: managed through the dedicated Platform section of
+  // the admin Settings tab (adminMaintenanceSet, branding, 2FA actions), not
+  // the generic settings list.
+  maintenance_mode: { type: "boolean", labelEn: "Maintenance mode", labelEs: "Modo de mantenimiento", fallback: "0" },
+  maintenance_message: { type: "text", labelEn: "Maintenance message", labelEs: "Mensaje de mantenimiento", maxLength: 300, fallback: "" },
+  brand_primary_color: { type: "text", labelEn: "Brand primary color", labelEs: "Color primario de marca", maxLength: 7, fallback: "#e8590c" },
+  platform_logo_blob_key: { type: "text", labelEn: "Platform logo (blob key)", labelEs: "Logotipo de la plataforma (blob)", maxLength: 500, fallback: "" },
+  admin_2fa_required: { type: "boolean", labelEn: "Require 2FA for platform team", labelEs: "Exigir 2FA al equipo de la plataforma", fallback: "0" },
 };
 
 function normalizePlatformSetting(key: string, raw: string): string {
@@ -2023,6 +2044,7 @@ export const BaseActions = {
   // flags, support view, abuse controls.
   ...platformAdminActions,
   ...platformAdminPhase1Actions,
+  ...platformAdminPhase2Actions,
   /** SMS cap pre-check (abuse controls): read-only check of the caller's own
    *  daily SMS cap. The client runs this BEFORE opening the phone's SMS app,
    *  so a capped user sees the error immediately. */
@@ -2120,6 +2142,8 @@ export const BaseActions = {
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
       const db = ctx.db<typeof schema>();
+      // Admin panel Phase 2: maintenance mode refuses new signups.
+      if ((await getPlatformSetting(db, "maintenance_mode", "0")) === "1") throw new Error("Crewkat is temporarily down for maintenance. Please try again later.");
       if (!(await isFeatureEnabled(db, "signups_enabled"))) throw new Error("REGISTRATIONS_CLOSED");
       const users = await db.select({ id: schema.authUsers.id, companyId: schema.authUsers.companyId }).from(schema.authUsers);
       const email = normalizedEmail(args.email);
@@ -2195,7 +2219,7 @@ export const BaseActions = {
   }),
   login: defineAction({
     request: z.object({ email: z.string().trim().email().max(200), password: z.string().min(1).max(200) }),
-    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()), totpRequired: z.boolean().default(false) }),
     async handler(ctx, args) {
       await checkLoginIpRateLimit(ctx);
       const db = ctx.db<typeof schema>(); const email = normalizedEmail(args.email); const cutoff = Date.now() - 15 * 60_000;
@@ -2207,8 +2231,27 @@ export const BaseActions = {
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
+      // Admin panel Phase 2: platform-team TOTP 2FA. When required and the
+      // caller is platform team with a verified secret, issue a 5-minute
+      // pending proof (no refresh token/cookie) and let verifyTotpLogin
+      // finish the login.
+      if ((await getPlatformSetting(db, "admin_2fa_required", "0")) === "1" && await isPlatformTeamMember(db, user)) {
+        const totp = (await db.select().from(schema.adminTotpSecrets).where(eq(schema.adminTotpSecrets.userId, user.id)).limit(1))[0];
+        if (totp?.verified) {
+          const meta = authMeta(ctx);
+          const pendingNow = new Date();
+          const pendingProof = randomHex(48);
+          const pendingExpiresAt = new Date(pendingNow.getTime() + TOTP_PENDING_MINUTES * 60_000);
+          await db.insert(schema.authSessions).values({
+            userId: user.id, tokenHash: await sha256(pendingProof), tokenType: "proof",
+            expiresAt: pendingExpiresAt, lastSeenAt: pendingNow, createdAt: pendingNow,
+            totpPending: true, userAgent: (meta.userAgent ?? "").slice(0, 300), ipHash: meta.ipHash ?? "",
+          });
+          return { sessionToken: pendingProof, expiresAt: pendingExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: [], totpRequired: true };
+        }
+      }
       const session = await issueSession(ctx, user.id);
-      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
     },
   }),
   // Public client-ID lookup (same pattern as getVapidPublicKey): the OAuth
@@ -4812,15 +4855,45 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     },
   }),
   platformSupportInbox: defineAction({
-    request: z.object({}),
+    request: z.object({
+      status: z.enum(["open", "resolved", "all"]).default("all"),
+      priority: z.enum(["low", "normal", "high", "urgent", "all"]).default("all"),
+      assignedTo: z.union([z.number().int().positive(), z.null(), z.literal("all")]).default("all"),
+      search: z.string().trim().max(120).default(""),
+    }),
     response: z.object({
-      reports: z.array(z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), replyCount: z.number(), lastReplyAt: z.string().nullable(), createdAt: z.string(), resolvedAt: z.string().nullable() })),
+      reports: z.array(z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), replyCount: z.number(), lastReplyAt: z.string().nullable(), createdAt: z.string(), resolvedAt: z.string().nullable(), priority: z.string(), assignedTo: z.object({ id: z.number(), name: z.string() }).nullable(), noteCount: z.number() })),
       unreadCount: z.number(),
     }),
-    async handler(ctx) {
-      await requireTeamRole(ctx, "admin", "support", "moderator");
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
-      const reports = await db.select().from(schema.platformSupportReports).orderBy(desc(schema.platformSupportReports.createdAt), desc(schema.platformSupportReports.id));
+      // zod defaults apply through the action runtime; default again here so
+      // direct .handler() calls with partial args behave the same.
+      const status = args.status ?? "all";
+      const priority = args.priority ?? "all";
+      // NB: null is a meaningful filter here (unassigned), so only undefined
+      // falls back to "all".
+      const assignedTo = args.assignedTo === undefined ? "all" : args.assignedTo;
+      const search = args.search ?? "";
+      const conditions = [];
+      if (status !== "all") conditions.push(eq(schema.platformSupportReports.status, status));
+      if (priority !== "all") conditions.push(eq(schema.platformSupportReports.priority, priority));
+      if (assignedTo === null) conditions.push(isNull(schema.platformSupportReports.assignedTo));
+      else if (assignedTo !== "all") conditions.push(eq(schema.platformSupportReports.assignedTo, assignedTo));
+      if (search) {
+        // Strip LIKE wildcards so the search is a literal substring match.
+        const pattern = `%${search.replace(/[%_\\]/g, "")}%`;
+        conditions.push(or(
+          like(schema.platformSupportReports.subject, pattern),
+          like(schema.platformSupportReports.message, pattern),
+          like(schema.platformSupportReports.userName, pattern),
+          like(schema.platformSupportReports.userEmail, pattern),
+        ));
+      }
+      const reports = await db.select().from(schema.platformSupportReports)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(schema.platformSupportReports.createdAt), desc(schema.platformSupportReports.id));
       const reportIds = reports.map((r) => r.id);
       const replyRows = reportIds.length ? await db.select().from(schema.platformSupportReplies).where(inArray(schema.platformSupportReplies.reportId, reportIds)) : [];
       const countByReport = new Map<number, number>();
@@ -4830,12 +4903,21 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         const prev = lastAtByReport.get(reply.reportId);
         if (!prev || reply.createdAt > prev) lastAtByReport.set(reply.reportId, reply.createdAt);
       }
+      const noteRows = reportIds.length ? await db.select({ reportId: schema.platformSupportNotes.reportId }).from(schema.platformSupportNotes).where(inArray(schema.platformSupportNotes.reportId, reportIds)) : [];
+      const noteCountByReport = new Map<number, number>();
+      for (const note of noteRows) noteCountByReport.set(note.reportId, (noteCountByReport.get(note.reportId) ?? 0) + 1);
+      const assigneeIds = [...new Set(reports.map((r) => r.assignedTo).filter((id): id is number => id != null))];
+      const assigneeRows = assigneeIds.length ? await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, assigneeIds)) : [];
+      const assigneeNameById = new Map(assigneeRows.map((a) => [a.id, a.name]));
       return {
         reports: reports.map((r) => ({
           id: r.id, userName: r.userName, userEmail: r.userEmail, kind: r.kind, subject: r.subject, message: r.message,
           language: r.language, status: r.status, isUnread: r.isUnread,
           replyCount: countByReport.get(r.id) ?? 0, lastReplyAt: lastAtByReport.get(r.id)?.toISOString() ?? null,
           createdAt: r.createdAt.toISOString(), resolvedAt: r.resolvedAt?.toISOString() ?? null,
+          priority: r.priority,
+          assignedTo: r.assignedTo != null ? { id: r.assignedTo, name: assigneeNameById.get(r.assignedTo) ?? `User ${r.assignedTo}` } : null,
+          noteCount: noteCountByReport.get(r.id) ?? 0,
         })),
         unreadCount: reports.filter((r) => r.isUnread).length,
       };
@@ -4844,17 +4926,20 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   platformSupportThread: defineAction({
     request: z.object({ reportId: z.number().int().positive() }),
     response: z.object({
-      report: z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable() }),
+      report: z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable(), priority: z.string(), assignedTo: z.object({ id: z.number(), name: z.string() }).nullable() }),
       replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
     }),
     async handler(ctx, args) {
-      await requireTeamRole(ctx, "admin", "support", "moderator");
+      await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report) throw new Error("Report not found.");
+      const assignee = report.assignedTo != null
+        ? (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, report.assignedTo)).limit(1))[0]
+        : undefined;
       const replies = await db.select().from(schema.platformSupportReplies).where(eq(schema.platformSupportReplies.reportId, report.id)).orderBy(schema.platformSupportReplies.createdAt, schema.platformSupportReplies.id);
       return {
-        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null },
+        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() })),
       };
     },
@@ -4863,7 +4948,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ reportId: z.number().int().positive(), message: z.string().trim().min(1).max(5000) }),
     response: z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() }),
     async handler(ctx, args) {
-      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const report = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report) throw new Error("Report not found.");
@@ -4873,6 +4958,13 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // Danny read the thread by replying — clear the unread flag, stay open.
       await db.update(schema.platformSupportReports).set({ isUnread: false, updatedAt: now }).where(eq(schema.platformSupportReports.id, report.id));
       await logAdminAction(db, admin.id, "support.reply", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> — ${report.subject}`);
+      // Best-effort user notification — never fail the reply if push fails.
+      try {
+        await sendPushToUser(db, report.userId, {
+          titleEn: "Crewkat support", titleEs: "Soporte de Crewkat",
+          bodyEn: args.message.slice(0, 120), bodyEs: args.message.slice(0, 120),
+        });
+      } catch { /* push is optional; the reply is already saved */ }
       ctx.invalidateQueries();
       return { id: made.id, sender: "admin", message: args.message, createdAt: now.toISOString() };
     },
@@ -4881,7 +4973,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     request: z.object({ id: z.number().int().positive(), status: z.enum(["open", "resolved"]), isUnread: z.boolean() }),
     response: z.object({ ok: z.literal(true) }),
     async handler(ctx, args): Promise<{ ok: true }> {
-      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const now = new Date();
       const current = (await db.select().from(schema.platformSupportReports).where(eq(schema.platformSupportReports.id, args.id)).limit(1))[0];
@@ -5061,6 +5153,11 @@ const PUBLIC_ACTIONS = new Set([
   "getGoogleClientId", "googleSignIn",
   "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
   "getFeatureFlags",
+  // Admin panel Phase 2 (Settings): maintenance status, branding, and the
+  // public policy version are read by any client; verifyTotpLogin completes
+  // a password login for platform-team 2FA (the pending proof is the only
+  // credential, verified against the pending session row server-side).
+  "getMaintenanceStatus", "getPlatformBranding", "getPolicyVersion", "verifyTotpLogin",
 ]);
 
 const PREMIUM_ACTIONS = new Set([

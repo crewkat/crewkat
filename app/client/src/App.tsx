@@ -2016,7 +2016,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
     })();
     return () => { cancelled = true; };
   }, [onAuthenticated]);
-  const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset" | "totp">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2084,11 +2084,27 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       } else if (mode === "reset") {
         await api.resetPassword({ email, code, password });
         setMode("login"); setCode(""); setPassword(""); setDevCode(""); setNotice("Password updated. Sign in with your new password.");
+      } else if (mode === "totp") {
+        // Admin panel Phase 2: the pending proof is already the active session
+        // token (parked when login returned totpRequired); the fetch layer
+        // attaches it so verifyTotpLogin can find the pending session row.
+        const result = await api.verifyTotpLogin({ code });
+        setActiveSessionToken(result.sessionToken);
+        onAuthenticated(result.user);
       } else {
         const result = await api.login({ email, password });
-        if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
-        else persistLegacySessionToken(result.sessionToken);
-        onAuthenticated(result.user);
+        if (result.totpRequired) {
+          // Admin panel Phase 2: platform-team 2FA. Park the 5-minute pending
+          // proof as the active token and ask for the authenticator code.
+          setActiveSessionToken(result.sessionToken);
+          setCode("");
+          setNotice(authLang === "es" ? "Ingresa el código de 6 dígitos de tu app de autenticación." : "Enter the 6-digit code from your authenticator app.");
+          setMode("totp");
+        } else {
+          if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
+          else persistLegacySessionToken(result.sessionToken);
+          onAuthenticated(result.user);
+        }
       }
     } catch (caught) {
       const friendly = friendlyActionMessage(caught, "en");
@@ -2096,8 +2112,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
       setVerifyRecovery(mode === "login" && /verify your email/i.test(friendly));
     } finally { setBusy(false); }
   };
-  const title = mode === "signup" ? "Set up your owner account" : mode === "verify" ? "Verify your email" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Enter your reset code" : "Welcome back";
-  if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} onBack={() => setLegalDocument(null)} /></div>;
+  const title = mode === "totp" ? "Two-factor authentication" : mode === "signup" ? "Set up your owner account" : mode === "verify" ? "Verify your email" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Enter your reset code" : "Welcome back";
+  if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} lang={authLang} onBack={() => setLegalDocument(null)} /></div>;
   if (restoring) return <main className="auth-page">
     <SafeAreaTopScrim backgroundColor="var(--bg)" />
     <section className="auth-panel">
@@ -2116,22 +2132,22 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         <span>Crewkat</span>
       </div>
       <h1>{title}</h1>
-      <p className="auth-intro">{mode === "login" ? "Sign in to manage your jobs, invoices, and clients." : mode === "signup" ? "Create a secure owner account and an empty company workspace." : mode === "verify" ? `Enter the 6-digit code for ${email}.` : "Use a one-time code to choose a new password."}</p>
+      <p className="auth-intro">{mode === "login" ? "Sign in to manage your jobs, invoices, and clients." : mode === "signup" ? "Create a secure owner account and an empty company workspace." : mode === "verify" ? `Enter the 6-digit code for ${email}.` : mode === "totp" ? "Enter the 6-digit code from your authenticator app." : "Use a one-time code to choose a new password."}</p>
       {mode === "signup" && !signupsEnabled && <div className="auth-claim"><strong>Registrations are closed</strong><span>New accounts are temporarily disabled. Please check back soon.</span></div>}
       {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>Your existing workspace is ready</strong><span>{bootstrap.data.recordCounts.jobs} jobs · {bootstrap.data.recordCounts.clients} clients · {bootstrap.data.recordCounts.invoices} invoices</span><small>These records will stay intact and attach to the owner account.</small></div>}
       {mode === "signup" && referralCode && <div className="auth-claim"><strong>Invited by a friend</strong><span>You were invited with code {referralCode} — your friend earns bonus Marketplace listings when you join.</span></div>}
       <form className="auth-form" onSubmit={submit}>
         {mode === "signup" && <label><span>Name</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
-        <label><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset"} /></label>
+        <label><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset" || mode === "totp"} /></label>
         {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} readOnly={!pwEditable} onFocus={() => setPwEditable(true)} /><small>{mode !== "login" ? "Use at least 10 characters." : ""}</small></label>}
-        {(mode === "verify" || mode === "reset") && <label><span>6-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
+        {(mode === "verify" || mode === "reset" || mode === "totp") && <label><span>6-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>Terms of Service</button> and acknowledge the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button>.</span></div>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Marketplace Terms of Use" type="checkbox" checked={acceptedMarketplaceTerms} onChange={(event) => setAcceptedMarketplaceTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms of Use</button>.</span></div>}
         {devCode && <div className="dev-code" role="status"><strong>Testing code</strong><code>{devCode}</code><small>No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.</small></div>}
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
         {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar mi correo en su lugar" : "Verify my email instead"}</button>}
-        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
+        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "totp" ? "Verify" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
       </form>
       {(mode === "login" || mode === "signup") && googleCfg.data?.clientId && <div className="auth-google">
         <div className="auth-divider" aria-hidden="true"><span>or</span></div>
@@ -2151,7 +2167,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar correo / reenviar código" : "Verify email / resend code"}</button>}
         {mode === "login" && <button type="button" onClick={() => move("signup")}>Create a company account</button>}
         {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>Already have an account? Sign in</button>}
-        {(mode === "forgot" || mode === "reset" || mode === "verify") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
+        {(mode === "forgot" || mode === "reset" || mode === "verify" || mode === "totp") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
         {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? "Use the new testing code below." : result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a new verification code to ${email}.`); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>Get a new code</button>}
       </div>
       <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button><button type="button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms</button></nav></div>
@@ -2197,6 +2213,35 @@ function MarketplaceTermsGate({ onAccepted }: { onAccepted: (acceptedAt: string,
   );
 }
 
+// Admin panel Phase 2: full-screen maintenance card shown to signed-in,
+// non-platform-team users while maintenance mode is on.
+function MaintenanceScreen({ lang, message, onRetry, onSignOut }: { lang: Lang; message: string; onRetry: () => void; onSignOut: () => Promise<void> }) {
+  const t = lang === "es"
+    ? { title: "Mantenimiento programado", defaultMessage: "Crewkat está temporalmente fuera de servicio por mantenimiento. Vuelve a intentarlo en un momento.", checkAgain: "Reintentar", signOut: "Cerrar sesión" }
+    : { title: "Scheduled maintenance", defaultMessage: "Crewkat is temporarily down for maintenance. Please try again later.", checkAgain: "Check again", signOut: "Sign out" };
+  return <main className="auth-page">
+    <SafeAreaTopScrim backgroundColor="var(--bg)" />
+    <section className="auth-panel">
+      <div className="auth-brand" aria-label="Crewkat">
+        <img src={crewkatLogo} alt="Crewkat charcoal cat mascot holding a wrench" />
+        <span>Crewkat</span>
+      </div>
+      <div role="status" style={{ display: "grid", gap: 12, justifyItems: "center", textAlign: "center", padding: "8px 4px" }}>
+        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 64, height: 64, borderRadius: 32, background: "color-mix(in srgb, var(--accent) 14%, var(--surface))", color: "var(--accent)" }}>
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 2.6A4.6 4.6 0 1 0 21.4 7" />
+            <path d="M13.9 10.1 5.5 18.5" />
+          </svg>
+        </span>
+        <h1 style={{ margin: 0 }}>{t.title}</h1>
+        <p style={{ margin: 0, color: "var(--dim)" }}>{message || t.defaultMessage}</p>
+        <button type="button" className="primary-button" style={{ width: "100%" }} onClick={onRetry}>{t.checkAgain}</button>
+        <button type="button" className="secondary-button" onClick={() => { void onSignOut(); }}>{t.signOut}</button>
+      </div>
+    </section>
+  </main>;
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -2220,6 +2265,21 @@ export function App() {
   useEffect(() => {
     if (user) void ensurePushSubscription();
   }, [user]);
+  // Admin panel Phase 2: platform branding (public). The accent color lands on
+  // :root as --brand-accent; admin-panel surfaces re-point --accent at it
+  // (theme.css .pa-page), so only admin orange changes — not the whole app.
+  const brandingQuery = useQuery({ queryKey: ["platform-branding"], queryFn: () => api.getPlatformBranding({}), staleTime: 300000, retry: false });
+  useEffect(() => {
+    const color = brandingQuery.data?.primaryColor;
+    if (color && /^#[0-9a-fA-F]{6}$/.test(color)) document.documentElement.style.setProperty("--brand-accent", color);
+  }, [brandingQuery.data]);
+  // Admin panel Phase 2: maintenance mode. Signed-in users who are not on the
+  // platform team see a full-screen maintenance card instead of the app.
+  // Signed-out visitors keep the sign-in screen so the team can get back in
+  // to turn maintenance off.
+  const maintenanceQuery = useQuery({ queryKey: ["platform-maintenance"], queryFn: () => api.getMaintenanceStatus({}), staleTime: 30000, retry: false, enabled: !!user });
+  const teamRoleQuery = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000, retry: false, enabled: !!user });
+  const browserLang: Lang = useMemo(() => (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en"), []);
   // Public calculator funnel pages (/tools, /tools/<slug>): no-login pages
   // with shareable links and a signup CTA, rendered before any auth gate.
   const [publicToolSlug] = useState<string | null>(() => {
@@ -2244,6 +2304,18 @@ export function App() {
     // and the shell is the only scroll container. Without it the terms text
     // overflows with no way to scroll.
     return <div className="app-shell"><MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} /></div>;
+  }
+  // Admin panel Phase 2: maintenance gate. Team membership is isPlatformAdmin
+  // or any admin_team_roles row (same signal the admin console uses).
+  const isTeam = user.isPlatformAdmin || (teamRoleQuery.data?.role ?? null) !== null;
+  const teamResolved = user.isPlatformAdmin || teamRoleQuery.data !== undefined;
+  if (maintenanceQuery.data?.enabled && teamResolved && !isTeam) {
+    return <MaintenanceScreen
+      lang={browserLang}
+      message={maintenanceQuery.data.message}
+      onRetry={() => { void maintenanceQuery.refetch(); }}
+      onSignOut={async () => { try { await api.logout({ _sessionToken: "active" }); } catch { /* already out */ } finally { clearActiveSessionToken(); queryClient.clear(); setUser(null); } }}
+    />;
   }
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
@@ -2932,7 +3004,7 @@ function CrewkatApplication() {
           onSave={(v, onDone) => saveSettings.mutate(v, { onSuccess: () => { onDone?.(); } })}
         />
       )}
-      {screen.name === "legal" && <LegalDocumentPage kind={screen.document} onBack={goBack} />}
+      {screen.name === "legal" && <LegalDocumentPage kind={screen.document} lang={lang} onBack={goBack} />}
       {screen.name === "companyProfile" && (
         <CompanyProfileEditor
           lang={lang}
@@ -9009,13 +9081,13 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
     : { title: "Platform admin", denied: "Not available", deniedBody: "This area is for the platform team (admins, support, moderators).", analytics: "Analytics", support: "Support", queue: "Moderation", users: "Users", refunds: "Billing", settings: "Settings", audit: "Audit log", broadcasts: "Broadcasts", verification: "Verification", revenue: "Revenue", flags: "Flags", abuse: "Abuse" };
   const myRoleQuery = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000 });
   const teamRole: string | null = auth?.user.isPlatformAdmin ? "admin" : (myRoleQuery.data?.role ?? null);
-  const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}), enabled: teamRole != null, staleTime: 15000 });
+  const inboxBadge = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({ status: "all", priority: "all", assignedTo: "all", search: "" }), enabled: teamRole != null, staleTime: 15000 });
   const supportUnread = inboxBadge.data?.unreadCount ?? 0;
   // Phase 1 permission matrix: which tabs each team role may open.
   const visibleTabs = (["analytics", "support", "queue", "users", "refunds", "settings", "audit", "broadcasts", "verification", "revenue", "flags", "abuse"] as PlatformAdminTab[]).filter((value) => {
     if (teamRole === "admin") return true;
     if (teamRole === "support") return value === "support" || value === "users";
-    if (teamRole === "moderator") return value === "support" || value === "queue" || value === "users";
+    if (teamRole === "moderator") return value === "queue" || value === "users";
     return false;
   });
   useEffect(() => { if (teamRole && !visibleTabs.includes(tab)) setTab(teamRole === "admin" ? "analytics" : "support"); }, [teamRole]);
@@ -9029,6 +9101,9 @@ function PlatformAdminScreen({ lang, onBack, setScreen, initialTab, initialRefun
         <button key={value} type="button" className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{t[value]}{value === "support" && supportUnread > 0 && <span className="pa-tab-badge">{supportUnread}</span>}</button>
       ))}
     </nav>
+    {/* Admin panel Phase 2: support/moderator team members don't see the
+        Settings tab, so their own 2FA setup lives in this strip. */}
+    {teamRole && teamRole !== "admin" && <div className="pa-card" style={{ margin: "2px 0 12px" }}><PATotpSelfSetup lang={lang} compact /></div>}
     {tab === "analytics" && <PAAnalyticsTab lang={lang} />}
     {tab === "support" && <PASupportTab lang={lang} />}
     {tab === "queue" && <PAQueueTab lang={lang} />}
@@ -9103,11 +9178,15 @@ function PAChart({ data, kind, color, label }: { data: { date: string; count: nu
   </svg>;
 }
 
+/* Admin panel Phase 2 analytics (2026-10-09): marketplace overview + growth
+ *  metrics UI below. Server response types come from the action schemas. */
 function PAAnalyticsTab({ lang }: { lang: Lang }) {
   const overview = useQuery({ queryKey: ["pa-analytics-overview"], queryFn: () => api.adminAnalyticsOverview({}) });
   const charts = useQuery({ queryKey: ["pa-analytics-charts"], queryFn: () => api.adminAnalyticsCharts({ days: 30 }) });
   const cancellations = useQuery({ queryKey: ["pa-cancellation-stats"], queryFn: () => api.adminCancellationStats({}) });
   const activity = useQuery({ queryKey: ["pa-recent-activity"], queryFn: () => api.adminRecentActivity({}) });
+  const mkt = useQuery({ queryKey: ["pa-marketplace-overview"], queryFn: () => api.adminMarketplaceOverview({}) });
+  const growth = useQuery({ queryKey: ["pa-growth-metrics"], queryFn: () => api.adminGrowthMetrics({}) });
   const t = lang === "es"
     ? {
         users: "Usuarios totales", newToday: "Nuevos hoy", newWeek: "Nuevos esta semana", newMonth: "Nuevos este mes",
@@ -9116,6 +9195,15 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         signupsChart: "Registros — últimos 30 días", subsChart: "Suscripciones — últimos 30 días", cancelChart: "Cancelaciones — últimos 30 días",
         whyLeave: "Por qué se van", recentSignups: "Registros recientes", recentEvents: "Actividad reciente",
         noData: "Sin datos de cancelación todavía.", loading: "Cargando analíticas…",
+        marketplace: "Marketplace", growth: "Crecimiento",
+        listingsTotal: "Anuncios totales", listingsActive: "Anuncios activos", listings30d: "Anuncios (30d)",
+        intentSplit: "Se busca / Disponible",
+        messagesTotal: "Mensajes totales", messages30d: "Mensajes (30d)",
+        conversations: "Conversaciones",
+        completedJobs: "Trabajos completados", completedJobs30d: "Completados (30d)",
+        listingsChart: "Anuncios — últimos 30 días",
+        wowGrowth: "Crecimiento semanal", wowNoBaseline: "(sin base)",
+        premiumConversion: "Conversión Premium", msgRate: "Tasa anuncio→mensaje", openTickets: "Tickets abiertos",
       }
     : {
         users: "Total users", newToday: "New today", newWeek: "New this week", newMonth: "New this month",
@@ -9124,11 +9212,20 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         signupsChart: "Signups — last 30 days", subsChart: "Subscriptions — last 30 days", cancelChart: "Cancellations — last 30 days",
         whyLeave: "Why they leave", recentSignups: "Recent signups", recentEvents: "Recent activity",
         noData: "No cancellation data yet.", loading: "Loading analytics…",
+        marketplace: "Marketplace", growth: "Growth",
+        listingsTotal: "Total listings", listingsActive: "Active listings", listings30d: "Listings (30d)",
+        intentSplit: "Need / Offer",
+        messagesTotal: "Total messages", messages30d: "Messages (30d)",
+        conversations: "Conversations",
+        completedJobs: "Completed jobs", completedJobs30d: "Completed (30d)",
+        listingsChart: "Listings — last 30 days",
+        wowGrowth: "WoW signup growth", wowNoBaseline: "(no baseline)",
+        premiumConversion: "Premium conversion", msgRate: "Listing→message rate", openTickets: "Open support tickets",
       };
   const reasonLabels: Record<string, string> = lang === "es"
     ? { too_expensive: "Muy caro", not_using_enough: "No lo usa lo suficiente", missing_features: "Faltan funciones", switched_tool: "Cambió de herramienta", business_closed: "Cerró el negocio", temporary_break: "Pausa temporal", other: "Otro" }
     : { too_expensive: "Too expensive", not_using_enough: "Not using it enough", missing_features: "Missing features", switched_tool: "Switched tools", business_closed: "Business closed", temporary_break: "Temporary break", other: "Other" };
-  if (overview.isLoading) return <div className="market-empty"><p>{t.loading}</p></div>;
+  if (overview.isLoading || mkt.isLoading || growth.isLoading) return <div className="market-empty"><p>{t.loading}</p></div>;
   const o = overview.data;
   const maxReason = Math.max(1, ...(cancellations.data?.byReason.map((r) => r.count) ?? [1]));
   const stats: { icon: string; value: string; label: string }[] = [
@@ -9141,6 +9238,26 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
     { icon: "M23 6l-7 7-4-4-9 9M17 6h6v6", value: `${o?.churnRate ?? "—"}%`, label: t.churn },
     { icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM9 9l6 6M15 9l-6 6", value: String(o?.cancelledLast30d ?? "—"), label: t.cancelled },
   ];
+  const mo = mkt.data;
+  const gm = growth.data;
+  const pct1 = (v: number | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
+  const mktStats: { icon: string; value: string; label: string }[] = [
+    { icon: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83zM7 7h.01", value: String(mo?.listingsTotal ?? "—"), label: t.listingsTotal },
+    { icon: "M22 11.08V12a10 10 0 1 1-5.93-9.14M9 11l3 3L22 4", value: String(mo?.listingsActive ?? "—"), label: t.listingsActive },
+    { icon: "M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM12 14v6M9 17h6", value: String(mo?.listingsLast30d ?? "—"), label: t.listings30d },
+    { icon: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3", value: mo ? `${mo.listingsByIntent.need}/${mo.listingsByIntent.offer}` : "—", label: t.intentSplit },
+    { icon: "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z", value: String(mo?.messagesTotal ?? "—"), label: t.messagesTotal },
+    { icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", value: String(mo?.messagesLast30d ?? "—"), label: t.messages30d },
+    { icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75", value: String(mo?.conversationsTotal ?? "—"), label: t.conversations },
+    { icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11", value: String(mo?.completedJobsTotal ?? "—"), label: t.completedJobs },
+    { icon: "M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM12 14v6M9 17h6", value: String(mo?.completedJobsLast30d ?? "—"), label: t.completedJobs30d },
+  ];
+  const growthStats: { icon: string; value: string; label: string }[] = [
+    { icon: "M23 6l-7 7-4-4-9 9M17 6h6v6", value: gm ? `${gm.signupGrowthWow.toFixed(1)}%${gm.wowHasBaseline ? "" : ` ${t.wowNoBaseline}`}` : "—", label: t.wowGrowth },
+    { icon: "M19 5L5 19M6.38 5a1.62 1.62 0 1 0 0 3.24 1.62 1.62 0 0 0 0-3.24zM17.62 19a1.62 1.62 0 1 0 0 3.24 1.62 1.62 0 0 0 0-3.24z", value: pct1(gm?.premiumConversionRate), label: t.premiumConversion },
+    { icon: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", value: pct1(mo?.listingToMessageRate), label: t.msgRate },
+    { icon: "M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z", value: String(gm?.supportOpenCount ?? "—"), label: t.openTickets },
+  ];
   return <div className="pa-analytics">
     <div className="pa-stat-grid">
       {stats.map((s) => (
@@ -9150,6 +9267,35 @@ function PAAnalyticsTab({ lang }: { lang: Lang }) {
         </div>
       ))}
     </div>
+
+    <section className="pa-chart-section">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.marketplace}</h3>
+      <div className="pa-stat-grid">
+        {mktStats.map((s) => (
+          <div key={s.label} className="pa-stat">
+            <PAStatIcon path={s.icon} />
+            <div className="pa-stat-text"><span className="pa-stat-value">{s.value}</span><span className="pa-stat-label">{s.label}</span></div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="pa-chart-section">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.listingsChart}</h3>
+      <PAChart data={mkt.data?.listingsByDay ?? []} kind="bar" color="var(--accent)" label={t.listingsChart} />
+    </section>
+
+    <section className="pa-chart-section">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#22c55e" }} />{t.growth}</h3>
+      <div className="pa-stat-grid">
+        {growthStats.map((s) => (
+          <div key={s.label} className="pa-stat">
+            <PAStatIcon path={s.icon} />
+            <div className="pa-stat-text"><span className="pa-stat-value">{s.value}</span><span className="pa-stat-label">{s.label}</span></div>
+          </div>
+        ))}
+      </div>
+    </section>
 
     <section className="pa-chart-section">
       <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.signupsChart}</h3>
@@ -9275,7 +9421,21 @@ type SupportStrings = {
   by: string; replies: string; open: string; resolved: string; unread: string;
   markResolved: string; reopen: string; markRead: string; markUnread: string; back: string;
   title: string; crewkatSupport: string; you: string;
+  all: string; unassigned: string; priority: string; assignee: string;
+  searchPlaceholder: string; notesTitle: string; notesWord: string; notesEmpty: string;
+  notePlaceholder: string; addNote: string;
 };
+
+function supportPriorityLabel(priority: string, lang: Lang): string {
+  const map: Record<string, { en: string; es: string }> = {
+    low: { en: "Low", es: "Baja" },
+    normal: { en: "Normal", es: "Normal" },
+    high: { en: "High", es: "Alta" },
+    urgent: { en: "Urgent", es: "Urgente" },
+  };
+  const entry = map[priority];
+  return entry ? entry[lang] : priority;
+}
 
 function supportKindLabel(kind: string, lang: Lang): string {
   const map: Record<string, { en: string; es: string }> = {
@@ -9320,50 +9480,98 @@ function ThreadReplyBox({ lang, onSend, pending, error }: { lang: Lang; onSend: 
 function PASupportTab({ lang }: { lang: Lang }) {
   const qc = useQueryClient();
   const [openId, setOpenId] = useState<number | null>(null);
-  const query = useQuery({ queryKey: ["pa-support-inbox"], queryFn: () => api.platformSupportInbox({}) });
+  const [statusFilter, setStatusFilter] = useState<"open" | "resolved" | "all">("open");
+  const [priorityFilter, setPriorityFilter] = useState<"low" | "normal" | "high" | "urgent" | "all">("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const team = useQuery({ queryKey: ["pa-team"], queryFn: () => api.adminTeamList({}) });
+  const query = useQuery({
+    queryKey: ["pa-support-inbox", statusFilter, priorityFilter, assigneeFilter, search],
+    queryFn: () => api.platformSupportInbox({
+      status: statusFilter,
+      priority: priorityFilter,
+      assignedTo: assigneeFilter === "all" ? "all" : assigneeFilter === "unassigned" ? null : Number(assigneeFilter),
+      search,
+    }),
+  });
   const update = useMutation({
     mutationFn: (args: { id: number; status: "open" | "resolved"; isUnread: boolean }) => api.updatePlatformSupportReport(args),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }),
     onError: () => {},
   });
   const t: SupportStrings = lang === "es"
-    ? { loading: "Cargando…", empty: "Sin mensajes de soporte.", emptyBody: "Los reportes enviados desde la app aparecerán aquí.", loadError: "No se pudo cargar el buzón de soporte.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "Marcar resuelto", reopen: "Reabrir", markRead: "Marcar leído", markUnread: "Marcar sin leer", back: "Atrás", title: "Solicitudes de soporte", crewkatSupport: "Soporte de Crewkat", you: "Tú" }
-    : { loading: "Loading…", empty: "No support messages.", emptyBody: "Reports sent from inside the app will show up here.", loadError: "Could not load the support inbox.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "Mark resolved", reopen: "Reopen", markRead: "Mark read", markUnread: "Mark unread", back: "Back", title: "Support requests", crewkatSupport: "Crewkat support", you: "You" };
+    ? { loading: "Cargando…", empty: "Sin mensajes de soporte.", emptyBody: "Los reportes enviados desde la app aparecerán aquí.", loadError: "No se pudo cargar el buzón de soporte.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "Marcar resuelto", reopen: "Reabrir", markRead: "Marcar leído", markUnread: "Marcar sin leer", back: "Atrás", title: "Solicitudes de soporte", crewkatSupport: "Soporte de Crewkat", you: "Tú", all: "Todos", unassigned: "Sin asignar", priority: "Prioridad", assignee: "Asignado", searchPlaceholder: "Buscar asunto, mensaje, nombre, correo…", notesTitle: "Notas del equipo — no visibles para el usuario", notesWord: "notas", notesEmpty: "Aún no hay notas internas.", notePlaceholder: "Añade una nota interna…", addNote: "Añadir nota" }
+    : { loading: "Loading…", empty: "No support messages.", emptyBody: "Reports sent from inside the app will show up here.", loadError: "Could not load the support inbox.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "Mark resolved", reopen: "Reopen", markRead: "Mark read", markUnread: "Mark unread", back: "Back", title: "Support requests", crewkatSupport: "Crewkat support", you: "You", all: "All", unassigned: "Unassigned", priority: "Priority", assignee: "Assignee", searchPlaceholder: "Search subject, message, name, email…", notesTitle: "Team notes — not visible to the user", notesWord: "notes", notesEmpty: "No internal notes yet.", notePlaceholder: "Add an internal note…", addNote: "Add note" };
   if (openId !== null) return <PASupportThreadView lang={lang} reportId={openId} onBack={() => setOpenId(null)} t={t} />;
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError) return <div className="market-empty"><h2>{t.loadError}</h2><p>{actionErrorMessage(query.error)}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
   const reports = query.data?.reports ?? [];
-  if (!reports.length) return <div className="market-empty"><h2>{t.empty}</h2><p>{t.emptyBody}</p></div>;
-  return <div className="pa-list">
-    {reports.map((report) => (
-      <article key={report.id} className={`pa-card ${report.isUnread ? "pa-report-unread" : ""}`}>
-        <button type="button" className="pa-report-clickable" onClick={() => setOpenId(report.id)} aria-label={`${report.subject}`}>
-          <div className="pa-card-head">
-            <div><h3>{report.subject}</h3><small>{report.userName} · {report.userEmail} · {supportDate(report.createdAt, lang)}</small></div>
-            <div className="pa-badges-row">
-              {report.isUnread && <span className="pa-tab-badge">{t.unread}</span>}
-              <span className={`pa-badge ${report.status}`}>{report.status === "resolved" ? t.resolved : t.open}</span>
+  const teamMembers = (team.data?.members ?? []).filter((m) => m.role === "admin" || m.role === "support");
+  const filtersActive = statusFilter !== "open" || priorityFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
+  return <>
+    <div className="pa-filters">
+      <div className="pa-pills" role="group" aria-label={t.open}>
+        {(["open", "resolved", "all"] as const).map((value) => (
+          <button key={value} type="button" className={statusFilter === value ? "active" : ""} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>
+            {value === "open" ? t.open : value === "resolved" ? t.resolved : t.all}
+          </button>
+        ))}
+      </div>
+      <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as typeof priorityFilter)} aria-label={t.priority}>
+        <option value="all">{t.priority}: {t.all}</option>
+        {(["low", "normal", "high", "urgent"] as const).map((value) => (
+          <option key={value} value={value}>{supportPriorityLabel(value, lang)}</option>
+        ))}
+      </select>
+      <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} aria-label={t.assignee}>
+        <option value="all">{t.assignee}: {t.all}</option>
+        <option value="unassigned">{t.unassigned}</option>
+        {teamMembers.map((m) => (
+          <option key={m.userId} value={String(m.userId)}>{m.name}</option>
+        ))}
+      </select>
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchPlaceholder} aria-label={t.searchPlaceholder} maxLength={120} style={{ flex: 1, minWidth: 140 }} />
+    </div>
+    {!reports.length
+      ? <div className="market-empty"><h2>{t.empty}</h2><p>{filtersActive ? "" : t.emptyBody}</p></div>
+      : <div className="pa-list">
+      {reports.map((report) => (
+        <article key={report.id} className={`pa-card ${report.isUnread ? "pa-report-unread" : ""}`}>
+          <button type="button" className="pa-report-clickable" onClick={() => setOpenId(report.id)} aria-label={`${report.subject}`}>
+            <div className="pa-card-head">
+              <div><h3>{report.subject}</h3><small>{report.userName} · {report.userEmail} · {supportDate(report.createdAt, lang)}</small></div>
+              <div className="pa-badges-row">
+                {report.isUnread && <span className="pa-tab-badge">{t.unread}</span>}
+                <span className={`pa-badge ${report.status}`}>{report.status === "resolved" ? t.resolved : t.open}</span>
+              </div>
             </div>
+            <p className="pa-desc">{report.message}</p>
+            <div className="pa-badges-row">
+              <span className="pa-badge pa-kind">{supportKindLabel(report.kind, lang)}</span>
+              <span className={`pa-badge priority-${report.priority}`}>{supportPriorityLabel(report.priority, lang)}</span>
+              {report.assignedTo && <span className="pa-badge pa-assignee">→ {report.assignedTo.name}</span>}
+              {report.replyCount > 0 && <span className="pa-reason">{report.replyCount} {t.replies}</span>}
+              {report.noteCount > 0 && <span className="pa-reason">{report.noteCount} {t.notesWord}</span>}
+            </div>
+          </button>
+          <div className="pa-actions">
+            <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status === "resolved" ? "open" : "resolved", isUnread: report.isUnread })}>{report.status === "resolved" ? t.reopen : t.markResolved}</button>
+            <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status as "open" | "resolved", isUnread: !report.isUnread })}>{report.isUnread ? t.markRead : t.markUnread}</button>
           </div>
-          <p className="pa-desc">{report.message}</p>
-          <div className="pa-badges-row">
-            <span className="pa-badge pa-kind">{supportKindLabel(report.kind, lang)}</span>
-            {report.replyCount > 0 && <span className="pa-reason">{report.replyCount} {t.replies}</span>}
-          </div>
-        </button>
-        <div className="pa-actions">
-          <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status === "resolved" ? "open" : "resolved", isUnread: report.isUnread })}>{report.status === "resolved" ? t.reopen : t.markResolved}</button>
-          <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status as "open" | "resolved", isUnread: !report.isUnread })}>{report.isUnread ? t.markRead : t.markUnread}</button>
-        </div>
-      </article>
-    ))}
-  </div>;
+        </article>
+      ))}
+    </div>}
+  </>;
 }
 
 function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; reportId: number; onBack: () => void; t: SupportStrings }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-support-thread", reportId], queryFn: () => api.platformSupportThread({ reportId }) });
+  const team = useQuery({ queryKey: ["pa-team"], queryFn: () => api.adminTeamList({}) });
+  const notesQuery = useQuery({ queryKey: ["pa-support-notes", reportId], queryFn: () => api.adminSupportNotesList({ reportId }) });
   const [error, setError] = useState("");
+  const [noteError, setNoteError] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
   const send = useMutation({
     mutationFn: (message: string) => api.replyToSupportReport({ reportId, message }),
     onSuccess: async () => { setError(""); await Promise.all([qc.invalidateQueries({ queryKey: ["pa-support-thread", reportId] }), qc.invalidateQueries({ queryKey: ["pa-support-inbox"] })]); },
@@ -9373,14 +9581,31 @@ function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; report
     mutationFn: (args: { id: number; status: "open" | "resolved"; isUnread: boolean }) => api.updatePlatformSupportReport(args),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }); query.refetch(); },
   });
+  const assign = useMutation({
+    mutationFn: (userId: number | null) => api.adminSupportTicketAssign({ reportId, userId }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pa-support-thread", reportId] }); qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }); },
+    onError: () => {},
+  });
+  const setPriority = useMutation({
+    mutationFn: (priority: "low" | "normal" | "high" | "urgent") => api.adminSupportTicketPriority({ reportId, priority }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pa-support-thread", reportId] }); qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }); },
+    onError: () => {},
+  });
+  const addNote = useMutation({
+    mutationFn: (note: string) => api.adminSupportNoteAdd({ reportId, note }),
+    onSuccess: () => { setNoteDraft(""); setNoteError(""); qc.invalidateQueries({ queryKey: ["pa-support-notes", reportId] }); qc.invalidateQueries({ queryKey: ["pa-support-inbox"] }); },
+    onError: (caught) => setNoteError(actionErrorMessage(caught)),
+  });
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2>{query.isError && <p>{actionErrorMessage(query.error)}</p>}<button type="button" className="primary-button" onClick={onBack}>{t.back}</button></div>;
   const { report, replies } = query.data;
   const you = lang === "es" ? "Tú" : "You";
+  const teamMembers = (team.data?.members ?? []).filter((m) => m.role === "admin" || m.role === "support");
   const items: ThreadBubble[] = [
     { id: `opener-${report.id}`, fromViewer: false, name: report.userName, message: report.message, createdAt: report.createdAt },
     ...replies.map((reply) => ({ id: reply.id, fromViewer: reply.sender === "admin", name: reply.sender === "admin" ? you : report.userName, message: reply.message, createdAt: reply.createdAt })),
   ];
+  const notes = notesQuery.data?.notes ?? [];
   return <div className="thread">
     <button type="button" className="secondary-button thread-back" onClick={onBack}>← {t.back}</button>
     <div className="pa-card">
@@ -9389,13 +9614,46 @@ function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; report
         <div className="pa-badges-row">
           <span className="pa-badge pa-kind">{supportKindLabel(report.kind, lang)}</span>
           <span className={`pa-badge ${report.status}`}>{report.status === "resolved" ? t.resolved : t.open}</span>
+          <span className={`pa-badge priority-${report.priority}`}>{supportPriorityLabel(report.priority, lang)}</span>
+          {report.assignedTo && <span className="pa-badge pa-assignee">→ {report.assignedTo.name}</span>}
         </div>
+      </div>
+      <div className="pa-actions-row">
+        <label><span>{t.assignee}</span>
+          <select value={report.assignedTo ? String(report.assignedTo.id) : ""} disabled={assign.isPending} onChange={(e) => assign.mutate(e.target.value === "" ? null : Number(e.target.value))} aria-label={t.assignee}>
+            <option value="">{t.unassigned}</option>
+            {teamMembers.map((m) => (<option key={m.userId} value={String(m.userId)}>{m.name}</option>))}
+          </select>
+        </label>
+        <label><span>{t.priority}</span>
+          <select value={report.priority} disabled={setPriority.isPending} onChange={(e) => setPriority.mutate(e.target.value as "low" | "normal" | "high" | "urgent")} aria-label={t.priority}>
+            {(["low", "normal", "high", "urgent"] as const).map((value) => (
+              <option key={value} value={value}>{supportPriorityLabel(value, lang)}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="pa-actions">
         <button type="button" className="secondary-button" disabled={update.isPending} onClick={() => update.mutate({ id: report.id, status: report.status === "resolved" ? "open" : "resolved", isUnread: false })}>{report.status === "resolved" ? t.reopen : t.markResolved}</button>
       </div>
     </div>
     <ThreadBubbles lang={lang} items={items} />
+    <div className="pa-notes">
+      <h4 className="pa-notes-title">{t.notesTitle}</h4>
+      {notesQuery.isLoading && <div className="loading-block" aria-label={t.loading} />}
+      {!notesQuery.isLoading && !notes.length && <p className="pa-muted">{t.notesEmpty}</p>}
+      {notes.map((note) => (
+        <div key={note.id} className="pa-note">
+          <p>{note.note}</p>
+          <small>{note.authorName} · {supportDate(note.createdAt, lang)}</small>
+        </div>
+      ))}
+      <div className="pa-filters">
+        <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder={t.notePlaceholder} aria-label={t.notePlaceholder} maxLength={2000} style={{ flex: 1, minWidth: 140 }} />
+        <button type="button" className="secondary-button" disabled={addNote.isPending || !noteDraft.trim()} onClick={() => addNote.mutate(noteDraft.trim())}>{t.addNote}</button>
+      </div>
+      {noteError && <p className="status error" role="alert">{noteError}</p>}
+    </div>
     <ThreadReplyBox lang={lang} pending={send.isPending} error={error} onSend={(message) => send.mutate(message)} />
   </div>;
 }
@@ -9407,8 +9665,8 @@ function SupportThreadsPanel({ lang }: { lang: Lang }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const query = useQuery({ queryKey: ["support-threads"], queryFn: () => api.userSupportThreads({}) });
   const t: SupportStrings = lang === "es"
-    ? { loading: "Cargando…", empty: "", emptyBody: "", loadError: "No se pudieron cargar tus solicitudes.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Atrás", title: "Mis solicitudes", crewkatSupport: "Soporte de Crewkat", you: "Tú" }
-    : { loading: "Loading…", empty: "", emptyBody: "", loadError: "Couldn't load your requests.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Back", title: "My requests", crewkatSupport: "Crewkat support", you: "You" };
+    ? { loading: "Cargando…", empty: "", emptyBody: "", loadError: "No se pudieron cargar tus solicitudes.", retry: "Reintentar", by: "por", replies: "respuestas", open: "Abierto", resolved: "Resuelto", unread: "Sin leer", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Atrás", title: "Mis solicitudes", crewkatSupport: "Soporte de Crewkat", you: "Tú", all: "Todos", unassigned: "Sin asignar", priority: "Prioridad", assignee: "Asignado", searchPlaceholder: "", notesTitle: "", notesWord: "notas", notesEmpty: "", notePlaceholder: "", addNote: "" }
+    : { loading: "Loading…", empty: "", emptyBody: "", loadError: "Couldn't load your requests.", retry: "Retry", by: "by", replies: "replies", open: "Open", resolved: "Resolved", unread: "Unread", markResolved: "", reopen: "", markRead: "", markUnread: "", back: "Back", title: "My requests", crewkatSupport: "Crewkat support", you: "You", all: "All", unassigned: "Unassigned", priority: "Priority", assignee: "Assignee", searchPlaceholder: "", notesTitle: "", notesWord: "notes", notesEmpty: "", notePlaceholder: "", addNote: "" };
   if (openId !== null) return <UserSupportThreadView lang={lang} reportId={openId} onBack={() => setOpenId(null)} t={t} />;
   if (query.isLoading || query.isError) return null;
   const threads = query.data?.threads ?? [];
@@ -10149,8 +10407,9 @@ function PASettingsTab({ lang }: { lang: Lang }) {
     : { loading: "Loading…", loadError: "Could not load settings.", retry: "Retry", save: "Save settings", saving: "Saving…", saved: "Settings saved.", on: "On", off: "Off", bannerPlaceholder: "Type the announcement…" };
   if (query.isLoading) return <div className="loading-block" aria-label={t.loading} />;
   if (query.isError || !query.data) return <div className="market-empty"><h2>{t.loadError}</h2><p>{query.isError ? actionErrorMessage(query.error) : ""}</p><button type="button" className="primary-button" onClick={() => query.refetch()}>{t.retry}</button></div>;
-  const defs = query.data.defs.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  const defs = query.data.defs.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)).filter((d) => !PLATFORM_MANAGED_SETTING_KEYS.has(d.key));
   return <div className="pa-list">
+    <PAPlatformSection lang={lang} />
     {error && <p className="status error">{error}</p>}
     {saved && <p className="status auth-success">{t.saved}</p>}
     {defs.map((def) => {
@@ -10170,6 +10429,248 @@ function PASettingsTab({ lang }: { lang: Lang }) {
     })}
     <button type="button" className="primary-button compact-save" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
     <PATeamSection lang={lang} />
+  </div>;
+}
+
+// Admin panel Phase 2: platform settings managed here (not the generic list).
+const PLATFORM_MANAGED_SETTING_KEYS = new Set([
+  "maintenance_mode", "maintenance_message", "brand_primary_color", "platform_logo_blob_key", "admin_2fa_required",
+]);
+
+// Admin panel Phase 2: "Platform" section — maintenance, branding, policy
+// versions, admin 2FA. Admin-only (the Settings tab is admin-only).
+function PAPlatformSection({ lang }: { lang: Lang }) {
+  const t = lang === "es" ? { platform: "Plataforma" } : { platform: "Platform" };
+  return <section className="pa-bill-section"><h3>{t.platform}</h3>
+    <PAMaintenanceSection lang={lang} />
+    <PABrandingSection lang={lang} />
+    <PAPolicySection lang={lang} kind="terms" />
+    <PAPolicySection lang={lang} kind="privacy" />
+    <PATwoFactorSection lang={lang} />
+  </section>;
+}
+
+function PAMaintenanceSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["pa-platform-maintenance"], queryFn: () => api.getMaintenanceStatus({}) });
+  const [enabled, setEnabled] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { if (query.data) { setEnabled(query.data.enabled); setMessage(query.data.message); } }, [query.data]);
+  const save = useMutation({
+    mutationFn: () => api.adminMaintenanceSet({ enabled, message: message.trim() }),
+    onSuccess: async () => {
+      setError(""); setSaved(true); window.setTimeout(() => setSaved(false), 2500);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["pa-platform-maintenance"] }), qc.invalidateQueries({ queryKey: ["platform-maintenance"] })]);
+    },
+    onError: (caught) => { setError(actionErrorMessage(caught)); setSaved(false); },
+  });
+  const t = lang === "es"
+    ? { title: "Modo de mantenimiento", toggle: "Mantenimiento activado", hint: "Mientras esté activo, nadie puede crear cuentas nuevas y los usuarios ven una pantalla de mantenimiento.", message: "Mensaje", messagePh: "Ej.: Estamos mejorando Crewkat, volvemos en una hora.", save: "Guardar", saving: "Guardando…", saved: "Mantenimiento actualizado." }
+    : { title: "Maintenance mode", toggle: "Maintenance on", hint: "While on, nobody can sign up and users see a maintenance screen.", message: "Message", messagePh: "E.g. We're improving Crewkat — back in an hour.", save: "Save", saving: "Saving…", saved: "Maintenance updated." };
+  return <div className="pa-card">
+    <div className="pa-card-head"><div><h3>{t.title}</h3></div></div>
+    {error && <p className="status error">{error}</p>}
+    {saved && <p className="status auth-success">{t.saved}</p>}
+    <label className="pa-switch"><span><strong>{t.toggle}</strong><small>{t.hint}</small></span><Switch checked={enabled} onChange={setEnabled} /></label>
+    <label className="pa-field"><span><strong>{t.message}</strong></span><input value={message} maxLength={300} placeholder={t.messagePh} onChange={(e) => setMessage(e.target.value)} /></label>
+    <button type="button" className="primary-button" disabled={save.isPending || query.isLoading} onClick={() => save.mutate()}>{save.isPending ? t.saving : t.save}</button>
+  </div>;
+}
+
+function PABrandingSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const query = useQuery({ queryKey: ["platform-branding"], queryFn: () => api.getPlatformBranding({}) });
+  const [color, setColor] = useState("#e8590c");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const t = lang === "es"
+    ? { title: "Marca", logo: "Logotipo de la plataforma", logoHint: "JPEG o PNG, máximo 10 MB. Reemplaza el anterior.", choose: "Subir logotipo", uploading: "Subiendo…", color: "Color primario", colorHint: "Se aplica a los acentos naranjas del panel de administración.", badHex: "Escribe un color hexadecimal como #e8590c.", badType: "Solo se aceptan JPEG o PNG.", tooBig: "El archivo debe pesar 10 MB o menos.", save: "Guardar color", saving: "Guardando…", saved: "Marca actualizada.", noLogo: "Sin logotipo." }
+    : { title: "Branding", logo: "Platform logo", logoHint: "JPEG or PNG, max 10 MB. Replaces the previous one.", choose: "Upload logo", uploading: "Uploading…", color: "Primary color", colorHint: "Applies to the admin panel's orange accents.", badHex: "Enter a hex color like #e8590c.", badType: "Only JPEG or PNG files.", tooBig: "The file must be 10 MB or smaller.", save: "Save color", saving: "Saving…", saved: "Branding updated.", noLogo: "No logo yet." };
+  useEffect(() => { if (query.data?.primaryColor) setColor(query.data.primaryColor); }, [query.data]);
+  const saveColor = useMutation({
+    mutationFn: () => {
+      const next = color.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(next)) throw new Error(t.badHex);
+      return api.adminBrandingColorSet({ primaryColor: next });
+    },
+    onSuccess: async (res) => {
+      setError(""); setSaved(true); window.setTimeout(() => setSaved(false), 2500);
+      document.documentElement.style.setProperty("--brand-accent", res.primaryColor);
+      await qc.invalidateQueries({ queryKey: ["platform-branding"] });
+    },
+    onError: (caught) => { setError(actionErrorMessage(caught)); setSaved(false); },
+  });
+  const onFile = async (file: File | undefined) => {
+    if (!file) return;
+    setError("");
+    if (file.type !== "image/jpeg" && file.type !== "image/png") { setError(t.badType); return; }
+    if (file.size > 10 * 1024 * 1024) { setError(t.tooBig); return; }
+    setUploading(true);
+    try {
+      const dataBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => { const s = String(reader.result ?? ""); const i = s.indexOf(","); resolve(i >= 0 ? s.slice(i + 1) : s); };
+        reader.onerror = () => reject(new Error("read failed"));
+        reader.readAsDataURL(file);
+      });
+      await api.adminBrandLogoUpload({ filename: file.name, contentType: file.type as "image/jpeg" | "image/png", dataBase64 });
+      await qc.invalidateQueries({ queryKey: ["platform-branding"] });
+    } catch (caught) { setError(actionErrorMessage(caught)); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+  return <div className="pa-card">
+    <div className="pa-card-head"><div><h3>{t.title}</h3></div></div>
+    {error && <p className="status error">{error}</p>}
+    {saved && <p className="status auth-success">{t.saved}</p>}
+    <label className="pa-field"><span><strong>{t.logo}</strong><small>{t.logoHint}</small></span>
+      <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        {query.data?.logoUrl
+          ? <img src={query.data.logoUrl} alt="" style={{ width: 56, height: 56, objectFit: "contain", borderRadius: 8, background: "var(--surface)" }} />
+          : <span className="pa-muted"><small>{t.noLogo}</small></span>}
+        <button type="button" className="secondary-button" disabled={uploading} onClick={() => fileRef.current?.click()}>{uploading ? t.uploading : t.choose}</button>
+      </span>
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { void onFile(e.target.files?.[0]); }} />
+    </label>
+    <label className="pa-field"><span><strong>{t.color}</strong><small>{t.colorHint}</small></span>
+      <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#e8590c"} onChange={(e) => setColor(e.target.value)} aria-label={t.color} style={{ width: 52, height: 40, padding: 2 }} />
+        <input value={color} maxLength={7} onChange={(e) => setColor(e.target.value)} style={{ maxWidth: 110 }} aria-label={t.color} />
+      </span>
+    </label>
+    <button type="button" className="primary-button" disabled={saveColor.isPending} onClick={() => saveColor.mutate()}>{saveColor.isPending ? t.saving : t.save}</button>
+  </div>;
+}
+
+function PAPolicySection({ lang, kind }: { lang: Lang; kind: "terms" | "privacy" }) {
+  const qc = useQueryClient();
+  const history = useQuery({ queryKey: ["pa-policies", kind], queryFn: () => api.adminPolicyVersionsList({ kind }) });
+  const [version, setVersion] = useState("");
+  const [url, setUrl] = useState("");
+  const [effective, setEffective] = useState("");
+  const [error, setError] = useState("");
+  const [published, setPublished] = useState(false);
+  const t = lang === "es"
+    ? { terms: "Términos de servicio", privacy: "Política de privacidad", version: "Versión", versionPh: "Ej.: 2.0", url: "URL del documento", urlPh: "https://…", effective: "Fecha de vigencia", needVersion: "Escribe un número de versión.", publish: "Publicar versión", publishing: "Publicando…", published: "Versión publicada.", history: "Historial", empty: "Sin versiones publicadas.", loadError: "No se pudo cargar el historial." }
+    : { terms: "Terms of Service", privacy: "Privacy Policy", version: "Version", versionPh: "E.g. 2.0", url: "Document URL", urlPh: "https://…", effective: "Effective date", needVersion: "Enter a version number.", publish: "Publish version", publishing: "Publishing…", published: "Version published.", history: "History", empty: "No versions published yet.", loadError: "Could not load history." };
+  const publish = useMutation({
+    mutationFn: () => {
+      if (!version.trim()) throw new Error(t.needVersion);
+      return api.adminPolicyVersionPublish({
+        kind, version: version.trim(), url: url.trim(),
+        ...(effective ? { effectiveAt: new Date(`${effective}T00:00:00`).toISOString() } : {}),
+      });
+    },
+    onSuccess: async () => {
+      setError(""); setVersion(""); setUrl(""); setEffective(""); setPublished(true);
+      window.setTimeout(() => setPublished(false), 2500);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["pa-policies", kind] }), qc.invalidateQueries({ queryKey: ["policy-version", kind] })]);
+    },
+    onError: (caught) => { setError(actionErrorMessage(caught)); setPublished(false); },
+  });
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
+  return <div className="pa-card">
+    <div className="pa-card-head"><div><h3>{kind === "terms" ? t.terms : t.privacy}</h3></div></div>
+    {error && <p className="status error">{error}</p>}
+    {published && <p className="status auth-success">{t.published}</p>}
+    <div className="pa-filters">
+      <label className="pa-field"><span><strong>{t.version}</strong></span><input value={version} maxLength={40} placeholder={t.versionPh} onChange={(e) => setVersion(e.target.value)} style={{ maxWidth: 130 }} /></label>
+      <label className="pa-field"><span><strong>{t.effective}</strong></span><input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} /></label>
+    </div>
+    <label className="pa-field"><span><strong>{t.url}</strong></span><input value={url} maxLength={500} placeholder={t.urlPh} inputMode="url" onChange={(e) => setUrl(e.target.value)} /></label>
+    <button type="button" className="primary-button" disabled={publish.isPending} onClick={() => publish.mutate()}>{publish.isPending ? t.publishing : t.publish}</button>
+    <h4 style={{ margin: "14px 0 6px" }}>{t.history}</h4>
+    {history.isLoading ? <div className="loading-block" /> : history.isError ? <p className="status error">{t.loadError}</p> :
+      !(history.data?.versions.length) ? <p className="pa-muted"><small>{t.empty}</small></p> :
+      history.data.versions.map((v) => (
+        <div key={v.id} className="pa-rule-row">
+          <div><strong>v{v.version}</strong><br /><small className="pa-muted">{lang === "es" ? "Vigente desde" : "Effective"} {fmt(v.effectiveAt)}{v.url ? <> · <span className="mono" style={{ wordBreak: "break-all" }}>{v.url}</span></> : null}</small></div>
+        </div>
+      ))}
+  </div>;
+}
+
+function PATwoFactorSection({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const settingsQuery = useQuery({ queryKey: ["pa-settings"], queryFn: () => api.adminSettingsGet({}) });
+  const required = (settingsQuery.data?.settings["admin_2fa_required"] ?? "0") === "1";
+  const [error, setError] = useState("");
+  const setRequired = useMutation({
+    mutationFn: (next: boolean) => api.adminTotpRequiredSet({ required: next }),
+    onSuccess: async () => { setError(""); await qc.invalidateQueries({ queryKey: ["pa-settings"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const t = lang === "es"
+    ? { title: "Verificación en dos pasos (2FA)", require: "Exigir 2FA al equipo", requireHint: "Los miembros del equipo con 2FA activado deberán ingresar un código de su app de autenticación al iniciar sesión.", mine: "Mi 2FA" }
+    : { title: "Two-factor auth (2FA)", require: "Require 2FA for the team", requireHint: "Team members with 2FA enrolled must enter an authenticator-app code at sign-in.", mine: "My 2FA" };
+  return <div className="pa-card">
+    <div className="pa-card-head"><div><h3>{t.title}</h3></div></div>
+    {error && <p className="status error">{error}</p>}
+    <label className="pa-switch"><span><strong>{t.require}</strong><small>{t.requireHint}</small></span><Switch checked={required} disabled={setRequired.isPending} onChange={(next) => setRequired.mutate(next)} /></label>
+    <h4 style={{ margin: "14px 0 6px" }}>{t.mine}</h4>
+    <PATotpSelfSetup lang={lang} />
+  </div>;
+}
+
+// Admin panel Phase 2: per-user TOTP enrollment with manual secret entry
+// (no QR library available). Reused in the Platform section (admins) and as a
+// compact strip for support/moderator team members, who don't see the
+// Settings tab.
+function PATotpSelfSetup({ lang, compact }: { lang: Lang; compact?: boolean }) {
+  const qc = useQueryClient();
+  const status = useQuery({ queryKey: ["pa-totp-status"], queryFn: () => api.adminTotpStatus({}) });
+  const [secret, setSecret] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const t = lang === "es"
+    ? { loading: "Cargando…", on: "La verificación en dos pasos está activada en tu cuenta.", disable: "Desactivar 2FA", disabling: "Desactivando…", setup: "Activar 2FA", starting: "Generando…", intro: "1. Abre tu app de autenticación (Google Authenticator, Authy, 1Password). 2. Agrega una cuenta con esta clave secreta:", secretLabel: "Clave secreta", verifyLabel: "Código de 6 dígitos", verify: "Verificar y activar", verifying: "Verificando…", cancel: "Cancelar", doneMsg: "2FA activada correctamente.", badCode: "Escribe el código de 6 dígitos." }
+    : { loading: "Loading…", on: "Two-factor auth is on for your account.", disable: "Disable 2FA", disabling: "Disabling…", setup: "Set up 2FA", starting: "Generating…", intro: "1. Open your authenticator app (Google Authenticator, Authy, 1Password). 2. Add an account with this secret key:", secretLabel: "Secret key", verifyLabel: "6-digit code", verify: "Verify and enable", verifying: "Verifying…", cancel: "Cancel", doneMsg: "2FA enabled.", badCode: "Enter the 6-digit code." };
+  const start = useMutation({
+    mutationFn: () => api.adminTotpSetupStart({}),
+    onSuccess: (res) => { setSecret(res.secret); setCode(""); setError(""); setDone(false); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const verify = useMutation({
+    mutationFn: () => {
+      if (!/^\d{6}$/.test(code.trim())) throw new Error(t.badCode);
+      return api.adminTotpSetupVerify({ code: code.trim() });
+    },
+    onSuccess: async () => { setError(""); setDone(true); setSecret(""); setCode(""); await qc.invalidateQueries({ queryKey: ["pa-totp-status"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  const disable = useMutation({
+    mutationFn: () => api.adminTotpDisable({}),
+    onSuccess: async () => { setError(""); setSecret(""); setCode(""); setDone(false); await qc.invalidateQueries({ queryKey: ["pa-totp-status"] }); },
+    onError: (caught) => setError(actionErrorMessage(caught)),
+  });
+  if (status.isLoading) return <div className="loading-block" aria-label={t.loading} />;
+  const verified = status.data?.verified ?? false;
+  return <div style={compact ? undefined : { display: "grid", gap: 10 }}>
+    {error && <p className="status error">{error}</p>}
+    {done && <p className="status auth-success">{t.doneMsg}</p>}
+    {verified ? (
+      <div className="pa-rule-row">
+        <div><strong>{t.on}</strong></div>
+        <span className="spacer" />
+        <button type="button" className="danger-button" disabled={disable.isPending} onClick={() => disable.mutate()}>{disable.isPending ? t.disabling : t.disable}</button>
+      </div>
+    ) : secret ? (
+      <div style={{ display: "grid", gap: 10 }}>
+        <p className="pa-muted" style={{ margin: 0 }}><small>{t.intro}</small></p>
+        <code className="mono" style={{ padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)", wordBreak: "break-all", userSelect: "all" }}>{secret}</code>
+        <label className="pa-field"><span><strong>{t.verifyLabel}</strong></span><input inputMode="numeric" value={code} maxLength={6} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ maxWidth: 160 }} /></label>
+        <div className="pa-filters">
+          <button type="button" className="primary-button" disabled={verify.isPending} onClick={() => verify.mutate()}>{verify.isPending ? t.verifying : t.verify}</button>
+          <button type="button" className="secondary-button" onClick={() => { setSecret(""); setCode(""); setError(""); }}>{t.cancel}</button>
+        </div>
+      </div>
+    ) : (
+      <button type="button" className="secondary-button" disabled={start.isPending} onClick={() => start.mutate()}>{start.isPending ? t.starting : t.setup}</button>
+    )}
   </div>;
 }
 

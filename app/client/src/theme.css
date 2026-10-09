@@ -731,6 +731,8 @@ fieldset { padding: 0; border: 0; }
 .legal-header h1 { font-size:20px; }
 .legal-document { max-width:720px; margin:0 auto; padding:22px 2px 40px; }
 .legal-effective { margin:0 0 8px; color:var(--dim); font-size:13px; }
+/* Admin panel Phase 2: published policy version line under the doc title. */
+.legal-version { margin:-4px 0 10px; color:var(--dim); font-size:13px; font-weight:600; }
 .legal-intro { margin:0 0 28px; font-size:17px; line-height:1.55; }
 .legal-section { padding:20px 0; border-top:1px solid var(--border); }
 .legal-section h2 { margin:0 0 10px; font:800 21px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; letter-spacing:-.01em; }
@@ -742,6 +744,10 @@ fieldset { padding: 0; border: 0; }
 .terms-gate-footer .primary-button { min-height:52px; }
 /* Platform admin */
 .pa-page { display:flex; flex-direction:column; gap:14px; }
+/* Admin panel Phase 2: the platform brand color (set on :root as
+   --brand-accent by the client at boot) re-points the accent only inside the
+   admin panel — the rest of the app keeps the default accent. */
+.pa-page { --accent: var(--brand-accent, #f97316); }
 .pa-tabs { display:flex; gap:8px; overflow-x:auto; padding:2px 0 4px; }
 .pa-tabs button { flex:1 0 auto; min-height:40px; padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--dim); font:inherit; font-weight:700; font-size:14px; white-space:nowrap; }
 .pa-tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -3327,6 +3333,19 @@ button { -webkit-tap-highlight-color: transparent; }
 /* Compact filter row for admin lists. */
 .pa-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .pa-filters select, .pa-search input { min-height: 38px; }
+/* Support inbox (Phase 2): status pills, priority badges, team notes. */
+.pa-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pa-pills button { border: 1px solid var(--border); background: var(--bg); color: var(--dim); border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pa-pills button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pa-badge.priority-urgent { background: rgba(220,60,60,.14); color: #e0685f; border-color: rgba(220,60,60,.35); }
+.pa-badge.priority-high { background: rgba(230,160,40,.14); color: #d99a2b; border-color: rgba(230,160,40,.35); }
+.pa-badge.priority-low { background: rgba(120,140,200,.12); color: #8b9bd4; border-color: rgba(120,140,200,.35); }
+.pa-badge.pa-assignee { background: rgba(120,120,200,.12); color: #8b8bd4; border-color: rgba(120,120,200,.35); text-transform: none; letter-spacing: 0; }
+.pa-notes { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 12px; display: grid; gap: 10px; }
+.pa-notes-title { margin: 0; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); }
+.pa-note { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 10px 12px; }
+.pa-note p { margin: 0 0 4px; font-size: 14px; line-height: 1.5; }
+.pa-note small { color: var(--dim); font-size: 12px; }
 /* Keyword rule rows. */
 .pa-rule-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
 .pa-rule-row:last-child { border-bottom: none; }

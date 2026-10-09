@@ -56,7 +56,7 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0071_admin_phase1", last.tag === "0071_admin_phase1", last.tag);
+check("newest migration tag is 0072_admin_phase2", last.tag === "0072_admin_phase2", last.tag);
 check("0071 when is strictly newer than 0070 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Fixtures ---------------------------------------------------------------

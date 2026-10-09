@@ -498,6 +498,13 @@
    "when": 1791584436361,
    "tag": "0071_admin_phase1",
    "breakpoints": true
+  },
+  {
+   "idx": 71,
+   "version": "6",
+   "when": 1791588161875,
+   "tag": "0072_admin_phase2",
+   "breakpoints": true
   }
  ]
 }

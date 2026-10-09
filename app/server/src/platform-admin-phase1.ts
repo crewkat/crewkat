@@ -160,7 +160,8 @@ export const platformAdminPhase1Actions = {
       })),
     }),
     async handler(ctx) {
-      await requireTeamRole(ctx, "admin");
+      // Support staff assign tickets, so they need the team list too.
+      await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const rows = await db.select().from(schema.adminTeamRoles).orderBy(schema.adminTeamRoles.createdAt);
       const admins = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.isPlatformAdmin, true));

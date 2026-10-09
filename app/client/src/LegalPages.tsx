@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "./api";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS } from "../../server/src/marketplace-terms";
 
 export type LegalDocumentKind = "terms" | "privacy" | "marketplace";
+export type LegalLang = "en" | "es";
 
 const EFFECTIVE_DATE = "September 26, 2026";
 const CONTACT_EMAIL = "support@crewkat.com";
@@ -190,7 +193,19 @@ function MarketplaceTermsContent() {
   );
 }
 
-export function LegalDocumentPage({ kind, onBack }: { kind: LegalDocumentKind; onBack: () => void }) {
+// Admin panel Phase 2: under each doc title show the latest published
+// policy version ("Version {v} · Effective {date}"), when one exists.
+function LegalVersionLine({ kind, lang }: { kind: "terms" | "privacy"; lang: LegalLang }) {
+  const query = useQuery({ queryKey: ["policy-version", kind], queryFn: () => api.getPolicyVersion({ kind }), staleTime: 300000, retry: false });
+  const v = query.data;
+  if (!v) return null;
+  const date = v.effectiveAt
+    ? new Date(v.effectiveAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "";
+  return <p className="legal-version">{lang === "es" ? `Versión ${v.version}${date ? ` · Vigente desde ${date}` : ""}` : `Version ${v.version}${date ? ` · Effective ${date}` : ""}`}</p>;
+}
+
+export function LegalDocumentPage({ kind, lang, onBack }: { kind: LegalDocumentKind; lang: LegalLang; onBack: () => void }) {
   const isTerms = kind === "terms";
   const isMarketplace = kind === "marketplace";
   const title = isMarketplace ? "Marketplace Terms of Use" : isTerms ? "Terms of Service" : "Privacy Policy";
@@ -206,6 +221,7 @@ export function LegalDocumentPage({ kind, onBack }: { kind: LegalDocumentKind; o
           </button>
         </div>
         <h1>{title}</h1>
+        {!isMarketplace && <LegalVersionLine kind={isTerms ? "terms" : "privacy"} lang={lang} />}
         <div className="header-actions" />
       </header>
       <article className="legal-document">
