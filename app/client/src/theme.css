@@ -4255,3 +4255,76 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .chat-image-stage.zoomed img { max-width: none; width: 220vw; max-height: none; }
 .chat-image-viewer.closing .chat-image-stage img { animation: lightbox-image-out .16s ease-in; }
 .chat-image-hint { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: rgba(255,255,255,.65); font-size: 12px; font-weight: 600; pointer-events: none; }
+
+/* ================= Build 2.0: Danny's UI fix list ================= */
+
+/* --- 1a. Builder header: smaller title, icon-only preview, smaller Save w/ white text --- */
+.floating-doc-header h2 { font-size: 15px; }
+.floating-doc-header .sheet-save-btn { min-height: 34px; padding: 0 14px; font-size: 13px; color: #fff; }
+.floating-doc-preview { min-width: 36px; height: 36px; }
+.floating-doc-preview svg { width: 19px; height: 19px; }
+
+/* --- 1d. Builder inputs/buttons smaller, matching the new-client window --- */
+.floating-doc-form.job-form input,
+.floating-doc-form.job-form textarea,
+.floating-doc-form.job-form select { min-height: 40px; font-size: 15px; }
+.floating-doc-form .doc-line-card input,
+.floating-doc-form .doc-line-card textarea,
+.floating-doc-form .doc-line-card select { min-height: 38px; }
+.floating-doc-form .secondary-button,
+.floating-doc-form .b06-small-btn { min-height: 36px; font-size: 13px; }
+.floating-doc-form .doc-line-index { font-size: 12px; }
+
+/* --- 1c. Line items stand alone: no card-within-a-card, rows run side to side --- */
+.floating-doc-form .form-section.doc-items-flat { border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0 -14px; display: grid; gap: 10px; }
+.doc-items-flat > .doc-items-legend { margin: 0 14px; padding: 0; font-size: 12px; font-weight: 800; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; }
+.doc-items-flat > .b06-btn-row, .doc-items-flat > .quick-add { margin: 0 14px; }
+.doc-items-flat > .secondary-button, .doc-items-flat > .primary-button.add-item-wide { margin: 0 14px; }
+.floating-doc-form .doc-items-flat .b06-line-list { display: grid; gap: 0; }
+.floating-doc-form .doc-items-flat .doc-line-card { margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; padding: 12px 14px; }
+
+/* --- 1b. Marketplace post form: smaller price-choice, ZIP + Save share a row --- */
+.price-choice button { min-height: 38px; font-size: 12px; }
+.market-zip-save-row { display: flex; gap: 10px; align-items: flex-end; }
+.market-zip-save-row > label { flex: 1 1 auto; min-width: 0; }
+.market-zip-save-row .market-inline-save { flex: none; min-height: 44px; margin: 0; padding: 0 16px; font-size: 14px; white-space: nowrap; }
+
+/* --- 2. Client picker: single card (the results dropdown is the only card) --- */
+.client-picker { background: transparent; border: 0; padding: 0; }
+.client-picker.selected { background: transparent; border: 0; padding: 0; }
+
+/* --- 4. Clients screen: slimmer search, edge-to-edge compressed cards, vivid avatars --- */
+.client-search { min-height: 44px; border-radius: 10px; padding: 0 12px; }
+.client-search input { height: 42px; font-size: 15px; }
+.clients-page .client-list { margin: 0 -16px; gap: 0; border-top: 1px solid var(--border); }
+.clients-page .client-list > button,
+.clients-page .client-list .swipe-row .swipe-content > button { min-height: 64px; padding: 8px 16px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+.clients-page .client-avatar { width: 40px; height: 40px; font-size: 14px; }
+.clients-page .client-row-money strong { font-size: 15px; }
+.client-avatar.tone-0 { background: #1f7a5c; color: #fff; }
+.client-avatar.tone-1 { background: #e8590c; color: #fff; }
+.client-avatar.tone-2 { background: #2563eb; color: #fff; }
+.client-avatar.tone-3 { background: #d6336c; color: #fff; }
+.client-avatar.tone-4 { background: #7048e8; color: #fff; }
+.client-avatar.tone-5 { background: #0c8599; color: #fff; }
+
+/* --- 5a. Messages inbox: shrink the gaps between headers and cards --- */
+.market-inbox { gap: 8px; }
+.market-inbox-subheading { margin: 8px 0 4px; }
+.market-inbox-list { margin-bottom: 8px; }
+
+/* --- 5b. Beige background test: messages + tool pages --- */
+:root[data-theme="light"] { --beige: #f5f0e6; }
+:root[data-theme="dark"] { --beige: #201c15; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --beige: #f5f0e6; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --beige: #201c15; } }
+.page.marketplace-page,
+.page.marketplace-thread,
+.page.tools-home,
+.page.toolkit-page,
+.page.expansion-page { background: var(--beige); }
+
+/* --- 5c. Thread composer: bottom nav is hidden on marketplaceThread; anchor the composer --- */
+.app-shell.has-bottom-nav.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.marketplace-thread .message-thread.page-thread { flex: 1 1 auto; }
+.marketplace-thread .message-composer.page-composer { position: sticky; bottom: 0; z-index: 5; }

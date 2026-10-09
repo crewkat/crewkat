@@ -70,15 +70,17 @@ describe("floating windows", () => {
 });
 
 describe("floating form header", () => {
-  test("shared header exists: X | title | Preview + Save", () => {
+  test("shared header exists: X | title | icon-only Preview + Save", () => {
     expect(headerSrc).toContain("floating-doc-header");
     expect(headerSrc).toContain("floating-doc-exit");
     expect(headerSrc).toContain("aria-label={t.close}");
     expect(headerSrc).toContain("<h2>{title}</h2>");
-    expect(headerSrc).toContain("preview-trigger");
-    expect(headerSrc).toContain("{t.previewPdf}");
+    // Build 2.0: preview shrank to a self-explanatory icon-only button.
+    expect(headerSrc).toContain("floating-doc-preview");
+    expect(headerSrc).toContain("aria-label={t.previewPdf}");
+    expect(headerSrc).not.toContain("preview-trigger");
     expect(headerSrc).toContain('type="submit"');
-    // Save is a solid button, not a text link.
+    // Save is a solid button labeled just "Save", not a text link.
     expect(headerSrc).toContain('className="sheet-save-btn"');
   });
 
@@ -99,10 +101,18 @@ describe("floating form header", () => {
 });
 
 describe("exit X runs the save path", () => {
-  test("builders: X submits the form (same path as Save, inline validation)", () => {
-    expect(APP).toContain("const submitForm = () => { formRef.current?.requestSubmit(); };");
-    expect(APP).toContain("onExit={submitForm}");
-    // Builders no longer navigate away without submitting.
+  test("builders: X closes and saves — complete content saves, partial keeps a draft, empty discards", () => {
+    // Build 2.0: X is close-and-save. Complete content goes through the
+    // normal save mutation; partial content is kept as a localStorage draft
+    // (offered via a Resume/Discard banner); a fully empty form closes
+    // silently without saving.
+    expect(APP).toContain("const exitAndSave = () => {");
+    expect(APP).toContain("quoteDraftHasContent");
+    expect(APP).toContain("invoiceDraftHasContent");
+    expect(APP).toContain("QUOTE_DRAFT_KEY");
+    expect(APP).toContain("INVOICE_DRAFT_KEY");
+    expect(APP).toContain("onExit={exitAndSave}");
+    // Builders no longer navigate away without saving.
     expect(APP).not.toContain("<PageHeader lang={lang} title={t.newQuote} onBack={onBack}");
   });
 
@@ -246,5 +256,60 @@ describe("quantity-aware totals (logic)", () => {
     expect(money("10") > 0).toBe(true);
     expect(money("0") > 0).toBe(false);
     expect(money("") > 0).toBe(false);
+  });
+});
+
+describe("Build 2.0: Danny's UI fix list", () => {
+  test("builder line items stand alone — no card-within-a-card", () => {
+    expect(APP).toContain("doc-items-flat");
+    expect(APP).toContain("doc-items-legend");
+    expect(APP).not.toContain('<fieldset className="form-section">');
+    expect(APP).not.toContain('<fieldset className="form-section invoice-items-section">');
+    expect(CSS).toContain(".doc-items-flat .doc-line-card");
+  });
+
+  test("builder Save button says only Save", () => {
+    // QuoteBuilder and InvoiceBuilder both pass the bare Save label now.
+    expect(APP.split("saveLabel={t.save}").length - 1).toBeGreaterThanOrEqual(2);
+    expect(APP).not.toContain("saveLabel={estTerms.saveDoc}");
+    expect(APP).not.toContain("saveLabel={t.saveInvoice}");
+  });
+
+  test("quote drafts mirror the invoice draft machinery", () => {
+    expect(APP).toContain('const QUOTE_DRAFT_KEY = "crewkat-quote-draft"');
+    expect(APP).toContain("function quoteDraftHasContent");
+    expect(APP).toContain("function readQuoteDraft");
+    expect(APP).toContain("draftOffered");
+  });
+
+  test("client picker retracts when focus leaves without a pick", () => {
+    expect(APP).toContain("event.relatedTarget");
+    expect(APP).toContain("client-picker");
+  });
+
+  test("payment notes textarea shows its resize grip", () => {
+    expect(APP).toContain("<ResizeGrip />");
+    expect(CSS).toContain(".textarea-grip-wrap");
+  });
+
+  test("clients screen: slim search, edge-to-edge compressed cards, vivid avatars", () => {
+    expect(CSS).toContain(".clients-page .client-list");
+    expect(CSS).toContain(".client-avatar.tone-0 { background: #1f7a5c; color: #fff; }");
+    expect(CSS).toContain("min-height: 64px");
+  });
+
+  test("marketplace post form: ZIP and Save share a row", () => {
+    expect(APP).toContain("market-zip-save-row");
+    expect(CSS).toContain(".market-zip-save-row");
+  });
+
+  test("messages inbox spacing tightened; beige background test hook present", () => {
+    expect(CSS).toContain(".market-inbox-subheading { margin: 8px 0 4px; }");
+    expect(CSS).toContain("--beige: #f5f0e6");
+    expect(CSS).toContain(".page.marketplace-thread");
+  });
+
+  test("bottom nav hides inside the marketplace thread", () => {
+    expect(APP).toContain('screen.name === "marketplaceThread"');
   });
 });

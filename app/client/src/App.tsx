@@ -1323,14 +1323,16 @@ function FloatingDocHeader({
       </button>
       <h2>{title}</h2>
       <span className="floating-doc-header-actions">
+        {/* Build 2.0: preview shrinks to a self-explanatory icon-only button. */}
         <button
           type="button"
-          className="small-button preview-trigger"
+          className="icon-button floating-doc-preview"
           onClick={onPreview}
           disabled={saving}
+          aria-label={t.previewPdf}
+          title={t.previewPdf}
         >
           <FileIcon />
-          {t.previewPdf}
         </button>
         {saveType === "submit" ? (
           <button type="submit" className="sheet-save-btn" disabled={saving}>
@@ -2843,7 +2845,7 @@ function CrewkatApplication() {
   // (Edit / Mark paid / Send / More) — hide the master bottom tab bar there.
   // Build 0.5 fix: the builders hide it too, so the sticky Save can sit at the
   // true bottom without ever overlapping the nav.
-  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew" || screen.name === "invoiceAttachments" || screen.name === "quoteAttachments";
+  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew" || screen.name === "invoiceAttachments" || screen.name === "quoteAttachments" || screen.name === "marketplaceThread";
   return (
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
@@ -4522,10 +4524,15 @@ function MarketplaceListingForm({ lang, settings, listingId, initialIntent = "of
     <label className="market-photo-picker"><span>{listingId && currentPhotos.length ? (lang === "es" ? "Reemplazar fotos" : "Replace photos") : t.photos}</span><input type="file" aria-label={listingId && currentPhotos.length ? (lang === "es" ? "Reemplazar fotos" : "Replace photos") : t.photos} accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { const next = Array.from(event.target.files ?? []).filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type)).slice(0, 8); setPhotos(next); }}/><small>{photos.length ? photos.map((file) => file.name).join(", ") : t.photoHint}</small></label>
     <label><span>{t.description}</span><textarea rows={6} aria-label={t.description} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })}/></label>
     <label><span>{t.area}</span><input required aria-label={t.area} value={form.serviceArea} onChange={(event) => setForm({ ...form, serviceArea: event.target.value })}/></label>
+    {/* Build 2.0: ZIP and the save button share a row — zip across from a
+        smaller save button. */}
+    <div className="market-zip-save-row">
     <label><span>{t.zip}</span><input required aria-label={t.zip} inputMode="numeric" autoComplete="postal-code" maxLength={10} value={form.zipCode} onChange={(event) => setForm({ ...form, zipCode: event.target.value })} placeholder="33647"/></label>
+    <button className="primary-button market-inline-save" disabled={save.isPending}>{save.isPending ? copy[lang].saving : t.publish}</button>
+    </div>
     <label><span>{t.company}</span><input aria-label={t.company} value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })}/></label>
     <label><span>{t.phone}</span><input type="tel" aria-label={t.phone} value={form.companyPhone} onChange={(event) => setForm({ ...form, companyPhone: event.target.value })}/></label>
-    {error && <p className="status error">{error}</p>}<button className="primary-button" disabled={save.isPending}>{save.isPending ? copy[lang].saving : t.publish}</button>
+    {error && <p className="status error">{error}</p>}
   </form></main>;
 }
 
@@ -5566,7 +5573,12 @@ function ClientPicker({
     </section>
   );
   return (
-    <section className={`client-picker${open ? " open" : ""}`}>
+    // Build 2.0: single card (no card-within-a-card — see CSS); tapping away
+    // without picking retracts the list instead of staying open.
+    <section
+      className={`client-picker${open ? " open" : ""}`}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }}
+    >
       <label>
         <span>{t.chooseClient}</span>
         <div className="client-picker-input">
@@ -7320,7 +7332,7 @@ function JobDetail({
         {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
         {activeJobSheet === "dates" && <div className="compact-form"><label><span>{t.date}</span><input type="date" value={detailDraft.jobDate} onChange={(event) => setDetailDraft({ ...detailDraft, jobDate: event.target.value })}/></label><label><span>{t.appointment}</span><input type="datetime-local" value={detailDraft.appointmentAt} onChange={(event) => setDetailDraft({ ...detailDraft, appointmentAt: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
         {(activeJobSheet === "invoices" || activeJobSheet === "contracts") && <><div className="direction-toggle" role="tablist"><button type="button" className={linkTab === "new" ? "active" : ""} onClick={() => setLinkTab("new")}>{lang === "es" ? "Nuevo" : "New"}</button><button type="button" className={linkTab === "existing" ? "active" : ""} onClick={() => setLinkTab("existing")}>{lang === "es" ? "Existente" : "Existing"}</button></div>{linkTab === "new" ? <div className="sheet-new-actions">{activeJobSheet === "invoices" ? <button className="primary-button" type="button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>{lang === "es" ? "Crear factura para este trabajo" : "Create invoice for this job"}</button> : <><button className="primary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>{lang === "es" ? "Nuevo contrato" : "New contract"}</button><button className="secondary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>{lang === "es" ? "Nueva orden de cambio" : "New change order"}</button></>}</div> : <div className="sheet-record-list">{activeJobSheet === "invoices" ? (invoicesQuery.data?.invoices ?? []).filter((invoice) => invoice.jobId !== jobId).map((invoice) => <button type="button" key={invoice.id} onClick={() => { linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: jobId }); closeJobSheet(); }}><span><strong>{invoice.invoiceNumber} · {invoice.clientName}</strong><small>{usd(money(invoice.totalWithLateFee))}</small></span><PlusIcon/></button>) : (documentsQuery.data?.documents ?? []).filter((doc) => doc.jobId !== jobId).map((doc) => <button type="button" key={doc.id} onClick={() => { linkDocument.mutate(doc.id); closeJobSheet(); }}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><PlusIcon/></button>)}</div>}</>}
-        {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
+        {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><span className="textarea-grip-wrap"><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/><ResizeGrip /></span></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
         {activeJobSheet === "deposit" && <div className="compact-form"><label><span>{t.depositAmount}</span><input inputMode="decimal" value={detailDraft.depositAmount} onChange={(event) => setDetailDraft({ ...detailDraft, depositAmount: event.target.value })} placeholder="$0.00"/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar el depósito." : "Tap Save to save the deposit."}</p></div>}
         {activeJobSheet === "address" && <div className="address-sheet-actions"><p>{job.jobAddress}</p><button type="button" onClick={() => { void copyText(job.jobAddress); closeJobSheet(); }}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang === "es" ? "Copiar dirección" : "Copy address"}</span></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.jobAddress)}`} target="_blank" rel="noreferrer"><Icon><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></Icon><span>{lang === "es" ? "Abrir en Maps" : "Open in Maps"}</span></a></div>}
         {(setJobClient.isError || saveJobInfo.isError || linkInvoice.isError || linkDocument.isError) && <p className="status error">{t.error}</p>}
@@ -10868,6 +10880,37 @@ function QuotesScreen({
     </main>
   );
 }
+// Build 2.0: quote drafts mirror the invoice draft machinery — X on an
+// incomplete form saves a local draft (offered via Resume/Discard banner);
+// X on a fully empty form discards silently.
+const QUOTE_DRAFT_KEY = "crewkat-quote-draft";
+const QUOTE_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function quoteDraftHasContent(form: any): boolean {
+  if (!form || typeof form !== "object") return false;
+  for (const key of ["clientName", "clientPhone", "clientEmail", "jobAddress", "shippingAddress", "jobType", "footnote", "expiryDate"]) {
+    if ((form[key] ?? "").toString().trim()) return true;
+  }
+  const items = Array.isArray(form.lineItems) ? form.lineItems : [];
+  return items.some((i: any) => (i?.name ?? "").toString().trim() || (i?.description ?? "").toString().trim() || (i?.amount ?? "").toString().trim());
+}
+function readQuoteDraft(): { savedAt: number; form: any } | null {
+  try {
+    const raw = window.localStorage.getItem(QUOTE_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.form) return null;
+    if (Date.now() - Number(parsed.savedAt || 0) > QUOTE_DRAFT_TTL_MS || !quoteDraftHasContent(parsed.form)) {
+      window.localStorage.removeItem(QUOTE_DRAFT_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function clearQuoteDraft() {
+  try { window.localStorage.removeItem(QUOTE_DRAFT_KEY); } catch { /* noop */ }
+}
 function QuoteBuilder({
   lang,
   settings,
@@ -10886,7 +10929,6 @@ function QuoteBuilder({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
-  const estTerms = estimateTerms(lang, settings);
   const growth = useQuery({
     queryKey: ["growth-toolkit"],
     queryFn: () => api.getGrowthToolkit({}),
@@ -11127,9 +11169,27 @@ function QuoteBuilder({
   const [docOpen, setDocOpen] = useState(true);
   const docDismiss = useAnimatedDismiss(docOpen);
   const formRef = useRef<HTMLFormElement | null>(null);
-  const submitForm = () => { formRef.current?.requestSubmit(); };
   const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
-  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen, submitForm);
+  const navigateAfterClose = () => closeAfterSave(() => { if (onSaved) onSaved(); else onBack(); });
+  // Build 2.0: an interrupted draft is offered via a Resume/Discard banner.
+  const [draftOffered, setDraftOffered] = useState(() => Boolean(readQuoteDraft()));
+  const flushQuoteDraft = () => {
+    try {
+      if (quoteDraftHasContent(form)) window.localStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), form }));
+      else clearQuoteDraft();
+    } catch { /* storage unavailable */ }
+  };
+  const flushQuoteDraftRef = useRef(() => {});
+  useEffect(() => { flushQuoteDraftRef.current = flushQuoteDraft; });
+  // Build 0.3 (item 7): hardware back while composing flushes the draft, then
+  // lets navigation continue (the press is not consumed).
+  useEffect(() => pushHardwareBackInterceptor(() => { flushQuoteDraftRef.current(); return false; }), []);
+  const resumeDraft = () => {
+    const draft = readQuoteDraft();
+    if (draft) setForm((current) => ({ ...current, ...draft.form }));
+    setDraftOffered(false);
+  };
+  const discardDraft = () => { clearQuoteDraft(); setDraftOffered(false); };
   const save = useMutation({
     mutationFn: () =>
       api.saveQuote({
@@ -11141,18 +11201,30 @@ function QuoteBuilder({
         total: usd(totals.total),
       }),
     onSuccess: () => {
+      clearQuoteDraft();
+      setDraftOffered(false);
       client.invalidateQueries({ queryKey: ["quotes"] });
       client.invalidateQueries({ queryKey: ["clients"] });
       // Build 1.2 (part A): play the floating window's exit animation, then
       // navigate. Build 0.6 (item 6): saving an estimate lands on the
       // Estimates tab.
-      closeAfterSave(() => {
-        if (onSaved) onSaved();
-        else onBack();
-      });
+      navigateAfterClose();
     },
     onError: () => setError(t.error),
   });
+  // Build 2.0: X closes AND saves. Complete content saves normally; partial
+  // content is kept as a local draft; a fully empty form is discarded
+  // silently. Backdrop tap and Escape take the same path.
+  const quoteSubmittable = () => form.clientName.trim().length > 0 && validLineItems().length > 0;
+  const exitAndSave = () => {
+    if (save.isPending) return;
+    buzz(8);
+    if (!quoteDraftHasContent(form)) { clearQuoteDraft(); navigateAfterClose(); return; }
+    if (quoteSubmittable()) { save.mutate(); return; }
+    flushQuoteDraft();
+    navigateAfterClose();
+  };
+  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen, exitAndSave);
   const preview: FinancialDocument = {
     ...form,
     lineItems: validLineItems(),
@@ -11165,7 +11237,7 @@ function QuoteBuilder({
     <div
       className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`}
       role="presentation"
-      onClick={(e) => { if (e.target === e.currentTarget) submitForm(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) exitAndSave(); }}
     >
       <section className="floating-doc-sheet b06-quote-builder-page" role="dialog" aria-modal="true" aria-label={t.newQuote}>
       <form
@@ -11183,12 +11255,13 @@ function QuoteBuilder({
         <FloatingDocHeader
           lang={lang}
           title={t.newQuote}
-          onExit={submitForm}
+          onExit={exitAndSave}
           onPreview={() => setPreviewOpen(true)}
-          saveLabel={estTerms.saveDoc}
+          saveLabel={t.save}
           saving={save.isPending}
         />
         <div className="floating-doc-body">
+        {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
         <ClientPicker
           lang={lang}
           value={form.clientName}
@@ -11265,8 +11338,10 @@ function QuoteBuilder({
             />
           </label>
         </div>
-        <fieldset className="form-section">
-          <legend>{t.lineItems}</legend>
+        {/* Build 2.0: line items stand alone — no card-within-a-card; the
+            rows extend side to side for more usable space. */}
+        <div className="form-section doc-items-flat">
+          <p className="doc-items-legend">{t.lineItems}</p>
           {/* Build 0.6 (item 1): the template picker lives in a floating modal now. */}
           <div className="b06-btn-row">
           {(growth.data?.templates.length ?? 0) > 0 && (
@@ -11473,7 +11548,7 @@ function QuoteBuilder({
               <strong>{usd(totals.total)}</strong>
             </span>
           </div>
-        </fieldset>
+        </div>
         <label>
           <span>{t.footnote}</span>
           <textarea
@@ -12806,22 +12881,33 @@ function InvoiceBuilder({
   const [docOpen, setDocOpen] = useState(true);
   const docDismiss = useAnimatedDismiss(docOpen);
   const formRef = useRef<HTMLFormElement | null>(null);
-  const submitForm = () => { formRef.current?.requestSubmit(); };
   const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
-  useEscapeToClose(docOpen && !activeSheet && !previewOpen, submitForm);
   const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
     onSuccess: () => { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
+  // Build 2.0: X closes AND saves. Complete content saves normally (the
+  // debounced localStorage draft already holds partial content, so X on an
+  // incomplete form just closes); a fully empty form is discarded silently.
+  // Backdrop tap and Escape take the same path.
+  const exitAndSave = () => {
+    if (save.isPending) return;
+    buzz(8);
+    if (!invoiceDraftHasContent(form)) { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } closeAfterSave(() => onBack()); return; }
+    if (form.clientName.trim() && validItems.length) { save.mutate(); return; }
+    flushInvoiceDraftRef.current();
+    closeAfterSave(() => onBack());
+  };
+  useEscapeToClose(docOpen && !activeSheet && !previewOpen, exitAndSave);
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
-  return <div className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) submitForm(); }}>
+  return <div className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) exitAndSave(); }}>
     <section className="floating-doc-sheet invoice-builder-page" role="dialog" aria-modal="true" aria-label={t.newInvoice}>
     <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
-      <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={submitForm} onPreview={() => setPreviewOpen(true)} saveLabel={t.saveInvoice} saving={save.isPending} />
+      <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={exitAndSave} onPreview={() => setPreviewOpen(true)} saveLabel={t.save} saving={save.isPending} />
       <div className="floating-doc-body">
       <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
       {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
@@ -12832,7 +12918,9 @@ function InvoiceBuilder({
         {settings?.addJobSiteAddress !== false && <label><span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span><input value={form.jobAddress} onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}/></label>}
         {settings?.addShippingAddress && <label><span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span><input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}/></label>}
       </div></details>
-      <fieldset className="form-section invoice-items-section"><legend>{t.lineItems}</legend>
+      {/* Build 2.0: line items stand alone — no card-within-a-card; the
+          rows extend side to side for more usable space. */}
+      <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
         {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card doc-line-card" key={index}>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, Price | Quantity side-by-side. */}
@@ -12843,7 +12931,7 @@ function InvoiceBuilder({
           <div className="doc-price-qty"><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label><label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label></div>
         </article>})}
         <button className="secondary-button" type="button" onClick={() => setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] })}><PlusIcon />{t.addLine}</button>
-      </fieldset>
+      </div>
       <section className="invoice-totals-block"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>
         {!discountEnabled ? <button type="button" onClick={() => setActiveSheet("discount")}><span>＋ {t.discount}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("discount")}><span>{t.discount}</span><strong>-{usd(totals.discount)}</strong></button>}
         {!taxEnabled ? <button type="button" onClick={() => setActiveSheet("tax")}><span>＋ {t.tax}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("tax")}><span>{t.tax}</span><strong>{usd(totals.tax)}</strong></button>}
