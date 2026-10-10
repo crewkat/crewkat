@@ -148,3 +148,32 @@ export async function disablePushSubscription(): Promise<void> {
     }
   } catch { /* best-effort */ }
 }
+
+/**
+ * Read-only push readiness check. Never prompts and never subscribes — safe
+ * to call on any screen to decide whether a nudge UI should appear.
+ */
+export type PushReadiness = {
+  supported: boolean;
+  vapidConfigured: boolean;
+  permission: "default" | "granted" | "denied";
+  subscribed: boolean;
+};
+export async function getPushReadiness(): Promise<PushReadiness> {
+  const base: PushReadiness = { supported: false, vapidConfigured: false, permission: "default", subscribed: false };
+  try {
+    if (!pushSupported()) return base;
+    base.supported = true;
+    base.permission = Notification.permission;
+    const { publicKey } = await api.getVapidPublicKey({});
+    if (!publicKey) return base;
+    base.vapidConfigured = true;
+    if (Notification.permission !== "granted") return base;
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    base.subscribed = Boolean(subscription);
+    return base;
+  } catch {
+    return base;
+  }
+}

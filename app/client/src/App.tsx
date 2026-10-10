@@ -38,7 +38,8 @@ type TouchEvent,
 } from "react";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
-import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
+import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
+import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 // Phase 4: Google Play Billing (Digital Goods API) for the TWA.
@@ -7738,12 +7739,17 @@ function PushToggle({ lang }: { lang: Lang }) {
     </label>
   );
 }
-// b07: one-time push opt-in prompt. Shows once per device, shortly after the
-// app settles, only when push is supported + configured and the browser
-// permission is still undecided ("default"). "Not now" remembers the choice;
-// the Settings toggle remains the permanent home for this setting.
+// b07: one-time push opt-in prompt. Shows once per device AND once per account
+// (a new signup on a used device still gets asked), shortly after the app
+// settles, only when push is supported + configured and the browser
+// permission is still undecided ("default"). Dismissing ("Not now") also
+// snoozes the Home nudge banner for 7 days — one prompt, one banner, easy no.
+// The Settings toggle remains the permanent home for this setting.
 const PUSH_PROMPT_SEEN_KEY = "crewkat:push-prompt-seen";
 function PushPromptSheet({ lang }: { lang: Lang }) {
+  const auth = useContext(AuthContext);
+  const userId = auth?.user.id ?? 0;
+  const accountKey = `crewkat:push-prompt-seen:uid:${userId}`;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const sheet = useAnimatedDismiss(open);
@@ -7751,7 +7757,7 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
     let cancelled = false;
     (async () => {
       try {
-        if (localStorage.getItem(PUSH_PROMPT_SEEN_KEY)) return;
+        if (localStorage.getItem(PUSH_PROMPT_SEEN_KEY) && localStorage.getItem(accountKey)) return;
         if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
         if (Notification.permission !== "default") return;
         const { publicKey } = await api.getVapidPublicKey({});
@@ -7762,7 +7768,13 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
     return () => { cancelled = true; };
   }, []);
   const dismiss = () => {
-    try { localStorage.setItem(PUSH_PROMPT_SEEN_KEY, "1"); } catch { /* private mode */ }
+    try {
+      localStorage.setItem(PUSH_PROMPT_SEEN_KEY, "1");
+      localStorage.setItem(accountKey, "1");
+      // One prompt, one banner, easy no: saying "Not now" also snoozes the
+      // Home nudge banner for 7 days so it doesn't appear right after this.
+      localStorage.setItem(PUSH_BANNER_SNOOZE_KEY, String(snoozePushBannerUntil(Date.now())));
+    } catch { /* private mode */ }
     setOpen(false);
   };
   useEscapeToClose(sheet.render, dismiss);
@@ -7774,8 +7786,8 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
   };
   if (!sheet.render) return null;
   const t = lang === "es"
-    ? { title: "Activa las notificaciones", body: "Recibe avisos cuando un cliente vea tu portal, pague una factura o te escriba en el Marketplace.", enable: "Activar", enabling: "Activando…", notNow: "Ahora no" }
-    : { title: "Turn on notifications", body: "Get alerts when a client views your portal, pays an invoice, or messages you on Marketplace.", enable: "Turn on", enabling: "Turning on…", notNow: "Not now" };
+    ? { title: "Activa las notificaciones", body: "Recibe avisos de trabajos, actualizaciones de presupuestos y facturas, mensajes del Marketplace y respuestas de soporte — en tu teléfono.", enable: "Activar notificaciones", enabling: "Activando…", notNow: "Ahora no" }
+    : { title: "Turn on notifications", body: "Get job alerts, invoice and estimate updates, marketplace messages, and support replies — right on your phone.", enable: "Enable notifications", enabling: "Enabling…", notNow: "Not now" };
   return (
     <div className={`sheet-backdrop${sheet.closing ? " closing" : ""}`} role="presentation" onClick={dismiss}>
       <section className="more-sheet push-prompt-sheet" role="dialog" aria-modal="true" aria-label={t.title} onClick={(event) => event.stopPropagation()}>
@@ -7787,6 +7799,63 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
           <button type="button" className="secondary-button" onClick={dismiss}>{t.notNow}</button>
         </div>
       </section>
+    </div>
+  );
+}
+// Push nudge banner (Home): slim, dismissible nudge for logged-in users who
+// dismissed the one-time sheet and still don't have push enabled. Dismissing
+// snoozes for 7 days (localStorage). Never shows when the browser blocks
+// permission — the Settings toggle already explains that fix.
+function PushNudgeBanner({ lang }: { lang: Lang }) {
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = localStorage.getItem(PUSH_BANNER_SNOOZE_KEY);
+        const snoozedUntil = raw ? Number(raw) || null : null;
+        const readiness = await getPushReadiness();
+        if (cancelled) return;
+        const show = shouldShowPushBanner(
+          { ...readiness, promptSeen: localStorage.getItem(PUSH_PROMPT_SEEN_KEY) === "1" },
+          Date.now(),
+          snoozedUntil,
+        );
+        if (show) setVisible(true);
+      } catch { /* never block Home over a nudge */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const dismiss = (snooze: boolean) => {
+    try {
+      if (snooze) localStorage.setItem(PUSH_BANNER_SNOOZE_KEY, String(snoozePushBannerUntil(Date.now())));
+      else localStorage.removeItem(PUSH_BANNER_SNOOZE_KEY);
+    } catch { /* private mode */ }
+    setVisible(false);
+  };
+  const enable = async () => {
+    setBusy(true);
+    try {
+      const status = await requestPushPermissionAndSubscribe();
+      if (status === "subscribed") dismiss(false);
+    } catch { /* status surfaces in Settings */ }
+    setBusy(false);
+  };
+  if (!visible) return null;
+  const t = lang === "es"
+    ? { title: "No te pierdas nada", body: "Activa las notificaciones push para avisos de trabajos, facturas y mensajes.", enable: "Activar", enabling: "Activando…", dismiss: "Descartar" }
+    : { title: "Don't miss out", body: "Turn on push notifications for job alerts, invoice updates, and messages.", enable: "Enable", enabling: "Enabling…", dismiss: "Dismiss" };
+  return (
+    <div className="push-nudge-banner" role="status">
+      <span className="push-nudge-icon" aria-hidden="true">
+        <Icon size={20}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Icon>
+      </span>
+      <p><strong>{t.title}</strong>{t.body}</p>
+      <button type="button" className="push-nudge-enable" disabled={busy} onClick={enable}>{busy ? t.enabling : t.enable}</button>
+      <button type="button" className="push-nudge-dismiss" onClick={() => dismiss(true)} aria-label={t.dismiss}>
+        <Icon size={16}><path d="m6 6 12 12M18 6 6 18" /></Icon>
+      </button>
     </div>
   );
 }
@@ -17777,6 +17846,8 @@ function TodayScreen({
         </div>
         <strong className="home-greeting">{greeting}</strong>
       </header>
+      {/* Push nudge: slim banner for users without push enabled (7-day snooze). */}
+      <PushNudgeBanner lang={lang} />
       {/* Phase 1: first-run activation checklist — dismissible, live from real data. */}
       <ActivationChecklist lang={lang} setScreen={setScreen} />
       {homeFailed && (
