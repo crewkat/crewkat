@@ -3037,7 +3037,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         const appointments = appointmentRows
           .filter((a) => dateOnlyString(a.startsAt) === args.today)
           .sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt)))
-          .map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: a.status, crewMember: safeText(a.crewMember), etaMinutes: a.etaMinutes, hasShareLink: !!a.shareTokenHash }));
+          .map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: (["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"] as const).includes(a.status as never) ? (a.status as "scheduled" | "confirmed" | "on_my_way" | "arrived" | "completed" | "cancelled") : "scheduled", crewMember: safeText(a.crewMember), etaMinutes: typeof a.etaMinutes === "number" ? a.etaMinutes : null, hasShareLink: !!a.shareTokenHash }));
         const crew = appointments.flatMap((a) => {
           const job = jobRows.find((j) => j.id === a.jobId);
           if (!job) return [];
