@@ -2913,9 +2913,13 @@ function CrewkatApplication() {
     mutationFn: (v: SettingsInput) => api.updateSettings(v),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
-  const inProWorkspace = screenStack.some((item) => item.name === "proWorkspace");
+  // Simple Mode gating removed 2026-10-11: it was derived from a workspace
+  // screen entry that nothing navigates to, so simpleMode was stuck ON for
+  // all users and hid the portal panel, profit strip, Pipeline button, etc.
+  // To revert, restore the screenStack-based computation of simpleMode in
+  // appSettings below.
   const appSettings: Settings | null = settings.data
-    ? { ...settings.data, simpleMode: !inProWorkspace }
+    ? { ...settings.data, simpleMode: false }
     : null;
   const goJob = (jobId: number) => {
     const currentIndex = Math.max(0, screenStack.length - 1);
