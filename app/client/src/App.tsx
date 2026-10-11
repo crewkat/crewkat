@@ -6656,7 +6656,7 @@ type WorkspaceTab =
 const WORKSPACE_TABS: Array<{ id: WorkspaceTab; en: string; es: string }> = [
   { id: "overview", en: "Overview", es: "Resumen" },
   { id: "schedule", en: "Schedule", es: "Agenda" },
-  { id: "messages", en: "Messages", es: "Mensajes" },
+  { id: "messages", en: "Crew Log", es: "Bitácora" },
   { id: "documents", en: "Docs", es: "Docs" },
   { id: "financials", en: "Financials", es: "Finanzas" },
   { id: "photos", en: "Photos", es: "Fotos" },
@@ -6706,7 +6706,7 @@ type JobMessage = Awaited<ReturnType<typeof api.listJobMessages>>["messages"][nu
 
 // Phase 2: two-way contractor/client thread for a job — text, photos, voice
 // notes, and lifecycle system events. Contractor side (in-app).
-function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
+function JobMessagesThread({ lang, jobId, clientName }: { lang: Lang; jobId: number; clientName: string }) {
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["job-messages", jobId],
@@ -6835,8 +6835,16 @@ function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
   return (
     <section
       className="job-thread"
-      aria-label={lang === "es" ? "Mensajes del trabajo" : "Job messages"}
+      aria-label={lang === "es" ? "Bitácora del equipo" : "Crew log"}
     >
+      <div className="thread-context">
+        <h3>{lang === "es" ? "Chat del equipo y registro del trabajo" : "Crew chat & job log"}</h3>
+        <p>
+          {lang === "es"
+            ? "Solo tu equipo ve esto \u2014 el cliente nunca ve estos mensajes."
+            : "Only your team sees this \u2014 the client never sees these messages."}
+        </p>
+      </div>
       <div className="thread-scroll" ref={scrollRef}>
         {q.isLoading ? (
           <div className="loading-block" />
@@ -6844,8 +6852,8 @@ function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
           <div className="empty-state small">
             <p>
               {lang === "es"
-                ? "Aún no hay mensajes. Escríbele al cliente aquí y todo queda registrado en el trabajo."
-                : "No messages yet. Message the client here and everything stays on the job record."}
+                ? "Aún no hay mensajes del equipo: las actualizaciones y fotos que publiques aquí quedan en el registro del trabajo."
+                : "No crew messages yet \u2014 updates and photos you post here stay on the job record."}
             </p>
           </div>
         ) : (
@@ -6855,6 +6863,11 @@ function JobMessagesThread({ lang, jobId }: { lang: Lang; jobId: number }) {
                 <span className="system-event">{m.body}</span>
               ) : (
                 <>
+                  <span className="bubble-sender">
+                    {m.sender === "client"
+                      ? `${clientName} \u00b7 ${lang === "es" ? "por el portal" : "via portal"}`
+                      : lang === "es" ? "T\u00fa" : "You"}
+                  </span>
                   {m.imageUrl && (
                     <a href={m.imageUrl} target="_blank" rel="noreferrer">
                       <img src={m.imageUrl} alt="" loading="lazy" />
@@ -7287,7 +7300,7 @@ function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operat
 function JobWorkspacePanel(props: WorkspacePanelProps & { tab: WorkspaceTab }) {
   const { tab } = props;
   if (tab === "schedule") return <WorkspaceSchedulePanel {...props} />;
-  if (tab === "messages") return <JobMessagesThread lang={props.lang} jobId={props.jobId} />;
+  if (tab === "messages") return <JobMessagesThread lang={props.lang} jobId={props.jobId} clientName={props.job.clientName} />;
   if (tab === "documents") return <WorkspaceDocumentsPanel {...props} />;
   if (tab === "financials") return <WorkspaceFinancialsPanel {...props} />;
   if (tab === "photos") return <WorkspacePhotosPanel {...props} />;

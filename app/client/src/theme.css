@@ -3072,7 +3072,16 @@ button { -webkit-tap-highlight-color: transparent; }
 .log-blockers { color:#b3541e; font-size:12.5px; margin:4px 0 0; }
 
 /* Messaging thread (contractor + portal share bubble styles). */
-.job-thread { display:flex; flex-direction:column; gap:8px; padding:12px 0 20px; }
+.job-thread { display:flex; flex-direction:column; gap:8px; padding:12px 0 calc(12px + env(safe-area-inset-bottom)); min-height:calc(100dvh - 250px); }
+/* Danny 2026-10-11: composer lives at the bottom of the screen (standard chat
+   UX). The thread fills the viewport height so the input sits at the bottom
+   even with few messages; dvh shrinks with the keyboard so it stays visible. */
+.job-thread .thread-scroll { flex:1 1 auto; max-height:none; min-height:180px; }
+.job-thread .thread-composer { position:sticky; bottom:0; z-index:5; background:var(--bg); }
+.thread-context { padding:2px 2px 0; }
+.thread-context h3 { margin:0; font-size:15px; font-weight:700; }
+.thread-context p { margin:2px 0 0; font-size:12.5px; color:var(--dim); }
+.thread-bubble .bubble-sender { font-size:11px; font-weight:700; opacity:.8; }
 .thread-scroll { display:flex; flex-direction:column; gap:10px; max-height:52vh; overflow-y:auto; padding:6px 2px; }
 .thread-scroll.portal-thread { max-height:40vh; }
 .thread-bubble { max-width:84%; display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:16px; animation:panel-in .18s ease; }
