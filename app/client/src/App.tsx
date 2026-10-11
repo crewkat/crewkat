@@ -18747,8 +18747,8 @@ function TodayScreen({
         </div>
       )}
       <section className="home-summary-card" aria-label={lang === "es" ? "Resumen de trabajos" : "Job summary"}>
-        <span className="home-summary-art" aria-hidden="true">
-          <svg viewBox="0 0 200 120" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <button type="button" className="home-summary-art" aria-label={lang === "es" ? "Jugar a Crane Run" : "Play Crane Run"} onClick={() => { buzz(8); setScreen({ name: "craneRun" }); }}>
+          <svg viewBox="0 0 200 120" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M8 112V64h24v48" />
             <path d="M36 112V48h28v64" />
             <path d="M16 76h8M16 88h8M44 60h12M44 72h12M44 84h12" />
@@ -18759,7 +18759,7 @@ function TodayScreen({
             <path d="M150 20v24M144 44h12" />
             <path d="M4 112h192" />
           </svg>
-        </span>
+        </button>
         <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>

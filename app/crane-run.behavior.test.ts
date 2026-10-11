@@ -120,3 +120,24 @@ describe("Crane Run styles", () => {
     expect(CSS).toContain("var(--shadow-lift)");
   });
 });
+
+describe("Crane Run home easter egg (Danny 2026-10-11)", () => {
+  test("home hero crane illustration is a pressable that opens the game", () => {
+    // The art itself is the only affordance: no visible button chrome, no labels.
+    expect(APP).toContain('<button type="button" className="home-summary-art"');
+    expect(APP).toMatch(/className="home-summary-art"[\s\S]*?setScreen\(\{ name: "craneRun" \}\)/);
+  });
+
+  test("easter egg has screen-reader-only EN+ES labels", () => {
+    expect(APP).toMatch(/home-summary-art[\s\S]*?"Jugar a Crane Run"/);
+    expect(APP).toMatch(/home-summary-art[\s\S]*?"Play Crane Run"/);
+  });
+
+  test("art button keeps its faded look, resets button chrome, stays tappable (CSS)", () => {
+    expect(CSS).toMatch(/\.home-summary-art[^{]*\{[^}]*background:\s*none/);
+    expect(CSS).toMatch(/\.home-summary-art[^{]*\{[^}]*cursor:\s*pointer/);
+    expect(CSS).toMatch(/\.home-summary-art[^{]*\{[^}]*opacity:\s*\.5/);
+    // the inner svg stays non-interactive; no full-art pointer-events block remains
+    expect(CSS).toMatch(/\.home-summary-art svg[^{]*\{[^}]*pointer-events:\s*none/);
+  });
+});

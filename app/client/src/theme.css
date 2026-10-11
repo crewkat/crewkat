@@ -2346,8 +2346,9 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* b12: denser hero — same dark navy card, less air around it. */
 .home-summary-card { position: relative; overflow: hidden; display: grid; gap: 3px; margin: 4px 0 14px; padding: 16px; border-radius: 18px; background: #1a2433; color: #fff; box-shadow: 0 12px 30px rgba(26,36,51,.18); }
 /* Home render: subtle construction line-art on the right of the hero card. */
-.home-summary-art { position: absolute; top: 0; right: 0; bottom: 0; width: 46%; height: 100%; pointer-events: none; opacity: .5; }
-.home-summary-art svg { width: 100%; height: 100%; }
+.home-summary-art { position: absolute; top: 0; right: 0; bottom: 0; width: 46%; height: 100%; opacity: .5; background: none; border: none; padding: 0; margin: 0; cursor: pointer; }
+.home-summary-art svg { width: 100%; height: 100%; pointer-events: none; }
+.home-summary-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -6px; border-radius: 12px; }
 .home-summary-card > span, .home-summary-card > small { color: #aeb6c2; font-size: 12px; font-weight: 700; }
 .home-summary-card > strong { margin: 2px 0; color: var(--accent); font: 850 42px/.95 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.04em; }
 .home-error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, #c0392b 9%, var(--surface)); }
