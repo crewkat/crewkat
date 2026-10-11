@@ -140,6 +140,17 @@ describe("functionality preserved", () => {
     expect(APP).toContain("What would you like to create?");
   });
 
+  test("+ FAB is an opt-in allowlist that excludes screens with fixed primary actions", () => {
+    // The FAB must never share a screen with a fixed/sticky primary action
+    // (Save, ADD CLIENT, CREATE INVOICE, ...): both are position:fixed in the
+    // same bottom-right zone and collide.
+    expect(APP).toContain("SCREENS_WITH_QUICK_CREATE_FAB");
+    expect(APP).toContain('new Set(["today", "tools"])');
+    expect(APP).toContain("SCREENS_WITH_QUICK_CREATE_FAB.has(screen.name)");
+    // "settings" renders a fixed .sticky-submit Save button -> must stay out.
+    expect(APP).not.toMatch(/new Set\(\[[^\]]*"settings"[^\]]*\]\)/);
+  });
+
   test("motion system untouched (transform/opacity only, reduced-motion kept)", () => {
     expect(CSS).toContain(".bottom-nav button:active");
     expect(CSS).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);

@@ -1220,6 +1220,20 @@ const quickOrder: Record<RootTab, number[]> = {
 // Build 3.1: the quick-create + is a floating action button above the tab bar
 // (visible on the same screens as the master nav). It opens the existing
 // quick-create sheet.
+//
+// FAB VISIBILITY RULE (do not weaken): the global + FAB is position:fixed in
+// the same bottom-right zone as persistent page-level primary actions
+// (.sticky-submit Save, .sticky-save, .add-client-fab ADD CLIENT, ...), so the
+// two visually collide. This is an OPT-IN allowlist: the FAB renders ONLY on
+// the screens listed here. A screen may be added ONLY after auditing it for
+// conflicting fixed/sticky primary actions. New screens never get the FAB by
+// default, which is what keeps this from regressing.
+// Audit 2026-10-11 (all 47 sitemap pages): "today" and "tools" have no fixed
+// primary action -> allowed. "settings" renders a fixed .sticky-submit Save
+// button -> EXCLUDED (was the reported overlap). All form screens (job/client/
+// invoice/quote builders, companyProfile) and clients/invoices/jobs list
+// screens have their own fixed primary actions and were never in the list.
+const SCREENS_WITH_QUICK_CREATE_FAB: ReadonlySet<Screen["name"]> = new Set(["today", "tools"]);
 function QuickCreateFab({ lang, active, onNavigate }: { lang: Lang; active: RootTab; onNavigate: (screen: Screen) => void }) {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const quickActions = quickActionsFor(lang);
@@ -3246,7 +3260,7 @@ function CrewkatApplication() {
         />
       )}
       {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={activeRootTab} onSelect={openRoot} />}
-      {screen.name !== "legal" && !hideMasterNav && (screen.name === "today" || screen.name === "tools" || screen.name === "settings") && <QuickCreateFab lang={lang} active={activeRootTab} onNavigate={setScreen} />}
+      {screen.name !== "legal" && !hideMasterNav && SCREENS_WITH_QUICK_CREATE_FAB.has(screen.name) && <QuickCreateFab lang={lang} active={activeRootTab} onNavigate={setScreen} />}
       <CelebrationOverlay />
       {/* SMS cap pre-check: shown when a text is blocked before the SMS app opens. */}
       <SmsBlockedBanner lang={lang} />
