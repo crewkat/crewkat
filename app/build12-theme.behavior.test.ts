@@ -111,11 +111,11 @@ describe("denser cards and lists", () => {
 
 describe("functionality preserved", () => {
   test("bottom nav renders the 5 labeled tabs (no center +; quick-create is a FAB)", () => {
-    // The five tab definitions (Build 3.1: Marketplace moved to the More menu).
-    for (const tab of ['tab: "today"', 'tab: "jobs"', 'tab: "clients"', 'tab: "invoices"', 'tab: "more"']) {
+    // The five tab definitions (Build 3.1.1: Marketplace back as a real tab; More gone).
+    for (const tab of ['tab: "today"', 'tab: "jobs"', 'tab: "clients"', 'tab: "invoices"', 'tab: "marketplace"']) {
       expect(APP).toContain(tab);
     }
-    expect(APP).not.toContain('tab: "marketplace"');
+    expect(APP).not.toContain('tab: "more"');
     // The + is now a floating action button above the bar.
     expect(APP).toContain('className="quick-create-fab"');
     expect(APP).toContain('aria-label={lang === "es" ? "Crear nuevo" : "Create new"}');
@@ -125,11 +125,11 @@ describe("functionality preserved", () => {
   });
 
   test("nav labels, active states, and unread badges kept", () => {
-    for (const label of ["Home", "Inicio", "Jobs", "Trabajos", "Clients", "Clientes", "Invoices", "Facturas", "More", "Más"]) {
+    for (const label of ["Home", "Inicio", "Jobs", "Trabajos", "Clients", "Clientes", "Invoices", "Facturas", "Marketplace", "Mercado"]) {
       expect(APP).toContain(label);
     }
     expect(APP).toContain('className={active === item.tab ? "active" : ""}');
-    // The marketplace unread badge moved to the More menu's featured row.
+    // The marketplace unread badge lives on the Marketplace tab.
     expect(APP).toContain("nav-unread-badge");
     expect(APP).toContain("unreadMarketplace");
   });

@@ -342,7 +342,6 @@ type Screen =
   | { name: "marketplaceEdit"; listingId: number }
   | { name: "marketplaceDetail"; listingId: number }
   | { name: "marketplaceThread"; conversationId: number }
-  | { name: "more" }
   | { name: "tools" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
@@ -1149,35 +1148,45 @@ const CheckIcon = () => (
   </Icon>
 );
 
-// Build 3.1: five labeled tabs — Home, Jobs, Clients, Invoices, More. The
-// Marketplace tab and the center + button are gone from the bar: Marketplace
-// lives as the featured row of the More menu, and + becomes a floating action
-// button above the bar on the main tabs.
-type RootTab = "today" | "jobs" | "clients" | "invoices" | "more";
-function rootTabFor(screen: Screen): RootTab {
+// Build 3.1.1: five labeled tabs — Home, Jobs, Clients, Invoices,
+// Marketplace (back as a real tab: it's a main feature). The More screen is
+// gone; its grouped Tools catalog is now the standalone Tools page opened
+// from the header grid icon. + stays a floating action button.
+type RootTab = "today" | "jobs" | "clients" | "invoices" | "marketplace";
+function rootTabFor(screen: Screen): RootTab | null {
   if (screen.name === "today") return "today";
   if (["jobs", "new", "detail", "proof", "jobOps", "tool"].includes(screen.name)) return "jobs";
   if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
   if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
-  // The More tab stays active on the More menu itself, on every Marketplace
-  // screen, and on every other tool/settings screen.
-  return "more";
+  if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail", "marketplaceThread"].includes(screen.name)) return "marketplace";
+  // Build 3.1.1: Tools, Settings and other pushed screens return null so the
+  // tab bar keeps the last root tab highlighted underneath them.
+  return null;
 }
-const ROOT_TABS: Array<{ tab: RootTab; en: string; es: string; icon: ReactNode }> = [
+const ROOT_TABS: Array<{ tab: RootTab; en: string; es: string; icon: ReactNode; badge?: number }> = [
   { tab: "today", en: "Home", es: "Inicio", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
   { tab: "jobs", en: "Jobs", es: "Trabajos", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
   { tab: "clients", en: "Clients", es: "Clientes", icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon> },
   { tab: "invoices", en: "Invoices", es: "Facturas", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
-  { tab: "more", en: "More", es: "Más", icon: <Icon><path d="M4 7h16M4 12h16M4 17h16" /></Icon> },
+  { tab: "marketplace", en: "Marketplace", es: "Mercado", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon> },
 ];
 function rootTabLabel(tab: RootTab, lang: Lang): string {
   const entry = ROOT_TABS.find((item) => item.tab === tab);
   return lang === "es" ? entry?.es ?? "" : entry?.en ?? "";
 }
 function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void }) {
+  // Build 3.1.1: the Marketplace badge (unread messages + notifications) lives
+  // on the tab again, like pre-3.1. The marketplace_enabled flag hides the tab.
+  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
+  const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
+  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), staleTime: 5 * 60_000 });
+  const marketplaceEnabled = flagsQuery.data?.marketplace_enabled ?? true;
+  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
+  const items = ROOT_TABS.map((item) => item.tab === "marketplace" ? { ...item, badge: unreadMarketplace } : item)
+    .filter((item) => item.tab !== "marketplace" || marketplaceEnabled);
   return (
     <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
-      {ROOT_TABS.map((item) => (
+      {items.map((item) => (
         <button
           type="button"
           key={item.tab}
@@ -1185,7 +1194,7 @@ function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; on
           aria-current={active === item.tab ? "page" : undefined}
           onClick={() => onSelect(item.tab)}
         >
-          <span className="bottom-nav-icon">{item.icon}</span>
+          <span className="bottom-nav-icon">{item.icon}{(item.badge ?? 0) > 0 && <span className="nav-unread-badge">{Math.min(item.badge ?? 0, 99)}</span>}</span>
           <span>{lang === "es" ? item.es : item.en}</span>
         </button>
       ))}
@@ -1206,7 +1215,7 @@ const quickOrder: Record<RootTab, number[]> = {
   jobs: [0, 1, 2, 3],
   clients: [3, 0, 2, 1],
   invoices: [2, 1, 0, 3],
-  more: [0, 1, 2, 3],
+  marketplace: [3, 0, 2, 1],
 };
 // Build 3.1: the quick-create + is a floating action button above the tab bar
 // (visible on the same screens as the master nav). It opens the existing
@@ -1274,6 +1283,18 @@ function PageHeader({
       </div>
     </header>
   );
+}
+// Build 3.1.1: Tools (grid) + Settings (gear) shortcuts on the main-tab
+// headers — Invoice Fly pattern. One tap, always visible, labeled for AT.
+function MainTabHeaderActions({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  return (<>
+    <button type="button" className="icon-button" onClick={() => { buzz(8); setScreen({ name: "tools" }); }} aria-label={lang === "es" ? "Herramientas" : "Tools"}>
+      <Icon><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></Icon>
+    </button>
+    <button type="button" className="icon-button" onClick={() => { buzz(8); setScreen({ name: "settings" }); }} aria-label={lang === "es" ? "Configuración" : "Settings"}>
+      <GearIcon />
+    </button>
+  </>);
 }
 // Build 1.2 (part A): floating document forms (new estimate, new invoice,
 // edit-existing-document) share one header — X (left) | title (center) |
@@ -2595,6 +2616,8 @@ function CrewkatApplication() {
   screenStackRef.current = screenStack;
   const backGuardArmedRef = useRef(false);
   const lastFinancialScreenRef = useRef<Screen | null>(readLastFinancialScreen());
+  // Build 3.1.1: sticky root tab for the tab bar highlight on Tools/Settings.
+  const stickyRootRef = useRef<RootTab>("today");
   const publicScreenRef = useRef(false);
   useEffect(() => {
     // Public link screens (#doc=, #portal=, …): leave the browser back button
@@ -2927,13 +2950,18 @@ function CrewkatApplication() {
         <BookingRequestScreen lang={lang} />
       </div>
     );
-  // Build 3.1: the master bottom tab bar lives ONLY on the five root tabs
-  // (Home, Jobs, Clients, Invoices, More — the + is a floating action button
-  // over the current tab). It is hidden on every sub-page: Post to
+  // Build 3.1.1: the master bottom tab bar lives on the five root tabs
+  // (Home, Jobs, Clients, Invoices, Marketplace) plus the header-opened Tools
+  // and Settings pages. It stays hidden on every sub-page: Post to
   // Marketplace, listing detail, the invoice/estimate builders and previews,
   // Crew day, etc.
-  const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "clients" || screen.name === "invoices" || screen.name === "more";
+  const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "clients" || screen.name === "invoices" || screen.name === "marketplace" || screen.name === "tools" || screen.name === "settings";
   const hideMasterNav = !showMasterNav;
+  // Build 3.1.1: sticky root tab — Tools/Settings keep the underlying tab
+  // highlighted (standard tab-bar behavior for pushed screens).
+  const rootTab = rootTabFor(screen);
+  if (rootTab) stickyRootRef.current = rootTab;
+  const activeRootTab = rootTab ?? stickyRootRef.current;
   return (
   <>
     <div className={`app-shell${showMasterNav ? " has-bottom-nav" : ""}${hideMasterNav && screen.name !== "legal" ? " master-nav-hidden" : ""}`} ref={appShellRef}>
@@ -3164,7 +3192,7 @@ function CrewkatApplication() {
         <MarketplaceThreadScreen lang={lang} conversationId={screen.conversationId} onBack={goBack} />
       )}
       {screen.name === "tools" && (
-        <ToolsHomeScreen lang={lang} setScreen={setScreen} />
+        <ToolsScreen lang={lang} setScreen={setScreen} onBack={goBack} />
       )}
       {screen.name === "proWorkspace" && (
         <ProWorkspaceScreen lang={lang} onBack={goBackOrTools} setScreen={setScreen} />
@@ -3217,11 +3245,8 @@ function CrewkatApplication() {
           onBack={goBack}
         />
       )}
-      {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} />}
-      {screen.name !== "legal" && !hideMasterNav && <QuickCreateFab lang={lang} active={rootTabFor(screen)} onNavigate={setScreen} />}
-      {screen.name === "more" && (
-        <MoreScreen lang={lang} setScreen={setScreen} />
-      )}
+      {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={activeRootTab} onSelect={openRoot} />}
+      {screen.name !== "legal" && !hideMasterNav && (screen.name === "today" || screen.name === "tools" || screen.name === "settings") && <QuickCreateFab lang={lang} active={activeRootTab} onNavigate={setScreen} />}
       <CelebrationOverlay />
       {/* SMS cap pre-check: shown when a text is blocked before the SMS app opens. */}
       <SmsBlockedBanner lang={lang} />
@@ -4569,12 +4594,13 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     {/* Build 3.1: header keeps title + one contextual action (inbox). The old
         company-profile shortcut moved to the More menu; the inbox view also
         lives in the marketplace "More" popup. */}
-    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} actions={
+    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} actions={<>
       <button className="icon-button header-bell-button" type="button" aria-label={lang === "es" ? "Bandeja" : "Inbox"} onClick={() => { setView("inbox"); }}>
         <Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon>
         {unreadMarketplaceCount > 0 && <b className="header-unread-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}
       </button>
-    } />
+      <MainTabHeaderActions lang={lang} setScreen={setScreen} />
+    </>} />
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-tabs" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
       <button type="button" className="market-tab market-tab-post" onClick={() => openNewListing(intentFilter === "need" ? "need" : "offer")}><span>{text.post}</span></button>
@@ -5220,19 +5246,11 @@ function proExtraTiles(lang: Lang): ToolTile[] {
 // the Pro Tools directory grouped into labeled categories, then the
 // standalone rows (Crew Day, Reports, Company profile, Settings, Help &
 // support). Same premium gating and Home pinning as the Tools home page.
-function MoreScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (screen: Screen) => void; onBack: () => void }) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
   const [soon, setSoon] = useState<ToolTile | null>(null);
   const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
-  // Platform admin suite: the marketplace_enabled flag now gates the featured
-  // Marketplace row instead of a tab.
-  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), staleTime: 5 * 60_000 });
-  const marketplaceEnabled = flagsQuery.data?.marketplace_enabled ?? true;
-  // The Marketplace badge covers both unread messages and notifications.
-  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
-  const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
-  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
   // Home-screen pinning, same as the Tools home page.
   const qc = useQueryClient();
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
@@ -5317,12 +5335,12 @@ function MoreScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   const pick = (keys: string[]): ToolTile[] =>
     keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
   const groups: Array<{ title: string; tiles: ToolTile[] }> = [
-    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "businessTools:price", "businessTools:templates", "businessTools:expenses", "businessTools:mileage", "toolbox:loan", "expansion:scanner", "fieldIntelligence:payroll", "fieldIntelligence:costs", "invoices"]) },
+    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "businessTools:price", "businessTools:templates", "businessTools:expenses", "businessTools:mileage", "toolbox:loan", "expansion:scanner", "fieldIntelligence:payroll", "fieldIntelligence:costs", "invoices", "reports"]) },
     { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
     { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", tiles: pick(["followups", "operations:leads", "jobs", "referrals", "referContractor"]) },
     { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch", "fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "expansion:crew", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties"]) },
     { title: lang === "es" ? "Marketing" : "Marketing", tiles: pick(["gallery"]) },
-    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["reports", "companyProfile", "settings", "help"]) },
+    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["companyProfile", "settings", "help"]) },
   ];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
@@ -5349,14 +5367,7 @@ function MoreScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   const bookingDesc = lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website.";
   return (
     <main className="page more-page">
-      <PageHeader lang={lang} title={lang === "es" ? "Más" : "More"} />
-      {marketplaceEnabled && (
-        <button type="button" className="more-featured-marketplace" onClick={() => setScreen({ name: "marketplace" })}>
-          <span className="more-featured-icon"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b className="nav-unread-badge">{Math.min(unreadMarketplace, 99)}</b>}</span>
-          <span><strong>Marketplace</strong><small>{lang === "es" ? "Publica trabajos, encuentra ayuda y chatea" : "Post jobs, find help, and chat"}</small></span>
-          <BackIcon />
-        </button>
-      )}
+      <PageHeader lang={lang} title={lang === "es" ? "Herramientas" : "Tools"} onBack={onBack} />
       {groups.map((group) => group.tiles.length > 0 && (
         <section key={group.title} className="tool-group everyday-tool-group">
           <div className="tool-group-heading"><h2>{group.title}</h2></div>
@@ -5377,73 +5388,6 @@ function MoreScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Scree
   );
 }
 
-function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
-  const auth = useContext(AuthContext);
-  const isPremium = auth?.user.tier === "premium";
-  const [soon, setSoon] = useState<ToolTile | null>(null);
-  const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
-  const qc = useQueryClient();
-  const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
-  const pinnedIds = new Set((pinsQuery.data?.tools ?? []).map((t) => t.toolId));
-  const pinMutation = useMutation({
-    mutationFn: async (toolId: string) => {
-      if (pinnedIds.has(toolId)) await api.unpinTool({ toolId });
-      else await api.pinTool({ toolId });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
-  });
-  const estimating = estimatingToolTiles(lang);
-  const office = officeToolTiles(lang);
-  const operations = operationsToolTiles(lang);
-  const openTool = (tile: ToolTile) => {
-    if (!isPremium && (tile.pro || isProToolScreen(tile.screen))) setLockedTool(tile);
-    else if (tile.comingSoon) setSoon(tile);
-    else if (tile.screen) setScreen(tile.screen);
-  };
-  const section = (title: string, tiles: ToolTile[]) => (
-    <section className="tool-group everyday-tool-group">
-      <div className="tool-group-heading"><h2>{title}</h2></div>
-      <div className="tool-directory">
-        {tiles.map((tile) => {
-          const toolId = toolIdForTile(tile);
-          const pinned = toolId ? pinnedIds.has(toolId) : false;
-          const pinLabel = pinned ? (lang === "es" ? "Quitar" : "Unpin") : (lang === "es" ? "Fijar al inicio" : "Pin to Home");
-          return (
-            <div key={toolId ?? tile.title} className="tool-row">
-              <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
-                {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro={!isPremium && (tile.pro || isProToolScreen(tile.screen))} /></span><span className="tool-row-end">{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}</span>
-              </button>
-              {toolId && (
-                <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
-                  <Icon size={18}><path d={PIN_ICON_PATH} /></Icon>
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-  return (
-    <main className="page tools-home">
-      <PageHeader lang={lang} title={lang === "es" ? "Herramientas" : "Tools"} />
-      <button className="pro-workspace-launch" type="button" onClick={() => setScreen({ name: "proWorkspace" })}>
-        <span className="pro-launch-mark"><strong>PRO</strong><Icon><path d="M4 17 10 11l4 4 6-8"/><path d="M17 7h3v3"/></Icon></span>
-        <span><strong>{lang === "es" ? "Herramientas Pro" : "Pro Tools"}</strong><small>{lang === "es" ? "Operaciones avanzadas, equipo, seguridad y control." : "Advanced operations, equipment, safety, and control."}</small></span>
-        <BackIcon />
-      </button>
-      <div className="tools-featured-panels">
-        {isPremium ? <CrewClockPanel lang={lang} /> : <ProFeatureCard title={lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock"} description={lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job."} onClick={() => setLockedTool({ title: lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock", description: "", icon: null, pro: true })} />}
-        {isPremium ? <BookingLinkPanel lang={lang} /> : <ProFeatureCard title={lang === "es" ? "Formulario público de estimado" : "Public estimate form"} description={lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website."} onClick={() => setLockedTool({ title: lang === "es" ? "Formulario público de estimado" : "Public estimate form", description: "", icon: null, pro: true })} />}
-      </div>
-      {section(lang === "es" ? "Herramientas para estimar" : "Estimating toolbox", estimating)}
-      {section(lang === "es" ? "Negocio y oficina" : "Business & office", office)}
-      {section(lang === "es" ? "Operaciones" : "Operations", operations)}
-      {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
-      {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
-    </main>
-  );
-}
 
 function ProFeatureCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
   return <button type="button" className="pro-feature-card" onClick={onClick}>
@@ -5784,6 +5728,7 @@ function JobsScreen({
             >
               {lang === "en" ? "ES" : "EN"}
             </button>
+            <MainTabHeaderActions lang={lang} setScreen={setScreen} />
 
           </>
         }
@@ -8856,6 +8801,7 @@ function SettingsScreen({
           </SettingsAccordion>
 
           <h2 className="settings-group-title">{lang === "es" ? "Negocio" : "Business"}</h2>
+          <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><path d="M4 21V7l8-4 8 4v14M8 21v-5h8v5" /></Icon></span><span><strong>{lang === "es" ? "Perfil de empresa" : "Company profile"}</strong><small>{lang === "es" ? "Logo, información de la empresa y redes sociales" : "Logo, company info, and social links"}</small></span><BackIcon /></button>
           <SettingsAccordion
             title={lang === "es" ? "Opciones de pago" : "Payment options"}
             icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}
@@ -14049,7 +13995,7 @@ function InvoicesScreen({
   const estimatedMonth = sortedQuotes.filter((quote) => (quote.sentAt || quote.createdAt).slice(0, 7) === month).reduce((sum, quote) => sum + money(quote.total), 0);
   return (
     <main className="page">
-      <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} />
+      <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
       {tab === "invoices"
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
@@ -14934,7 +14880,7 @@ function ClientsScreen({
   };
   return (
     <main className="page clients-page">
-      <PageHeader lang={lang} title={t.clients} onBack={onBack} />
+      <PageHeader lang={lang} title={t.clients} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
       <OfflineCacheNote lang={lang} action="listClients" isLoading={query.isLoading} />
       <div className="clients-toolbar">
         <label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchClients} aria-label={t.searchClients} /></label>
@@ -18205,6 +18151,7 @@ function TodayScreen({
             <span>{dateHeading}</span>
             <div className="home-header-actions">
               <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+              <MainTabHeaderActions lang={lang} setScreen={setScreen} />
               <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
             </div>
           </div>
