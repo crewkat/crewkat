@@ -344,6 +344,7 @@ type Screen =
   | { name: "marketplaceDetail"; listingId: number }
   | { name: "marketplaceThread"; conversationId: number }
   | { name: "tools" }
+  | { name: "craneRun" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
   | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" | "paint" | "flooring" | "fence" | "block" | "gravel" | "stairs" | "insulation" | "gutter" | "rate" | "punchlist" }
@@ -3252,6 +3253,9 @@ function CrewkatApplication() {
       {screen.name === "tools" && (
         <ToolsScreen lang={lang} setScreen={setScreen} onBack={goBack} />
       )}
+      {screen.name === "craneRun" && (
+        <CraneRunScreen lang={lang} onBack={goBackOrTools} />
+      )}
       {screen.name === "proWorkspace" && (
         <ProWorkspaceScreen lang={lang} onBack={goBackOrTools} setScreen={setScreen} />
       )}
@@ -5298,6 +5302,439 @@ function proExtraTiles(lang: Lang): ToolTile[] {
   ];
 }
 
+// Build 3.2: "Crane Run" — Chrome-dino-style endless runner starring the
+// Crewkat crane. Danny 2026-10-11: "very simple game like Google's
+// no-internet dino" as a tile in Tools. Canvas 2D, DPR-aware, single jump
+// (tap / click / Space), scrolling ground, traffic cones + toolboxes with
+// ramping speed, score = distance, high score in localStorage. The loop
+// pauses when the tab is hidden and is torn down with the screen.
+const CRANE_RUN_HIGH_KEY = "crewkat-crane-run-high";
+
+type CraneRunPhase = "ready" | "running" | "over";
+type CraneObstacle = { x: number; w: number; h: number; kind: "cone" | "cones" | "box" | "boxtall" };
+
+function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const t = {
+    title: lang === "es" ? "Carrera de la Grulla" : "Crane Run",
+    tapToJump: lang === "es" ? "Toca para saltar" : "Tap to jump",
+    gameOver: lang === "es" ? "Fin del juego" : "Game over",
+    score: lang === "es" ? "Puntos" : "Score",
+    highScore: lang === "es" ? "Récord" : "High score",
+    tapToRestart: lang === "es" ? "Toca para reintentar" : "Tap to restart",
+    newBest: lang === "es" ? "¡Nuevo récord!" : "New best!",
+  };
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [phase, setPhase] = useState<CraneRunPhase>("ready");
+  const [hud, setHud] = useState({ score: 0, high: 0, newBest: false });
+  const simRef = useRef({
+    phase: "ready" as CraneRunPhase,
+    y: 0, // height above ground (virtual px)
+    vy: 0,
+    dist: 0,
+    speed: 320,
+    obstacles: [] as CraneObstacle[],
+    spawnIn: 420, // distance until next spawn
+    clouds: [
+      { x: 80, y: 46, s: 1 },
+      { x: 330, y: 30, s: 0.7 },
+      { x: 520, y: 60, s: 1.25 },
+    ],
+    groundOff: 0,
+    legT: 0,
+    overAt: 0,
+    high: 0,
+  });
+
+  // Virtual playfield: 620 x 240, scaled to the canvas.
+  const VW = 620;
+  const VH = 240;
+  const GROUND = 198;
+  const CRANE_X = 76;
+  const GRAVITY = 3000;
+  const JUMP_V = 950;
+  const BASE_SPEED = 320;
+  const MAX_SPEED = 720;
+  const ACCEL = 5.5;
+
+  useEffect(() => {
+    try {
+      simRef.current.high = Number(window.localStorage.getItem(CRANE_RUN_HIGH_KEY) ?? 0) || 0;
+    } catch {
+      simRef.current.high = 0;
+    }
+    setHud((h) => ({ ...h, high: simRef.current.high }));
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const S = simRef.current;
+    let raf = 0;
+    let last = 0;
+    let paused = false;
+    let scale = 1;
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const rect = wrap.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      scale = rect.width / VW;
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+
+    const pickObstacle = (): CraneObstacle => {
+      const r = Math.random();
+      const fast = S.speed > 430;
+      if (r < 0.34) return { x: VW + 20, w: 22, h: 30, kind: "cone" };
+      if (r < 0.58) return { x: VW + 20, w: 46, h: 30, kind: "cones" };
+      if (r < 0.82 || !fast) return { x: VW + 20, w: 42, h: 26, kind: "box" };
+      return { x: VW + 20, w: 42, h: 52, kind: "boxtall" };
+    };
+
+    const reset = () => {
+      S.y = 0;
+      S.vy = 0;
+      S.dist = 0;
+      S.speed = BASE_SPEED;
+      S.obstacles = [];
+      S.spawnIn = 420;
+      S.legT = 0;
+      S.groundOff = 0;
+    };
+
+    const start = () => {
+      reset();
+      S.phase = "running";
+      setPhase("running");
+      setHud((h) => ({ ...h, score: 0, newBest: false }));
+    };
+
+    const die = () => {
+      S.phase = "over";
+      S.overAt = performance.now();
+      const score = Math.floor(S.dist / 10);
+      const newBest = score > S.high;
+      if (newBest) {
+        S.high = score;
+        try {
+          window.localStorage.setItem(CRANE_RUN_HIGH_KEY, String(score));
+        } catch {
+          /* storage unavailable */
+        }
+      }
+      setHud({ score, high: S.high, newBest });
+      setPhase("over");
+    };
+
+    const tap = () => {
+      if (S.phase === "ready") {
+        start();
+      } else if (S.phase === "over") {
+        if (performance.now() - S.overAt > 500) start();
+      } else if (S.y < 4) {
+        S.vy = JUMP_V;
+      }
+    };
+    (wrap as unknown as { _craneTap?: () => void })._craneTap = tap;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.code === "ArrowUp") {
+        e.preventDefault();
+        tap();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+
+    const onVis = () => {
+      paused = document.hidden;
+      last = performance.now();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    // ---- drawing ----
+    const drawCrane = (x: number, groundY: number, runPhase: number, airborne: boolean) => {
+      const y = groundY - S.y; // feet position
+      ctx.fillStyle = "#333a44";
+      ctx.strokeStyle = "#333a44";
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      // legs: two-frame run, tucked when airborne
+      const swing = airborne ? 0 : Math.sin(runPhase) * 9;
+      const lift = airborne ? 10 : 0;
+      ctx.beginPath();
+      ctx.moveTo(x + 16, y - 14);
+      ctx.lineTo(x + 16 + swing, y - lift);
+      ctx.moveTo(x + 24, y - 14);
+      ctx.lineTo(x + 24 - swing, y - lift);
+      ctx.stroke();
+      // tail
+      ctx.beginPath();
+      ctx.moveTo(x + 6, y - 30);
+      ctx.lineTo(x - 4, y - 36);
+      ctx.lineTo(x + 6, y - 22);
+      ctx.closePath();
+      ctx.fill();
+      // body
+      ctx.beginPath();
+      ctx.ellipse(x + 19, y - 26, 15, 9.5, -0.12, 0, Math.PI * 2);
+      ctx.fill();
+      // wing
+      ctx.strokeStyle = "#5a636f";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(x + 17, y - 26, 8, 4.5, -0.12, 0.3, Math.PI - 0.6);
+      ctx.stroke();
+      ctx.strokeStyle = "#333a44";
+      ctx.lineWidth = 4;
+      // neck
+      ctx.beginPath();
+      ctx.moveTo(x + 31, y - 30);
+      ctx.quadraticCurveTo(x + 36, y - 40, x + 38, y - 50);
+      ctx.stroke();
+      // head
+      ctx.beginPath();
+      ctx.arc(x + 39, y - 52, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      // beak
+      ctx.fillStyle = "#e07b24";
+      ctx.beginPath();
+      ctx.moveTo(x + 44, y - 53.5);
+      ctx.lineTo(x + 53, y - 51);
+      ctx.lineTo(x + 44, y - 48.5);
+      ctx.closePath();
+      ctx.fill();
+      // eye
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(x + 40.5, y - 53, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    const drawCone = (x: number, w: number, h: number) => {
+      const n = Math.max(1, Math.round(w / 24));
+      for (let i = 0; i < n; i++) {
+        const cx = x + (i + 0.5) * (w / n);
+        const cw = w / n - 4;
+        // body
+        ctx.fillStyle = "#e07b24";
+        ctx.beginPath();
+        ctx.moveTo(cx - cw / 2, GROUND);
+        ctx.lineTo(cx, GROUND - h);
+        ctx.lineTo(cx + cw / 2, GROUND);
+        ctx.closePath();
+        ctx.fill();
+        // white stripe
+        ctx.fillStyle = "#ffffff";
+        const sy = GROUND - h * 0.45;
+        const sw = cw * 0.32;
+        ctx.fillRect(cx - sw / 2, sy - 4, sw, 8);
+        // base
+        ctx.fillStyle = "#b25f16";
+        ctx.fillRect(cx - cw / 2 - 3, GROUND - 4, cw + 6, 4);
+      }
+    };
+
+    const drawBox = (x: number, w: number, h: number) => {
+      // toolbox body
+      ctx.fillStyle = "#c0452f";
+      ctx.beginPath();
+      ctx.roundRect(x, GROUND - h, w, h, 4);
+      ctx.fill();
+      // lid
+      ctx.fillStyle = "#a03824";
+      ctx.fillRect(x, GROUND - h, w, 9);
+      // latch
+      ctx.fillStyle = "#7c2b1c";
+      ctx.fillRect(x + w / 2 - 4, GROUND - h + 2, 8, 5);
+      // handle
+      ctx.strokeStyle = "#7c2b1c";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x + w / 2, GROUND - h, 8, Math.PI, 0);
+      ctx.stroke();
+    };
+
+    const draw = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      ctx.scale(dpr * scale, dpr * scale);
+      // day sky
+      const sky = ctx.createLinearGradient(0, 0, 0, VH);
+      sky.addColorStop(0, "#dcebfb");
+      sky.addColorStop(1, "#f6fafd");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, VW, VH);
+      // sun
+      ctx.fillStyle = "#ffd964";
+      ctx.beginPath();
+      ctx.arc(548, 44, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,217,100,.35)";
+      ctx.beginPath();
+      ctx.arc(548, 44, 30, 0, Math.PI * 2);
+      ctx.fill();
+      // clouds
+      ctx.fillStyle = "#ffffff";
+      for (const c of S.clouds) {
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, 26 * c.s, 10 * c.s, 0, 0, Math.PI * 2);
+        ctx.ellipse(c.x + 18 * c.s, c.y + 3 * c.s, 16 * c.s, 8 * c.s, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // ground
+      ctx.strokeStyle = "#3a3f47";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND + 0.5);
+      ctx.lineTo(VW, GROUND + 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = "#b9c2cd";
+      ctx.lineWidth = 2;
+      const dashOff = -(S.groundOff % 36);
+      for (let dx = dashOff; dx < VW; dx += 36) {
+        ctx.beginPath();
+        ctx.moveTo(dx, GROUND + 10);
+        ctx.lineTo(dx + 14, GROUND + 10);
+        ctx.stroke();
+      }
+      // obstacles
+      for (const o of S.obstacles) {
+        if (o.kind === "cone" || o.kind === "cones") drawCone(o.x, o.w, o.h);
+        else drawBox(o.x, o.w, o.h);
+      }
+      // crane
+      const airborne = S.y > 1;
+      drawCrane(CRANE_X, GROUND, S.legT * 14, airborne);
+      // score HUD (dino style)
+      const score = Math.floor(S.dist / 10);
+      ctx.fillStyle = "#5a636f";
+      ctx.font = "700 15px ui-monospace, Menlo, monospace";
+      ctx.textAlign = "right";
+      const hi = Math.max(S.high, score);
+      ctx.fillText(`${String(score).padStart(5, "0")}  HI ${String(hi).padStart(5, "0")}`, VW - 14, 26);
+      ctx.textAlign = "left";
+    };
+
+    const step = (dt: number) => {
+      S.speed = Math.min(MAX_SPEED, S.speed + ACCEL * dt);
+      S.dist += S.speed * dt;
+      S.legT += dt;
+      S.groundOff += S.speed * dt;
+      for (const c of S.clouds) {
+        c.x -= S.speed * 0.18 * dt;
+        if (c.x < -60) {
+          c.x = VW + 40 + Math.random() * 120;
+          c.y = 24 + Math.random() * 50;
+        }
+      }
+      // vertical
+      if (S.y > 0 || S.vy !== 0) {
+        S.vy -= GRAVITY * dt;
+        S.y += S.vy * dt;
+        if (S.y <= 0) {
+          S.y = 0;
+          S.vy = 0;
+        }
+      }
+      // spawn
+      S.spawnIn -= S.speed * dt;
+      if (S.spawnIn <= 0) {
+        S.obstacles.push(pickObstacle());
+        const minGap = S.speed * 0.8;
+        S.spawnIn = Math.max(minGap, 260 + Math.random() * 420);
+      }
+      // move + collide
+      const shrink = 0.18;
+      for (const o of S.obstacles) o.x -= S.speed * dt;
+      S.obstacles = S.obstacles.filter((o) => o.x + o.w > -20);
+      const cx0 = CRANE_X + 8;
+      const cx1 = CRANE_X + 46;
+      const cy1 = GROUND - S.y;
+      const cy0 = cy1 - 48;
+      for (const o of S.obstacles) {
+        const ox0 = o.x + o.w * shrink;
+        const ox1 = o.x + o.w * (1 - shrink);
+        const oy0 = GROUND - o.h + o.h * shrink;
+        const oy1 = GROUND;
+        if (cx0 < ox1 && cx1 > ox0 && cy0 < oy1 && cy1 > oy0) {
+          die();
+          break;
+        }
+      }
+    };
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (paused) {
+        last = now;
+        return;
+      }
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000 || 0));
+      last = now;
+      if (S.phase === "running") step(dt);
+      draw();
+    };
+    draw();
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  return (
+    <main className="page crane-run-page">
+      <PageHeader lang={lang} title={t.title} onBack={onBack} />
+      <div
+        ref={wrapRef}
+        className="crane-run-wrap"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          (wrapRef.current as unknown as { _craneTap?: () => void })._craneTap?.();
+        }}
+      >
+        <canvas ref={canvasRef} role="img" aria-label={t.title} />
+        {phase === "ready" && (
+          <div className="crane-run-overlay">
+            <div className="crane-run-panel">
+              <strong>{t.title}</strong>
+              <span>{t.tapToJump}</span>
+            </div>
+          </div>
+        )}
+        {phase === "over" && (
+          <div className="crane-run-overlay">
+            <div className="crane-run-panel">
+              <strong>{t.gameOver}</strong>
+              <span>
+                {t.score}: <b>{hud.score}</b>
+              </span>
+              <span>
+                {t.highScore}: <b>{hud.high}</b>
+                {hud.newBest && <em className="crane-run-best">{t.newBest}</em>}
+              </span>
+              <button type="button" className="primary-button crane-run-restart" onClick={() => (wrapRef.current as unknown as { _craneTap?: () => void })._craneTap?.()}>
+                {t.tapToRestart}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="crane-run-hint">{t.tapToJump} · Space</p>
+    </main>
+  );
+}
+
 // Build 3.1: the More menu — a full-page directory that replaces the old
 // unlabeled header shortcuts and the flat Tools list. Featured Marketplace
 // row on top (flag-gated, with the unread badge), then the Tools catalog and
@@ -5382,6 +5819,12 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     toolTileIcon(<path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM9.5 9a2.6 2.6 0 1 1 4.2 2c-1 .7-1.7 1.2-1.7 2.5M12 17h.01" />),
     { name: "settings" },
   );
+  const craneRunTile = extra(
+    lang === "es" ? "Carrera de la Grulla" : "Crane Run",
+    lang === "es" ? "Minijuego: esquiva conos y cajas con la grulla" : "Endless runner: dodge cones and toolboxes with the crane",
+    toolTileIcon(<><path d="M8.5 21v-4.5M13 21v-4.5" /><path d="M5 15.5c0-2.4 2.7-4 5.8-4 1.5 0 2.9.4 3.9 1.1l1.7-4.2.8-3.4" /><circle cx="17.4" cy="4.6" r="1.7" /><path d="M19 4.9l3 1.2-3.1 1.2" /></>),
+    { name: "craneRun" },
+  );
   byKey.set("crewDay", crewDayTile);
   byKey.set("referrals", referralsTile);
   byKey.set("referContractor", referContractorTile);
@@ -5390,6 +5833,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   byKey.set("companyProfile", companyTile);
   byKey.set("settings", settingsTile);
   byKey.set("help", helpTile);
+  byKey.set("craneRun", craneRunTile);
   const pick = (keys: string[]): ToolTile[] =>
     keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
   const groups: Array<{ title: string; tiles: ToolTile[] }> = [
@@ -5399,6 +5843,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch", "fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "expansion:crew", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties"]) },
     { title: lang === "es" ? "Marketing" : "Marketing", tiles: pick(["gallery"]) },
     { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["companyProfile", "settings", "help"]) },
+    { title: lang === "es" ? "Solo por diversión" : "Just for fun", tiles: pick(["craneRun"]) },
   ];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
