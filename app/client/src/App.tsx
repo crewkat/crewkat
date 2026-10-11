@@ -5346,10 +5346,15 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     high: 0,
   });
 
-  // Virtual playfield: 620 x 240, scaled to the canvas.
-  const VW = 620;
-  const VH = 240;
-  const GROUND = 198;
+  // Gameplay is defined in reference world units: the band is always
+  // VH_REF units tall and the visible width adapts to the canvas aspect.
+  // Scale fills the canvas height but never shows less than MIN_VIEW_W
+  // world units horizontally, so reaction time stays fair on narrow
+  // portrait screens. Physics stay in world units — the feel is identical
+  // at any canvas size.
+  const VH_REF = 240;
+  const MIN_VIEW_W = 500;
+  const UNDER_GROUND = 42; // world units of ground strip below the run line
   const CRANE_X = 76;
   const GRAVITY = 3000;
   const JUMP_V = 950;
@@ -5377,25 +5382,42 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     let last = 0;
     let paused = false;
     let scale = 1;
+    let viewW = 620; // visible world width — adapts to canvas aspect
+    let viewH = VH_REF; // visible world height
+    let groundY = VH_REF - UNDER_GROUND;
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       const rect = wrap.getBoundingClientRect();
       canvas.width = Math.max(1, Math.round(rect.width * dpr));
       canvas.height = Math.max(1, Math.round(rect.height * dpr));
-      scale = rect.width / VW;
+      scale = Math.max(0.1, Math.min(rect.height / VH_REF, rect.width / MIN_VIEW_W));
+      viewW = rect.width / scale;
+      viewH = rect.height / scale;
+      groundY = viewH - UNDER_GROUND;
     };
     resize();
+    // spread the clouds across the full visible sky
+    const cloudSpots: Array<[number, number]> = [
+      [0.13, 0.18],
+      [0.53, 0.11],
+      [0.84, 0.26],
+    ];
+    S.clouds.forEach((c, i) => {
+      const spot = cloudSpots[i % cloudSpots.length]!;
+      c.x = viewW * spot[0];
+      c.y = viewH * spot[1];
+    });
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
 
     const pickObstacle = (): CraneObstacle => {
       const r = Math.random();
       const fast = S.speed > 430;
-      if (r < 0.34) return { x: VW + 20, w: 22, h: 30, kind: "cone" };
-      if (r < 0.58) return { x: VW + 20, w: 46, h: 30, kind: "cones" };
-      if (r < 0.82 || !fast) return { x: VW + 20, w: 42, h: 26, kind: "box" };
-      return { x: VW + 20, w: 42, h: 52, kind: "boxtall" };
+      if (r < 0.34) return { x: viewW + 20, w: 22, h: 30, kind: "cone" };
+      if (r < 0.58) return { x: viewW + 20, w: 46, h: 30, kind: "cones" };
+      if (r < 0.82 || !fast) return { x: viewW + 20, w: 42, h: 26, kind: "box" };
+      return { x: viewW + 20, w: 42, h: 52, kind: "boxtall" };
     };
 
     const reset = () => {
@@ -5525,19 +5547,19 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
         // body
         ctx.fillStyle = "#e07b24";
         ctx.beginPath();
-        ctx.moveTo(cx - cw / 2, GROUND);
-        ctx.lineTo(cx, GROUND - h);
-        ctx.lineTo(cx + cw / 2, GROUND);
+        ctx.moveTo(cx - cw / 2, groundY);
+        ctx.lineTo(cx, groundY - h);
+        ctx.lineTo(cx + cw / 2, groundY);
         ctx.closePath();
         ctx.fill();
         // white stripe
         ctx.fillStyle = "#ffffff";
-        const sy = GROUND - h * 0.45;
+        const sy = groundY - h * 0.45;
         const sw = cw * 0.32;
         ctx.fillRect(cx - sw / 2, sy - 4, sw, 8);
         // base
         ctx.fillStyle = "#b25f16";
-        ctx.fillRect(cx - cw / 2 - 3, GROUND - 4, cw + 6, 4);
+        ctx.fillRect(cx - cw / 2 - 3, groundY - 4, cw + 6, 4);
       }
     };
 
@@ -5545,19 +5567,19 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       // toolbox body
       ctx.fillStyle = "#c0452f";
       ctx.beginPath();
-      ctx.roundRect(x, GROUND - h, w, h, 4);
+      ctx.roundRect(x, groundY - h, w, h, 4);
       ctx.fill();
       // lid
       ctx.fillStyle = "#a03824";
-      ctx.fillRect(x, GROUND - h, w, 9);
+      ctx.fillRect(x, groundY - h, w, 9);
       // latch
       ctx.fillStyle = "#7c2b1c";
-      ctx.fillRect(x + w / 2 - 4, GROUND - h + 2, 8, 5);
+      ctx.fillRect(x + w / 2 - 4, groundY - h + 2, 8, 5);
       // handle
       ctx.strokeStyle = "#7c2b1c";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(x + w / 2, GROUND - h, 8, Math.PI, 0);
+      ctx.arc(x + w / 2, groundY - h, 8, Math.PI, 0);
       ctx.stroke();
     };
 
@@ -5566,19 +5588,19 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       ctx.scale(dpr * scale, dpr * scale);
       // day sky
-      const sky = ctx.createLinearGradient(0, 0, 0, VH);
+      const sky = ctx.createLinearGradient(0, 0, 0, viewH);
       sky.addColorStop(0, "#dcebfb");
       sky.addColorStop(1, "#f6fafd");
       ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, VW, VH);
+      ctx.fillRect(0, 0, viewW, viewH);
       // sun
       ctx.fillStyle = "#ffd964";
       ctx.beginPath();
-      ctx.arc(548, 44, 20, 0, Math.PI * 2);
+      ctx.arc(viewW - 72, 44, 20, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "rgba(255,217,100,.35)";
       ctx.beginPath();
-      ctx.arc(548, 44, 30, 0, Math.PI * 2);
+      ctx.arc(viewW - 72, 44, 30, 0, Math.PI * 2);
       ctx.fill();
       // clouds
       ctx.fillStyle = "#ffffff";
@@ -5592,16 +5614,16 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       ctx.strokeStyle = "#3a3f47";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(0, GROUND + 0.5);
-      ctx.lineTo(VW, GROUND + 0.5);
+      ctx.moveTo(0, groundY + 0.5);
+      ctx.lineTo(viewW, groundY + 0.5);
       ctx.stroke();
       ctx.strokeStyle = "#b9c2cd";
       ctx.lineWidth = 2;
       const dashOff = -(S.groundOff % 36);
-      for (let dx = dashOff; dx < VW; dx += 36) {
+      for (let dx = dashOff; dx < viewW; dx += 36) {
         ctx.beginPath();
-        ctx.moveTo(dx, GROUND + 10);
-        ctx.lineTo(dx + 14, GROUND + 10);
+        ctx.moveTo(dx, groundY + 10);
+        ctx.lineTo(dx + 14, groundY + 10);
         ctx.stroke();
       }
       // obstacles
@@ -5611,14 +5633,14 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       }
       // crane
       const airborne = S.y > 1;
-      drawCrane(CRANE_X, GROUND, S.legT * 14, airborne);
+      drawCrane(CRANE_X, groundY, S.legT * 14, airborne);
       // score HUD (dino style)
       const score = Math.floor(S.dist / 10);
       ctx.fillStyle = "#5a636f";
       ctx.font = "700 15px ui-monospace, Menlo, monospace";
       ctx.textAlign = "right";
       const hi = Math.max(S.high, score);
-      ctx.fillText(`${String(score).padStart(5, "0")}  HI ${String(hi).padStart(5, "0")}`, VW - 14, 26);
+      ctx.fillText(`${String(score).padStart(5, "0")}  HI ${String(hi).padStart(5, "0")}`, viewW - 14, 26);
       ctx.textAlign = "left";
     };
 
@@ -5630,8 +5652,8 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       for (const c of S.clouds) {
         c.x -= S.speed * 0.18 * dt;
         if (c.x < -60) {
-          c.x = VW + 40 + Math.random() * 120;
-          c.y = 24 + Math.random() * 50;
+          c.x = viewW + 40 + Math.random() * 120;
+          c.y = viewH * (0.06 + Math.random() * 0.5);
         }
       }
       // vertical
@@ -5656,13 +5678,13 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       S.obstacles = S.obstacles.filter((o) => o.x + o.w > -20);
       const cx0 = CRANE_X + 8;
       const cx1 = CRANE_X + 46;
-      const cy1 = GROUND - S.y;
+      const cy1 = groundY - S.y;
       const cy0 = cy1 - 48;
       for (const o of S.obstacles) {
         const ox0 = o.x + o.w * shrink;
         const ox1 = o.x + o.w * (1 - shrink);
-        const oy0 = GROUND - o.h + o.h * shrink;
-        const oy1 = GROUND;
+        const oy0 = groundY - o.h + o.h * shrink;
+        const oy1 = groundY;
         if (cx0 < ox1 && cx1 > ox0 && cy0 < oy1 && cy1 > oy0) {
           die();
           break;
@@ -5704,6 +5726,7 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
         }}
       >
         <canvas ref={canvasRef} role="img" aria-label={t.title} />
+        {phase !== "over" && <p className="crane-run-hint">{t.tapToJump} · Space</p>}
         {phase === "ready" && (
           <div className="crane-run-overlay">
             <div className="crane-run-panel">
@@ -5730,7 +5753,6 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           </div>
         )}
       </div>
-      <p className="crane-run-hint">{t.tapToJump} · Space</p>
     </main>
   );
 }

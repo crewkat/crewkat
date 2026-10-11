@@ -77,6 +77,14 @@ describe("Crane Run game engine", () => {
     expect(APP).toContain("devicePixelRatio");
   });
 
+  test("game world scales to the canvas: dynamic view width, minimum visible width", () => {
+    // Scale fills the canvas height but never shows less than MIN_VIEW_W
+    // world units, so reaction time stays fair on narrow portrait screens.
+    expect(APP).toMatch(/MIN_VIEW_W\s*=\s*\d+/);
+    expect(APP).toContain("viewW");
+    expect(APP).toContain("groundY");
+  });
+
   test("crane drawn with canvas paths (body, neck, beak, legs)", () => {
     // drawCrane is the only place these shapes combine for the mascot.
     expect(APP).toContain("drawCrane");
@@ -101,10 +109,12 @@ describe("Crane Run i18n (EN+ES)", () => {
 });
 
 describe("Crane Run styles", () => {
-  test("game wrap + panels styled with app conventions", () => {
+  test("game wrap fills the screen + panels styled with app conventions", () => {
     expect(CSS).toContain(".crane-run-wrap");
     expect(CSS).toContain(".crane-run-panel");
-    expect(CSS).toContain("aspect-ratio");
+    // full-screen game area: wrap flex-fills below the header, no fixed strip
+    expect(CSS).toMatch(/\.crane-run-wrap[\s\S]*?flex:\s*1/);
+    expect(CSS).not.toMatch(/\.crane-run-wrap[\s\S]*?aspect-ratio/);
     // panels use 8px rounding + soft shadows per the app design language
     expect(CSS).toMatch(/\.crane-run-panel[\s\S]*?border-radius:\s*8px/);
     expect(CSS).toContain("var(--shadow-lift)");

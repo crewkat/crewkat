@@ -4516,18 +4516,21 @@ body > .document-overlay.customize-overlay { z-index: 200; }
   box-shadow: var(--shadow-soft);
 }
 
-/* Crane Run — endless runner game (build 3.2). Fixed day scene, panels use
-   the app's 8px rounding + soft shadows. */
-.crane-run-page { padding-bottom: 48px; }
+/* Crane Run — endless runner game (build 3.2). Full-screen game area below
+   the header: the world scales to fill the canvas height while keeping at
+   least MIN_VIEW_W world units visible, so reaction time stays fair. Panels
+   use the app's 8px rounding + soft shadows. */
+.crane-run-page { display: flex; flex-direction: column; min-height: 100dvh; padding-bottom: 12px; }
 .crane-run-wrap {
   position: relative;
   margin-top: 12px;
+  flex: 1 1 auto;
+  min-height: 320px;
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   background: #e9f1f9;
   box-shadow: var(--shadow-soft);
-  aspect-ratio: 620 / 240;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -4571,8 +4574,14 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 }
 .crane-run-restart { margin-top: 8px; min-height: 44px; }
 .crane-run-hint {
-  margin: 10px 0 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  margin: 0;
   text-align: center;
   font-size: 12px;
   color: var(--muted, #667);
+  opacity: 0.8;
+  pointer-events: none;
 }
