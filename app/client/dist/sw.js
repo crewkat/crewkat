@@ -1,5 +1,5 @@
 // Crewkat app service worker — offline mode + web push.
-// Served at /app/sw.js (scope /app/). build.mjs stamps 18a3ce0 with the
+// Served at /app/sw.js (scope /app/). build.mjs stamps 5a48974 with the
 // git commit (or a build timestamp) so EVERY deploy produces a new worker and
 // the browser installs it immediately instead of serving a stale shell.
 //
@@ -12,7 +12,7 @@
 //   client understands; never served stale.
 // - Everything else same-origin: network-first with cache fallback.
 
-const BUILD_ID = "18a3ce0";
+const BUILD_ID = "5a48974";
 const SHELL_CACHE = `crewkat-shell-${BUILD_ID}`;
 const RUNTIME_CACHE = `crewkat-runtime-${BUILD_ID}`;
 const PRECACHE = [
@@ -74,9 +74,46 @@ async function networkFirst(request, cacheName, fallback) {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Web Share Target: sharing a contact from the phone into Crewkat POSTs a
+  // vCard here. Stash it in the Cache API, then 303-redirect into the app —
+  // the app reads the stash on boot (?sharedContact=1) and prefills the New
+  // Client form. Never touches the network: the share must work offline.
+  if (request.method === "POST" && url.pathname === "/app/share-contact") {
+    event.respondWith(
+      (async () => {
+        try {
+          const formData = await request.formData();
+          const file = formData.get("vcard");
+          let text = "";
+          if (typeof file === "string") {
+            text = file;
+          } else if (file && typeof file.text === "function") {
+            text = await file.text();
+          }
+          if (!text) {
+            const sharedText = formData.get("text");
+            if (typeof sharedText === "string") text = sharedText;
+          }
+          if (text) {
+            const stash = await caches.open("crewkat-share-contact");
+            await stash.put(
+              new Request("/app/__shared-contact__"),
+              new Response(text, { headers: { "content-type": "text/plain" } })
+            );
+          }
+        } catch {
+          // Stash failed — the app still opens; the form will just be blank.
+        }
+        return Response.redirect("/app/?sharedContact=1", 303);
+      })()
+    );
+    return;
+  }
+
+  if (request.method !== "GET") return;
 
   // API: network only; offline -> 503 JSON the client understands.
   if (url.pathname === "/actions" || url.pathname.startsWith("/actions/")) {

@@ -2691,6 +2691,45 @@ function CrewkatApplication() {
       setScreenStack([{ name: "clients" }, { name: "clientNew" }]);
     }
   }, []);
+  // Web Share Target: a contact shared from the phone's Contacts app arrives
+  // here via the service worker (?sharedContact=1, vCard stashed in the Cache
+  // API). Parse it, hand it to the New Client form via sessionStorage, then
+  // clear the stash and the param. Parse failure still opens the blank form.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("sharedContact") !== "1") return;
+    params.delete("sharedContact");
+    const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", clean);
+    const useEs = (navigator.language || "en").toLowerCase().startsWith("es");
+    const t = copy[useEs ? "es" : "en"];
+    (async () => {
+      let contact: VCardContact | null = null;
+      try {
+        const stash = await caches.open("crewkat-share-contact");
+        const res = await stash.match("/app/__shared-contact__");
+        if (res) {
+          const text = await res.text();
+          await stash.delete("/app/__shared-contact__");
+          contact = parseVCard(text);
+        }
+      } catch {
+        contact = null;
+      }
+      if (contact) {
+        try {
+          window.sessionStorage.setItem("crewkat-shared-contact", JSON.stringify(contact));
+        } catch {
+          // Storage unavailable — the form opens blank.
+        }
+        showUndoToast(t.contactImported, t.close, () => {}, 3500);
+      } else {
+        showUndoToast(t.vcardReadFailed, t.close, () => {}, 3500);
+      }
+      setScreenStack([{ name: "clients" }, { name: "clientNew" }]);
+    })();
+  }, []);
   const [dismissedBanner, setDismissedBanner] = useState(() => window.localStorage.getItem("crewkat-banner-dismissed") ?? "");
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
@@ -14684,6 +14723,26 @@ const blankClient = {
   tags: [] as string[],
   referredByClientId: null as number | null,
 };
+// Web Share Target: consume a contact shared from the phone's Contacts app.
+// The ?sharedContact=1 boot handler stashes the parsed vCard in sessionStorage;
+// the next ClientForm mount picks it up once, then the key is gone.
+function consumeSharedContact(): VCardContact | null {
+  try {
+    const raw = window.sessionStorage.getItem("crewkat-shared-contact");
+    window.sessionStorage.removeItem("crewkat-shared-contact");
+    if (!raw) return null;
+    const c = JSON.parse(raw) as Partial<VCardContact>;
+    if (!c || (!c.name && !c.phone && !c.email && !c.address)) return null;
+    return {
+      name: c.name ?? "",
+      phone: c.phone ?? "",
+      email: c.email ?? "",
+      address: c.address ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
 // Web Contact Picker API (Chrome on Android — the TWA runtime). Not in the
 // standard TS DOM lib, so declared locally. Feature-detected at render time:
 // the button is hidden entirely where the API is unavailable.
@@ -14804,7 +14863,18 @@ function ClientForm({
   stickySave?: boolean;
 }) {
   const t = copy[lang];
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(() => {
+    // Web Share Target prefill: a contact shared from the phone lands here once.
+    const shared = consumeSharedContact();
+    if (!shared) return initial;
+    return {
+      ...initial,
+      name: shared.name || initial.name,
+      phone: shared.phone || initial.phone,
+      email: shared.email || initial.email,
+      address: shared.address || initial.address,
+    };
+  });
   const [tagDraft, setTagDraft] = useState("");
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const clients = useQuery({
