@@ -1213,6 +1213,10 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .more-sheet,.signature-sheet { width: min(100%,560px); max-height: min(82vh,720px); overflow: auto; display: grid; gap: 2px; padding: 8px 14px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; background: var(--surface); box-shadow: 0 -12px 36px rgba(0,0,0,.2); }
 .sheet-handle { width: 44px; height: 4px; margin: 1px auto 10px; border-radius: 99px; background: var(--border); }
 .more-sheet h2 { margin: 2px 4px 8px; font-size: 20px; }
+.more-sheet .sheet-sub { margin: 0 4px 10px; color: var(--dim); font-size: .9rem; line-height: 1.45; }
+.more-sheet > button .opt-sub { display: block; font-weight: 400; font-size: .8rem; color: var(--dim); margin-top: 2px; }
+/* Contacts fallback sheet: inherits .more-sheet styling; hook class for targeting. */
+.contacts-fallback-sheet { }
 .more-sheet > button { min-height: 50px; display: grid; grid-template-columns: 26px minmax(0,1fr); align-items: center; gap: 11px; padding: 9px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-weight: 750; }
 /* Build 0.6: display-mode picker — single-line options, label left, check right. */
 .more-sheet .display-mode-option { display: flex; align-items: center; justify-content: space-between; grid-template-columns: none; }

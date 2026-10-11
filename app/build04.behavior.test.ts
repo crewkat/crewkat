@@ -140,7 +140,8 @@ check("CSS keeps the 96px hidden-nav page bottom padding", CSS.includes(".app-sh
 check("recurring subsections get 16px horizontal padding", CSS.includes(".recurring-subsection { padding: 12px 16px; }"));
 
 // --- Item 1: contacts picker (static cross-check; depth in contacts test) --------
-check("contacts fallback sheet is gone", !APP.includes("contactsFallbackOpen") && !APP.includes("package=com.android.chrome"));
+// Danny 2026-10-11: the fallback sheet is back (reverses the 2026-10-01 removal).
+check("contacts fallback sheet exists with Chrome intent", APP.includes("function ContactFallbackSheet(") && APP.includes("package=com.android.chrome"));
 check("contacts unavailable toast copy (en + es)", APP.includes('contactsUnavailable: "Contacts aren\'t available here"') && APP.includes('contactsUnavailable: "Los contactos no están disponibles aquí"'));
 
 await rm(dir, { recursive: true, force: true });
