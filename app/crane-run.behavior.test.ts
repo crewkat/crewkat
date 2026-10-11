@@ -141,3 +141,37 @@ describe("Crane Run home easter egg (Danny 2026-10-11)", () => {
     expect(CSS).toMatch(/\.home-summary-art svg[^{]*\{[^}]*pointer-events:\s*none/);
   });
 });
+
+describe("Crane Run daily leaderboard UI (Danny 2026-10-11)", () => {
+  test("board card renders above the game with EN+ES strings", () => {
+    expect(APP).toContain("crane-run-board");
+    expect(APP).toContain("Today's Top 5");
+    expect(APP).toContain("Los 5 mejores de hoy");
+    expect(APP).toContain("Show me on the leaderboard");
+    expect(APP).toContain("Mostrarme en la tabla");
+    expect(APP).toContain("No scores yet today");
+    expect(APP).toContain("Aún no hay puntajes hoy");
+  });
+
+  test("board uses the shared Switch for opt-in, wired to the opt-in action", () => {
+    expect(APP).toContain("api.craneRunSetOptIn");
+    expect(APP).toMatch(/crane-run-optin[\s\S]*?<Switch/);
+  });
+
+  test("board fetches via the leaderboard action and highlights the caller's row", () => {
+    expect(APP).toContain("api.craneRunGetLeaderboard");
+    expect(APP).toContain("crane-run-board-list");
+    expect(APP).toContain("crane-run-me");
+  });
+
+  test("final score submits once per game when opted in (local high score untouched)", () => {
+    expect(APP).toContain("api.craneRunSubmitScore");
+    expect(APP).toContain("submittedRef");
+    expect(APP).toContain("CRANE_RUN_HIGH_KEY");
+  });
+
+  test("board card styled with app conventions (8px rounding, soft shadow)", () => {
+    expect(CSS).toMatch(/\.crane-run-board\s*\{[\s\S]*?border-radius:\s*8px/);
+    expect(CSS).toContain("var(--shadow-soft)");
+  });
+});

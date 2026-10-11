@@ -56,6 +56,10368 @@ var __esm = (fn, res, err) => () => {
     throw err[0];
   return res;
 };
+var __require = import.meta.require;
+
+// ../node_modules/extend/index.js
+var require_extend = __commonJS(function(exports, module) {
+  var hasOwn = Object.prototype.hasOwnProperty;
+  var toStr = Object.prototype.toString;
+  var defineProperty = Object.defineProperty;
+  var gOPD = Object.getOwnPropertyDescriptor;
+  var isArray = function isArray(arr) {
+    if (typeof Array.isArray === "function") {
+      return Array.isArray(arr);
+    }
+    return toStr.call(arr) === "[object Array]";
+  };
+  var isPlainObject = function isPlainObject(obj) {
+    if (!obj || toStr.call(obj) !== "[object Object]") {
+      return false;
+    }
+    var hasOwnConstructor = hasOwn.call(obj, "constructor");
+    var hasIsPrototypeOf = obj.constructor && obj.constructor.prototype && hasOwn.call(obj.constructor.prototype, "isPrototypeOf");
+    if (obj.constructor && !hasOwnConstructor && !hasIsPrototypeOf) {
+      return false;
+    }
+    var key;
+    for (key in obj) {}
+    return typeof key === "undefined" || hasOwn.call(obj, key);
+  };
+  var setProperty = function setProperty(target, options) {
+    if (defineProperty && options.name === "__proto__") {
+      defineProperty(target, options.name, {
+        enumerable: true,
+        configurable: true,
+        value: options.newValue,
+        writable: true
+      });
+    } else {
+      target[options.name] = options.newValue;
+    }
+  };
+  var getProperty = function getProperty(obj, name) {
+    if (name === "__proto__") {
+      if (!hasOwn.call(obj, name)) {
+        return;
+      } else if (gOPD) {
+        return gOPD(obj, name).value;
+      }
+    }
+    return obj[name];
+  };
+  module.exports = function extend() {
+    var options, name, src, copy, copyIsArray, clone;
+    var target = arguments[0];
+    var i = 1;
+    var length = arguments.length;
+    var deep = false;
+    if (typeof target === "boolean") {
+      deep = target;
+      target = arguments[1] || {};
+      i = 2;
+    }
+    if (target == null || typeof target !== "object" && typeof target !== "function") {
+      target = {};
+    }
+    for (;i < length; ++i) {
+      options = arguments[i];
+      if (options != null) {
+        for (name in options) {
+          src = getProperty(target, name);
+          copy = getProperty(options, name);
+          if (target !== copy) {
+            if (deep && copy && (isPlainObject(copy) || (copyIsArray = isArray(copy)))) {
+              if (copyIsArray) {
+                copyIsArray = false;
+                clone = src && isArray(src) ? src : [];
+              } else {
+                clone = src && isPlainObject(src) ? src : {};
+              }
+              setProperty(target, { name, newValue: extend(deep, clone, copy) });
+            } else if (typeof copy !== "undefined") {
+              setProperty(target, { name, newValue: copy });
+            }
+          }
+        }
+      }
+    }
+    return target;
+  };
+});
+
+// ../node_modules/gaxios/package.json
+var require_package = __commonJS(function(exports, module) {
+  module.exports = {
+    name: "gaxios",
+    version: "7.3.1",
+    description: "A simple common HTTP client specifically for Google APIs and services.",
+    main: "build/cjs/src/index.js",
+    types: "build/cjs/src/index.d.ts",
+    files: [
+      "build/"
+    ],
+    exports: {
+      ".": {
+        import: {
+          types: "./build/esm/src/index.d.ts",
+          default: "./build/esm/src/index.js"
+        },
+        require: {
+          types: "./build/cjs/src/index.d.ts",
+          default: "./build/cjs/src/index.js"
+        }
+      }
+    },
+    scripts: {
+      lint: "gts check --no-inline-config",
+      test: "c8 mocha build/esm/test",
+      "presystem-test": "npm run compile",
+      "system-test": "mocha build/esm/system-test --timeout 80000",
+      compile: "tsc -b ./tsconfig.json ./tsconfig.cjs.json && node utils/enable-esm.mjs",
+      fix: "gts fix",
+      prepare: "npm run compile",
+      pretest: "npm run compile",
+      webpack: "webpack",
+      "prebrowser-test": "npm run compile",
+      "browser-test": "node build/browser-test/browser-test-runner.js",
+      docs: "jsdoc -c .jsdoc.js",
+      "samples-test": "cd samples/ && npm link ../ && npm test && cd ../",
+      prelint: "cd samples; npm link ../; npm install",
+      clean: "gts clean"
+    },
+    repository: {
+      type: "git",
+      directory: "core/packages/gaxios",
+      url: "https://github.com/googleapis/google-cloud-node.git"
+    },
+    keywords: [
+      "google"
+    ],
+    engines: {
+      node: ">=18"
+    },
+    author: "Google, LLC",
+    license: "Apache-2.0",
+    devDependencies: {
+      "@babel/plugin-proposal-private-methods": "^7.18.6",
+      "@types/cors": "^2.8.6",
+      "@types/express": "^5.0.0",
+      "@types/extend": "^3.0.1",
+      "@types/mocha": "^10.0.10",
+      "@types/multiparty": "4.2.1",
+      "@types/mv": "^2.1.0",
+      "@types/ncp": "^2.0.8",
+      "@types/node": "^24.0.0",
+      "@types/sinon": "^21.0.0",
+      "@types/tmp": "^0.2.6",
+      assert: "^2.0.0",
+      browserify: "^17.0.0",
+      c8: "^10.1.3",
+      cors: "^2.8.5",
+      express: "^5.0.0",
+      gts: "^6.0.2",
+      "is-docker": "^3.0.0",
+      jsdoc: "^4.0.4",
+      "jsdoc-fresh": "^5.0.0",
+      "jsdoc-region-tag": "^4.0.0",
+      karma: "^6.0.0",
+      "karma-chrome-launcher": "^3.0.0",
+      "karma-coverage": "^2.0.0",
+      "karma-firefox-launcher": "^2.0.0",
+      "karma-mocha": "^2.0.0",
+      "karma-remap-coverage": "^0.1.5",
+      "karma-sourcemap-loader": "^0.4.0",
+      "karma-webpack": "^5.0.0",
+      mocha: "^11.1.0",
+      multiparty: "^4.2.1",
+      mv: "^2.1.1",
+      ncp: "^2.0.0",
+      nock: "14.0.5",
+      "null-loader": "^4.0.1",
+      "pack-n-play": "^4.0.0",
+      puppeteer: "^24.0.0",
+      sinon: "21.0.3",
+      "stream-browserify": "^3.0.0",
+      tmp: "0.2.7",
+      "ts-loader": "^9.5.2",
+      typescript: "5.8.3",
+      "undici-types": "^7.24.1",
+      webpack: "^5.97.1",
+      "webpack-cli": "^6.0.1"
+    },
+    dependencies: {
+      extend: "^3.0.2",
+      "https-proxy-agent": "^7.0.1",
+      "node-fetch": "^3.3.2"
+    },
+    homepage: "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios"
+  };
+});
+
+// ../node_modules/gaxios/build/cjs/src/util.cjs
+var require_util = __commonJS(function(exports, module) {
+  var pkg = require_package();
+  module.exports = { pkg };
+});
+
+// ../node_modules/gaxios/build/cjs/src/common.js
+var require_common = __commonJS(function(exports) {
+  var __importDefault = exports && exports.__importDefault || function(mod) {
+    return mod && mod.__esModule ? mod : { default: mod };
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GaxiosError = exports.GAXIOS_ERROR_SYMBOL = undefined;
+  exports.defaultErrorRedactor = defaultErrorRedactor;
+  var extend_1 = __importDefault(require_extend());
+  var util_cjs_1 = __importDefault(require_util());
+  var pkg = util_cjs_1.default.pkg;
+  exports.GAXIOS_ERROR_SYMBOL = Symbol.for(`${pkg.name}-gaxios-error`);
+
+  class GaxiosError extends Error {
+    config;
+    response;
+    code;
+    status;
+    error;
+    [exports.GAXIOS_ERROR_SYMBOL] = pkg.version;
+    static [Symbol.hasInstance](instance) {
+      if (instance && typeof instance === "object" && exports.GAXIOS_ERROR_SYMBOL in instance && instance[exports.GAXIOS_ERROR_SYMBOL] === pkg.version) {
+        return true;
+      }
+      return Function.prototype[Symbol.hasInstance].call(GaxiosError, instance);
+    }
+    constructor(message, config, response, cause) {
+      super(message, { cause });
+      this.config = config;
+      this.response = response;
+      this.error = cause instanceof Error ? cause : undefined;
+      this.config = (0, extend_1.default)(true, {}, config);
+      if (this.response) {
+        this.response.config = (0, extend_1.default)(true, {}, this.response.config);
+      }
+      if (this.response) {
+        try {
+          this.response.data = translateData(this.config.responseType, this.response?.bodyUsed ? this.response?.data : undefined);
+        } catch {}
+        this.status = this.response.status;
+      }
+      if (cause instanceof DOMException) {
+        this.code = cause.name;
+      } else if (cause && typeof cause === "object" && "code" in cause && (typeof cause.code === "string" || typeof cause.code === "number")) {
+        this.code = cause.code;
+      }
+    }
+    static extractAPIErrorFromResponse(res, defaultErrorMessage = "The request failed") {
+      let message = defaultErrorMessage;
+      if (typeof res.data === "string") {
+        message = res.data;
+      }
+      if (res.data && typeof res.data === "object" && "error" in res.data && res.data.error && !res.ok) {
+        if (typeof res.data.error === "string") {
+          return {
+            message: res.data.error,
+            code: res.status,
+            status: res.statusText
+          };
+        }
+        if (typeof res.data.error === "object") {
+          message = "message" in res.data.error && typeof res.data.error.message === "string" ? res.data.error.message : message;
+          const status = "status" in res.data.error && typeof res.data.error.status === "string" ? res.data.error.status : res.statusText;
+          const code = "code" in res.data.error && typeof res.data.error.code === "number" ? res.data.error.code : res.status;
+          if ("errors" in res.data.error && Array.isArray(res.data.error.errors)) {
+            const errorMessages = [];
+            for (const e of res.data.error.errors) {
+              if (typeof e === "object" && "message" in e && typeof e.message === "string") {
+                errorMessages.push(e.message);
+              }
+            }
+            return Object.assign({
+              message: errorMessages.join(`
+`) || message,
+              code,
+              status
+            }, res.data.error);
+          }
+          return Object.assign({
+            message,
+            code,
+            status
+          }, res.data.error);
+        }
+      }
+      return {
+        message,
+        code: res.status,
+        status: res.statusText
+      };
+    }
+  }
+  exports.GaxiosError = GaxiosError;
+  function translateData(responseType, data) {
+    switch (responseType) {
+      case "stream":
+        return data;
+      case "json":
+        return JSON.parse(JSON.stringify(data));
+      case "arraybuffer":
+        return JSON.parse(Buffer.from(data).toString("utf8"));
+      case "blob":
+        return JSON.parse(data.text());
+      default:
+        return data;
+    }
+  }
+  function defaultErrorRedactor(data) {
+    const REDACT = "<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.";
+    function redactHeaders(headers) {
+      if (!headers)
+        return;
+      headers.forEach((_, key) => {
+        if (/^authentication$/i.test(key) || /^authorization$/i.test(key) || /secret/i.test(key))
+          headers.set(key, REDACT);
+      });
+    }
+    function redactString(obj, key) {
+      if (typeof obj === "object" && obj !== null && typeof obj[key] === "string") {
+        const text = obj[key];
+        if (/grant_type=/i.test(text) || /assertion=/i.test(text) || /secret/i.test(text)) {
+          obj[key] = REDACT;
+        }
+      }
+    }
+    function redactObject(obj) {
+      if (!obj || typeof obj !== "object") {
+        return;
+      } else if (obj instanceof FormData || obj instanceof URLSearchParams || "forEach" in obj && "set" in obj) {
+        obj.forEach((_, key) => {
+          if (["grant_type", "assertion"].includes(key) || /secret/.test(key)) {
+            obj.set(key, REDACT);
+          }
+        });
+      } else {
+        if ("grant_type" in obj) {
+          obj["grant_type"] = REDACT;
+        }
+        if ("assertion" in obj) {
+          obj["assertion"] = REDACT;
+        }
+        if ("client_secret" in obj) {
+          obj["client_secret"] = REDACT;
+        }
+      }
+    }
+    if (data.config) {
+      redactHeaders(data.config.headers);
+      redactString(data.config, "data");
+      redactObject(data.config.data);
+      redactString(data.config, "body");
+      redactObject(data.config.body);
+      if (data.config.url.searchParams.has("token")) {
+        data.config.url.searchParams.set("token", REDACT);
+      }
+      if (data.config.url.searchParams.has("client_secret")) {
+        data.config.url.searchParams.set("client_secret", REDACT);
+      }
+    }
+    if (data.response) {
+      defaultErrorRedactor({ config: data.response.config });
+      redactHeaders(data.response.headers);
+      if (data.response.bodyUsed) {
+        redactString(data.response, "data");
+        redactObject(data.response.data);
+      }
+    }
+    return data;
+  }
+});
+
+// ../node_modules/gaxios/build/cjs/src/retry.js
+var require_retry = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.getRetryConfig = getRetryConfig;
+  async function getRetryConfig(err) {
+    let config = getConfig(err);
+    if (!err || !err.config || !config && !err.config.retry) {
+      return { shouldRetry: false };
+    }
+    config = config || {};
+    config.currentRetryAttempt = config.currentRetryAttempt || 0;
+    config.retry = config.retry === undefined || config.retry === null ? 3 : config.retry;
+    config.httpMethodsToRetry = config.httpMethodsToRetry || [
+      "GET",
+      "HEAD",
+      "PUT",
+      "OPTIONS",
+      "DELETE"
+    ];
+    config.noResponseRetries = config.noResponseRetries === undefined || config.noResponseRetries === null ? 2 : config.noResponseRetries;
+    config.retryDelayMultiplier = config.retryDelayMultiplier ? config.retryDelayMultiplier : 2;
+    config.timeOfFirstRequest = config.timeOfFirstRequest ? config.timeOfFirstRequest : Date.now();
+    config.totalTimeout = config.totalTimeout ? config.totalTimeout : Number.MAX_SAFE_INTEGER;
+    config.maxRetryDelay = config.maxRetryDelay ? config.maxRetryDelay : Number.MAX_SAFE_INTEGER;
+    const retryRanges = [
+      [100, 199],
+      [408, 408],
+      [429, 429],
+      [500, 599]
+    ];
+    config.statusCodesToRetry = config.statusCodesToRetry || retryRanges;
+    err.config.retryConfig = config;
+    const shouldRetryFn = config.shouldRetry || shouldRetryRequest;
+    if (!await shouldRetryFn(err)) {
+      return { shouldRetry: false, config: err.config };
+    }
+    const delay = getNextRetryDelay(config);
+    err.config.retryConfig.currentRetryAttempt += 1;
+    const backoff = config.retryBackoff ? config.retryBackoff(err, delay) : new Promise((resolve) => {
+      setTimeout(resolve, delay);
+    });
+    if (config.onRetryAttempt) {
+      await config.onRetryAttempt(err);
+    }
+    await backoff;
+    return { shouldRetry: true, config: err.config };
+  }
+  function shouldRetryRequest(err) {
+    const config = getConfig(err);
+    if (err.config.signal?.aborted && err.code !== "TimeoutError" || err.code === "AbortError") {
+      return false;
+    }
+    if (!config || config.retry === 0) {
+      return false;
+    }
+    if (!err.response && (config.currentRetryAttempt || 0) >= config.noResponseRetries) {
+      return false;
+    }
+    if (!config.httpMethodsToRetry || !config.httpMethodsToRetry.includes(err.config.method?.toUpperCase() || "GET")) {
+      return false;
+    }
+    if (err.response && err.response.status) {
+      let isInRange = false;
+      for (const [min, max] of config.statusCodesToRetry) {
+        const status = err.response.status;
+        if (status >= min && status <= max) {
+          isInRange = true;
+          break;
+        }
+      }
+      if (!isInRange) {
+        return false;
+      }
+    }
+    config.currentRetryAttempt = config.currentRetryAttempt || 0;
+    if (config.currentRetryAttempt >= config.retry) {
+      return false;
+    }
+    return true;
+  }
+  function getConfig(err) {
+    if (err && err.config && err.config.retryConfig) {
+      return err.config.retryConfig;
+    }
+    return;
+  }
+  function getNextRetryDelay(config) {
+    const retryDelay = config.currentRetryAttempt ? 0 : config.retryDelay ?? 100;
+    const calculatedDelay = retryDelay + (Math.pow(config.retryDelayMultiplier, config.currentRetryAttempt) - 1) / 2 * 1000;
+    const maxAllowableDelay = config.totalTimeout - (Date.now() - config.timeOfFirstRequest);
+    return Math.min(calculatedDelay, maxAllowableDelay, config.maxRetryDelay);
+  }
+});
+
+// ../node_modules/gaxios/build/cjs/src/interceptor.js
+var require_interceptor = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GaxiosInterceptorManager = undefined;
+
+  class GaxiosInterceptorManager extends Set {
+  }
+  exports.GaxiosInterceptorManager = GaxiosInterceptorManager;
+});
+
+// ../node_modules/ms/index.js
+var require_ms = __commonJS(function(exports, module) {
+  var s = 1000;
+  var m = s * 60;
+  var h = m * 60;
+  var d = h * 24;
+  var w = d * 7;
+  var y = d * 365.25;
+  module.exports = function(val, options) {
+    options = options || {};
+    var type = typeof val;
+    if (type === "string" && val.length > 0) {
+      return parse(val);
+    } else if (type === "number" && isFinite(val)) {
+      return options.long ? fmtLong(val) : fmtShort(val);
+    }
+    throw new Error("val is not a non-empty string or a valid number. val=" + JSON.stringify(val));
+  };
+  function parse(str) {
+    str = String(str);
+    if (str.length > 100) {
+      return;
+    }
+    var match = /^(-?(?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$/i.exec(str);
+    if (!match) {
+      return;
+    }
+    var n = parseFloat(match[1]);
+    var type = (match[2] || "ms").toLowerCase();
+    switch (type) {
+      case "years":
+      case "year":
+      case "yrs":
+      case "yr":
+      case "y":
+        return n * y;
+      case "weeks":
+      case "week":
+      case "w":
+        return n * w;
+      case "days":
+      case "day":
+      case "d":
+        return n * d;
+      case "hours":
+      case "hour":
+      case "hrs":
+      case "hr":
+      case "h":
+        return n * h;
+      case "minutes":
+      case "minute":
+      case "mins":
+      case "min":
+      case "m":
+        return n * m;
+      case "seconds":
+      case "second":
+      case "secs":
+      case "sec":
+      case "s":
+        return n * s;
+      case "milliseconds":
+      case "millisecond":
+      case "msecs":
+      case "msec":
+      case "ms":
+        return n;
+      default:
+        return;
+    }
+  }
+  function fmtShort(ms) {
+    var msAbs = Math.abs(ms);
+    if (msAbs >= d) {
+      return Math.round(ms / d) + "d";
+    }
+    if (msAbs >= h) {
+      return Math.round(ms / h) + "h";
+    }
+    if (msAbs >= m) {
+      return Math.round(ms / m) + "m";
+    }
+    if (msAbs >= s) {
+      return Math.round(ms / s) + "s";
+    }
+    return ms + "ms";
+  }
+  function fmtLong(ms) {
+    var msAbs = Math.abs(ms);
+    if (msAbs >= d) {
+      return plural(ms, msAbs, d, "day");
+    }
+    if (msAbs >= h) {
+      return plural(ms, msAbs, h, "hour");
+    }
+    if (msAbs >= m) {
+      return plural(ms, msAbs, m, "minute");
+    }
+    if (msAbs >= s) {
+      return plural(ms, msAbs, s, "second");
+    }
+    return ms + " ms";
+  }
+  function plural(ms, msAbs, n, name) {
+    var isPlural = msAbs >= n * 1.5;
+    return Math.round(ms / n) + " " + name + (isPlural ? "s" : "");
+  }
+});
+
+// ../node_modules/debug/src/common.js
+var require_common2 = __commonJS(function(exports, module) {
+  function setup(env) {
+    createDebug.debug = createDebug;
+    createDebug.default = createDebug;
+    createDebug.coerce = coerce;
+    createDebug.disable = disable;
+    createDebug.enable = enable;
+    createDebug.enabled = enabled;
+    createDebug.humanize = require_ms();
+    createDebug.destroy = destroy;
+    Object.keys(env).forEach((key) => {
+      createDebug[key] = env[key];
+    });
+    createDebug.names = [];
+    createDebug.skips = [];
+    createDebug.formatters = {};
+    function selectColor(namespace) {
+      let hash = 0;
+      for (let i = 0;i < namespace.length; i++) {
+        hash = (hash << 5) - hash + namespace.charCodeAt(i);
+        hash |= 0;
+      }
+      return createDebug.colors[Math.abs(hash) % createDebug.colors.length];
+    }
+    createDebug.selectColor = selectColor;
+    function createDebug(namespace) {
+      let prevTime;
+      let enableOverride = null;
+      let namespacesCache;
+      let enabledCache;
+      function debug(...args) {
+        if (!debug.enabled) {
+          return;
+        }
+        const self2 = debug;
+        const curr = Number(new Date);
+        const ms = curr - (prevTime || curr);
+        self2.diff = ms;
+        self2.prev = prevTime;
+        self2.curr = curr;
+        prevTime = curr;
+        args[0] = createDebug.coerce(args[0]);
+        if (typeof args[0] !== "string") {
+          args.unshift("%O");
+        }
+        let index = 0;
+        args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format) => {
+          if (match === "%%") {
+            return "%";
+          }
+          index++;
+          const formatter = createDebug.formatters[format];
+          if (typeof formatter === "function") {
+            const val = args[index];
+            match = formatter.call(self2, val);
+            args.splice(index, 1);
+            index--;
+          }
+          return match;
+        });
+        createDebug.formatArgs.call(self2, args);
+        const logFn = self2.log || createDebug.log;
+        logFn.apply(self2, args);
+      }
+      debug.namespace = namespace;
+      debug.useColors = createDebug.useColors();
+      debug.color = createDebug.selectColor(namespace);
+      debug.extend = extend;
+      debug.destroy = createDebug.destroy;
+      Object.defineProperty(debug, "enabled", {
+        enumerable: true,
+        configurable: false,
+        get: () => {
+          if (enableOverride !== null) {
+            return enableOverride;
+          }
+          if (namespacesCache !== createDebug.namespaces) {
+            namespacesCache = createDebug.namespaces;
+            enabledCache = createDebug.enabled(namespace);
+          }
+          return enabledCache;
+        },
+        set: (v) => {
+          enableOverride = v;
+        }
+      });
+      if (typeof createDebug.init === "function") {
+        createDebug.init(debug);
+      }
+      return debug;
+    }
+    function extend(namespace, delimiter) {
+      const newDebug = createDebug(this.namespace + (typeof delimiter === "undefined" ? ":" : delimiter) + namespace);
+      newDebug.log = this.log;
+      return newDebug;
+    }
+    function enable(namespaces) {
+      createDebug.save(namespaces);
+      createDebug.namespaces = namespaces;
+      createDebug.names = [];
+      createDebug.skips = [];
+      const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
+      for (const ns of split) {
+        if (ns[0] === "-") {
+          createDebug.skips.push(ns.slice(1));
+        } else {
+          createDebug.names.push(ns);
+        }
+      }
+    }
+    function matchesTemplate(search, template) {
+      let searchIndex = 0;
+      let templateIndex = 0;
+      let starIndex = -1;
+      let matchIndex = 0;
+      while (searchIndex < search.length) {
+        if (templateIndex < template.length && (template[templateIndex] === search[searchIndex] || template[templateIndex] === "*")) {
+          if (template[templateIndex] === "*") {
+            starIndex = templateIndex;
+            matchIndex = searchIndex;
+            templateIndex++;
+          } else {
+            searchIndex++;
+            templateIndex++;
+          }
+        } else if (starIndex !== -1) {
+          templateIndex = starIndex + 1;
+          matchIndex++;
+          searchIndex = matchIndex;
+        } else {
+          return false;
+        }
+      }
+      while (templateIndex < template.length && template[templateIndex] === "*") {
+        templateIndex++;
+      }
+      return templateIndex === template.length;
+    }
+    function disable() {
+      const namespaces = [
+        ...createDebug.names,
+        ...createDebug.skips.map((namespace) => "-" + namespace)
+      ].join(",");
+      createDebug.enable("");
+      return namespaces;
+    }
+    function enabled(name) {
+      for (const skip of createDebug.skips) {
+        if (matchesTemplate(name, skip)) {
+          return false;
+        }
+      }
+      for (const ns of createDebug.names) {
+        if (matchesTemplate(name, ns)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function coerce(val) {
+      if (val instanceof Error) {
+        return val.stack || val.message;
+      }
+      return val;
+    }
+    function destroy() {
+      console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+    }
+    createDebug.enable(createDebug.load());
+    return createDebug;
+  }
+  module.exports = setup;
+});
+
+// ../node_modules/debug/src/browser.js
+var require_browser = __commonJS(function(exports, module) {
+  exports.formatArgs = formatArgs;
+  exports.save = save;
+  exports.load = load;
+  exports.useColors = useColors;
+  exports.storage = localstorage();
+  exports.destroy = (() => {
+    let warned = false;
+    return () => {
+      if (!warned) {
+        warned = true;
+        console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+      }
+    };
+  })();
+  exports.colors = [
+    "#0000CC",
+    "#0000FF",
+    "#0033CC",
+    "#0033FF",
+    "#0066CC",
+    "#0066FF",
+    "#0099CC",
+    "#0099FF",
+    "#00CC00",
+    "#00CC33",
+    "#00CC66",
+    "#00CC99",
+    "#00CCCC",
+    "#00CCFF",
+    "#3300CC",
+    "#3300FF",
+    "#3333CC",
+    "#3333FF",
+    "#3366CC",
+    "#3366FF",
+    "#3399CC",
+    "#3399FF",
+    "#33CC00",
+    "#33CC33",
+    "#33CC66",
+    "#33CC99",
+    "#33CCCC",
+    "#33CCFF",
+    "#6600CC",
+    "#6600FF",
+    "#6633CC",
+    "#6633FF",
+    "#66CC00",
+    "#66CC33",
+    "#9900CC",
+    "#9900FF",
+    "#9933CC",
+    "#9933FF",
+    "#99CC00",
+    "#99CC33",
+    "#CC0000",
+    "#CC0033",
+    "#CC0066",
+    "#CC0099",
+    "#CC00CC",
+    "#CC00FF",
+    "#CC3300",
+    "#CC3333",
+    "#CC3366",
+    "#CC3399",
+    "#CC33CC",
+    "#CC33FF",
+    "#CC6600",
+    "#CC6633",
+    "#CC9900",
+    "#CC9933",
+    "#CCCC00",
+    "#CCCC33",
+    "#FF0000",
+    "#FF0033",
+    "#FF0066",
+    "#FF0099",
+    "#FF00CC",
+    "#FF00FF",
+    "#FF3300",
+    "#FF3333",
+    "#FF3366",
+    "#FF3399",
+    "#FF33CC",
+    "#FF33FF",
+    "#FF6600",
+    "#FF6633",
+    "#FF9900",
+    "#FF9933",
+    "#FFCC00",
+    "#FFCC33"
+  ];
+  function useColors() {
+    if (typeof window !== "undefined" && window.process && (window.process.type === "renderer" || window.process.__nwjs)) {
+      return true;
+    }
+    if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
+      return false;
+    }
+    let m;
+    return typeof document !== "undefined" && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance || typeof window !== "undefined" && window.console && (window.console.firebug || window.console.exception && window.console.table) || typeof navigator !== "undefined" && navigator.userAgent && (m = navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/)) && parseInt(m[1], 10) >= 31 || typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/);
+  }
+  function formatArgs(args) {
+    args[0] = (this.useColors ? "%c" : "") + this.namespace + (this.useColors ? " %c" : " ") + args[0] + (this.useColors ? "%c " : " ") + "+" + module.exports.humanize(this.diff);
+    if (!this.useColors) {
+      return;
+    }
+    const c = "color: " + this.color;
+    args.splice(1, 0, c, "color: inherit");
+    let index = 0;
+    let lastC = 0;
+    args[0].replace(/%[a-zA-Z%]/g, (match) => {
+      if (match === "%%") {
+        return;
+      }
+      index++;
+      if (match === "%c") {
+        lastC = index;
+      }
+    });
+    args.splice(lastC, 0, c);
+  }
+  exports.log = console.debug || console.log || (() => {});
+  function save(namespaces) {
+    try {
+      if (namespaces) {
+        exports.storage.setItem("debug", namespaces);
+      } else {
+        exports.storage.removeItem("debug");
+      }
+    } catch (error) {}
+  }
+  function load() {
+    let r;
+    try {
+      r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
+    } catch (error) {}
+    if (!r && typeof process !== "undefined" && "env" in process) {
+      r = process.env.DEBUG;
+    }
+    return r;
+  }
+  function localstorage() {
+    try {
+      return localStorage;
+    } catch (error) {}
+  }
+  module.exports = require_common2()(exports);
+  var { formatters } = module.exports;
+  formatters.j = function(v) {
+    try {
+      return JSON.stringify(v);
+    } catch (error) {
+      return "[UnexpectedJSONParseError]: " + error.message;
+    }
+  };
+});
+
+// ../node_modules/debug/src/node.js
+var require_node = __commonJS(function(exports, module) {
+  var tty = __require("tty");
+  var util = __require("util");
+  exports.init = init;
+  exports.log = log;
+  exports.formatArgs = formatArgs;
+  exports.save = save;
+  exports.load = load;
+  exports.useColors = useColors;
+  exports.destroy = util.deprecate(() => {}, "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+  exports.colors = [6, 2, 3, 4, 5, 1];
+  try {
+    const supportsColor = (()=>{throw new Error("Cannot require module "+"supports-color");})();
+    if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
+      exports.colors = [
+        20,
+        21,
+        26,
+        27,
+        32,
+        33,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        56,
+        57,
+        62,
+        63,
+        68,
+        69,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        92,
+        93,
+        98,
+        99,
+        112,
+        113,
+        128,
+        129,
+        134,
+        135,
+        148,
+        149,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        178,
+        179,
+        184,
+        185,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        214,
+        215,
+        220,
+        221
+      ];
+    }
+  } catch (error) {}
+  exports.inspectOpts = Object.keys(process.env).filter((key) => {
+    return /^debug_/i.test(key);
+  }).reduce((obj, key) => {
+    const prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, (_, k) => {
+      return k.toUpperCase();
+    });
+    let val = process.env[key];
+    if (/^(yes|on|true|enabled)$/i.test(val)) {
+      val = true;
+    } else if (/^(no|off|false|disabled)$/i.test(val)) {
+      val = false;
+    } else if (val === "null") {
+      val = null;
+    } else {
+      val = Number(val);
+    }
+    obj[prop] = val;
+    return obj;
+  }, {});
+  function useColors() {
+    return "colors" in exports.inspectOpts ? Boolean(exports.inspectOpts.colors) : tty.isatty(process.stderr.fd);
+  }
+  function formatArgs(args) {
+    const { namespace: name, useColors } = this;
+    if (useColors) {
+      const c = this.color;
+      const colorCode = "\x1B[3" + (c < 8 ? c : "8;5;" + c);
+      const prefix = `  ${colorCode};1m${name} \x1B[0m`;
+      args[0] = prefix + args[0].split(`
+`).join(`
+` + prefix);
+      args.push(colorCode + "m+" + module.exports.humanize(this.diff) + "\x1B[0m");
+    } else {
+      args[0] = getDate() + name + " " + args[0];
+    }
+  }
+  function getDate() {
+    if (exports.inspectOpts.hideDate) {
+      return "";
+    }
+    return new Date().toISOString() + " ";
+  }
+  function log(...args) {
+    return process.stderr.write(util.formatWithOptions(exports.inspectOpts, ...args) + `
+`);
+  }
+  function save(namespaces) {
+    if (namespaces) {
+      process.env.DEBUG = namespaces;
+    } else {
+      delete process.env.DEBUG;
+    }
+  }
+  function load() {
+    return process.env.DEBUG;
+  }
+  function init(debug) {
+    debug.inspectOpts = {};
+    const keys = Object.keys(exports.inspectOpts);
+    for (let i = 0;i < keys.length; i++) {
+      debug.inspectOpts[keys[i]] = exports.inspectOpts[keys[i]];
+    }
+  }
+  module.exports = require_common2()(exports);
+  var { formatters } = module.exports;
+  formatters.o = function(v) {
+    this.inspectOpts.colors = this.useColors;
+    return util.inspect(v, this.inspectOpts).split(`
+`).map((str) => str.trim()).join(" ");
+  };
+  formatters.O = function(v) {
+    this.inspectOpts.colors = this.useColors;
+    return util.inspect(v, this.inspectOpts);
+  };
+});
+
+// ../node_modules/debug/src/index.js
+var require_src = __commonJS(function(exports, module) {
+  if (typeof process === "undefined" || process.type === "renderer" || false || process.__nwjs) {
+    module.exports = require_browser();
+  } else {
+    module.exports = require_node();
+  }
+});
+
+// ../node_modules/agent-base/dist/helpers.js
+var require_helpers = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function(mod) {
+    if (mod && mod.__esModule)
+      return mod;
+    var result = {};
+    if (mod != null) {
+      for (var k in mod)
+        if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k))
+          __createBinding(result, mod, k);
+    }
+    __setModuleDefault(result, mod);
+    return result;
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.req = exports.json = exports.toBuffer = undefined;
+  var http = __importStar(__require("http"));
+  var https = __importStar(__require("https"));
+  async function toBuffer(stream) {
+    let length = 0;
+    const chunks = [];
+    for await (const chunk of stream) {
+      length += chunk.length;
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks, length);
+  }
+  exports.toBuffer = toBuffer;
+  async function json(stream) {
+    const buf = await toBuffer(stream);
+    const str = buf.toString("utf8");
+    try {
+      return JSON.parse(str);
+    } catch (_err) {
+      const err = _err;
+      err.message += ` (input: ${str})`;
+      throw err;
+    }
+  }
+  exports.json = json;
+  function req(url, opts = {}) {
+    const href = typeof url === "string" ? url : url.href;
+    const req = (href.startsWith("https:") ? https : http).request(url, opts);
+    const promise = new Promise((resolve, reject) => {
+      req.once("response", resolve).once("error", reject).end();
+    });
+    req.then = promise.then.bind(promise);
+    return req;
+  }
+  exports.req = req;
+});
+
+// ../node_modules/agent-base/dist/index.js
+var require_dist = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function(mod) {
+    if (mod && mod.__esModule)
+      return mod;
+    var result = {};
+    if (mod != null) {
+      for (var k in mod)
+        if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k))
+          __createBinding(result, mod, k);
+    }
+    __setModuleDefault(result, mod);
+    return result;
+  };
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.Agent = undefined;
+  var net = __importStar(__require("net"));
+  var http = __importStar(__require("http"));
+  var https_1 = __require("https");
+  __exportStar(require_helpers(), exports);
+  var INTERNAL = Symbol("AgentBaseInternalState");
+
+  class Agent extends http.Agent {
+    constructor(opts) {
+      super(opts);
+      this[INTERNAL] = {};
+    }
+    isSecureEndpoint(options) {
+      if (options) {
+        if (typeof options.secureEndpoint === "boolean") {
+          return options.secureEndpoint;
+        }
+        if (typeof options.protocol === "string") {
+          return options.protocol === "https:";
+        }
+      }
+      const { stack } = new Error;
+      if (typeof stack !== "string")
+        return false;
+      return stack.split(`
+`).some((l) => l.indexOf("(https.js:") !== -1 || l.indexOf("node:https:") !== -1);
+    }
+    incrementSockets(name) {
+      if (this.maxSockets === Infinity && this.maxTotalSockets === Infinity) {
+        return null;
+      }
+      if (!this.sockets[name]) {
+        this.sockets[name] = [];
+      }
+      const fakeSocket = new net.Socket({ writable: false });
+      this.sockets[name].push(fakeSocket);
+      this.totalSocketCount++;
+      return fakeSocket;
+    }
+    decrementSockets(name, socket) {
+      if (!this.sockets[name] || socket === null) {
+        return;
+      }
+      const sockets = this.sockets[name];
+      const index = sockets.indexOf(socket);
+      if (index !== -1) {
+        sockets.splice(index, 1);
+        this.totalSocketCount--;
+        if (sockets.length === 0) {
+          delete this.sockets[name];
+        }
+      }
+    }
+    getName(options) {
+      const secureEndpoint = this.isSecureEndpoint(options);
+      if (secureEndpoint) {
+        return https_1.Agent.prototype.getName.call(this, options);
+      }
+      return super.getName(options);
+    }
+    createSocket(req, options, cb) {
+      const connectOpts = {
+        ...options,
+        secureEndpoint: this.isSecureEndpoint(options)
+      };
+      const name = this.getName(connectOpts);
+      const fakeSocket = this.incrementSockets(name);
+      Promise.resolve().then(() => this.connect(req, connectOpts)).then((socket) => {
+        this.decrementSockets(name, fakeSocket);
+        if (socket instanceof http.Agent) {
+          try {
+            return socket.addRequest(req, connectOpts);
+          } catch (err) {
+            return cb(err);
+          }
+        }
+        this[INTERNAL].currentSocket = socket;
+        super.createSocket(req, options, cb);
+      }, (err) => {
+        this.decrementSockets(name, fakeSocket);
+        cb(err);
+      });
+    }
+    createConnection() {
+      const socket = this[INTERNAL].currentSocket;
+      this[INTERNAL].currentSocket = undefined;
+      if (!socket) {
+        throw new Error("No socket was returned in the `connect()` function");
+      }
+      return socket;
+    }
+    get defaultPort() {
+      return this[INTERNAL].defaultPort ?? (this.protocol === "https:" ? 443 : 80);
+    }
+    set defaultPort(v) {
+      if (this[INTERNAL]) {
+        this[INTERNAL].defaultPort = v;
+      }
+    }
+    get protocol() {
+      return this[INTERNAL].protocol ?? (this.isSecureEndpoint() ? "https:" : "http:");
+    }
+    set protocol(v) {
+      if (this[INTERNAL]) {
+        this[INTERNAL].protocol = v;
+      }
+    }
+  }
+  exports.Agent = Agent;
+});
+
+// ../node_modules/https-proxy-agent/dist/parse-proxy-response.js
+var require_parse_proxy_response = __commonJS(function(exports) {
+  var __importDefault = exports && exports.__importDefault || function(mod) {
+    return mod && mod.__esModule ? mod : { default: mod };
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.parseProxyResponse = undefined;
+  var debug_1 = __importDefault(require_src());
+  var debug = (0, debug_1.default)("https-proxy-agent:parse-proxy-response");
+  function parseProxyResponse(socket) {
+    return new Promise((resolve, reject) => {
+      let buffersLength = 0;
+      const buffers = [];
+      function read() {
+        const b = socket.read();
+        if (b)
+          ondata(b);
+        else
+          socket.once("readable", read);
+      }
+      function cleanup() {
+        socket.removeListener("end", onend);
+        socket.removeListener("error", onerror);
+        socket.removeListener("readable", read);
+      }
+      function onend() {
+        cleanup();
+        debug("onend");
+        reject(new Error("Proxy connection ended before receiving CONNECT response"));
+      }
+      function onerror(err) {
+        cleanup();
+        debug("onerror %o", err);
+        reject(err);
+      }
+      function ondata(b) {
+        buffers.push(b);
+        buffersLength += b.length;
+        const buffered = Buffer.concat(buffers, buffersLength);
+        const endOfHeaders = buffered.indexOf(`\r
+\r
+`);
+        if (endOfHeaders === -1) {
+          debug("have not received end of HTTP headers yet...");
+          read();
+          return;
+        }
+        const headerParts = buffered.slice(0, endOfHeaders).toString("ascii").split(`\r
+`);
+        const firstLine = headerParts.shift();
+        if (!firstLine) {
+          socket.destroy();
+          return reject(new Error("No header received from proxy CONNECT response"));
+        }
+        const firstLineParts = firstLine.split(" ");
+        const statusCode = +firstLineParts[1];
+        const statusText = firstLineParts.slice(2).join(" ");
+        const headers = {};
+        for (const header of headerParts) {
+          if (!header)
+            continue;
+          const firstColon = header.indexOf(":");
+          if (firstColon === -1) {
+            socket.destroy();
+            return reject(new Error(`Invalid header from proxy CONNECT response: "${header}"`));
+          }
+          const key = header.slice(0, firstColon).toLowerCase();
+          const value = header.slice(firstColon + 1).trimStart();
+          const current = headers[key];
+          if (typeof current === "string") {
+            headers[key] = [current, value];
+          } else if (Array.isArray(current)) {
+            current.push(value);
+          } else {
+            headers[key] = value;
+          }
+        }
+        debug("got proxy server response: %o %o", firstLine, headers);
+        cleanup();
+        resolve({
+          connect: {
+            statusCode,
+            statusText,
+            headers
+          },
+          buffered
+        });
+      }
+      socket.on("error", onerror);
+      socket.on("end", onend);
+      read();
+    });
+  }
+  exports.parseProxyResponse = parseProxyResponse;
+});
+
+// ../node_modules/https-proxy-agent/dist/index.js
+var require_dist2 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function(mod) {
+    if (mod && mod.__esModule)
+      return mod;
+    var result = {};
+    if (mod != null) {
+      for (var k in mod)
+        if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k))
+          __createBinding(result, mod, k);
+    }
+    __setModuleDefault(result, mod);
+    return result;
+  };
+  var __importDefault = exports && exports.__importDefault || function(mod) {
+    return mod && mod.__esModule ? mod : { default: mod };
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.HttpsProxyAgent = undefined;
+  var net = __importStar(__require("net"));
+  var tls = __importStar(__require("tls"));
+  var assert_1 = __importDefault(__require("assert"));
+  var debug_1 = __importDefault(require_src());
+  var agent_base_1 = require_dist();
+  var url_1 = __require("url");
+  var parse_proxy_response_1 = require_parse_proxy_response();
+  var debug = (0, debug_1.default)("https-proxy-agent");
+  var setServernameFromNonIpHost = (options) => {
+    if (options.servername === undefined && options.host && !net.isIP(options.host)) {
+      return {
+        ...options,
+        servername: options.host
+      };
+    }
+    return options;
+  };
+
+  class HttpsProxyAgent extends agent_base_1.Agent {
+    constructor(proxy, opts) {
+      super(opts);
+      this.options = { path: undefined };
+      this.proxy = typeof proxy === "string" ? new url_1.URL(proxy) : proxy;
+      this.proxyHeaders = opts?.headers ?? {};
+      debug("Creating new HttpsProxyAgent instance: %o", this.proxy.href);
+      const host = (this.proxy.hostname || this.proxy.host).replace(/^\[|\]$/g, "");
+      const port = this.proxy.port ? parseInt(this.proxy.port, 10) : this.proxy.protocol === "https:" ? 443 : 80;
+      this.connectOpts = {
+        ALPNProtocols: ["http/1.1"],
+        ...opts ? omit(opts, "headers") : null,
+        host,
+        port
+      };
+    }
+    async connect(req, opts) {
+      const { proxy } = this;
+      if (!opts.host) {
+        throw new TypeError('No "host" provided');
+      }
+      let socket;
+      if (proxy.protocol === "https:") {
+        debug("Creating `tls.Socket`: %o", this.connectOpts);
+        socket = tls.connect(setServernameFromNonIpHost(this.connectOpts));
+      } else {
+        debug("Creating `net.Socket`: %o", this.connectOpts);
+        socket = net.connect(this.connectOpts);
+      }
+      const headers = typeof this.proxyHeaders === "function" ? this.proxyHeaders() : { ...this.proxyHeaders };
+      const host = net.isIPv6(opts.host) ? `[${opts.host}]` : opts.host;
+      let payload = `CONNECT ${host}:${opts.port} HTTP/1.1\r
+`;
+      if (proxy.username || proxy.password) {
+        const auth = `${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`;
+        headers["Proxy-Authorization"] = `Basic ${Buffer.from(auth).toString("base64")}`;
+      }
+      headers.Host = `${host}:${opts.port}`;
+      if (!headers["Proxy-Connection"]) {
+        headers["Proxy-Connection"] = this.keepAlive ? "Keep-Alive" : "close";
+      }
+      for (const name of Object.keys(headers)) {
+        payload += `${name}: ${headers[name]}\r
+`;
+      }
+      const proxyResponsePromise = (0, parse_proxy_response_1.parseProxyResponse)(socket);
+      socket.write(`${payload}\r
+`);
+      const { connect, buffered } = await proxyResponsePromise;
+      req.emit("proxyConnect", connect);
+      this.emit("proxyConnect", connect, req);
+      if (connect.statusCode === 200) {
+        req.once("socket", resume);
+        if (opts.secureEndpoint) {
+          debug("Upgrading socket connection to TLS");
+          return tls.connect({
+            ...omit(setServernameFromNonIpHost(opts), "host", "path", "port"),
+            socket
+          });
+        }
+        return socket;
+      }
+      socket.destroy();
+      const fakeSocket = new net.Socket({ writable: false });
+      fakeSocket.readable = true;
+      req.once("socket", (s) => {
+        debug("Replaying proxy buffer for failed request");
+        (0, assert_1.default)(s.listenerCount("data") > 0);
+        s.push(buffered);
+        s.push(null);
+      });
+      return fakeSocket;
+    }
+  }
+  HttpsProxyAgent.protocols = ["http", "https"];
+  exports.HttpsProxyAgent = HttpsProxyAgent;
+  function resume(socket) {
+    socket.resume();
+  }
+  function omit(obj, ...keys) {
+    const ret = {};
+    let key;
+    for (key in obj) {
+      if (!keys.includes(key)) {
+        ret[key] = obj[key];
+      }
+    }
+    return ret;
+  }
+});
+
+// ../node_modules/gaxios/build/cjs/src/gaxios.js
+var require_gaxios = __commonJS(function(exports) {
+  var __importDefault = exports && exports.__importDefault || function(mod) {
+    return mod && mod.__esModule ? mod : { default: mod };
+  };
+  var _a;
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.Gaxios = undefined;
+  var extend_1 = __importDefault(require_extend());
+  var https_1 = __require("https");
+  var common_js_1 = require_common();
+  var retry_js_1 = require_retry();
+  var stream_1 = __require("stream");
+  var interceptor_js_1 = require_interceptor();
+  var randomUUID = async () => globalThis.crypto?.randomUUID() || (await import("crypto")).randomUUID();
+  var HTTP_STATUS_NO_CONTENT = 204;
+
+  class Gaxios {
+    agentCache = new Map;
+    defaults;
+    interceptors;
+    constructor(defaults) {
+      this.defaults = defaults || {};
+      this.interceptors = {
+        request: new interceptor_js_1.GaxiosInterceptorManager,
+        response: new interceptor_js_1.GaxiosInterceptorManager
+      };
+    }
+    fetch(...args) {
+      const input = args[0];
+      const init = args[1];
+      let url = undefined;
+      const headers = new Headers;
+      if (typeof input === "string") {
+        url = new URL(input);
+      } else if (input instanceof URL) {
+        url = input;
+      } else if (input && input.url) {
+        url = new URL(input.url);
+      }
+      if (input && typeof input === "object" && "headers" in input) {
+        _a.mergeHeaders(headers, input.headers);
+      }
+      if (init) {
+        _a.mergeHeaders(headers, new Headers(init.headers));
+      }
+      if (typeof input === "object" && !(input instanceof URL)) {
+        return this.request({ ...init, ...input, headers, url });
+      } else {
+        return this.request({ ...init, headers, url });
+      }
+    }
+    async request(opts = {}) {
+      let prepared = await this.#prepareRequest(opts);
+      prepared = await this.#applyRequestInterceptors(prepared);
+      return this.#applyResponseInterceptors(this._request(prepared));
+    }
+    async _defaultAdapter(config) {
+      const fetchImpl = config.fetchImplementation || this.defaults.fetchImplementation || await _a.#getFetch();
+      const preparedOpts = { ...config };
+      delete preparedOpts.data;
+      const res = await fetchImpl(config.url, preparedOpts);
+      const data = await this.getResponseData(config, res);
+      if (!Object.getOwnPropertyDescriptor(res, "data")?.configurable) {
+        Object.defineProperties(res, {
+          data: {
+            configurable: true,
+            writable: true,
+            enumerable: true,
+            value: data
+          }
+        });
+      }
+      return Object.assign(res, { config, data });
+    }
+    async _request(opts) {
+      try {
+        let translatedResponse;
+        if (opts.adapter) {
+          translatedResponse = await opts.adapter(opts, this._defaultAdapter.bind(this));
+        } else {
+          translatedResponse = await this._defaultAdapter(opts);
+        }
+        if (!opts.validateStatus(translatedResponse.status)) {
+          if (opts.responseType === "stream") {
+            const response = [];
+            for await (const chunk of translatedResponse.data) {
+              response.push(chunk);
+            }
+            translatedResponse.data = Buffer.concat(response.map((c) => typeof c === "string" ? Buffer.from(c) : c)).toString("utf8");
+          }
+          const errorInfo = common_js_1.GaxiosError.extractAPIErrorFromResponse(translatedResponse, `Request failed with status code ${translatedResponse.status}`);
+          throw new common_js_1.GaxiosError(errorInfo?.message, opts, translatedResponse, errorInfo);
+        }
+        return translatedResponse;
+      } catch (e) {
+        let err;
+        if (e instanceof common_js_1.GaxiosError) {
+          err = e;
+        } else if (e instanceof Error) {
+          err = new common_js_1.GaxiosError(e.message, opts, undefined, e);
+        } else {
+          err = new common_js_1.GaxiosError("Unexpected Gaxios Error", opts, undefined, e);
+        }
+        const { shouldRetry, config } = await (0, retry_js_1.getRetryConfig)(err);
+        if (shouldRetry && config) {
+          err.config.retryConfig.currentRetryAttempt = config.retryConfig.currentRetryAttempt;
+          opts.retryConfig = err.config?.retryConfig;
+          this.#appendTimeoutToSignal(opts);
+          return this._request(opts);
+        }
+        if (opts.errorRedactor) {
+          opts.errorRedactor(err);
+        }
+        throw err;
+      }
+    }
+    async getResponseData(opts, res) {
+      if (res.status === HTTP_STATUS_NO_CONTENT) {
+        return "";
+      }
+      if (opts.maxContentLength && res.headers.has("content-length") && opts.maxContentLength < Number.parseInt(res.headers?.get("content-length") || "")) {
+        throw new common_js_1.GaxiosError("Response's `Content-Length` is over the limit.", opts, Object.assign(res, { config: opts }));
+      }
+      switch (opts.responseType) {
+        case "stream":
+          return res.body;
+        case "json": {
+          const data = await res.text();
+          try {
+            return JSON.parse(data);
+          } catch {
+            return data;
+          }
+        }
+        case "arraybuffer":
+          return res.arrayBuffer();
+        case "blob":
+          return res.blob();
+        case "text":
+          return res.text();
+        default:
+          return this.getResponseDataFromContentType(res);
+      }
+    }
+    #urlMayUseProxy(url, noProxy = []) {
+      const candidate = new URL(url);
+      const noProxyList = [...noProxy];
+      const noProxyEnvList = (process.env.NO_PROXY ?? process.env.no_proxy)?.split(",") || [];
+      for (const rule of noProxyEnvList) {
+        noProxyList.push(rule.trim());
+      }
+      for (const rule of noProxyList) {
+        if (rule instanceof RegExp) {
+          if (rule.test(candidate.toString())) {
+            return false;
+          }
+        } else if (rule instanceof URL) {
+          if (rule.origin === candidate.origin) {
+            return false;
+          }
+        } else if (rule.startsWith("*.") || rule.startsWith(".")) {
+          const cleanedRule = rule.replace(/^\*\./, ".");
+          if (candidate.hostname.endsWith(cleanedRule)) {
+            return false;
+          }
+        } else if (rule === candidate.origin || rule === candidate.hostname || rule === candidate.href) {
+          return false;
+        }
+      }
+      return true;
+    }
+    async#applyRequestInterceptors(options) {
+      let promiseChain = Promise.resolve(options);
+      for (const interceptor of this.interceptors.request.values()) {
+        if (interceptor) {
+          promiseChain = promiseChain.then(interceptor.resolved, interceptor.rejected);
+        }
+      }
+      return promiseChain;
+    }
+    async#applyResponseInterceptors(response) {
+      let promiseChain = Promise.resolve(response);
+      for (const interceptor of this.interceptors.response.values()) {
+        if (interceptor) {
+          promiseChain = promiseChain.then(interceptor.resolved, interceptor.rejected);
+        }
+      }
+      return promiseChain;
+    }
+    async#prepareRequest(options) {
+      const preparedHeaders = new Headers(this.defaults.headers);
+      _a.mergeHeaders(preparedHeaders, options.headers);
+      const opts = (0, extend_1.default)(true, {}, this.defaults, options);
+      if (!opts.url) {
+        throw new Error("URL is required.");
+      }
+      if (opts.baseURL) {
+        opts.url = new URL(opts.url, opts.baseURL);
+      }
+      opts.url = new URL(opts.url);
+      if (opts.params) {
+        if (opts.paramsSerializer) {
+          let additionalQueryParams = opts.paramsSerializer(opts.params);
+          if (additionalQueryParams.startsWith("?")) {
+            additionalQueryParams = additionalQueryParams.slice(1);
+          }
+          const prefix = opts.url.toString().includes("?") ? "&" : "?";
+          opts.url = opts.url + prefix + additionalQueryParams;
+        } else {
+          const url = opts.url instanceof URL ? opts.url : new URL(opts.url);
+          for (const [key, value] of new URLSearchParams(opts.params)) {
+            url.searchParams.append(key, value);
+          }
+          opts.url = url;
+        }
+      }
+      if (typeof options.maxContentLength === "number") {
+        opts.size = options.maxContentLength;
+      }
+      if (typeof options.maxRedirects === "number") {
+        opts.follow = options.maxRedirects;
+      }
+      const shouldDirectlyPassData = typeof opts.data === "string" || opts.data instanceof ArrayBuffer || opts.data instanceof Blob || globalThis.File && opts.data instanceof File || opts.data instanceof FormData || opts.data instanceof stream_1.Readable || opts.data instanceof ReadableStream || opts.data instanceof String || opts.data instanceof URLSearchParams || ArrayBuffer.isView(opts.data) || ["Blob", "File", "FormData"].includes(opts.data?.constructor?.name || "");
+      if (opts.multipart?.length) {
+        const boundary = await randomUUID();
+        preparedHeaders.set("content-type", `multipart/related; boundary=${boundary}`);
+        opts.body = stream_1.Readable.from(this.getMultipartRequest(opts.multipart, boundary));
+      } else if (shouldDirectlyPassData) {
+        opts.body = opts.data;
+      } else if (typeof opts.data === "object") {
+        if (preparedHeaders.get("Content-Type") === "application/x-www-form-urlencoded") {
+          opts.body = opts.paramsSerializer ? opts.paramsSerializer(opts.data) : new URLSearchParams(opts.data);
+        } else {
+          if (!preparedHeaders.has("content-type")) {
+            preparedHeaders.set("content-type", "application/json");
+          }
+          opts.body = JSON.stringify(opts.data);
+        }
+      } else if (opts.data) {
+        opts.body = opts.data;
+      }
+      opts.validateStatus = opts.validateStatus || this.validateStatus;
+      opts.responseType = opts.responseType || "unknown";
+      if (!preparedHeaders.has("accept") && opts.responseType === "json") {
+        preparedHeaders.set("accept", "application/json");
+      }
+      const proxy = opts.proxy || process?.env?.HTTPS_PROXY || process?.env?.https_proxy || process?.env?.HTTP_PROXY || process?.env?.http_proxy;
+      if (opts.agent) {} else if (proxy && this.#urlMayUseProxy(opts.url, opts.noProxy)) {
+        const HttpsProxyAgent = await _a.#getProxyAgent();
+        if (this.agentCache.has(proxy)) {
+          opts.agent = this.agentCache.get(proxy);
+        } else {
+          opts.agent = new HttpsProxyAgent(proxy, {
+            cert: opts.cert,
+            key: opts.key
+          });
+          this.agentCache.set(proxy, opts.agent);
+        }
+      } else if (opts.cert && opts.key) {
+        if (this.agentCache.has(opts.key)) {
+          opts.agent = this.agentCache.get(opts.key);
+        } else {
+          opts.agent = new https_1.Agent({
+            cert: opts.cert,
+            key: opts.key
+          });
+          this.agentCache.set(opts.key, opts.agent);
+        }
+      }
+      if (typeof opts.errorRedactor !== "function" && opts.errorRedactor !== false) {
+        opts.errorRedactor = common_js_1.defaultErrorRedactor;
+      }
+      if (opts.body && !("duplex" in opts)) {
+        opts.duplex = "half";
+      }
+      this.#appendTimeoutToSignal(opts);
+      return Object.assign(opts, {
+        headers: preparedHeaders,
+        url: opts.url instanceof URL ? opts.url : new URL(opts.url)
+      });
+    }
+    #appendTimeoutToSignal(opts) {
+      if (opts.timeout) {
+        const timeoutSignal = AbortSignal.timeout(opts.timeout);
+        if (opts.signal && !opts.signal.aborted) {
+          opts.signal = AbortSignal.any([opts.signal, timeoutSignal]);
+        } else {
+          opts.signal = timeoutSignal;
+        }
+      }
+    }
+    validateStatus(status) {
+      return status >= 200 && status < 300;
+    }
+    async getResponseDataFromContentType(response) {
+      let contentType = response.headers.get("Content-Type");
+      if (contentType === null) {
+        return response.text();
+      }
+      contentType = contentType.toLowerCase();
+      if (contentType.includes("application/json")) {
+        let data = await response.text();
+        try {
+          data = JSON.parse(data);
+        } catch {}
+        return data;
+      } else if (contentType.match(/^text\//)) {
+        return response.text();
+      } else {
+        return response.blob();
+      }
+    }
+    async* getMultipartRequest(multipartOptions, boundary) {
+      const finale = `--${boundary}--`;
+      for (const currentPart of multipartOptions) {
+        const partContentType = currentPart.headers.get("Content-Type") || "application/octet-stream";
+        const preamble = `--${boundary}\r
+Content-Type: ${partContentType}\r
+\r
+`;
+        yield preamble;
+        if (typeof currentPart.content === "string") {
+          yield currentPart.content;
+        } else {
+          yield* currentPart.content;
+        }
+        yield `\r
+`;
+      }
+      yield finale;
+    }
+    static #proxyAgent;
+    static #fetch;
+    static async#getProxyAgent() {
+      this.#proxyAgent ||= (await Promise.resolve().then(() => __toESM(require_dist2()))).HttpsProxyAgent;
+      return this.#proxyAgent;
+    }
+    static async#getFetch() {
+      const hasWindow = typeof window !== "undefined" && !!window;
+      this.#fetch ||= hasWindow ? window.fetch : (await import("node-fetch")).default;
+      return this.#fetch;
+    }
+    static mergeHeaders(base, ...append) {
+      base = base instanceof Headers ? base : new Headers(base);
+      for (const headers of append) {
+        const add = headers instanceof Headers ? headers : new Headers(headers);
+        add.forEach((value, key) => {
+          key === "set-cookie" ? base.append(key, value) : base.set(key, value);
+        });
+      }
+      return base;
+    }
+  }
+  exports.Gaxios = Gaxios;
+  _a = Gaxios;
+});
+
+// ../node_modules/gaxios/build/cjs/src/index.js
+var require_src2 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.instance = exports.Gaxios = exports.GaxiosError = undefined;
+  exports.request = request;
+  var gaxios_js_1 = require_gaxios();
+  Object.defineProperty(exports, "Gaxios", { enumerable: true, get: function() {
+    return gaxios_js_1.Gaxios;
+  } });
+  var common_js_1 = require_common();
+  Object.defineProperty(exports, "GaxiosError", { enumerable: true, get: function() {
+    return common_js_1.GaxiosError;
+  } });
+  __exportStar(require_interceptor(), exports);
+  exports.instance = new gaxios_js_1.Gaxios;
+  async function request(opts) {
+    return exports.instance.request(opts);
+  }
+});
+
+// ../node_modules/bignumber.js/bignumber.js
+var require_bignumber = __commonJS(function(exports, module) {
+  (function(globalObject) {
+    var BigNumber, isNumeric = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i, { ceil: mathceil, floor: mathfloor } = Math, bignumberError = "[BigNumber Error] ", tooManyDigits = bignumberError + "Number primitive has more than 15 significant digits: ", BASE = 100000000000000, LOG_BASE = 14, MAX_SAFE_INTEGER = 9007199254740991, POWS_TEN = [1, 10, 100, 1000, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 10000000000, 100000000000, 1000000000000, 10000000000000], SQRT_BASE = 1e7, MAX = 1e9;
+    function clone(configObject) {
+      var div, convertBase, parseNumeric, P = BigNumber.prototype = { constructor: BigNumber, toString: null, valueOf: null }, ONE = new BigNumber(1), DECIMAL_PLACES = 20, ROUNDING_MODE = 4, TO_EXP_NEG = -7, TO_EXP_POS = 21, MIN_EXP = -1e7, MAX_EXP = 1e7, CRYPTO = false, MODULO_MODE = 1, POW_PRECISION = 0, FORMAT = {
+        prefix: "",
+        groupSize: 3,
+        secondaryGroupSize: 0,
+        groupSeparator: ",",
+        decimalSeparator: ".",
+        fractionGroupSize: 0,
+        fractionGroupSeparator: "\xA0",
+        suffix: ""
+      }, ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz", alphabetHasNormalDecimalDigits = true;
+      function BigNumber(v, b) {
+        var alphabet, c, caseChanged, e, i, isNum, len, str, x = this;
+        if (!(x instanceof BigNumber))
+          return new BigNumber(v, b);
+        if (b == null) {
+          if (v && v._isBigNumber === true) {
+            x.s = v.s;
+            if (!v.c || v.e > MAX_EXP) {
+              x.c = x.e = null;
+            } else if (v.e < MIN_EXP) {
+              x.c = [x.e = 0];
+            } else {
+              x.e = v.e;
+              x.c = v.c.slice();
+            }
+            return;
+          }
+          if ((isNum = typeof v == "number") && v * 0 == 0) {
+            x.s = 1 / v < 0 ? (v = -v, -1) : 1;
+            if (v === ~~v) {
+              for (e = 0, i = v;i >= 10; i /= 10, e++)
+                ;
+              if (e > MAX_EXP) {
+                x.c = x.e = null;
+              } else {
+                x.e = e;
+                x.c = [v];
+              }
+              return;
+            }
+            str = String(v);
+          } else {
+            if (!isNumeric.test(str = String(v)))
+              return parseNumeric(x, str, isNum);
+            x.s = str.charCodeAt(0) == 45 ? (str = str.slice(1), -1) : 1;
+          }
+          if ((e = str.indexOf(".")) > -1)
+            str = str.replace(".", "");
+          if ((i = str.search(/e/i)) > 0) {
+            if (e < 0)
+              e = i;
+            e += +str.slice(i + 1);
+            str = str.substring(0, i);
+          } else if (e < 0) {
+            e = str.length;
+          }
+        } else {
+          intCheck(b, 2, ALPHABET.length, "Base");
+          if (b == 10 && alphabetHasNormalDecimalDigits) {
+            x = new BigNumber(v);
+            return round(x, DECIMAL_PLACES + x.e + 1, ROUNDING_MODE);
+          }
+          str = String(v);
+          if (isNum = typeof v == "number") {
+            if (v * 0 != 0)
+              return parseNumeric(x, str, isNum, b);
+            x.s = 1 / v < 0 ? (str = str.slice(1), -1) : 1;
+            if (BigNumber.DEBUG && str.replace(/^0\.0*|\./, "").length > 15) {
+              throw Error(tooManyDigits + v);
+            }
+          } else {
+            x.s = str.charCodeAt(0) === 45 ? (str = str.slice(1), -1) : 1;
+          }
+          alphabet = ALPHABET.slice(0, b);
+          e = i = 0;
+          for (len = str.length;i < len; i++) {
+            if (alphabet.indexOf(c = str.charAt(i)) < 0) {
+              if (c == ".") {
+                if (i > e) {
+                  e = len;
+                  continue;
+                }
+              } else if (!caseChanged) {
+                if (str == str.toUpperCase() && (str = str.toLowerCase()) || str == str.toLowerCase() && (str = str.toUpperCase())) {
+                  caseChanged = true;
+                  i = -1;
+                  e = 0;
+                  continue;
+                }
+              }
+              return parseNumeric(x, String(v), isNum, b);
+            }
+          }
+          isNum = false;
+          str = convertBase(str, b, 10, x.s);
+          if ((e = str.indexOf(".")) > -1)
+            str = str.replace(".", "");
+          else
+            e = str.length;
+        }
+        for (i = 0;str.charCodeAt(i) === 48; i++)
+          ;
+        for (len = str.length;str.charCodeAt(--len) === 48; )
+          ;
+        if (str = str.slice(i, ++len)) {
+          len -= i;
+          if (isNum && BigNumber.DEBUG && len > 15 && (v > MAX_SAFE_INTEGER || v !== mathfloor(v))) {
+            throw Error(tooManyDigits + x.s * v);
+          }
+          if ((e = e - i - 1) > MAX_EXP) {
+            x.c = x.e = null;
+          } else if (e < MIN_EXP) {
+            x.c = [x.e = 0];
+          } else {
+            x.e = e;
+            x.c = [];
+            i = (e + 1) % LOG_BASE;
+            if (e < 0)
+              i += LOG_BASE;
+            if (i < len) {
+              if (i)
+                x.c.push(+str.slice(0, i));
+              for (len -= LOG_BASE;i < len; ) {
+                x.c.push(+str.slice(i, i += LOG_BASE));
+              }
+              i = LOG_BASE - (str = str.slice(i)).length;
+            } else {
+              i -= len;
+            }
+            for (;i--; str += "0")
+              ;
+            x.c.push(+str);
+          }
+        } else {
+          x.c = [x.e = 0];
+        }
+      }
+      BigNumber.clone = clone;
+      BigNumber.ROUND_UP = 0;
+      BigNumber.ROUND_DOWN = 1;
+      BigNumber.ROUND_CEIL = 2;
+      BigNumber.ROUND_FLOOR = 3;
+      BigNumber.ROUND_HALF_UP = 4;
+      BigNumber.ROUND_HALF_DOWN = 5;
+      BigNumber.ROUND_HALF_EVEN = 6;
+      BigNumber.ROUND_HALF_CEIL = 7;
+      BigNumber.ROUND_HALF_FLOOR = 8;
+      BigNumber.EUCLID = 9;
+      BigNumber.config = BigNumber.set = function(obj) {
+        var p, v;
+        if (obj != null) {
+          if (typeof obj == "object") {
+            if (obj.hasOwnProperty(p = "DECIMAL_PLACES")) {
+              v = obj[p];
+              intCheck(v, 0, MAX, p);
+              DECIMAL_PLACES = v;
+            }
+            if (obj.hasOwnProperty(p = "ROUNDING_MODE")) {
+              v = obj[p];
+              intCheck(v, 0, 8, p);
+              ROUNDING_MODE = v;
+            }
+            if (obj.hasOwnProperty(p = "EXPONENTIAL_AT")) {
+              v = obj[p];
+              if (v && v.pop) {
+                intCheck(v[0], -MAX, 0, p);
+                intCheck(v[1], 0, MAX, p);
+                TO_EXP_NEG = v[0];
+                TO_EXP_POS = v[1];
+              } else {
+                intCheck(v, -MAX, MAX, p);
+                TO_EXP_NEG = -(TO_EXP_POS = v < 0 ? -v : v);
+              }
+            }
+            if (obj.hasOwnProperty(p = "RANGE")) {
+              v = obj[p];
+              if (v && v.pop) {
+                intCheck(v[0], -MAX, -1, p);
+                intCheck(v[1], 1, MAX, p);
+                MIN_EXP = v[0];
+                MAX_EXP = v[1];
+              } else {
+                intCheck(v, -MAX, MAX, p);
+                if (v) {
+                  MIN_EXP = -(MAX_EXP = v < 0 ? -v : v);
+                } else {
+                  throw Error(bignumberError + p + " cannot be zero: " + v);
+                }
+              }
+            }
+            if (obj.hasOwnProperty(p = "CRYPTO")) {
+              v = obj[p];
+              if (v === !!v) {
+                if (v) {
+                  if (typeof crypto != "undefined" && crypto && (crypto.getRandomValues || crypto.randomBytes)) {
+                    CRYPTO = v;
+                  } else {
+                    CRYPTO = !v;
+                    throw Error(bignumberError + "crypto unavailable");
+                  }
+                } else {
+                  CRYPTO = v;
+                }
+              } else {
+                throw Error(bignumberError + p + " not true or false: " + v);
+              }
+            }
+            if (obj.hasOwnProperty(p = "MODULO_MODE")) {
+              v = obj[p];
+              intCheck(v, 0, 9, p);
+              MODULO_MODE = v;
+            }
+            if (obj.hasOwnProperty(p = "POW_PRECISION")) {
+              v = obj[p];
+              intCheck(v, 0, MAX, p);
+              POW_PRECISION = v;
+            }
+            if (obj.hasOwnProperty(p = "FORMAT")) {
+              v = obj[p];
+              if (typeof v == "object")
+                FORMAT = v;
+              else
+                throw Error(bignumberError + p + " not an object: " + v);
+            }
+            if (obj.hasOwnProperty(p = "ALPHABET")) {
+              v = obj[p];
+              if (typeof v == "string" && !/^.?$|[+\-.\s]|(.).*\1/.test(v)) {
+                alphabetHasNormalDecimalDigits = v.slice(0, 10) == "0123456789";
+                ALPHABET = v;
+              } else {
+                throw Error(bignumberError + p + " invalid: " + v);
+              }
+            }
+          } else {
+            throw Error(bignumberError + "Object expected: " + obj);
+          }
+        }
+        return {
+          DECIMAL_PLACES,
+          ROUNDING_MODE,
+          EXPONENTIAL_AT: [TO_EXP_NEG, TO_EXP_POS],
+          RANGE: [MIN_EXP, MAX_EXP],
+          CRYPTO,
+          MODULO_MODE,
+          POW_PRECISION,
+          FORMAT,
+          ALPHABET
+        };
+      };
+      BigNumber.isBigNumber = function(v) {
+        if (!v || v._isBigNumber !== true)
+          return false;
+        if (!BigNumber.DEBUG)
+          return true;
+        var i, n, { c, e, s } = v;
+        out:
+          if ({}.toString.call(c) == "[object Array]") {
+            if ((s === 1 || s === -1) && e >= -MAX && e <= MAX && e === mathfloor(e)) {
+              if (c[0] === 0) {
+                if (e === 0 && c.length === 1)
+                  return true;
+                break out;
+              }
+              i = (e + 1) % LOG_BASE;
+              if (i < 1)
+                i += LOG_BASE;
+              if (String(c[0]).length == i) {
+                for (i = 0;i < c.length; i++) {
+                  n = c[i];
+                  if (n < 0 || n >= BASE || n !== mathfloor(n))
+                    break out;
+                }
+                if (n !== 0)
+                  return true;
+              }
+            }
+          } else if (c === null && e === null && (s === null || s === 1 || s === -1)) {
+            return true;
+          }
+        throw Error(bignumberError + "Invalid BigNumber: " + v);
+      };
+      BigNumber.maximum = BigNumber.max = function() {
+        return maxOrMin(arguments, -1);
+      };
+      BigNumber.minimum = BigNumber.min = function() {
+        return maxOrMin(arguments, 1);
+      };
+      BigNumber.random = function() {
+        var pow2_53 = 9007199254740992;
+        var random53bitInt = Math.random() * pow2_53 & 2097151 ? function() {
+          return mathfloor(Math.random() * pow2_53);
+        } : function() {
+          return (Math.random() * 1073741824 | 0) * 8388608 + (Math.random() * 8388608 | 0);
+        };
+        return function(dp) {
+          var a, b, e, k, v, i = 0, c = [], rand = new BigNumber(ONE);
+          if (dp == null)
+            dp = DECIMAL_PLACES;
+          else
+            intCheck(dp, 0, MAX);
+          k = mathceil(dp / LOG_BASE);
+          if (CRYPTO) {
+            if (crypto.getRandomValues) {
+              a = crypto.getRandomValues(new Uint32Array(k *= 2));
+              for (;i < k; ) {
+                v = a[i] * 131072 + (a[i + 1] >>> 11);
+                if (v >= 9000000000000000) {
+                  b = crypto.getRandomValues(new Uint32Array(2));
+                  a[i] = b[0];
+                  a[i + 1] = b[1];
+                } else {
+                  c.push(v % 100000000000000);
+                  i += 2;
+                }
+              }
+              i = k / 2;
+            } else if (crypto.randomBytes) {
+              a = crypto.randomBytes(k *= 7);
+              for (;i < k; ) {
+                v = (a[i] & 31) * 281474976710656 + a[i + 1] * 1099511627776 + a[i + 2] * 4294967296 + a[i + 3] * 16777216 + (a[i + 4] << 16) + (a[i + 5] << 8) + a[i + 6];
+                if (v >= 9000000000000000) {
+                  crypto.randomBytes(7).copy(a, i);
+                } else {
+                  c.push(v % 100000000000000);
+                  i += 7;
+                }
+              }
+              i = k / 7;
+            } else {
+              CRYPTO = false;
+              throw Error(bignumberError + "crypto unavailable");
+            }
+          }
+          if (!CRYPTO) {
+            for (;i < k; ) {
+              v = random53bitInt();
+              if (v < 9000000000000000)
+                c[i++] = v % 100000000000000;
+            }
+          }
+          k = c[--i];
+          dp %= LOG_BASE;
+          if (k && dp) {
+            v = POWS_TEN[LOG_BASE - dp];
+            c[i] = mathfloor(k / v) * v;
+          }
+          for (;c[i] === 0; c.pop(), i--)
+            ;
+          if (i < 0) {
+            c = [e = 0];
+          } else {
+            for (e = -1;c[0] === 0; c.splice(0, 1), e -= LOG_BASE)
+              ;
+            for (i = 1, v = c[0];v >= 10; v /= 10, i++)
+              ;
+            if (i < LOG_BASE)
+              e -= LOG_BASE - i;
+          }
+          rand.e = e;
+          rand.c = c;
+          return rand;
+        };
+      }();
+      BigNumber.sum = function() {
+        var i = 1, args = arguments, sum = new BigNumber(args[0]);
+        for (;i < args.length; )
+          sum = sum.plus(args[i++]);
+        return sum;
+      };
+      convertBase = function() {
+        var decimal = "0123456789";
+        function toBaseOut(str, baseIn, baseOut, alphabet) {
+          var j, arr = [0], arrL, i = 0, len = str.length;
+          for (;i < len; ) {
+            for (arrL = arr.length;arrL--; arr[arrL] *= baseIn)
+              ;
+            arr[0] += alphabet.indexOf(str.charAt(i++));
+            for (j = 0;j < arr.length; j++) {
+              if (arr[j] > baseOut - 1) {
+                if (arr[j + 1] == null)
+                  arr[j + 1] = 0;
+                arr[j + 1] += arr[j] / baseOut | 0;
+                arr[j] %= baseOut;
+              }
+            }
+          }
+          return arr.reverse();
+        }
+        return function(str, baseIn, baseOut, sign, callerIsToString) {
+          var alphabet, d, e, k, r, x, xc, y, i = str.indexOf("."), dp = DECIMAL_PLACES, rm = ROUNDING_MODE;
+          if (i >= 0) {
+            k = POW_PRECISION;
+            POW_PRECISION = 0;
+            str = str.replace(".", "");
+            y = new BigNumber(baseIn);
+            x = y.pow(str.length - i);
+            POW_PRECISION = k;
+            y.c = toBaseOut(toFixedPoint(coeffToString(x.c), x.e, "0"), 10, baseOut, decimal);
+            y.e = y.c.length;
+          }
+          xc = toBaseOut(str, baseIn, baseOut, callerIsToString ? (alphabet = ALPHABET, decimal) : (alphabet = decimal, ALPHABET));
+          e = k = xc.length;
+          for (;xc[--k] == 0; xc.pop())
+            ;
+          if (!xc[0])
+            return alphabet.charAt(0);
+          if (i < 0) {
+            --e;
+          } else {
+            x.c = xc;
+            x.e = e;
+            x.s = sign;
+            x = div(x, y, dp, rm, baseOut);
+            xc = x.c;
+            r = x.r;
+            e = x.e;
+          }
+          d = e + dp + 1;
+          i = xc[d];
+          k = baseOut / 2;
+          r = r || d < 0 || xc[d + 1] != null;
+          r = rm < 4 ? (i != null || r) && (rm == 0 || rm == (x.s < 0 ? 3 : 2)) : i > k || i == k && (rm == 4 || r || rm == 6 && xc[d - 1] & 1 || rm == (x.s < 0 ? 8 : 7));
+          if (d < 1 || !xc[0]) {
+            str = r ? toFixedPoint(alphabet.charAt(1), -dp, alphabet.charAt(0)) : alphabet.charAt(0);
+          } else {
+            xc.length = d;
+            if (r) {
+              for (--baseOut;++xc[--d] > baseOut; ) {
+                xc[d] = 0;
+                if (!d) {
+                  ++e;
+                  xc = [1].concat(xc);
+                }
+              }
+            }
+            for (k = xc.length;!xc[--k]; )
+              ;
+            for (i = 0, str = "";i <= k; str += alphabet.charAt(xc[i++]))
+              ;
+            str = toFixedPoint(str, e, alphabet.charAt(0));
+          }
+          return str;
+        };
+      }();
+      div = function() {
+        function multiply(x, k, base) {
+          var m, temp, xlo, xhi, carry = 0, i = x.length, klo = k % SQRT_BASE, khi = k / SQRT_BASE | 0;
+          for (x = x.slice();i--; ) {
+            xlo = x[i] % SQRT_BASE;
+            xhi = x[i] / SQRT_BASE | 0;
+            m = khi * xlo + xhi * klo;
+            temp = klo * xlo + m % SQRT_BASE * SQRT_BASE + carry;
+            carry = (temp / base | 0) + (m / SQRT_BASE | 0) + khi * xhi;
+            x[i] = temp % base;
+          }
+          if (carry)
+            x = [carry].concat(x);
+          return x;
+        }
+        function compare(a, b, aL, bL) {
+          var i, cmp;
+          if (aL != bL) {
+            cmp = aL > bL ? 1 : -1;
+          } else {
+            for (i = cmp = 0;i < aL; i++) {
+              if (a[i] != b[i]) {
+                cmp = a[i] > b[i] ? 1 : -1;
+                break;
+              }
+            }
+          }
+          return cmp;
+        }
+        function subtract(a, b, aL, base) {
+          var i = 0;
+          for (;aL--; ) {
+            a[aL] -= i;
+            i = a[aL] < b[aL] ? 1 : 0;
+            a[aL] = i * base + a[aL] - b[aL];
+          }
+          for (;!a[0] && a.length > 1; a.splice(0, 1))
+            ;
+        }
+        return function(x, y, dp, rm, base) {
+          var cmp, e, i, more, n, prod, prodL, q, qc, rem, remL, rem0, xi, xL, yc0, yL, yz, s = x.s == y.s ? 1 : -1, xc = x.c, yc = y.c;
+          if (!xc || !xc[0] || !yc || !yc[0]) {
+            return new BigNumber(!x.s || !y.s || (xc ? yc && xc[0] == yc[0] : !yc) ? NaN : xc && xc[0] == 0 || !yc ? s * 0 : s / 0);
+          }
+          q = new BigNumber(s);
+          qc = q.c = [];
+          e = x.e - y.e;
+          s = dp + e + 1;
+          if (!base) {
+            base = BASE;
+            e = bitFloor(x.e / LOG_BASE) - bitFloor(y.e / LOG_BASE);
+            s = s / LOG_BASE | 0;
+          }
+          for (i = 0;yc[i] == (xc[i] || 0); i++)
+            ;
+          if (yc[i] > (xc[i] || 0))
+            e--;
+          if (s < 0) {
+            qc.push(1);
+            more = true;
+          } else {
+            xL = xc.length;
+            yL = yc.length;
+            i = 0;
+            s += 2;
+            n = mathfloor(base / (yc[0] + 1));
+            if (n > 1) {
+              yc = multiply(yc, n, base);
+              xc = multiply(xc, n, base);
+              yL = yc.length;
+              xL = xc.length;
+            }
+            xi = yL;
+            rem = xc.slice(0, yL);
+            remL = rem.length;
+            for (;remL < yL; rem[remL++] = 0)
+              ;
+            yz = yc.slice();
+            yz = [0].concat(yz);
+            yc0 = yc[0];
+            if (yc[1] >= base / 2)
+              yc0++;
+            do {
+              n = 0;
+              cmp = compare(yc, rem, yL, remL);
+              if (cmp < 0) {
+                rem0 = rem[0];
+                if (yL != remL)
+                  rem0 = rem0 * base + (rem[1] || 0);
+                n = mathfloor(rem0 / yc0);
+                if (n > 1) {
+                  if (n >= base)
+                    n = base - 1;
+                  prod = multiply(yc, n, base);
+                  prodL = prod.length;
+                  remL = rem.length;
+                  while (compare(prod, rem, prodL, remL) == 1) {
+                    n--;
+                    subtract(prod, yL < prodL ? yz : yc, prodL, base);
+                    prodL = prod.length;
+                    cmp = 1;
+                  }
+                } else {
+                  if (n == 0) {
+                    cmp = n = 1;
+                  }
+                  prod = yc.slice();
+                  prodL = prod.length;
+                }
+                if (prodL < remL)
+                  prod = [0].concat(prod);
+                subtract(rem, prod, remL, base);
+                remL = rem.length;
+                if (cmp == -1) {
+                  while (compare(yc, rem, yL, remL) < 1) {
+                    n++;
+                    subtract(rem, yL < remL ? yz : yc, remL, base);
+                    remL = rem.length;
+                  }
+                }
+              } else if (cmp === 0) {
+                n++;
+                rem = [0];
+              }
+              qc[i++] = n;
+              if (rem[0]) {
+                rem[remL++] = xc[xi] || 0;
+              } else {
+                rem = [xc[xi]];
+                remL = 1;
+              }
+            } while ((xi++ < xL || rem[0] != null) && s--);
+            more = rem[0] != null;
+            if (!qc[0])
+              qc.splice(0, 1);
+          }
+          if (base == BASE) {
+            for (i = 1, s = qc[0];s >= 10; s /= 10, i++)
+              ;
+            round(q, dp + (q.e = i + e * LOG_BASE - 1) + 1, rm, more);
+          } else {
+            q.e = e;
+            q.r = +more;
+          }
+          return q;
+        };
+      }();
+      function format(n, i, rm, id) {
+        var c0, e, ne, len, str;
+        if (rm == null)
+          rm = ROUNDING_MODE;
+        else
+          intCheck(rm, 0, 8);
+        if (!n.c)
+          return n.toString();
+        c0 = n.c[0];
+        ne = n.e;
+        if (i == null) {
+          str = coeffToString(n.c);
+          str = id == 1 || id == 2 && (ne <= TO_EXP_NEG || ne >= TO_EXP_POS) ? toExponential(str, ne) : toFixedPoint(str, ne, "0");
+        } else {
+          n = round(new BigNumber(n), i, rm);
+          e = n.e;
+          str = coeffToString(n.c);
+          len = str.length;
+          if (id == 1 || id == 2 && (i <= e || e <= TO_EXP_NEG)) {
+            for (;len < i; str += "0", len++)
+              ;
+            str = toExponential(str, e);
+          } else {
+            i -= ne + (id === 2 && e > ne);
+            str = toFixedPoint(str, e, "0");
+            if (e + 1 > len) {
+              if (--i > 0)
+                for (str += ".";i--; str += "0")
+                  ;
+            } else {
+              i += e - len;
+              if (i > 0) {
+                if (e + 1 == len)
+                  str += ".";
+                for (;i--; str += "0")
+                  ;
+              }
+            }
+          }
+        }
+        return n.s < 0 && c0 ? "-" + str : str;
+      }
+      function maxOrMin(args, n) {
+        var k, y, i = 1, x = new BigNumber(args[0]);
+        for (;i < args.length; i++) {
+          y = new BigNumber(args[i]);
+          if (!y.s || (k = compare(x, y)) === n || k === 0 && x.s === n) {
+            x = y;
+          }
+        }
+        return x;
+      }
+      function normalise(n, c, e) {
+        var i = 1, j = c.length;
+        for (;!c[--j]; c.pop())
+          ;
+        for (j = c[0];j >= 10; j /= 10, i++)
+          ;
+        if ((e = i + e * LOG_BASE - 1) > MAX_EXP) {
+          n.c = n.e = null;
+        } else if (e < MIN_EXP) {
+          n.c = [n.e = 0];
+        } else {
+          n.e = e;
+          n.c = c;
+        }
+        return n;
+      }
+      parseNumeric = function() {
+        var basePrefix = /^(-?)0([xbo])(?=\w[\w.]*$)/i, dotAfter = /^([^.]+)\.$/, dotBefore = /^\.([^.]+)$/, isInfinityOrNaN = /^-?(Infinity|NaN)$/, whitespaceOrPlus = /^\s*\+(?=[\w.])|^\s+|\s+$/g;
+        return function(x, str, isNum, b) {
+          var base, s = isNum ? str : str.replace(whitespaceOrPlus, "");
+          if (isInfinityOrNaN.test(s)) {
+            x.s = isNaN(s) ? null : s < 0 ? -1 : 1;
+          } else {
+            if (!isNum) {
+              s = s.replace(basePrefix, function(m, p1, p2) {
+                base = (p2 = p2.toLowerCase()) == "x" ? 16 : p2 == "b" ? 2 : 8;
+                return !b || b == base ? p1 : m;
+              });
+              if (b) {
+                base = b;
+                s = s.replace(dotAfter, "$1").replace(dotBefore, "0.$1");
+              }
+              if (str != s)
+                return new BigNumber(s, base);
+            }
+            if (BigNumber.DEBUG) {
+              throw Error(bignumberError + "Not a" + (b ? " base " + b : "") + " number: " + str);
+            }
+            x.s = null;
+          }
+          x.c = x.e = null;
+        };
+      }();
+      function round(x, sd, rm, r) {
+        var d, i, j, k, n, ni, rd, xc = x.c, pows10 = POWS_TEN;
+        if (xc) {
+          out: {
+            for (d = 1, k = xc[0];k >= 10; k /= 10, d++)
+              ;
+            i = sd - d;
+            if (i < 0) {
+              i += LOG_BASE;
+              j = sd;
+              n = xc[ni = 0];
+              rd = mathfloor(n / pows10[d - j - 1] % 10);
+            } else {
+              ni = mathceil((i + 1) / LOG_BASE);
+              if (ni >= xc.length) {
+                if (r) {
+                  for (;xc.length <= ni; xc.push(0))
+                    ;
+                  n = rd = 0;
+                  d = 1;
+                  i %= LOG_BASE;
+                  j = i - LOG_BASE + 1;
+                } else {
+                  break out;
+                }
+              } else {
+                n = k = xc[ni];
+                for (d = 1;k >= 10; k /= 10, d++)
+                  ;
+                i %= LOG_BASE;
+                j = i - LOG_BASE + d;
+                rd = j < 0 ? 0 : mathfloor(n / pows10[d - j - 1] % 10);
+              }
+            }
+            r = r || sd < 0 || xc[ni + 1] != null || (j < 0 ? n : n % pows10[d - j - 1]);
+            r = rm < 4 ? (rd || r) && (rm == 0 || rm == (x.s < 0 ? 3 : 2)) : rd > 5 || rd == 5 && (rm == 4 || r || rm == 6 && (i > 0 ? j > 0 ? n / pows10[d - j] : 0 : xc[ni - 1]) % 10 & 1 || rm == (x.s < 0 ? 8 : 7));
+            if (sd < 1 || !xc[0]) {
+              xc.length = 0;
+              if (r) {
+                sd -= x.e + 1;
+                xc[0] = pows10[(LOG_BASE - sd % LOG_BASE) % LOG_BASE];
+                x.e = -sd || 0;
+              } else {
+                xc[0] = x.e = 0;
+              }
+              return x;
+            }
+            if (i == 0) {
+              xc.length = ni;
+              k = 1;
+              ni--;
+            } else {
+              xc.length = ni + 1;
+              k = pows10[LOG_BASE - i];
+              xc[ni] = j > 0 ? mathfloor(n / pows10[d - j] % pows10[j]) * k : 0;
+            }
+            if (r) {
+              for (;; ) {
+                if (ni == 0) {
+                  for (i = 1, j = xc[0];j >= 10; j /= 10, i++)
+                    ;
+                  j = xc[0] += k;
+                  for (k = 1;j >= 10; j /= 10, k++)
+                    ;
+                  if (i != k) {
+                    x.e++;
+                    if (xc[0] == BASE)
+                      xc[0] = 1;
+                  }
+                  break;
+                } else {
+                  xc[ni] += k;
+                  if (xc[ni] != BASE)
+                    break;
+                  xc[ni--] = 0;
+                  k = 1;
+                }
+              }
+            }
+            for (i = xc.length;xc[--i] === 0; xc.pop())
+              ;
+          }
+          if (x.e > MAX_EXP) {
+            x.c = x.e = null;
+          } else if (x.e < MIN_EXP) {
+            x.c = [x.e = 0];
+          }
+        }
+        return x;
+      }
+      function valueOf(n) {
+        var str, e = n.e;
+        if (e === null)
+          return n.toString();
+        str = coeffToString(n.c);
+        str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(str, e) : toFixedPoint(str, e, "0");
+        return n.s < 0 ? "-" + str : str;
+      }
+      P.absoluteValue = P.abs = function() {
+        var x = new BigNumber(this);
+        if (x.s < 0)
+          x.s = 1;
+        return x;
+      };
+      P.comparedTo = function(y, b) {
+        return compare(this, new BigNumber(y, b));
+      };
+      P.decimalPlaces = P.dp = function(dp, rm) {
+        var c, n, v, x = this;
+        if (dp != null) {
+          intCheck(dp, 0, MAX);
+          if (rm == null)
+            rm = ROUNDING_MODE;
+          else
+            intCheck(rm, 0, 8);
+          return round(new BigNumber(x), dp + x.e + 1, rm);
+        }
+        if (!(c = x.c))
+          return null;
+        n = ((v = c.length - 1) - bitFloor(this.e / LOG_BASE)) * LOG_BASE;
+        if (v = c[v])
+          for (;v % 10 == 0; v /= 10, n--)
+            ;
+        if (n < 0)
+          n = 0;
+        return n;
+      };
+      P.dividedBy = P.div = function(y, b) {
+        return div(this, new BigNumber(y, b), DECIMAL_PLACES, ROUNDING_MODE);
+      };
+      P.dividedToIntegerBy = P.idiv = function(y, b) {
+        return div(this, new BigNumber(y, b), 0, 1);
+      };
+      P.exponentiatedBy = P.pow = function(n, m) {
+        var half, isModExp, i, k, more, nIsBig, nIsNeg, nIsOdd, y, x = this;
+        n = new BigNumber(n);
+        if (n.c && !n.isInteger()) {
+          throw Error(bignumberError + "Exponent not an integer: " + valueOf(n));
+        }
+        if (m != null)
+          m = new BigNumber(m);
+        nIsBig = n.e > 14;
+        if (!x.c || !x.c[0] || x.c[0] == 1 && !x.e && x.c.length == 1 || !n.c || !n.c[0]) {
+          y = new BigNumber(Math.pow(+valueOf(x), nIsBig ? n.s * (2 - isOdd(n)) : +valueOf(n)));
+          return m ? y.mod(m) : y;
+        }
+        nIsNeg = n.s < 0;
+        if (m) {
+          if (m.c ? !m.c[0] : !m.s)
+            return new BigNumber(NaN);
+          isModExp = !nIsNeg && x.isInteger() && m.isInteger();
+          if (isModExp)
+            x = x.mod(m);
+        } else if (n.e > 9 && (x.e > 0 || x.e < -1 || (x.e == 0 ? x.c[0] > 1 || nIsBig && x.c[1] >= 240000000 : x.c[0] < 80000000000000 || nIsBig && x.c[0] <= 99999750000000))) {
+          k = x.s < 0 && isOdd(n) ? -0 : 0;
+          if (x.e > -1)
+            k = 1 / k;
+          return new BigNumber(nIsNeg ? 1 / k : k);
+        } else if (POW_PRECISION) {
+          k = mathceil(POW_PRECISION / LOG_BASE + 2);
+        }
+        if (nIsBig) {
+          half = new BigNumber(0.5);
+          if (nIsNeg)
+            n.s = 1;
+          nIsOdd = isOdd(n);
+        } else {
+          i = Math.abs(+valueOf(n));
+          nIsOdd = i % 2;
+        }
+        y = new BigNumber(ONE);
+        for (;; ) {
+          if (nIsOdd) {
+            y = y.times(x);
+            if (!y.c)
+              break;
+            if (k) {
+              if (y.c.length > k)
+                y.c.length = k;
+            } else if (isModExp) {
+              y = y.mod(m);
+            }
+          }
+          if (i) {
+            i = mathfloor(i / 2);
+            if (i === 0)
+              break;
+            nIsOdd = i % 2;
+          } else {
+            n = n.times(half);
+            round(n, n.e + 1, 1);
+            if (n.e > 14) {
+              nIsOdd = isOdd(n);
+            } else {
+              i = +valueOf(n);
+              if (i === 0)
+                break;
+              nIsOdd = i % 2;
+            }
+          }
+          x = x.times(x);
+          if (k) {
+            if (x.c && x.c.length > k)
+              x.c.length = k;
+          } else if (isModExp) {
+            x = x.mod(m);
+          }
+        }
+        if (isModExp)
+          return y;
+        if (nIsNeg)
+          y = ONE.div(y);
+        return m ? y.mod(m) : k ? round(y, POW_PRECISION, ROUNDING_MODE, more) : y;
+      };
+      P.integerValue = function(rm) {
+        var n = new BigNumber(this);
+        if (rm == null)
+          rm = ROUNDING_MODE;
+        else
+          intCheck(rm, 0, 8);
+        return round(n, n.e + 1, rm);
+      };
+      P.isEqualTo = P.eq = function(y, b) {
+        return compare(this, new BigNumber(y, b)) === 0;
+      };
+      P.isFinite = function() {
+        return !!this.c;
+      };
+      P.isGreaterThan = P.gt = function(y, b) {
+        return compare(this, new BigNumber(y, b)) > 0;
+      };
+      P.isGreaterThanOrEqualTo = P.gte = function(y, b) {
+        return (b = compare(this, new BigNumber(y, b))) === 1 || b === 0;
+      };
+      P.isInteger = function() {
+        return !!this.c && bitFloor(this.e / LOG_BASE) > this.c.length - 2;
+      };
+      P.isLessThan = P.lt = function(y, b) {
+        return compare(this, new BigNumber(y, b)) < 0;
+      };
+      P.isLessThanOrEqualTo = P.lte = function(y, b) {
+        return (b = compare(this, new BigNumber(y, b))) === -1 || b === 0;
+      };
+      P.isNaN = function() {
+        return !this.s;
+      };
+      P.isNegative = function() {
+        return this.s < 0;
+      };
+      P.isPositive = function() {
+        return this.s > 0;
+      };
+      P.isZero = function() {
+        return !!this.c && this.c[0] == 0;
+      };
+      P.minus = function(y, b) {
+        var i, j, t, xLTy, x = this, a = x.s;
+        y = new BigNumber(y, b);
+        b = y.s;
+        if (!a || !b)
+          return new BigNumber(NaN);
+        if (a != b) {
+          y.s = -b;
+          return x.plus(y);
+        }
+        var xe = x.e / LOG_BASE, ye = y.e / LOG_BASE, xc = x.c, yc = y.c;
+        if (!xe || !ye) {
+          if (!xc || !yc)
+            return xc ? (y.s = -b, y) : new BigNumber(yc ? x : NaN);
+          if (!xc[0] || !yc[0]) {
+            return yc[0] ? (y.s = -b, y) : new BigNumber(xc[0] ? x : ROUNDING_MODE == 3 ? -0 : 0);
+          }
+        }
+        xe = bitFloor(xe);
+        ye = bitFloor(ye);
+        xc = xc.slice();
+        if (a = xe - ye) {
+          if (xLTy = a < 0) {
+            a = -a;
+            t = xc;
+          } else {
+            ye = xe;
+            t = yc;
+          }
+          t.reverse();
+          for (b = a;b--; t.push(0))
+            ;
+          t.reverse();
+        } else {
+          j = (xLTy = (a = xc.length) < (b = yc.length)) ? a : b;
+          for (a = b = 0;b < j; b++) {
+            if (xc[b] != yc[b]) {
+              xLTy = xc[b] < yc[b];
+              break;
+            }
+          }
+        }
+        if (xLTy) {
+          t = xc;
+          xc = yc;
+          yc = t;
+          y.s = -y.s;
+        }
+        b = (j = yc.length) - (i = xc.length);
+        if (b > 0)
+          for (;b--; xc[i++] = 0)
+            ;
+        b = BASE - 1;
+        for (;j > a; ) {
+          if (xc[--j] < yc[j]) {
+            for (i = j;i && !xc[--i]; xc[i] = b)
+              ;
+            --xc[i];
+            xc[j] += BASE;
+          }
+          xc[j] -= yc[j];
+        }
+        for (;xc[0] == 0; xc.splice(0, 1), --ye)
+          ;
+        if (!xc[0]) {
+          y.s = ROUNDING_MODE == 3 ? -1 : 1;
+          y.c = [y.e = 0];
+          return y;
+        }
+        return normalise(y, xc, ye);
+      };
+      P.modulo = P.mod = function(y, b) {
+        var q, s, x = this;
+        y = new BigNumber(y, b);
+        if (!x.c || !y.s || y.c && !y.c[0]) {
+          return new BigNumber(NaN);
+        } else if (!y.c || x.c && !x.c[0]) {
+          return new BigNumber(x);
+        }
+        if (MODULO_MODE == 9) {
+          s = y.s;
+          y.s = 1;
+          q = div(x, y, 0, 3);
+          y.s = s;
+          q.s *= s;
+        } else {
+          q = div(x, y, 0, MODULO_MODE);
+        }
+        y = x.minus(q.times(y));
+        if (!y.c[0] && MODULO_MODE == 1)
+          y.s = x.s;
+        return y;
+      };
+      P.multipliedBy = P.times = function(y, b) {
+        var c, e, i, j, k, m, xcL, xlo, xhi, ycL, ylo, yhi, zc, base, sqrtBase, x = this, xc = x.c, yc = (y = new BigNumber(y, b)).c;
+        if (!xc || !yc || !xc[0] || !yc[0]) {
+          if (!x.s || !y.s || xc && !xc[0] && !yc || yc && !yc[0] && !xc) {
+            y.c = y.e = y.s = null;
+          } else {
+            y.s *= x.s;
+            if (!xc || !yc) {
+              y.c = y.e = null;
+            } else {
+              y.c = [0];
+              y.e = 0;
+            }
+          }
+          return y;
+        }
+        e = bitFloor(x.e / LOG_BASE) + bitFloor(y.e / LOG_BASE);
+        y.s *= x.s;
+        xcL = xc.length;
+        ycL = yc.length;
+        if (xcL < ycL) {
+          zc = xc;
+          xc = yc;
+          yc = zc;
+          i = xcL;
+          xcL = ycL;
+          ycL = i;
+        }
+        for (i = xcL + ycL, zc = [];i--; zc.push(0))
+          ;
+        base = BASE;
+        sqrtBase = SQRT_BASE;
+        for (i = ycL;--i >= 0; ) {
+          c = 0;
+          ylo = yc[i] % sqrtBase;
+          yhi = yc[i] / sqrtBase | 0;
+          for (k = xcL, j = i + k;j > i; ) {
+            xlo = xc[--k] % sqrtBase;
+            xhi = xc[k] / sqrtBase | 0;
+            m = yhi * xlo + xhi * ylo;
+            xlo = ylo * xlo + m % sqrtBase * sqrtBase + zc[j] + c;
+            c = (xlo / base | 0) + (m / sqrtBase | 0) + yhi * xhi;
+            zc[j--] = xlo % base;
+          }
+          zc[j] = c;
+        }
+        if (c) {
+          ++e;
+        } else {
+          zc.splice(0, 1);
+        }
+        return normalise(y, zc, e);
+      };
+      P.negated = function() {
+        var x = new BigNumber(this);
+        x.s = -x.s || null;
+        return x;
+      };
+      P.plus = function(y, b) {
+        var t, x = this, a = x.s;
+        y = new BigNumber(y, b);
+        b = y.s;
+        if (!a || !b)
+          return new BigNumber(NaN);
+        if (a != b) {
+          y.s = -b;
+          return x.minus(y);
+        }
+        var xe = x.e / LOG_BASE, ye = y.e / LOG_BASE, xc = x.c, yc = y.c;
+        if (!xe || !ye) {
+          if (!xc || !yc)
+            return new BigNumber(a / 0);
+          if (!xc[0] || !yc[0])
+            return yc[0] ? y : new BigNumber(xc[0] ? x : a * 0);
+        }
+        xe = bitFloor(xe);
+        ye = bitFloor(ye);
+        xc = xc.slice();
+        if (a = xe - ye) {
+          if (a > 0) {
+            ye = xe;
+            t = yc;
+          } else {
+            a = -a;
+            t = xc;
+          }
+          t.reverse();
+          for (;a--; t.push(0))
+            ;
+          t.reverse();
+        }
+        a = xc.length;
+        b = yc.length;
+        if (a - b < 0) {
+          t = yc;
+          yc = xc;
+          xc = t;
+          b = a;
+        }
+        for (a = 0;b; ) {
+          a = (xc[--b] = xc[b] + yc[b] + a) / BASE | 0;
+          xc[b] = BASE === xc[b] ? 0 : xc[b] % BASE;
+        }
+        if (a) {
+          xc = [a].concat(xc);
+          ++ye;
+        }
+        return normalise(y, xc, ye);
+      };
+      P.precision = P.sd = function(sd, rm) {
+        var c, n, v, x = this;
+        if (sd != null && sd !== !!sd) {
+          intCheck(sd, 1, MAX);
+          if (rm == null)
+            rm = ROUNDING_MODE;
+          else
+            intCheck(rm, 0, 8);
+          return round(new BigNumber(x), sd, rm);
+        }
+        if (!(c = x.c))
+          return null;
+        v = c.length - 1;
+        n = v * LOG_BASE + 1;
+        if (v = c[v]) {
+          for (;v % 10 == 0; v /= 10, n--)
+            ;
+          for (v = c[0];v >= 10; v /= 10, n++)
+            ;
+        }
+        if (sd && x.e + 1 > n)
+          n = x.e + 1;
+        return n;
+      };
+      P.shiftedBy = function(k) {
+        intCheck(k, -MAX_SAFE_INTEGER, MAX_SAFE_INTEGER);
+        return this.times("1e" + k);
+      };
+      P.squareRoot = P.sqrt = function() {
+        var m, n, r, rep, t, x = this, { c, s, e } = x, dp = DECIMAL_PLACES + 4, half = new BigNumber("0.5");
+        if (s !== 1 || !c || !c[0]) {
+          return new BigNumber(!s || s < 0 && (!c || c[0]) ? NaN : c ? x : 1 / 0);
+        }
+        s = Math.sqrt(+valueOf(x));
+        if (s == 0 || s == 1 / 0) {
+          n = coeffToString(c);
+          if ((n.length + e) % 2 == 0)
+            n += "0";
+          s = Math.sqrt(+n);
+          e = bitFloor((e + 1) / 2) - (e < 0 || e % 2);
+          if (s == 1 / 0) {
+            n = "5e" + e;
+          } else {
+            n = s.toExponential();
+            n = n.slice(0, n.indexOf("e") + 1) + e;
+          }
+          r = new BigNumber(n);
+        } else {
+          r = new BigNumber(s + "");
+        }
+        if (r.c[0]) {
+          e = r.e;
+          s = e + dp;
+          if (s < 3)
+            s = 0;
+          for (;; ) {
+            t = r;
+            r = half.times(t.plus(div(x, t, dp, 1)));
+            if (coeffToString(t.c).slice(0, s) === (n = coeffToString(r.c)).slice(0, s)) {
+              if (r.e < e)
+                --s;
+              n = n.slice(s - 3, s + 1);
+              if (n == "9999" || !rep && n == "4999") {
+                if (!rep) {
+                  round(t, t.e + DECIMAL_PLACES + 2, 0);
+                  if (t.times(t).eq(x)) {
+                    r = t;
+                    break;
+                  }
+                }
+                dp += 4;
+                s += 4;
+                rep = 1;
+              } else {
+                if (!+n || !+n.slice(1) && n.charAt(0) == "5") {
+                  round(r, r.e + DECIMAL_PLACES + 2, 1);
+                  m = !r.times(r).eq(x);
+                }
+                break;
+              }
+            }
+          }
+        }
+        return round(r, r.e + DECIMAL_PLACES + 1, ROUNDING_MODE, m);
+      };
+      P.toExponential = function(dp, rm) {
+        if (dp != null) {
+          intCheck(dp, 0, MAX);
+          dp++;
+        }
+        return format(this, dp, rm, 1);
+      };
+      P.toFixed = function(dp, rm) {
+        if (dp != null) {
+          intCheck(dp, 0, MAX);
+          dp = dp + this.e + 1;
+        }
+        return format(this, dp, rm);
+      };
+      P.toFormat = function(dp, rm, format) {
+        var str, x = this;
+        if (format == null) {
+          if (dp != null && rm && typeof rm == "object") {
+            format = rm;
+            rm = null;
+          } else if (dp && typeof dp == "object") {
+            format = dp;
+            dp = rm = null;
+          } else {
+            format = FORMAT;
+          }
+        } else if (typeof format != "object") {
+          throw Error(bignumberError + "Argument not an object: " + format);
+        }
+        str = x.toFixed(dp, rm);
+        if (x.c) {
+          var i, arr = str.split("."), g1 = +format.groupSize, g2 = +format.secondaryGroupSize, groupSeparator = format.groupSeparator || "", intPart = arr[0], fractionPart = arr[1], isNeg = x.s < 0, intDigits = isNeg ? intPart.slice(1) : intPart, len = intDigits.length;
+          if (g2) {
+            i = g1;
+            g1 = g2;
+            g2 = i;
+            len -= i;
+          }
+          if (g1 > 0 && len > 0) {
+            i = len % g1 || g1;
+            intPart = intDigits.substr(0, i);
+            for (;i < len; i += g1)
+              intPart += groupSeparator + intDigits.substr(i, g1);
+            if (g2 > 0)
+              intPart += groupSeparator + intDigits.slice(i);
+            if (isNeg)
+              intPart = "-" + intPart;
+          }
+          str = fractionPart ? intPart + (format.decimalSeparator || "") + ((g2 = +format.fractionGroupSize) ? fractionPart.replace(new RegExp("\\d{" + g2 + "}\\B", "g"), "$&" + (format.fractionGroupSeparator || "")) : fractionPart) : intPart;
+        }
+        return (format.prefix || "") + str + (format.suffix || "");
+      };
+      P.toFraction = function(md) {
+        var d, d0, d1, d2, e, exp, n, n0, n1, q, r, s, x = this, xc = x.c;
+        if (md != null) {
+          n = new BigNumber(md);
+          if (!n.isInteger() && (n.c || n.s !== 1) || n.lt(ONE)) {
+            throw Error(bignumberError + "Argument " + (n.isInteger() ? "out of range: " : "not an integer: ") + valueOf(n));
+          }
+        }
+        if (!xc)
+          return new BigNumber(x);
+        d = new BigNumber(ONE);
+        n1 = d0 = new BigNumber(ONE);
+        d1 = n0 = new BigNumber(ONE);
+        s = coeffToString(xc);
+        e = d.e = s.length - x.e - 1;
+        d.c[0] = POWS_TEN[(exp = e % LOG_BASE) < 0 ? LOG_BASE + exp : exp];
+        md = !md || n.comparedTo(d) > 0 ? e > 0 ? d : n1 : n;
+        exp = MAX_EXP;
+        MAX_EXP = 1 / 0;
+        n = new BigNumber(s);
+        n0.c[0] = 0;
+        for (;; ) {
+          q = div(n, d, 0, 1);
+          d2 = d0.plus(q.times(d1));
+          if (d2.comparedTo(md) == 1)
+            break;
+          d0 = d1;
+          d1 = d2;
+          n1 = n0.plus(q.times(d2 = n1));
+          n0 = d2;
+          d = n.minus(q.times(d2 = d));
+          n = d2;
+        }
+        d2 = div(md.minus(d0), d1, 0, 1);
+        n0 = n0.plus(d2.times(n1));
+        d0 = d0.plus(d2.times(d1));
+        n0.s = n1.s = x.s;
+        e = e * 2;
+        r = div(n1, d1, e, ROUNDING_MODE).minus(x).abs().comparedTo(div(n0, d0, e, ROUNDING_MODE).minus(x).abs()) < 1 ? [n1, d1] : [n0, d0];
+        MAX_EXP = exp;
+        return r;
+      };
+      P.toNumber = function() {
+        return +valueOf(this);
+      };
+      P.toPrecision = function(sd, rm) {
+        if (sd != null)
+          intCheck(sd, 1, MAX);
+        return format(this, sd, rm, 2);
+      };
+      P.toString = function(b) {
+        var str, n = this, s = n.s, e = n.e;
+        if (e === null) {
+          if (s) {
+            str = "Infinity";
+            if (s < 0)
+              str = "-" + str;
+          } else {
+            str = "NaN";
+          }
+        } else {
+          if (b == null) {
+            str = e <= TO_EXP_NEG || e >= TO_EXP_POS ? toExponential(coeffToString(n.c), e) : toFixedPoint(coeffToString(n.c), e, "0");
+          } else if (b === 10 && alphabetHasNormalDecimalDigits) {
+            n = round(new BigNumber(n), DECIMAL_PLACES + e + 1, ROUNDING_MODE);
+            str = toFixedPoint(coeffToString(n.c), n.e, "0");
+          } else {
+            intCheck(b, 2, ALPHABET.length, "Base");
+            str = convertBase(toFixedPoint(coeffToString(n.c), e, "0"), 10, b, s, true);
+          }
+          if (s < 0 && n.c[0])
+            str = "-" + str;
+        }
+        return str;
+      };
+      P.valueOf = P.toJSON = function() {
+        return valueOf(this);
+      };
+      P._isBigNumber = true;
+      if (configObject != null)
+        BigNumber.set(configObject);
+      return BigNumber;
+    }
+    function bitFloor(n) {
+      var i = n | 0;
+      return n > 0 || n === i ? i : i - 1;
+    }
+    function coeffToString(a) {
+      var s, z, i = 1, j = a.length, r = a[0] + "";
+      for (;i < j; ) {
+        s = a[i++] + "";
+        z = LOG_BASE - s.length;
+        for (;z--; s = "0" + s)
+          ;
+        r += s;
+      }
+      for (j = r.length;r.charCodeAt(--j) === 48; )
+        ;
+      return r.slice(0, j + 1 || 1);
+    }
+    function compare(x, y) {
+      var a, b, xc = x.c, yc = y.c, i = x.s, j = y.s, k = x.e, l = y.e;
+      if (!i || !j)
+        return null;
+      a = xc && !xc[0];
+      b = yc && !yc[0];
+      if (a || b)
+        return a ? b ? 0 : -j : i;
+      if (i != j)
+        return i;
+      a = i < 0;
+      b = k == l;
+      if (!xc || !yc)
+        return b ? 0 : !xc ^ a ? 1 : -1;
+      if (!b)
+        return k > l ^ a ? 1 : -1;
+      j = (k = xc.length) < (l = yc.length) ? k : l;
+      for (i = 0;i < j; i++)
+        if (xc[i] != yc[i])
+          return xc[i] > yc[i] ^ a ? 1 : -1;
+      return k == l ? 0 : k > l ^ a ? 1 : -1;
+    }
+    function intCheck(n, min, max, name) {
+      if (n < min || n > max || n !== mathfloor(n)) {
+        throw Error(bignumberError + (name || "Argument") + (typeof n == "number" ? n < min || n > max ? " out of range: " : " not an integer: " : " not a primitive number: ") + String(n));
+      }
+    }
+    function isOdd(n) {
+      var k = n.c.length - 1;
+      return bitFloor(n.e / LOG_BASE) == k && n.c[k] % 2 != 0;
+    }
+    function toExponential(str, e) {
+      return (str.length > 1 ? str.charAt(0) + "." + str.slice(1) : str) + (e < 0 ? "e" : "e+") + e;
+    }
+    function toFixedPoint(str, e, z) {
+      var len, zs;
+      if (e < 0) {
+        for (zs = z + ".";++e; zs += z)
+          ;
+        str = zs + str;
+      } else {
+        len = str.length;
+        if (++e > len) {
+          for (zs = z, e -= len;--e; zs += z)
+            ;
+          str += zs;
+        } else if (e < len) {
+          str = str.slice(0, e) + "." + str.slice(e);
+        }
+      }
+      return str;
+    }
+    BigNumber = clone();
+    BigNumber["default"] = BigNumber.BigNumber = BigNumber;
+    if (typeof define == "function" && define.amd) {
+      define(function() {
+        return BigNumber;
+      });
+    } else if (typeof module != "undefined" && module.exports) {
+      module.exports = BigNumber;
+    } else {
+      if (!globalObject) {
+        globalObject = typeof self != "undefined" && self ? self : window;
+      }
+      globalObject.BigNumber = BigNumber;
+    }
+  })(exports);
+});
+
+// ../node_modules/json-bigint/lib/stringify.js
+var require_stringify = __commonJS(function(exports, module) {
+  var BigNumber = require_bignumber();
+  var JSON2 = exports;
+  (function() {
+    function f(n) {
+      return n < 10 ? "0" + n : n;
+    }
+    var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g, escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g, gap, indent, meta = {
+      "\b": "\\b",
+      "\t": "\\t",
+      "\n": "\\n",
+      "\f": "\\f",
+      "\r": "\\r",
+      '"': "\\\"",
+      "\\": "\\\\"
+    }, rep;
+    function quote(string) {
+      escapable.lastIndex = 0;
+      return escapable.test(string) ? '"' + string.replace(escapable, function(a) {
+        var c = meta[a];
+        return typeof c === "string" ? c : "\\u" + ("0000" + a.charCodeAt(0).toString(16)).slice(-4);
+      }) + '"' : '"' + string + '"';
+    }
+    function str(key, holder) {
+      var i, k, v, length, mind = gap, partial, value = holder[key], isBigNumber = value != null && (value instanceof BigNumber || BigNumber.isBigNumber(value));
+      if (value && typeof value === "object" && typeof value.toJSON === "function") {
+        value = value.toJSON(key);
+      }
+      if (typeof rep === "function") {
+        value = rep.call(holder, key, value);
+      }
+      switch (typeof value) {
+        case "string":
+          if (isBigNumber) {
+            return value;
+          } else {
+            return quote(value);
+          }
+        case "number":
+          return isFinite(value) ? String(value) : "null";
+        case "boolean":
+        case "null":
+        case "bigint":
+          return String(value);
+        case "object":
+          if (!value) {
+            return "null";
+          }
+          gap += indent;
+          partial = [];
+          if (Object.prototype.toString.apply(value) === "[object Array]") {
+            length = value.length;
+            for (i = 0;i < length; i += 1) {
+              partial[i] = str(i, value) || "null";
+            }
+            v = partial.length === 0 ? "[]" : gap ? `[
+` + gap + partial.join(`,
+` + gap) + `
+` + mind + "]" : "[" + partial.join(",") + "]";
+            gap = mind;
+            return v;
+          }
+          if (rep && typeof rep === "object") {
+            length = rep.length;
+            for (i = 0;i < length; i += 1) {
+              if (typeof rep[i] === "string") {
+                k = rep[i];
+                v = str(k, value);
+                if (v) {
+                  partial.push(quote(k) + (gap ? ": " : ":") + v);
+                }
+              }
+            }
+          } else {
+            Object.keys(value).forEach(function(k) {
+              var v = str(k, value);
+              if (v) {
+                partial.push(quote(k) + (gap ? ": " : ":") + v);
+              }
+            });
+          }
+          v = partial.length === 0 ? "{}" : gap ? `{
+` + gap + partial.join(`,
+` + gap) + `
+` + mind + "}" : "{" + partial.join(",") + "}";
+          gap = mind;
+          return v;
+      }
+    }
+    if (typeof JSON2.stringify !== "function") {
+      JSON2.stringify = function(value, replacer, space) {
+        var i;
+        gap = "";
+        indent = "";
+        if (typeof space === "number") {
+          for (i = 0;i < space; i += 1) {
+            indent += " ";
+          }
+        } else if (typeof space === "string") {
+          indent = space;
+        }
+        rep = replacer;
+        if (replacer && typeof replacer !== "function" && (typeof replacer !== "object" || typeof replacer.length !== "number")) {
+          throw new Error("JSON.stringify");
+        }
+        return str("", { "": value });
+      };
+    }
+  })();
+});
+
+// ../node_modules/json-bigint/lib/parse.js
+var require_parse = __commonJS(function(exports, module) {
+  var BigNumber = null;
+  var suspectProtoRx = /(?:_|\\u005[Ff])(?:_|\\u005[Ff])(?:p|\\u0070)(?:r|\\u0072)(?:o|\\u006[Ff])(?:t|\\u0074)(?:o|\\u006[Ff])(?:_|\\u005[Ff])(?:_|\\u005[Ff])/;
+  var suspectConstructorRx = /(?:c|\\u0063)(?:o|\\u006[Ff])(?:n|\\u006[Ee])(?:s|\\u0073)(?:t|\\u0074)(?:r|\\u0072)(?:u|\\u0075)(?:c|\\u0063)(?:t|\\u0074)(?:o|\\u006[Ff])(?:r|\\u0072)/;
+  var json_parse = function(options) {
+    var _options = {
+      strict: false,
+      storeAsString: false,
+      alwaysParseAsBig: false,
+      useNativeBigInt: false,
+      protoAction: "error",
+      constructorAction: "error"
+    };
+    if (options !== undefined && options !== null) {
+      if (options.strict === true) {
+        _options.strict = true;
+      }
+      if (options.storeAsString === true) {
+        _options.storeAsString = true;
+      }
+      _options.alwaysParseAsBig = options.alwaysParseAsBig === true ? options.alwaysParseAsBig : false;
+      _options.useNativeBigInt = options.useNativeBigInt === true ? options.useNativeBigInt : false;
+      if (typeof options.constructorAction !== "undefined") {
+        if (options.constructorAction === "error" || options.constructorAction === "ignore" || options.constructorAction === "preserve") {
+          _options.constructorAction = options.constructorAction;
+        } else {
+          throw new Error(`Incorrect value for constructorAction option, must be "error", "ignore" or undefined but passed ${options.constructorAction}`);
+        }
+      }
+      if (typeof options.protoAction !== "undefined") {
+        if (options.protoAction === "error" || options.protoAction === "ignore" || options.protoAction === "preserve") {
+          _options.protoAction = options.protoAction;
+        } else {
+          throw new Error(`Incorrect value for protoAction option, must be "error", "ignore" or undefined but passed ${options.protoAction}`);
+        }
+      }
+    }
+    var at, ch, escapee = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: `
+`,
+      r: "\r",
+      t: "\t"
+    }, text, error = function(m) {
+      throw {
+        name: "SyntaxError",
+        message: m,
+        at,
+        text
+      };
+    }, next = function(c) {
+      if (c && c !== ch) {
+        error("Expected '" + c + "' instead of '" + ch + "'");
+      }
+      ch = text.charAt(at);
+      at += 1;
+      return ch;
+    }, number = function() {
+      var number, string = "";
+      if (ch === "-") {
+        string = "-";
+        next("-");
+      }
+      while (ch >= "0" && ch <= "9") {
+        string += ch;
+        next();
+      }
+      if (ch === ".") {
+        string += ".";
+        while (next() && ch >= "0" && ch <= "9") {
+          string += ch;
+        }
+      }
+      if (ch === "e" || ch === "E") {
+        string += ch;
+        next();
+        if (ch === "-" || ch === "+") {
+          string += ch;
+          next();
+        }
+        while (ch >= "0" && ch <= "9") {
+          string += ch;
+          next();
+        }
+      }
+      number = +string;
+      if (!isFinite(number)) {
+        error("Bad number");
+      } else {
+        if (BigNumber == null)
+          BigNumber = require_bignumber();
+        if (string.length > 15)
+          return _options.storeAsString ? string : _options.useNativeBigInt ? BigInt(string) : new BigNumber(string);
+        else
+          return !_options.alwaysParseAsBig ? number : _options.useNativeBigInt ? BigInt(number) : new BigNumber(number);
+      }
+    }, string = function() {
+      var hex, i, string = "", uffff;
+      if (ch === '"') {
+        var startAt = at;
+        while (next()) {
+          if (ch === '"') {
+            if (at - 1 > startAt)
+              string += text.substring(startAt, at - 1);
+            next();
+            return string;
+          }
+          if (ch === "\\") {
+            if (at - 1 > startAt)
+              string += text.substring(startAt, at - 1);
+            next();
+            if (ch === "u") {
+              uffff = 0;
+              for (i = 0;i < 4; i += 1) {
+                hex = parseInt(next(), 16);
+                if (!isFinite(hex)) {
+                  break;
+                }
+                uffff = uffff * 16 + hex;
+              }
+              string += String.fromCharCode(uffff);
+            } else if (typeof escapee[ch] === "string") {
+              string += escapee[ch];
+            } else {
+              break;
+            }
+            startAt = at;
+          }
+        }
+      }
+      error("Bad string");
+    }, white = function() {
+      while (ch && ch <= " ") {
+        next();
+      }
+    }, word = function() {
+      switch (ch) {
+        case "t":
+          next("t");
+          next("r");
+          next("u");
+          next("e");
+          return true;
+        case "f":
+          next("f");
+          next("a");
+          next("l");
+          next("s");
+          next("e");
+          return false;
+        case "n":
+          next("n");
+          next("u");
+          next("l");
+          next("l");
+          return null;
+      }
+      error("Unexpected '" + ch + "'");
+    }, value, array = function() {
+      var array = [];
+      if (ch === "[") {
+        next("[");
+        white();
+        if (ch === "]") {
+          next("]");
+          return array;
+        }
+        while (ch) {
+          array.push(value());
+          white();
+          if (ch === "]") {
+            next("]");
+            return array;
+          }
+          next(",");
+          white();
+        }
+      }
+      error("Bad array");
+    }, object = function() {
+      var key, object = Object.create(null);
+      if (ch === "{") {
+        next("{");
+        white();
+        if (ch === "}") {
+          next("}");
+          return object;
+        }
+        while (ch) {
+          key = string();
+          white();
+          next(":");
+          if (_options.strict === true && Object.hasOwnProperty.call(object, key)) {
+            error('Duplicate key "' + key + '"');
+          }
+          if (suspectProtoRx.test(key) === true) {
+            if (_options.protoAction === "error") {
+              error("Object contains forbidden prototype property");
+            } else if (_options.protoAction === "ignore") {
+              value();
+            } else {
+              object[key] = value();
+            }
+          } else if (suspectConstructorRx.test(key) === true) {
+            if (_options.constructorAction === "error") {
+              error("Object contains forbidden constructor property");
+            } else if (_options.constructorAction === "ignore") {
+              value();
+            } else {
+              object[key] = value();
+            }
+          } else {
+            object[key] = value();
+          }
+          white();
+          if (ch === "}") {
+            next("}");
+            return object;
+          }
+          next(",");
+          white();
+        }
+      }
+      error("Bad object");
+    };
+    value = function() {
+      white();
+      switch (ch) {
+        case "{":
+          return object();
+        case "[":
+          return array();
+        case '"':
+          return string();
+        case "-":
+          return number();
+        default:
+          return ch >= "0" && ch <= "9" ? number() : word();
+      }
+    };
+    return function(source, reviver) {
+      var result;
+      text = source + "";
+      at = 0;
+      ch = " ";
+      result = value();
+      white();
+      if (ch) {
+        error("Syntax error");
+      }
+      return typeof reviver === "function" ? function walk(holder, key) {
+        var k, v, value = holder[key];
+        if (value && typeof value === "object") {
+          Object.keys(value).forEach(function(k) {
+            v = walk(value, k);
+            if (v !== undefined) {
+              value[k] = v;
+            } else {
+              delete value[k];
+            }
+          });
+        }
+        return reviver.call(holder, key, value);
+      }({ "": result }, "") : result;
+    };
+  };
+  module.exports = json_parse;
+});
+
+// ../node_modules/json-bigint/index.js
+var require_json_bigint = __commonJS(function(exports, module) {
+  var json_stringify = require_stringify().stringify;
+  var json_parse = require_parse();
+  module.exports = function(options) {
+    return {
+      parse: json_parse(options),
+      stringify: json_stringify
+    };
+  };
+  module.exports.parse = json_parse();
+  module.exports.stringify = json_stringify;
+});
+
+// ../node_modules/gcp-metadata/build/src/gcp-residency.js
+var require_gcp_residency = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GCE_LINUX_BIOS_PATHS = undefined;
+  exports.isGoogleCloudServerless = isGoogleCloudServerless;
+  exports.isGoogleComputeEngineLinux = isGoogleComputeEngineLinux;
+  exports.isGoogleComputeEngineMACAddress = isGoogleComputeEngineMACAddress;
+  exports.isGoogleComputeEngine = isGoogleComputeEngine;
+  exports.detectGCPResidency = detectGCPResidency;
+  var fs_1 = __require("fs");
+  var os_1 = __require("os");
+  exports.GCE_LINUX_BIOS_PATHS = {
+    BIOS_DATE: "/sys/class/dmi/id/bios_date",
+    BIOS_VENDOR: "/sys/class/dmi/id/bios_vendor"
+  };
+  var GCE_MAC_ADDRESS_REGEX = /^42:01/;
+  var SERVERLESS_ENV_VARS = [
+    "CLOUD_RUN_JOB",
+    "FUNCTION_NAME",
+    "K_SERVICE",
+    "CLOUD_RUN_WORKER_POOL"
+  ];
+  function isGoogleCloudServerless() {
+    return SERVERLESS_ENV_VARS.some((key) => Boolean(process.env[key]));
+  }
+  function isGoogleComputeEngineLinux() {
+    if ((0, os_1.platform)() !== "linux")
+      return false;
+    try {
+      (0, fs_1.statSync)(exports.GCE_LINUX_BIOS_PATHS.BIOS_DATE);
+      const biosVendor = (0, fs_1.readFileSync)(exports.GCE_LINUX_BIOS_PATHS.BIOS_VENDOR, "utf8");
+      return /Google/.test(biosVendor);
+    } catch {
+      return false;
+    }
+  }
+  function isGoogleComputeEngineMACAddress() {
+    const interfaces = (0, os_1.networkInterfaces)();
+    for (const item of Object.values(interfaces)) {
+      if (!item)
+        continue;
+      for (const { mac } of item) {
+        if (GCE_MAC_ADDRESS_REGEX.test(mac)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  function isGoogleComputeEngine() {
+    return isGoogleComputeEngineLinux() || isGoogleComputeEngineMACAddress();
+  }
+  function detectGCPResidency() {
+    return isGoogleCloudServerless() || isGoogleComputeEngine();
+  }
+});
+
+// ../node_modules/google-logging-utils/build/src/colours.js
+var require_colours = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.Colours = undefined;
+
+  class Colours {
+    static enabled = false;
+    static reset = "";
+    static bright = "";
+    static dim = "";
+    static red = "";
+    static green = "";
+    static yellow = "";
+    static blue = "";
+    static magenta = "";
+    static cyan = "";
+    static white = "";
+    static grey = "";
+    static isEnabled(stream) {
+      return stream && stream.isTTY && (typeof stream.getColorDepth === "function" ? stream.getColorDepth() > 2 : true);
+    }
+    static refresh() {
+      Colours.enabled = Colours.isEnabled(process?.stderr);
+      if (!this.enabled) {
+        Colours.reset = "";
+        Colours.bright = "";
+        Colours.dim = "";
+        Colours.red = "";
+        Colours.green = "";
+        Colours.yellow = "";
+        Colours.blue = "";
+        Colours.magenta = "";
+        Colours.cyan = "";
+        Colours.white = "";
+        Colours.grey = "";
+      } else {
+        Colours.reset = "\x1B[0m";
+        Colours.bright = "\x1B[1m";
+        Colours.dim = "\x1B[2m";
+        Colours.red = "\x1B[31m";
+        Colours.green = "\x1B[32m";
+        Colours.yellow = "\x1B[33m";
+        Colours.blue = "\x1B[34m";
+        Colours.magenta = "\x1B[35m";
+        Colours.cyan = "\x1B[36m";
+        Colours.white = "\x1B[37m";
+        Colours.grey = "\x1B[90m";
+      }
+    }
+  }
+  exports.Colours = Colours;
+  Colours.refresh();
+});
+
+// ../node_modules/google-logging-utils/build/src/types.js
+var require_types = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.LogSeverity = undefined;
+  var LogSeverity;
+  (function(LogSeverity) {
+    LogSeverity["DEFAULT"] = "DEFAULT";
+    LogSeverity["DEBUG"] = "DEBUG";
+    LogSeverity["INFO"] = "INFO";
+    LogSeverity["WARNING"] = "WARNING";
+    LogSeverity["ERROR"] = "ERROR";
+  })(LogSeverity || (exports.LogSeverity = LogSeverity = {}));
+});
+
+// ../node_modules/google-logging-utils/build/src/logging-utils.js
+var require_logging_utils = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function() {
+    var ownKeys = function(o) {
+      ownKeys = Object.getOwnPropertyNames || function(o) {
+        var ar = [];
+        for (var k in o)
+          if (Object.prototype.hasOwnProperty.call(o, k))
+            ar[ar.length] = k;
+        return ar;
+      };
+      return ownKeys(o);
+    };
+    return function(mod) {
+      if (mod && mod.__esModule)
+        return mod;
+      var result = {};
+      if (mod != null) {
+        for (var k = ownKeys(mod), i = 0;i < k.length; i++)
+          if (k[i] !== "default")
+            __createBinding(result, mod, k[i]);
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+  }();
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.env = exports.DebugLogBackendBase = exports.placeholder = exports.AdhocDebugLogger = undefined;
+  exports.getNodeBackend = getNodeBackend;
+  exports.getDebugBackend = getDebugBackend;
+  exports.getStructuredBackend = getStructuredBackend;
+  exports.setBackend = setBackend;
+  exports.log = log;
+  var events_1 = __require("events");
+  var process2 = __importStar(__require("process"));
+  var util = __importStar(__require("util"));
+  var colours_1 = require_colours();
+  var types_1 = require_types();
+
+  class AdhocDebugLogger extends events_1.EventEmitter {
+    namespace;
+    upstream;
+    func;
+    constructor(namespace, upstream) {
+      super();
+      this.namespace = namespace;
+      this.upstream = upstream;
+      this.func = Object.assign(this.invoke.bind(this), {
+        instance: this,
+        on: (event, listener) => this.on(event, listener)
+      });
+      this.func.debug = (...args) => this.invokeSeverity(types_1.LogSeverity.DEBUG, ...args);
+      this.func.info = (...args) => this.invokeSeverity(types_1.LogSeverity.INFO, ...args);
+      this.func.warn = (...args) => this.invokeSeverity(types_1.LogSeverity.WARNING, ...args);
+      this.func.error = (...args) => this.invokeSeverity(types_1.LogSeverity.ERROR, ...args);
+      this.func.sublog = (namespace) => log(namespace, this.func);
+    }
+    invoke(fields, ...args) {
+      if (this.upstream) {
+        try {
+          this.upstream(fields, ...args);
+        } catch (e) {}
+      }
+      try {
+        this.emit("log", fields, args);
+      } catch (e) {}
+    }
+    invokeSeverity(severity, ...args) {
+      this.invoke({ severity }, ...args);
+    }
+  }
+  exports.AdhocDebugLogger = AdhocDebugLogger;
+  exports.placeholder = new AdhocDebugLogger("", () => {}).func;
+
+  class DebugLogBackendBase {
+    cached = new Map;
+    filters = [];
+    filtersSet = false;
+    constructor() {
+      let nodeFlag = process2.env[exports.env.nodeEnables] ?? "*";
+      if (nodeFlag === "all") {
+        nodeFlag = "*";
+      }
+      this.filters = nodeFlag.split(",");
+    }
+    log(namespace, fields, ...args) {
+      try {
+        if (!this.filtersSet) {
+          this.setFilters();
+          this.filtersSet = true;
+        }
+        let logger = this.cached.get(namespace);
+        if (!logger) {
+          logger = this.makeLogger(namespace);
+          this.cached.set(namespace, logger);
+        }
+        logger(fields, ...args);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  exports.DebugLogBackendBase = DebugLogBackendBase;
+
+  class NodeBackend extends DebugLogBackendBase {
+    enabledRegexp = /.*/g;
+    isEnabled(namespace) {
+      return this.enabledRegexp.test(namespace);
+    }
+    makeLogger(namespace) {
+      if (!this.enabledRegexp.test(namespace)) {
+        return () => {};
+      }
+      return (fields, ...args) => {
+        const nscolour = `${colours_1.Colours.green}${namespace}${colours_1.Colours.reset}`;
+        const pid = `${colours_1.Colours.yellow}${process2.pid}${colours_1.Colours.reset}`;
+        let level;
+        switch (fields.severity) {
+          case types_1.LogSeverity.ERROR:
+            level = `${colours_1.Colours.red}${fields.severity}${colours_1.Colours.reset}`;
+            break;
+          case types_1.LogSeverity.INFO:
+            level = `${colours_1.Colours.magenta}${fields.severity}${colours_1.Colours.reset}`;
+            break;
+          case types_1.LogSeverity.WARNING:
+            level = `${colours_1.Colours.yellow}${fields.severity}${colours_1.Colours.reset}`;
+            break;
+          default:
+            level = fields.severity ?? types_1.LogSeverity.DEFAULT;
+            break;
+        }
+        const msg = util.formatWithOptions({ colors: colours_1.Colours.enabled }, ...args);
+        const filteredFields = Object.assign({}, fields);
+        delete filteredFields.severity;
+        const fieldsJson = Object.getOwnPropertyNames(filteredFields).length ? JSON.stringify(filteredFields) : "";
+        const fieldsColour = fieldsJson ? `${colours_1.Colours.grey}${fieldsJson}${colours_1.Colours.reset}` : "";
+        console.error("%s [%s|%s] %s%s", pid, nscolour, level, msg, fieldsJson ? ` ${fieldsColour}` : "");
+      };
+    }
+    setFilters() {
+      const totalFilters = this.filters.join(",");
+      const regexp = totalFilters.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*").replace(/,/g, "$|^");
+      this.enabledRegexp = new RegExp(`^${regexp}$`, "i");
+    }
+  }
+  function getNodeBackend() {
+    return new NodeBackend;
+  }
+
+  class DebugBackend extends DebugLogBackendBase {
+    debugPkg;
+    constructor(pkg) {
+      super();
+      this.debugPkg = pkg;
+    }
+    makeLogger(namespace) {
+      const debugLogger = this.debugPkg(namespace);
+      return (fields, ...args) => {
+        debugLogger(args[0], ...args.slice(1));
+      };
+    }
+    setFilters() {
+      const existingFilters = process2.env["NODE_DEBUG"] ?? "";
+      process2.env["NODE_DEBUG"] = `${existingFilters}${existingFilters ? "," : ""}${this.filters.join(",")}`;
+    }
+  }
+  function getDebugBackend(debugPkg) {
+    return new DebugBackend(debugPkg);
+  }
+
+  class StructuredBackend extends DebugLogBackendBase {
+    upstream;
+    constructor(upstream) {
+      super();
+      this.upstream = upstream ?? undefined;
+    }
+    makeLogger(namespace) {
+      const debugLogger = this.upstream?.makeLogger(namespace);
+      return (fields, ...args) => {
+        const severity = fields.severity ?? types_1.LogSeverity.INFO;
+        const json = Object.assign({
+          severity,
+          message: util.format(...args)
+        }, fields);
+        const jsonString = JSON.stringify(json);
+        if (debugLogger) {
+          debugLogger(fields, jsonString);
+        } else {
+          console.log("%s", jsonString);
+        }
+      };
+    }
+    setFilters() {
+      this.upstream?.setFilters();
+    }
+  }
+  function getStructuredBackend(upstream) {
+    return new StructuredBackend(upstream);
+  }
+  exports.env = {
+    nodeEnables: "GOOGLE_SDK_NODE_LOGGING"
+  };
+  var loggerCache = new Map;
+  var cachedBackend = undefined;
+  function setBackend(backend) {
+    cachedBackend = backend;
+    loggerCache.clear();
+  }
+  function log(namespace, parent) {
+    if (!cachedBackend) {
+      const enablesFlag = process2.env[exports.env.nodeEnables];
+      if (!enablesFlag) {
+        return exports.placeholder;
+      }
+    }
+    if (!namespace) {
+      return exports.placeholder;
+    }
+    if (parent) {
+      namespace = `${parent.instance.namespace}:${namespace}`;
+    }
+    const existing = loggerCache.get(namespace);
+    if (existing) {
+      return existing.func;
+    }
+    if (cachedBackend === null) {
+      return exports.placeholder;
+    } else if (cachedBackend === undefined) {
+      cachedBackend = getNodeBackend();
+    }
+    const logger = (() => {
+      let previousBackend = undefined;
+      const newLogger = new AdhocDebugLogger(namespace, (fields, ...args) => {
+        if (previousBackend !== cachedBackend) {
+          if (cachedBackend === null) {
+            return;
+          } else if (cachedBackend === undefined) {
+            cachedBackend = getNodeBackend();
+          }
+          previousBackend = cachedBackend;
+        }
+        cachedBackend?.log(namespace, fields, ...args);
+      });
+      return newLogger;
+    })();
+    loggerCache.set(namespace, logger);
+    return logger.func;
+  }
+});
+
+// ../node_modules/google-logging-utils/build/src/index.js
+var require_src3 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  __exportStar(require_logging_utils(), exports);
+});
+
+// ../node_modules/gcp-metadata/build/src/index.js
+var require_src4 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function() {
+    var ownKeys = function(o) {
+      ownKeys = Object.getOwnPropertyNames || function(o) {
+        var ar = [];
+        for (var k in o)
+          if (Object.prototype.hasOwnProperty.call(o, k))
+            ar[ar.length] = k;
+        return ar;
+      };
+      return ownKeys(o);
+    };
+    return function(mod) {
+      if (mod && mod.__esModule)
+        return mod;
+      var result = {};
+      if (mod != null) {
+        for (var k = ownKeys(mod), i = 0;i < k.length; i++)
+          if (k[i] !== "default")
+            __createBinding(result, mod, k[i]);
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+  }();
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.gcpResidencyCache = exports.METADATA_SERVER_DETECTION = exports.HEADERS = exports.HEADER_VALUE = exports.HEADER_NAME = exports.SECONDARY_HOST_ADDRESS = exports.HOST_ADDRESS = exports.BASE_PATH = undefined;
+  exports.instance = instance;
+  exports.project = project;
+  exports.universe = universe;
+  exports.bulk = bulk;
+  exports.isAvailable = isAvailable;
+  exports.resetIsAvailableCache = resetIsAvailableCache;
+  exports.getGCPResidency = getGCPResidency;
+  exports.setGCPResidency = setGCPResidency;
+  exports.requestTimeout = requestTimeout;
+  var gaxios_1 = require_src2();
+  var jsonBigint = require_json_bigint();
+  var gcp_residency_1 = require_gcp_residency();
+  var logger = __importStar(require_src3());
+  exports.BASE_PATH = "/computeMetadata/v1";
+  exports.HOST_ADDRESS = "http://169.254.169.254";
+  exports.SECONDARY_HOST_ADDRESS = "http://metadata.google.internal.";
+  exports.HEADER_NAME = "Metadata-Flavor";
+  exports.HEADER_VALUE = "Google";
+  exports.HEADERS = Object.freeze({ [exports.HEADER_NAME]: exports.HEADER_VALUE });
+  var log = logger.log("gcp-metadata");
+  exports.METADATA_SERVER_DETECTION = Object.freeze({
+    "assume-present": "don't try to ping the metadata server, but assume it's present",
+    none: "don't try to ping the metadata server, but don't try to use it either",
+    "bios-only": "treat the result of a BIOS probe as canonical (don't fall back to pinging)",
+    "ping-only": "skip the BIOS probe, and go straight to pinging"
+  });
+  function getBaseUrl(baseUrl) {
+    if (!baseUrl) {
+      baseUrl = process.env.GCE_METADATA_IP || process.env.GCE_METADATA_HOST || exports.HOST_ADDRESS;
+    }
+    if (!/^https?:\/\//.test(baseUrl)) {
+      baseUrl = `http://${baseUrl}`;
+    }
+    return new URL(exports.BASE_PATH, baseUrl).href;
+  }
+  function validate(options) {
+    Object.keys(options).forEach((key) => {
+      switch (key) {
+        case "params":
+        case "property":
+        case "headers":
+          break;
+        case "qs":
+          throw new Error("'qs' is not a valid configuration option. Please use 'params' instead.");
+        default:
+          throw new Error(`'${key}' is not a valid configuration option.`);
+      }
+    });
+  }
+  async function metadataAccessor(type, options = {}, noResponseRetries = 3, fastFail = false) {
+    const headers = new Headers(exports.HEADERS);
+    let metadataKey = "";
+    let params = {};
+    if (typeof type === "object") {
+      const metadataAccessor = type;
+      new Headers(metadataAccessor.headers).forEach((value, key) => headers.set(key, value));
+      metadataKey = metadataAccessor.metadataKey;
+      params = metadataAccessor.params || params;
+      noResponseRetries = metadataAccessor.noResponseRetries || noResponseRetries;
+      fastFail = metadataAccessor.fastFail || fastFail;
+    } else {
+      metadataKey = type;
+    }
+    if (typeof options === "string") {
+      metadataKey += `/${options}`;
+    } else {
+      validate(options);
+      if (options.property) {
+        metadataKey += `/${options.property}`;
+      }
+      new Headers(options.headers).forEach((value, key) => headers.set(key, value));
+      params = options.params || params;
+    }
+    const requestMethod = fastFail ? fastFailMetadataRequest : gaxios_1.request;
+    const req = {
+      url: `${getBaseUrl()}/${metadataKey}`,
+      headers,
+      retryConfig: { noResponseRetries },
+      params,
+      responseType: "text",
+      timeout: requestTimeout()
+    };
+    log.info("instance request %j", req);
+    const res = await requestMethod(req);
+    log.info("instance metadata is %s", res.data);
+    const metadataFlavor = res.headers.get(exports.HEADER_NAME);
+    if (metadataFlavor !== exports.HEADER_VALUE) {
+      throw new RangeError(`Invalid response from metadata service: incorrect ${exports.HEADER_NAME} header. Expected '${exports.HEADER_VALUE}', got ${metadataFlavor ? `'${metadataFlavor}'` : "no header"}`);
+    }
+    if (typeof res.data === "string") {
+      try {
+        return jsonBigint.parse(res.data);
+      } catch {}
+    }
+    return res.data;
+  }
+  async function fastFailMetadataRequest(options) {
+    const secondaryOptions = {
+      ...options,
+      url: options.url?.toString().replace(getBaseUrl(), getBaseUrl(exports.SECONDARY_HOST_ADDRESS))
+    };
+    const r1 = (0, gaxios_1.request)(options);
+    const r2 = (0, gaxios_1.request)(secondaryOptions);
+    return Promise.any([r1, r2]);
+  }
+  function instance(options) {
+    return metadataAccessor("instance", options);
+  }
+  function project(options) {
+    return metadataAccessor("project", options);
+  }
+  function universe(options) {
+    return metadataAccessor("universe", options);
+  }
+  async function bulk(properties) {
+    const r = {};
+    await Promise.all(properties.map((item) => {
+      return (async () => {
+        const res = await metadataAccessor(item);
+        const key = item.metadataKey;
+        r[key] = res;
+      })();
+    }));
+    return r;
+  }
+  function detectGCPAvailableRetries() {
+    return process.env.DETECT_GCP_RETRIES ? Number(process.env.DETECT_GCP_RETRIES) : 0;
+  }
+  var cachedIsAvailableResponse;
+  var EXPECTED_NETWORK_ERROR_CODES = new Set([
+    "EHOSTDOWN",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "ENOENT",
+    "ENOTFOUND",
+    "ECONNREFUSED"
+  ]);
+  var TIMEOUT_NAMES_AND_CODES = new Set([
+    "AbortError",
+    "TimeoutError"
+  ]);
+  var TIMEOUT_TYPES = new Set([
+    "aborted",
+    "request-timeout"
+  ]);
+  var MAX_ERROR_DEPTH = 20;
+  function isErrorWithDetails(val) {
+    return typeof val === "object" && val !== null;
+  }
+  function getErrorCodes(err, visited = new Set, depth = 0) {
+    if (!isErrorWithDetails(err) || visited.has(err) || depth > MAX_ERROR_DEPTH) {
+      return ["UNKNOWN"];
+    }
+    visited.add(err);
+    if (err.name === "AggregateError" && Array.isArray(err.errors)) {
+      if (err.errors.length === 0) {
+        return ["UNKNOWN"];
+      }
+      return err.errors.flatMap((subErr) => getErrorCodes(subErr, visited, depth + 1));
+    }
+    if (err.name !== undefined && TIMEOUT_NAMES_AND_CODES.has(err.name) || err.code !== undefined && TIMEOUT_NAMES_AND_CODES.has(err.code) || err.type !== undefined && TIMEOUT_TYPES.has(err.type)) {
+      return ["ETIMEDOUT"];
+    }
+    if ((typeof err.code === "string" || typeof err.code === "number") && err.code !== "") {
+      return [String(err.code)];
+    }
+    const nested = err.cause ?? err.error;
+    if (nested !== undefined) {
+      return getErrorCodes(nested, visited, depth + 1);
+    }
+    return ["UNKNOWN"];
+  }
+  async function isAvailable() {
+    if (process.env.METADATA_SERVER_DETECTION) {
+      const value = process.env.METADATA_SERVER_DETECTION.trim().toLocaleLowerCase();
+      if (!(value in exports.METADATA_SERVER_DETECTION)) {
+        throw new RangeError(`Unknown \`METADATA_SERVER_DETECTION\` env variable. Got \`${value}\`, but it should be \`${Object.keys(exports.METADATA_SERVER_DETECTION).join("`, `")}\`, or unset`);
+      }
+      switch (value) {
+        case "assume-present":
+          return true;
+        case "none":
+          return false;
+        case "bios-only":
+          return getGCPResidency();
+        case "ping-only":
+      }
+    }
+    try {
+      if (cachedIsAvailableResponse === undefined) {
+        cachedIsAvailableResponse = (async () => {
+          try {
+            await metadataAccessor("instance", undefined, detectGCPAvailableRetries(), !(process.env.GCE_METADATA_IP || process.env.GCE_METADATA_HOST));
+            return true;
+          } catch (e) {
+            if (process.env.DEBUG_AUTH) {
+              console.info(e);
+            }
+            if (!isErrorWithDetails(e)) {
+              process.emitWarning(`received unexpected error = ${String(e)} code = UNKNOWN`, "MetadataLookupWarning");
+              return false;
+            }
+            if (e.type === "request-timeout" || e.response?.status === 404) {
+              return false;
+            }
+            const codes = getErrorCodes(e);
+            const isExpected = codes.length > 0 && codes.every((code) => EXPECTED_NETWORK_ERROR_CODES.has(code));
+            if (!isExpected) {
+              const code = [...new Set(codes)].join(", ");
+              process.emitWarning(`received unexpected error = ${e.message} code = ${code}`, "MetadataLookupWarning");
+            }
+            return false;
+          }
+        })();
+      }
+      return await cachedIsAvailableResponse;
+    } catch (e) {
+      return false;
+    }
+  }
+  function resetIsAvailableCache() {
+    cachedIsAvailableResponse = undefined;
+  }
+  exports.gcpResidencyCache = null;
+  function getGCPResidency() {
+    if (exports.gcpResidencyCache === null) {
+      setGCPResidency();
+    }
+    return exports.gcpResidencyCache;
+  }
+  function setGCPResidency(value = null) {
+    exports.gcpResidencyCache = value !== null ? value : (0, gcp_residency_1.detectGCPResidency)();
+  }
+  function requestTimeout() {
+    return getGCPResidency() ? 0 : 3000;
+  }
+  __exportStar(require_gcp_residency(), exports);
+});
+
+// ../node_modules/base64-js/index.js
+var require_base64_js = __commonJS(function(exports) {
+  exports.byteLength = byteLength;
+  exports.toByteArray = toByteArray;
+  exports.fromByteArray = fromByteArray;
+  var lookup = [];
+  var revLookup = [];
+  var Arr = typeof Uint8Array !== "undefined" ? Uint8Array : Array;
+  var code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (i = 0, len = code.length;i < len; ++i) {
+    lookup[i] = code[i];
+    revLookup[code.charCodeAt(i)] = i;
+  }
+  var i;
+  var len;
+  revLookup[45] = 62;
+  revLookup[95] = 63;
+  function getLens(b64) {
+    var len = b64.length;
+    if (len % 4 > 0) {
+      throw new Error("Invalid string. Length must be a multiple of 4");
+    }
+    var validLen = b64.indexOf("=");
+    if (validLen === -1)
+      validLen = len;
+    var placeHoldersLen = validLen === len ? 0 : 4 - validLen % 4;
+    return [validLen, placeHoldersLen];
+  }
+  function byteLength(b64) {
+    var lens = getLens(b64);
+    var validLen = lens[0];
+    var placeHoldersLen = lens[1];
+    return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
+  }
+  function _byteLength(b64, validLen, placeHoldersLen) {
+    return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
+  }
+  function toByteArray(b64) {
+    var tmp;
+    var lens = getLens(b64);
+    var validLen = lens[0];
+    var placeHoldersLen = lens[1];
+    var arr = new Arr(_byteLength(b64, validLen, placeHoldersLen));
+    var curByte = 0;
+    var len = placeHoldersLen > 0 ? validLen - 4 : validLen;
+    var i;
+    for (i = 0;i < len; i += 4) {
+      tmp = revLookup[b64.charCodeAt(i)] << 18 | revLookup[b64.charCodeAt(i + 1)] << 12 | revLookup[b64.charCodeAt(i + 2)] << 6 | revLookup[b64.charCodeAt(i + 3)];
+      arr[curByte++] = tmp >> 16 & 255;
+      arr[curByte++] = tmp >> 8 & 255;
+      arr[curByte++] = tmp & 255;
+    }
+    if (placeHoldersLen === 2) {
+      tmp = revLookup[b64.charCodeAt(i)] << 2 | revLookup[b64.charCodeAt(i + 1)] >> 4;
+      arr[curByte++] = tmp & 255;
+    }
+    if (placeHoldersLen === 1) {
+      tmp = revLookup[b64.charCodeAt(i)] << 10 | revLookup[b64.charCodeAt(i + 1)] << 4 | revLookup[b64.charCodeAt(i + 2)] >> 2;
+      arr[curByte++] = tmp >> 8 & 255;
+      arr[curByte++] = tmp & 255;
+    }
+    return arr;
+  }
+  function tripletToBase64(num) {
+    return lookup[num >> 18 & 63] + lookup[num >> 12 & 63] + lookup[num >> 6 & 63] + lookup[num & 63];
+  }
+  function encodeChunk(uint8, start, end) {
+    var tmp;
+    var output = [];
+    for (var i = start;i < end; i += 3) {
+      tmp = (uint8[i] << 16 & 16711680) + (uint8[i + 1] << 8 & 65280) + (uint8[i + 2] & 255);
+      output.push(tripletToBase64(tmp));
+    }
+    return output.join("");
+  }
+  function fromByteArray(uint8) {
+    var tmp;
+    var len = uint8.length;
+    var extraBytes = len % 3;
+    var parts = [];
+    var maxChunkLength = 16383;
+    for (var i = 0, len2 = len - extraBytes;i < len2; i += maxChunkLength) {
+      parts.push(encodeChunk(uint8, i, i + maxChunkLength > len2 ? len2 : i + maxChunkLength));
+    }
+    if (extraBytes === 1) {
+      tmp = uint8[len - 1];
+      parts.push(lookup[tmp >> 2] + lookup[tmp << 4 & 63] + "==");
+    } else if (extraBytes === 2) {
+      tmp = (uint8[len - 2] << 8) + uint8[len - 1];
+      parts.push(lookup[tmp >> 10] + lookup[tmp >> 4 & 63] + lookup[tmp << 2 & 63] + "=");
+    }
+    return parts.join("");
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/crypto/shared.js
+var require_shared = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.fromArrayBufferToHex = fromArrayBufferToHex;
+  function fromArrayBufferToHex(arrayBuffer) {
+    const byteArray = Array.from(new Uint8Array(arrayBuffer));
+    return byteArray.map((byte) => {
+      return byte.toString(16).padStart(2, "0");
+    }).join("");
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/crypto/browser/crypto.js
+var require_crypto = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.BrowserCrypto = undefined;
+  var base64js = require_base64_js();
+  var shared_1 = require_shared();
+
+  class BrowserCrypto {
+    constructor() {
+      if (typeof window === "undefined" || window.crypto === undefined || window.crypto.subtle === undefined) {
+        throw new Error("SubtleCrypto not found. Make sure it's an https:// website.");
+      }
+    }
+    async sha256DigestBase64(str) {
+      const inputBuffer = new TextEncoder().encode(str);
+      const outputBuffer = await window.crypto.subtle.digest("SHA-256", inputBuffer);
+      return base64js.fromByteArray(new Uint8Array(outputBuffer));
+    }
+    randomBytesBase64(count) {
+      const array = new Uint8Array(count);
+      window.crypto.getRandomValues(array);
+      return base64js.fromByteArray(array);
+    }
+    static padBase64(base64) {
+      while (base64.length % 4 !== 0) {
+        base64 += "=";
+      }
+      return base64;
+    }
+    async verify(pubkey, data, signature) {
+      const algo = {
+        name: "RSASSA-PKCS1-v1_5",
+        hash: { name: "SHA-256" }
+      };
+      const dataArray = new TextEncoder().encode(data);
+      const signatureArray = base64js.toByteArray(BrowserCrypto.padBase64(signature));
+      const cryptoKey = await window.crypto.subtle.importKey("jwk", pubkey, algo, true, ["verify"]);
+      const result = await window.crypto.subtle.verify(algo, cryptoKey, Buffer.from(signatureArray), dataArray);
+      return result;
+    }
+    async sign(privateKey, data) {
+      const algo = {
+        name: "RSASSA-PKCS1-v1_5",
+        hash: { name: "SHA-256" }
+      };
+      const dataArray = new TextEncoder().encode(data);
+      const cryptoKey = await window.crypto.subtle.importKey("jwk", privateKey, algo, true, ["sign"]);
+      const result = await window.crypto.subtle.sign(algo, cryptoKey, dataArray);
+      return base64js.fromByteArray(new Uint8Array(result));
+    }
+    decodeBase64StringUtf8(base64) {
+      const uint8array = base64js.toByteArray(BrowserCrypto.padBase64(base64));
+      const result = new TextDecoder().decode(uint8array);
+      return result;
+    }
+    encodeBase64StringUtf8(text) {
+      const uint8array = new TextEncoder().encode(text);
+      const result = base64js.fromByteArray(uint8array);
+      return result;
+    }
+    async sha256DigestHex(str) {
+      const inputBuffer = new TextEncoder().encode(str);
+      const outputBuffer = await window.crypto.subtle.digest("SHA-256", inputBuffer);
+      return (0, shared_1.fromArrayBufferToHex)(outputBuffer);
+    }
+    async signWithHmacSha256(key, msg) {
+      const rawKey = typeof key === "string" ? key : String.fromCharCode(...new Uint16Array(key));
+      const enc = new TextEncoder;
+      const cryptoKey = await window.crypto.subtle.importKey("raw", enc.encode(rawKey), {
+        name: "HMAC",
+        hash: {
+          name: "SHA-256"
+        }
+      }, false, ["sign"]);
+      return window.crypto.subtle.sign("HMAC", cryptoKey, enc.encode(msg));
+    }
+  }
+  exports.BrowserCrypto = BrowserCrypto;
+});
+
+// ../node_modules/google-auth-library/build/src/crypto/node/crypto.js
+var require_crypto2 = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.NodeCrypto = undefined;
+  var crypto2 = __require("crypto");
+
+  class NodeCrypto {
+    async sha256DigestBase64(str) {
+      return crypto2.createHash("sha256").update(str).digest("base64");
+    }
+    randomBytesBase64(count) {
+      return crypto2.randomBytes(count).toString("base64");
+    }
+    async verify(pubkey, data, signature) {
+      const verifier = crypto2.createVerify("RSA-SHA256");
+      verifier.update(data);
+      verifier.end();
+      return verifier.verify(pubkey, signature, "base64");
+    }
+    async sign(privateKey, data) {
+      const signer = crypto2.createSign("RSA-SHA256");
+      signer.update(data);
+      signer.end();
+      return signer.sign(privateKey, "base64");
+    }
+    decodeBase64StringUtf8(base64) {
+      return Buffer.from(base64, "base64").toString("utf-8");
+    }
+    encodeBase64StringUtf8(text) {
+      return Buffer.from(text, "utf-8").toString("base64");
+    }
+    async sha256DigestHex(str) {
+      return crypto2.createHash("sha256").update(str).digest("hex");
+    }
+    async signWithHmacSha256(key, msg) {
+      const cryptoKey = typeof key === "string" ? key : toBuffer(key);
+      return toArrayBuffer(crypto2.createHmac("sha256", cryptoKey).update(msg).digest());
+    }
+  }
+  exports.NodeCrypto = NodeCrypto;
+  function toArrayBuffer(buffer) {
+    const ab = new ArrayBuffer(buffer.length);
+    const view = new Uint8Array(ab);
+    for (let i = 0;i < buffer.length; ++i) {
+      view[i] = buffer[i];
+    }
+    return ab;
+  }
+  function toBuffer(arrayBuffer) {
+    return Buffer.from(arrayBuffer);
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/crypto/crypto.js
+var require_crypto3 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.createCrypto = createCrypto;
+  exports.hasBrowserCrypto = hasBrowserCrypto;
+  var crypto_1 = require_crypto();
+  var crypto_2 = require_crypto2();
+  __exportStar(require_shared(), exports);
+  function createCrypto() {
+    if (hasBrowserCrypto()) {
+      return new crypto_1.BrowserCrypto;
+    }
+    return new crypto_2.NodeCrypto;
+  }
+  function hasBrowserCrypto() {
+    return typeof window !== "undefined" && typeof window.crypto !== "undefined" && typeof window.crypto.subtle !== "undefined";
+  }
+});
+
+// ../node_modules/safe-buffer/index.js
+var require_safe_buffer = __commonJS(function(exports, module) {
+  /*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> */
+  var buffer = __require("buffer");
+  var Buffer2 = buffer.Buffer;
+  function copyProps(src, dst) {
+    for (var key in src) {
+      dst[key] = src[key];
+    }
+  }
+  if (Buffer2.from && Buffer2.alloc && Buffer2.allocUnsafe && Buffer2.allocUnsafeSlow) {
+    module.exports = buffer;
+  } else {
+    copyProps(buffer, exports);
+    exports.Buffer = SafeBuffer;
+  }
+  function SafeBuffer(arg, encodingOrOffset, length) {
+    return Buffer2(arg, encodingOrOffset, length);
+  }
+  SafeBuffer.prototype = Object.create(Buffer2.prototype);
+  copyProps(Buffer2, SafeBuffer);
+  SafeBuffer.from = function(arg, encodingOrOffset, length) {
+    if (typeof arg === "number") {
+      throw new TypeError("Argument must not be a number");
+    }
+    return Buffer2(arg, encodingOrOffset, length);
+  };
+  SafeBuffer.alloc = function(size, fill, encoding) {
+    if (typeof size !== "number") {
+      throw new TypeError("Argument must be a number");
+    }
+    var buf = Buffer2(size);
+    if (fill !== undefined) {
+      if (typeof encoding === "string") {
+        buf.fill(fill, encoding);
+      } else {
+        buf.fill(fill);
+      }
+    } else {
+      buf.fill(0);
+    }
+    return buf;
+  };
+  SafeBuffer.allocUnsafe = function(size) {
+    if (typeof size !== "number") {
+      throw new TypeError("Argument must be a number");
+    }
+    return Buffer2(size);
+  };
+  SafeBuffer.allocUnsafeSlow = function(size) {
+    if (typeof size !== "number") {
+      throw new TypeError("Argument must be a number");
+    }
+    return buffer.SlowBuffer(size);
+  };
+});
+
+// ../node_modules/ecdsa-sig-formatter/src/param-bytes-for-alg.js
+var require_param_bytes_for_alg = __commonJS(function(exports, module) {
+  function getParamSize(keySize) {
+    var result = (keySize / 8 | 0) + (keySize % 8 === 0 ? 0 : 1);
+    return result;
+  }
+  var paramBytesForAlg = {
+    ES256: getParamSize(256),
+    ES384: getParamSize(384),
+    ES512: getParamSize(521)
+  };
+  function getParamBytesForAlg(alg) {
+    var paramBytes = paramBytesForAlg[alg];
+    if (paramBytes) {
+      return paramBytes;
+    }
+    throw new Error('Unknown algorithm "' + alg + '"');
+  }
+  module.exports = getParamBytesForAlg;
+});
+
+// ../node_modules/ecdsa-sig-formatter/src/ecdsa-sig-formatter.js
+var require_ecdsa_sig_formatter = __commonJS(function(exports, module) {
+  var Buffer2 = require_safe_buffer().Buffer;
+  var getParamBytesForAlg = require_param_bytes_for_alg();
+  var MAX_OCTET = 128;
+  var CLASS_UNIVERSAL = 0;
+  var PRIMITIVE_BIT = 32;
+  var TAG_SEQ = 16;
+  var TAG_INT = 2;
+  var ENCODED_TAG_SEQ = TAG_SEQ | PRIMITIVE_BIT | CLASS_UNIVERSAL << 6;
+  var ENCODED_TAG_INT = TAG_INT | CLASS_UNIVERSAL << 6;
+  function base64Url(base64) {
+    return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  }
+  function signatureAsBuffer(signature) {
+    if (Buffer2.isBuffer(signature)) {
+      return signature;
+    } else if (typeof signature === "string") {
+      return Buffer2.from(signature, "base64");
+    }
+    throw new TypeError("ECDSA signature must be a Base64 string or a Buffer");
+  }
+  function derToJose(signature, alg) {
+    signature = signatureAsBuffer(signature);
+    var paramBytes = getParamBytesForAlg(alg);
+    var maxEncodedParamLength = paramBytes + 1;
+    var inputLength = signature.length;
+    var offset = 0;
+    if (signature[offset++] !== ENCODED_TAG_SEQ) {
+      throw new Error('Could not find expected "seq"');
+    }
+    var seqLength = signature[offset++];
+    if (seqLength === (MAX_OCTET | 1)) {
+      seqLength = signature[offset++];
+    }
+    if (inputLength - offset < seqLength) {
+      throw new Error('"seq" specified length of "' + seqLength + '", only "' + (inputLength - offset) + '" remaining');
+    }
+    if (signature[offset++] !== ENCODED_TAG_INT) {
+      throw new Error('Could not find expected "int" for "r"');
+    }
+    var rLength = signature[offset++];
+    if (inputLength - offset - 2 < rLength) {
+      throw new Error('"r" specified length of "' + rLength + '", only "' + (inputLength - offset - 2) + '" available');
+    }
+    if (maxEncodedParamLength < rLength) {
+      throw new Error('"r" specified length of "' + rLength + '", max of "' + maxEncodedParamLength + '" is acceptable');
+    }
+    var rOffset = offset;
+    offset += rLength;
+    if (signature[offset++] !== ENCODED_TAG_INT) {
+      throw new Error('Could not find expected "int" for "s"');
+    }
+    var sLength = signature[offset++];
+    if (inputLength - offset !== sLength) {
+      throw new Error('"s" specified length of "' + sLength + '", expected "' + (inputLength - offset) + '"');
+    }
+    if (maxEncodedParamLength < sLength) {
+      throw new Error('"s" specified length of "' + sLength + '", max of "' + maxEncodedParamLength + '" is acceptable');
+    }
+    var sOffset = offset;
+    offset += sLength;
+    if (offset !== inputLength) {
+      throw new Error('Expected to consume entire buffer, but "' + (inputLength - offset) + '" bytes remain');
+    }
+    var rPadding = paramBytes - rLength, sPadding = paramBytes - sLength;
+    var dst = Buffer2.allocUnsafe(rPadding + rLength + sPadding + sLength);
+    for (offset = 0;offset < rPadding; ++offset) {
+      dst[offset] = 0;
+    }
+    signature.copy(dst, offset, rOffset + Math.max(-rPadding, 0), rOffset + rLength);
+    offset = paramBytes;
+    for (var o = offset;offset < o + sPadding; ++offset) {
+      dst[offset] = 0;
+    }
+    signature.copy(dst, offset, sOffset + Math.max(-sPadding, 0), sOffset + sLength);
+    dst = dst.toString("base64");
+    dst = base64Url(dst);
+    return dst;
+  }
+  function countPadding(buf, start, stop) {
+    var padding = 0;
+    while (start + padding < stop && buf[start + padding] === 0) {
+      ++padding;
+    }
+    var needsSign = buf[start + padding] >= MAX_OCTET;
+    if (needsSign) {
+      --padding;
+    }
+    return padding;
+  }
+  function joseToDer(signature, alg) {
+    signature = signatureAsBuffer(signature);
+    var paramBytes = getParamBytesForAlg(alg);
+    var signatureBytes = signature.length;
+    if (signatureBytes !== paramBytes * 2) {
+      throw new TypeError('"' + alg + '" signatures must be "' + paramBytes * 2 + '" bytes, saw "' + signatureBytes + '"');
+    }
+    var rPadding = countPadding(signature, 0, paramBytes);
+    var sPadding = countPadding(signature, paramBytes, signature.length);
+    var rLength = paramBytes - rPadding;
+    var sLength = paramBytes - sPadding;
+    var rsBytes = 1 + 1 + rLength + 1 + 1 + sLength;
+    var shortLength = rsBytes < MAX_OCTET;
+    var dst = Buffer2.allocUnsafe((shortLength ? 2 : 3) + rsBytes);
+    var offset = 0;
+    dst[offset++] = ENCODED_TAG_SEQ;
+    if (shortLength) {
+      dst[offset++] = rsBytes;
+    } else {
+      dst[offset++] = MAX_OCTET | 1;
+      dst[offset++] = rsBytes & 255;
+    }
+    dst[offset++] = ENCODED_TAG_INT;
+    dst[offset++] = rLength;
+    if (rPadding < 0) {
+      dst[offset++] = 0;
+      offset += signature.copy(dst, offset, 0, paramBytes);
+    } else {
+      offset += signature.copy(dst, offset, rPadding, paramBytes);
+    }
+    dst[offset++] = ENCODED_TAG_INT;
+    dst[offset++] = sLength;
+    if (sPadding < 0) {
+      dst[offset++] = 0;
+      signature.copy(dst, offset, paramBytes);
+    } else {
+      signature.copy(dst, offset, paramBytes + sPadding);
+    }
+    return dst;
+  }
+  module.exports = {
+    derToJose,
+    joseToDer
+  };
+});
+
+// ../node_modules/google-auth-library/build/src/util.js
+var require_util2 = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.LRUCache = undefined;
+  exports.snakeToCamel = snakeToCamel;
+  exports.originalOrCamelOptions = originalOrCamelOptions;
+  exports.removeUndefinedValuesInObject = removeUndefinedValuesInObject;
+  exports.isValidFile = isValidFile;
+  exports.getWellKnownCertificateConfigFileLocation = getWellKnownCertificateConfigFileLocation;
+  var fs = __require("fs");
+  var os = __require("os");
+  var path = __require("path");
+  var WELL_KNOWN_CERTIFICATE_CONFIG_FILE = "certificate_config.json";
+  var CLOUDSDK_CONFIG_DIRECTORY = "gcloud";
+  function snakeToCamel(str) {
+    return str.replace(/([_][^_])/g, (match) => match.slice(1).toUpperCase());
+  }
+  function originalOrCamelOptions(obj) {
+    function get(key) {
+      const o = obj || {};
+      return o[key] ?? o[snakeToCamel(key)];
+    }
+    return { get };
+  }
+
+  class LRUCache {
+    capacity;
+    #cache = new Map;
+    maxAge;
+    constructor(options) {
+      this.capacity = options.capacity;
+      this.maxAge = options.maxAge;
+    }
+    #moveToEnd(key, value) {
+      this.#cache.delete(key);
+      this.#cache.set(key, {
+        value,
+        lastAccessed: Date.now()
+      });
+    }
+    set(key, value) {
+      this.#moveToEnd(key, value);
+      this.#evict();
+    }
+    get(key) {
+      const item = this.#cache.get(key);
+      if (!item)
+        return;
+      this.#moveToEnd(key, item.value);
+      this.#evict();
+      return item.value;
+    }
+    #evict() {
+      const cutoffDate = this.maxAge ? Date.now() - this.maxAge : 0;
+      let oldestItem = this.#cache.entries().next();
+      while (!oldestItem.done && (this.#cache.size > this.capacity || oldestItem.value[1].lastAccessed < cutoffDate)) {
+        this.#cache.delete(oldestItem.value[0]);
+        oldestItem = this.#cache.entries().next();
+      }
+    }
+  }
+  exports.LRUCache = LRUCache;
+  function removeUndefinedValuesInObject(object) {
+    Object.entries(object).forEach(([key, value]) => {
+      if (value === undefined || value === "undefined") {
+        delete object[key];
+      }
+    });
+    return object;
+  }
+  async function isValidFile(filePath) {
+    try {
+      const stats = await fs.promises.lstat(filePath);
+      return stats.isFile();
+    } catch (e) {
+      return false;
+    }
+  }
+  function getWellKnownCertificateConfigFileLocation() {
+    const configDir = process.env.CLOUDSDK_CONFIG || (_isWindows() ? path.join(process.env.APPDATA || "", CLOUDSDK_CONFIG_DIRECTORY) : path.join(process.env.HOME || "", ".config", CLOUDSDK_CONFIG_DIRECTORY));
+    return path.join(configDir, WELL_KNOWN_CERTIFICATE_CONFIG_FILE);
+  }
+  function _isWindows() {
+    return os.platform().startsWith("win");
+  }
+});
+
+// ../node_modules/google-auth-library/package.json
+var require_package2 = __commonJS(function(exports, module) {
+  module.exports = {
+    name: "google-auth-library",
+    version: "11.1.0",
+    author: "Google Inc.",
+    description: "Google APIs Authentication Client Library for Node.js",
+    engines: {
+      node: ">=22"
+    },
+    main: "./build/src/index.js",
+    types: "./build/src/index.d.ts",
+    repository: {
+      type: "git",
+      directory: "core/packages/google-auth-library-nodejs",
+      url: "https://github.com/googleapis/google-cloud-node.git"
+    },
+    keywords: [
+      "google",
+      "api",
+      "google apis",
+      "client",
+      "client library"
+    ],
+    dependencies: {
+      "base64-js": "^1.3.0",
+      "ecdsa-sig-formatter": "^1.0.11",
+      gaxios: "^7.1.4",
+      "gcp-metadata": "^9.0.0",
+      "google-logging-utils": "^2.0.0",
+      jws: "^4.0.0"
+    },
+    devDependencies: {
+      "@types/base64-js": "^1.2.5",
+      "@types/jws": "^3.1.0",
+      "@types/mocha": "^10.0.10",
+      "@types/mv": "^2.1.0",
+      "@types/ncp": "^2.0.8",
+      "@types/node": "^24.0.0",
+      "@types/sinon": "^21.0.0",
+      "assert-rejects": "^1.0.0",
+      c8: "^10.1.3",
+      codecov: "^3.8.3",
+      gts: "^6.0.2",
+      "is-docker": "^3.0.0",
+      jsdoc: "^4.0.4",
+      "jsdoc-fresh": "^6.0.0",
+      "jsdoc-region-tag": "^5.0.0",
+      karma: "^6.0.0",
+      "karma-chrome-launcher": "^3.0.0",
+      "karma-coverage": "^2.0.0",
+      "karma-firefox-launcher": "^2.0.0",
+      "karma-mocha": "^2.0.0",
+      "karma-sourcemap-loader": "^0.4.0",
+      "karma-webpack": "^5.0.0",
+      keypair: "^1.0.4",
+      mocha: "^11.1.0",
+      mv: "^2.1.1",
+      ncp: "^2.0.0",
+      nock: "^14.0.5",
+      "null-loader": "^4.0.1",
+      puppeteer: "^24.0.0",
+      sinon: "21.0.3",
+      "ts-loader": "^9.5.2",
+      typescript: "5.8.3",
+      webpack: "^5.97.1",
+      "webpack-cli": "^6.0.1"
+    },
+    files: [
+      "build/src",
+      "!build/src/**/*.map"
+    ],
+    scripts: {
+      test: "c8 mocha build/test",
+      clean: "gts clean",
+      prepare: "npm run compile",
+      lint: "gts check --no-inline-config",
+      compile: "tsc -p .",
+      fix: "gts fix",
+      pretest: "pnpm run compile --sourceMap",
+      docs: "jsdoc -c .jsdoc.js",
+      "samples-setup": "cd samples/ && pnpm link ../ && pnpm run setup && cd ../",
+      "samples-test": "cd samples/ && pnpm link ../ && pnpm test && cd ../",
+      "system-test": "mocha build/system-test --timeout 60000",
+      "presystem-test": "pnpm run compile --sourceMap",
+      webpack: "webpack",
+      "browser-test": "karma start",
+      prelint: "cd samples; pnpm link ../; pnpm install"
+    },
+    license: "Apache-2.0",
+    homepage: "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs"
+  };
+});
+
+// ../node_modules/google-auth-library/build/src/shared.cjs
+var require_shared2 = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.USER_AGENT = exports.PRODUCT_NAME = exports.pkg = undefined;
+  var pkg = require_package2();
+  exports.pkg = pkg;
+  var PRODUCT_NAME = "google-api-nodejs-client";
+  exports.PRODUCT_NAME = PRODUCT_NAME;
+  var USER_AGENT = `${PRODUCT_NAME}/${pkg.version}`;
+  exports.USER_AGENT = USER_AGENT;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/authclient.js
+var require_authclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.AuthClient = exports.DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS = exports.DEFAULT_UNIVERSE = undefined;
+  var events_1 = __require("events");
+  var gaxios_1 = require_src2();
+  var util_1 = require_util2();
+  var google_logging_utils_1 = require_src3();
+  var shared_cjs_1 = require_shared2();
+  exports.DEFAULT_UNIVERSE = "googleapis.com";
+  exports.DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS = 5 * 60 * 1000;
+
+  class AuthClient extends events_1.EventEmitter {
+    apiKey;
+    projectId;
+    quotaProjectId;
+    transporter;
+    credentials = {};
+    eagerRefreshThresholdMillis = exports.DEFAULT_EAGER_REFRESH_THRESHOLD_MILLIS;
+    forceRefreshOnFailure = false;
+    universeDomain = exports.DEFAULT_UNIVERSE;
+    static RequestMethodNameSymbol = Symbol("request method name");
+    static RequestLogIdSymbol = Symbol("request log id");
+    constructor(opts = {}) {
+      super();
+      const options = (0, util_1.originalOrCamelOptions)(opts);
+      this.apiKey = opts.apiKey;
+      this.projectId = options.get("project_id") ?? null;
+      this.quotaProjectId = options.get("quota_project_id");
+      this.credentials = options.get("credentials") ?? {};
+      this.universeDomain = options.get("universe_domain") ?? exports.DEFAULT_UNIVERSE;
+      this.transporter = opts.transporter ?? new gaxios_1.Gaxios(opts.transporterOptions);
+      if (options.get("useAuthRequestParameters") !== false) {
+        this.transporter.interceptors.request.add(AuthClient.DEFAULT_REQUEST_INTERCEPTOR);
+        this.transporter.interceptors.response.add(AuthClient.DEFAULT_RESPONSE_INTERCEPTOR);
+      }
+      if (opts.eagerRefreshThresholdMillis) {
+        this.eagerRefreshThresholdMillis = opts.eagerRefreshThresholdMillis;
+      }
+      this.forceRefreshOnFailure = opts.forceRefreshOnFailure ?? false;
+    }
+    fetch(...args) {
+      const input = args[0];
+      const init = args[1];
+      let url = undefined;
+      const headers = new Headers;
+      if (typeof input === "string") {
+        url = new URL(input);
+      } else if (input instanceof URL) {
+        url = input;
+      } else if (input && input.url) {
+        url = new URL(input.url);
+      }
+      if (input && typeof input === "object" && "headers" in input) {
+        gaxios_1.Gaxios.mergeHeaders(headers, input.headers);
+      }
+      if (init) {
+        gaxios_1.Gaxios.mergeHeaders(headers, new Headers(init.headers));
+      }
+      if (typeof input === "object" && !(input instanceof URL)) {
+        return this.request({ ...init, ...input, headers, url });
+      } else {
+        return this.request({ ...init, headers, url });
+      }
+    }
+    setCredentials(credentials) {
+      this.credentials = credentials;
+    }
+    addSharedMetadataHeaders(headers) {
+      if (!headers.has("x-goog-user-project") && this.quotaProjectId) {
+        headers.set("x-goog-user-project", this.quotaProjectId);
+      }
+      return headers;
+    }
+    addUserProjectAndAuthHeaders(target, source) {
+      const xGoogUserProject = source.get("x-goog-user-project");
+      const authorizationHeader = source.get("authorization");
+      if (xGoogUserProject) {
+        target.set("x-goog-user-project", xGoogUserProject);
+      }
+      if (authorizationHeader) {
+        target.set("authorization", authorizationHeader);
+      }
+      return target;
+    }
+    static log = (0, google_logging_utils_1.log)("auth");
+    static DEFAULT_REQUEST_INTERCEPTOR = {
+      resolved: async (config) => {
+        if (!config.headers.has("x-goog-api-client")) {
+          const nodeVersion = process.version.replace(/^v/, "");
+          config.headers.set("x-goog-api-client", `gl-node/${nodeVersion}`);
+        }
+        const userAgent = config.headers.get("User-Agent");
+        if (!userAgent) {
+          config.headers.set("User-Agent", shared_cjs_1.USER_AGENT);
+        } else if (!userAgent.includes(`${shared_cjs_1.PRODUCT_NAME}/`)) {
+          config.headers.set("User-Agent", `${userAgent} ${shared_cjs_1.USER_AGENT}`);
+        }
+        try {
+          const symbols = config;
+          const methodName = symbols[AuthClient.RequestMethodNameSymbol];
+          const logId = `${Math.floor(Math.random() * 1000)}`;
+          symbols[AuthClient.RequestLogIdSymbol] = logId;
+          const logObject = {
+            url: config.url,
+            headers: config.headers
+          };
+          if (methodName) {
+            AuthClient.log.info("%s [%s] request %j", methodName, logId, logObject);
+          } else {
+            AuthClient.log.info("[%s] request %j", logId, logObject);
+          }
+        } catch (e) {}
+        return config;
+      }
+    };
+    static DEFAULT_RESPONSE_INTERCEPTOR = {
+      resolved: async (response) => {
+        try {
+          const symbols = response.config;
+          const methodName = symbols[AuthClient.RequestMethodNameSymbol];
+          const logId = symbols[AuthClient.RequestLogIdSymbol];
+          if (methodName) {
+            AuthClient.log.info("%s [%s] response %j", methodName, logId, response.data);
+          } else {
+            AuthClient.log.info("[%s] response %j", logId, response.data);
+          }
+        } catch (e) {}
+        return response;
+      },
+      rejected: async (error) => {
+        try {
+          const symbols = error.config;
+          const methodName = symbols[AuthClient.RequestMethodNameSymbol];
+          const logId = symbols[AuthClient.RequestLogIdSymbol];
+          if (methodName) {
+            AuthClient.log.info("%s [%s] error %j", methodName, logId, error.response?.data);
+          } else {
+            AuthClient.log.error("[%s] error %j", logId, error.response?.data);
+          }
+        } catch (e) {}
+        throw error;
+      }
+    };
+    static setMethodName(config, methodName) {
+      try {
+        const symbols = config;
+        symbols[AuthClient.RequestMethodNameSymbol] = methodName;
+      } catch (e) {}
+    }
+    static get RETRY_CONFIG() {
+      return {
+        retry: true,
+        retryConfig: {
+          httpMethodsToRetry: ["GET", "PUT", "POST", "HEAD", "OPTIONS", "DELETE"]
+        }
+      };
+    }
+  }
+  exports.AuthClient = AuthClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/loginticket.js
+var require_loginticket = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.LoginTicket = undefined;
+
+  class LoginTicket {
+    envelope;
+    payload;
+    constructor(env, pay) {
+      this.envelope = env;
+      this.payload = pay;
+    }
+    getEnvelope() {
+      return this.envelope;
+    }
+    getPayload() {
+      return this.payload;
+    }
+    getUserId() {
+      const payload = this.getPayload();
+      if (payload && payload.sub) {
+        return payload.sub;
+      }
+      return null;
+    }
+    getAttributes() {
+      return { envelope: this.getEnvelope(), payload: this.getPayload() };
+    }
+  }
+  exports.LoginTicket = LoginTicket;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/oauth2client.js
+var require_oauth2client = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.OAuth2Client = exports.ClientAuthentication = exports.CertificateFormat = exports.CodeChallengeMethod = undefined;
+  var gaxios_1 = require_src2();
+  var querystring = __require("querystring");
+  var stream = __require("stream");
+  var formatEcdsa = require_ecdsa_sig_formatter();
+  var util_1 = require_util2();
+  var crypto_1 = require_crypto3();
+  var authclient_1 = require_authclient();
+  var loginticket_1 = require_loginticket();
+  var CodeChallengeMethod;
+  (function(CodeChallengeMethod) {
+    CodeChallengeMethod["Plain"] = "plain";
+    CodeChallengeMethod["S256"] = "S256";
+  })(CodeChallengeMethod || (exports.CodeChallengeMethod = CodeChallengeMethod = {}));
+  var CertificateFormat;
+  (function(CertificateFormat) {
+    CertificateFormat["PEM"] = "PEM";
+    CertificateFormat["JWK"] = "JWK";
+  })(CertificateFormat || (exports.CertificateFormat = CertificateFormat = {}));
+  var ClientAuthentication;
+  (function(ClientAuthentication) {
+    ClientAuthentication["ClientSecretPost"] = "ClientSecretPost";
+    ClientAuthentication["ClientSecretBasic"] = "ClientSecretBasic";
+    ClientAuthentication["None"] = "None";
+  })(ClientAuthentication || (exports.ClientAuthentication = ClientAuthentication = {}));
+
+  class OAuth2Client extends authclient_1.AuthClient {
+    redirectUri;
+    certificateCache = {};
+    certificateExpiry = null;
+    certificateCacheFormat = CertificateFormat.PEM;
+    refreshTokenPromises = new Map;
+    endpoints;
+    issuers;
+    clientAuthentication;
+    _clientId;
+    _clientSecret;
+    refreshHandler;
+    constructor(options = {}, clientSecret, redirectUri) {
+      super(typeof options === "object" ? options : {});
+      if (typeof options !== "object") {
+        options = {
+          clientId: options,
+          clientSecret,
+          redirectUri
+        };
+      }
+      this._clientId = options.clientId || options.client_id;
+      this._clientSecret = options.clientSecret || options.client_secret;
+      this.redirectUri = options.redirectUri || options.redirect_uris?.[0];
+      this.endpoints = {
+        tokenInfoUrl: "https://oauth2.googleapis.com/tokeninfo",
+        oauth2AuthBaseUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        oauth2TokenUrl: "https://oauth2.googleapis.com/token",
+        oauth2RevokeUrl: "https://oauth2.googleapis.com/revoke",
+        oauth2FederatedSignonPemCertsUrl: "https://www.googleapis.com/oauth2/v1/certs",
+        oauth2FederatedSignonJwkCertsUrl: "https://www.googleapis.com/oauth2/v3/certs",
+        oauth2IapPublicKeyUrl: "https://www.gstatic.com/iap/verify/public_key",
+        ...options.endpoints
+      };
+      this.clientAuthentication = options.clientAuthentication || ClientAuthentication.ClientSecretPost;
+      this.issuers = options.issuers || [
+        "accounts.google.com",
+        "https://accounts.google.com",
+        this.universeDomain
+      ];
+    }
+    static GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo";
+    static CLOCK_SKEW_SECS_ = 300;
+    static DEFAULT_MAX_TOKEN_LIFETIME_SECS_ = 86400;
+    generateAuthUrl(opts = {}) {
+      if (opts.code_challenge_method && !opts.code_challenge) {
+        throw new Error("If a code_challenge_method is provided, code_challenge must be included.");
+      }
+      opts.response_type = opts.response_type || "code";
+      opts.client_id = opts.client_id || this._clientId;
+      opts.redirect_uri = opts.redirect_uri || this.redirectUri;
+      if (Array.isArray(opts.scope)) {
+        opts.scope = opts.scope.join(" ");
+      }
+      const rootUrl = this.endpoints.oauth2AuthBaseUrl.toString();
+      return rootUrl + "?" + querystring.stringify(opts);
+    }
+    generateCodeVerifier() {
+      throw new Error("generateCodeVerifier is removed, please use generateCodeVerifierAsync instead.");
+    }
+    async generateCodeVerifierAsync() {
+      const crypto2 = (0, crypto_1.createCrypto)();
+      const randomString = crypto2.randomBytesBase64(96);
+      const codeVerifier = randomString.replace(/\+/g, "~").replace(/=/g, "_").replace(/\//g, "-");
+      const unencodedCodeChallenge = await crypto2.sha256DigestBase64(codeVerifier);
+      const codeChallenge = unencodedCodeChallenge.split("=")[0].replace(/\+/g, "-").replace(/\//g, "_");
+      return { codeVerifier, codeChallenge };
+    }
+    getToken(codeOrOptions, callback) {
+      const options = typeof codeOrOptions === "string" ? { code: codeOrOptions } : codeOrOptions;
+      if (callback) {
+        this.getTokenAsync(options).then((r) => callback(null, r.tokens, r.res), (e) => callback(e, null, e.response));
+      } else {
+        return this.getTokenAsync(options);
+      }
+    }
+    async getTokenAsync(options) {
+      const url = this.endpoints.oauth2TokenUrl.toString();
+      const headers = new Headers;
+      const values = {
+        client_id: options.client_id || this._clientId,
+        code_verifier: options.codeVerifier,
+        code: options.code,
+        grant_type: "authorization_code",
+        redirect_uri: options.redirect_uri || this.redirectUri
+      };
+      if (this.clientAuthentication === ClientAuthentication.ClientSecretBasic) {
+        const basic = Buffer.from(`${this._clientId}:${this._clientSecret}`);
+        headers.set("authorization", `Basic ${basic.toString("base64")}`);
+      }
+      if (this.clientAuthentication === ClientAuthentication.ClientSecretPost) {
+        values.client_secret = this._clientSecret;
+      }
+      const opts = {
+        ...OAuth2Client.RETRY_CONFIG,
+        method: "POST",
+        url,
+        data: new URLSearchParams((0, util_1.removeUndefinedValuesInObject)(values)),
+        headers
+      };
+      authclient_1.AuthClient.setMethodName(opts, "getTokenAsync");
+      const res = await this.transporter.request(opts);
+      const tokens = res.data;
+      if (res.data && res.data.expires_in) {
+        tokens.expiry_date = new Date().getTime() + res.data.expires_in * 1000;
+        delete tokens.expires_in;
+      }
+      this.emit("tokens", tokens);
+      return { tokens, res };
+    }
+    async refreshToken(refreshToken) {
+      if (!refreshToken) {
+        return this.refreshTokenNoCache(refreshToken);
+      }
+      if (this.refreshTokenPromises.has(refreshToken)) {
+        return this.refreshTokenPromises.get(refreshToken);
+      }
+      const p = this.refreshTokenNoCache(refreshToken).then((r) => {
+        this.refreshTokenPromises.delete(refreshToken);
+        return r;
+      }, (e) => {
+        this.refreshTokenPromises.delete(refreshToken);
+        throw e;
+      });
+      this.refreshTokenPromises.set(refreshToken, p);
+      return p;
+    }
+    async refreshTokenNoCache(refreshToken) {
+      if (!refreshToken) {
+        throw new Error("No refresh token is set.");
+      }
+      const url = this.endpoints.oauth2TokenUrl.toString();
+      const data = {
+        refresh_token: refreshToken,
+        client_id: this._clientId,
+        client_secret: this._clientSecret,
+        grant_type: "refresh_token"
+      };
+      let res;
+      try {
+        const opts = {
+          ...OAuth2Client.RETRY_CONFIG,
+          method: "POST",
+          url,
+          data: new URLSearchParams((0, util_1.removeUndefinedValuesInObject)(data))
+        };
+        authclient_1.AuthClient.setMethodName(opts, "refreshTokenNoCache");
+        res = await this.transporter.request(opts);
+      } catch (e) {
+        if (e instanceof gaxios_1.GaxiosError && e.message === "invalid_grant" && e.response?.data && /ReAuth/i.test(e.response.data.error_description)) {
+          e.message = JSON.stringify(e.response.data);
+        }
+        throw e;
+      }
+      const tokens = res.data;
+      if (res.data && res.data.expires_in) {
+        tokens.expiry_date = new Date().getTime() + res.data.expires_in * 1000;
+        delete tokens.expires_in;
+      }
+      this.emit("tokens", tokens);
+      return { tokens, res };
+    }
+    refreshAccessToken(callback) {
+      if (callback) {
+        this.refreshAccessTokenAsync().then((r) => callback(null, r.credentials, r.res), callback);
+      } else {
+        return this.refreshAccessTokenAsync();
+      }
+    }
+    async refreshAccessTokenAsync() {
+      const r = await this.refreshToken(this.credentials.refresh_token);
+      const tokens = r.tokens;
+      tokens.refresh_token = this.credentials.refresh_token;
+      this.credentials = tokens;
+      return { credentials: this.credentials, res: r.res };
+    }
+    getAccessToken(callback) {
+      if (callback) {
+        this.getAccessTokenAsync().then((r) => callback(null, r.token, r.res), callback);
+      } else {
+        return this.getAccessTokenAsync();
+      }
+    }
+    async getAccessTokenAsync() {
+      const shouldRefresh = !this.credentials.access_token || this.isTokenExpiring();
+      if (shouldRefresh) {
+        if (!this.credentials.refresh_token) {
+          if (this.refreshHandler) {
+            const refreshedAccessToken = await this.processAndValidateRefreshHandler();
+            if (refreshedAccessToken?.access_token) {
+              this.setCredentials(refreshedAccessToken);
+              return { token: this.credentials.access_token };
+            }
+          } else {
+            throw new Error("No refresh token or refresh handler callback is set.");
+          }
+        }
+        const r = await this.refreshAccessTokenAsync();
+        if (!r.credentials || r.credentials && !r.credentials.access_token) {
+          throw new Error("Could not refresh access token.");
+        }
+        return { token: r.credentials.access_token, res: r.res };
+      } else {
+        return { token: this.credentials.access_token };
+      }
+    }
+    async getRequestHeaders(url) {
+      const headers = (await this.getRequestMetadataAsync(url)).headers;
+      return headers;
+    }
+    async getRequestMetadataAsync(url) {
+      const thisCreds = this.credentials;
+      if (!thisCreds.access_token && !thisCreds.refresh_token && !this.apiKey && !this.refreshHandler) {
+        throw new Error("No access, refresh token, API key or refresh handler callback is set.");
+      }
+      if (thisCreds.access_token && !this.isTokenExpiring()) {
+        thisCreds.token_type = thisCreds.token_type || "Bearer";
+        const headers = new Headers({
+          authorization: thisCreds.token_type + " " + thisCreds.access_token
+        });
+        return { headers: this.addSharedMetadataHeaders(headers) };
+      }
+      if (this.refreshHandler) {
+        const refreshedAccessToken = await this.processAndValidateRefreshHandler();
+        if (refreshedAccessToken?.access_token) {
+          this.setCredentials(refreshedAccessToken);
+          const headers = new Headers({
+            authorization: "Bearer " + this.credentials.access_token
+          });
+          return { headers: this.addSharedMetadataHeaders(headers) };
+        }
+      }
+      if (this.apiKey) {
+        return { headers: new Headers({ "X-Goog-Api-Key": this.apiKey }) };
+      }
+      let r = null;
+      let tokens = null;
+      try {
+        r = await this.refreshToken(thisCreds.refresh_token);
+        tokens = r.tokens;
+      } catch (err) {
+        const e = err;
+        if (e.response && (e.response.status === 403 || e.response.status === 404)) {
+          e.message = `Could not refresh access token: ${e.message}`;
+        }
+        throw e;
+      }
+      const credentials = this.credentials;
+      credentials.token_type = credentials.token_type || "Bearer";
+      tokens.refresh_token = credentials.refresh_token;
+      this.credentials = tokens;
+      const headers = new Headers({
+        authorization: credentials.token_type + " " + tokens.access_token
+      });
+      return { headers: this.addSharedMetadataHeaders(headers), res: r.res };
+    }
+    static getRevokeTokenUrl(token) {
+      return new OAuth2Client().getRevokeTokenURL(token).toString();
+    }
+    getRevokeTokenURL(token) {
+      const url = new URL(this.endpoints.oauth2RevokeUrl);
+      url.searchParams.append("token", token);
+      return url;
+    }
+    revokeToken(token, callback) {
+      const opts = {
+        ...OAuth2Client.RETRY_CONFIG,
+        url: this.getRevokeTokenURL(token).toString(),
+        method: "POST"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "revokeToken");
+      if (callback) {
+        this.transporter.request(opts).then((r) => callback(null, r), callback);
+      } else {
+        return this.transporter.request(opts);
+      }
+    }
+    revokeCredentials(callback) {
+      if (callback) {
+        this.revokeCredentialsAsync().then((res) => callback(null, res), callback);
+      } else {
+        return this.revokeCredentialsAsync();
+      }
+    }
+    async revokeCredentialsAsync() {
+      const token = this.credentials.access_token;
+      this.credentials = {};
+      if (token) {
+        return this.revokeToken(token);
+      } else {
+        throw new Error("No access token to revoke.");
+      }
+    }
+    request(opts, callback) {
+      if (callback) {
+        this.requestAsync(opts).then((r) => callback(null, r), (e) => {
+          return callback(e, e.response);
+        });
+      } else {
+        return this.requestAsync(opts);
+      }
+    }
+    async requestAsync(opts, reAuthRetried = false) {
+      try {
+        const r = await this.getRequestMetadataAsync();
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+        this.addUserProjectAndAuthHeaders(opts.headers, r.headers);
+        if (this.apiKey) {
+          opts.headers.set("X-Goog-Api-Key", this.apiKey);
+        }
+        return await this.transporter.request(opts);
+      } catch (e) {
+        const res = e.response;
+        if (res) {
+          const statusCode = res.status;
+          const mayRequireRefresh = this.credentials && this.credentials.access_token && this.credentials.refresh_token && (!this.credentials.expiry_date || this.forceRefreshOnFailure);
+          const mayRequireRefreshWithNoRefreshToken = this.credentials && this.credentials.access_token && !this.credentials.refresh_token && (!this.credentials.expiry_date || this.forceRefreshOnFailure) && this.refreshHandler;
+          const isReadableStream = res.config.data instanceof stream.Readable;
+          const isAuthErr = statusCode === 401 || statusCode === 403;
+          if (!reAuthRetried && isAuthErr && !isReadableStream && mayRequireRefresh) {
+            await this.refreshAccessTokenAsync();
+            return this.requestAsync(opts, true);
+          } else if (!reAuthRetried && isAuthErr && !isReadableStream && mayRequireRefreshWithNoRefreshToken) {
+            const refreshedAccessToken = await this.processAndValidateRefreshHandler();
+            if (refreshedAccessToken?.access_token) {
+              this.setCredentials(refreshedAccessToken);
+            }
+            return this.requestAsync(opts, true);
+          }
+        }
+        throw e;
+      }
+    }
+    verifyIdToken(options, callback) {
+      if (callback && typeof callback !== "function") {
+        throw new Error("This method accepts an options object as the first parameter, which includes the idToken, audience, and maxExpiry.");
+      }
+      if (callback) {
+        this.verifyIdTokenAsync(options).then((r) => callback(null, r), callback);
+      } else {
+        return this.verifyIdTokenAsync(options);
+      }
+    }
+    async verifyIdTokenAsync(options) {
+      if (!options.idToken) {
+        throw new Error("The verifyIdToken method requires an ID Token");
+      }
+      const response = await this.getFederatedSignonCertsAsync();
+      const login = await this.verifySignedJwtWithCertsAsync(options.idToken, response.certs, options.audience, this.issuers, options.maxExpiry);
+      return login;
+    }
+    async getTokenInfo(accessToken) {
+      const { data } = await this.transporter.request({
+        ...OAuth2Client.RETRY_CONFIG,
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+          authorization: `Bearer ${accessToken}`
+        },
+        url: this.endpoints.tokenInfoUrl.toString()
+      });
+      const info = Object.assign({
+        expiry_date: new Date().getTime() + data.expires_in * 1000,
+        scopes: data.scope.split(" ")
+      }, data);
+      delete info.expires_in;
+      delete info.scope;
+      return info;
+    }
+    getFederatedSignonCerts(callback) {
+      if (callback) {
+        this.getFederatedSignonCertsAsync().then((r) => callback(null, r.certs, r.res), callback);
+      } else {
+        return this.getFederatedSignonCertsAsync();
+      }
+    }
+    async getFederatedSignonCertsAsync() {
+      const nowTime = new Date().getTime();
+      const format = (0, crypto_1.hasBrowserCrypto)() ? CertificateFormat.JWK : CertificateFormat.PEM;
+      if (this.certificateExpiry && nowTime < this.certificateExpiry.getTime() && this.certificateCacheFormat === format) {
+        return { certs: this.certificateCache, format };
+      }
+      let res;
+      let url;
+      switch (format) {
+        case CertificateFormat.PEM:
+          url = this.endpoints.oauth2FederatedSignonPemCertsUrl.toString();
+          break;
+        case CertificateFormat.JWK:
+          url = this.endpoints.oauth2FederatedSignonJwkCertsUrl.toString();
+          break;
+        default:
+          throw new Error(`Unsupported certificate format ${format}`);
+      }
+      try {
+        const opts = {
+          ...OAuth2Client.RETRY_CONFIG,
+          url
+        };
+        authclient_1.AuthClient.setMethodName(opts, "getFederatedSignonCertsAsync");
+        res = await this.transporter.request(opts);
+      } catch (e) {
+        if (e instanceof Error) {
+          e.message = `Failed to retrieve verification certificates: ${e.message}`;
+        }
+        throw e;
+      }
+      const cacheControl = res?.headers.get("cache-control");
+      let cacheAge = -1;
+      if (cacheControl) {
+        const maxAge = /max-age=(?<maxAge>[0-9]+)/.exec(cacheControl)?.groups?.maxAge;
+        if (maxAge) {
+          cacheAge = Number(maxAge) * 1000;
+        }
+      }
+      let certificates = {};
+      switch (format) {
+        case CertificateFormat.PEM:
+          certificates = res.data;
+          break;
+        case CertificateFormat.JWK:
+          for (const key of res.data.keys) {
+            certificates[key.kid] = key;
+          }
+          break;
+        default:
+          throw new Error(`Unsupported certificate format ${format}`);
+      }
+      const now = new Date;
+      this.certificateExpiry = cacheAge === -1 ? null : new Date(now.getTime() + cacheAge);
+      this.certificateCache = certificates;
+      this.certificateCacheFormat = format;
+      return { certs: certificates, format, res };
+    }
+    getIapPublicKeys(callback) {
+      if (callback) {
+        this.getIapPublicKeysAsync().then((r) => callback(null, r.pubkeys, r.res), callback);
+      } else {
+        return this.getIapPublicKeysAsync();
+      }
+    }
+    async getIapPublicKeysAsync() {
+      let res;
+      const url = this.endpoints.oauth2IapPublicKeyUrl.toString();
+      try {
+        const opts = {
+          ...OAuth2Client.RETRY_CONFIG,
+          url
+        };
+        authclient_1.AuthClient.setMethodName(opts, "getIapPublicKeysAsync");
+        res = await this.transporter.request(opts);
+      } catch (e) {
+        if (e instanceof Error) {
+          e.message = `Failed to retrieve verification certificates: ${e.message}`;
+        }
+        throw e;
+      }
+      return { pubkeys: res.data, res };
+    }
+    verifySignedJwtWithCerts() {
+      throw new Error("verifySignedJwtWithCerts is removed, please use verifySignedJwtWithCertsAsync instead.");
+    }
+    async verifySignedJwtWithCertsAsync(jwt, certs, requiredAudience, issuers, maxExpiry) {
+      const crypto2 = (0, crypto_1.createCrypto)();
+      if (!maxExpiry) {
+        maxExpiry = OAuth2Client.DEFAULT_MAX_TOKEN_LIFETIME_SECS_;
+      }
+      const segments = jwt.split(".");
+      if (segments.length !== 3) {
+        throw new Error("Wrong number of segments in token: " + jwt);
+      }
+      const signed = segments[0] + "." + segments[1];
+      let signature = segments[2];
+      let envelope;
+      let payload;
+      try {
+        envelope = JSON.parse(crypto2.decodeBase64StringUtf8(segments[0]));
+      } catch (err) {
+        if (err instanceof Error) {
+          err.message = `Can't parse token envelope: ${segments[0]}': ${err.message}`;
+        }
+        throw err;
+      }
+      if (!envelope) {
+        throw new Error("Can't parse token envelope: " + segments[0]);
+      }
+      try {
+        payload = JSON.parse(crypto2.decodeBase64StringUtf8(segments[1]));
+      } catch (err) {
+        if (err instanceof Error) {
+          err.message = `Can't parse token payload '${segments[0]}`;
+        }
+        throw err;
+      }
+      if (!payload) {
+        throw new Error("Can't parse token payload: " + segments[1]);
+      }
+      if (!Object.prototype.hasOwnProperty.call(certs, envelope.kid)) {
+        throw new Error("No pem found for envelope: " + JSON.stringify(envelope));
+      }
+      const cert = certs[envelope.kid];
+      if (envelope.alg === "ES256") {
+        signature = formatEcdsa.joseToDer(signature, "ES256").toString("base64");
+      }
+      const verified = await crypto2.verify(cert, signed, signature);
+      if (!verified) {
+        throw new Error("Invalid token signature: " + jwt);
+      }
+      if (!payload.iat) {
+        throw new Error("No issue time in token: " + JSON.stringify(payload));
+      }
+      if (!payload.exp) {
+        throw new Error("No expiration time in token: " + JSON.stringify(payload));
+      }
+      const iat = Number(payload.iat);
+      if (isNaN(iat))
+        throw new Error("iat field using invalid format");
+      const exp = Number(payload.exp);
+      if (isNaN(exp))
+        throw new Error("exp field using invalid format");
+      const now = new Date().getTime() / 1000;
+      if (exp >= now + maxExpiry) {
+        throw new Error("Expiration time too far in future: " + JSON.stringify(payload));
+      }
+      const earliest = iat - OAuth2Client.CLOCK_SKEW_SECS_;
+      const latest = exp + OAuth2Client.CLOCK_SKEW_SECS_;
+      if (now < earliest) {
+        throw new Error("Token used too early, " + now + " < " + earliest + ": " + JSON.stringify(payload));
+      }
+      if (now > latest) {
+        throw new Error("Token used too late, " + now + " > " + latest + ": " + JSON.stringify(payload));
+      }
+      if (issuers && issuers.indexOf(payload.iss) < 0) {
+        throw new Error("Invalid issuer, expected one of [" + issuers + "], but got " + payload.iss);
+      }
+      if (typeof requiredAudience !== "undefined" && requiredAudience !== null) {
+        const aud = payload.aud;
+        let audVerified = false;
+        if (requiredAudience.constructor === Array) {
+          audVerified = requiredAudience.indexOf(aud) > -1;
+        } else {
+          audVerified = aud === requiredAudience;
+        }
+        if (!audVerified) {
+          throw new Error("Wrong recipient, payload audience != requiredAudience");
+        }
+      }
+      return new loginticket_1.LoginTicket(envelope, payload);
+    }
+    async processAndValidateRefreshHandler() {
+      if (this.refreshHandler) {
+        const accessTokenResponse = await this.refreshHandler();
+        if (!accessTokenResponse.access_token) {
+          throw new Error("No access token is returned by the refreshHandler callback.");
+        }
+        return accessTokenResponse;
+      }
+      return;
+    }
+    isTokenExpiring() {
+      const expiryDate = this.credentials.expiry_date;
+      return expiryDate ? expiryDate <= new Date().getTime() + this.eagerRefreshThresholdMillis : false;
+    }
+  }
+  exports.OAuth2Client = OAuth2Client;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/computeclient.js
+var require_computeclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.Compute = undefined;
+  var gaxios_1 = require_src2();
+  var gcpMetadata = require_src4();
+  var oauth2client_1 = require_oauth2client();
+
+  class Compute extends oauth2client_1.OAuth2Client {
+    serviceAccountEmail;
+    scopes;
+    constructor(options = {}) {
+      super(options);
+      this.credentials = { expiry_date: 1, refresh_token: "compute-placeholder" };
+      this.serviceAccountEmail = options.serviceAccountEmail || "default";
+      this.scopes = Array.isArray(options.scopes) ? options.scopes : options.scopes ? [options.scopes] : [];
+    }
+    async refreshTokenNoCache() {
+      const tokenPath = `service-accounts/${this.serviceAccountEmail}/token`;
+      let data;
+      try {
+        const instanceOptions = {
+          property: tokenPath
+        };
+        if (this.scopes.length > 0) {
+          instanceOptions.params = {
+            scopes: this.scopes.join(",")
+          };
+        }
+        data = await gcpMetadata.instance(instanceOptions);
+      } catch (e) {
+        if (e instanceof gaxios_1.GaxiosError) {
+          e.message = `Could not refresh access token: ${e.message}`;
+          this.wrapError(e);
+        }
+        throw e;
+      }
+      const tokens = data;
+      if (data && data.expires_in) {
+        tokens.expiry_date = new Date().getTime() + data.expires_in * 1000;
+        delete tokens.expires_in;
+      }
+      this.emit("tokens", tokens);
+      return { tokens, res: null };
+    }
+    async fetchIdToken(targetAudience) {
+      const idTokenPath = `service-accounts/${this.serviceAccountEmail}/identity` + `?format=full&audience=${targetAudience}`;
+      let idToken;
+      try {
+        const instanceOptions = {
+          property: idTokenPath
+        };
+        idToken = await gcpMetadata.instance(instanceOptions);
+      } catch (e) {
+        if (e instanceof Error) {
+          e.message = `Could not fetch ID token: ${e.message}`;
+        }
+        throw e;
+      }
+      return idToken;
+    }
+    wrapError(e) {
+      const res = e.response;
+      if (res && res.status) {
+        e.status = res.status;
+        if (res.status === 403) {
+          e.message = "A Forbidden error was returned while attempting to retrieve an access " + "token for the Compute Engine built-in service account. This may be because the Compute " + "Engine instance does not have the correct permission scopes specified: " + e.message;
+        } else if (res.status === 404) {
+          e.message = "A Not Found error was returned while attempting to retrieve an access" + "token for the Compute Engine built-in service account. This may be because the Compute " + "Engine instance does not have any permission scopes specified: " + e.message;
+        }
+      }
+    }
+  }
+  exports.Compute = Compute;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/idtokenclient.js
+var require_idtokenclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.IdTokenClient = undefined;
+  var oauth2client_1 = require_oauth2client();
+
+  class IdTokenClient extends oauth2client_1.OAuth2Client {
+    targetAudience;
+    idTokenProvider;
+    constructor(options) {
+      super(options);
+      this.targetAudience = options.targetAudience;
+      this.idTokenProvider = options.idTokenProvider;
+    }
+    async getRequestMetadataAsync() {
+      if (!this.credentials.id_token || !this.credentials.expiry_date || this.isTokenExpiring()) {
+        const idToken = await this.idTokenProvider.fetchIdToken(this.targetAudience);
+        this.credentials = {
+          id_token: idToken,
+          expiry_date: this.getIdTokenExpiryDate(idToken)
+        };
+      }
+      const headers = new Headers({
+        authorization: "Bearer " + this.credentials.id_token
+      });
+      return { headers };
+    }
+    getIdTokenExpiryDate(idToken) {
+      const payloadB64 = idToken.split(".")[1];
+      if (payloadB64) {
+        const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("ascii"));
+        return payload.exp * 1000;
+      }
+    }
+  }
+  exports.IdTokenClient = IdTokenClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/envDetect.js
+var require_envDetect = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GCPEnv = undefined;
+  exports.clear = clear;
+  exports.getEnv = getEnv;
+  var gcpMetadata = require_src4();
+  var GCPEnv;
+  (function(GCPEnv) {
+    GCPEnv["APP_ENGINE"] = "APP_ENGINE";
+    GCPEnv["KUBERNETES_ENGINE"] = "KUBERNETES_ENGINE";
+    GCPEnv["CLOUD_FUNCTIONS"] = "CLOUD_FUNCTIONS";
+    GCPEnv["COMPUTE_ENGINE"] = "COMPUTE_ENGINE";
+    GCPEnv["CLOUD_RUN"] = "CLOUD_RUN";
+    GCPEnv["CLOUD_RUN_JOBS"] = "CLOUD_RUN_JOBS";
+    GCPEnv["NONE"] = "NONE";
+  })(GCPEnv || (exports.GCPEnv = GCPEnv = {}));
+  var envPromise;
+  function clear() {
+    envPromise = undefined;
+  }
+  async function getEnv() {
+    if (envPromise) {
+      return envPromise;
+    }
+    envPromise = getEnvMemoized();
+    return envPromise;
+  }
+  async function getEnvMemoized() {
+    let env = GCPEnv.NONE;
+    if (isAppEngine()) {
+      env = GCPEnv.APP_ENGINE;
+    } else if (isCloudFunction()) {
+      env = GCPEnv.CLOUD_FUNCTIONS;
+    } else if (await isComputeEngine()) {
+      if (await isKubernetesEngine()) {
+        env = GCPEnv.KUBERNETES_ENGINE;
+      } else if (isCloudRun()) {
+        env = GCPEnv.CLOUD_RUN;
+      } else if (isCloudRunJob()) {
+        env = GCPEnv.CLOUD_RUN_JOBS;
+      } else {
+        env = GCPEnv.COMPUTE_ENGINE;
+      }
+    } else {
+      env = GCPEnv.NONE;
+    }
+    return env;
+  }
+  function isAppEngine() {
+    return !!(process.env.GAE_SERVICE || process.env.GAE_MODULE_NAME);
+  }
+  function isCloudFunction() {
+    return !!(process.env.FUNCTION_NAME || process.env.FUNCTION_TARGET);
+  }
+  function isCloudRun() {
+    return !!process.env.K_CONFIGURATION;
+  }
+  function isCloudRunJob() {
+    return !!process.env.CLOUD_RUN_JOB;
+  }
+  async function isKubernetesEngine() {
+    try {
+      await gcpMetadata.instance("attributes/cluster-name");
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  async function isComputeEngine() {
+    return gcpMetadata.isAvailable();
+  }
+});
+
+// ../node_modules/jws/lib/data-stream.js
+var require_data_stream = __commonJS(function(exports, module) {
+  var Buffer2 = require_safe_buffer().Buffer;
+  var Stream = __require("stream");
+  var util = __require("util");
+  function DataStream(data) {
+    this.buffer = null;
+    this.writable = true;
+    this.readable = true;
+    if (!data) {
+      this.buffer = Buffer2.alloc(0);
+      return this;
+    }
+    if (typeof data.pipe === "function") {
+      this.buffer = Buffer2.alloc(0);
+      data.pipe(this);
+      return this;
+    }
+    if (data.length || typeof data === "object") {
+      this.buffer = data;
+      this.writable = false;
+      process.nextTick(function() {
+        this.emit("end", data);
+        this.readable = false;
+        this.emit("close");
+      }.bind(this));
+      return this;
+    }
+    throw new TypeError("Unexpected data type (" + typeof data + ")");
+  }
+  util.inherits(DataStream, Stream);
+  DataStream.prototype.write = function write(data) {
+    this.buffer = Buffer2.concat([this.buffer, Buffer2.from(data)]);
+    this.emit("data", data);
+  };
+  DataStream.prototype.end = function end(data) {
+    if (data)
+      this.write(data);
+    this.emit("end", data);
+    this.emit("close");
+    this.writable = false;
+    this.readable = false;
+  };
+  module.exports = DataStream;
+});
+
+// ../node_modules/buffer-equal-constant-time/index.js
+var require_buffer_equal_constant_time = __commonJS(function(exports, module) {
+  var Buffer2 = __require("buffer").Buffer;
+  var SlowBuffer = __require("buffer").SlowBuffer;
+  module.exports = bufferEq;
+  function bufferEq(a, b) {
+    if (!Buffer2.isBuffer(a) || !Buffer2.isBuffer(b)) {
+      return false;
+    }
+    if (a.length !== b.length) {
+      return false;
+    }
+    var c = 0;
+    for (var i = 0;i < a.length; i++) {
+      c |= a[i] ^ b[i];
+    }
+    return c === 0;
+  }
+  bufferEq.install = function() {
+    Buffer2.prototype.equal = SlowBuffer.prototype.equal = function equal(that) {
+      return bufferEq(this, that);
+    };
+  };
+  var origBufEqual = Buffer2.prototype.equal;
+  var origSlowBufEqual = SlowBuffer.prototype.equal;
+  bufferEq.restore = function() {
+    Buffer2.prototype.equal = origBufEqual;
+    SlowBuffer.prototype.equal = origSlowBufEqual;
+  };
+});
+
+// ../node_modules/jwa/index.js
+var require_jwa = __commonJS(function(exports, module) {
+  var Buffer2 = require_safe_buffer().Buffer;
+  var crypto2 = __require("crypto");
+  var formatEcdsa = require_ecdsa_sig_formatter();
+  var util = __require("util");
+  var MSG_INVALID_ALGORITHM = `"%s" is not a valid algorithm.
+  Supported algorithms are:
+  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".`;
+  var MSG_INVALID_SECRET = "secret must be a string or buffer";
+  var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
+  var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
+  var supportsKeyObjects = typeof crypto2.createPublicKey === "function";
+  if (supportsKeyObjects) {
+    MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
+    MSG_INVALID_SECRET += "or a KeyObject";
+  }
+  function checkIsPublicKey(key) {
+    if (Buffer2.isBuffer(key)) {
+      return;
+    }
+    if (typeof key === "string") {
+      return;
+    }
+    if (!supportsKeyObjects) {
+      throw typeError(MSG_INVALID_VERIFIER_KEY);
+    }
+    if (typeof key !== "object") {
+      throw typeError(MSG_INVALID_VERIFIER_KEY);
+    }
+    if (typeof key.type !== "string") {
+      throw typeError(MSG_INVALID_VERIFIER_KEY);
+    }
+    if (typeof key.asymmetricKeyType !== "string") {
+      throw typeError(MSG_INVALID_VERIFIER_KEY);
+    }
+    if (typeof key.export !== "function") {
+      throw typeError(MSG_INVALID_VERIFIER_KEY);
+    }
+  }
+  function checkIsPrivateKey(key) {
+    if (Buffer2.isBuffer(key)) {
+      return;
+    }
+    if (typeof key === "string") {
+      return;
+    }
+    if (typeof key === "object") {
+      return;
+    }
+    throw typeError(MSG_INVALID_SIGNER_KEY);
+  }
+  function checkIsSecretKey(key) {
+    if (Buffer2.isBuffer(key)) {
+      return;
+    }
+    if (typeof key === "string") {
+      return key;
+    }
+    if (!supportsKeyObjects) {
+      throw typeError(MSG_INVALID_SECRET);
+    }
+    if (typeof key !== "object") {
+      throw typeError(MSG_INVALID_SECRET);
+    }
+    if (key.type !== "secret") {
+      throw typeError(MSG_INVALID_SECRET);
+    }
+    if (typeof key.export !== "function") {
+      throw typeError(MSG_INVALID_SECRET);
+    }
+  }
+  function fromBase64(base64) {
+    return base64.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  }
+  function toBase64(base64url) {
+    base64url = base64url.toString();
+    var padding = 4 - base64url.length % 4;
+    if (padding !== 4) {
+      for (var i = 0;i < padding; ++i) {
+        base64url += "=";
+      }
+    }
+    return base64url.replace(/\-/g, "+").replace(/_/g, "/");
+  }
+  function typeError(template) {
+    var args = [].slice.call(arguments, 1);
+    var errMsg = util.format.bind(util, template).apply(null, args);
+    return new TypeError(errMsg);
+  }
+  function bufferOrString(obj) {
+    return Buffer2.isBuffer(obj) || typeof obj === "string";
+  }
+  function normalizeInput(thing) {
+    if (!bufferOrString(thing))
+      thing = JSON.stringify(thing);
+    return thing;
+  }
+  function createHmacSigner(bits) {
+    return function sign(thing, secret) {
+      checkIsSecretKey(secret);
+      thing = normalizeInput(thing);
+      var hmac = crypto2.createHmac("sha" + bits, secret);
+      var sig = (hmac.update(thing), hmac.digest("base64"));
+      return fromBase64(sig);
+    };
+  }
+  var bufferEqual;
+  var timingSafeEqual = "timingSafeEqual" in crypto2 ? function timingSafeEqual(a, b) {
+    if (a.byteLength !== b.byteLength) {
+      return false;
+    }
+    return crypto2.timingSafeEqual(a, b);
+  } : function timingSafeEqual(a, b) {
+    if (!bufferEqual) {
+      bufferEqual = require_buffer_equal_constant_time();
+    }
+    return bufferEqual(a, b);
+  };
+  function createHmacVerifier(bits) {
+    return function verify(thing, signature, secret) {
+      var computedSig = createHmacSigner(bits)(thing, secret);
+      return timingSafeEqual(Buffer2.from(signature), Buffer2.from(computedSig));
+    };
+  }
+  function createKeySigner(bits) {
+    return function sign(thing, privateKey) {
+      checkIsPrivateKey(privateKey);
+      thing = normalizeInput(thing);
+      var signer = crypto2.createSign("RSA-SHA" + bits);
+      var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
+      return fromBase64(sig);
+    };
+  }
+  function createKeyVerifier(bits) {
+    return function verify(thing, signature, publicKey) {
+      checkIsPublicKey(publicKey);
+      thing = normalizeInput(thing);
+      signature = toBase64(signature);
+      var verifier = crypto2.createVerify("RSA-SHA" + bits);
+      verifier.update(thing);
+      return verifier.verify(publicKey, signature, "base64");
+    };
+  }
+  function createPSSKeySigner(bits) {
+    return function sign(thing, privateKey) {
+      checkIsPrivateKey(privateKey);
+      thing = normalizeInput(thing);
+      var signer = crypto2.createSign("RSA-SHA" + bits);
+      var sig = (signer.update(thing), signer.sign({
+        key: privateKey,
+        padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
+      }, "base64"));
+      return fromBase64(sig);
+    };
+  }
+  function createPSSKeyVerifier(bits) {
+    return function verify(thing, signature, publicKey) {
+      checkIsPublicKey(publicKey);
+      thing = normalizeInput(thing);
+      signature = toBase64(signature);
+      var verifier = crypto2.createVerify("RSA-SHA" + bits);
+      verifier.update(thing);
+      return verifier.verify({
+        key: publicKey,
+        padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
+      }, signature, "base64");
+    };
+  }
+  function createECDSASigner(bits) {
+    var inner = createKeySigner(bits);
+    return function sign() {
+      var signature = inner.apply(null, arguments);
+      signature = formatEcdsa.derToJose(signature, "ES" + bits);
+      return signature;
+    };
+  }
+  function createECDSAVerifer(bits) {
+    var inner = createKeyVerifier(bits);
+    return function verify(thing, signature, publicKey) {
+      signature = formatEcdsa.joseToDer(signature, "ES" + bits).toString("base64");
+      var result = inner(thing, signature, publicKey);
+      return result;
+    };
+  }
+  function createNoneSigner() {
+    return function sign() {
+      return "";
+    };
+  }
+  function createNoneVerifier() {
+    return function verify(thing, signature) {
+      return signature === "";
+    };
+  }
+  module.exports = function jwa(algorithm) {
+    var signerFactories = {
+      hs: createHmacSigner,
+      rs: createKeySigner,
+      ps: createPSSKeySigner,
+      es: createECDSASigner,
+      none: createNoneSigner
+    };
+    var verifierFactories = {
+      hs: createHmacVerifier,
+      rs: createKeyVerifier,
+      ps: createPSSKeyVerifier,
+      es: createECDSAVerifer,
+      none: createNoneVerifier
+    };
+    var match = algorithm.match(/^(RS|PS|ES|HS)(256|384|512)$|^(none)$/);
+    if (!match)
+      throw typeError(MSG_INVALID_ALGORITHM, algorithm);
+    var algo = (match[1] || match[3]).toLowerCase();
+    var bits = match[2];
+    return {
+      sign: signerFactories[algo](bits),
+      verify: verifierFactories[algo](bits)
+    };
+  };
+});
+
+// ../node_modules/jws/lib/tostring.js
+var require_tostring = __commonJS(function(exports, module) {
+  var Buffer2 = __require("buffer").Buffer;
+  module.exports = function toString(obj) {
+    if (typeof obj === "string")
+      return obj;
+    if (typeof obj === "number" || Buffer2.isBuffer(obj))
+      return obj.toString();
+    return JSON.stringify(obj);
+  };
+});
+
+// ../node_modules/jws/lib/sign-stream.js
+var require_sign_stream = __commonJS(function(exports, module) {
+  var Buffer2 = require_safe_buffer().Buffer;
+  var DataStream = require_data_stream();
+  var jwa = require_jwa();
+  var Stream = __require("stream");
+  var toString = require_tostring();
+  var util = __require("util");
+  function base64url(string, encoding) {
+    return Buffer2.from(string, encoding).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  }
+  function jwsSecuredInput(header, payload, encoding) {
+    encoding = encoding || "utf8";
+    var encodedHeader = base64url(toString(header), "binary");
+    var encodedPayload = base64url(toString(payload), encoding);
+    return util.format("%s.%s", encodedHeader, encodedPayload);
+  }
+  function jwsSign(opts) {
+    var header = opts.header;
+    var payload = opts.payload;
+    var secretOrKey = opts.secret || opts.privateKey;
+    var encoding = opts.encoding;
+    var algo = jwa(header.alg);
+    var securedInput = jwsSecuredInput(header, payload, encoding);
+    var signature = algo.sign(securedInput, secretOrKey);
+    return util.format("%s.%s", securedInput, signature);
+  }
+  function SignStream(opts) {
+    var secret = opts.secret;
+    secret = secret == null ? opts.privateKey : secret;
+    secret = secret == null ? opts.key : secret;
+    if (/^hs/i.test(opts.header.alg) === true && secret == null) {
+      throw new TypeError("secret must be a string or buffer or a KeyObject");
+    }
+    var secretStream = new DataStream(secret);
+    this.readable = true;
+    this.header = opts.header;
+    this.encoding = opts.encoding;
+    this.secret = this.privateKey = this.key = secretStream;
+    this.payload = new DataStream(opts.payload);
+    this.secret.once("close", function() {
+      if (!this.payload.writable && this.readable)
+        this.sign();
+    }.bind(this));
+    this.payload.once("close", function() {
+      if (!this.secret.writable && this.readable)
+        this.sign();
+    }.bind(this));
+  }
+  util.inherits(SignStream, Stream);
+  SignStream.prototype.sign = function sign() {
+    try {
+      var signature = jwsSign({
+        header: this.header,
+        payload: this.payload.buffer,
+        secret: this.secret.buffer,
+        encoding: this.encoding
+      });
+      this.emit("done", signature);
+      this.emit("data", signature);
+      this.emit("end");
+      this.readable = false;
+      return signature;
+    } catch (e) {
+      this.readable = false;
+      this.emit("error", e);
+      this.emit("close");
+    }
+  };
+  SignStream.sign = jwsSign;
+  module.exports = SignStream;
+});
+
+// ../node_modules/jws/lib/verify-stream.js
+var require_verify_stream = __commonJS(function(exports, module) {
+  var Buffer2 = require_safe_buffer().Buffer;
+  var DataStream = require_data_stream();
+  var jwa = require_jwa();
+  var Stream = __require("stream");
+  var toString = require_tostring();
+  var util = __require("util");
+  var JWS_REGEX = /^[a-zA-Z0-9\-_]+?\.[a-zA-Z0-9\-_]+?\.([a-zA-Z0-9\-_]+)?$/;
+  function isObject(thing) {
+    return Object.prototype.toString.call(thing) === "[object Object]";
+  }
+  function safeJsonParse(thing) {
+    if (isObject(thing))
+      return thing;
+    try {
+      return JSON.parse(thing);
+    } catch (e) {
+      return;
+    }
+  }
+  function headerFromJWS(jwsSig) {
+    var encodedHeader = jwsSig.split(".", 1)[0];
+    return safeJsonParse(Buffer2.from(encodedHeader, "base64").toString("binary"));
+  }
+  function securedInputFromJWS(jwsSig) {
+    return jwsSig.split(".", 2).join(".");
+  }
+  function signatureFromJWS(jwsSig) {
+    return jwsSig.split(".")[2];
+  }
+  function payloadFromJWS(jwsSig, encoding) {
+    encoding = encoding || "utf8";
+    var payload = jwsSig.split(".")[1];
+    return Buffer2.from(payload, "base64").toString(encoding);
+  }
+  function isValidJws(string) {
+    return JWS_REGEX.test(string) && !!headerFromJWS(string);
+  }
+  function jwsVerify(jwsSig, algorithm, secretOrKey) {
+    if (!algorithm) {
+      var err = new Error("Missing algorithm parameter for jws.verify");
+      err.code = "MISSING_ALGORITHM";
+      throw err;
+    }
+    jwsSig = toString(jwsSig);
+    var signature = signatureFromJWS(jwsSig);
+    var securedInput = securedInputFromJWS(jwsSig);
+    var algo = jwa(algorithm);
+    return algo.verify(securedInput, signature, secretOrKey);
+  }
+  function jwsDecode(jwsSig, opts) {
+    opts = opts || {};
+    jwsSig = toString(jwsSig);
+    if (!isValidJws(jwsSig))
+      return null;
+    var header = headerFromJWS(jwsSig);
+    if (!header)
+      return null;
+    var payload = payloadFromJWS(jwsSig);
+    if (header.typ === "JWT" || opts.json)
+      payload = JSON.parse(payload, opts.encoding);
+    return {
+      header,
+      payload,
+      signature: signatureFromJWS(jwsSig)
+    };
+  }
+  function VerifyStream(opts) {
+    opts = opts || {};
+    var secretOrKey = opts.secret;
+    secretOrKey = secretOrKey == null ? opts.publicKey : secretOrKey;
+    secretOrKey = secretOrKey == null ? opts.key : secretOrKey;
+    if (/^hs/i.test(opts.algorithm) === true && secretOrKey == null) {
+      throw new TypeError("secret must be a string or buffer or a KeyObject");
+    }
+    var secretStream = new DataStream(secretOrKey);
+    this.readable = true;
+    this.algorithm = opts.algorithm;
+    this.encoding = opts.encoding;
+    this.secret = this.publicKey = this.key = secretStream;
+    this.signature = new DataStream(opts.signature);
+    this.secret.once("close", function() {
+      if (!this.signature.writable && this.readable)
+        this.verify();
+    }.bind(this));
+    this.signature.once("close", function() {
+      if (!this.secret.writable && this.readable)
+        this.verify();
+    }.bind(this));
+  }
+  util.inherits(VerifyStream, Stream);
+  VerifyStream.prototype.verify = function verify() {
+    try {
+      var valid = jwsVerify(this.signature.buffer, this.algorithm, this.key.buffer);
+      var obj = jwsDecode(this.signature.buffer, this.encoding);
+      this.emit("done", valid, obj);
+      this.emit("data", valid);
+      this.emit("end");
+      this.readable = false;
+      return valid;
+    } catch (e) {
+      this.readable = false;
+      this.emit("error", e);
+      this.emit("close");
+    }
+  };
+  VerifyStream.decode = jwsDecode;
+  VerifyStream.isValid = isValidJws;
+  VerifyStream.verify = jwsVerify;
+  module.exports = VerifyStream;
+});
+
+// ../node_modules/jws/index.js
+var require_jws = __commonJS(function(exports) {
+  var SignStream = require_sign_stream();
+  var VerifyStream = require_verify_stream();
+  var ALGORITHMS = [
+    "HS256",
+    "HS384",
+    "HS512",
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512"
+  ];
+  exports.ALGORITHMS = ALGORITHMS;
+  exports.sign = SignStream.sign;
+  exports.verify = VerifyStream.verify;
+  exports.decode = VerifyStream.decode;
+  exports.isValid = VerifyStream.isValid;
+  exports.createSign = function createSign(opts) {
+    return new SignStream(opts);
+  };
+  exports.createVerify = function createVerify(opts) {
+    return new VerifyStream(opts);
+  };
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/jwsSign.js
+var require_jwsSign = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.buildPayloadForJwsSign = buildPayloadForJwsSign;
+  exports.getJwsSign = getJwsSign;
+  var jws_1 = require_jws();
+  var ALG_RS256 = "RS256";
+  var GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+  function buildPayloadForJwsSign(tokenOptions) {
+    const iat = Math.floor(new Date().getTime() / 1000);
+    const payload = {
+      iss: tokenOptions.iss,
+      scope: tokenOptions.scope,
+      aud: GOOGLE_TOKEN_URL,
+      exp: iat + 3600,
+      iat,
+      sub: tokenOptions.sub,
+      ...tokenOptions.additionalClaims
+    };
+    return payload;
+  }
+  function getJwsSign(tokenOptions) {
+    const payload = buildPayloadForJwsSign(tokenOptions);
+    return (0, jws_1.sign)({
+      header: { alg: ALG_RS256 },
+      payload,
+      secret: tokenOptions.key
+    });
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/getToken.js
+var require_getToken = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.getToken = getToken;
+  var jwsSign_1 = require_jwsSign();
+  var GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+  var GOOGLE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+  var generateRequestOptions = (tokenOptions) => {
+    return {
+      method: "POST",
+      url: GOOGLE_TOKEN_URL,
+      data: new URLSearchParams({
+        grant_type: GOOGLE_GRANT_TYPE,
+        assertion: (0, jwsSign_1.getJwsSign)(tokenOptions)
+      }),
+      responseType: "json",
+      retryConfig: {
+        httpMethodsToRetry: ["POST"]
+      }
+    };
+  };
+  async function getToken(tokenOptions) {
+    if (!tokenOptions.transporter) {
+      throw new Error("No transporter set.");
+    }
+    try {
+      const gaxiosOptions = generateRequestOptions(tokenOptions);
+      const response = await tokenOptions.transporter.request(gaxiosOptions);
+      return response.data;
+    } catch (e) {
+      const err = e;
+      const errorData = err.response?.data;
+      if (errorData?.error) {
+        err.message = `${errorData.error}: ${errorData.error_description}`;
+      }
+      throw err;
+    }
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/errorWithCode.js
+var require_errorWithCode = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.ErrorWithCode = undefined;
+
+  class ErrorWithCode extends Error {
+    code;
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  }
+  exports.ErrorWithCode = ErrorWithCode;
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/getCredentials.js
+var require_getCredentials = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.getCredentials = getCredentials;
+  var path = __require("path");
+  var fs = __require("fs");
+  var util_1 = __require("util");
+  var errorWithCode_1 = require_errorWithCode();
+  var readFile = fs.readFile ? (0, util_1.promisify)(fs.readFile) : async () => {
+    throw new errorWithCode_1.ErrorWithCode("use key rather than keyFile.", "MISSING_CREDENTIALS");
+  };
+  var ExtensionFiles;
+  (function(ExtensionFiles) {
+    ExtensionFiles["JSON"] = ".json";
+    ExtensionFiles["DER"] = ".der";
+    ExtensionFiles["CRT"] = ".crt";
+    ExtensionFiles["PEM"] = ".pem";
+    ExtensionFiles["P12"] = ".p12";
+    ExtensionFiles["PFX"] = ".pfx";
+  })(ExtensionFiles || (ExtensionFiles = {}));
+
+  class JsonCredentialsProvider {
+    keyFilePath;
+    constructor(keyFilePath) {
+      this.keyFilePath = keyFilePath;
+    }
+    async getCredentials() {
+      const key = await readFile(this.keyFilePath, "utf8");
+      let body;
+      try {
+        body = JSON.parse(key);
+      } catch (error) {
+        const err = error;
+        throw new Error(`Invalid JSON key file: ${err.message}`);
+      }
+      const privateKey = body.private_key;
+      const clientEmail = body.client_email;
+      if (!privateKey || !clientEmail) {
+        throw new errorWithCode_1.ErrorWithCode("private_key and client_email are required.", "MISSING_CREDENTIALS");
+      }
+      return { privateKey, clientEmail };
+    }
+  }
+
+  class PemCredentialsProvider {
+    keyFilePath;
+    constructor(keyFilePath) {
+      this.keyFilePath = keyFilePath;
+    }
+    async getCredentials() {
+      const privateKey = await readFile(this.keyFilePath, "utf8");
+      return { privateKey };
+    }
+  }
+
+  class P12CredentialsProvider {
+    async getCredentials() {
+      throw new errorWithCode_1.ErrorWithCode("*.p12 certificates are not supported after v6.1.2. " + "Consider utilizing *.json format or converting *.p12 to *.pem using the OpenSSL CLI.", "UNKNOWN_CERTIFICATE_TYPE");
+    }
+  }
+
+  class CredentialsProviderFactory {
+    static create(keyFilePath) {
+      const keyFileExtension = path.extname(keyFilePath);
+      switch (keyFileExtension) {
+        case ExtensionFiles.JSON:
+          return new JsonCredentialsProvider(keyFilePath);
+        case ExtensionFiles.DER:
+        case ExtensionFiles.CRT:
+        case ExtensionFiles.PEM:
+          return new PemCredentialsProvider(keyFilePath);
+        case ExtensionFiles.P12:
+        case ExtensionFiles.PFX:
+          return new P12CredentialsProvider;
+        default:
+          throw new errorWithCode_1.ErrorWithCode("Unknown certificate type. Type is determined based on file extension. " + "Current supported extensions are *.json, and *.pem.", "UNKNOWN_CERTIFICATE_TYPE");
+      }
+    }
+  }
+  async function getCredentials(keyFilePath) {
+    const provider = CredentialsProviderFactory.create(keyFilePath);
+    return provider.getCredentials();
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/tokenHandler.js
+var require_tokenHandler = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.TokenHandler = undefined;
+  var getToken_1 = require_getToken();
+  var getCredentials_1 = require_getCredentials();
+
+  class TokenHandler {
+    token;
+    tokenExpiresAt;
+    inFlightRequest;
+    tokenOptions;
+    constructor(tokenOptions) {
+      this.tokenOptions = tokenOptions;
+    }
+    async processCredentials() {
+      if (!this.tokenOptions.key && !this.tokenOptions.keyFile) {
+        throw new Error("No key or keyFile set.");
+      }
+      if (!this.tokenOptions.key && this.tokenOptions.keyFile) {
+        const credentials = await (0, getCredentials_1.getCredentials)(this.tokenOptions.keyFile);
+        this.tokenOptions.key = credentials.privateKey;
+        this.tokenOptions.email = credentials.clientEmail;
+      }
+    }
+    isTokenExpiring() {
+      if (!this.token || !this.tokenExpiresAt) {
+        return true;
+      }
+      const now = new Date().getTime();
+      const eagerRefreshThresholdMillis = this.tokenOptions.eagerRefreshThresholdMillis ?? 0;
+      return this.tokenExpiresAt <= now + eagerRefreshThresholdMillis;
+    }
+    hasExpired() {
+      const now = new Date().getTime();
+      if (this.token && this.tokenExpiresAt) {
+        const now = new Date().getTime();
+        return now >= this.tokenExpiresAt;
+      }
+      return true;
+    }
+    async getToken(forceRefresh) {
+      await this.processCredentials();
+      if (this.inFlightRequest && !forceRefresh) {
+        return this.inFlightRequest;
+      }
+      if (this.token && !this.isTokenExpiring() && !forceRefresh) {
+        return this.token;
+      }
+      try {
+        this.inFlightRequest = (0, getToken_1.getToken)(this.tokenOptions);
+        const token = await this.inFlightRequest;
+        this.token = token;
+        this.tokenExpiresAt = new Date().getTime() + (token.expires_in ?? 0) * 1000;
+        return token;
+      } finally {
+        this.inFlightRequest = undefined;
+      }
+    }
+  }
+  exports.TokenHandler = TokenHandler;
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/revokeToken.js
+var require_revokeToken = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.revokeToken = revokeToken;
+  var GOOGLE_REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke?token=";
+  var DEFAULT_RETRY_VALUE = true;
+  async function revokeToken(accessToken, transporter) {
+    const url = GOOGLE_REVOKE_TOKEN_URL + accessToken;
+    return await transporter.request({
+      url,
+      retry: DEFAULT_RETRY_VALUE
+    });
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/gtoken/googleToken.js
+var require_googleToken = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GoogleToken = undefined;
+  var gaxios_1 = require_src2();
+  var tokenHandler_1 = require_tokenHandler();
+  var revokeToken_1 = require_revokeToken();
+
+  class GoogleToken {
+    tokenOptions;
+    tokenHandler;
+    constructor(options) {
+      this.tokenOptions = options || {};
+      this.tokenOptions.transporter = this.tokenOptions.transporter || {
+        request: (opts) => (0, gaxios_1.request)(opts)
+      };
+      if (!this.tokenOptions.iss) {
+        this.tokenOptions.iss = this.tokenOptions.email;
+      }
+      if (typeof this.tokenOptions.scope === "object") {
+        this.tokenOptions.scope = this.tokenOptions.scope.join(" ");
+      }
+      this.tokenHandler = new tokenHandler_1.TokenHandler(this.tokenOptions);
+    }
+    get expiresAt() {
+      return this.tokenHandler.tokenExpiresAt;
+    }
+    get accessToken() {
+      return this.tokenHandler.token?.access_token;
+    }
+    get idToken() {
+      return this.tokenHandler.token?.id_token;
+    }
+    get tokenType() {
+      return this.tokenHandler.token?.token_type;
+    }
+    get refreshToken() {
+      return this.tokenHandler.token?.refresh_token;
+    }
+    hasExpired() {
+      return this.tokenHandler.hasExpired();
+    }
+    isTokenExpiring() {
+      return this.tokenHandler.isTokenExpiring();
+    }
+    getToken(callbackOrOptions, opts = { forceRefresh: false }) {
+      let callback;
+      if (typeof callbackOrOptions === "function") {
+        callback = callbackOrOptions;
+      } else if (typeof callbackOrOptions === "object") {
+        opts = callbackOrOptions;
+      }
+      const promise = this.tokenHandler.getToken(opts.forceRefresh ?? false);
+      if (callback) {
+        promise.then((token) => callback(null, token), callback);
+      }
+      return promise;
+    }
+    revokeToken(callback) {
+      if (!this.accessToken) {
+        return Promise.reject(new Error("No token to revoke."));
+      }
+      const promise = (0, revokeToken_1.revokeToken)(this.accessToken, this.tokenOptions.transporter);
+      if (callback) {
+        promise.then(() => callback(), callback);
+      }
+      this.tokenHandler = new tokenHandler_1.TokenHandler(this.tokenOptions);
+    }
+    get googleTokenOptions() {
+      return this.tokenOptions;
+    }
+  }
+  exports.GoogleToken = GoogleToken;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/jwtaccess.js
+var require_jwtaccess = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.JWTAccess = undefined;
+  var jws = require_jws();
+  var util_1 = require_util2();
+  var DEFAULT_HEADER = {
+    alg: "RS256",
+    typ: "JWT"
+  };
+
+  class JWTAccess {
+    email;
+    key;
+    keyId;
+    projectId;
+    eagerRefreshThresholdMillis;
+    cache = new util_1.LRUCache({
+      capacity: 500,
+      maxAge: 60 * 60 * 1000
+    });
+    constructor(email, key, keyId, eagerRefreshThresholdMillis) {
+      this.email = email;
+      this.key = key;
+      this.keyId = keyId;
+      this.eagerRefreshThresholdMillis = eagerRefreshThresholdMillis ?? 5 * 60 * 1000;
+    }
+    getCachedKey(url, scopes) {
+      let cacheKey = url;
+      if (scopes && Array.isArray(scopes) && scopes.length) {
+        cacheKey = url ? `${url}_${scopes.join("_")}` : `${scopes.join("_")}`;
+      } else if (typeof scopes === "string") {
+        cacheKey = url ? `${url}_${scopes}` : scopes;
+      }
+      if (!cacheKey) {
+        throw Error("Scopes or url must be provided");
+      }
+      return cacheKey;
+    }
+    getRequestHeaders(url, additionalClaims, scopes) {
+      const key = this.getCachedKey(url, scopes);
+      const cachedToken = this.cache.get(key);
+      const now = Date.now();
+      if (cachedToken && cachedToken.expiration - now > this.eagerRefreshThresholdMillis) {
+        return new Headers(cachedToken.headers);
+      }
+      const iat = Math.floor(Date.now() / 1000);
+      const exp = JWTAccess.getExpirationTime(iat);
+      let defaultClaims;
+      if (Array.isArray(scopes)) {
+        scopes = scopes.join(" ");
+      }
+      if (scopes) {
+        defaultClaims = {
+          iss: this.email,
+          sub: this.email,
+          scope: scopes,
+          exp,
+          iat
+        };
+      } else {
+        defaultClaims = {
+          iss: this.email,
+          sub: this.email,
+          aud: url,
+          exp,
+          iat
+        };
+      }
+      if (additionalClaims) {
+        for (const claim in defaultClaims) {
+          if (additionalClaims[claim]) {
+            throw new Error(`The '${claim}' property is not allowed when passing additionalClaims. This claim is included in the JWT by default.`);
+          }
+        }
+      }
+      const header = this.keyId ? { ...DEFAULT_HEADER, kid: this.keyId } : DEFAULT_HEADER;
+      const payload = Object.assign(defaultClaims, additionalClaims);
+      const signedJWT = jws.sign({ header, payload, secret: this.key });
+      const headers = new Headers({ authorization: `Bearer ${signedJWT}` });
+      this.cache.set(key, {
+        expiration: exp * 1000,
+        headers
+      });
+      return headers;
+    }
+    static getExpirationTime(iat) {
+      const exp = iat + 3600;
+      return exp;
+    }
+    fromJSON(json) {
+      if (!json) {
+        throw new Error("Must pass in a JSON object containing the service account auth settings.");
+      }
+      if (!json.client_email) {
+        throw new Error("The incoming JSON object does not contain a client_email field");
+      }
+      if (!json.private_key) {
+        throw new Error("The incoming JSON object does not contain a private_key field");
+      }
+      this.email = json.client_email;
+      this.key = json.private_key;
+      this.keyId = json.private_key_id;
+      this.projectId = json.project_id;
+    }
+    fromStream(inputStream, callback) {
+      if (callback) {
+        this.fromStreamAsync(inputStream).then(() => callback(), callback);
+      } else {
+        return this.fromStreamAsync(inputStream);
+      }
+    }
+    fromStreamAsync(inputStream) {
+      return new Promise((resolve, reject) => {
+        if (!inputStream) {
+          reject(new Error("Must pass in a stream containing the service account auth settings."));
+        }
+        let s = "";
+        inputStream.setEncoding("utf8").on("data", (chunk) => s += chunk).on("error", reject).on("end", () => {
+          try {
+            const data = JSON.parse(s);
+            this.fromJSON(data);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+    }
+  }
+  exports.JWTAccess = JWTAccess;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/jwtclient.js
+var require_jwtclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.JWT = undefined;
+  var googleToken_1 = require_googleToken();
+  var getCredentials_1 = require_getCredentials();
+  var jwtaccess_1 = require_jwtaccess();
+  var oauth2client_1 = require_oauth2client();
+  var authclient_1 = require_authclient();
+
+  class JWT extends oauth2client_1.OAuth2Client {
+    email;
+    keyFile;
+    key;
+    keyId;
+    defaultScopes;
+    scopes;
+    scope;
+    subject;
+    gtoken;
+    additionalClaims;
+    useJWTAccessWithScope;
+    defaultServicePath;
+    access;
+    constructor(options = {}) {
+      super(options);
+      this.email = options.email;
+      this.keyFile = options.keyFile;
+      this.key = options.key;
+      this.keyId = options.keyId;
+      this.scopes = options.scopes;
+      this.subject = options.subject;
+      this.additionalClaims = options.additionalClaims;
+      this.credentials = { refresh_token: "jwt-placeholder", expiry_date: 1 };
+    }
+    createScoped(scopes) {
+      const jwt = new JWT(this);
+      jwt.scopes = scopes;
+      return jwt;
+    }
+    async getRequestMetadataAsync(url) {
+      url = this.defaultServicePath ? `https://${this.defaultServicePath}/` : url;
+      const useSelfSignedJWT = !this.hasUserScopes() && url || this.useJWTAccessWithScope && this.hasAnyScopes() || this.universeDomain !== authclient_1.DEFAULT_UNIVERSE;
+      if (this.subject && this.universeDomain !== authclient_1.DEFAULT_UNIVERSE) {
+        throw new RangeError(`Service Account user is configured for the credential. Domain-wide delegation is not supported in universes other than ${authclient_1.DEFAULT_UNIVERSE}`);
+      }
+      if (!this.apiKey && useSelfSignedJWT) {
+        if (this.additionalClaims && this.additionalClaims.target_audience) {
+          const { tokens } = await this.refreshToken();
+          return {
+            headers: this.addSharedMetadataHeaders(new Headers({
+              authorization: `Bearer ${tokens.id_token}`
+            }))
+          };
+        } else {
+          if (!this.access) {
+            this.access = new jwtaccess_1.JWTAccess(this.email, this.key, this.keyId, this.eagerRefreshThresholdMillis);
+          }
+          let scopes;
+          if (this.hasUserScopes()) {
+            scopes = this.scopes;
+          } else if (!url) {
+            scopes = this.defaultScopes;
+          }
+          const useScopes = this.useJWTAccessWithScope || this.universeDomain !== authclient_1.DEFAULT_UNIVERSE;
+          const headers = await this.access.getRequestHeaders(url ?? undefined, this.additionalClaims, useScopes ? scopes : undefined);
+          return { headers: this.addSharedMetadataHeaders(headers) };
+        }
+      } else if (this.hasAnyScopes() || this.apiKey) {
+        return super.getRequestMetadataAsync(url);
+      } else {
+        return { headers: new Headers };
+      }
+    }
+    async fetchIdToken(targetAudience) {
+      const gtoken = new googleToken_1.GoogleToken({
+        iss: this.email,
+        sub: this.subject,
+        scope: this.scopes || this.defaultScopes,
+        keyFile: this.keyFile,
+        key: this.key,
+        additionalClaims: { target_audience: targetAudience },
+        transporter: this.transporter
+      });
+      await gtoken.getToken({
+        forceRefresh: true
+      });
+      if (!gtoken.idToken) {
+        throw new Error("Unknown error: Failed to fetch ID token");
+      }
+      return gtoken.idToken;
+    }
+    hasUserScopes() {
+      if (!this.scopes) {
+        return false;
+      }
+      return this.scopes.length > 0;
+    }
+    hasAnyScopes() {
+      if (this.scopes && this.scopes.length > 0)
+        return true;
+      if (this.defaultScopes && this.defaultScopes.length > 0)
+        return true;
+      return false;
+    }
+    authorize(callback) {
+      if (callback) {
+        this.authorizeAsync().then((r) => callback(null, r), callback);
+      } else {
+        return this.authorizeAsync();
+      }
+    }
+    async authorizeAsync() {
+      const result = await this.refreshToken();
+      if (!result) {
+        throw new Error("No result returned");
+      }
+      this.credentials = result.tokens;
+      this.credentials.refresh_token = "jwt-placeholder";
+      this.key = this.gtoken.googleTokenOptions?.key;
+      this.email = this.gtoken.googleTokenOptions?.iss;
+      return result.tokens;
+    }
+    async refreshTokenNoCache() {
+      const gtoken = this.createGToken();
+      const token = await gtoken.getToken({
+        forceRefresh: this.isTokenExpiring()
+      });
+      const tokens = {
+        access_token: token.access_token,
+        token_type: "Bearer",
+        expiry_date: gtoken.expiresAt,
+        id_token: gtoken.idToken
+      };
+      this.emit("tokens", tokens);
+      return { res: null, tokens };
+    }
+    createGToken() {
+      if (!this.gtoken) {
+        this.gtoken = new googleToken_1.GoogleToken({
+          iss: this.email,
+          sub: this.subject,
+          scope: this.scopes || this.defaultScopes,
+          keyFile: this.keyFile,
+          key: this.key,
+          additionalClaims: this.additionalClaims,
+          transporter: this.transporter
+        });
+      }
+      return this.gtoken;
+    }
+    fromJSON(json) {
+      if (!json) {
+        throw new Error("Must pass in a JSON object containing the service account auth settings.");
+      }
+      if (!json.client_email) {
+        throw new Error("The incoming JSON object does not contain a client_email field");
+      }
+      if (!json.private_key) {
+        throw new Error("The incoming JSON object does not contain a private_key field");
+      }
+      this.email = json.client_email;
+      this.key = json.private_key;
+      this.keyId = json.private_key_id;
+      this.projectId = json.project_id;
+      this.quotaProjectId = json.quota_project_id;
+      this.universeDomain = json.universe_domain || this.universeDomain;
+    }
+    fromStream(inputStream, callback) {
+      if (callback) {
+        this.fromStreamAsync(inputStream).then(() => callback(), callback);
+      } else {
+        return this.fromStreamAsync(inputStream);
+      }
+    }
+    fromStreamAsync(inputStream) {
+      return new Promise((resolve, reject) => {
+        if (!inputStream) {
+          throw new Error("Must pass in a stream containing the service account auth settings.");
+        }
+        let s = "";
+        inputStream.setEncoding("utf8").on("error", reject).on("data", (chunk) => s += chunk).on("end", () => {
+          try {
+            const data = JSON.parse(s);
+            this.fromJSON(data);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    }
+    fromAPIKey(apiKey) {
+      if (typeof apiKey !== "string") {
+        throw new Error("Must provide an API Key string.");
+      }
+      this.apiKey = apiKey;
+    }
+    async getCredentials() {
+      if (this.key) {
+        return { private_key: this.key, client_email: this.email };
+      } else if (this.keyFile) {
+        const gtoken = this.createGToken();
+        const creds = await (0, getCredentials_1.getCredentials)(this.keyFile);
+        return { private_key: creds.privateKey, client_email: creds.clientEmail };
+      }
+      throw new Error("A key or a keyFile must be provided to getCredentials.");
+    }
+  }
+  exports.JWT = JWT;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/refreshclient.js
+var require_refreshclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.UserRefreshClient = exports.USER_REFRESH_ACCOUNT_TYPE = undefined;
+  var oauth2client_1 = require_oauth2client();
+  var authclient_1 = require_authclient();
+  exports.USER_REFRESH_ACCOUNT_TYPE = "authorized_user";
+
+  class UserRefreshClient extends oauth2client_1.OAuth2Client {
+    _refreshToken;
+    constructor(optionsOrClientId, clientSecret, refreshToken, eagerRefreshThresholdMillis, forceRefreshOnFailure) {
+      const opts = optionsOrClientId && typeof optionsOrClientId === "object" ? optionsOrClientId : {
+        clientId: optionsOrClientId,
+        clientSecret,
+        refreshToken,
+        eagerRefreshThresholdMillis,
+        forceRefreshOnFailure
+      };
+      super(opts);
+      this._refreshToken = opts.refreshToken;
+      this.credentials.refresh_token = opts.refreshToken;
+    }
+    async refreshTokenNoCache() {
+      return super.refreshTokenNoCache(this._refreshToken);
+    }
+    async fetchIdToken(targetAudience) {
+      const opts = {
+        ...UserRefreshClient.RETRY_CONFIG,
+        url: this.endpoints.oauth2TokenUrl,
+        method: "POST",
+        data: new URLSearchParams({
+          client_id: this._clientId,
+          client_secret: this._clientSecret,
+          grant_type: "refresh_token",
+          refresh_token: this._refreshToken,
+          target_audience: targetAudience
+        }),
+        responseType: "json"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "fetchIdToken");
+      const res = await this.transporter.request(opts);
+      return res.data.id_token;
+    }
+    fromJSON(json) {
+      if (!json) {
+        throw new Error("Must pass in a JSON object containing the user refresh token");
+      }
+      if (json.type !== "authorized_user") {
+        throw new Error('The incoming JSON object does not have the "authorized_user" type');
+      }
+      if (!json.client_id) {
+        throw new Error("The incoming JSON object does not contain a client_id field");
+      }
+      if (!json.client_secret) {
+        throw new Error("The incoming JSON object does not contain a client_secret field");
+      }
+      if (!json.refresh_token) {
+        throw new Error("The incoming JSON object does not contain a refresh_token field");
+      }
+      this._clientId = json.client_id;
+      this._clientSecret = json.client_secret;
+      this._refreshToken = json.refresh_token;
+      this.credentials.refresh_token = json.refresh_token;
+      this.quotaProjectId = json.quota_project_id;
+      this.universeDomain = json.universe_domain || this.universeDomain;
+    }
+    fromStream(inputStream, callback) {
+      if (callback) {
+        this.fromStreamAsync(inputStream).then(() => callback(), callback);
+      } else {
+        return this.fromStreamAsync(inputStream);
+      }
+    }
+    async fromStreamAsync(inputStream) {
+      return new Promise((resolve, reject) => {
+        if (!inputStream) {
+          return reject(new Error("Must pass in a stream containing the user refresh token."));
+        }
+        let s = "";
+        inputStream.setEncoding("utf8").on("error", reject).on("data", (chunk) => s += chunk).on("end", () => {
+          try {
+            const data = JSON.parse(s);
+            this.fromJSON(data);
+            return resolve();
+          } catch (err) {
+            return reject(err);
+          }
+        });
+      });
+    }
+    static fromJSON(json) {
+      const client = new UserRefreshClient;
+      client.fromJSON(json);
+      return client;
+    }
+  }
+  exports.UserRefreshClient = UserRefreshClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/impersonated.js
+var require_impersonated = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.Impersonated = exports.IMPERSONATED_ACCOUNT_TYPE = undefined;
+  var oauth2client_1 = require_oauth2client();
+  var gaxios_1 = require_src2();
+  var util_1 = require_util2();
+  exports.IMPERSONATED_ACCOUNT_TYPE = "impersonated_service_account";
+
+  class Impersonated extends oauth2client_1.OAuth2Client {
+    sourceClient;
+    targetPrincipal;
+    targetScopes;
+    delegates;
+    lifetime;
+    endpoint;
+    constructor(options = {}) {
+      super(options);
+      this.credentials = {
+        expiry_date: 1,
+        refresh_token: "impersonated-placeholder"
+      };
+      this.sourceClient = options.sourceClient ?? new oauth2client_1.OAuth2Client;
+      this.targetPrincipal = options.targetPrincipal ?? "";
+      this.delegates = options.delegates ?? [];
+      this.targetScopes = options.targetScopes ?? [];
+      this.lifetime = options.lifetime ?? 3600;
+      const usingExplicitUniverseDomain = !!(0, util_1.originalOrCamelOptions)(options).get("universe_domain");
+      if (!usingExplicitUniverseDomain) {
+        this.universeDomain = this.sourceClient.universeDomain;
+      } else if (this.sourceClient.universeDomain !== this.universeDomain) {
+        throw new RangeError(`Universe domain ${this.sourceClient.universeDomain} in source credentials does not match ${this.universeDomain} universe domain set for impersonated credentials.`);
+      }
+      this.endpoint = options.endpoint ?? `https://iamcredentials.${this.universeDomain}`;
+    }
+    async sign(blobToSign) {
+      await this.sourceClient.getAccessToken();
+      const name = `projects/-/serviceAccounts/${this.targetPrincipal}`;
+      const u = `${this.endpoint}/v1/${name}:signBlob`;
+      const body = {
+        delegates: this.delegates,
+        payload: Buffer.from(blobToSign).toString("base64")
+      };
+      const res = await this.sourceClient.request({
+        ...Impersonated.RETRY_CONFIG,
+        url: u,
+        data: body,
+        method: "POST"
+      });
+      return res.data;
+    }
+    getTargetPrincipal() {
+      return this.targetPrincipal;
+    }
+    async refreshToken() {
+      try {
+        await this.sourceClient.getAccessToken();
+        const name = "projects/-/serviceAccounts/" + this.targetPrincipal;
+        const u = `${this.endpoint}/v1/${name}:generateAccessToken`;
+        const body = {
+          delegates: this.delegates,
+          scope: this.targetScopes,
+          lifetime: this.lifetime + "s"
+        };
+        const res = await this.sourceClient.request({
+          ...Impersonated.RETRY_CONFIG,
+          url: u,
+          data: body,
+          method: "POST"
+        });
+        const tokenResponse = res.data;
+        this.credentials.access_token = tokenResponse.accessToken;
+        this.credentials.expiry_date = Date.parse(tokenResponse.expireTime);
+        return {
+          tokens: this.credentials,
+          res
+        };
+      } catch (error) {
+        if (!(error instanceof Error))
+          throw error;
+        let status = 0;
+        let message = "";
+        if (error instanceof gaxios_1.GaxiosError) {
+          status = error?.response?.data?.error?.status;
+          message = error?.response?.data?.error?.message;
+        }
+        if (status && message) {
+          error.message = `${status}: unable to impersonate: ${message}`;
+          throw error;
+        } else {
+          error.message = `unable to impersonate: ${error}`;
+          throw error;
+        }
+      }
+    }
+    async fetchIdToken(targetAudience, options) {
+      await this.sourceClient.getAccessToken();
+      const name = `projects/-/serviceAccounts/${this.targetPrincipal}`;
+      const u = `${this.endpoint}/v1/${name}:generateIdToken`;
+      const body = {
+        delegates: this.delegates,
+        audience: targetAudience,
+        includeEmail: options?.includeEmail ?? true,
+        useEmailAzp: options?.includeEmail ?? true
+      };
+      const res = await this.sourceClient.request({
+        ...Impersonated.RETRY_CONFIG,
+        url: u,
+        data: body,
+        method: "POST"
+      });
+      return res.data.token;
+    }
+  }
+  exports.Impersonated = Impersonated;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/oauth2common.js
+var require_oauth2common = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.OAuthClientAuthHandler = undefined;
+  exports.getErrorFromOAuthErrorResponse = getErrorFromOAuthErrorResponse;
+  var gaxios_1 = require_src2();
+  var crypto_1 = require_crypto3();
+  var METHODS_SUPPORTING_REQUEST_BODY = ["PUT", "POST", "PATCH"];
+
+  class OAuthClientAuthHandler {
+    #crypto = (0, crypto_1.createCrypto)();
+    #clientAuthentication;
+    transporter;
+    constructor(options) {
+      if (options && "clientId" in options) {
+        this.#clientAuthentication = options;
+        this.transporter = new gaxios_1.Gaxios;
+      } else {
+        this.#clientAuthentication = options?.clientAuthentication;
+        this.transporter = options?.transporter || new gaxios_1.Gaxios;
+      }
+    }
+    applyClientAuthenticationOptions(opts, bearerToken) {
+      opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+      this.injectAuthenticatedHeaders(opts, bearerToken);
+      if (!bearerToken) {
+        this.injectAuthenticatedRequestBody(opts);
+      }
+    }
+    injectAuthenticatedHeaders(opts, bearerToken) {
+      if (bearerToken) {
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers, {
+          authorization: `Bearer ${bearerToken}`
+        });
+      } else if (this.#clientAuthentication?.confidentialClientType === "basic") {
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+        const clientId = this.#clientAuthentication.clientId;
+        const clientSecret = this.#clientAuthentication.clientSecret || "";
+        const base64EncodedCreds = this.#crypto.encodeBase64StringUtf8(`${clientId}:${clientSecret}`);
+        gaxios_1.Gaxios.mergeHeaders(opts.headers, {
+          authorization: `Basic ${base64EncodedCreds}`
+        });
+      }
+    }
+    injectAuthenticatedRequestBody(opts) {
+      if (this.#clientAuthentication?.confidentialClientType === "request-body") {
+        const method = (opts.method || "GET").toUpperCase();
+        if (!METHODS_SUPPORTING_REQUEST_BODY.includes(method)) {
+          throw new Error(`${method} HTTP method does not support ` + `${this.#clientAuthentication.confidentialClientType} ` + "client authentication");
+        }
+        const headers = new Headers(opts.headers);
+        const contentType = headers.get("content-type");
+        if (contentType?.startsWith("application/x-www-form-urlencoded") || opts.data instanceof URLSearchParams) {
+          const data = new URLSearchParams(opts.data ?? "");
+          data.append("client_id", this.#clientAuthentication.clientId);
+          data.append("client_secret", this.#clientAuthentication.clientSecret || "");
+          opts.data = data;
+        } else if (contentType?.startsWith("application/json")) {
+          opts.data = opts.data || {};
+          Object.assign(opts.data, {
+            client_id: this.#clientAuthentication.clientId,
+            client_secret: this.#clientAuthentication.clientSecret || ""
+          });
+        } else {
+          throw new Error(`${contentType} content-types are not supported with ` + `${this.#clientAuthentication.confidentialClientType} ` + "client authentication");
+        }
+      }
+    }
+    static get RETRY_CONFIG() {
+      return {
+        retry: true,
+        retryConfig: {
+          httpMethodsToRetry: ["GET", "PUT", "POST", "HEAD", "OPTIONS", "DELETE"]
+        }
+      };
+    }
+  }
+  exports.OAuthClientAuthHandler = OAuthClientAuthHandler;
+  function getErrorFromOAuthErrorResponse(resp, err) {
+    const errorCode = resp.error;
+    const errorDescription = resp.error_description;
+    const errorUri = resp.error_uri;
+    let message = `Error code ${errorCode}`;
+    if (typeof errorDescription !== "undefined") {
+      message += `: ${errorDescription}`;
+    }
+    if (typeof errorUri !== "undefined") {
+      message += ` - ${errorUri}`;
+    }
+    const newError = new Error(message);
+    if (err) {
+      const keys = Object.keys(err);
+      if (err.stack) {
+        keys.push("stack");
+      }
+      keys.forEach((key) => {
+        if (key !== "message") {
+          Object.defineProperty(newError, key, {
+            value: err[key],
+            writable: false,
+            enumerable: true
+          });
+        }
+      });
+    }
+    return newError;
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/auth/stscredentials.js
+var require_stscredentials = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.StsCredentials = undefined;
+  var gaxios_1 = require_src2();
+  var authclient_1 = require_authclient();
+  var oauth2common_1 = require_oauth2common();
+  var util_1 = require_util2();
+
+  class StsCredentials extends oauth2common_1.OAuthClientAuthHandler {
+    #tokenExchangeEndpoint;
+    constructor(options = {
+      tokenExchangeEndpoint: ""
+    }, clientAuthentication) {
+      if (typeof options !== "object" || options instanceof URL) {
+        options = {
+          tokenExchangeEndpoint: options,
+          clientAuthentication
+        };
+      }
+      super(options);
+      this.#tokenExchangeEndpoint = options.tokenExchangeEndpoint;
+    }
+    async exchangeToken(stsCredentialsOptions, headers, options) {
+      const values = {
+        grant_type: stsCredentialsOptions.grantType,
+        resource: stsCredentialsOptions.resource,
+        audience: stsCredentialsOptions.audience,
+        scope: stsCredentialsOptions.scope?.join(" "),
+        requested_token_type: stsCredentialsOptions.requestedTokenType,
+        subject_token: stsCredentialsOptions.subjectToken,
+        subject_token_type: stsCredentialsOptions.subjectTokenType,
+        actor_token: stsCredentialsOptions.actingParty?.actorToken,
+        actor_token_type: stsCredentialsOptions.actingParty?.actorTokenType,
+        options: options && JSON.stringify(options)
+      };
+      const opts = {
+        ...StsCredentials.RETRY_CONFIG,
+        url: this.#tokenExchangeEndpoint.toString(),
+        method: "POST",
+        headers,
+        data: new URLSearchParams((0, util_1.removeUndefinedValuesInObject)(values)),
+        responseType: "json"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "exchangeToken");
+      this.applyClientAuthenticationOptions(opts);
+      try {
+        const response = await this.transporter.request(opts);
+        const stsSuccessfulResponse = response.data;
+        stsSuccessfulResponse.res = response;
+        return stsSuccessfulResponse;
+      } catch (error) {
+        if (error instanceof gaxios_1.GaxiosError && error.response) {
+          throw (0, oauth2common_1.getErrorFromOAuthErrorResponse)(error.response.data, error);
+        }
+        throw error;
+      }
+    }
+  }
+  exports.StsCredentials = StsCredentials;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/baseexternalclient.js
+var require_baseexternalclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.BaseExternalAccountClient = exports.CLOUD_RESOURCE_MANAGER = exports.EXTERNAL_ACCOUNT_TYPE = exports.EXPIRATION_TIME_OFFSET = undefined;
+  var gaxios_1 = require_src2();
+  var stream = __require("stream");
+  var authclient_1 = require_authclient();
+  var sts = require_stscredentials();
+  var util_1 = require_util2();
+  var shared_cjs_1 = require_shared2();
+  var STS_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
+  var STS_REQUEST_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+  var DEFAULT_OAUTH_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
+  var DEFAULT_TOKEN_LIFESPAN = 3600;
+  exports.EXPIRATION_TIME_OFFSET = 5 * 60 * 1000;
+  exports.EXTERNAL_ACCOUNT_TYPE = "external_account";
+  exports.CLOUD_RESOURCE_MANAGER = "https://cloudresourcemanager.googleapis.com/v1/projects/";
+  var WORKFORCE_AUDIENCE_PATTERN = "//iam\\.googleapis\\.com/locations/[^/]+/workforcePools/[^/]+/providers/.+";
+  var DEFAULT_TOKEN_URL = "https://sts.{universeDomain}/v1/token";
+
+  class BaseExternalAccountClient extends authclient_1.AuthClient {
+    scopes;
+    projectNumber;
+    audience;
+    subjectTokenType;
+    stsCredential;
+    clientAuth;
+    credentialSourceType;
+    cachedAccessToken;
+    serviceAccountImpersonationUrl;
+    serviceAccountImpersonationLifetime;
+    workforcePoolUserProject;
+    configLifetimeRequested;
+    tokenUrl;
+    cloudResourceManagerURL;
+    supplierContext;
+    #pendingAccessToken = null;
+    constructor(options) {
+      super(options);
+      const opts = (0, util_1.originalOrCamelOptions)(options);
+      const type = opts.get("type");
+      if (type && type !== exports.EXTERNAL_ACCOUNT_TYPE) {
+        throw new Error(`Expected "${exports.EXTERNAL_ACCOUNT_TYPE}" type but ` + `received "${options.type}"`);
+      }
+      const clientId = opts.get("client_id");
+      const clientSecret = opts.get("client_secret");
+      this.tokenUrl = opts.get("token_url") ?? DEFAULT_TOKEN_URL.replace("{universeDomain}", this.universeDomain);
+      const subjectTokenType = opts.get("subject_token_type");
+      const workforcePoolUserProject = opts.get("workforce_pool_user_project");
+      const serviceAccountImpersonationUrl = opts.get("service_account_impersonation_url");
+      const serviceAccountImpersonation = opts.get("service_account_impersonation");
+      const serviceAccountImpersonationLifetime = (0, util_1.originalOrCamelOptions)(serviceAccountImpersonation).get("token_lifetime_seconds");
+      this.cloudResourceManagerURL = new URL(opts.get("cloud_resource_manager_url") || `https://cloudresourcemanager.${this.universeDomain}/v1/projects/`);
+      if (clientId) {
+        this.clientAuth = {
+          confidentialClientType: "basic",
+          clientId,
+          clientSecret
+        };
+      }
+      this.stsCredential = new sts.StsCredentials({
+        tokenExchangeEndpoint: this.tokenUrl,
+        clientAuthentication: this.clientAuth
+      });
+      this.scopes = opts.get("scopes") || [DEFAULT_OAUTH_SCOPE];
+      this.cachedAccessToken = null;
+      this.audience = opts.get("audience");
+      this.subjectTokenType = subjectTokenType;
+      this.workforcePoolUserProject = workforcePoolUserProject;
+      const workforceAudiencePattern = new RegExp(WORKFORCE_AUDIENCE_PATTERN);
+      if (this.workforcePoolUserProject && !this.audience.match(workforceAudiencePattern)) {
+        throw new Error("workforcePoolUserProject should not be set for non-workforce pool " + "credentials.");
+      }
+      this.serviceAccountImpersonationUrl = serviceAccountImpersonationUrl;
+      this.serviceAccountImpersonationLifetime = serviceAccountImpersonationLifetime;
+      if (this.serviceAccountImpersonationLifetime) {
+        this.configLifetimeRequested = true;
+      } else {
+        this.configLifetimeRequested = false;
+        this.serviceAccountImpersonationLifetime = DEFAULT_TOKEN_LIFESPAN;
+      }
+      this.projectNumber = this.getProjectNumber(this.audience);
+      this.supplierContext = {
+        audience: this.audience,
+        subjectTokenType: this.subjectTokenType,
+        transporter: this.transporter
+      };
+    }
+    getServiceAccountEmail() {
+      if (this.serviceAccountImpersonationUrl) {
+        if (this.serviceAccountImpersonationUrl.length > 256) {
+          throw new RangeError(`URL is too long: ${this.serviceAccountImpersonationUrl}`);
+        }
+        const re = /serviceAccounts\/(?<email>[^:]+):generateAccessToken$/;
+        const result = re.exec(this.serviceAccountImpersonationUrl);
+        return result?.groups?.email || null;
+      }
+      return null;
+    }
+    setCredentials(credentials) {
+      super.setCredentials(credentials);
+      this.cachedAccessToken = credentials;
+    }
+    async getAccessToken() {
+      if (!this.cachedAccessToken || this.isExpired(this.cachedAccessToken)) {
+        await this.refreshAccessTokenAsync();
+      }
+      return {
+        token: this.cachedAccessToken.access_token,
+        res: this.cachedAccessToken.res
+      };
+    }
+    async getRequestHeaders() {
+      const accessTokenResponse = await this.getAccessToken();
+      const headers = new Headers({
+        authorization: `Bearer ${accessTokenResponse.token}`
+      });
+      return this.addSharedMetadataHeaders(headers);
+    }
+    request(opts, callback) {
+      if (callback) {
+        this.requestAsync(opts).then((r) => callback(null, r), (e) => {
+          return callback(e, e.response);
+        });
+      } else {
+        return this.requestAsync(opts);
+      }
+    }
+    async getProjectId() {
+      const projectNumber = this.projectNumber || this.workforcePoolUserProject;
+      if (this.projectId) {
+        return this.projectId;
+      } else if (projectNumber) {
+        const headers = await this.getRequestHeaders();
+        const opts = {
+          ...BaseExternalAccountClient.RETRY_CONFIG,
+          headers,
+          url: `${this.cloudResourceManagerURL.toString()}${projectNumber}`,
+          responseType: "json"
+        };
+        authclient_1.AuthClient.setMethodName(opts, "getProjectId");
+        const response = await this.transporter.request(opts);
+        this.projectId = response.data.projectId;
+        return this.projectId;
+      }
+      return null;
+    }
+    async requestAsync(opts, reAuthRetried = false) {
+      let response;
+      try {
+        const requestHeaders = await this.getRequestHeaders();
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+        this.addUserProjectAndAuthHeaders(opts.headers, requestHeaders);
+        response = await this.transporter.request(opts);
+      } catch (e) {
+        const res = e.response;
+        if (res) {
+          const statusCode = res.status;
+          const isReadableStream = res.config.data instanceof stream.Readable;
+          const isAuthErr = statusCode === 401 || statusCode === 403;
+          if (!reAuthRetried && isAuthErr && !isReadableStream && this.forceRefreshOnFailure) {
+            await this.refreshAccessTokenAsync();
+            return await this.requestAsync(opts, true);
+          }
+        }
+        throw e;
+      }
+      return response;
+    }
+    async refreshAccessTokenAsync() {
+      this.#pendingAccessToken = this.#pendingAccessToken || this.#internalRefreshAccessTokenAsync();
+      try {
+        return await this.#pendingAccessToken;
+      } finally {
+        this.#pendingAccessToken = null;
+      }
+    }
+    async#internalRefreshAccessTokenAsync() {
+      const subjectToken = await this.retrieveSubjectToken();
+      const stsCredentialsOptions = {
+        grantType: STS_GRANT_TYPE,
+        audience: this.audience,
+        requestedTokenType: STS_REQUEST_TOKEN_TYPE,
+        subjectToken,
+        subjectTokenType: this.subjectTokenType,
+        scope: this.serviceAccountImpersonationUrl ? [DEFAULT_OAUTH_SCOPE] : this.getScopesArray()
+      };
+      const additionalOptions = !this.clientAuth && this.workforcePoolUserProject ? { userProject: this.workforcePoolUserProject } : undefined;
+      const additionalHeaders = new Headers({
+        "x-goog-api-client": this.getMetricsHeaderValue()
+      });
+      const stsResponse = await this.stsCredential.exchangeToken(stsCredentialsOptions, additionalHeaders, additionalOptions);
+      if (this.serviceAccountImpersonationUrl) {
+        this.cachedAccessToken = await this.getImpersonatedAccessToken(stsResponse.access_token);
+      } else if (stsResponse.expires_in) {
+        this.cachedAccessToken = {
+          access_token: stsResponse.access_token,
+          expiry_date: new Date().getTime() + stsResponse.expires_in * 1000,
+          res: stsResponse.res
+        };
+      } else {
+        this.cachedAccessToken = {
+          access_token: stsResponse.access_token,
+          res: stsResponse.res
+        };
+      }
+      this.credentials = {};
+      Object.assign(this.credentials, this.cachedAccessToken);
+      delete this.credentials.res;
+      this.emit("tokens", {
+        refresh_token: null,
+        expiry_date: this.cachedAccessToken.expiry_date,
+        access_token: this.cachedAccessToken.access_token,
+        token_type: "Bearer",
+        id_token: null
+      });
+      return this.cachedAccessToken;
+    }
+    getProjectNumber(audience) {
+      const match = audience.match(/\/projects\/([^/]+)/);
+      if (!match) {
+        return null;
+      }
+      return match[1];
+    }
+    async getImpersonatedAccessToken(token) {
+      const opts = {
+        ...BaseExternalAccountClient.RETRY_CONFIG,
+        url: this.serviceAccountImpersonationUrl,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`
+        },
+        data: {
+          scope: this.getScopesArray(),
+          lifetime: this.serviceAccountImpersonationLifetime + "s"
+        },
+        responseType: "json"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "getImpersonatedAccessToken");
+      const response = await this.transporter.request(opts);
+      const successResponse = response.data;
+      return {
+        access_token: successResponse.accessToken,
+        expiry_date: new Date(successResponse.expireTime).getTime(),
+        res: response
+      };
+    }
+    isExpired(accessToken) {
+      const now = new Date().getTime();
+      return accessToken.expiry_date ? now >= accessToken.expiry_date - this.eagerRefreshThresholdMillis : false;
+    }
+    getScopesArray() {
+      if (typeof this.scopes === "string") {
+        return [this.scopes];
+      }
+      return this.scopes || [DEFAULT_OAUTH_SCOPE];
+    }
+    getMetricsHeaderValue() {
+      const nodeVersion = process.version.replace(/^v/, "");
+      const saImpersonation = this.serviceAccountImpersonationUrl !== undefined;
+      const credentialSourceType = this.credentialSourceType ? this.credentialSourceType : "unknown";
+      return `gl-node/${nodeVersion} auth/${shared_cjs_1.pkg.version} google-byoid-sdk source/${credentialSourceType} sa-impersonation/${saImpersonation} config-lifetime/${this.configLifetimeRequested}`;
+    }
+    getTokenUrl() {
+      return this.tokenUrl;
+    }
+  }
+  exports.BaseExternalAccountClient = BaseExternalAccountClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/filesubjecttokensupplier.js
+var require_filesubjecttokensupplier = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.FileSubjectTokenSupplier = undefined;
+  var util_1 = __require("util");
+  var fs = __require("fs");
+  var readFile = (0, util_1.promisify)(fs.readFile ?? (() => {}));
+  var realpath = (0, util_1.promisify)(fs.realpath ?? (() => {}));
+  var lstat = (0, util_1.promisify)(fs.lstat ?? (() => {}));
+
+  class FileSubjectTokenSupplier {
+    filePath;
+    formatType;
+    subjectTokenFieldName;
+    constructor(opts) {
+      this.filePath = opts.filePath;
+      this.formatType = opts.formatType;
+      this.subjectTokenFieldName = opts.subjectTokenFieldName;
+    }
+    async getSubjectToken() {
+      let parsedFilePath = this.filePath;
+      try {
+        parsedFilePath = await realpath(parsedFilePath);
+        if (!(await lstat(parsedFilePath)).isFile()) {
+          throw new Error;
+        }
+      } catch (err) {
+        if (err instanceof Error) {
+          err.message = `The file at ${parsedFilePath} does not exist, or it is not a file. ${err.message}`;
+        }
+        throw err;
+      }
+      let subjectToken;
+      const rawText = await readFile(parsedFilePath, { encoding: "utf8" });
+      if (this.formatType === "text") {
+        subjectToken = rawText;
+      } else if (this.formatType === "json" && this.subjectTokenFieldName) {
+        const json = JSON.parse(rawText);
+        subjectToken = json[this.subjectTokenFieldName];
+      }
+      if (!subjectToken) {
+        throw new Error("Unable to parse the subject_token from the credential_source file");
+      }
+      return subjectToken;
+    }
+  }
+  exports.FileSubjectTokenSupplier = FileSubjectTokenSupplier;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/urlsubjecttokensupplier.js
+var require_urlsubjecttokensupplier = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.UrlSubjectTokenSupplier = undefined;
+  var authclient_1 = require_authclient();
+
+  class UrlSubjectTokenSupplier {
+    url;
+    headers;
+    formatType;
+    subjectTokenFieldName;
+    additionalGaxiosOptions;
+    constructor(opts) {
+      this.url = opts.url;
+      this.formatType = opts.formatType;
+      this.subjectTokenFieldName = opts.subjectTokenFieldName;
+      this.headers = opts.headers;
+      this.additionalGaxiosOptions = opts.additionalGaxiosOptions;
+    }
+    async getSubjectToken(context) {
+      const opts = {
+        ...this.additionalGaxiosOptions,
+        url: this.url,
+        method: "GET",
+        headers: this.headers,
+        responseType: this.formatType
+      };
+      authclient_1.AuthClient.setMethodName(opts, "getSubjectToken");
+      let subjectToken;
+      if (this.formatType === "text") {
+        const response = await context.transporter.request(opts);
+        subjectToken = response.data;
+      } else if (this.formatType === "json" && this.subjectTokenFieldName) {
+        const response = await context.transporter.request(opts);
+        subjectToken = response.data[this.subjectTokenFieldName];
+      }
+      if (!subjectToken) {
+        throw new Error("Unable to parse the subject_token from the credential_source URL");
+      }
+      return subjectToken;
+    }
+  }
+  exports.UrlSubjectTokenSupplier = UrlSubjectTokenSupplier;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/certificatesubjecttokensupplier.js
+var require_certificatesubjecttokensupplier = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.CertificateSubjectTokenSupplier = exports.InvalidConfigurationError = exports.CertificateSourceUnavailableError = exports.CERTIFICATE_CONFIGURATION_ENV_VARIABLE = undefined;
+  var util_1 = require_util2();
+  var fs = __require("fs");
+  var crypto_1 = __require("crypto");
+  var https = __require("https");
+  exports.CERTIFICATE_CONFIGURATION_ENV_VARIABLE = "GOOGLE_API_CERTIFICATE_CONFIG";
+
+  class CertificateSourceUnavailableError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "CertificateSourceUnavailableError";
+    }
+  }
+  exports.CertificateSourceUnavailableError = CertificateSourceUnavailableError;
+
+  class InvalidConfigurationError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "InvalidConfigurationError";
+    }
+  }
+  exports.InvalidConfigurationError = InvalidConfigurationError;
+
+  class CertificateSubjectTokenSupplier {
+    certificateConfigPath;
+    trustChainPath;
+    cert;
+    key;
+    constructor(opts) {
+      if (!opts.useDefaultCertificateConfig && !opts.certificateConfigLocation) {
+        throw new InvalidConfigurationError("Either `useDefaultCertificateConfig` must be true or a `certificateConfigLocation` must be provided.");
+      }
+      if (opts.useDefaultCertificateConfig && opts.certificateConfigLocation) {
+        throw new InvalidConfigurationError("Both `useDefaultCertificateConfig` and `certificateConfigLocation` cannot be provided.");
+      }
+      this.trustChainPath = opts.trustChainPath;
+      this.certificateConfigPath = opts.certificateConfigLocation ?? "";
+    }
+    async createMtlsHttpsAgent() {
+      if (!this.key || !this.cert) {
+        throw new InvalidConfigurationError("Cannot create mTLS Agent with missing certificate or key");
+      }
+      return new https.Agent({ key: this.key, cert: this.cert });
+    }
+    async getSubjectToken() {
+      this.certificateConfigPath = await this.#resolveCertificateConfigFilePath();
+      const { certPath, keyPath } = await this.#getCertAndKeyPaths();
+      ({ cert: this.cert, key: this.key } = await this.#getKeyAndCert(certPath, keyPath));
+      return await this.#processChainFromPaths(this.cert);
+    }
+    async#resolveCertificateConfigFilePath() {
+      const overridePath = this.certificateConfigPath;
+      if (overridePath) {
+        if (await (0, util_1.isValidFile)(overridePath)) {
+          return overridePath;
+        }
+        throw new CertificateSourceUnavailableError(`Provided certificate config path is invalid: ${overridePath}`);
+      }
+      const envPath = process.env[exports.CERTIFICATE_CONFIGURATION_ENV_VARIABLE];
+      if (envPath) {
+        if (await (0, util_1.isValidFile)(envPath)) {
+          return envPath;
+        }
+        throw new CertificateSourceUnavailableError(`Path from environment variable "${exports.CERTIFICATE_CONFIGURATION_ENV_VARIABLE}" is invalid: ${envPath}`);
+      }
+      const wellKnownPath = (0, util_1.getWellKnownCertificateConfigFileLocation)();
+      if (await (0, util_1.isValidFile)(wellKnownPath)) {
+        return wellKnownPath;
+      }
+      throw new CertificateSourceUnavailableError("Could not find certificate configuration file. Searched override path, " + `the "${exports.CERTIFICATE_CONFIGURATION_ENV_VARIABLE}" env var, and the gcloud path (${wellKnownPath}).`);
+    }
+    async#getCertAndKeyPaths() {
+      const configPath = this.certificateConfigPath;
+      let fileContents;
+      try {
+        fileContents = await fs.promises.readFile(configPath, "utf8");
+      } catch (err) {
+        throw new CertificateSourceUnavailableError(`Failed to read certificate config file at: ${configPath}`);
+      }
+      try {
+        const config = JSON.parse(fileContents);
+        const certPath = config?.cert_configs?.workload?.cert_path;
+        const keyPath = config?.cert_configs?.workload?.key_path;
+        if (!certPath || !keyPath) {
+          throw new InvalidConfigurationError(`Certificate config file (${configPath}) is missing required "cert_path" or "key_path" in the workload config.`);
+        }
+        return { certPath, keyPath };
+      } catch (e) {
+        if (e instanceof InvalidConfigurationError)
+          throw e;
+        throw new InvalidConfigurationError(`Failed to parse certificate config from ${configPath}: ${e.message}`);
+      }
+    }
+    async#getKeyAndCert(certPath, keyPath) {
+      let cert, key;
+      try {
+        cert = await fs.promises.readFile(certPath);
+        new crypto_1.X509Certificate(cert);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new CertificateSourceUnavailableError(`Failed to read certificate file at ${certPath}: ${message}`);
+      }
+      try {
+        key = await fs.promises.readFile(keyPath);
+        (0, crypto_1.createPrivateKey)(key);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new CertificateSourceUnavailableError(`Failed to read private key file at ${keyPath}: ${message}`);
+      }
+      return { cert, key };
+    }
+    async#processChainFromPaths(leafCertBuffer) {
+      const leafCert = new crypto_1.X509Certificate(leafCertBuffer);
+      if (!this.trustChainPath) {
+        return JSON.stringify([leafCert.raw.toString("base64")]);
+      }
+      try {
+        const chainPems = await fs.promises.readFile(this.trustChainPath, "utf8");
+        const pemBlocks = chainPems.match(/-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g) ?? [];
+        const chainCerts = pemBlocks.map((pem, index) => {
+          try {
+            return new crypto_1.X509Certificate(pem);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new InvalidConfigurationError(`Failed to parse certificate at index ${index} in trust chain file ${this.trustChainPath}: ${message}`);
+          }
+        });
+        const leafIndex = chainCerts.findIndex((chainCert) => leafCert.raw.equals(chainCert.raw));
+        let finalChain;
+        if (leafIndex === -1) {
+          finalChain = [leafCert, ...chainCerts];
+        } else if (leafIndex === 0) {
+          finalChain = chainCerts;
+        } else {
+          throw new InvalidConfigurationError(`Leaf certificate exists in the trust chain but is not the first entry (found at index ${leafIndex}).`);
+        }
+        return JSON.stringify(finalChain.map((cert) => cert.raw.toString("base64")));
+      } catch (err) {
+        if (err instanceof InvalidConfigurationError)
+          throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new CertificateSourceUnavailableError(`Failed to process certificate chain from ${this.trustChainPath}: ${message}`);
+      }
+    }
+  }
+  exports.CertificateSubjectTokenSupplier = CertificateSubjectTokenSupplier;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/identitypoolclient.js
+var require_identitypoolclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.IdentityPoolClient = undefined;
+  var baseexternalclient_1 = require_baseexternalclient();
+  var util_1 = require_util2();
+  var filesubjecttokensupplier_1 = require_filesubjecttokensupplier();
+  var urlsubjecttokensupplier_1 = require_urlsubjecttokensupplier();
+  var certificatesubjecttokensupplier_1 = require_certificatesubjecttokensupplier();
+  var stscredentials_1 = require_stscredentials();
+  var gaxios_1 = require_src2();
+
+  class IdentityPoolClient extends baseexternalclient_1.BaseExternalAccountClient {
+    subjectTokenSupplier;
+    constructor(options) {
+      super(options);
+      const opts = (0, util_1.originalOrCamelOptions)(options);
+      const credentialSource = opts.get("credential_source");
+      const subjectTokenSupplier = opts.get("subject_token_supplier");
+      if (!credentialSource && !subjectTokenSupplier) {
+        throw new Error("A credential source or subject token supplier must be specified.");
+      }
+      if (credentialSource && subjectTokenSupplier) {
+        throw new Error("Only one of credential source or subject token supplier can be specified.");
+      }
+      if (subjectTokenSupplier) {
+        this.subjectTokenSupplier = subjectTokenSupplier;
+        this.credentialSourceType = "programmatic";
+      } else {
+        const credentialSourceOpts = (0, util_1.originalOrCamelOptions)(credentialSource);
+        const formatOpts = (0, util_1.originalOrCamelOptions)(credentialSourceOpts.get("format"));
+        const formatType = formatOpts.get("type") || "text";
+        const formatSubjectTokenFieldName = formatOpts.get("subject_token_field_name");
+        if (formatType !== "json" && formatType !== "text") {
+          throw new Error(`Invalid credential_source format "${formatType}"`);
+        }
+        if (formatType === "json" && !formatSubjectTokenFieldName) {
+          throw new Error("Missing subject_token_field_name for JSON credential_source format");
+        }
+        const file = credentialSourceOpts.get("file");
+        const url = credentialSourceOpts.get("url");
+        const certificate = credentialSourceOpts.get("certificate");
+        const headers = credentialSourceOpts.get("headers");
+        if (file && url || url && certificate || file && certificate) {
+          throw new Error('No valid Identity Pool "credential_source" provided, must be either file, url, or certificate.');
+        } else if (file) {
+          this.credentialSourceType = "file";
+          this.subjectTokenSupplier = new filesubjecttokensupplier_1.FileSubjectTokenSupplier({
+            filePath: file,
+            formatType,
+            subjectTokenFieldName: formatSubjectTokenFieldName
+          });
+        } else if (url) {
+          this.credentialSourceType = "url";
+          this.subjectTokenSupplier = new urlsubjecttokensupplier_1.UrlSubjectTokenSupplier({
+            url,
+            formatType,
+            subjectTokenFieldName: formatSubjectTokenFieldName,
+            headers,
+            additionalGaxiosOptions: IdentityPoolClient.RETRY_CONFIG
+          });
+        } else if (certificate) {
+          this.credentialSourceType = "certificate";
+          const certificateSubjecttokensupplier = new certificatesubjecttokensupplier_1.CertificateSubjectTokenSupplier({
+            useDefaultCertificateConfig: certificate.use_default_certificate_config,
+            certificateConfigLocation: certificate.certificate_config_location,
+            trustChainPath: certificate.trust_chain_path
+          });
+          this.subjectTokenSupplier = certificateSubjecttokensupplier;
+        } else {
+          throw new Error('No valid Identity Pool "credential_source" provided, must be either file, url, or certificate.');
+        }
+      }
+    }
+    async retrieveSubjectToken() {
+      const subjectToken = await this.subjectTokenSupplier.getSubjectToken(this.supplierContext);
+      if (this.subjectTokenSupplier instanceof certificatesubjecttokensupplier_1.CertificateSubjectTokenSupplier) {
+        const mtlsAgent = await this.subjectTokenSupplier.createMtlsHttpsAgent();
+        this.stsCredential = new stscredentials_1.StsCredentials({
+          tokenExchangeEndpoint: this.getTokenUrl(),
+          clientAuthentication: this.clientAuth,
+          transporter: new gaxios_1.Gaxios({ agent: mtlsAgent })
+        });
+        this.transporter = new gaxios_1.Gaxios({
+          ...this.transporter.defaults || {},
+          agent: mtlsAgent
+        });
+      }
+      return subjectToken;
+    }
+  }
+  exports.IdentityPoolClient = IdentityPoolClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/awsrequestsigner.js
+var require_awsrequestsigner = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.AwsRequestSigner = undefined;
+  var gaxios_1 = require_src2();
+  var crypto_1 = require_crypto3();
+  var AWS_ALGORITHM = "AWS4-HMAC-SHA256";
+  var AWS_REQUEST_TYPE = "aws4_request";
+
+  class AwsRequestSigner {
+    getCredentials;
+    region;
+    crypto;
+    constructor(getCredentials, region) {
+      this.getCredentials = getCredentials;
+      this.region = region;
+      this.crypto = (0, crypto_1.createCrypto)();
+    }
+    async getRequestOptions(amzOptions) {
+      if (!amzOptions.url) {
+        throw new RangeError('"url" is required in "amzOptions"');
+      }
+      const requestPayloadData = typeof amzOptions.data === "object" ? JSON.stringify(amzOptions.data) : amzOptions.data;
+      const url = amzOptions.url;
+      const method = amzOptions.method || "GET";
+      const requestPayload = amzOptions.body || requestPayloadData;
+      const additionalAmzHeaders = amzOptions.headers;
+      const awsSecurityCredentials = await this.getCredentials();
+      const uri = new URL(url);
+      if (typeof requestPayload !== "string" && requestPayload !== undefined) {
+        throw new TypeError(`'requestPayload' is expected to be a string if provided. Got: ${requestPayload}`);
+      }
+      const headerMap = await generateAuthenticationHeaderMap({
+        crypto: this.crypto,
+        host: uri.host,
+        canonicalUri: uri.pathname,
+        canonicalQuerystring: uri.search.slice(1),
+        method,
+        region: this.region,
+        securityCredentials: awsSecurityCredentials,
+        requestPayload,
+        additionalAmzHeaders
+      });
+      const headers = gaxios_1.Gaxios.mergeHeaders(headerMap.amzDate ? { "x-amz-date": headerMap.amzDate } : {}, {
+        authorization: headerMap.authorizationHeader,
+        host: uri.host
+      }, additionalAmzHeaders || {});
+      if (awsSecurityCredentials.token) {
+        gaxios_1.Gaxios.mergeHeaders(headers, {
+          "x-amz-security-token": awsSecurityCredentials.token
+        });
+      }
+      const awsSignedReq = {
+        url,
+        method,
+        headers
+      };
+      if (requestPayload !== undefined) {
+        awsSignedReq.body = requestPayload;
+      }
+      return awsSignedReq;
+    }
+  }
+  exports.AwsRequestSigner = AwsRequestSigner;
+  async function sign(crypto2, key, msg) {
+    return await crypto2.signWithHmacSha256(key, msg);
+  }
+  async function getSigningKey(crypto2, key, dateStamp, region, serviceName) {
+    const kDate = await sign(crypto2, `AWS4${key}`, dateStamp);
+    const kRegion = await sign(crypto2, kDate, region);
+    const kService = await sign(crypto2, kRegion, serviceName);
+    const kSigning = await sign(crypto2, kService, "aws4_request");
+    return kSigning;
+  }
+  async function generateAuthenticationHeaderMap(options) {
+    const additionalAmzHeaders = gaxios_1.Gaxios.mergeHeaders(options.additionalAmzHeaders);
+    const requestPayload = options.requestPayload || "";
+    const serviceName = options.host.split(".")[0];
+    const now = new Date;
+    const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.[0-9]+/, "");
+    const dateStamp = now.toISOString().replace(/[-]/g, "").replace(/T.*/, "");
+    if (options.securityCredentials.token) {
+      additionalAmzHeaders.set("x-amz-security-token", options.securityCredentials.token);
+    }
+    const amzHeaders = gaxios_1.Gaxios.mergeHeaders({
+      host: options.host
+    }, additionalAmzHeaders.has("date") ? {} : { "x-amz-date": amzDate }, additionalAmzHeaders);
+    let canonicalHeaders = "";
+    const signedHeadersList = [
+      ...amzHeaders.keys()
+    ].sort();
+    signedHeadersList.forEach((key) => {
+      canonicalHeaders += `${key}:${amzHeaders.get(key)}
+`;
+    });
+    const signedHeaders = signedHeadersList.join(";");
+    const payloadHash = await options.crypto.sha256DigestHex(requestPayload);
+    const canonicalRequest = `${options.method.toUpperCase()}
+` + `${options.canonicalUri}
+` + `${options.canonicalQuerystring}
+` + `${canonicalHeaders}
+` + `${signedHeaders}
+` + `${payloadHash}`;
+    const credentialScope = `${dateStamp}/${options.region}/${serviceName}/${AWS_REQUEST_TYPE}`;
+    const stringToSign = `${AWS_ALGORITHM}
+` + `${amzDate}
+` + `${credentialScope}
+` + await options.crypto.sha256DigestHex(canonicalRequest);
+    const signingKey = await getSigningKey(options.crypto, options.securityCredentials.secretAccessKey, dateStamp, options.region, serviceName);
+    const signature = await sign(options.crypto, signingKey, stringToSign);
+    const authorizationHeader = `${AWS_ALGORITHM} Credential=${options.securityCredentials.accessKeyId}/` + `${credentialScope}, SignedHeaders=${signedHeaders}, ` + `Signature=${(0, crypto_1.fromArrayBufferToHex)(signature)}`;
+    return {
+      amzDate: additionalAmzHeaders.has("date") ? undefined : amzDate,
+      authorizationHeader,
+      canonicalQuerystring: options.canonicalQuerystring
+    };
+  }
+});
+
+// ../node_modules/google-auth-library/build/src/auth/defaultawssecuritycredentialssupplier.js
+var require_defaultawssecuritycredentialssupplier = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.DefaultAwsSecurityCredentialsSupplier = undefined;
+  var authclient_1 = require_authclient();
+
+  class DefaultAwsSecurityCredentialsSupplier {
+    regionUrl;
+    securityCredentialsUrl;
+    imdsV2SessionTokenUrl;
+    additionalGaxiosOptions;
+    constructor(opts) {
+      this.regionUrl = opts.regionUrl;
+      this.securityCredentialsUrl = opts.securityCredentialsUrl;
+      this.imdsV2SessionTokenUrl = opts.imdsV2SessionTokenUrl;
+      this.additionalGaxiosOptions = opts.additionalGaxiosOptions;
+    }
+    async getAwsRegion(context) {
+      if (this.#regionFromEnv) {
+        return this.#regionFromEnv;
+      }
+      const metadataHeaders = new Headers;
+      if (!this.#regionFromEnv && this.imdsV2SessionTokenUrl) {
+        metadataHeaders.set("x-aws-ec2-metadata-token", await this.#getImdsV2SessionToken(context.transporter));
+      }
+      if (!this.regionUrl) {
+        throw new RangeError("Unable to determine AWS region due to missing " + '"options.credential_source.region_url"');
+      }
+      const opts = {
+        ...this.additionalGaxiosOptions,
+        url: this.regionUrl,
+        method: "GET",
+        responseType: "text",
+        headers: metadataHeaders
+      };
+      authclient_1.AuthClient.setMethodName(opts, "getAwsRegion");
+      const response = await context.transporter.request(opts);
+      return response.data.substr(0, response.data.length - 1);
+    }
+    async getAwsSecurityCredentials(context) {
+      if (this.#securityCredentialsFromEnv) {
+        return this.#securityCredentialsFromEnv;
+      }
+      const metadataHeaders = new Headers;
+      if (this.imdsV2SessionTokenUrl) {
+        metadataHeaders.set("x-aws-ec2-metadata-token", await this.#getImdsV2SessionToken(context.transporter));
+      }
+      const roleName = await this.#getAwsRoleName(metadataHeaders, context.transporter);
+      const awsCreds = await this.#retrieveAwsSecurityCredentials(roleName, metadataHeaders, context.transporter);
+      return {
+        accessKeyId: awsCreds.AccessKeyId,
+        secretAccessKey: awsCreds.SecretAccessKey,
+        token: awsCreds.Token
+      };
+    }
+    async#getImdsV2SessionToken(transporter) {
+      const opts = {
+        ...this.additionalGaxiosOptions,
+        url: this.imdsV2SessionTokenUrl,
+        method: "PUT",
+        responseType: "text",
+        headers: { "x-aws-ec2-metadata-token-ttl-seconds": "300" }
+      };
+      authclient_1.AuthClient.setMethodName(opts, "#getImdsV2SessionToken");
+      const response = await transporter.request(opts);
+      return response.data;
+    }
+    async#getAwsRoleName(headers, transporter) {
+      if (!this.securityCredentialsUrl) {
+        throw new Error("Unable to determine AWS role name due to missing " + '"options.credential_source.url"');
+      }
+      const opts = {
+        ...this.additionalGaxiosOptions,
+        url: this.securityCredentialsUrl,
+        method: "GET",
+        responseType: "text",
+        headers
+      };
+      authclient_1.AuthClient.setMethodName(opts, "#getAwsRoleName");
+      const response = await transporter.request(opts);
+      return response.data;
+    }
+    async#retrieveAwsSecurityCredentials(roleName, headers, transporter) {
+      const opts = {
+        ...this.additionalGaxiosOptions,
+        url: `${this.securityCredentialsUrl}/${roleName}`,
+        headers,
+        responseType: "json"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "#retrieveAwsSecurityCredentials");
+      const response = await transporter.request(opts);
+      return response.data;
+    }
+    get #regionFromEnv() {
+      return process.env["AWS_REGION"] || process.env["AWS_DEFAULT_REGION"] || null;
+    }
+    get #securityCredentialsFromEnv() {
+      if (process.env["AWS_ACCESS_KEY_ID"] && process.env["AWS_SECRET_ACCESS_KEY"]) {
+        return {
+          accessKeyId: process.env["AWS_ACCESS_KEY_ID"],
+          secretAccessKey: process.env["AWS_SECRET_ACCESS_KEY"],
+          token: process.env["AWS_SESSION_TOKEN"]
+        };
+      }
+      return null;
+    }
+  }
+  exports.DefaultAwsSecurityCredentialsSupplier = DefaultAwsSecurityCredentialsSupplier;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/awsclient.js
+var require_awsclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.AwsClient = undefined;
+  var awsrequestsigner_1 = require_awsrequestsigner();
+  var baseexternalclient_1 = require_baseexternalclient();
+  var defaultawssecuritycredentialssupplier_1 = require_defaultawssecuritycredentialssupplier();
+  var util_1 = require_util2();
+  var gaxios_1 = require_src2();
+
+  class AwsClient extends baseexternalclient_1.BaseExternalAccountClient {
+    environmentId;
+    awsSecurityCredentialsSupplier;
+    regionalCredVerificationUrl;
+    awsRequestSigner;
+    region;
+    static #DEFAULT_AWS_REGIONAL_CREDENTIAL_VERIFICATION_URL = "https://sts.{region}.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15";
+    static AWS_EC2_METADATA_IPV4_ADDRESS = "169.254.169.254";
+    static AWS_EC2_METADATA_IPV6_ADDRESS = "fd00:ec2::254";
+    constructor(options) {
+      super(options);
+      const opts = (0, util_1.originalOrCamelOptions)(options);
+      const credentialSource = opts.get("credential_source");
+      const awsSecurityCredentialsSupplier = opts.get("aws_security_credentials_supplier");
+      if (!credentialSource && !awsSecurityCredentialsSupplier) {
+        throw new Error("A credential source or AWS security credentials supplier must be specified.");
+      }
+      if (credentialSource && awsSecurityCredentialsSupplier) {
+        throw new Error("Only one of credential source or AWS security credentials supplier can be specified.");
+      }
+      if (awsSecurityCredentialsSupplier) {
+        this.awsSecurityCredentialsSupplier = awsSecurityCredentialsSupplier;
+        this.regionalCredVerificationUrl = AwsClient.#DEFAULT_AWS_REGIONAL_CREDENTIAL_VERIFICATION_URL;
+        this.credentialSourceType = "programmatic";
+      } else {
+        const credentialSourceOpts = (0, util_1.originalOrCamelOptions)(credentialSource);
+        this.environmentId = credentialSourceOpts.get("environment_id");
+        const regionUrl = credentialSourceOpts.get("region_url");
+        const securityCredentialsUrl = credentialSourceOpts.get("url");
+        const imdsV2SessionTokenUrl = credentialSourceOpts.get("imdsv2_session_token_url");
+        this.awsSecurityCredentialsSupplier = new defaultawssecuritycredentialssupplier_1.DefaultAwsSecurityCredentialsSupplier({
+          regionUrl,
+          securityCredentialsUrl,
+          imdsV2SessionTokenUrl
+        });
+        this.regionalCredVerificationUrl = credentialSourceOpts.get("regional_cred_verification_url");
+        this.credentialSourceType = "aws";
+        this.validateEnvironmentId();
+      }
+      this.awsRequestSigner = null;
+      this.region = "";
+    }
+    validateEnvironmentId() {
+      const match = this.environmentId?.match(/^(aws)(\d+)$/);
+      if (!match || !this.regionalCredVerificationUrl) {
+        throw new Error('No valid AWS "credential_source" provided');
+      } else if (parseInt(match[2], 10) !== 1) {
+        throw new Error(`aws version "${match[2]}" is not supported in the current build.`);
+      }
+    }
+    async retrieveSubjectToken() {
+      if (!this.awsRequestSigner) {
+        this.region = await this.awsSecurityCredentialsSupplier.getAwsRegion(this.supplierContext);
+        this.awsRequestSigner = new awsrequestsigner_1.AwsRequestSigner(async () => {
+          return this.awsSecurityCredentialsSupplier.getAwsSecurityCredentials(this.supplierContext);
+        }, this.region);
+      }
+      const options = await this.awsRequestSigner.getRequestOptions({
+        ...AwsClient.RETRY_CONFIG,
+        url: this.regionalCredVerificationUrl.replace("{region}", this.region),
+        method: "POST"
+      });
+      const reformattedHeader = [];
+      const extendedHeaders = gaxios_1.Gaxios.mergeHeaders({
+        "x-goog-cloud-target-resource": this.audience
+      }, options.headers);
+      extendedHeaders.forEach((value, key) => reformattedHeader.push({ key, value }));
+      return encodeURIComponent(JSON.stringify({
+        url: options.url,
+        method: options.method,
+        headers: reformattedHeader
+      }));
+    }
+  }
+  exports.AwsClient = AwsClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/executable-response.js
+var require_executable_response = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.InvalidSubjectTokenError = exports.InvalidMessageFieldError = exports.InvalidCodeFieldError = exports.InvalidTokenTypeFieldError = exports.InvalidExpirationTimeFieldError = exports.InvalidSuccessFieldError = exports.InvalidVersionFieldError = exports.ExecutableResponseError = exports.ExecutableResponse = undefined;
+  var SAML_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:saml2";
+  var OIDC_SUBJECT_TOKEN_TYPE1 = "urn:ietf:params:oauth:token-type:id_token";
+  var OIDC_SUBJECT_TOKEN_TYPE2 = "urn:ietf:params:oauth:token-type:jwt";
+
+  class ExecutableResponse {
+    version;
+    success;
+    expirationTime;
+    tokenType;
+    errorCode;
+    errorMessage;
+    subjectToken;
+    constructor(responseJson) {
+      if (!responseJson.version) {
+        throw new InvalidVersionFieldError("Executable response must contain a 'version' field.");
+      }
+      if (responseJson.success === undefined) {
+        throw new InvalidSuccessFieldError("Executable response must contain a 'success' field.");
+      }
+      this.version = responseJson.version;
+      this.success = responseJson.success;
+      if (this.success) {
+        this.expirationTime = responseJson.expiration_time;
+        this.tokenType = responseJson.token_type;
+        if (this.tokenType !== SAML_SUBJECT_TOKEN_TYPE && this.tokenType !== OIDC_SUBJECT_TOKEN_TYPE1 && this.tokenType !== OIDC_SUBJECT_TOKEN_TYPE2) {
+          throw new InvalidTokenTypeFieldError("Executable response must contain a 'token_type' field when successful " + `and it must be one of ${OIDC_SUBJECT_TOKEN_TYPE1}, ${OIDC_SUBJECT_TOKEN_TYPE2}, or ${SAML_SUBJECT_TOKEN_TYPE}.`);
+        }
+        if (this.tokenType === SAML_SUBJECT_TOKEN_TYPE) {
+          if (!responseJson.saml_response) {
+            throw new InvalidSubjectTokenError(`Executable response must contain a 'saml_response' field when token_type=${SAML_SUBJECT_TOKEN_TYPE}.`);
+          }
+          this.subjectToken = responseJson.saml_response;
+        } else {
+          if (!responseJson.id_token) {
+            throw new InvalidSubjectTokenError("Executable response must contain a 'id_token' field when " + `token_type=${OIDC_SUBJECT_TOKEN_TYPE1} or ${OIDC_SUBJECT_TOKEN_TYPE2}.`);
+          }
+          this.subjectToken = responseJson.id_token;
+        }
+      } else {
+        if (!responseJson.code) {
+          throw new InvalidCodeFieldError("Executable response must contain a 'code' field when unsuccessful.");
+        }
+        if (!responseJson.message) {
+          throw new InvalidMessageFieldError("Executable response must contain a 'message' field when unsuccessful.");
+        }
+        this.errorCode = responseJson.code;
+        this.errorMessage = responseJson.message;
+      }
+    }
+    isValid() {
+      return !this.isExpired() && this.success;
+    }
+    isExpired() {
+      return this.expirationTime !== undefined && this.expirationTime < Math.round(Date.now() / 1000);
+    }
+  }
+  exports.ExecutableResponse = ExecutableResponse;
+
+  class ExecutableResponseError extends Error {
+    constructor(message) {
+      super(message);
+      Object.setPrototypeOf(this, new.target.prototype);
+    }
+  }
+  exports.ExecutableResponseError = ExecutableResponseError;
+
+  class InvalidVersionFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidVersionFieldError = InvalidVersionFieldError;
+
+  class InvalidSuccessFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidSuccessFieldError = InvalidSuccessFieldError;
+
+  class InvalidExpirationTimeFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidExpirationTimeFieldError = InvalidExpirationTimeFieldError;
+
+  class InvalidTokenTypeFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidTokenTypeFieldError = InvalidTokenTypeFieldError;
+
+  class InvalidCodeFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidCodeFieldError = InvalidCodeFieldError;
+
+  class InvalidMessageFieldError extends ExecutableResponseError {
+  }
+  exports.InvalidMessageFieldError = InvalidMessageFieldError;
+
+  class InvalidSubjectTokenError extends ExecutableResponseError {
+  }
+  exports.InvalidSubjectTokenError = InvalidSubjectTokenError;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/pluggable-auth-handler.js
+var require_pluggable_auth_handler = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.PluggableAuthHandler = exports.ExecutableError = undefined;
+  var executable_response_1 = require_executable_response();
+  var childProcess = __require("child_process");
+  var fs = __require("fs");
+
+  class ExecutableError extends Error {
+    code;
+    constructor(message, code) {
+      super(`The executable failed with exit code: ${code} and error message: ${message}.`);
+      this.code = code;
+      Object.setPrototypeOf(this, new.target.prototype);
+    }
+  }
+  exports.ExecutableError = ExecutableError;
+
+  class PluggableAuthHandler {
+    commandComponents;
+    timeoutMillis;
+    outputFile;
+    constructor(options) {
+      if (!options.command) {
+        throw new Error("No command provided.");
+      }
+      this.commandComponents = PluggableAuthHandler.parseCommand(options.command);
+      this.timeoutMillis = options.timeoutMillis;
+      if (!this.timeoutMillis) {
+        throw new Error("No timeoutMillis provided.");
+      }
+      this.outputFile = options.outputFile;
+    }
+    retrieveResponseFromExecutable(envMap) {
+      return new Promise((resolve, reject) => {
+        const child = childProcess.spawn(this.commandComponents[0], this.commandComponents.slice(1), {
+          env: { ...process.env, ...Object.fromEntries(envMap) }
+        });
+        let output = "";
+        child.stdout.on("data", (data) => {
+          output += data;
+        });
+        child.stderr.on("data", (err) => {
+          output += err;
+        });
+        const timeout = setTimeout(() => {
+          child.removeAllListeners();
+          child.kill();
+          return reject(new Error("The executable failed to finish within the timeout specified."));
+        }, this.timeoutMillis);
+        child.on("close", (code) => {
+          clearTimeout(timeout);
+          if (code === 0) {
+            try {
+              const responseJson = JSON.parse(output);
+              const response = new executable_response_1.ExecutableResponse(responseJson);
+              return resolve(response);
+            } catch (error) {
+              if (error instanceof executable_response_1.ExecutableResponseError) {
+                return reject(error);
+              }
+              return reject(new executable_response_1.ExecutableResponseError(`The executable returned an invalid response: ${output}`));
+            }
+          } else {
+            return reject(new ExecutableError(output, code.toString()));
+          }
+        });
+      });
+    }
+    async retrieveCachedResponse() {
+      if (!this.outputFile || this.outputFile.length === 0) {
+        return;
+      }
+      let filePath;
+      try {
+        filePath = await fs.promises.realpath(this.outputFile);
+      } catch {
+        return;
+      }
+      if (!(await fs.promises.lstat(filePath)).isFile()) {
+        return;
+      }
+      const responseString = await fs.promises.readFile(filePath, {
+        encoding: "utf8"
+      });
+      if (responseString === "") {
+        return;
+      }
+      try {
+        const responseJson = JSON.parse(responseString);
+        const response = new executable_response_1.ExecutableResponse(responseJson);
+        if (response.isValid()) {
+          return new executable_response_1.ExecutableResponse(responseJson);
+        }
+        return;
+      } catch (error) {
+        if (error instanceof executable_response_1.ExecutableResponseError) {
+          throw error;
+        }
+        throw new executable_response_1.ExecutableResponseError(`The output file contained an invalid response: ${responseString}`);
+      }
+    }
+    static parseCommand(command) {
+      const components = command.match(/(?:[^\s"]+|"[^"]*")+/g);
+      if (!components) {
+        throw new Error(`Provided command: "${command}" could not be parsed.`);
+      }
+      for (let i = 0;i < components.length; i++) {
+        if (components[i][0] === '"' && components[i].slice(-1) === '"') {
+          components[i] = components[i].slice(1, -1);
+        }
+      }
+      return components;
+    }
+  }
+  exports.PluggableAuthHandler = PluggableAuthHandler;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/pluggable-auth-client.js
+var require_pluggable_auth_client = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.PluggableAuthClient = exports.ExecutableError = undefined;
+  var baseexternalclient_1 = require_baseexternalclient();
+  var executable_response_1 = require_executable_response();
+  var pluggable_auth_handler_1 = require_pluggable_auth_handler();
+  var pluggable_auth_handler_2 = require_pluggable_auth_handler();
+  Object.defineProperty(exports, "ExecutableError", { enumerable: true, get: function() {
+    return pluggable_auth_handler_2.ExecutableError;
+  } });
+  var DEFAULT_EXECUTABLE_TIMEOUT_MILLIS = 30 * 1000;
+  var MINIMUM_EXECUTABLE_TIMEOUT_MILLIS = 5 * 1000;
+  var MAXIMUM_EXECUTABLE_TIMEOUT_MILLIS = 120 * 1000;
+  var GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES = "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES";
+  var MAXIMUM_EXECUTABLE_VERSION = 1;
+
+  class PluggableAuthClient extends baseexternalclient_1.BaseExternalAccountClient {
+    command;
+    timeoutMillis;
+    outputFile;
+    handler;
+    constructor(options) {
+      super(options);
+      if (!options.credential_source.executable) {
+        throw new Error('No valid Pluggable Auth "credential_source" provided.');
+      }
+      this.command = options.credential_source.executable.command;
+      if (!this.command) {
+        throw new Error('No valid Pluggable Auth "credential_source" provided.');
+      }
+      if (options.credential_source.executable.timeout_millis === undefined) {
+        this.timeoutMillis = DEFAULT_EXECUTABLE_TIMEOUT_MILLIS;
+      } else {
+        this.timeoutMillis = options.credential_source.executable.timeout_millis;
+        if (this.timeoutMillis < MINIMUM_EXECUTABLE_TIMEOUT_MILLIS || this.timeoutMillis > MAXIMUM_EXECUTABLE_TIMEOUT_MILLIS) {
+          throw new Error(`Timeout must be between ${MINIMUM_EXECUTABLE_TIMEOUT_MILLIS} and ` + `${MAXIMUM_EXECUTABLE_TIMEOUT_MILLIS} milliseconds.`);
+        }
+      }
+      this.outputFile = options.credential_source.executable.output_file;
+      this.handler = new pluggable_auth_handler_1.PluggableAuthHandler({
+        command: this.command,
+        timeoutMillis: this.timeoutMillis,
+        outputFile: this.outputFile
+      });
+      this.credentialSourceType = "executable";
+    }
+    async retrieveSubjectToken() {
+      if (process.env[GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES] !== "1") {
+        throw new Error("Pluggable Auth executables need to be explicitly allowed to run by " + "setting the GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES environment " + "Variable to 1.");
+      }
+      let executableResponse = undefined;
+      if (this.outputFile) {
+        executableResponse = await this.handler.retrieveCachedResponse();
+      }
+      if (!executableResponse) {
+        const envMap = new Map;
+        envMap.set("GOOGLE_EXTERNAL_ACCOUNT_AUDIENCE", this.audience);
+        envMap.set("GOOGLE_EXTERNAL_ACCOUNT_TOKEN_TYPE", this.subjectTokenType);
+        envMap.set("GOOGLE_EXTERNAL_ACCOUNT_INTERACTIVE", "0");
+        if (this.outputFile) {
+          envMap.set("GOOGLE_EXTERNAL_ACCOUNT_OUTPUT_FILE", this.outputFile);
+        }
+        const serviceAccountEmail = this.getServiceAccountEmail();
+        if (serviceAccountEmail) {
+          envMap.set("GOOGLE_EXTERNAL_ACCOUNT_IMPERSONATED_EMAIL", serviceAccountEmail);
+        }
+        executableResponse = await this.handler.retrieveResponseFromExecutable(envMap);
+      }
+      if (executableResponse.version > MAXIMUM_EXECUTABLE_VERSION) {
+        throw new Error(`Version of executable is not currently supported, maximum supported version is ${MAXIMUM_EXECUTABLE_VERSION}.`);
+      }
+      if (!executableResponse.success) {
+        throw new pluggable_auth_handler_1.ExecutableError(executableResponse.errorMessage, executableResponse.errorCode);
+      }
+      if (this.outputFile) {
+        if (!executableResponse.expirationTime) {
+          throw new executable_response_1.InvalidExpirationTimeFieldError("The executable response must contain the `expiration_time` field for successful responses when an output_file has been specified in the configuration.");
+        }
+      }
+      if (executableResponse.isExpired()) {
+        throw new Error("Executable response is expired.");
+      }
+      return executableResponse.subjectToken;
+    }
+  }
+  exports.PluggableAuthClient = PluggableAuthClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/externalclient.js
+var require_externalclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.ExternalAccountClient = undefined;
+  var baseexternalclient_1 = require_baseexternalclient();
+  var identitypoolclient_1 = require_identitypoolclient();
+  var awsclient_1 = require_awsclient();
+  var pluggable_auth_client_1 = require_pluggable_auth_client();
+
+  class ExternalAccountClient {
+    constructor() {
+      throw new Error("ExternalAccountClients should be initialized via: " + "ExternalAccountClient.fromJSON(), " + "directly via explicit constructors, eg. " + "new AwsClient(options), new IdentityPoolClient(options), new" + "PluggableAuthClientOptions, or via " + "new GoogleAuth(options).getClient()");
+    }
+    static fromJSON(options) {
+      if (options && options.type === baseexternalclient_1.EXTERNAL_ACCOUNT_TYPE) {
+        if (options.credential_source?.environment_id) {
+          return new awsclient_1.AwsClient(options);
+        } else if (options.credential_source?.executable) {
+          return new pluggable_auth_client_1.PluggableAuthClient(options);
+        } else {
+          return new identitypoolclient_1.IdentityPoolClient(options);
+        }
+      } else {
+        return null;
+      }
+    }
+  }
+  exports.ExternalAccountClient = ExternalAccountClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/externalAccountAuthorizedUserClient.js
+var require_externalAccountAuthorizedUserClient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.ExternalAccountAuthorizedUserClient = exports.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE = undefined;
+  var authclient_1 = require_authclient();
+  var oauth2common_1 = require_oauth2common();
+  var gaxios_1 = require_src2();
+  var stream = __require("stream");
+  var baseexternalclient_1 = require_baseexternalclient();
+  exports.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE = "external_account_authorized_user";
+  var DEFAULT_TOKEN_URL = "https://sts.{universeDomain}/v1/oauthtoken";
+
+  class ExternalAccountAuthorizedUserHandler extends oauth2common_1.OAuthClientAuthHandler {
+    #tokenRefreshEndpoint;
+    constructor(options) {
+      super(options);
+      this.#tokenRefreshEndpoint = options.tokenRefreshEndpoint;
+    }
+    async refreshToken(refreshToken, headers) {
+      const opts = {
+        ...ExternalAccountAuthorizedUserHandler.RETRY_CONFIG,
+        url: this.#tokenRefreshEndpoint,
+        method: "POST",
+        headers,
+        data: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken
+        }),
+        responseType: "json"
+      };
+      authclient_1.AuthClient.setMethodName(opts, "refreshToken");
+      this.applyClientAuthenticationOptions(opts);
+      try {
+        const response = await this.transporter.request(opts);
+        const tokenRefreshResponse = response.data;
+        tokenRefreshResponse.res = response;
+        return tokenRefreshResponse;
+      } catch (error) {
+        if (error instanceof gaxios_1.GaxiosError && error.response) {
+          throw (0, oauth2common_1.getErrorFromOAuthErrorResponse)(error.response.data, error);
+        }
+        throw error;
+      }
+    }
+  }
+
+  class ExternalAccountAuthorizedUserClient extends authclient_1.AuthClient {
+    cachedAccessToken;
+    externalAccountAuthorizedUserHandler;
+    refreshToken;
+    constructor(options) {
+      super(options);
+      if (options.universe_domain) {
+        this.universeDomain = options.universe_domain;
+      }
+      this.refreshToken = options.refresh_token;
+      const clientAuthentication = {
+        confidentialClientType: "basic",
+        clientId: options.client_id,
+        clientSecret: options.client_secret
+      };
+      this.externalAccountAuthorizedUserHandler = new ExternalAccountAuthorizedUserHandler({
+        tokenRefreshEndpoint: options.token_url ?? DEFAULT_TOKEN_URL.replace("{universeDomain}", this.universeDomain),
+        transporter: this.transporter,
+        clientAuthentication
+      });
+      this.cachedAccessToken = null;
+      this.quotaProjectId = options.quota_project_id;
+      if (typeof options?.eagerRefreshThresholdMillis !== "number") {
+        this.eagerRefreshThresholdMillis = baseexternalclient_1.EXPIRATION_TIME_OFFSET;
+      } else {
+        this.eagerRefreshThresholdMillis = options.eagerRefreshThresholdMillis;
+      }
+      this.forceRefreshOnFailure = !!options?.forceRefreshOnFailure;
+    }
+    async getAccessToken() {
+      if (!this.cachedAccessToken || this.isExpired(this.cachedAccessToken)) {
+        await this.refreshAccessTokenAsync();
+      }
+      return {
+        token: this.cachedAccessToken.access_token,
+        res: this.cachedAccessToken.res
+      };
+    }
+    async getRequestHeaders() {
+      const accessTokenResponse = await this.getAccessToken();
+      const headers = new Headers({
+        authorization: `Bearer ${accessTokenResponse.token}`
+      });
+      return this.addSharedMetadataHeaders(headers);
+    }
+    request(opts, callback) {
+      if (callback) {
+        this.requestAsync(opts).then((r) => callback(null, r), (e) => {
+          return callback(e, e.response);
+        });
+      } else {
+        return this.requestAsync(opts);
+      }
+    }
+    async requestAsync(opts, reAuthRetried = false) {
+      let response;
+      try {
+        const requestHeaders = await this.getRequestHeaders();
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+        this.addUserProjectAndAuthHeaders(opts.headers, requestHeaders);
+        response = await this.transporter.request(opts);
+      } catch (e) {
+        const res = e.response;
+        if (res) {
+          const statusCode = res.status;
+          const isReadableStream = res.config.data instanceof stream.Readable;
+          const isAuthErr = statusCode === 401 || statusCode === 403;
+          if (!reAuthRetried && isAuthErr && !isReadableStream && this.forceRefreshOnFailure) {
+            await this.refreshAccessTokenAsync();
+            return await this.requestAsync(opts, true);
+          }
+        }
+        throw e;
+      }
+      return response;
+    }
+    async refreshAccessTokenAsync() {
+      const refreshResponse = await this.externalAccountAuthorizedUserHandler.refreshToken(this.refreshToken);
+      this.cachedAccessToken = {
+        access_token: refreshResponse.access_token,
+        expiry_date: new Date().getTime() + refreshResponse.expires_in * 1000,
+        res: refreshResponse.res
+      };
+      if (refreshResponse.refresh_token !== undefined) {
+        this.refreshToken = refreshResponse.refresh_token;
+      }
+      return this.cachedAccessToken;
+    }
+    isExpired(credentials) {
+      const now = new Date().getTime();
+      return credentials.expiry_date ? now >= credentials.expiry_date - this.eagerRefreshThresholdMillis : false;
+    }
+  }
+  exports.ExternalAccountAuthorizedUserClient = ExternalAccountAuthorizedUserClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/gdchclient.js
+var require_gdchclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GdchClient = exports.GDCH_SERVICE_ACCOUNT_TYPE = undefined;
+  var crypto2 = __require("crypto");
+  var fs = __require("fs");
+  var https = __require("https");
+  var oauth2client_1 = require_oauth2client();
+  var DEFAULT_LIFETIME_IN_SECONDS = 3600;
+  exports.GDCH_SERVICE_ACCOUNT_TYPE = "gdch_service_account";
+
+  class GdchClient extends oauth2client_1.OAuth2Client {
+    projectId;
+    privateKeyId;
+    privateKey;
+    serviceIdentityName;
+    tokenServerUri;
+    caCertPath;
+    apiAudience;
+    lifetime;
+    gdchOptions;
+    caAgentPromise;
+    cachedCaCertPath;
+    lastCaCertReadTime = 0;
+    CA_CERT_TTL_MS = 5 * 60 * 1000;
+    constructor(options = {}) {
+      super(options);
+      this.gdchOptions = options;
+      this.projectId = options.projectId || undefined;
+      this.privateKeyId = options.privateKeyId;
+      this.privateKey = options.privateKey;
+      this.serviceIdentityName = options.serviceIdentityName;
+      this.tokenServerUri = options.tokenServerUri;
+      this.caCertPath = options.caCertPath;
+      this.apiAudience = options.apiAudience;
+      this.lifetime = options.lifetime || DEFAULT_LIFETIME_IN_SECONDS;
+      this.credentials = { refresh_token: "gdch-placeholder", expiry_date: 1 };
+    }
+    createWithGdchAudience(apiAudience) {
+      if (!apiAudience) {
+        throw new Error("Audience cannot be null or empty for GDCH service account credentials.");
+      }
+      return new GdchClient({
+        ...this.gdchOptions,
+        projectId: this.projectId,
+        privateKeyId: this.privateKeyId,
+        privateKey: this.privateKey,
+        serviceIdentityName: this.serviceIdentityName,
+        tokenServerUri: this.tokenServerUri,
+        caCertPath: this.caCertPath,
+        lifetime: this.lifetime,
+        apiAudience
+      });
+    }
+    fromJSON(json) {
+      if (!json) {
+        throw new Error("Must pass in a JSON object containing the GDCH credentials settings.");
+      }
+      if (json.type !== exports.GDCH_SERVICE_ACCOUNT_TYPE) {
+        throw new Error(`The incoming JSON object does not have the "${exports.GDCH_SERVICE_ACCOUNT_TYPE}" type`);
+      }
+      if (json.format_version !== "1") {
+        throw new Error("Only format version 1 is supported.");
+      }
+      if (!json.project) {
+        throw new Error("The incoming JSON object does not contain a project field");
+      }
+      if (!json.private_key_id) {
+        throw new Error("The incoming JSON object does not contain a private_key_id field");
+      }
+      if (!json.private_key) {
+        throw new Error("The incoming JSON object does not contain a private_key field");
+      }
+      if (!json.name) {
+        throw new Error("The incoming JSON object does not contain a name field");
+      }
+      if (!json.token_uri) {
+        throw new Error("The incoming JSON object does not contain a token_uri field");
+      }
+      this.projectId = json.project;
+      this.privateKeyId = json.private_key_id;
+      this.privateKey = json.private_key;
+      this.serviceIdentityName = json.name;
+      this.tokenServerUri = json.token_uri;
+      this.caCertPath = json.ca_cert_path;
+      this.gdchOptions = {
+        ...this.gdchOptions,
+        projectId: json.project,
+        privateKeyId: json.private_key_id,
+        privateKey: json.private_key,
+        serviceIdentityName: json.name,
+        tokenServerUri: json.token_uri,
+        caCertPath: json.ca_cert_path
+      };
+    }
+    async refreshTokenNoCache() {
+      if (!this.apiAudience) {
+        throw new Error("Audience cannot be null or empty for GDCH service account credentials. " + "Specify the audience by calling createWithGdchAudience.");
+      }
+      if (!this.privateKey) {
+        throw new Error("Private key is not configured for GDCH credentials.");
+      }
+      if (!this.privateKeyId) {
+        throw new Error("Private key ID is not configured for GDCH credentials.");
+      }
+      if (!this.projectId) {
+        throw new Error("Project is not configured for GDCH credentials.");
+      }
+      if (!this.serviceIdentityName) {
+        throw new Error("Service identity name is not configured for GDCH credentials.");
+      }
+      if (!this.tokenServerUri) {
+        throw new Error("Token server URI is not configured for GDCH credentials.");
+      }
+      const assertion = this.createAssertion();
+      const data = {
+        audience: this.apiAudience,
+        grant_type: "urn:ietf:params:oauth:token-type:token-exchange",
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        subject_token: assertion,
+        subject_token_type: "urn:k8s:params:oauth:token-type:serviceaccount"
+      };
+      const requestOpts = {
+        url: this.tokenServerUri,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        data,
+        responseType: "json",
+        timeout: 1e4,
+        retry: true,
+        retryConfig: {
+          httpMethodsToRetry: ["POST"],
+          statusCodesToRetry: [[500, 599]],
+          noResponseRetries: 3
+        }
+      };
+      if (this.caCertPath) {
+        requestOpts.agent = await this.getCaAgent();
+      }
+      try {
+        const res = await this.transporter.request(requestOpts);
+        const tokenResponse = res.data;
+        if (!tokenResponse.access_token) {
+          throw new Error("Token response did not contain an access_token.");
+        }
+        if (!tokenResponse.expires_in) {
+          throw new Error("Token response did not contain an expires_in field.");
+        }
+        const tokens = {
+          access_token: tokenResponse.access_token,
+          token_type: "STS-Bearer",
+          expiry_date: Date.now() + tokenResponse.expires_in * 1000
+        };
+        this.emit("tokens", tokens);
+        return { res, tokens };
+      } catch (e) {
+        if (e && e.config && e.config.data) {
+          try {
+            if (typeof e.config.data === "string") {
+              const parsedData = JSON.parse(e.config.data);
+              if (parsedData.subject_token) {
+                parsedData.subject_token = "***REDACTED***";
+                e.config.data = JSON.stringify(parsedData);
+              }
+            } else if (typeof e.config.data === "object" && e.config.data.subject_token) {
+              e.config.data.subject_token = "***REDACTED***";
+            }
+          } catch {}
+        }
+        if (e instanceof Error) {
+          e.message = `Error getting access token for GDCH service account: ${e.message}, iss: ${this.serviceIdentityName}`;
+        }
+        throw e;
+      }
+    }
+    createAssertion() {
+      const header = {
+        alg: "ES256",
+        typ: "JWT",
+        kid: this.privateKeyId
+      };
+      const issSub = `system:serviceaccount:${this.projectId}:${this.serviceIdentityName}`;
+      const currentTime = Math.floor(Date.now() / 1000);
+      const payload = {
+        iss: issSub,
+        sub: issSub,
+        iat: currentTime,
+        exp: currentTime + this.lifetime,
+        aud: this.tokenServerUri
+      };
+      const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+      const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
+      const signingInput = `${encodedHeader}.${encodedPayload}`;
+      const signature = crypto2.sign("sha256", Buffer.from(signingInput), {
+        key: this.privateKey,
+        dsaEncoding: "ieee-p1363"
+      });
+      const encodedSignature = this.base64UrlEncode(signature);
+      return `${signingInput}.${encodedSignature}`;
+    }
+    async requestAsync(opts, retry = false) {
+      if (this.caCertPath && !opts.agent) {
+        const url = (opts.url || "").toString();
+        if (!url.includes("googleapis.com") && !url.includes("google.com")) {
+          opts.agent = await this.getCaAgent();
+        }
+      }
+      return super.requestAsync(opts, retry);
+    }
+    getCaAgent() {
+      if (!this.caCertPath) {
+        this.caAgentPromise = undefined;
+        this.cachedCaCertPath = undefined;
+        this.lastCaCertReadTime = 0;
+        return;
+      }
+      const now = Date.now();
+      const isCacheExpired = now - this.lastCaCertReadTime > this.CA_CERT_TTL_MS;
+      if (this.caAgentPromise && this.caCertPath === this.cachedCaCertPath && !isCacheExpired) {
+        return this.caAgentPromise;
+      }
+      this.cachedCaCertPath = this.caCertPath;
+      this.lastCaCertReadTime = now;
+      const currentPath = this.caCertPath;
+      this.caAgentPromise = (async () => {
+        try {
+          const ca = await fs.promises.readFile(currentPath);
+          return new https.Agent({ ca });
+        } catch (err) {
+          if (this.cachedCaCertPath === currentPath) {
+            this.caAgentPromise = undefined;
+            this.cachedCaCertPath = undefined;
+            this.lastCaCertReadTime = 0;
+          }
+          if (err instanceof Error) {
+            err.message = `Error reading certificate file from CA cert path, value '${currentPath}': ${err.message}`;
+          }
+          throw err;
+        }
+      })();
+      return this.caAgentPromise;
+    }
+    toJSON() {
+      return {
+        ...this,
+        privateKey: this.privateKey ? "***REDACTED***" : undefined,
+        _clientSecret: this._clientSecret ? "***REDACTED***" : undefined,
+        apiKey: this.apiKey ? "***REDACTED***" : undefined,
+        gdchOptions: this.gdchOptions ? {
+          ...this.gdchOptions,
+          privateKey: this.gdchOptions.privateKey ? "***REDACTED***" : undefined,
+          clientSecret: this.gdchOptions.clientSecret ? "***REDACTED***" : undefined,
+          client_secret: this.gdchOptions.client_secret ? "***REDACTED***" : undefined,
+          apiKey: this.gdchOptions.apiKey ? "***REDACTED***" : undefined,
+          credentials: this.gdchOptions.credentials ? {
+            ...this.gdchOptions.credentials,
+            access_token: this.gdchOptions.credentials.access_token ? "***REDACTED***" : undefined,
+            refresh_token: this.gdchOptions.credentials.refresh_token ? "***REDACTED***" : undefined
+          } : undefined
+        } : undefined,
+        credentials: {
+          ...this.credentials,
+          access_token: this.credentials?.access_token ? "***REDACTED***" : undefined,
+          refresh_token: this.credentials?.refresh_token ? "***REDACTED***" : undefined
+        }
+      };
+    }
+    [Symbol.for("nodejs.util.inspect.custom")]() {
+      return this.toJSON();
+    }
+    base64UrlEncode(str) {
+      const buffer = typeof str === "string" ? Buffer.from(str) : str;
+      return buffer.toString("base64url");
+    }
+  }
+  exports.GdchClient = GdchClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/googleauth.js
+var require_googleauth = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GoogleAuth = exports.GoogleAuthExceptionMessages = undefined;
+  var child_process_1 = __require("child_process");
+  var fs = __require("fs");
+  var gaxios_1 = require_src2();
+  var gcpMetadata = require_src4();
+  var os = __require("os");
+  var path = __require("path");
+  var crypto_1 = require_crypto3();
+  var computeclient_1 = require_computeclient();
+  var idtokenclient_1 = require_idtokenclient();
+  var envDetect_1 = require_envDetect();
+  var jwtclient_1 = require_jwtclient();
+  var refreshclient_1 = require_refreshclient();
+  var impersonated_1 = require_impersonated();
+  var externalclient_1 = require_externalclient();
+  var baseexternalclient_1 = require_baseexternalclient();
+  var authclient_1 = require_authclient();
+  var externalAccountAuthorizedUserClient_1 = require_externalAccountAuthorizedUserClient();
+  var gdchclient_1 = require_gdchclient();
+  var util_1 = require_util2();
+  exports.GoogleAuthExceptionMessages = {
+    API_KEY_WITH_CREDENTIALS: "API Keys and Credentials are mutually exclusive authentication methods and cannot be used together.",
+    NO_PROJECT_ID_FOUND: `Unable to detect a Project Id in the current environment. 
+` + `To learn more about authentication and Google APIs, visit: 
+` + "https://cloud.google.com/docs/authentication/getting-started",
+    NO_CREDENTIALS_FOUND: `Unable to find credentials in current environment. 
+` + `To learn more about authentication and Google APIs, visit: 
+` + "https://cloud.google.com/docs/authentication/getting-started",
+    NO_ADC_FOUND: "Could not load the default credentials. Browse to https://cloud.google.com/docs/authentication/getting-started for more information.",
+    NO_UNIVERSE_DOMAIN_FOUND: `Unable to detect a Universe Domain in the current environment.
+` + `To learn more about Universe Domain retrieval, visit: 
+` + "https://cloud.google.com/compute/docs/metadata/predefined-metadata-keys"
+  };
+
+  class GoogleAuth {
+    checkIsGCE = undefined;
+    useJWTAccessWithScope;
+    defaultServicePath;
+    get isGCE() {
+      return this.checkIsGCE;
+    }
+    _findProjectIdPromise;
+    _cachedProjectId;
+    jsonContent = null;
+    apiKey;
+    cachedCredential = null;
+    #pendingAuthClient = null;
+    defaultScopes;
+    keyFilename;
+    scopes;
+    clientOptions = {};
+    constructor(opts = {}) {
+      this._cachedProjectId = opts.projectId || null;
+      this.cachedCredential = opts.authClient || null;
+      this.keyFilename = opts.keyFilename || opts.keyFile;
+      this.scopes = opts.scopes;
+      this.clientOptions = opts.clientOptions || {};
+      this.jsonContent = opts.credentials || null;
+      this.apiKey = opts.apiKey || this.clientOptions.apiKey || null;
+      if (this.apiKey && (this.jsonContent || this.clientOptions.credentials)) {
+        throw new RangeError(exports.GoogleAuthExceptionMessages.API_KEY_WITH_CREDENTIALS);
+      }
+      if (opts.universeDomain) {
+        this.clientOptions.universeDomain = opts.universeDomain;
+      }
+    }
+    setGapicJWTValues(client) {
+      client.defaultServicePath = this.defaultServicePath;
+      client.useJWTAccessWithScope = this.useJWTAccessWithScope;
+      client.defaultScopes = this.defaultScopes;
+    }
+    getProjectId(callback) {
+      if (callback) {
+        this.getProjectIdAsync().then((r) => callback(null, r), callback);
+      } else {
+        return this.getProjectIdAsync();
+      }
+    }
+    async getProjectIdOptional() {
+      try {
+        return await this.getProjectId();
+      } catch (e) {
+        if (e instanceof Error && e.message === exports.GoogleAuthExceptionMessages.NO_PROJECT_ID_FOUND) {
+          return null;
+        } else {
+          throw e;
+        }
+      }
+    }
+    async findAndCacheProjectId() {
+      let projectId = null;
+      projectId ||= await this.getProductionProjectId();
+      projectId ||= await this.getFileProjectId();
+      projectId ||= await this.getDefaultServiceProjectId();
+      projectId ||= await this.getGCEProjectId();
+      projectId ||= await this.getExternalAccountClientProjectId();
+      if (projectId) {
+        this._cachedProjectId = projectId;
+        return projectId;
+      } else {
+        throw new Error(exports.GoogleAuthExceptionMessages.NO_PROJECT_ID_FOUND);
+      }
+    }
+    async getProjectIdAsync() {
+      if (this._cachedProjectId) {
+        return this._cachedProjectId;
+      }
+      if (!this._findProjectIdPromise) {
+        this._findProjectIdPromise = this.findAndCacheProjectId();
+      }
+      return this._findProjectIdPromise;
+    }
+    async getUniverseDomainFromMetadataServer() {
+      let universeDomain;
+      try {
+        universeDomain = await gcpMetadata.universe("universe-domain");
+        universeDomain ||= authclient_1.DEFAULT_UNIVERSE;
+      } catch (e) {
+        if (e && e?.response?.status === 404) {
+          universeDomain = authclient_1.DEFAULT_UNIVERSE;
+        } else {
+          throw e;
+        }
+      }
+      return universeDomain;
+    }
+    async getUniverseDomain() {
+      let universeDomain = (0, util_1.originalOrCamelOptions)(this.clientOptions).get("universe_domain");
+      try {
+        universeDomain ??= (await this.getClient()).universeDomain;
+      } catch {
+        universeDomain ??= authclient_1.DEFAULT_UNIVERSE;
+      }
+      return universeDomain;
+    }
+    getAnyScopes() {
+      return this.scopes || this.defaultScopes;
+    }
+    getApplicationDefault(optionsOrCallback = {}, callback) {
+      let options;
+      if (typeof optionsOrCallback === "function") {
+        callback = optionsOrCallback;
+      } else {
+        options = optionsOrCallback;
+      }
+      if (callback) {
+        this.getApplicationDefaultAsync(options).then((r) => callback(null, r.credential, r.projectId), callback);
+      } else {
+        return this.getApplicationDefaultAsync(options);
+      }
+    }
+    async getApplicationDefaultAsync(options = {}) {
+      if (this.cachedCredential) {
+        return await this.#prepareAndCacheClient(this.cachedCredential, null);
+      }
+      let credential;
+      credential = await this._tryGetApplicationCredentialsFromEnvironmentVariable(options);
+      if (credential) {
+        if (credential instanceof jwtclient_1.JWT) {
+          credential.scopes = this.scopes;
+        } else if (credential instanceof baseexternalclient_1.BaseExternalAccountClient) {
+          credential.scopes = this.getAnyScopes();
+        }
+        return await this.#prepareAndCacheClient(credential);
+      }
+      credential = await this._tryGetApplicationCredentialsFromWellKnownFile(options);
+      if (credential) {
+        if (credential instanceof jwtclient_1.JWT) {
+          credential.scopes = this.scopes;
+        } else if (credential instanceof baseexternalclient_1.BaseExternalAccountClient) {
+          credential.scopes = this.getAnyScopes();
+        }
+        return await this.#prepareAndCacheClient(credential);
+      }
+      if (await this._checkIsGCE()) {
+        options.scopes = this.getAnyScopes();
+        return await this.#prepareAndCacheClient(new computeclient_1.Compute(options));
+      }
+      throw new Error(exports.GoogleAuthExceptionMessages.NO_ADC_FOUND);
+    }
+    async#prepareAndCacheClient(credential, quotaProjectIdOverride = process.env["GOOGLE_CLOUD_QUOTA_PROJECT"] || null) {
+      const projectId = await this.getProjectIdOptional();
+      if (quotaProjectIdOverride) {
+        credential.quotaProjectId = quotaProjectIdOverride;
+      }
+      this.cachedCredential = credential;
+      return { credential, projectId };
+    }
+    async _checkIsGCE() {
+      if (this.checkIsGCE === undefined) {
+        this.checkIsGCE = gcpMetadata.getGCPResidency() || await gcpMetadata.isAvailable();
+      }
+      return this.checkIsGCE;
+    }
+    async _tryGetApplicationCredentialsFromEnvironmentVariable(options) {
+      const credentialsPath = process.env["GOOGLE_APPLICATION_CREDENTIALS"] || process.env["google_application_credentials"];
+      if (!credentialsPath || credentialsPath.length === 0) {
+        return null;
+      }
+      try {
+        return await this._getApplicationCredentialsFromFilePath(credentialsPath, options);
+      } catch (e) {
+        if (e instanceof Error) {
+          e.message = `Unable to read the credential file specified by the GOOGLE_APPLICATION_CREDENTIALS environment variable: ${e.message}`;
+        }
+        throw e;
+      }
+    }
+    async _tryGetApplicationCredentialsFromWellKnownFile(options) {
+      let configDir = process.env["CLOUDSDK_CONFIG"];
+      if (!configDir) {
+        if (this._isWindows()) {
+          if (process.env["APPDATA"]) {
+            configDir = path.join(process.env["APPDATA"], "gcloud");
+          }
+        } else {
+          const home = process.env["HOME"];
+          if (home) {
+            configDir = path.join(home, ".config", "gcloud");
+          }
+        }
+      }
+      if (!configDir) {
+        return null;
+      }
+      const location2 = path.join(configDir, "application_default_credentials.json");
+      if (!fs.existsSync(location2)) {
+        return null;
+      }
+      const client = await this._getApplicationCredentialsFromFilePath(location2, options);
+      return client;
+    }
+    async _getApplicationCredentialsFromFilePath(filePath, options = {}) {
+      if (!filePath || filePath.length === 0) {
+        throw new Error("The file path is invalid.");
+      }
+      try {
+        filePath = fs.realpathSync(filePath);
+        if (!fs.lstatSync(filePath).isFile()) {
+          throw new Error;
+        }
+      } catch (err) {
+        if (err instanceof Error) {
+          err.message = `The file at ${filePath} does not exist, or it is not a file. ${err.message}`;
+        }
+        throw err;
+      }
+      const readStream = fs.createReadStream(filePath);
+      return this.fromStream(readStream, options);
+    }
+    fromImpersonatedJSON(json) {
+      if (!json) {
+        throw new Error("Must pass in a JSON object containing an  impersonated refresh token");
+      }
+      if (json.type !== impersonated_1.IMPERSONATED_ACCOUNT_TYPE) {
+        throw new Error(`The incoming JSON object does not have the "${impersonated_1.IMPERSONATED_ACCOUNT_TYPE}" type`);
+      }
+      if (!json.source_credentials) {
+        throw new Error("The incoming JSON object does not contain a source_credentials field");
+      }
+      if (!json.service_account_impersonation_url) {
+        throw new Error("The incoming JSON object does not contain a service_account_impersonation_url field");
+      }
+      const sourceClient = this.fromJSON(json.source_credentials);
+      if (json.service_account_impersonation_url?.length > 256) {
+        throw new RangeError(`Target principal is too long: ${json.service_account_impersonation_url}`);
+      }
+      const targetPrincipal = /(?<target>[^/]+):(generateAccessToken|generateIdToken)$/.exec(json.service_account_impersonation_url)?.groups?.target;
+      if (!targetPrincipal) {
+        throw new RangeError(`Cannot extract target principal from ${json.service_account_impersonation_url}`);
+      }
+      const targetScopes = (this.scopes || json.scopes || this.defaultScopes) ?? [];
+      return new impersonated_1.Impersonated({
+        ...json,
+        sourceClient,
+        targetPrincipal,
+        targetScopes: Array.isArray(targetScopes) ? targetScopes : [targetScopes]
+      });
+    }
+    fromJSON(json, options = {}) {
+      let client;
+      const preferredUniverseDomain = (0, util_1.originalOrCamelOptions)(options).get("universe_domain");
+      if (json.type === refreshclient_1.USER_REFRESH_ACCOUNT_TYPE) {
+        client = new refreshclient_1.UserRefreshClient(options);
+        client.fromJSON(json);
+      } else if (json.type === impersonated_1.IMPERSONATED_ACCOUNT_TYPE) {
+        client = this.fromImpersonatedJSON(json);
+      } else if (json.type === baseexternalclient_1.EXTERNAL_ACCOUNT_TYPE) {
+        client = externalclient_1.ExternalAccountClient.fromJSON({
+          ...json,
+          ...options
+        });
+        client.scopes = this.getAnyScopes();
+      } else if (json.type === externalAccountAuthorizedUserClient_1.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE) {
+        client = new externalAccountAuthorizedUserClient_1.ExternalAccountAuthorizedUserClient({
+          ...json,
+          ...options
+        });
+      } else if (json.type === gdchclient_1.GDCH_SERVICE_ACCOUNT_TYPE) {
+        client = new gdchclient_1.GdchClient(options);
+        client.fromJSON(json);
+      } else {
+        options.scopes = this.scopes;
+        client = new jwtclient_1.JWT(options);
+        this.setGapicJWTValues(client);
+        client.fromJSON(json);
+      }
+      if (preferredUniverseDomain) {
+        client.universeDomain = preferredUniverseDomain;
+      }
+      return client;
+    }
+    _cacheClientFromJSON(json, options) {
+      const client = this.fromJSON(json, options);
+      this.jsonContent = json;
+      this.cachedCredential = client;
+      return client;
+    }
+    fromStream(inputStream, optionsOrCallback = {}, callback) {
+      let options = {};
+      if (typeof optionsOrCallback === "function") {
+        callback = optionsOrCallback;
+      } else {
+        options = optionsOrCallback;
+      }
+      if (callback) {
+        this.fromStreamAsync(inputStream, options).then((r) => callback(null, r), callback);
+      } else {
+        return this.fromStreamAsync(inputStream, options);
+      }
+    }
+    fromStreamAsync(inputStream, options) {
+      return new Promise((resolve, reject) => {
+        if (!inputStream) {
+          throw new Error("Must pass in a stream containing the Google auth settings.");
+        }
+        const chunks = [];
+        inputStream.setEncoding("utf8").on("error", reject).on("data", (chunk) => chunks.push(chunk)).on("end", () => {
+          try {
+            try {
+              const data = JSON.parse(chunks.join(""));
+              const r = this._cacheClientFromJSON(data, options);
+              return resolve(r);
+            } catch (err) {
+              if (!this.keyFilename)
+                throw err;
+              const client = new jwtclient_1.JWT({
+                ...this.clientOptions,
+                keyFile: this.keyFilename
+              });
+              this.cachedCredential = client;
+              this.setGapicJWTValues(client);
+              return resolve(client);
+            }
+          } catch (err) {
+            return reject(err);
+          }
+        });
+      });
+    }
+    fromAPIKey(apiKey, options = {}) {
+      return new jwtclient_1.JWT({ ...options, apiKey });
+    }
+    _isWindows() {
+      const sys = os.platform();
+      if (sys && sys.length >= 3) {
+        if (sys.substring(0, 3).toLowerCase() === "win") {
+          return true;
+        }
+      }
+      return false;
+    }
+    async getDefaultServiceProjectId() {
+      return new Promise((resolve) => {
+        (0, child_process_1.exec)("gcloud config config-helper --format json", (err, stdout) => {
+          if (!err && stdout) {
+            try {
+              const projectId = JSON.parse(stdout).configuration.properties.core.project;
+              resolve(projectId);
+              return;
+            } catch (e) {}
+          }
+          resolve(null);
+        });
+      });
+    }
+    getProductionProjectId() {
+      return process.env["GCLOUD_PROJECT"] || process.env["GOOGLE_CLOUD_PROJECT"] || process.env["gcloud_project"] || process.env["google_cloud_project"];
+    }
+    async getFileProjectId() {
+      if (this.cachedCredential) {
+        return this.cachedCredential.projectId;
+      }
+      if (this.keyFilename) {
+        const creds = await this.getClient();
+        if (creds && creds.projectId) {
+          return creds.projectId;
+        }
+      }
+      const r = await this._tryGetApplicationCredentialsFromEnvironmentVariable();
+      if (r) {
+        return r.projectId;
+      } else {
+        return null;
+      }
+    }
+    async getExternalAccountClientProjectId() {
+      if (!this.jsonContent || this.jsonContent.type !== baseexternalclient_1.EXTERNAL_ACCOUNT_TYPE) {
+        return null;
+      }
+      const creds = await this.getClient();
+      return await creds.getProjectId();
+    }
+    async getGCEProjectId() {
+      try {
+        const r = await gcpMetadata.project("project-id");
+        return r;
+      } catch (e) {
+        return null;
+      }
+    }
+    getCredentials(callback) {
+      if (callback) {
+        this.getCredentialsAsync().then((r) => callback(null, r), callback);
+      } else {
+        return this.getCredentialsAsync();
+      }
+    }
+    async getCredentialsAsync() {
+      const client = await this.getClient();
+      if (client instanceof impersonated_1.Impersonated) {
+        return { client_email: client.getTargetPrincipal() };
+      }
+      if (client instanceof baseexternalclient_1.BaseExternalAccountClient) {
+        const serviceAccountEmail = client.getServiceAccountEmail();
+        if (serviceAccountEmail) {
+          return {
+            client_email: serviceAccountEmail,
+            universe_domain: client.universeDomain
+          };
+        }
+      }
+      if (this.jsonContent) {
+        return {
+          client_email: this.jsonContent.client_email,
+          private_key: this.jsonContent.private_key,
+          universe_domain: this.jsonContent.universe_domain
+        };
+      }
+      if (await this._checkIsGCE()) {
+        const [client_email, universe_domain] = await Promise.all([
+          gcpMetadata.instance("service-accounts/default/email"),
+          this.getUniverseDomain()
+        ]);
+        return { client_email, universe_domain };
+      }
+      throw new Error(exports.GoogleAuthExceptionMessages.NO_CREDENTIALS_FOUND);
+    }
+    async getClient() {
+      if (this.cachedCredential) {
+        return this.cachedCredential;
+      }
+      this.#pendingAuthClient = this.#pendingAuthClient || this.#determineClient();
+      try {
+        const client = await this.#pendingAuthClient;
+        if (client instanceof gdchclient_1.GdchClient && !client.apiAudience) {
+          const opts = this.clientOptions;
+          const endpoint = opts.apiEndpoint || opts.servicePath;
+          if (endpoint) {
+            const scheme = endpoint.startsWith("http") ? "" : "https://";
+            const formattedAudience = `${scheme}${endpoint}`.replace(/\/+$/, "");
+            const newClient = client.createWithGdchAudience(formattedAudience);
+            this.cachedCredential = newClient;
+            return newClient;
+          }
+        }
+        return client;
+      } finally {
+        this.#pendingAuthClient = null;
+      }
+    }
+    async#determineClient() {
+      if (this.jsonContent) {
+        return this._cacheClientFromJSON(this.jsonContent, this.clientOptions);
+      } else if (this.keyFilename) {
+        const filePath = path.resolve(this.keyFilename);
+        const stream = fs.createReadStream(filePath);
+        return await this.fromStreamAsync(stream, this.clientOptions);
+      } else if (this.apiKey) {
+        const client = await this.fromAPIKey(this.apiKey, this.clientOptions);
+        client.scopes = this.scopes;
+        const { credential } = await this.#prepareAndCacheClient(client);
+        return credential;
+      } else {
+        const { credential } = await this.getApplicationDefaultAsync(this.clientOptions);
+        return credential;
+      }
+    }
+    async getIdTokenClient(targetAudience) {
+      const client = await this.getClient();
+      if (!("fetchIdToken" in client)) {
+        throw new Error("Cannot fetch ID token in this environment, use GCE or set the GOOGLE_APPLICATION_CREDENTIALS environment variable to a service account credentials JSON file.");
+      }
+      return new idtokenclient_1.IdTokenClient({ targetAudience, idTokenProvider: client });
+    }
+    async getAccessToken() {
+      const client = await this.getClient();
+      return (await client.getAccessToken()).token;
+    }
+    async getRequestHeaders(url) {
+      const client = await this.getClient();
+      return client.getRequestHeaders(url);
+    }
+    async authorizeRequest(opts = {}) {
+      const url = opts.url;
+      const client = await this.getClient();
+      const headers = await client.getRequestHeaders(url);
+      opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers, headers);
+      return opts;
+    }
+    async fetch(...args) {
+      const client = await this.getClient();
+      return client.fetch(...args);
+    }
+    async request(opts) {
+      const client = await this.getClient();
+      return client.request(opts);
+    }
+    getEnv() {
+      return (0, envDetect_1.getEnv)();
+    }
+    async sign(data, endpoint) {
+      const client = await this.getClient();
+      const universe = await this.getUniverseDomain();
+      endpoint = endpoint || `https://iamcredentials.${universe}/v1/projects/-/serviceAccounts/`;
+      if (client instanceof impersonated_1.Impersonated) {
+        const signed = await client.sign(data);
+        return signed.signedBlob;
+      }
+      const crypto2 = (0, crypto_1.createCrypto)();
+      if (client instanceof jwtclient_1.JWT && client.key) {
+        const sign = await crypto2.sign(client.key, data);
+        return sign;
+      }
+      const creds = await this.getCredentials();
+      if (!creds.client_email) {
+        throw new Error("Cannot sign data without `client_email`.");
+      }
+      return this.signBlob(crypto2, creds.client_email, data, endpoint);
+    }
+    async signBlob(crypto2, emailOrUniqueId, data, endpoint) {
+      const url = new URL(endpoint + `${emailOrUniqueId}:signBlob`);
+      const res = await this.request({
+        method: "POST",
+        url: url.href,
+        data: {
+          payload: crypto2.encodeBase64StringUtf8(data)
+        },
+        retry: true,
+        retryConfig: {
+          httpMethodsToRetry: ["POST"]
+        }
+      });
+      return res.data.signedBlob;
+    }
+  }
+  exports.GoogleAuth = GoogleAuth;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/iam.js
+var require_iam = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.IAMAuth = undefined;
+
+  class IAMAuth {
+    selector;
+    token;
+    constructor(selector, token) {
+      this.selector = selector;
+      this.token = token;
+      this.selector = selector;
+      this.token = token;
+    }
+    getRequestHeaders() {
+      return {
+        "x-goog-iam-authority-selector": this.selector,
+        "x-goog-iam-authorization-token": this.token
+      };
+    }
+  }
+  exports.IAMAuth = IAMAuth;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/downscopedclient.js
+var require_downscopedclient = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.DownscopedClient = exports.EXPIRATION_TIME_OFFSET = exports.MAX_ACCESS_BOUNDARY_RULES_COUNT = undefined;
+  var gaxios_1 = require_src2();
+  var stream = __require("stream");
+  var authclient_1 = require_authclient();
+  var sts = require_stscredentials();
+  var STS_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
+  var STS_REQUEST_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+  var STS_SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+  exports.MAX_ACCESS_BOUNDARY_RULES_COUNT = 10;
+  exports.EXPIRATION_TIME_OFFSET = 5 * 60 * 1000;
+
+  class DownscopedClient extends authclient_1.AuthClient {
+    authClient;
+    credentialAccessBoundary;
+    cachedDownscopedAccessToken;
+    stsCredential;
+    constructor(options, credentialAccessBoundary = {
+      accessBoundary: {
+        accessBoundaryRules: []
+      }
+    }) {
+      super(options instanceof authclient_1.AuthClient ? {} : options);
+      if (options instanceof authclient_1.AuthClient) {
+        this.authClient = options;
+        this.credentialAccessBoundary = credentialAccessBoundary;
+      } else {
+        this.authClient = options.authClient;
+        this.credentialAccessBoundary = options.credentialAccessBoundary;
+      }
+      if (this.credentialAccessBoundary.accessBoundary.accessBoundaryRules.length === 0) {
+        throw new Error("At least one access boundary rule needs to be defined.");
+      } else if (this.credentialAccessBoundary.accessBoundary.accessBoundaryRules.length > exports.MAX_ACCESS_BOUNDARY_RULES_COUNT) {
+        throw new Error("The provided access boundary has more than " + `${exports.MAX_ACCESS_BOUNDARY_RULES_COUNT} access boundary rules.`);
+      }
+      for (const rule of this.credentialAccessBoundary.accessBoundary.accessBoundaryRules) {
+        if (rule.availablePermissions.length === 0) {
+          throw new Error("At least one permission should be defined in access boundary rules.");
+        }
+      }
+      this.stsCredential = new sts.StsCredentials({
+        tokenExchangeEndpoint: `https://sts.${this.universeDomain}/v1/token`
+      });
+      this.cachedDownscopedAccessToken = null;
+    }
+    setCredentials(credentials) {
+      if (!credentials.expiry_date) {
+        throw new Error("The access token expiry_date field is missing in the provided " + "credentials.");
+      }
+      super.setCredentials(credentials);
+      this.cachedDownscopedAccessToken = credentials;
+    }
+    async getAccessToken() {
+      if (!this.cachedDownscopedAccessToken || this.isExpired(this.cachedDownscopedAccessToken)) {
+        await this.refreshAccessTokenAsync();
+      }
+      return {
+        token: this.cachedDownscopedAccessToken.access_token,
+        expirationTime: this.cachedDownscopedAccessToken.expiry_date,
+        res: this.cachedDownscopedAccessToken.res
+      };
+    }
+    async getRequestHeaders() {
+      const accessTokenResponse = await this.getAccessToken();
+      const headers = new Headers({
+        authorization: `Bearer ${accessTokenResponse.token}`
+      });
+      return this.addSharedMetadataHeaders(headers);
+    }
+    request(opts, callback) {
+      if (callback) {
+        this.requestAsync(opts).then((r) => callback(null, r), (e) => {
+          return callback(e, e.response);
+        });
+      } else {
+        return this.requestAsync(opts);
+      }
+    }
+    async requestAsync(opts, reAuthRetried = false) {
+      let response;
+      try {
+        const requestHeaders = await this.getRequestHeaders();
+        opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers);
+        this.addUserProjectAndAuthHeaders(opts.headers, requestHeaders);
+        response = await this.transporter.request(opts);
+      } catch (e) {
+        const res = e.response;
+        if (res) {
+          const statusCode = res.status;
+          const isReadableStream = res.config.data instanceof stream.Readable;
+          const isAuthErr = statusCode === 401 || statusCode === 403;
+          if (!reAuthRetried && isAuthErr && !isReadableStream && this.forceRefreshOnFailure) {
+            await this.refreshAccessTokenAsync();
+            return await this.requestAsync(opts, true);
+          }
+        }
+        throw e;
+      }
+      return response;
+    }
+    async refreshAccessTokenAsync() {
+      const subjectToken = (await this.authClient.getAccessToken()).token;
+      const stsCredentialsOptions = {
+        grantType: STS_GRANT_TYPE,
+        requestedTokenType: STS_REQUEST_TOKEN_TYPE,
+        subjectToken,
+        subjectTokenType: STS_SUBJECT_TOKEN_TYPE
+      };
+      const stsResponse = await this.stsCredential.exchangeToken(stsCredentialsOptions, undefined, this.credentialAccessBoundary);
+      const sourceCredExpireDate = this.authClient.credentials?.expiry_date || null;
+      const expiryDate = stsResponse.expires_in ? new Date().getTime() + stsResponse.expires_in * 1000 : sourceCredExpireDate;
+      this.cachedDownscopedAccessToken = {
+        access_token: stsResponse.access_token,
+        expiry_date: expiryDate,
+        res: stsResponse.res
+      };
+      this.credentials = {};
+      Object.assign(this.credentials, this.cachedDownscopedAccessToken);
+      delete this.credentials.res;
+      this.emit("tokens", {
+        refresh_token: null,
+        expiry_date: this.cachedDownscopedAccessToken.expiry_date,
+        access_token: this.cachedDownscopedAccessToken.access_token,
+        token_type: "Bearer",
+        id_token: null
+      });
+      return this.cachedDownscopedAccessToken;
+    }
+    isExpired(downscopedAccessToken) {
+      const now = new Date().getTime();
+      return downscopedAccessToken.expiry_date ? now >= downscopedAccessToken.expiry_date - this.eagerRefreshThresholdMillis : false;
+    }
+  }
+  exports.DownscopedClient = DownscopedClient;
+});
+
+// ../node_modules/google-auth-library/build/src/auth/passthrough.js
+var require_passthrough = __commonJS(function(exports) {
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.PassThroughClient = undefined;
+  var authclient_1 = require_authclient();
+
+  class PassThroughClient extends authclient_1.AuthClient {
+    async request(opts) {
+      return this.transporter.request(opts);
+    }
+    async getAccessToken() {
+      return {};
+    }
+    async getRequestHeaders() {
+      return new Headers;
+    }
+  }
+  exports.PassThroughClient = PassThroughClient;
+});
+
+// ../node_modules/google-auth-library/build/src/index.js
+var require_src5 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.GoogleAuth = exports.auth = exports.GDCH_SERVICE_ACCOUNT_TYPE = exports.GdchClient = exports.PassThroughClient = exports.ExternalAccountAuthorizedUserClient = exports.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE = exports.ExecutableError = exports.PluggableAuthClient = exports.DownscopedClient = exports.BaseExternalAccountClient = exports.ExternalAccountClient = exports.IdentityPoolClient = exports.AwsRequestSigner = exports.AwsClient = exports.UserRefreshClient = exports.LoginTicket = exports.ClientAuthentication = exports.OAuth2Client = exports.CodeChallengeMethod = exports.Impersonated = exports.JWT = exports.JWTAccess = exports.IdTokenClient = exports.IAMAuth = exports.GCPEnv = exports.Compute = exports.DEFAULT_UNIVERSE = exports.AuthClient = exports.gaxios = exports.gcpMetadata = undefined;
+  var googleauth_1 = require_googleauth();
+  Object.defineProperty(exports, "GoogleAuth", { enumerable: true, get: function() {
+    return googleauth_1.GoogleAuth;
+  } });
+  exports.gcpMetadata = require_src4();
+  exports.gaxios = require_src2();
+  var authclient_1 = require_authclient();
+  Object.defineProperty(exports, "AuthClient", { enumerable: true, get: function() {
+    return authclient_1.AuthClient;
+  } });
+  Object.defineProperty(exports, "DEFAULT_UNIVERSE", { enumerable: true, get: function() {
+    return authclient_1.DEFAULT_UNIVERSE;
+  } });
+  var computeclient_1 = require_computeclient();
+  Object.defineProperty(exports, "Compute", { enumerable: true, get: function() {
+    return computeclient_1.Compute;
+  } });
+  var envDetect_1 = require_envDetect();
+  Object.defineProperty(exports, "GCPEnv", { enumerable: true, get: function() {
+    return envDetect_1.GCPEnv;
+  } });
+  var iam_1 = require_iam();
+  Object.defineProperty(exports, "IAMAuth", { enumerable: true, get: function() {
+    return iam_1.IAMAuth;
+  } });
+  var idtokenclient_1 = require_idtokenclient();
+  Object.defineProperty(exports, "IdTokenClient", { enumerable: true, get: function() {
+    return idtokenclient_1.IdTokenClient;
+  } });
+  var jwtaccess_1 = require_jwtaccess();
+  Object.defineProperty(exports, "JWTAccess", { enumerable: true, get: function() {
+    return jwtaccess_1.JWTAccess;
+  } });
+  var jwtclient_1 = require_jwtclient();
+  Object.defineProperty(exports, "JWT", { enumerable: true, get: function() {
+    return jwtclient_1.JWT;
+  } });
+  var impersonated_1 = require_impersonated();
+  Object.defineProperty(exports, "Impersonated", { enumerable: true, get: function() {
+    return impersonated_1.Impersonated;
+  } });
+  var oauth2client_1 = require_oauth2client();
+  Object.defineProperty(exports, "CodeChallengeMethod", { enumerable: true, get: function() {
+    return oauth2client_1.CodeChallengeMethod;
+  } });
+  Object.defineProperty(exports, "OAuth2Client", { enumerable: true, get: function() {
+    return oauth2client_1.OAuth2Client;
+  } });
+  Object.defineProperty(exports, "ClientAuthentication", { enumerable: true, get: function() {
+    return oauth2client_1.ClientAuthentication;
+  } });
+  var loginticket_1 = require_loginticket();
+  Object.defineProperty(exports, "LoginTicket", { enumerable: true, get: function() {
+    return loginticket_1.LoginTicket;
+  } });
+  var refreshclient_1 = require_refreshclient();
+  Object.defineProperty(exports, "UserRefreshClient", { enumerable: true, get: function() {
+    return refreshclient_1.UserRefreshClient;
+  } });
+  var awsclient_1 = require_awsclient();
+  Object.defineProperty(exports, "AwsClient", { enumerable: true, get: function() {
+    return awsclient_1.AwsClient;
+  } });
+  var awsrequestsigner_1 = require_awsrequestsigner();
+  Object.defineProperty(exports, "AwsRequestSigner", { enumerable: true, get: function() {
+    return awsrequestsigner_1.AwsRequestSigner;
+  } });
+  var identitypoolclient_1 = require_identitypoolclient();
+  Object.defineProperty(exports, "IdentityPoolClient", { enumerable: true, get: function() {
+    return identitypoolclient_1.IdentityPoolClient;
+  } });
+  var externalclient_1 = require_externalclient();
+  Object.defineProperty(exports, "ExternalAccountClient", { enumerable: true, get: function() {
+    return externalclient_1.ExternalAccountClient;
+  } });
+  var baseexternalclient_1 = require_baseexternalclient();
+  Object.defineProperty(exports, "BaseExternalAccountClient", { enumerable: true, get: function() {
+    return baseexternalclient_1.BaseExternalAccountClient;
+  } });
+  var downscopedclient_1 = require_downscopedclient();
+  Object.defineProperty(exports, "DownscopedClient", { enumerable: true, get: function() {
+    return downscopedclient_1.DownscopedClient;
+  } });
+  var pluggable_auth_client_1 = require_pluggable_auth_client();
+  Object.defineProperty(exports, "PluggableAuthClient", { enumerable: true, get: function() {
+    return pluggable_auth_client_1.PluggableAuthClient;
+  } });
+  Object.defineProperty(exports, "ExecutableError", { enumerable: true, get: function() {
+    return pluggable_auth_client_1.ExecutableError;
+  } });
+  var externalAccountAuthorizedUserClient_1 = require_externalAccountAuthorizedUserClient();
+  Object.defineProperty(exports, "EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE", { enumerable: true, get: function() {
+    return externalAccountAuthorizedUserClient_1.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE;
+  } });
+  Object.defineProperty(exports, "ExternalAccountAuthorizedUserClient", { enumerable: true, get: function() {
+    return externalAccountAuthorizedUserClient_1.ExternalAccountAuthorizedUserClient;
+  } });
+  var passthrough_1 = require_passthrough();
+  Object.defineProperty(exports, "PassThroughClient", { enumerable: true, get: function() {
+    return passthrough_1.PassThroughClient;
+  } });
+  var gdchclient_1 = require_gdchclient();
+  Object.defineProperty(exports, "GdchClient", { enumerable: true, get: function() {
+    return gdchclient_1.GdchClient;
+  } });
+  Object.defineProperty(exports, "GDCH_SERVICE_ACCOUNT_TYPE", { enumerable: true, get: function() {
+    return gdchclient_1.GDCH_SERVICE_ACCOUNT_TYPE;
+  } });
+  __exportStar(require_googleToken(), exports);
+  var auth = new googleauth_1.GoogleAuth;
+  exports.auth = auth;
+});
 
 // ../node_modules/@babel/runtime/helpers/typeof.js
 var require_typeof = __commonJS(function(exports, module) {
@@ -9715,7 +20077,7 @@ var require_shared_store = __commonJS(function(exports, module) {
 });
 
 // ../node_modules/core-js/internals/shared.js
-var require_shared = __commonJS(function(exports, module) {
+var require_shared3 = __commonJS(function(exports, module) {
   var store = require_shared_store();
   var create = Object.create || Object;
   module.exports = function(key, value) {
@@ -9756,7 +20118,7 @@ var require_uid = __commonJS(function(exports, module) {
 // ../node_modules/core-js/internals/well-known-symbol.js
 var require_well_known_symbol = __commonJS(function(exports, module) {
   var globalThis2 = require_global_this();
-  var shared = require_shared();
+  var shared = require_shared3();
   var hasOwn = require_has_own_property();
   var uid = require_uid();
   var NATIVE_SYMBOL = require_symbol_constructor_detection();
@@ -9981,7 +20343,7 @@ var require_weak_map_basic_detection = __commonJS(function(exports, module) {
 
 // ../node_modules/core-js/internals/shared-key.js
 var require_shared_key = __commonJS(function(exports, module) {
-  var shared = require_shared();
+  var shared = require_shared3();
   var uid = require_uid();
   var keys = shared("keys");
   module.exports = function(key) {
@@ -11879,7 +22241,7 @@ var require_regexp_exec = __commonJS(function(exports, module) {
   var toString = require_to_string();
   var regexpFlags = require_regexp_flags();
   var stickyHelpers = require_regexp_sticky_helpers();
-  var shared = require_shared();
+  var shared = require_shared3();
   var create = require_object_create();
   var getInternalState = require_internal_state().get;
   var UNSUPPORTED_DOT_ALL = require_regexp_unsupported_dot_all();
@@ -19895,7 +30257,7 @@ var require_tslib = __commonJS(function(exports, module) {
 });
 
 // ../node_modules/pako/lib/utils/common.js
-var require_common = __commonJS(function(exports) {
+var require_common3 = __commonJS(function(exports) {
   var TYPED_OK = typeof Uint8Array !== "undefined" && typeof Uint16Array !== "undefined" && typeof Int32Array !== "undefined";
   function _has(obj, key) {
     return Object.prototype.hasOwnProperty.call(obj, key);
@@ -19982,7 +30344,7 @@ var require_common = __commonJS(function(exports) {
 
 // ../node_modules/pako/lib/zlib/trees.js
 var require_trees = __commonJS(function(exports) {
-  var utils = require_common();
+  var utils = require_common3();
   var Z_FIXED = 4;
   var Z_BINARY = 0;
   var Z_TEXT = 1;
@@ -20641,7 +31003,7 @@ var require_messages = __commonJS(function(exports, module) {
 
 // ../node_modules/pako/lib/zlib/deflate.js
 var require_deflate = __commonJS(function(exports) {
-  var utils = require_common();
+  var utils = require_common3();
   var trees = require_trees();
   var adler32 = require_adler32();
   var crc32 = require_crc32();
@@ -21671,7 +32033,7 @@ var require_deflate = __commonJS(function(exports) {
 
 // ../node_modules/pako/lib/utils/strings.js
 var require_strings = __commonJS(function(exports) {
-  var utils = require_common();
+  var utils = require_common3();
   var STR_APPLY_OK = true;
   var STR_APPLY_UIA_OK = true;
   try {
@@ -21830,7 +32192,7 @@ var require_zstream = __commonJS(function(exports, module) {
 // ../node_modules/pako/lib/deflate.js
 var require_deflate2 = __commonJS(function(exports) {
   var zlib_deflate = require_deflate();
-  var utils = require_common();
+  var utils = require_common3();
   var strings = require_strings();
   var msg = require_messages();
   var ZStream = require_zstream();
@@ -22207,7 +32569,7 @@ var require_inffast = __commonJS(function(exports, module) {
 
 // ../node_modules/pako/lib/zlib/inftrees.js
 var require_inftrees = __commonJS(function(exports, module) {
-  var utils = require_common();
+  var utils = require_common3();
   var MAXBITS = 15;
   var ENOUGH_LENS = 852;
   var ENOUGH_DISTS = 592;
@@ -22516,7 +32878,7 @@ var require_inftrees = __commonJS(function(exports, module) {
 
 // ../node_modules/pako/lib/zlib/inflate.js
 var require_inflate = __commonJS(function(exports) {
-  var utils = require_common();
+  var utils = require_common3();
   var adler32 = require_adler32();
   var crc32 = require_crc32();
   var inflate_fast = require_inffast();
@@ -23765,7 +34127,7 @@ var require_gzheader = __commonJS(function(exports, module) {
 // ../node_modules/pako/lib/inflate.js
 var require_inflate2 = __commonJS(function(exports) {
   var zlib_inflate = require_inflate();
-  var utils = require_common();
+  var utils = require_common3();
   var strings = require_strings();
   var c = require_constants();
   var msg = require_messages();
@@ -23933,7 +34295,7 @@ var require_inflate2 = __commonJS(function(exports) {
 
 // ../node_modules/pako/index.js
 var require_pako = __commonJS(function(exports, module) {
-  var assign = require_common().assign;
+  var assign = require_common3().assign;
   var deflate = require_deflate2();
   var inflate = require_inflate2();
   var constants = require_constants();
@@ -24618,6 +34980,7 @@ var string = (params) => {
 var integer = /^-?\d+$/;
 var number = /^-?\d+(?:\.\d+)?$/;
 var boolean = /^(?:true|false)$/i;
+var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
@@ -25512,6 +35875,23 @@ var $ZodBoolean = /* @__PURE__ */ $constructor("$ZodBoolean", (inst, def) => {
       return payload;
     payload.issues.push({
       expected: "boolean",
+      code: "invalid_type",
+      input,
+      inst
+    });
+    return payload;
+  };
+});
+var $ZodNull = /* @__PURE__ */ $constructor("$ZodNull", (inst, def) => {
+  $ZodType.init(inst, def);
+  inst._zod.pattern = _null;
+  inst._zod.values = new Set([null]);
+  inst._zod.parse = (payload, _ctx) => {
+    const input = payload.value;
+    if (input === null)
+      return payload;
+    payload.issues.push({
+      expected: "null",
       code: "invalid_type",
       input,
       inst
@@ -26757,6 +37137,12 @@ function _boolean(Class, params) {
     ...normalizeParams(params)
   });
 }
+function _null2(Class, params) {
+  return new Class({
+    type: "null",
+    ...normalizeParams(params)
+  });
+}
 function _unknown(Class) {
   return new Class({
     type: "unknown"
@@ -27367,6 +37753,15 @@ var numberProcessor = (schema, ctx, _json, _params) => {
 };
 var booleanProcessor = (_schema, _ctx, json, _params) => {
   json.type = "boolean";
+};
+var nullProcessor = (_schema, ctx, json, _params) => {
+  if (ctx.target === "openapi-3.0") {
+    json.type = "string";
+    json.nullable = true;
+    json.enum = [null];
+  } else {
+    json.type = "null";
+  }
 };
 var neverProcessor = (_schema, _ctx, json, _params) => {
   json.not = {};
@@ -28102,6 +38497,14 @@ var ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
 function boolean2(params) {
   return _boolean(ZodBoolean, params);
 }
+var ZodNull = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
+  $ZodNull.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => nullProcessor(inst, ctx, json, params);
+});
+function _null3(params) {
+  return _null2(ZodNull, params);
+}
 var ZodUnknown = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
   $ZodUnknown.init(inst, def);
   ZodType.init(inst, def);
@@ -28749,6 +39152,9 @@ class Table {
     this[BaseName] = baseName;
   }
 }
+function isTable(table) {
+  return typeof table === "object" && table !== null && IsDrizzleTable in table;
+}
 
 // ../node_modules/drizzle-orm/sql/sql.js
 function isSQLWrapper(value) {
@@ -29114,6 +39520,9 @@ Subquery.prototype.getSQL = function() {
 };
 
 // ../node_modules/drizzle-orm/utils.js
+function getTableColumns(table) {
+  return table[Table.Symbol.Columns];
+}
 function getColumnNameAndConfig(a, b) {
   return {
     name: typeof a === "string" && a.length > 0 ? a : "",
@@ -29986,12 +40395,120 @@ function strFromU8(dat, latin1) {
 }
 
 // src/actions.ts
+var import_google_auth_library = __toESM(require_src5(), 1);
 import { execFile } from "child_process";
 import { randomInt } from "crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import { basename, join } from "path";
 import { promisify } from "util";
+
+// src/schema.ts
+var exports_schema = {};
+__export(exports_schema, {
+  accountDeletionCodes: () => accountDeletionCodes,
+  adminAuditLog: () => adminAuditLog,
+  adminParameters: () => adminParameters,
+  adminTeamRoles: () => adminTeamRoles,
+  adminTotpSecrets: () => adminTotpSecrets,
+  appUserExitFeedback: () => appUserExitFeedback,
+  appUsers: () => appUsers,
+  appointments: () => appointments,
+  authLoginAttempts: () => authLoginAttempts,
+  authSessions: () => authSessions,
+  authTokens: () => authTokens,
+  authUsers: () => authUsers,
+  automationLogs: () => automationLogs,
+  backupRuns: () => backupRuns,
+  bidBoardItems: () => bidBoardItems,
+  blockedSenders: () => blockedSenders,
+  broadcastLog: () => broadcastLog,
+  businessExpenses: () => businessExpenses,
+  businessVerifications: () => businessVerifications,
+  cancellationFeedback: () => cancellationFeedback,
+  clients: () => clients,
+  completionCertificates: () => completionCertificates,
+  completionOverrides: () => completionOverrides,
+  credentials: () => credentials,
+  crewPayRates: () => crewPayRates,
+  crewTasks: () => crewTasks,
+  dailyGameScores: () => dailyGameScores,
+  dailyLogs: () => dailyLogs,
+  documentAttachments: () => documentAttachments,
+  documentLinkEvents: () => documentLinkEvents,
+  documentLinks: () => documentLinks,
+  documents: () => documents,
+  equipment: () => equipment,
+  featureFlags: () => featureFlags,
+  financialDocumentSignatures: () => financialDocumentSignatures,
+  incidents: () => incidents,
+  internalNotes: () => internalNotes,
+  invoices: () => invoices,
+  jobMessages: () => jobMessages,
+  jobs: () => jobs,
+  leads: () => leads,
+  listingBumpPurchases: () => listingBumpPurchases,
+  maintenancePlans: () => maintenancePlans,
+  marketplaceAlerts: () => marketplaceAlerts,
+  marketplaceBookingRequests: () => marketplaceBookingRequests,
+  marketplaceConversations: () => marketplaceConversations,
+  marketplaceCreditPurchases: () => marketplaceCreditPurchases,
+  marketplaceCredits: () => marketplaceCredits,
+  marketplaceFlags: () => marketplaceFlags,
+  marketplaceListingPhotos: () => marketplaceListingPhotos,
+  marketplaceListings: () => marketplaceListings,
+  marketplaceMessages: () => marketplaceMessages,
+  marketplaceProQuota: () => marketplaceProQuota,
+  marketplaceUnlocks: () => marketplaceUnlocks,
+  materialCostItems: () => materialCostItems,
+  mileageTrips: () => mileageTrips,
+  moderationKeywordRules: () => moderationKeywordRules,
+  onboardingChecklist: () => onboardingChecklist,
+  paymentMilestones: () => paymentMilestones,
+  payments: () => payments,
+  photos: () => photos,
+  platformPolicyVersions: () => platformPolicyVersions,
+  platformSettings: () => platformSettings,
+  platformSupportNotes: () => platformSupportNotes,
+  platformSupportReplies: () => platformSupportReplies,
+  platformSupportReports: () => platformSupportReports,
+  playBillingPurchases: () => playBillingPurchases,
+  portalLinkEvents: () => portalLinkEvents,
+  portalTokens: () => portalTokens,
+  priceBookItems: () => priceBookItems,
+  progressUpdates: () => progressUpdates,
+  promoCodeLog: () => promoCodeLog,
+  punchItems: () => punchItems,
+  punchSignoffs: () => punchSignoffs,
+  purchaseOrders: () => purchaseOrders,
+  pushSubscriptions: () => pushSubscriptions,
+  quoteTemplates: () => quoteTemplates,
+  quotes: () => quotes,
+  rateLimitEvents: () => rateLimitEvents,
+  receipts: () => receipts,
+  recurringInvoiceSchedules: () => recurringInvoiceSchedules,
+  referralEvents: () => referralEvents,
+  safetyTalks: () => safetyTalks,
+  scannedDocuments: () => scannedDocuments,
+  selections: () => selections,
+  sendCaps: () => sendCaps,
+  sendUsage: () => sendUsage,
+  settings: () => settings,
+  shareImages: () => shareImages,
+  slideshowVideos: () => slideshowVideos,
+  stripeWebhookEvents: () => stripeWebhookEvents,
+  subcontractors: () => subcontractors,
+  subscriptionEvents: () => subscriptionEvents,
+  supplierQuotes: () => supplierQuotes,
+  suppliers: () => suppliers,
+  supportReports: () => supportReports,
+  timeEntries: () => timeEntries,
+  userHomePins: () => userHomePins,
+  userNotifications: () => userNotifications,
+  userReports: () => userReports,
+  voiceNotes: () => voiceNotes,
+  warranties: () => warranties
+});
 
 // ../node_modules/drizzle-orm/sqlite-core/foreign-keys.js
 class ForeignKeyBuilder {
@@ -31355,7 +41872,8 @@ var marketplaceListings = sqliteTable("marketplace_listings", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   category: text("category", { enum: ["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"] }).notNull(),
-  listingType: text("listing_type", { enum: ["job", "project"] }).notNull().default("project"),
+  intent: text("intent", { enum: ["need", "offer"] }).notNull().default("offer"),
+  neededBy: text("needed_by").notNull().default(""),
   employmentType: text("employment_type", { enum: ["full_time", "part_time", "temporary"] }).notNull().default("full_time"),
   payUnit: text("pay_unit", { enum: ["hourly", "salary"] }).notNull().default("hourly"),
   priceKind: text("price_kind", { enum: ["amount", "free", "contact"] }).notNull().default("contact"),
@@ -31363,6 +41881,7 @@ var marketplaceListings = sqliteTable("marketplace_listings", {
   originalPrice: text("original_price").notNull().default(""),
   description: text("description").notNull().default(""),
   serviceArea: text("service_area").notNull(),
+  zipCode: text("zip_code").notNull().default(""),
   companyName: text("company_name").notNull(),
   companyPhone: text("company_phone").notNull().default(""),
   bookable: integer2("bookable", { mode: "boolean" }).notNull().default(false),
@@ -31408,6 +41927,7 @@ var marketplaceMessages = sqliteTable("marketplace_messages", {
   sender: text("sender", { enum: ["me", "other"] }).notNull().default("me"),
   senderCompanyId: integer2("sender_company_id"),
   readAt: integer2("read_at", { mode: "timestamp_ms" }),
+  hidden: integer2("hidden", { mode: "boolean" }).notNull().default(false),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var marketplaceConversations = sqliteTable("marketplace_conversations", {
@@ -31429,20 +41949,6 @@ var marketplaceBookingRequests = sqliteTable("marketplace_booking_requests", {
   note: text("note").notNull().default(""),
   status: text("status", { enum: ["requested", "confirmed", "declined"] }).notNull().default("requested"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
-});
-var marketplaceRequests = sqliteTable("marketplace_requests", {
-  companyId: integer2("company_id").notNull().default(1),
-  id: integer2("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull(),
-  category: text("category", { enum: ["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"] }).notNull(),
-  listingType: text("listing_type", { enum: ["job", "project"] }).notNull().default("project"),
-  description: text("description").notNull().default(""),
-  serviceArea: text("service_area").notNull(),
-  neededBy: text("needed_by").notNull().default(""),
-  companyName: text("company_name").notNull(),
-  companyPhone: text("company_phone").notNull().default(""),
-  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
-  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var authUsers = sqliteTable("auth_users", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -31468,9 +41974,13 @@ var authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer2("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
+  leaderboardOptIn: integer2("leaderboard_opt_in", { mode: "boolean" }).notNull().default(false),
+  googleSub: text("google_sub"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
-});
+}, (table) => [
+  uniqueIndex("auth_users_google_sub_unique").on(table.googleSub)
+]);
 var playBillingPurchases = sqliteTable("play_billing_purchases", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
@@ -31577,7 +42087,9 @@ var authSessions = sqliteTable("auth_sessions", {
   expiresAt: integer2("expires_at", { mode: "timestamp_ms" }).notNull(),
   lastSeenAt: integer2("last_seen_at", { mode: "timestamp_ms" }).notNull(),
   revokedAt: integer2("revoked_at", { mode: "timestamp_ms" }),
-  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  impersonatedBy: integer2("impersonated_by").references(() => authUsers.id, { onDelete: "set null" }),
+  totpPending: integer2("totp_pending", { mode: "boolean" }).notNull().default(false)
 });
 var authTokens = sqliteTable("auth_tokens", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -31593,6 +42105,16 @@ var authLoginAttempts = sqliteTable("auth_login_attempts", {
   email: text("email").notNull(),
   attemptedAt: integer2("attempted_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var accountDeletionCodes = sqliteTable("account_deletion_codes", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: integer2("expires_at", { mode: "timestamp_ms" }).notNull(),
+  consumedAt: integer2("consumed_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("account_deletion_codes_user_idx").on(table.userId)
+]);
 var stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),
@@ -31674,7 +42196,7 @@ var bidBoardItems = sqliteTable("bid_board_items", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   userId: integer2("user_id").notNull(),
   listingId: integer2("listing_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
-  requestId: integer2("request_id").references(() => marketplaceRequests.id, { onDelete: "set null" }),
+  requestId: integer2("request_id").references(() => marketplaceListings.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   stage: text("stage", { enum: ["interested", "estimating", "submitted", "won", "lost"] }).notNull().default("interested"),
   dueDate: text("due_date").notNull().default(""),
@@ -31731,13 +42253,44 @@ var platformSupportReports = sqliteTable("platform_support_reports", {
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   isUnread: integer2("is_unread", { mode: "boolean" }).notNull().default(true),
   resolvedAt: integer2("resolved_at", { mode: "timestamp_ms" }),
+  priority: text("priority", { enum: ["low", "normal", "high", "urgent"] }).notNull().default("normal"),
+  assignedTo: integer2("assigned_to").references(() => authUsers.id, { onDelete: "set null" }),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 }, (table) => [
   index("platform_support_reports_user_idx").on(table.userId),
   index("platform_support_reports_created_idx").on(table.createdAt),
-  index("platform_support_reports_status_idx").on(table.status)
+  index("platform_support_reports_status_idx").on(table.status),
+  index("platform_support_reports_priority_idx").on(table.priority),
+  index("platform_support_reports_assigned_idx").on(table.assignedTo)
 ]);
+var platformSupportNotes = sqliteTable("platform_support_notes", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  reportId: integer2("report_id").notNull().references(() => platformSupportReports.id, { onDelete: "cascade" }),
+  authorId: integer2("author_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("platform_support_notes_report_idx").on(table.reportId)
+]);
+var platformPolicyVersions = sqliteTable("platform_policy_versions", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: ["terms", "privacy"] }).notNull(),
+  version: text("version").notNull(),
+  url: text("url").notNull().default(""),
+  effectiveAt: integer2("effective_at", { mode: "timestamp_ms" }),
+  publishedBy: integer2("published_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("platform_policy_versions_kind_idx").on(table.kind)
+]);
+var adminTotpSecrets = sqliteTable("admin_totp_secrets", {
+  userId: integer2("user_id").primaryKey().notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  secret: text("secret").notNull(),
+  verified: integer2("verified", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  verifiedAt: integer2("verified_at", { mode: "timestamp_ms" })
+});
 var platformSupportReplies = sqliteTable("platform_support_replies", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   reportId: integer2("report_id").notNull().references(() => platformSupportReports.id, { onDelete: "cascade" }),
@@ -31747,6 +42300,109 @@ var platformSupportReplies = sqliteTable("platform_support_replies", {
 }, (table) => [
   index("platform_support_replies_report_idx").on(table.reportId),
   index("platform_support_replies_created_idx").on(table.createdAt)
+]);
+var broadcastLog = sqliteTable("broadcast_log", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  segment: text("segment", { enum: ["all", "pro", "free"] }).notNull(),
+  sentCount: integer2("sent_count").notNull().default(0),
+  createdBy: integer2("created_by").notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("broadcast_log_created_idx").on(table.createdAt)
+]);
+var businessVerifications = sqliteTable("business_verifications", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  companyId: integer2("company_id").notNull().unique(),
+  licenseNumber: text("license_number").notNull().default(""),
+  status: text("status", { enum: ["pending", "verified", "rejected"] }).notNull().default("pending"),
+  note: text("note").notNull().default(""),
+  reviewedBy: integer2("reviewed_by"),
+  reviewedAt: integer2("reviewed_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var featureFlags = sqliteTable("feature_flags", {
+  key: text("key").primaryKey(),
+  enabled: integer2("enabled", { mode: "boolean" }).notNull().default(true),
+  description: text("description").notNull().default(""),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var sendCaps = sqliteTable("send_caps", {
+  userId: integer2("user_id").primaryKey(),
+  maxSmsPerDay: integer2("max_sms_per_day").notNull(),
+  maxPushPerDay: integer2("max_push_per_day").notNull(),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var blockedSenders = sqliteTable("blocked_senders", {
+  userId: integer2("user_id").primaryKey(),
+  reason: text("reason").notNull().default(""),
+  blockedBy: integer2("blocked_by"),
+  blockedAt: integer2("blocked_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var sendUsage = sqliteTable("send_usage", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull(),
+  channel: text("channel", { enum: ["sms", "push"] }).notNull(),
+  period: text("period", { enum: ["day", "hour"] }).notNull(),
+  periodStart: integer2("period_start", { mode: "timestamp_ms" }).notNull(),
+  count: integer2("count").notNull().default(0)
+}, (table) => [
+  uniqueIndex("send_usage_user_channel_period_start_unique").on(table.userId, table.channel, table.period, table.periodStart),
+  index("send_usage_user_idx").on(table.userId, table.channel)
+]);
+var adminTeamRoles = sqliteTable("admin_team_roles", {
+  userId: integer2("user_id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["admin", "support", "moderator"] }).notNull(),
+  grantedBy: integer2("granted_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var userReports = sqliteTable("user_reports", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  targetType: text("target_type", { enum: ["user", "message"] }).notNull(),
+  targetId: integer2("target_id").notNull(),
+  reporterUserId: integer2("reporter_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+  reason: text("reason", { enum: ["spam", "explicit", "illegal", "scam", "misleading", "other"] }).notNull().default("other"),
+  details: text("details").notNull().default(""),
+  status: text("status", { enum: ["open", "reviewed_ok", "reviewed_actioned"] }).notNull().default("open"),
+  decidedBy: integer2("decided_by").references(() => authUsers.id, { onDelete: "set null" }),
+  decidedAt: integer2("decided_at", { mode: "timestamp_ms" }),
+  decisionNote: text("decision_note").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("user_reports_status_idx").on(table.status, table.createdAt),
+  index("user_reports_target_idx").on(table.targetType, table.targetId)
+]);
+var moderationKeywordRules = sqliteTable("moderation_keyword_rules", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  pattern: text("pattern").notNull(),
+  action: text("action", { enum: ["flag", "hold"] }).notNull().default("flag"),
+  note: text("note").notNull().default(""),
+  createdBy: integer2("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var promoCodeLog = sqliteTable("promo_code_log", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  stripeCouponId: text("stripe_coupon_id").notNull().unique(),
+  code: text("code").notNull().default(""),
+  percentOff: integer2("percent_off"),
+  amountOffCents: integer2("amount_off_cents"),
+  duration: text("duration").notNull().default("once"),
+  createdBy: integer2("created_by").references(() => authUsers.id, { onDelete: "set null" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var dailyGameScores = sqliteTable("daily_game_scores", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull().default(""),
+  score: integer2("score").notNull().default(0),
+  scoreDate: text("score_date").notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("daily_game_scores_user_date_unique").on(table.userId, table.scoreDate),
+  index("daily_game_scores_date_score_idx").on(table.scoreDate, table.score)
 ]);
 
 // ../node_modules/jspdf/dist/jspdf.es.min.js
@@ -44992,7 +55648,7 @@ function defaultDocumentCustomize(kind, lang = "en") {
     showShortBusinessName: false,
     showLicenseNumber: true,
     showDueDate: true,
-    headline: kind === "invoice" ? lang === "es" ? "FACTURA" : "INVOICE" : lang === "es" ? "COTIZACI\xD3N" : "ESTIMATE",
+    headline: kind === "invoice" ? lang === "es" ? "FACTURA" : "INVOICE" : lang === "es" ? "ESTIMADO" : "ESTIMATE",
     dateFormat: "long",
     termsConditions: "",
     signatureDataUrl: "",
@@ -45158,6 +55814,9 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.addPage();
     y = 40;
     drawTableHeaderRow();
+    doc.setTextColor(24, 32, 30);
+    doc.setFont(font, "normal");
+    doc.setFontSize(9);
   };
   ensureSpace(40);
   drawTableHeaderRow();
@@ -60547,6 +71206,12 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  getListingBumpPrice: {
+    request: object({}),
+    response: object({ priceDisplay: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createCreditPackCheckout: {
     request: object({
       userId: number2().int().positive(),
@@ -60606,6 +71271,109 @@ var privileged = definePrivilegedContracts({
     response: object({ id: string2(), amount: number2().int(), currency: string2(), status: string2() }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  listStripeSubscriptions: {
+    request: object({ status: _enum(["active", "trialing", "past_due", "canceled", "all"]).default("all"), limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      subscriptions: array(object({
+        id: string2(),
+        customerId: string2(),
+        customerEmail: string2().nullable(),
+        status: string2(),
+        amountCents: number2().int(),
+        interval: string2(),
+        currentPeriodEnd: number2().int().nullable(),
+        cancelAtPeriodEnd: boolean2()
+      })),
+      hasMore: boolean2()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripePayments: {
+    request: object({ limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      charges: array(object({
+        id: string2(),
+        amount: number2().int(),
+        amountRefunded: number2().int(),
+        currency: string2(),
+        created: number2().int(),
+        status: string2(),
+        customerEmail: string2().nullable(),
+        description: string2().nullable()
+      })),
+      hasMore: boolean2()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripeFailedPayments: {
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      failed: array(object({
+        invoiceId: string2(),
+        customerEmail: string2().nullable(),
+        amountCents: number2().int(),
+        currency: string2(),
+        status: string2(),
+        attemptCount: number2().int(),
+        nextRetryAt: number2().int().nullable(),
+        created: number2().int()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createStripeCoupon: {
+    request: object({
+      code: string2().trim().min(2).max(40),
+      percentOff: number2().min(1).max(100).optional(),
+      amountOffCents: number2().int().positive().max(1e7).optional(),
+      duration: _enum(["once", "repeating", "forever"]).default("once"),
+      durationInMonths: number2().int().min(1).max(36).optional()
+    }),
+    response: object({ id: string2(), code: string2().nullable(), percentOff: number2().nullable(), amountOff: number2().nullable(), duration: string2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripeCoupons: {
+    request: object({ limit: number2().int().min(1).max(100).default(25) }),
+    response: object({
+      configured: boolean2(),
+      coupons: array(object({
+        id: string2(),
+        code: string2().nullable(),
+        percentOff: number2().nullable(),
+        amountOff: number2().nullable(),
+        currency: string2().nullable(),
+        duration: string2(),
+        timesRedeemed: number2().int()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  deleteStripeCoupon: {
+    request: object({ couponId: string2().min(1).max(200) }),
+    response: object({ ok: literal(true), id: string2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getStripeRevenueStats: {
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      mrrCents: number2().nullable(),
+      activeSubscriptions: number2().nullable(),
+      trialing: number2().nullable(),
+      failedPayments: number2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 30000
   },
   verifyPlayPurchase: {
     request: object({ purchaseToken: string2().min(1).max(2000), sku: string2().min(1).max(200) }),
@@ -60707,6 +71475,1851 @@ var playBillingActions = {
       return { tier: "free", status: "expired", currentPeriodEnd: null };
     }
   })
+};
+
+// src/push.ts
+import { createCipheriv, createECDH, createHmac, createPrivateKey, createSign, randomBytes } from "crypto";
+function b64urlEncode(data) {
+  return Buffer.from(data).toString("base64url");
+}
+function b64urlDecode(value) {
+  return Buffer.from(value, "base64url");
+}
+function getVapidConfig() {
+  const subject = (process.env.VAPID_SUBJECT ?? "").trim() || "mailto:support@crewkat.com";
+  const rawPrivate = (process.env.VAPID_PRIVATE_KEY ?? "").trim();
+  const rawPublic = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
+  if (!rawPrivate || !rawPublic)
+    return null;
+  try {
+    let d;
+    if (rawPrivate.startsWith("{")) {
+      const jwk = JSON.parse(rawPrivate);
+      if (typeof jwk.d !== "string")
+        return null;
+      d = b64urlDecode(jwk.d);
+    } else {
+      d = b64urlDecode(rawPrivate);
+    }
+    if (d.length !== 32)
+      return null;
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(d);
+    const publicUncompressed = ecdh.getPublicKey();
+    if (publicUncompressed.length !== 65 || publicUncompressed[0] !== 4)
+      return null;
+    const x = publicUncompressed.subarray(1, 33);
+    const y = publicUncompressed.subarray(33, 65);
+    return {
+      subject,
+      privateJwk: { kty: "EC", crv: "P-256", x: b64urlEncode(x), y: b64urlEncode(y), d: b64urlEncode(d) },
+      publicUncompressed
+    };
+  } catch {
+    return null;
+  }
+}
+function getVapidPublicKey() {
+  const key = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
+  return key || null;
+}
+function hkdfExpand(prk, info, length) {
+  const n = Math.ceil(length / 32);
+  let t = Buffer.alloc(0);
+  let okm = Buffer.alloc(0);
+  for (let i = 1;i <= n; i++) {
+    t = createHmac("sha256", prk).update(Buffer.concat([t, info, Buffer.from([i])])).digest();
+    okm = Buffer.concat([okm, t]);
+  }
+  return okm.subarray(0, length);
+}
+function encryptAes128Gcm(receiverPublicKey, authSecret, plaintext) {
+  if (receiverPublicKey.length !== 65 || receiverPublicKey[0] !== 4)
+    throw new Error("Invalid receiver public key.");
+  if (authSecret.length !== 16)
+    throw new Error("Invalid auth secret.");
+  const server = createECDH("prime256v1");
+  server.generateKeys();
+  const serverPublicKey = server.getPublicKey();
+  const sharedSecret = server.computeSecret(receiverPublicKey);
+  const prk = createHmac("sha256", authSecret).update(sharedSecret).digest();
+  const lenPrefixed = (key) => Buffer.concat([Buffer.from([key.length >> 8 & 255, key.length & 255]), key]);
+  const context = Buffer.concat([Buffer.from("P-256\x00", "utf8"), lenPrefixed(receiverPublicKey), lenPrefixed(serverPublicKey)]);
+  const cekInfo = Buffer.concat([Buffer.from("Content-Encoding: aes128gcm\x00", "utf8"), context]);
+  const nonceInfo = Buffer.concat([Buffer.from("Content-Encoding: nonce\x00", "utf8"), context]);
+  const cek = hkdfExpand(prk, cekInfo, 16);
+  const nonce = hkdfExpand(prk, nonceInfo, 12);
+  const cipher = createCipheriv("aes-128-gcm", cek, nonce);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  return { salt: randomBytes(16), serverPublicKey, ciphertext };
+}
+function createVapidJwt(config, endpoint) {
+  const audience = new URL(endpoint).origin;
+  const header = b64urlEncode(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" }), "utf8"));
+  const payload = b64urlEncode(Buffer.from(JSON.stringify({
+    aud: audience,
+    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
+    sub: config.subject
+  }), "utf8"));
+  const unsignedToken = `${header}.${payload}`;
+  const signer = createSign("sha256");
+  signer.update(unsignedToken);
+  signer.end();
+  const signature = signer.sign({
+    key: createPrivateKey({ key: config.privateJwk, format: "jwk" }),
+    dsaEncoding: "ieee-p1363"
+  });
+  return `${unsignedToken}.${b64urlEncode(signature)}`;
+}
+async function sendPushToUser(db, userId, message) {
+  try {
+    const check = await recordSendAttempt(db, userId, "push");
+    if (!check.allowed)
+      return { sent: 0, removed: 0, skipped: true };
+  } catch {}
+  const config = getVapidConfig();
+  if (!config)
+    return { sent: 0, removed: 0, skipped: true };
+  let subs;
+  try {
+    subs = await db.select({
+      id: pushSubscriptions.id,
+      endpoint: pushSubscriptions.endpoint,
+      p256dh: pushSubscriptions.p256dh,
+      auth: pushSubscriptions.auth
+    }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  } catch {
+    return { sent: 0, removed: 0, skipped: true };
+  }
+  if (!subs.length)
+    return { sent: 0, removed: 0, skipped: false };
+  const plaintext = Buffer.from(JSON.stringify({
+    titleEn: message.titleEn,
+    titleEs: message.titleEs,
+    bodyEn: message.bodyEn,
+    bodyEs: message.bodyEs,
+    url: message.url ?? "/app/",
+    listingId: message.listingId ?? null
+  }), "utf8");
+  let sent = 0;
+  let removed = 0;
+  await Promise.all(subs.map(async (sub) => {
+    try {
+      const receiverKey = b64urlDecode(sub.p256dh);
+      const authSecret = b64urlDecode(sub.auth);
+      const { salt, serverPublicKey, ciphertext } = encryptAes128Gcm(receiverKey, authSecret, Buffer.concat([plaintext, Buffer.from([2])]));
+      const record = Buffer.concat([
+        salt,
+        Buffer.from([0, 0, 16, 0]),
+        Buffer.from([serverPublicKey.length]),
+        serverPublicKey,
+        ciphertext
+      ]);
+      const jwt = createVapidJwt(config, sub.endpoint);
+      const response = await fetch(sub.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `vapid t=${jwt}, k=${b64urlEncode(config.publicUncompressed)}`,
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "aes128gcm",
+          TTL: "2419200",
+          Urgency: "normal"
+        },
+        body: record,
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.status === 404 || response.status === 410) {
+        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+        removed++;
+      } else if (response.ok) {
+        sent++;
+      }
+    } catch {}
+  }));
+  return { sent, removed, skipped: false };
+}
+async function sendPushToCompany(db, companyId, message, excludeUserId) {
+  let users;
+  try {
+    users = await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, companyId));
+  } catch {
+    return { sent: 0, removed: 0, skipped: true };
+  }
+  const total = { sent: 0, removed: 0, skipped: false };
+  for (const user of users) {
+    if (excludeUserId !== undefined && user.id === excludeUserId)
+      continue;
+    const result = await sendPushToUser(db, user.id, message);
+    total.sent += result.sent;
+    total.removed += result.removed;
+  }
+  return total;
+}
+
+// src/platform-admin.ts
+var TEAM_ROLES = ["admin", "support", "moderator"];
+async function teamRoleOf(db, user) {
+  if (user.isPlatformAdmin)
+    return "admin";
+  const row = (await db.select({ role: adminTeamRoles.role }).from(adminTeamRoles).where(eq(adminTeamRoles.userId, user.id)).limit(1))[0];
+  return row ? row.role : null;
+}
+async function requireTeamRole(ctx, ...roles) {
+  const identity = workspaceIdentity(ctx);
+  const db = ctx.db();
+  const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user)
+    throw new Error("Sign in to continue.");
+  const role = await teamRoleOf(db, user);
+  if (!role || !roles.includes(role))
+    throw new Error("Insufficient permissions for this action.");
+  return { identity, admin: user, role };
+}
+var FEATURE_FLAG_KEYS = ["marketplace_enabled", "signups_enabled", "broadcasts_enabled"];
+var FLAG_DESCRIPTIONS = {
+  marketplace_enabled: "Marketplace listings, search, and messaging",
+  signups_enabled: "New account registrations",
+  broadcasts_enabled: "Admin broadcast push messages"
+};
+async function isFeatureEnabled(db, key) {
+  try {
+    const row = (await db.select({ enabled: featureFlags.enabled }).from(featureFlags).where(eq(featureFlags.key, key)).limit(1))[0];
+    if (row !== undefined)
+      return row.enabled;
+  } catch {}
+  if (key === "marketplace_enabled")
+    return await getPlatformSetting(db, "marketplace_enabled", "1") === "1";
+  if (key === "signups_enabled")
+    return await getPlatformSetting(db, "registration_enabled", "1") === "1";
+  if (key === "broadcasts_enabled")
+    return true;
+  return false;
+}
+function parseCap(raw, fallback) {
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+async function getSendCaps(db, userId) {
+  const override = (await db.select().from(sendCaps).where(eq(sendCaps.userId, userId)).limit(1))[0];
+  if (override)
+    return { maxSmsPerDay: override.maxSmsPerDay, maxPushPerDay: override.maxPushPerDay };
+  const [smsRaw, pushRaw] = await Promise.all([
+    getPlatformSetting(db, "default_max_sms_per_day", "50"),
+    getPlatformSetting(db, "default_max_push_per_day", "100")
+  ]);
+  return { maxSmsPerDay: parseCap(smsRaw, 50), maxPushPerDay: parseCap(pushRaw, 100) };
+}
+async function isSenderBlocked(db, userId) {
+  const row = (await db.select({ userId: blockedSenders.userId }).from(blockedSenders).where(eq(blockedSenders.userId, userId)).limit(1))[0];
+  return !!row;
+}
+async function bumpUsage(db, userId, channel, period, periodStart) {
+  const existing = (await db.select().from(sendUsage).where(and(eq(sendUsage.userId, userId), eq(sendUsage.channel, channel), eq(sendUsage.period, period), eq(sendUsage.periodStart, periodStart))).limit(1))[0];
+  if (existing) {
+    const next = existing.count + 1;
+    await db.update(sendUsage).set({ count: next }).where(eq(sendUsage.id, existing.id));
+    return next;
+  }
+  await db.insert(sendUsage).values({ userId, channel, period, periodStart, count: 1 });
+  return 1;
+}
+async function recordSendAttempt(db, userId, channel) {
+  if (await isSenderBlocked(db, userId)) {
+    return { allowed: false, reason: "Sending is blocked on this account." };
+  }
+  const caps = await getSendCaps(db, userId);
+  const cap = channel === "sms" ? caps.maxSmsPerDay : caps.maxPushPerDay;
+  const now = new Date;
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const hourStart = new Date(now);
+  hourStart.setMinutes(0, 0, 0);
+  const [dayCount, hourCount] = await Promise.all([
+    bumpUsage(db, userId, channel, "day", dayStart),
+    bumpUsage(db, userId, channel, "hour", hourStart)
+  ]);
+  if (hourCount > 3 * cap) {
+    await db.insert(blockedSenders).values({ userId, reason: `Auto-blocked: ${hourCount} ${channel} sends in one hour (daily cap ${cap}).`, blockedBy: null, blockedAt: now }).onConflictDoNothing();
+    await logAdminAction(db, 0, "abuse.auto_block", "user", String(userId), `${channel}: ${hourCount}/hour exceeded 3x daily cap (${cap}).`);
+    return { allowed: false, reason: "Sending is blocked on this account.", autoBlocked: true };
+  }
+  if (dayCount > cap) {
+    return { allowed: false, reason: `Daily ${channel} limit reached (${cap}/day).` };
+  }
+  return { allowed: true };
+}
+async function checkSendCap(db, userId, channel) {
+  if (await isSenderBlocked(db, userId)) {
+    return { allowed: false, reason: "Sending is blocked on this account." };
+  }
+  const caps = await getSendCaps(db, userId);
+  const cap = channel === "sms" ? caps.maxSmsPerDay : caps.maxPushPerDay;
+  const now = new Date;
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const row = (await db.select().from(sendUsage).where(and(eq(sendUsage.userId, userId), eq(sendUsage.channel, channel), eq(sendUsage.period, "day"), eq(sendUsage.periodStart, dayStart))).limit(1))[0];
+  if ((row?.count ?? 0) >= cap) {
+    return { allowed: false, reason: `Daily ${channel} limit reached (${cap}/day).` };
+  }
+  return { allowed: true };
+}
+var broadcastSegmentSchema = _enum(["all", "pro", "free"]);
+var platformAdminActions = {
+  getFeatureFlags: defineAction({
+    request: object({}),
+    response: object({ marketplace_enabled: boolean2(), signups_enabled: boolean2(), broadcasts_enabled: boolean2() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const [marketplace_enabled, signups_enabled, broadcasts_enabled] = await Promise.all([
+        isFeatureEnabled(db, "marketplace_enabled"),
+        isFeatureEnabled(db, "signups_enabled"),
+        isFeatureEnabled(db, "broadcasts_enabled")
+      ]);
+      return { marketplace_enabled, signups_enabled, broadcasts_enabled };
+    }
+  }),
+  adminFeatureFlags: defineAction({
+    request: object({}),
+    response: object({
+      flags: array(object({ key: string2(), enabled: boolean2(), description: string2(), updatedAt: string2() }))
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const rows = await db.select().from(featureFlags).orderBy(featureFlags.key);
+      return {
+        flags: rows.map((r) => ({ key: r.key, enabled: r.enabled, description: r.description, updatedAt: r.updatedAt.toISOString() }))
+      };
+    }
+  }),
+  adminFeatureFlagSet: defineAction({
+    request: object({ key: _enum(FEATURE_FLAG_KEYS), enabled: boolean2() }),
+    response: object({ ok: literal(true), key: string2(), enabled: boolean2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const existing = (await db.select({ key: featureFlags.key }).from(featureFlags).where(eq(featureFlags.key, args.key)).limit(1))[0];
+      if (existing)
+        await db.update(featureFlags).set({ enabled: args.enabled, updatedAt: now }).where(eq(featureFlags.key, args.key));
+      else
+        await db.insert(featureFlags).values({ key: args.key, enabled: args.enabled, description: FLAG_DESCRIPTIONS[args.key] ?? "", updatedAt: now });
+      await logAdminAction(db, admin.id, "flags.toggle", "feature_flag", args.key, `${args.key} -> ${args.enabled ? "on" : "off"}`);
+      ctx.invalidateQueries();
+      return { ok: true, key: args.key, enabled: args.enabled };
+    }
+  }),
+  adminBroadcastSend: defineAction({
+    request: object({ title: string2().trim().min(1).max(120), body: string2().trim().min(1).max(500), segment: broadcastSegmentSchema }),
+    response: object({ ok: literal(true), sentCount: number2(), totalUsers: number2(), broadcastId: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      if (!await isFeatureEnabled(db, "broadcasts_enabled"))
+        throw new Error("Broadcasts are disabled.");
+      const allUsers = await db.select({ id: authUsers.id, tier: authUsers.tier }).from(authUsers);
+      const targets = args.segment === "all" ? allUsers : allUsers.filter((u) => args.segment === "pro" ? u.tier === "premium" : u.tier !== "premium");
+      let sentCount = 0;
+      for (const user of targets) {
+        try {
+          const result = await sendPushToUser(db, user.id, { titleEn: args.title, titleEs: args.title, bodyEn: args.body, bodyEs: args.body, url: "/app/" });
+          if (result.sent > 0)
+            sentCount += 1;
+        } catch {}
+      }
+      const inserted = (await db.insert(broadcastLog).values({
+        title: args.title,
+        body: args.body,
+        segment: args.segment,
+        sentCount,
+        createdBy: admin.id,
+        createdAt: new Date
+      }).returning({ id: broadcastLog.id }))[0];
+      if (!inserted)
+        throw new Error("Could not record the broadcast.");
+      await logAdminAction(db, admin.id, "broadcast.send", "broadcast", String(inserted.id), `"${args.title}" -> ${args.segment} (${sentCount}/${targets.length} delivered)`);
+      ctx.invalidateQueries();
+      return { ok: true, sentCount, totalUsers: targets.length, broadcastId: inserted.id };
+    }
+  }),
+  adminBroadcastHistory: defineAction({
+    request: object({ page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(25) }),
+    response: object({
+      entries: array(object({ id: number2(), title: string2(), body: string2(), segment: string2(), sentCount: number2(), createdBy: number2(), createdAt: string2() })),
+      total: number2(),
+      page: number2(),
+      pageSize: number2()
+    }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const total = (await db.select({ n: sql`count(*)` }).from(broadcastLog))[0]?.n ?? 0;
+      const rows = await db.select().from(broadcastLog).orderBy(desc(broadcastLog.createdAt), desc(broadcastLog.id)).limit(args.pageSize).offset((args.page - 1) * args.pageSize);
+      return {
+        entries: rows.map((r) => ({ id: r.id, title: r.title, body: r.body, segment: r.segment, sentCount: r.sentCount, createdBy: r.createdBy, createdAt: r.createdAt.toISOString() })),
+        total,
+        page: args.page,
+        pageSize: args.pageSize
+      };
+    }
+  }),
+  adminVerificationList: defineAction({
+    request: object({}),
+    response: object({
+      businesses: array(object({
+        companyId: number2(),
+        companyName: string2(),
+        licenseNumber: string2(),
+        status: string2(),
+        note: string2(),
+        reviewedAt: string2().nullable(),
+        reviewedByName: string2().nullable()
+      }))
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const settingsRows = await db.select({
+        companyId: settings.companyId,
+        companyName: settings.companyName,
+        licenseNumber: settings.licenseNumber
+      }).from(settings);
+      const verifications = await db.select().from(businessVerifications);
+      const byCompany = new Map(verifications.map((v) => [v.companyId, v]));
+      const reviewerIds = [...new Set(verifications.map((v) => v.reviewedBy).filter((id) => typeof id === "number"))];
+      const reviewers = reviewerIds.length ? await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(inArray(authUsers.id, reviewerIds)) : [];
+      const reviewerName = new Map(reviewers.map((r) => [r.id, r.name]));
+      const seen = new Map;
+      for (const s of settingsRows) {
+        if (!seen.has(s.companyId))
+          seen.set(s.companyId, { companyName: s.companyName, licenseNumber: s.licenseNumber });
+      }
+      return {
+        businesses: [...seen.entries()].map(([companyId, s]) => {
+          const v = byCompany.get(companyId);
+          return {
+            companyId,
+            companyName: s.companyName,
+            licenseNumber: v?.licenseNumber ?? s.licenseNumber,
+            status: v?.status ?? "pending",
+            note: v?.note ?? "",
+            reviewedAt: v?.reviewedAt ? v.reviewedAt.toISOString() : null,
+            reviewedByName: v?.reviewedBy != null ? reviewerName.get(v.reviewedBy) ?? null : null
+          };
+        }).sort((a, b) => a.companyName.localeCompare(b.companyName))
+      };
+    }
+  }),
+  adminVerificationSet: defineAction({
+    request: object({ companyId: number2().int().positive(), status: _enum(["pending", "verified", "rejected"]), note: string2().trim().max(500).default("") }),
+    response: object({ ok: literal(true), companyId: number2(), status: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const settingsRow = (await db.select({ licenseNumber: settings.licenseNumber }).from(settings).where(eq(settings.companyId, args.companyId)).limit(1))[0];
+      const existing = (await db.select({ id: businessVerifications.id }).from(businessVerifications).where(eq(businessVerifications.companyId, args.companyId)).limit(1))[0];
+      if (existing) {
+        await db.update(businessVerifications).set({ status: args.status, note: args.note, reviewedBy: admin.id, reviewedAt: now, updatedAt: now }).where(eq(businessVerifications.id, existing.id));
+      } else {
+        await db.insert(businessVerifications).values({
+          companyId: args.companyId,
+          licenseNumber: settingsRow?.licenseNumber ?? "",
+          status: args.status,
+          note: args.note,
+          reviewedBy: admin.id,
+          reviewedAt: now,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+      await logAdminAction(db, admin.id, "verification.set", "business", String(args.companyId), `status -> ${args.status}${args.note ? ` \u2014 ${args.note}` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true, companyId: args.companyId, status: args.status };
+    }
+  }),
+  adminRevenueDashboard: defineAction({
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      mrrDollars: number2().nullable(),
+      activeSubscriptions: number2().nullable(),
+      trialing: number2().nullable(),
+      failedPayments: number2().nullable(),
+      localActivePremium: number2(),
+      cachedAt: string2()
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = Date.now();
+      if (revenueCache && now - revenueCache.at < 5 * 60 * 1000) {
+        return { ...revenueCache.data, cachedAt: new Date(revenueCache.at).toISOString() };
+      }
+      const stats = await ctx.executePrivileged(privileged.getStripeRevenueStats, {});
+      const localActivePremium = (await db.select({ n: sql`count(*)` }).from(authUsers).where(eq(authUsers.tier, "premium")))[0]?.n ?? 0;
+      const data = {
+        configured: stats.configured,
+        mrrDollars: stats.mrrCents != null ? stats.mrrCents / 100 : null,
+        activeSubscriptions: stats.activeSubscriptions,
+        trialing: stats.trialing,
+        failedPayments: stats.failedPayments,
+        localActivePremium
+      };
+      revenueCache = { at: now, data };
+      return { ...data, cachedAt: new Date(now).toISOString() };
+    }
+  }),
+  adminSupportView: defineAction({
+    request: object({ email: string2().trim().email().max(200) }),
+    response: object({
+      found: boolean2(),
+      profile: object({
+        id: number2(),
+        name: string2(),
+        email: string2(),
+        tier: string2(),
+        subscriptionStatus: string2(),
+        provider: string2(),
+        currentPeriodEnd: string2().nullable(),
+        cancelAtPeriodEnd: boolean2(),
+        suspended: boolean2(),
+        isPlatformAdmin: boolean2(),
+        createdAt: string2()
+      }).nullable(),
+      counts: object({ jobs: number2(), clients: number2(), invoices: number2(), quotes: number2() }).nullable(),
+      recentActivity: array(object({ kind: string2(), channel: string2(), sentAt: string2() })).nullable()
+    }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const email = args.email.toLowerCase();
+      const user = (await db.select().from(authUsers).where(sql`lower(${authUsers.email}) = ${email}`).limit(1))[0];
+      if (!user)
+        return { found: false, profile: null, counts: null, recentActivity: null };
+      const provider = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : user.subscriptionStatus === "founder" ? "founder" : user.subscriptionStatus === "manual" ? "manual" : "none";
+      const [jobs2, clients2, invoices2, quotes2] = await Promise.all([
+        db.select({ n: sql`count(*)` }).from(jobs).where(eq(jobs.companyId, user.companyId)),
+        db.select({ n: sql`count(*)` }).from(clients).where(eq(clients.companyId, user.companyId)),
+        db.select({ n: sql`count(*)` }).from(invoices).where(eq(invoices.companyId, user.companyId)),
+        db.select({ n: sql`count(*)` }).from(quotes).where(eq(quotes.companyId, user.companyId))
+      ]);
+      const activity = await db.select().from(automationLogs).where(eq(automationLogs.companyId, user.companyId)).orderBy(desc(automationLogs.sentAt)).limit(10);
+      await logAdminAction(db, admin.id, "support.view", "user", String(user.id), `viewed ${user.email}`);
+      return {
+        found: true,
+        profile: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          tier: user.tier,
+          subscriptionStatus: user.subscriptionStatus,
+          provider,
+          currentPeriodEnd: user.subscriptionCurrentPeriodEnd ? user.subscriptionCurrentPeriodEnd.toISOString() : null,
+          cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+          suspended: !!user.suspendedAt,
+          isPlatformAdmin: user.isPlatformAdmin,
+          createdAt: user.createdAt.toISOString()
+        },
+        counts: {
+          jobs: jobs2[0]?.n ?? 0,
+          clients: clients2[0]?.n ?? 0,
+          invoices: invoices2[0]?.n ?? 0,
+          quotes: quotes2[0]?.n ?? 0
+        },
+        recentActivity: activity.map((a) => ({ kind: a.kind, channel: a.channel, sentAt: a.sentAt.toISOString() }))
+      };
+    }
+  }),
+  adminAbuseOverview: defineAction({
+    request: object({}),
+    response: object({
+      defaults: object({ maxSmsPerDay: number2(), maxPushPerDay: number2() }),
+      overrides: array(object({ userId: number2(), userName: string2(), userEmail: string2(), maxSmsPerDay: number2(), maxPushPerDay: number2() })),
+      blocked: array(object({ userId: number2(), userName: string2(), userEmail: string2(), reason: string2(), blockedAt: string2() }))
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const [smsRaw, pushRaw] = await Promise.all([
+        getPlatformSetting(db, "default_max_sms_per_day", "50"),
+        getPlatformSetting(db, "default_max_push_per_day", "100")
+      ]);
+      const caps = await db.select().from(sendCaps);
+      const blocked = await db.select().from(blockedSenders).orderBy(desc(blockedSenders.blockedAt));
+      const userIds = [...new Set([...caps.map((c) => c.userId), ...blocked.map((b) => b.userId)])];
+      const users = userIds.length ? await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(inArray(authUsers.id, userIds)) : [];
+      const byId = new Map(users.map((u) => [u.id, u]));
+      return {
+        defaults: { maxSmsPerDay: parseCap(smsRaw, 50), maxPushPerDay: parseCap(pushRaw, 100) },
+        overrides: caps.map((c) => ({ userId: c.userId, userName: byId.get(c.userId)?.name ?? `#${c.userId}`, userEmail: byId.get(c.userId)?.email ?? "", maxSmsPerDay: c.maxSmsPerDay, maxPushPerDay: c.maxPushPerDay })),
+        blocked: blocked.map((b) => ({ userId: b.userId, userName: byId.get(b.userId)?.name ?? `#${b.userId}`, userEmail: byId.get(b.userId)?.email ?? "", reason: b.reason, blockedAt: b.blockedAt.toISOString() }))
+      };
+    }
+  }),
+  adminAbuseCapSet: defineAction({
+    request: object({ userId: number2().int().positive(), maxSmsPerDay: number2().int().min(1).max(1e5), maxPushPerDay: number2().int().min(1).max(1e5) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const existing = (await db.select({ userId: sendCaps.userId }).from(sendCaps).where(eq(sendCaps.userId, args.userId)).limit(1))[0];
+      if (existing)
+        await db.update(sendCaps).set({ maxSmsPerDay: args.maxSmsPerDay, maxPushPerDay: args.maxPushPerDay, updatedAt: now }).where(eq(sendCaps.userId, args.userId));
+      else
+        await db.insert(sendCaps).values({ userId: args.userId, maxSmsPerDay: args.maxSmsPerDay, maxPushPerDay: args.maxPushPerDay, updatedAt: now });
+      await logAdminAction(db, admin.id, "abuse.cap_set", "user", String(args.userId), `sms ${args.maxSmsPerDay}/day, push ${args.maxPushPerDay}/day`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminAbuseDefaultsSet: defineAction({
+    request: object({ maxSmsPerDay: number2().int().min(1).max(1e5), maxPushPerDay: number2().int().min(1).max(1e5) }),
+    response: object({ ok: literal(true), maxSmsPerDay: number2(), maxPushPerDay: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      for (const [key, value] of [["default_max_sms_per_day", args.maxSmsPerDay], ["default_max_push_per_day", args.maxPushPerDay]]) {
+        const existing = (await db.select({ key: platformSettings.key }).from(platformSettings).where(eq(platformSettings.key, key)).limit(1))[0];
+        if (existing)
+          await db.update(platformSettings).set({ value: String(value), updatedAt: now }).where(eq(platformSettings.key, key));
+        else
+          await db.insert(platformSettings).values({ key, value: String(value), updatedAt: now });
+      }
+      await logAdminAction(db, admin.id, "abuse.defaults_set", "platform_setting", "send_caps", `defaults: sms ${args.maxSmsPerDay}/day, push ${args.maxPushPerDay}/day`);
+      ctx.invalidateQueries();
+      return { ok: true, maxSmsPerDay: args.maxSmsPerDay, maxPushPerDay: args.maxPushPerDay };
+    }
+  }),
+  adminBlockUser: defineAction({
+    request: object({ userId: number2().int().positive(), reason: string2().trim().max(300).default("") }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      await db.insert(blockedSenders).values({ userId: args.userId, reason: args.reason, blockedBy: admin.id, blockedAt: new Date }).onConflictDoNothing();
+      await logAdminAction(db, admin.id, "abuse.block", "user", String(args.userId), args.reason || "manual block");
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminUnblockUser: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      await db.delete(blockedSenders).where(eq(blockedSenders.userId, args.userId));
+      await logAdminAction(db, admin.id, "abuse.unblock", "user", String(args.userId), "unblocked");
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  })
+};
+var revenueCache = null;
+
+// src/platform-admin-phase1.ts
+import { createHash, randomBytes as randomBytes2 } from "crypto";
+function sha256Hex(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+function randomHex(bytes = 48) {
+  return randomBytes2(bytes).toString("hex");
+}
+async function getUserOrThrow(db, userId) {
+  const user = (await db.select().from(authUsers).where(eq(authUsers.id, userId)).limit(1))[0];
+  if (!user)
+    throw new Error("User not found.");
+  return user;
+}
+async function upsertPlatformSetting(db, key, value) {
+  const now = new Date;
+  const existing = (await db.select({ key: platformSettings.key }).from(platformSettings).where(eq(platformSettings.key, key)).limit(1))[0];
+  if (existing)
+    await db.update(platformSettings).set({ value, updatedAt: now }).where(eq(platformSettings.key, key));
+  else
+    await db.insert(platformSettings).values({ key, value, updatedAt: now });
+}
+var platformAdminPhase1Actions = {
+  adminUserDelete: defineAction({
+    request: object({ userId: number2().int().positive(), reason: string2().trim().max(500).default("") }),
+    response: object({ ok: literal(true), tablesCleared: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.id === admin.id)
+        throw new Error("You can't delete your own account.");
+      if (target.isPlatformAdmin)
+        throw new Error("Platform admin accounts can't be deleted from here.");
+      const { tablesCleared, soleUser } = await deleteUserAccount(db, target);
+      await logAdminAction(db, admin.id, "user.delete", "auth_user", String(target.id), `${target.name} <${target.email}> \u2014 ${soleUser ? `company ${target.companyId} data cleared (${tablesCleared} tables)` : "personal rows removed"}${args.reason ? ` \u2014 ${args.reason}` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true, tablesCleared };
+    }
+  }),
+  adminUserGrantFounder: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.subscriptionStatus === "founder")
+        throw new Error("This user already has Founders status.");
+      await db.update(authUsers).set({ tier: "premium", subscriptionStatus: "founder", cancelAtPeriodEnd: false, updatedAt: new Date }).where(eq(authUsers.id, target.id));
+      await logAdminAction(db, admin.id, "user.founder_grant", "auth_user", String(target.id), `${target.name} <${target.email}> granted Founders (lifetime) status`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminUserRevokeFounder: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.subscriptionStatus !== "founder")
+        throw new Error("This user doesn't have Founders status.");
+      await db.update(authUsers).set({ tier: "free", subscriptionStatus: "inactive", updatedAt: new Date }).where(eq(authUsers.id, target.id));
+      await logAdminAction(db, admin.id, "user.founder_revoke", "auth_user", String(target.id), `${target.name} <${target.email}> Founders status revoked`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminImpersonateStart: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ proof: string2(), expiresAt: string2(), userName: string2(), userEmail: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.id === admin.id)
+        throw new Error("You can't impersonate yourself.");
+      if (target.isPlatformAdmin)
+        throw new Error("You can't impersonate another platform admin.");
+      if (target.suspendedAt)
+        throw new Error("This account is suspended \u2014 unsuspend it first to impersonate.");
+      if (!target.emailVerifiedAt)
+        throw new Error("This account hasn't verified its email yet.");
+      const meta = ctx;
+      const now = new Date;
+      const proof = randomHex();
+      const expiresAt = new Date(now.getTime() + 30 * 60000);
+      await db.insert(authSessions).values({
+        userId: target.id,
+        tokenHash: sha256Hex(proof),
+        tokenType: "proof",
+        expiresAt,
+        lastSeenAt: now,
+        createdAt: now,
+        userAgent: `impersonation/${(meta.userAgent ?? "").slice(0, 280)}`,
+        ipHash: meta.ipHash ?? "",
+        impersonatedBy: admin.id
+      });
+      await logAdminAction(db, admin.id, "user.impersonate_start", "auth_user", String(target.id), `${admin.name} started impersonating ${target.name} <${target.email}> (30 min)`);
+      return { proof, expiresAt: expiresAt.toISOString(), userName: target.name, userEmail: target.email };
+    }
+  }),
+  adminImpersonateEnd: defineAction({
+    request: object({ _sessionToken: string2().min(32).max(300) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = platformDb(ctx);
+      const session = (await db.select().from(authSessions).where(and(eq(authSessions.tokenHash, sha256Hex(args._sessionToken)), isNull(authSessions.revokedAt))).limit(1))[0];
+      if (!session || session.impersonatedBy == null)
+        throw new Error("No active impersonation session found.");
+      const target = await getUserOrThrow(db, session.userId);
+      await db.update(authSessions).set({ revokedAt: new Date }).where(eq(authSessions.id, session.id));
+      await logAdminAction(db, session.impersonatedBy, "user.impersonate_end", "auth_user", String(target.id), `Impersonation of ${target.name} <${target.email}> ended`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminTeamList: defineAction({
+    request: object({}),
+    response: object({
+      members: array(object({
+        userId: number2(),
+        name: string2(),
+        email: string2(),
+        role: string2(),
+        grantedByName: string2().nullable(),
+        createdAt: string2()
+      }))
+    }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin", "support");
+      const db = platformDb(ctx);
+      const rows = await db.select().from(adminTeamRoles).orderBy(adminTeamRoles.createdAt);
+      const admins = await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(eq(authUsers.isPlatformAdmin, true));
+      const roleUserIds = rows.map((r) => r.userId);
+      const roleUsers = roleUserIds.length ? await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(sql`${authUsers.id} IN (${sql.join(roleUserIds.map((id) => sql`${id}`), sql`, `)})`) : [];
+      const byId = new Map(roleUsers.map((u) => [u.id, u]));
+      const granters = new Map(admins.map((a) => [a.id, a.name]));
+      const members = [
+        ...admins.map((a) => ({ userId: a.id, name: a.name, email: a.email, role: "admin", grantedByName: null, createdAt: "" })),
+        ...rows.map((r) => {
+          const u = byId.get(r.userId);
+          return {
+            userId: r.userId,
+            name: u?.name ?? `#${r.userId}`,
+            email: u?.email ?? "",
+            role: r.role,
+            grantedByName: r.grantedBy != null ? granters.get(r.grantedBy) ?? null : null,
+            createdAt: r.createdAt.toISOString()
+          };
+        })
+      ];
+      return { members };
+    }
+  }),
+  adminTeamSetRole: defineAction({
+    request: object({ userId: number2().int().positive(), role: _enum(TEAM_ROLES) }),
+    response: object({ ok: literal(true), role: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.id === admin.id)
+        throw new Error("You can't change your own role.");
+      if (target.isPlatformAdmin)
+        throw new Error("Platform admins already have full access.");
+      if (args.role === "admin")
+        throw new Error("Use the platform admin flag for full admins \u2014 team roles are support/moderator.");
+      const now = new Date;
+      const existing = (await db.select({ userId: adminTeamRoles.userId }).from(adminTeamRoles).where(eq(adminTeamRoles.userId, target.id)).limit(1))[0];
+      if (existing)
+        await db.update(adminTeamRoles).set({ role: args.role, grantedBy: admin.id, updatedAt: now }).where(eq(adminTeamRoles.userId, target.id));
+      else
+        await db.insert(adminTeamRoles).values({ userId: target.id, role: args.role, grantedBy: admin.id, createdAt: now, updatedAt: now });
+      await logAdminAction(db, admin.id, "team.role_set", "auth_user", String(target.id), `${target.name} <${target.email}> \u2192 ${args.role}`);
+      ctx.invalidateQueries();
+      return { ok: true, role: args.role };
+    }
+  }),
+  adminTeamRemoveRole: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const target = await getUserOrThrow(db, args.userId);
+      if (target.id === admin.id)
+        throw new Error("You can't remove your own role.");
+      await db.delete(adminTeamRoles).where(eq(adminTeamRoles.userId, target.id));
+      await logAdminAction(db, admin.id, "team.role_removed", "auth_user", String(target.id), `${target.name} <${target.email}> team role removed`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminMyTeamRole: defineAction({
+    request: object({}),
+    response: object({ role: string2().nullable() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const identity = ctx.workspaceUserId;
+      if (!identity)
+        return { role: null };
+      const user = (await db.select({ id: authUsers.id, isPlatformAdmin: authUsers.isPlatformAdmin }).from(authUsers).where(eq(authUsers.id, identity)).limit(1))[0];
+      if (!user)
+        return { role: null };
+      const role = await teamRoleOf(db, { id: user.id, isPlatformAdmin: user.isPlatformAdmin });
+      return { role };
+    }
+  }),
+  adminSubscriptionsList: defineAction({
+    request: object({ status: _enum(["active", "trialing", "past_due", "canceled", "all"]).default("all"), limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      subscriptions: array(object({
+        id: string2(),
+        customerId: string2(),
+        customerEmail: string2().nullable(),
+        status: string2(),
+        amountCents: number2(),
+        interval: string2(),
+        currentPeriodEnd: number2().nullable(),
+        cancelAtPeriodEnd: boolean2()
+      })),
+      hasMore: boolean2()
+    }),
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin");
+      return ctx.executePrivileged(privileged.listStripeSubscriptions, args);
+    }
+  }),
+  adminPaymentsList: defineAction({
+    request: object({ limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      charges: array(object({
+        id: string2(),
+        amount: number2(),
+        amountRefunded: number2(),
+        currency: string2(),
+        created: number2(),
+        status: string2(),
+        customerEmail: string2().nullable(),
+        description: string2().nullable()
+      })),
+      hasMore: boolean2()
+    }),
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin");
+      return ctx.executePrivileged(privileged.listStripePayments, args);
+    }
+  }),
+  adminFailedPayments: defineAction({
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      failed: array(object({
+        invoiceId: string2(),
+        customerEmail: string2().nullable(),
+        amountCents: number2(),
+        currency: string2(),
+        status: string2(),
+        attemptCount: number2(),
+        nextRetryAt: number2().nullable(),
+        created: number2()
+      }))
+    }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin");
+      return ctx.executePrivileged(privileged.listStripeFailedPayments, {});
+    }
+  }),
+  adminPlansGet: defineAction({
+    request: object({}),
+    response: object({ name: string2(), priceCents: number2(), interval: string2(), stripePriceId: string2() }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const [name, priceCents, interval] = await Promise.all([
+        getPlatformSetting(db, "plan_pro_name", "Crewkat Premium"),
+        getPlatformSetting(db, "plan_pro_price_cents", "1900"),
+        getPlatformSetting(db, "plan_pro_interval", "month")
+      ]);
+      return { name, priceCents: Number.parseInt(priceCents, 10) || 1900, interval, stripePriceId: "price_1UK81ZAZoTlhRfFcUEqPjzxa" };
+    }
+  }),
+  adminPlansUpdate: defineAction({
+    request: object({ name: string2().trim().min(2).max(80), priceCents: number2().int().min(100).max(1e5), interval: _enum(["month", "year"]) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      await upsertPlatformSetting(db, "plan_pro_name", args.name);
+      await upsertPlatformSetting(db, "plan_pro_price_cents", String(args.priceCents));
+      await upsertPlatformSetting(db, "plan_pro_interval", args.interval);
+      await logAdminAction(db, admin.id, "billing.plan_update", "platform_setting", "plan_pro", `${args.name} \u2014 ${(args.priceCents / 100).toFixed(2)}/${args.interval} (metadata only; Stripe Price untouched)`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminPromoCodesList: defineAction({
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      coupons: array(object({
+        id: string2(),
+        code: string2().nullable(),
+        percentOff: number2().nullable(),
+        amountOff: number2().nullable(),
+        currency: string2().nullable(),
+        duration: string2(),
+        timesRedeemed: number2()
+      }))
+    }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin");
+      return ctx.executePrivileged(privileged.listStripeCoupons, { limit: 25 });
+    }
+  }),
+  adminPromoCodeCreate: defineAction({
+    request: object({
+      code: string2().trim().min(2).max(40).regex(/^[a-zA-Z0-9-_]+$/, "Letters, numbers, dashes and underscores only."),
+      percentOff: number2().min(1).max(100).optional(),
+      amountOffCents: number2().int().positive().max(1e5).optional(),
+      duration: _enum(["once", "repeating", "forever"]).default("once"),
+      durationInMonths: number2().int().min(1).max(36).default(3)
+    }),
+    response: object({ id: string2(), code: string2().nullable() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const coupon = await ctx.executePrivileged(privileged.createStripeCoupon, {
+        code: args.code,
+        percentOff: args.percentOff,
+        amountOffCents: args.amountOffCents,
+        duration: args.duration,
+        durationInMonths: args.durationInMonths
+      });
+      await db.insert(promoCodeLog).values({
+        stripeCouponId: coupon.id,
+        code: coupon.code ?? args.code.toUpperCase(),
+        percentOff: coupon.percentOff ?? undefined,
+        amountOffCents: coupon.amountOff ?? undefined,
+        duration: coupon.duration,
+        createdBy: admin.id,
+        createdAt: new Date
+      }).onConflictDoNothing();
+      const desc = coupon.percentOff ? `${coupon.percentOff}% off` : `$${((coupon.amountOff ?? 0) / 100).toFixed(2)} off`;
+      await logAdminAction(db, admin.id, "billing.promo_create", "stripe_coupon", coupon.id, `${coupon.code} \u2014 ${desc} (${coupon.duration})`);
+      ctx.invalidateQueries();
+      return { id: coupon.id, code: coupon.code };
+    }
+  }),
+  adminPromoCodeDelete: defineAction({
+    request: object({ couponId: string2().min(1).max(200) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      await ctx.executePrivileged(privileged.deleteStripeCoupon, { couponId: args.couponId });
+      await db.delete(promoCodeLog).where(eq(promoCodeLog.stripeCouponId, args.couponId));
+      await logAdminAction(db, admin.id, "billing.promo_delete", "stripe_coupon", args.couponId, "coupon deleted");
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminUserReports: defineAction({
+    request: object({}),
+    response: object({
+      reports: array(object({
+        id: number2(),
+        targetType: string2(),
+        targetId: number2(),
+        targetName: string2(),
+        reporterName: string2(),
+        reason: string2(),
+        details: string2(),
+        createdAt: string2()
+      }))
+    }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const rows = await db.select().from(userReports).where(eq(userReports.status, "open")).orderBy(desc(userReports.createdAt));
+      const userIds = [...new Set(rows.flatMap((r) => [r.reporterUserId, r.targetType === "user" ? r.targetId : null]).filter((id) => typeof id === "number"))];
+      const users = userIds.length ? await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(sql`${authUsers.id} IN (${sql.join(userIds.map((id) => sql`${id}`), sql`, `)})`) : [];
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      const messageIds = rows.filter((r) => r.targetType === "message").map((r) => r.targetId);
+      const messages = messageIds.length ? await db.select({ id: marketplaceMessages.id, body: marketplaceMessages.body }).from(marketplaceMessages).where(sql`${marketplaceMessages.id} IN (${sql.join(messageIds.map((id) => sql`${id}`), sql`, `)})`) : [];
+      const bodyById = new Map(messages.map((m) => [m.id, m.body]));
+      return {
+        reports: rows.map((r) => ({
+          id: r.id,
+          targetType: r.targetType,
+          targetId: r.targetId,
+          targetName: r.targetType === "user" ? nameById.get(r.targetId) ?? `#${r.targetId}` : bodyById.get(r.targetId)?.slice(0, 80) ?? `#${r.targetId}`,
+          reporterName: r.reporterUserId != null ? nameById.get(r.reporterUserId) ?? "\u2014" : "\u2014",
+          reason: r.reason,
+          details: r.details,
+          createdAt: r.createdAt.toISOString()
+        }))
+      };
+    }
+  }),
+  adminUserReportDecide: defineAction({
+    request: object({ reportId: number2().int().positive(), decision: _enum(["reviewed_ok", "reviewed_actioned"]), note: string2().trim().max(500).default("") }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const now = new Date;
+      const report = (await db.select().from(userReports).where(eq(userReports.id, args.reportId)).limit(1))[0];
+      if (!report)
+        throw new Error("Report not found.");
+      if (report.status !== "open")
+        throw new Error("This report was already decided.");
+      await db.update(userReports).set({ status: args.decision, decidedBy: admin.id, decidedAt: now, decisionNote: args.note }).where(eq(userReports.id, args.reportId));
+      await logAdminAction(db, admin.id, "moderation.report_decide", "user_report", String(args.reportId), `${report.targetType} #${report.targetId} \u2192 ${args.decision}${args.note ? ` \u2014 ${args.note}` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminContentHide: defineAction({
+    request: object({ kind: _enum(["listing", "message"]), id: number2().int().positive(), reason: string2().trim().max(300).default("") }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const now = new Date;
+      if (args.kind === "listing") {
+        const listing = (await db.select({ id: marketplaceListings.id, title: marketplaceListings.title }).from(marketplaceListings).where(eq(marketplaceListings.id, args.id)).limit(1))[0];
+        if (!listing)
+          throw new Error("Listing not found.");
+        await db.update(marketplaceListings).set({ moderationStatus: "removed", moderationReason: args.reason || "Hidden by moderation.", updatedAt: now }).where(eq(marketplaceListings.id, args.id));
+        await db.update(marketplaceFlags).set({ status: "reviewed_removed" }).where(and(eq(marketplaceFlags.listingId, args.id), eq(marketplaceFlags.status, "open")));
+        await logAdminAction(db, admin.id, "moderation.content_hide", "marketplace_listing", String(args.id), `${listing.title}${args.reason ? ` \u2014 ${args.reason}` : ""}`);
+      } else {
+        const msg = (await db.select({ id: marketplaceMessages.id }).from(marketplaceMessages).where(eq(marketplaceMessages.id, args.id)).limit(1))[0];
+        if (!msg)
+          throw new Error("Message not found.");
+        await db.update(marketplaceMessages).set({ hidden: true }).where(eq(marketplaceMessages.id, args.id));
+        await logAdminAction(db, admin.id, "moderation.content_hide", "marketplace_message", String(args.id), args.reason || "hidden by moderation");
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminContentUnhide: defineAction({
+    request: object({ kind: _enum(["listing", "message"]), id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      if (args.kind === "listing") {
+        await db.update(marketplaceListings).set({ moderationStatus: "active", moderationReason: "", updatedAt: new Date }).where(eq(marketplaceListings.id, args.id));
+        await logAdminAction(db, admin.id, "moderation.content_unhide", "marketplace_listing", String(args.id), "restored to active");
+      } else {
+        await db.update(marketplaceMessages).set({ hidden: false }).where(eq(marketplaceMessages.id, args.id));
+        await logAdminAction(db, admin.id, "moderation.content_unhide", "marketplace_message", String(args.id), "restored");
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminKeywordRulesList: defineAction({
+    request: object({}),
+    response: object({
+      rules: array(object({ id: number2(), pattern: string2(), action: string2(), note: string2(), createdAt: string2() })),
+      newUserCap: object({ listingsPerDay: number2(), newUserDays: number2() })
+    }),
+    async handler(ctx) {
+      await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const rules = await db.select().from(moderationKeywordRules).orderBy(moderationKeywordRules.pattern);
+      const [capRaw, daysRaw] = await Promise.all([
+        getPlatformSetting(db, "automod_new_user_listing_cap", "3"),
+        getPlatformSetting(db, "automod_new_user_days", "7")
+      ]);
+      return {
+        rules: rules.map((r) => ({ id: r.id, pattern: r.pattern, action: r.action, note: r.note, createdAt: r.createdAt.toISOString() })),
+        newUserCap: { listingsPerDay: Number.parseInt(capRaw, 10) || 3, newUserDays: Number.parseInt(daysRaw, 10) || 7 }
+      };
+    }
+  }),
+  adminKeywordRuleAdd: defineAction({
+    request: object({ pattern: string2().trim().min(2).max(120), action: _enum(["flag", "hold"]).default("flag"), note: string2().trim().max(300).default("") }),
+    response: object({ ok: literal(true), id: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const dupe = (await db.select({ id: moderationKeywordRules.id }).from(moderationKeywordRules).where(sql`lower(${moderationKeywordRules.pattern}) = ${args.pattern.toLowerCase()}`).limit(1))[0];
+      if (dupe)
+        throw new Error("A rule with this pattern already exists.");
+      const made = (await db.insert(moderationKeywordRules).values({ pattern: args.pattern, action: args.action, note: args.note, createdBy: admin.id, createdAt: new Date }).returning({ id: moderationKeywordRules.id }))[0];
+      if (!made)
+        throw new Error("Could not save the rule.");
+      await logAdminAction(db, admin.id, "moderation.keyword_rule_add", "moderation_keyword_rule", String(made.id), `"${args.pattern}" \u2192 ${args.action}${args.note ? ` \u2014 ${args.note}` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true, id: made.id };
+    }
+  }),
+  adminKeywordRuleDelete: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      const rule = (await db.select().from(moderationKeywordRules).where(eq(moderationKeywordRules.id, args.id)).limit(1))[0];
+      if (!rule)
+        throw new Error("Rule not found.");
+      await db.delete(moderationKeywordRules).where(eq(moderationKeywordRules.id, args.id));
+      await logAdminAction(db, admin.id, "moderation.keyword_rule_delete", "moderation_keyword_rule", String(args.id), `"${rule.pattern}" removed`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminAutomodCapSet: defineAction({
+    request: object({ listingsPerDay: number2().int().min(1).max(50), newUserDays: number2().int().min(1).max(90) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
+      const db = platformDb(ctx);
+      await upsertPlatformSetting(db, "automod_new_user_listing_cap", String(args.listingsPerDay));
+      await upsertPlatformSetting(db, "automod_new_user_days", String(args.newUserDays));
+      await logAdminAction(db, admin.id, "moderation.automod_cap_set", "platform_setting", "automod_new_user_listing_cap", `new-user cap: ${args.listingsPerDay}/day for first ${args.newUserDays} days`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminAuditLogSearch: defineAction({
+    request: object({
+      action: string2().trim().max(80).default(""),
+      targetType: string2().trim().max(40).default(""),
+      adminUserId: number2().int().positive().optional(),
+      from: string2().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      to: string2().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      page: number2().int().min(1).default(1),
+      pageSize: number2().int().min(1).max(100).default(25)
+    }),
+    response: object({
+      entries: array(object({
+        id: number2(),
+        action: string2(),
+        targetType: string2(),
+        targetId: string2(),
+        details: string2(),
+        adminName: string2(),
+        createdAt: string2()
+      })),
+      total: number2(),
+      page: number2(),
+      pageSize: number2()
+    }),
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin");
+      const db = platformDb(ctx);
+      const conds = [];
+      if (args.action)
+        conds.push(like(adminAuditLog.action, `%${args.action}%`));
+      if (args.targetType)
+        conds.push(eq(adminAuditLog.targetType, args.targetType));
+      if (args.adminUserId)
+        conds.push(eq(adminAuditLog.adminUserId, args.adminUserId));
+      if (args.from)
+        conds.push(sql`${adminAuditLog.createdAt} >= ${new Date(`${args.from}T00:00:00Z`).getTime()}`);
+      if (args.to)
+        conds.push(sql`${adminAuditLog.createdAt} < ${new Date(`${args.to}T00:00:00Z`).getTime() + 86400000}`);
+      const where = conds.length ? and(...conds) : undefined;
+      const total = (await db.select({ n: sql`count(*)` }).from(adminAuditLog).where(where))[0]?.n ?? 0;
+      const rows = await db.select({
+        id: adminAuditLog.id,
+        action: adminAuditLog.action,
+        targetType: adminAuditLog.targetType,
+        targetId: adminAuditLog.targetId,
+        details: adminAuditLog.details,
+        createdAt: adminAuditLog.createdAt,
+        adminName: authUsers.name,
+        adminUserId: adminAuditLog.adminUserId
+      }).from(adminAuditLog).leftJoin(authUsers, eq(adminAuditLog.adminUserId, authUsers.id)).where(where).orderBy(desc(adminAuditLog.createdAt), desc(adminAuditLog.id)).limit(args.pageSize).offset((args.page - 1) * args.pageSize);
+      return {
+        entries: rows.map((r) => ({
+          id: r.id,
+          action: r.action,
+          targetType: r.targetType,
+          targetId: r.targetId,
+          details: r.details,
+          adminName: r.adminName ?? (r.adminUserId === 0 ? "System" : "\u2014"),
+          createdAt: r.createdAt.toISOString()
+        })),
+        total,
+        page: args.page,
+        pageSize: args.pageSize
+      };
+    }
+  })
+};
+
+// src/platform-admin-phase2-support.ts
+async function getReportOrThrow(db, reportId) {
+  const report = (await db.select().from(platformSupportReports).where(eq(platformSupportReports.id, reportId)).limit(1))[0];
+  if (!report)
+    throw new Error("Report not found.");
+  return report;
+}
+var platformAdminPhase2SupportActions = {
+  adminSupportTicketAssign: defineAction({
+    request: object({ reportId: number2().int().positive(), userId: number2().int().positive().nullable() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
+      const db = platformDb(ctx);
+      const report = await getReportOrThrow(db, args.reportId);
+      let assigneeName = "unassigned";
+      if (args.userId !== null) {
+        const target = (await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+        if (!target)
+          throw new Error("User not found.");
+        assigneeName = target.name;
+      }
+      await db.update(platformSupportReports).set({ assignedTo: args.userId, updatedAt: new Date }).where(eq(platformSupportReports.id, report.id));
+      await logAdminAction(db, admin.id, "support.assign", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> \u2014 ${report.subject} \u2014 assigned to ${assigneeName}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminSupportTicketPriority: defineAction({
+    request: object({ reportId: number2().int().positive(), priority: _enum(["low", "normal", "high", "urgent"]) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
+      const db = platformDb(ctx);
+      const report = await getReportOrThrow(db, args.reportId);
+      await db.update(platformSupportReports).set({ priority: args.priority, updatedAt: new Date }).where(eq(platformSupportReports.id, report.id));
+      await logAdminAction(db, admin.id, "support.priority", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> \u2014 ${report.subject} \u2014 priority set to ${args.priority}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminSupportNoteAdd: defineAction({
+    request: object({ reportId: number2().int().positive(), note: string2().trim().min(1).max(2000) }),
+    response: object({ id: number2(), createdAt: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
+      const db = platformDb(ctx);
+      const report = await getReportOrThrow(db, args.reportId);
+      const now = new Date;
+      const made = (await db.insert(platformSupportNotes).values({
+        reportId: report.id,
+        authorId: admin.id,
+        note: args.note,
+        createdAt: now
+      }).returning({ id: platformSupportNotes.id }))[0];
+      if (!made)
+        throw new Error("The note could not be saved.");
+      await logAdminAction(db, admin.id, "support.note_add", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> \u2014 ${report.subject} \u2014 ${args.note.slice(0, 160)}`);
+      ctx.invalidateQueries();
+      return { id: made.id, createdAt: now.toISOString() };
+    }
+  }),
+  adminSupportNotesList: defineAction({
+    request: object({ reportId: number2().int().positive() }),
+    response: object({
+      notes: array(object({
+        id: number2(),
+        authorId: number2(),
+        authorName: string2(),
+        note: string2(),
+        createdAt: string2()
+      }))
+    }),
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin", "support");
+      const db = platformDb(ctx);
+      await getReportOrThrow(db, args.reportId);
+      const rows = await db.select().from(platformSupportNotes).where(eq(platformSupportNotes.reportId, args.reportId)).orderBy(platformSupportNotes.createdAt, platformSupportNotes.id);
+      const authorIds = [...new Set(rows.map((r) => r.authorId))];
+      const authorRows = authorIds.length ? await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(inArray(authUsers.id, authorIds)) : [];
+      const nameById = new Map(authorRows.map((a) => [a.id, a.name]));
+      return {
+        notes: rows.map((r) => ({
+          id: r.id,
+          authorId: r.authorId,
+          authorName: nameById.get(r.authorId) ?? `User ${r.authorId}`,
+          note: r.note,
+          createdAt: r.createdAt.toISOString()
+        }))
+      };
+    }
+  })
+};
+
+// src/platform-admin-phase2-analytics.ts
+var DAY_MS = 86400000;
+function pct1(numerator, denominator) {
+  return denominator > 0 ? Math.round(numerator / denominator * 1000) / 10 : 0;
+}
+function dayBuckets(days) {
+  const out = [];
+  const now = new Date;
+  for (let i = days - 1;i >= 0; i--) {
+    const d = new Date(now.getTime() - i * DAY_MS);
+    out.push({ date: d.toISOString().slice(0, 10), count: 0 });
+  }
+  return out;
+}
+var platformAdminPhase2AnalyticsActions = {
+  adminMarketplaceOverview: defineAction({
+    request: object({}),
+    response: object({
+      listingsTotal: number2(),
+      listingsActive: number2(),
+      listingsLast30d: number2(),
+      listingsByIntent: object({ need: number2(), offer: number2() }),
+      listingsByDay: array(object({ date: string2(), count: number2() })),
+      messagesTotal: number2(),
+      messagesLast30d: number2(),
+      conversationsTotal: number2(),
+      completedJobsTotal: number2(),
+      completedJobsLast30d: number2(),
+      listingToMessageRate: number2()
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const monthAgo = new Date(now.getTime() - 30 * DAY_MS);
+      const listings = await db.select({
+        moderationStatus: marketplaceListings.moderationStatus,
+        intent: marketplaceListings.intent,
+        createdAt: marketplaceListings.createdAt
+      }).from(marketplaceListings);
+      const listingsTotal = listings.length;
+      const listingsActive = listings.filter((l) => l.moderationStatus === "active").length;
+      const listingsLast30d = listings.filter((l) => l.createdAt >= monthAgo).length;
+      const listingsByIntent = {
+        need: listings.filter((l) => l.intent === "need").length,
+        offer: listings.filter((l) => l.intent === "offer").length
+      };
+      const listingsByDay = dayBuckets(30);
+      const byDate = new Map(listingsByDay.map((d) => [d.date, d]));
+      for (const l of listings) {
+        const bucket = byDate.get(l.createdAt.toISOString().slice(0, 10));
+        if (bucket)
+          bucket.count++;
+      }
+      const messages = await db.select({ createdAt: marketplaceMessages.createdAt }).from(marketplaceMessages);
+      const messagesTotal = messages.length;
+      const messagesLast30d = messages.filter((m) => m.createdAt >= monthAgo).length;
+      const conversations = await db.select({ id: marketplaceConversations.id }).from(marketplaceConversations);
+      const conversationsTotal = conversations.length;
+      const jobs2 = await db.select({ completedAt: jobs.completedAt }).from(jobs);
+      const completed = jobs2.filter((j) => j.completedAt != null);
+      const completedJobsTotal = completed.length;
+      const completedJobsLast30d = completed.filter((j) => j.completedAt >= monthAgo).length;
+      return {
+        listingsTotal,
+        listingsActive,
+        listingsLast30d,
+        listingsByIntent,
+        listingsByDay,
+        messagesTotal,
+        messagesLast30d,
+        conversationsTotal,
+        completedJobsTotal,
+        completedJobsLast30d,
+        listingToMessageRate: pct1(conversationsTotal, listingsTotal)
+      };
+    }
+  }),
+  adminGrowthMetrics: defineAction({
+    request: object({}),
+    response: object({
+      signupGrowthWow: number2(),
+      wowHasBaseline: boolean2(),
+      premiumConversionRate: number2(),
+      activeListings: number2(),
+      avgMessagesPerListing: number2(),
+      supportOpenCount: number2(),
+      premiumTotal: number2()
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const now = new Date;
+      const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
+      const twoWeeksAgo = new Date(now.getTime() - 14 * DAY_MS);
+      const users = await db.select({ createdAt: authUsers.createdAt, tier: authUsers.tier }).from(authUsers);
+      const totalUsers = users.length;
+      const current7d = users.filter((u) => u.createdAt >= weekAgo).length;
+      const prior7d = users.filter((u) => u.createdAt >= twoWeeksAgo && u.createdAt < weekAgo).length;
+      const wowHasBaseline = prior7d > 0;
+      const signupGrowthWow = wowHasBaseline ? Math.round((current7d - prior7d) / prior7d * 1000) / 10 : current7d > 0 ? 100 : 0;
+      const premiumTotal = users.filter((u) => u.tier === "premium").length;
+      const premiumConversionRate = pct1(premiumTotal, totalUsers);
+      const activeListings = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(eq(marketplaceListings.moderationStatus, "active"));
+      const listingsTotal = await db.select({ id: marketplaceListings.id }).from(marketplaceListings);
+      const messagesTotal = await db.select({ id: marketplaceMessages.id }).from(marketplaceMessages);
+      const avgMessagesPerListing = listingsTotal.length > 0 ? Math.round(messagesTotal.length / listingsTotal.length * 10) / 10 : 0;
+      const openReports = await db.select({ id: platformSupportReports.id }).from(platformSupportReports).where(eq(platformSupportReports.status, "open"));
+      return {
+        signupGrowthWow,
+        wowHasBaseline,
+        premiumConversionRate,
+        activeListings: activeListings.length,
+        avgMessagesPerListing,
+        supportOpenCount: openReports.length,
+        premiumTotal
+      };
+    }
+  })
+};
+
+// src/platform-admin-phase2-settings.ts
+import { createHash as createHash2, createHmac as createHmac2, randomBytes as randomBytes3 } from "crypto";
+var BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32Encode(bytes) {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const byte of bytes) {
+    value = value << 8 | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += BASE32_ALPHABET[value >>> bits - 5 & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0)
+    out += BASE32_ALPHABET[value << 5 - bits & 31];
+  return out;
+}
+function base32Decode(secret) {
+  const clean = secret.trim().replace(/=+$/, "").toUpperCase();
+  if (!clean)
+    throw new Error("Invalid authenticator secret.");
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const ch of clean) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx < 0)
+      throw new Error("Invalid authenticator secret.");
+    value = value << 5 | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push(value >>> bits - 8 & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
+function hotpCode(secret, counter) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(counter));
+  const mac = createHmac2("sha1", secret).update(buf).digest();
+  const offset = mac[mac.length - 1] & 15;
+  const b0 = mac[offset];
+  const b1 = mac[offset + 1];
+  const b2 = mac[offset + 2];
+  const b3 = mac[offset + 3];
+  const truncated = (b0 & 127) << 24 | b1 << 16 | b2 << 8 | b3;
+  return String(truncated % 1e6).padStart(6, "0");
+}
+function verifyTotpCode(secret, code, atMs = Date.now(), window2 = 1) {
+  if (!/^\d{6}$/.test(code))
+    return false;
+  let key;
+  try {
+    key = base32Decode(secret);
+  } catch {
+    return false;
+  }
+  const step = Math.floor(atMs / 1000 / 30);
+  for (let delta = -window2;delta <= window2; delta++) {
+    if (hotpCode(key, step + delta) === code)
+      return true;
+  }
+  return false;
+}
+function sha256Hex2(value) {
+  return createHash2("sha256").update(value, "utf8").digest("hex");
+}
+async function upsertPlatformSetting2(db, key, value) {
+  const now = new Date;
+  const existing = (await db.select({ key: platformSettings.key }).from(platformSettings).where(eq(platformSettings.key, key)).limit(1))[0];
+  if (existing)
+    await db.update(platformSettings).set({ value, updatedAt: now }).where(eq(platformSettings.key, key));
+  else
+    await db.insert(platformSettings).values({ key, value, updatedAt: now });
+}
+var policyKindSchema = _enum(["terms", "privacy"]);
+var policyVersionSchema = object({
+  id: number2(),
+  kind: string2(),
+  version: string2(),
+  url: string2(),
+  effectiveAt: string2().nullable(),
+  publishedBy: number2().nullable(),
+  createdAt: string2()
+});
+var platformAdminPhase2SettingsActions = {
+  getMaintenanceStatus: defineAction({
+    request: object({}),
+    response: object({ enabled: boolean2(), message: string2() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const [enabledRaw, message] = await Promise.all([
+        getPlatformSetting(db, "maintenance_mode", "0"),
+        getPlatformSetting(db, "maintenance_message", "")
+      ]);
+      return { enabled: enabledRaw === "1", message };
+    }
+  }),
+  adminMaintenanceSet: defineAction({
+    request: object({ enabled: boolean2(), message: string2().trim().max(300).default("") }),
+    response: object({ ok: literal(true), enabled: boolean2(), message: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      if (args.message.length > 300)
+        throw new Error("Keep the maintenance message under 300 characters.");
+      await upsertPlatformSetting2(db, "maintenance_mode", args.enabled ? "1" : "0");
+      await upsertPlatformSetting2(db, "maintenance_message", args.message);
+      await logAdminAction(db, admin.id, "settings.maintenance", "platform_setting", "maintenance_mode", `maintenance ${args.enabled ? "ON" : "OFF"}${args.message ? ` \u2014 "${args.message}"` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true, enabled: args.enabled, message: args.message };
+    }
+  }),
+  getPlatformBranding: defineAction({
+    request: object({}),
+    response: object({ logoUrl: string2().nullable(), primaryColor: string2() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const [logoKey, primaryColor] = await Promise.all([
+        getPlatformSetting(db, "platform_logo_blob_key", ""),
+        getPlatformSetting(db, "brand_primary_color", "#e8590c")
+      ]);
+      let logoUrl = null;
+      if (logoKey) {
+        try {
+          logoUrl = await ctx.blobs.getUrl(logoKey);
+        } catch {
+          logoUrl = null;
+        }
+      }
+      return { logoUrl, primaryColor };
+    }
+  }),
+  adminBrandLogoUpload: defineAction({
+    request: object({
+      filename: string2().trim().min(1).max(240),
+      contentType: _enum(["image/jpeg", "image/png"]),
+      dataBase64: string2().min(1).max(14000000)
+    }),
+    response: object({ ok: literal(true), logoUrl: string2().nullable() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      if (args.filename.length > 240)
+        throw new Error("The filename is too long.");
+      if (args.dataBase64.length > 14000000)
+        throw new Error("The logo must be 10MB or smaller.");
+      const bytes = Buffer.from(args.dataBase64, "base64");
+      if (bytes.length > 10 * 1024 * 1024)
+        throw new Error("The logo must be 10MB or smaller.");
+      const safe = args.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60) || "logo";
+      const key = `branding/platform-${randomBytes3(8).toString("hex")}-${safe}`;
+      await ctx.blobs.put(key, bytes, { contentType: args.contentType });
+      const oldKey = await getPlatformSetting(db, "platform_logo_blob_key", "");
+      await upsertPlatformSetting2(db, "platform_logo_blob_key", key);
+      if (oldKey && oldKey !== key) {
+        try {
+          await ctx.blobs.delete(oldKey);
+        } catch {}
+      }
+      let logoUrl = null;
+      try {
+        logoUrl = await ctx.blobs.getUrl(key);
+      } catch {
+        logoUrl = null;
+      }
+      await logAdminAction(db, admin.id, "settings.branding_changed", "platform_setting", "platform_logo_blob_key", `logo uploaded: ${key}`);
+      ctx.invalidateQueries();
+      return { ok: true, logoUrl };
+    }
+  }),
+  adminBrandingColorSet: defineAction({
+    request: object({ primaryColor: string2().regex(/^#[0-9a-fA-F]{6}$/, "Enter a hex color like #e8590c.") }),
+    response: object({ ok: literal(true), primaryColor: string2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      if (!/^#[0-9a-fA-F]{6}$/.test(args.primaryColor))
+        throw new Error("Enter a hex color like #e8590c.");
+      await upsertPlatformSetting2(db, "brand_primary_color", args.primaryColor);
+      await logAdminAction(db, admin.id, "settings.branding_changed", "platform_setting", "brand_primary_color", `brand color -> ${args.primaryColor}`);
+      ctx.invalidateQueries();
+      return { ok: true, primaryColor: args.primaryColor };
+    }
+  }),
+  adminPolicyVersionPublish: defineAction({
+    request: object({
+      kind: policyKindSchema,
+      version: string2().trim().min(1).max(40),
+      url: string2().trim().max(500).default(""),
+      effectiveAt: string2().datetime().optional()
+    }),
+    response: object({ ok: literal(true), id: number2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      if (!args.version || args.version.length > 40)
+        throw new Error("Version must be 1\u201340 characters.");
+      if (args.url.length > 500)
+        throw new Error("Keep the URL under 500 characters.");
+      const now = new Date;
+      const made = (await db.insert(platformPolicyVersions).values({
+        kind: args.kind,
+        version: args.version,
+        url: args.url,
+        effectiveAt: args.effectiveAt ? new Date(args.effectiveAt) : null,
+        publishedBy: admin.id,
+        createdAt: now
+      }).returning({ id: platformPolicyVersions.id }))[0];
+      if (!made)
+        throw new Error("The policy version could not be saved.");
+      await logAdminAction(db, admin.id, "settings.policy_publish", "policy_version", String(made.id), `${args.kind} v${args.version}${args.url ? ` (${args.url})` : ""}`);
+      ctx.invalidateQueries();
+      return { ok: true, id: made.id };
+    }
+  }),
+  adminPolicyVersionsList: defineAction({
+    request: object({ kind: policyKindSchema.optional() }),
+    response: object({ versions: array(policyVersionSchema) }),
+    async handler(ctx, args) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const rows = args.kind ? await db.select().from(platformPolicyVersions).where(eq(platformPolicyVersions.kind, args.kind)).orderBy(desc(platformPolicyVersions.createdAt), desc(platformPolicyVersions.id)) : await db.select().from(platformPolicyVersions).orderBy(desc(platformPolicyVersions.createdAt), desc(platformPolicyVersions.id));
+      return {
+        versions: rows.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          version: r.version,
+          url: r.url,
+          effectiveAt: r.effectiveAt ? r.effectiveAt.toISOString() : null,
+          publishedBy: r.publishedBy,
+          createdAt: r.createdAt.toISOString()
+        }))
+      };
+    }
+  }),
+  getPolicyVersion: defineAction({
+    request: object({ kind: policyKindSchema }),
+    response: object({ version: string2(), url: string2(), effectiveAt: string2().nullable() }).nullable(),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const row = (await db.select().from(platformPolicyVersions).where(eq(platformPolicyVersions.kind, args.kind)).orderBy(desc(platformPolicyVersions.createdAt), desc(platformPolicyVersions.id)).limit(1))[0];
+      if (!row)
+        return null;
+      return {
+        version: row.version,
+        url: row.url,
+        effectiveAt: row.effectiveAt ? row.effectiveAt.toISOString() : null
+      };
+    }
+  }),
+  adminTotpSetupStart: defineAction({
+    request: object({}),
+    response: object({ secret: string2(), otpauthUri: string2() }),
+    async handler(ctx) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const db = platformDb(ctx);
+      const secret = base32Encode(randomBytes3(20));
+      const now = new Date;
+      const existing = (await db.select({ userId: adminTotpSecrets.userId }).from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, admin.id)).limit(1))[0];
+      if (existing) {
+        await db.update(adminTotpSecrets).set({ secret, verified: false, verifiedAt: null, createdAt: now }).where(eq(adminTotpSecrets.userId, admin.id));
+      } else {
+        await db.insert(adminTotpSecrets).values({ userId: admin.id, secret, verified: false, createdAt: now });
+      }
+      const otpauthUri = `otpauth://totp/Crewkat:${encodeURIComponent(admin.email)}?secret=${secret}&issuer=Crewkat`;
+      return { secret, otpauthUri };
+    }
+  }),
+  adminTotpSetupVerify: defineAction({
+    request: object({ code: string2().regex(/^\d{6}$/) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const db = platformDb(ctx);
+      const row = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, admin.id)).limit(1))[0];
+      if (!row)
+        throw new Error("Start 2FA setup first.");
+      if (!verifyTotpCode(row.secret, args.code))
+        throw new Error("That code is not valid. Check your authenticator app and try again.");
+      await db.update(adminTotpSecrets).set({ verified: true, verifiedAt: new Date }).where(eq(adminTotpSecrets.userId, admin.id));
+      await logAdminAction(db, admin.id, "settings.totp_enabled", "user", String(admin.id), "TOTP 2FA enrolled and verified");
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminTotpDisable: defineAction({
+    request: object({ userId: number2().int().positive().optional() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { admin, role } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const targetId = args.userId ?? admin.id;
+      if (targetId !== admin.id && role !== "admin")
+        throw new Error("Platform admin access required.");
+      const db = platformDb(ctx);
+      const target = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.id, targetId)).limit(1))[0];
+      if (!target)
+        throw new Error("User not found.");
+      await db.delete(adminTotpSecrets).where(eq(adminTotpSecrets.userId, targetId));
+      await logAdminAction(db, admin.id, "settings.totp_disabled", "user", String(targetId), targetId === admin.id ? "disabled own TOTP 2FA" : "disabled TOTP 2FA");
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  adminTotpStatus: defineAction({
+    request: object({}),
+    response: object({ enrolled: boolean2(), verified: boolean2() }),
+    async handler(ctx) {
+      const { admin } = await requireTeamRole(ctx, "admin", "support", "moderator");
+      const db = platformDb(ctx);
+      const row = (await db.select({ verified: adminTotpSecrets.verified }).from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, admin.id)).limit(1))[0];
+      return { enrolled: !!row, verified: row?.verified ?? false };
+    }
+  }),
+  adminTotpRequiredSet: defineAction({
+    request: object({ required: boolean2() }),
+    response: object({ ok: literal(true), required: boolean2() }),
+    async handler(ctx, args) {
+      const { admin } = await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      await upsertPlatformSetting2(db, "admin_2fa_required", args.required ? "1" : "0");
+      await logAdminAction(db, admin.id, "settings.totp_required", "platform_setting", "admin_2fa_required", `team 2FA requirement ${args.required ? "ON" : "OFF"}`);
+      ctx.invalidateQueries();
+      return { ok: true, required: args.required };
+    }
+  }),
+  verifyTotpLogin: defineAction({
+    request: object({ code: string2().regex(/^\d{6}$/), _sessionToken: string2().min(32).max(300).optional() }),
+    response: object({
+      sessionToken: string2(),
+      expiresAt: string2(),
+      user: object({
+        id: number2(),
+        name: string2(),
+        email: string2(),
+        companyId: number2(),
+        role: literal("owner"),
+        tier: _enum(["free", "premium"]),
+        isPlatformAdmin: boolean2(),
+        marketplaceTermsAcceptedAt: string2().nullable(),
+        marketplaceTermsVersion: string2().nullable(),
+        announcementBanner: string2(),
+        createdAt: string2()
+      }),
+      setCookies: array(string2()),
+      totpRequired: boolean2().default(false)
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      if (!args._sessionToken)
+        throw new Error("Your verification session has expired. Sign in again.");
+      const pending = (await db.select().from(authSessions).where(eq(authSessions.tokenHash, sha256Hex2(args._sessionToken))).limit(1))[0];
+      if (!pending || !pending.totpPending || pending.revokedAt || pending.expiresAt.getTime() <= Date.now()) {
+        throw new Error("Your verification session has expired. Sign in again.");
+      }
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, pending.userId)).limit(1))[0];
+      if (!user?.emailVerifiedAt)
+        throw new Error("Sign in to continue.");
+      if (user.suspendedAt)
+        throw new Error("This account has been suspended. Contact support for help.");
+      const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
+      if (!totp?.verified)
+        throw new Error("Two-factor authentication is not set up for this account.");
+      if (!verifyTotpCode(totp.secret, args.code))
+        throw new Error("That code is not valid. Check your authenticator app and try again.");
+      await db.update(authSessions).set({ revokedAt: new Date }).where(eq(authSessions.id, pending.id));
+      const session = await issueSession(ctx, user.id);
+      return {
+        sessionToken: session.proof,
+        expiresAt: session.proofExpiresAt.toISOString(),
+        user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")),
+        setCookies: session.setCookies,
+        totpRequired: false
+      };
+    }
+  })
+};
+
+// src/platform-admin-phase2.ts
+var platformAdminPhase2Actions = {
+  ...platformAdminPhase2SupportActions,
+  ...platformAdminPhase2AnalyticsActions,
+  ...platformAdminPhase2SettingsActions
 };
 
 // src/moderation.ts
@@ -60837,181 +73450,6 @@ ${section.paragraphs.join(`
 `)}`).join(`
 
 `);
-
-// src/push.ts
-import { createCipheriv, createECDH, createHmac, createPrivateKey, createSign, randomBytes } from "crypto";
-function b64urlEncode(data) {
-  return Buffer.from(data).toString("base64url");
-}
-function b64urlDecode(value) {
-  return Buffer.from(value, "base64url");
-}
-function getVapidConfig() {
-  const subject = (process.env.VAPID_SUBJECT ?? "").trim() || "mailto:support@crewkat.com";
-  const rawPrivate = (process.env.VAPID_PRIVATE_KEY ?? "").trim();
-  const rawPublic = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
-  if (!rawPrivate || !rawPublic)
-    return null;
-  try {
-    let d;
-    if (rawPrivate.startsWith("{")) {
-      const jwk = JSON.parse(rawPrivate);
-      if (typeof jwk.d !== "string")
-        return null;
-      d = b64urlDecode(jwk.d);
-    } else {
-      d = b64urlDecode(rawPrivate);
-    }
-    if (d.length !== 32)
-      return null;
-    const ecdh = createECDH("prime256v1");
-    ecdh.setPrivateKey(d);
-    const publicUncompressed = ecdh.getPublicKey();
-    if (publicUncompressed.length !== 65 || publicUncompressed[0] !== 4)
-      return null;
-    const x = publicUncompressed.subarray(1, 33);
-    const y = publicUncompressed.subarray(33, 65);
-    return {
-      subject,
-      privateJwk: { kty: "EC", crv: "P-256", x: b64urlEncode(x), y: b64urlEncode(y), d: b64urlEncode(d) },
-      publicUncompressed
-    };
-  } catch {
-    return null;
-  }
-}
-function getVapidPublicKey() {
-  const key = (process.env.VAPID_PUBLIC_KEY ?? "").trim();
-  return key || null;
-}
-function hkdfExpand(prk, info, length) {
-  const n = Math.ceil(length / 32);
-  let t = Buffer.alloc(0);
-  let okm = Buffer.alloc(0);
-  for (let i = 1;i <= n; i++) {
-    t = createHmac("sha256", prk).update(Buffer.concat([t, info, Buffer.from([i])])).digest();
-    okm = Buffer.concat([okm, t]);
-  }
-  return okm.subarray(0, length);
-}
-function encryptAes128Gcm(receiverPublicKey, authSecret, plaintext) {
-  if (receiverPublicKey.length !== 65 || receiverPublicKey[0] !== 4)
-    throw new Error("Invalid receiver public key.");
-  if (authSecret.length !== 16)
-    throw new Error("Invalid auth secret.");
-  const server = createECDH("prime256v1");
-  server.generateKeys();
-  const serverPublicKey = server.getPublicKey();
-  const sharedSecret = server.computeSecret(receiverPublicKey);
-  const prk = createHmac("sha256", authSecret).update(sharedSecret).digest();
-  const lenPrefixed = (key) => Buffer.concat([Buffer.from([key.length >> 8 & 255, key.length & 255]), key]);
-  const context = Buffer.concat([Buffer.from("P-256\x00", "utf8"), lenPrefixed(receiverPublicKey), lenPrefixed(serverPublicKey)]);
-  const cekInfo = Buffer.concat([Buffer.from("Content-Encoding: aes128gcm\x00", "utf8"), context]);
-  const nonceInfo = Buffer.concat([Buffer.from("Content-Encoding: nonce\x00", "utf8"), context]);
-  const cek = hkdfExpand(prk, cekInfo, 16);
-  const nonce = hkdfExpand(prk, nonceInfo, 12);
-  const cipher = createCipheriv("aes-128-gcm", cek, nonce);
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
-  return { salt: randomBytes(16), serverPublicKey, ciphertext };
-}
-function createVapidJwt(config, endpoint) {
-  const audience = new URL(endpoint).origin;
-  const header = b64urlEncode(Buffer.from(JSON.stringify({ typ: "JWT", alg: "ES256" }), "utf8"));
-  const payload = b64urlEncode(Buffer.from(JSON.stringify({
-    aud: audience,
-    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-    sub: config.subject
-  }), "utf8"));
-  const unsignedToken = `${header}.${payload}`;
-  const signer = createSign("sha256");
-  signer.update(unsignedToken);
-  signer.end();
-  const signature = signer.sign({
-    key: createPrivateKey({ key: config.privateJwk, format: "jwk" }),
-    dsaEncoding: "ieee-p1363"
-  });
-  return `${unsignedToken}.${b64urlEncode(signature)}`;
-}
-async function sendPushToUser(db, userId, message) {
-  const config = getVapidConfig();
-  if (!config)
-    return { sent: 0, removed: 0, skipped: true };
-  let subs;
-  try {
-    subs = await db.select({
-      id: pushSubscriptions.id,
-      endpoint: pushSubscriptions.endpoint,
-      p256dh: pushSubscriptions.p256dh,
-      auth: pushSubscriptions.auth
-    }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
-  } catch {
-    return { sent: 0, removed: 0, skipped: true };
-  }
-  if (!subs.length)
-    return { sent: 0, removed: 0, skipped: false };
-  const plaintext = Buffer.from(JSON.stringify({
-    titleEn: message.titleEn,
-    titleEs: message.titleEs,
-    bodyEn: message.bodyEn,
-    bodyEs: message.bodyEs,
-    url: message.url ?? "/app/",
-    listingId: message.listingId ?? null
-  }), "utf8");
-  let sent = 0;
-  let removed = 0;
-  await Promise.all(subs.map(async (sub) => {
-    try {
-      const receiverKey = b64urlDecode(sub.p256dh);
-      const authSecret = b64urlDecode(sub.auth);
-      const { salt, serverPublicKey, ciphertext } = encryptAes128Gcm(receiverKey, authSecret, Buffer.concat([plaintext, Buffer.from([2])]));
-      const record = Buffer.concat([
-        salt,
-        Buffer.from([0, 0, 16, 0]),
-        Buffer.from([serverPublicKey.length]),
-        serverPublicKey,
-        ciphertext
-      ]);
-      const jwt = createVapidJwt(config, sub.endpoint);
-      const response = await fetch(sub.endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `vapid t=${jwt}, k=${b64urlEncode(config.publicUncompressed)}`,
-          "Content-Type": "application/octet-stream",
-          "Content-Encoding": "aes128gcm",
-          TTL: "2419200",
-          Urgency: "normal"
-        },
-        body: record,
-        redirect: "error",
-        signal: AbortSignal.timeout(15000)
-      });
-      if (response.status === 404 || response.status === 410) {
-        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
-        removed++;
-      } else if (response.ok) {
-        sent++;
-      }
-    } catch {}
-  }));
-  return { sent, removed, skipped: false };
-}
-async function sendPushToCompany(db, companyId, message, excludeUserId) {
-  let users;
-  try {
-    users = await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.companyId, companyId));
-  } catch {
-    return { sent: 0, removed: 0, skipped: true };
-  }
-  const total = { sent: 0, removed: 0, skipped: false };
-  for (const user of users) {
-    if (excludeUserId !== undefined && user.id === excludeUserId)
-      continue;
-    const result = await sendPushToUser(db, user.id, message);
-    total.sent += result.sent;
-    total.removed += result.removed;
-  }
-  return total;
-}
 
 // src/actions.ts
 var stageSchema = _enum(["before", "during", "after"]);
@@ -61161,8 +73599,11 @@ var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: numbe
 var marketplaceCategorySchema = _enum(["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"]);
 var moderationStatusSchema = _enum(["active", "auto_rejected", "pending_review", "removed"]);
 var marketplacePhotoSchema = object({ id: number2(), url: string2(), filename: string2() });
-var marketplaceListingSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), employmentType: _enum(["full_time", "part_time", "temporary"]), payUnit: _enum(["hourly", "salary"]), priceKind: _enum(["amount", "free", "contact"]), price: string2(), originalPrice: string2(), description: string2(), serviceArea: string2(), companyName: string2(), companyPhone: string2(), contactUnlocked: boolean2(), bookable: boolean2(), dailyRate: string2(), promoted: boolean2(), featured: boolean2(), featuredUntil: string2().nullable(), isMine: boolean2(), moderationStatus: moderationStatusSchema, photos: array(marketplacePhotoSchema), justListed: boolean2(), createdAt: string2(), updatedAt: string2() });
-var marketplaceRequestSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), description: string2(), serviceArea: string2(), neededBy: string2(), companyName: string2(), companyPhone: string2(), createdAt: string2(), updatedAt: string2() });
+var marketplaceZipCodeSchema = string2().trim().regex(/^\d{5}(-\d{4})?$/, "Enter a valid 5-digit ZIP code.");
+function normalizeZipCode(zip) {
+  return zip.trim().slice(0, 5);
+}
+var marketplaceListingSchema = object({ id: number2(), title: string2(), category: marketplaceCategorySchema, intent: _enum(["need", "offer"]), neededBy: string2(), employmentType: _enum(["full_time", "part_time", "temporary"]), payUnit: _enum(["hourly", "salary"]), priceKind: _enum(["amount", "free", "contact"]), price: string2(), originalPrice: string2(), description: string2(), serviceArea: string2(), zipCode: string2(), companyName: string2(), companyPhone: string2(), contactUnlocked: boolean2(), verified: boolean2(), bookable: boolean2(), dailyRate: string2(), promoted: boolean2(), featured: boolean2(), featuredUntil: string2().nullable(), isMine: boolean2(), moderationStatus: moderationStatusSchema, photos: array(marketplacePhotoSchema), justListed: boolean2(), createdAt: string2(), updatedAt: string2() });
 var marketplaceMessageSchema = object({ id: number2(), conversationId: number2(), body: string2(), imageUrl: string2().nullable(), imageFilename: string2(), outgoing: boolean2(), senderName: string2(), createdAt: string2() });
 var marketplaceInboxRowSchema = object({ id: number2(), listingId: number2(), listingTitle: string2(), otherPartyName: string2(), lastMessage: string2(), lastMessageAt: string2(), unreadCount: number2(), isInquiry: boolean2().default(false) });
 var marketplaceBookingSchema = object({ id: number2(), listingId: number2(), startDate: string2(), endDate: string2(), note: string2(), status: _enum(["requested", "confirmed", "declined"]), createdAt: string2() });
@@ -61306,6 +73747,46 @@ async function checkLoginIpRateLimit(ctx) {
   }
   await db.insert(rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date });
 }
+var GOOGLE_SIGNIN_IP_LIMIT_PER_15MIN = 30;
+async function checkGoogleSignInRateLimit(ctx) {
+  const db = ctx.db();
+  const now = Date.now();
+  const ip = (ctx.clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60000);
+  const hits = await db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "google-signin:ip"), eq(rateLimitEvents.key, ip), gte(rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= GOOGLE_SIGNIN_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many sign-in attempts from this network. Try again in 15 minutes.");
+  }
+  await db.insert(rateLimitEvents).values({ scope: "google-signin:ip", key: ip, occurredAt: new Date });
+}
+function googleClientId() {
+  return (process.env.GOOGLE_CLIENT_ID ?? "").trim();
+}
+var googleAuth = {
+  async verifyIdToken(idToken) {
+    const clientId = googleClientId();
+    if (!clientId)
+      throw new Error("Google sign-in is not configured.");
+    const client = new import_google_auth_library.OAuth2Client(clientId);
+    let payload;
+    try {
+      const ticket = await client.verifyIdToken({ idToken, audience: clientId });
+      payload = ticket.getPayload();
+    } catch {
+      throw new Error("Google sign-in failed. Try again.");
+    }
+    if (!payload?.sub)
+      throw new Error("Google sign-in failed. Try again.");
+    const iss = payload.iss ?? "";
+    if (iss !== "accounts.google.com" && iss !== "https://accounts.google.com")
+      throw new Error("Google sign-in failed. Try again.");
+    const email = (payload.email ?? "").trim().toLowerCase();
+    if (!email)
+      throw new Error("Google sign-in failed. Try again.");
+    const name = (payload.name ?? "").trim().slice(0, 120) || email.split("@")[0] || email;
+    return { sub: payload.sub, email, emailVerified: payload.email_verified === true, name };
+  }
+};
 async function requirePortalAccess(ctx, token, opts) {
   const db = ctx.db();
   const hash = await hashPortalToken(token);
@@ -61435,16 +73916,21 @@ async function consumeMarketplaceUnlock(db, companyId, userId, listingId) {
   ]);
   return source;
 }
-async function marketplaceListingShape(ctx, row, photoRows, unlockedListingIds) {
+async function verifiedCompanyIdSet(db) {
+  try {
+    const rows = await db.select({ companyId: businessVerifications.companyId }).from(businessVerifications).where(eq(businessVerifications.status, "verified"));
+    return new Set(rows.map((r) => r.companyId));
+  } catch {
+    return new Set;
+  }
+}
+async function marketplaceListingShape(ctx, row, photoRows, unlockedListingIds, verifiedCompanyIds) {
   const photos2 = await Promise.all(photoRows.filter((photo) => photo.listingId === row.id).sort((a, b) => a.sortOrder - b.sortOrder).map(async (photo) => ({ id: photo.id, url: await ctx.blobs.getUrl(photo.blobKey), filename: photo.filename })));
   const featuredUntil = row.featuredUntil && row.featuredUntil.getTime() > Date.now() ? row.featuredUntil : null;
   const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
   const isMine = row.companyId === myCompanyId;
   const contactUnlocked = isMine || (unlockedListingIds?.has(row.id) ?? false);
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus, photos: photos2, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
-}
-function marketplaceRequestShape(row) {
-  return { id: row.id, title: row.title, category: row.category, listingType: row.listingType, description: row.description, serviceArea: row.serviceArea, neededBy: row.neededBy, companyName: row.companyName, companyPhone: row.companyPhone, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, title: row.title, category: row.category, intent: row.intent, neededBy: row.neededBy, employmentType: row.employmentType, payUnit: row.payUnit, priceKind: row.priceKind, price: row.price, originalPrice: row.originalPrice, description: row.description, serviceArea: row.serviceArea, zipCode: row.zipCode, companyName: row.companyName, companyPhone: contactUnlocked ? row.companyPhone : "", contactUnlocked, verified: verifiedCompanyIds?.has(row.companyId) ?? false, bookable: row.bookable, dailyRate: row.dailyRate, promoted: row.promoted, featured: featuredUntil !== null, featuredUntil: featuredUntil?.toISOString() ?? null, isMine, moderationStatus: row.moderationStatus, photos: photos2, justListed: Date.now() - row.createdAt.getTime() < 7 * 86400000, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 var BACKUP_TABLES = [
   "clients",
@@ -61591,6 +74077,7 @@ var AUTH_SESSION_DAYS = 30;
 var AUTH_CODE_MINUTES = 30;
 var AUTH_PASSWORD_ITERATIONS = 210000;
 var AUTH_PROOF_MINUTES = 15;
+var TOTP_PENDING_MINUTES = 5;
 var AUTH_REFRESH_DAYS = 30;
 var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
@@ -61631,7 +74118,7 @@ async function issueSession(ctx, userId) {
   const db = ctx.db();
   const now = new Date;
   const familyId = crypto.randomUUID();
-  const proof = randomHex(48);
+  const proof = randomHex2(48);
   const proofExpiresAt = new Date(now.getTime() + AUTH_PROOF_MINUTES * 60000);
   await db.insert(authSessions).values({
     userId,
@@ -61644,7 +74131,7 @@ async function issueSession(ctx, userId) {
     userAgent: (meta.userAgent ?? "").slice(0, 300),
     ipHash: meta.ipHash ?? ""
   });
-  const refreshToken = randomHex(48);
+  const refreshToken = randomHex2(48);
   const absoluteExpiresAt = new Date(now.getTime() + AUTH_REFRESH_DAYS * 24 * 60 * 60000);
   await db.insert(authSessions).values({
     userId,
@@ -61665,6 +74152,8 @@ async function requireSession(ctx, token) {
   const session = (await db.select().from(authSessions).where(eq(authSessions.tokenHash, await sha256(token))).limit(1))[0];
   if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now())
     throw new Error("Your session has expired. Sign in again.");
+  if (session.totpPending)
+    throw new Error("Enter your authenticator code to finish signing in.");
   if (session.tokenType === "refresh")
     throw new Error("Sign in to continue.");
   const user = (await db.select().from(authUsers).where(eq(authUsers.id, session.userId)).limit(1))[0];
@@ -61691,7 +74180,7 @@ async function revokeSessionFamily(db, familyId, userId) {
 async function issueProofForRefresh(ctx, db, refreshRow, rotate) {
   const meta = authMeta(ctx);
   const now = new Date;
-  const proof = randomHex(48);
+  const proof = randomHex2(48);
   const proofExpiresAt = new Date(now.getTime() + AUTH_PROOF_MINUTES * 60000);
   await db.insert(authSessions).values({
     userId: refreshRow.userId,
@@ -61706,7 +74195,7 @@ async function issueProofForRefresh(ctx, db, refreshRow, rotate) {
   });
   if (!rotate)
     return { proof, proofExpiresAt, setCookies: [] };
-  const successor = randomHex(48);
+  const successor = randomHex2(48);
   await db.batch([
     db.update(authSessions).set({ revokedAt: now, replacedBy: await sha256(successor) }).where(eq(authSessions.id, refreshRow.id)),
     db.insert(authSessions).values({
@@ -61727,7 +74216,7 @@ async function issueProofForRefresh(ctx, db, refreshRow, rotate) {
 function normalizedEmail(value) {
   return value.trim().toLowerCase();
 }
-function randomHex(bytes = 32) {
+function randomHex2(bytes = 32) {
   const values = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(values).map((value) => value.toString(16).padStart(2, "0")).join("");
 }
@@ -61799,7 +74288,6 @@ function appPublicUrl() {
 var GLOBAL_MARKETPLACE_READ_TABLES = new Set([
   marketplaceListings,
   marketplaceListingPhotos,
-  marketplaceRequests,
   marketplaceMessages
 ]);
 function wrapScopedQuery(target, scope, state = { applied: false }) {
@@ -61898,6 +74386,12 @@ async function requirePlatformAdmin(ctx) {
     throw new Error("Platform admin access required.");
   return { identity, admin: user };
 }
+async function isPlatformTeamMember(db, user) {
+  if (user.isPlatformAdmin)
+    return true;
+  const row = (await db.select({ userId: adminTeamRoles.userId }).from(adminTeamRoles).where(eq(adminTeamRoles.userId, user.id)).limit(1))[0];
+  return !!row;
+}
 function platformDb(ctx) {
   const scoped = ctx;
   if (typeof scoped.unscopedDb === "function")
@@ -61906,6 +74400,47 @@ function platformDb(ctx) {
 }
 async function logAdminAction(db, adminUserId, action, targetType, targetId, details) {
   await db.insert(adminAuditLog).values({ adminUserId, action, targetType, targetId, details, createdAt: new Date });
+}
+async function deleteUserAccount(db, user) {
+  if (user.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(user.subscriptionStatus)) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (secretKey) {
+      try {
+        await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(user.stripeSubscriptionId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${secretKey}` },
+          redirect: "error",
+          signal: AbortSignal.timeout(15000)
+        });
+      } catch {}
+    }
+  }
+  const companyId = user.companyId;
+  const others = await db.select({ id: authUsers.id }).from(authUsers).where(and(eq(authUsers.companyId, companyId), ne(authUsers.id, user.id))).limit(1);
+  const soleUser = others.length === 0;
+  let tablesCleared = 0;
+  for (const table of Object.values(exports_schema)) {
+    if (!isTable(table) || table === authUsers || table === adminAuditLog)
+      continue;
+    const cols = getTableColumns(table);
+    try {
+      if (soleUser && "companyId" in cols) {
+        await db.delete(table).where(eq(cols.companyId, companyId));
+        tablesCleared++;
+      } else if ("userId" in cols) {
+        await db.delete(table).where(eq(cols.userId, user.id));
+        tablesCleared++;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? `${e.message} ${e.cause?.message ?? ""}` : "";
+      if (/no such (table|column)/.test(msg))
+        continue;
+      throw e;
+    }
+  }
+  await db.delete(authSessions).where(eq(authSessions.userId, user.id));
+  await db.delete(authUsers).where(eq(authUsers.id, user.id));
+  return { tablesCleared, soleUser };
 }
 async function getPlatformSetting(db, key, fallback) {
   const row = (await db.select().from(platformSettings).where(eq(platformSettings.key, key)).limit(1))[0];
@@ -61919,10 +74454,15 @@ async function getFlagThreshold(db) {
 var PLATFORM_SETTING_DEFS = {
   auto_moderation_enabled: { type: "boolean", labelEn: "Automatic listing moderation", labelEs: "Moderaci\xF3n autom\xE1tica de publicaciones", fallback: "1" },
   flag_threshold: { type: "int", labelEn: "Flags before review", labelEs: "Reportes antes de revisi\xF3n", min: 1, max: 10, fallback: "3" },
-  registration_enabled: { type: "boolean", labelEn: "New registrations", labelEs: "Nuevos registros", fallback: "1" },
-  marketplace_enabled: { type: "boolean", labelEn: "Marketplace", labelEs: "Marketplace", fallback: "1" },
   free_listing_limit: { type: "int", labelEn: "Free plan active listings", labelEs: "Publicaciones activas del plan gratis", min: 1, max: 100, fallback: "3" },
-  announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" }
+  announcement_banner: { type: "text", labelEn: "Announcement banner", labelEs: "Anuncio (banner)", maxLength: 300, fallback: "" },
+  default_max_sms_per_day: { type: "int", labelEn: "Default max SMS per day", labelEs: "M\xE1x. SMS por d\xEDa (defecto)", min: 1, max: 1e5, fallback: "50" },
+  default_max_push_per_day: { type: "int", labelEn: "Default max pushes per day", labelEs: "M\xE1x. notificaciones por d\xEDa (defecto)", min: 1, max: 1e5, fallback: "100" },
+  maintenance_mode: { type: "boolean", labelEn: "Maintenance mode", labelEs: "Modo de mantenimiento", fallback: "0" },
+  maintenance_message: { type: "text", labelEn: "Maintenance message", labelEs: "Mensaje de mantenimiento", maxLength: 300, fallback: "" },
+  brand_primary_color: { type: "text", labelEn: "Brand primary color", labelEs: "Color primario de marca", maxLength: 7, fallback: "#e8590c" },
+  platform_logo_blob_key: { type: "text", labelEn: "Platform logo (blob key)", labelEs: "Logotipo de la plataforma (blob)", maxLength: 500, fallback: "" },
+  admin_2fa_required: { type: "boolean", labelEn: "Require 2FA for platform team", labelEs: "Exigir 2FA al equipo de la plataforma", fallback: "0" }
 };
 function normalizePlatformSetting(key, raw) {
   const def = PLATFORM_SETTING_DEFS[key];
@@ -61947,9 +74487,6 @@ function normalizePlatformSetting(key, raw) {
     throw new Error(`Invalid value for ${key}: keep it under ${def.maxLength} characters.`);
   return text;
 }
-async function getBooleanPlatformSetting(db, key) {
-  return await getPlatformSetting(db, key, PLATFORM_SETTING_DEFS[key]?.fallback ?? "0") === "1";
-}
 async function getIntPlatformSetting(db, key) {
   const fallback = Number.parseInt(PLATFORM_SETTING_DEFS[key]?.fallback ?? "0", 10);
   const parsed = Number.parseInt(await getPlatformSetting(db, key, String(fallback)), 10);
@@ -61963,7 +74500,7 @@ async function getIntPlatformSetting(db, key) {
   return parsed;
 }
 async function requireMarketplaceEnabled(db) {
-  if (!await getBooleanPlatformSetting(db, "marketplace_enabled"))
+  if (!await isFeatureEnabled(db, "marketplace_enabled"))
     throw new Error("MARKETPLACE_DISABLED");
 }
 async function isAutoModerationEnabled(db) {
@@ -62472,8 +75009,49 @@ async function runReviewRequestTick(ctx) {
 var listingModerationResultSchema = object({ flagged: boolean2(), status: moderationStatusSchema, reasons: array(string2()) });
 async function scanListingForModeration(db, input) {
   if (!await isAutoModerationEnabled(db))
-    return { clean: true, reasons: [] };
-  return scanListingText(input);
+    return { clean: true, held: false, flagBump: 0, reasons: [] };
+  const base = scanListingText(input);
+  let held = false;
+  let flagBump = 0;
+  const reasons = [...base.reasons];
+  try {
+    const rules = await db.select().from(moderationKeywordRules);
+    if (rules.length) {
+      const haystack = `${input.title}
+${input.description}
+${input.companyName}
+${input.serviceArea}`.toLowerCase();
+      for (const rule of rules) {
+        const pattern = rule.pattern.trim().toLowerCase();
+        if (!pattern || !haystack.includes(pattern))
+          continue;
+        if (rule.action === "hold") {
+          held = true;
+          reasons.push(`Keyword rule: "${rule.pattern}"`);
+        } else {
+          flagBump += 1;
+          reasons.push(`Keyword flag: "${rule.pattern}"`);
+        }
+      }
+    }
+  } catch {}
+  return { clean: base.clean, held, flagBump, reasons };
+}
+async function checkNewUserListingCap(db, userCreatedAt, companyId) {
+  const daysRaw = await getPlatformSetting(db, "automod_new_user_days", "7");
+  const capRaw = await getPlatformSetting(db, "automod_new_user_listing_cap", "3");
+  const days = Number.parseInt(daysRaw, 10);
+  const cap = Number.parseInt(capRaw, 10);
+  if (!Number.isFinite(days) || !Number.isFinite(cap) || days < 1 || cap < 1)
+    return;
+  const ageMs = Date.now() - userCreatedAt.getTime();
+  if (ageMs > days * 24 * 60 * 60000)
+    return;
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60000);
+  const recent = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, companyId), gte(marketplaceListings.createdAt, dayAgo)));
+  if (recent.length >= cap) {
+    throw new Error(`New accounts can post ${cap} listings per day for their first ${days} days. Try again tomorrow.`);
+  }
 }
 var TOOL_REGISTRY = {
   "toolbox:loan": { screen: "toolbox", tab: "loan", titleEn: "Loan payment", titleEs: "Pago de pr\xE9stamo", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
@@ -62858,6 +75436,77 @@ async function hydrateDocumentAttachment(ctx, row) {
 }
 var BaseActions = {
   ...playBillingActions,
+  ...platformAdminActions,
+  ...platformAdminPhase1Actions,
+  ...platformAdminPhase2Actions,
+  checkSmsCap: defineAction({
+    request: authEnvelopeSchema.extend({}),
+    response: object({ allowed: boolean2(), reason: string2().optional() }),
+    async handler(ctx, args) {
+      const user = await requireSession(ctx, args._sessionToken);
+      const db = ctx.db();
+      return checkSendCap(db, user.id, "sms");
+    }
+  }),
+  requestAccountDeletion: defineAction({
+    request: authEnvelopeSchema.extend({}),
+    response: object({ ok: literal(true), emailDelivery: _enum(["sent", "failed"]) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const user = await requireSession(ctx, args._sessionToken);
+      if (user.isPlatformAdmin)
+        throw new Error("Platform admin accounts can't be deleted from the app.");
+      const now = new Date;
+      const recent = (await db.select({ createdAt: accountDeletionCodes.createdAt }).from(accountDeletionCodes).where(eq(accountDeletionCodes.userId, user.id))).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+      if (recent && now.getTime() - recent.createdAt.getTime() < 60000)
+        throw new Error("Please wait one minute before requesting another code.");
+      const code = randomCode();
+      await db.update(accountDeletionCodes).set({ consumedAt: now }).where(and(eq(accountDeletionCodes.userId, user.id), isNull(accountDeletionCodes.consumedAt)));
+      await db.insert(accountDeletionCodes).values({
+        userId: user.id,
+        codeHash: await sha256(code),
+        expiresAt: new Date(now.getTime() + 30 * 60000),
+        createdAt: now
+      });
+      let emailDelivery = "failed";
+      try {
+        const result = await ctx.executePrivileged(privileged.sendSecurityAlert, {
+          to: user.email,
+          subject: "Confirm deleting your Crewkat account",
+          text: `You asked to delete your Crewkat account (${user.email}).
+
+Your confirmation code is: ${code}
+
+Enter it in the app within 30 minutes to permanently delete your account and all of its data. Your subscription will be cancelled immediately.
+
+If you didn't ask for this, just ignore this email \u2014 nothing will be deleted.`
+        });
+        emailDelivery = result.delivery;
+      } catch {}
+      return { ok: true, emailDelivery };
+    }
+  }),
+  deleteMyAccount: defineAction({
+    request: authEnvelopeSchema.extend({ code: string2().trim().regex(/^\d{6}$/) }),
+    response: object({ ok: literal(true), tablesCleared: number2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const user = await requireSession(ctx, args._sessionToken);
+      if (user.isPlatformAdmin)
+        throw new Error("Platform admin accounts can't be deleted from the app.");
+      const now = new Date;
+      const hash = await sha256(args.code.trim());
+      const valid = (await db.select().from(accountDeletionCodes).where(and(eq(accountDeletionCodes.userId, user.id), eq(accountDeletionCodes.codeHash, hash), isNull(accountDeletionCodes.consumedAt))).orderBy(desc(accountDeletionCodes.createdAt)).limit(1))[0];
+      if (!valid || valid.expiresAt.getTime() < now.getTime()) {
+        throw new Error("That code is invalid or expired. Request a new one.");
+      }
+      await db.update(accountDeletionCodes).set({ consumedAt: now }).where(eq(accountDeletionCodes.id, valid.id));
+      const { tablesCleared, soleUser } = await deleteUserAccount(db, user);
+      await logAdminAction(db, 0, "account.deleted", "user", user.email, soleUser ? `self-service deletion; company ${user.companyId} data cleared (${tablesCleared} tables)` : "self-service deletion; personal rows removed, company kept for remaining users");
+      ctx.invalidateQueries();
+      return { ok: true, tablesCleared };
+    }
+  }),
   getAuthBootstrap: defineAction({
     request: object({}),
     response: object({ hasAccount: boolean2(), ownerClaimAvailable: boolean2(), recordCounts: object({ jobs: number2(), clients: number2(), invoices: number2() }) }),
@@ -62880,14 +75529,16 @@ var BaseActions = {
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args) {
       const db = ctx.db();
-      if (!await getBooleanPlatformSetting(db, "registration_enabled"))
+      if (await getPlatformSetting(db, "maintenance_mode", "0") === "1")
+        throw new Error("Crewkat is temporarily down for maintenance. Please try again later.");
+      if (!await isFeatureEnabled(db, "signups_enabled"))
         throw new Error("REGISTRATIONS_CLOSED");
       const users = await db.select({ id: authUsers.id, companyId: authUsers.companyId }).from(authUsers);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email)).limit(1))[0];
       if (duplicate)
         throw new Error("An account with this email already exists. Sign in instead.");
-      const salt = randomHex(16);
+      const salt = randomHex2(16);
       const now = new Date;
       const firstAccount = users.length === 0;
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
@@ -62958,7 +75609,7 @@ var BaseActions = {
   }),
   login: defineAction({
     request: object({ email: string2().trim().email().max(200), password: string2().min(1).max(200) }),
-    response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()) }),
+    response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()), totpRequired: boolean2().default(false) }),
     async handler(ctx, args) {
       await checkLoginIpRateLimit(ctx);
       const db = ctx.db();
@@ -62978,6 +75629,90 @@ var BaseActions = {
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
       await db.delete(authLoginAttempts).where(eq(authLoginAttempts.email, email));
+      if (await getPlatformSetting(db, "admin_2fa_required", "0") === "1" && await isPlatformTeamMember(db, user)) {
+        const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
+        if (totp?.verified) {
+          const meta = authMeta(ctx);
+          const pendingNow = new Date;
+          const pendingProof = randomHex2(48);
+          const pendingExpiresAt = new Date(pendingNow.getTime() + TOTP_PENDING_MINUTES * 60000);
+          await db.insert(authSessions).values({
+            userId: user.id,
+            tokenHash: await sha256(pendingProof),
+            tokenType: "proof",
+            expiresAt: pendingExpiresAt,
+            lastSeenAt: pendingNow,
+            createdAt: pendingNow,
+            totpPending: true,
+            userAgent: (meta.userAgent ?? "").slice(0, 300),
+            ipHash: meta.ipHash ?? ""
+          });
+          return { sessionToken: pendingProof, expiresAt: pendingExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: [], totpRequired: true };
+        }
+      }
+      const session = await issueSession(ctx, user.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
+    }
+  }),
+  getGoogleClientId: defineAction({
+    request: object({}),
+    response: object({ clientId: string2().nullable() }),
+    async handler() {
+      const id = googleClientId();
+      return { clientId: id || null };
+    }
+  }),
+  googleSignIn: defineAction({
+    request: object({ idToken: string2().min(1).max(8000) }),
+    response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()) }),
+    async handler(ctx, args) {
+      if (!googleClientId())
+        throw new Error("Google sign-in is not configured.");
+      await checkGoogleSignInRateLimit(ctx);
+      const payload = await googleAuth.verifyIdToken(args.idToken);
+      if (!payload.emailVerified)
+        throw new Error("Your Google account's email is not verified.");
+      const db = ctx.db();
+      const now = new Date;
+      let user = (await db.select().from(authUsers).where(eq(authUsers.googleSub, payload.sub)).limit(1))[0];
+      if (!user) {
+        const existing = (await db.select().from(authUsers).where(eq(authUsers.email, payload.email)).limit(1))[0];
+        if (existing) {
+          await db.update(authUsers).set({ googleSub: payload.sub, emailVerifiedAt: existing.emailVerifiedAt ?? now, updatedAt: now }).where(eq(authUsers.id, existing.id));
+          user = { ...existing, googleSub: payload.sub, emailVerifiedAt: existing.emailVerifiedAt ?? now, updatedAt: now };
+        }
+      }
+      if (!user) {
+        if (!await isFeatureEnabled(db, "signups_enabled"))
+          throw new Error("REGISTRATIONS_CLOSED");
+        const users = await db.select({ id: authUsers.id, companyId: authUsers.companyId }).from(authUsers);
+        const firstAccount = users.length === 0;
+        const companyId = firstAccount ? 1 : Math.max(1, ...users.map((u) => u.companyId)) + 1;
+        const salt = randomHex2(16);
+        const referralCode = await uniqueReferralCode(db);
+        const made = (await db.insert(authUsers).values({
+          name: payload.name,
+          email: payload.email,
+          passwordHash: await derivePassword(randomHex2(32), salt, AUTH_PASSWORD_ITERATIONS),
+          passwordSalt: salt,
+          passwordIterations: AUTH_PASSWORD_ITERATIONS,
+          emailVerifiedAt: now,
+          dataClaimedAt: now,
+          googleSub: payload.sub,
+          companyId,
+          role: "owner",
+          tier: firstAccount ? "premium" : "free",
+          subscriptionStatus: firstAccount ? "founder" : "inactive",
+          referralCode,
+          createdAt: now,
+          updatedAt: now
+        }).returning())[0];
+        if (!made)
+          throw new Error("The account could not be created.");
+        user = made;
+      }
+      if (user.suspendedAt)
+        throw new Error("This account has been suspended. Contact support for help.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     }
@@ -63324,7 +76059,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (!token || token.expiresAt.getTime() <= Date.now() || token.tokenHash !== await sha256(args.code))
         throw new Error("That reset code is invalid or expired.");
       const now = new Date;
-      const salt = randomHex(16);
+      const salt = randomHex2(16);
       await db.batch([db.update(authTokens).set({ consumedAt: now }).where(eq(authTokens.id, token.id)), db.update(authUsers).set({ passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, updatedAt: now }).where(eq(authUsers.id, user.id)), db.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, user.id), isNull(authSessions.revokedAt)))]);
       return { ok: true };
     }
@@ -64577,7 +77312,7 @@ If that was you, just sign in again. If not, we recommend changing your password
             return [];
           return reengagementMonths.map((months) => ({ jobId: job.id, clientId: job.clientId ?? null, clientName: safeText(job.clientName), clientPhone: jobClientPhone(job), jobType: safeText(job.jobType), months, dueDate: addMonths(c.completionDate, months) }));
         }).filter((v) => v.dueDate !== "" && v.dueDate <= args.today && !wasSent("reengagement", v.jobId, String(v.months)));
-        const appointments2 = appointmentRows.filter((a) => dateOnlyString(a.startsAt) === args.today).sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt))).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: a.status, crewMember: safeText(a.crewMember), etaMinutes: a.etaMinutes, hasShareLink: !!a.shareTokenHash }));
+        const appointments2 = appointmentRows.filter((a) => dateOnlyString(a.startsAt) === args.today).sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt))).map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: ["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"].includes(a.status) ? a.status : "scheduled", crewMember: safeText(a.crewMember), etaMinutes: typeof a.etaMinutes === "number" ? a.etaMinutes : null, hasShareLink: !!a.shareTokenHash }));
         const crew = appointments2.flatMap((a) => {
           const job = jobRows.find((j) => j.id === a.jobId);
           if (!job)
@@ -64593,7 +77328,12 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
   }),
   logAutomationSend: defineAction({ request: object({ kind: _enum(["quote_chase", "payment", "review", "reengagement", "quote_expiry", "crew"]), entityId: number2().int().positive(), stage: string2().max(40) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    await ctx.db().insert(automationLogs).values({ ...args, channel: "sms", sentAt: new Date });
+    const identity = workspaceIdentity(ctx);
+    const db = ctx.db();
+    const check = await recordSendAttempt(db, identity.workspaceUserId, "sms");
+    if (!check.allowed)
+      throw new Error(check.reason ?? "Send limit reached.");
+    await db.insert(automationLogs).values({ ...args, channel: "sms", sentAt: new Date });
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -66107,9 +78847,9 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
-      const enabled = await getBooleanPlatformSetting(db, "marketplace_enabled");
+      const enabled = await isFeatureEnabled(db, "marketplace_enabled");
       const { base, bonus, effective } = await getEffectiveListingLimit(db);
-      const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
+      const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.intent, "offer"), eq(marketplaceListings.moderationStatus, "active")));
       return { enabled, freeListingLimit: base, bonusListings: bonus, effectiveListingLimit: effective, myActiveListingCount: mine.length };
     }
   }),
@@ -66130,7 +78870,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       const unlockedRows = await db.select({ listingId: marketplaceUnlocks.listingId }).from(marketplaceUnlocks).where(eq(marketplaceUnlocks.companyId, myCompanyId));
       const unlockedIds = new Set(unlockedRows.map((r) => r.listingId));
-      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds))) };
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      return { listings: await Promise.all(filtered.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds, verifiedIds))) };
     }
   }),
   getMarketplaceListing: defineAction({
@@ -66147,14 +78888,16 @@ If that was you, just sign in again. If not, we recommend changing your password
       const photoRows = await db.select().from(marketplaceListingPhotos).where(eq(marketplaceListingPhotos.listingId, row.id)).orderBy(marketplaceListingPhotos.sortOrder);
       const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
       const unlockedRows = await db.select({ listingId: marketplaceUnlocks.listingId }).from(marketplaceUnlocks).where(and(eq(marketplaceUnlocks.companyId, myCompanyId), eq(marketplaceUnlocks.listingId, row.id))).limit(1);
-      return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId))) };
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId)), verifiedIds) };
     }
   }),
   createMarketplaceListing: defineAction({
     request: object({
       title: string2().trim().min(1).max(180),
       category: marketplaceCategorySchema,
-      listingType: _enum(["job", "project"]),
+      intent: _enum(["need", "offer"]),
+      neededBy: string2().trim().max(80).default(""),
       employmentType: _enum(["full_time", "part_time", "temporary"]),
       payUnit: _enum(["hourly", "salary"]),
       priceKind: _enum(["amount", "free", "contact"]),
@@ -66162,6 +78905,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       originalPrice: string2().trim().max(80),
       description: string2().trim().max(5000),
       serviceArea: string2().trim().min(1).max(160),
+      zipCode: marketplaceZipCodeSchema,
       companyName: string2().trim().max(180),
       companyPhone: string2().trim().max(80),
       bookable: boolean2().default(false),
@@ -66178,18 +78922,33 @@ If that was you, just sign in again. If not, we recommend changing your password
       const db = ctx.db();
       const now = new Date;
       await requireMarketplaceEnabled(db);
-      if (identity.workspaceTier === "free") {
+      const creator = (await db.select({ createdAt: authUsers.createdAt }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (creator)
+        await checkNewUserListingCap(db, creator.createdAt, identity.workspaceCompanyId);
+      if (args.intent === "need") {
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60000);
+        const recentNeeds = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.intent, "need"), gte(marketplaceListings.createdAt, dayAgo)));
+        if (recentNeeds.length >= 10)
+          throw new Error("You've reached the daily limit for Wanted posts. Try again tomorrow.");
+      } else if (identity.workspaceTier === "free") {
         const { effective, bonus } = await getEffectiveListingLimit(db);
-        const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.moderationStatus, "active")));
+        const mine = await db.select({ id: marketplaceListings.id }).from(marketplaceListings).where(and(eq(marketplaceListings.companyId, identity.workspaceCompanyId), eq(marketplaceListings.intent, "offer"), eq(marketplaceListings.moderationStatus, "active")));
         if (mine.length >= effective)
           throw new Error(`Your free plan includes ${effective} active Marketplace listing${effective === 1 ? "" : "s"}${bonus > 0 ? ` (${bonus} bonus from referrals)` : ""}. Upgrade to Premium for unlimited listings.`);
       }
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
-      const moderationStatus = scan.clean ? "active" : "auto_rejected";
-      const moderationReason = scan.clean ? "" : scan.reasons.join("; ");
-      const made = (await db.insert(marketplaceListings).values({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: marketplaceListings.id }))[0];
+      const moderationStatus = scan.held ? "pending_review" : scan.clean ? "active" : "auto_rejected";
+      const moderationReason = scan.clean && !scan.held ? "" : scan.reasons.join("; ");
+      const made = (await db.insert(marketplaceListings).values({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, createdAt: now, updatedAt: now }).returning({ id: marketplaceListings.id }))[0];
       if (!made)
         throw new Error("The listing could not be saved.");
+      if (scan.flagBump > 0) {
+        await db.update(marketplaceListings).set({ flagCount: scan.flagBump, updatedAt: now }).where(eq(marketplaceListings.id, made.id));
+        const threshold = await getFlagThreshold(db);
+        if (scan.flagBump >= threshold && moderationStatus === "active") {
+          await db.update(marketplaceListings).set({ moderationStatus: "pending_review", updatedAt: now }).where(eq(marketplaceListings.id, made.id));
+        }
+      }
       const storedKeys = [];
       try {
         for (const [index, photo] of args.photos.entries()) {
@@ -66216,7 +78975,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       id: number2().int().positive(),
       title: string2().trim().min(1).max(180),
       category: marketplaceCategorySchema,
-      listingType: _enum(["job", "project"]),
+      intent: _enum(["need", "offer"]),
+      neededBy: string2().trim().max(80).default(""),
       employmentType: _enum(["full_time", "part_time", "temporary"]),
       payUnit: _enum(["hourly", "salary"]),
       priceKind: _enum(["amount", "free", "contact"]),
@@ -66224,6 +78984,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       originalPrice: string2().trim().max(80),
       description: string2().trim().max(5000),
       serviceArea: string2().trim().min(1).max(160),
+      zipCode: marketplaceZipCodeSchema,
       companyName: string2().trim().max(180),
       companyPhone: string2().trim().max(80),
       bookable: boolean2().default(false),
@@ -66243,8 +79004,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (!existing)
         throw new Error("You can only edit your own listings.");
       const scan = await scanListingForModeration(db, { title: args.title, description: args.description, companyName: args.companyName, serviceArea: args.serviceArea });
-      const moderationStatus = scan.clean ? existing.moderationStatus : "auto_rejected";
-      const moderationReason = scan.clean ? existing.moderationReason : scan.reasons.join("; ");
+      const moderationStatus = scan.held ? "pending_review" : scan.clean ? existing.moderationStatus : "auto_rejected";
+      const moderationReason = scan.clean && !scan.held ? existing.moderationReason : scan.reasons.join("; ");
       const oldPhotos = args.replacePhotos ? await db.select().from(marketplaceListingPhotos).where(eq(marketplaceListingPhotos.listingId, args.id)) : [];
       const now = new Date;
       const newPhotos = [];
@@ -66256,7 +79017,10 @@ If that was you, just sign in again. If not, we recommend changing your password
             newPhotos.push({ blobKey: key, filename: photo.filename, contentType: photo.contentType, sortOrder: index });
           }
         }
-        await db.update(marketplaceListings).set({ title: args.title, category: args.category, listingType: args.listingType, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(marketplaceListings.id, args.id));
+        await db.update(marketplaceListings).set({ title: args.title, category: args.category, intent: args.intent, neededBy: args.neededBy, employmentType: args.employmentType, payUnit: args.payUnit, priceKind: args.priceKind, price: args.priceKind === "amount" ? normalizeMoney(args.price) : "", originalPrice: args.priceKind === "amount" ? normalizeMoney(args.originalPrice) : "", description: args.description, serviceArea: args.serviceArea, zipCode: normalizeZipCode(args.zipCode), companyName: args.companyName, companyPhone: args.companyPhone, bookable: args.bookable, dailyRate: args.bookable ? normalizeMoney(args.dailyRate) : "", moderationStatus, moderationReason, updatedAt: now }).where(eq(marketplaceListings.id, args.id));
+        if (scan.flagBump > 0) {
+          await db.update(marketplaceListings).set({ flagCount: sql`flag_count + ${scan.flagBump}`, updatedAt: now }).where(eq(marketplaceListings.id, args.id));
+        }
         if (args.replacePhotos) {
           await db.delete(marketplaceListingPhotos).where(eq(marketplaceListingPhotos.listingId, args.id));
           for (const photo of newPhotos)
@@ -66347,7 +79111,8 @@ If that was you, just sign in again. If not, we recommend changing your password
   }),
   getListingBumpStatus: defineAction({
     request: object({ listingId: number2().int().positive() }),
-    response: object({ featured: boolean2(), featuredUntil: string2().nullable(), configured: boolean2() }),
+    response: object({ featured: boolean2(), featuredUntil: string2().nullable(), configured: boolean2(), price: string2().nullable() }),
+    privileged: [privileged.getListingBumpPrice],
     async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
@@ -66355,7 +79120,13 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (!listing || listing.companyId !== identity.workspaceCompanyId)
         throw new Error("Listing not found.");
       const until = listing.featuredUntil && listing.featuredUntil.getTime() > Date.now() ? listing.featuredUntil : null;
-      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
+      let price = null;
+      try {
+        price = (await ctx.executePrivileged(privileged.getListingBumpPrice, {})).priceDisplay;
+      } catch {
+        price = null;
+      }
+      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()), price };
     }
   }),
   getMarketplaceUnlockStatus: defineAction({
@@ -66462,7 +79233,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       for (const c of convos)
         companyIds.push(c.ownerCompanyId === myCompanyId ? c.inquirerCompanyId : c.ownerCompanyId);
       const names = await marketplaceCompanyNames(platformDb(ctx), companyIds);
-      const messages = await db.select().from(marketplaceMessages).where(inArray(marketplaceMessages.conversationId, convoIds)).orderBy(desc(marketplaceMessages.createdAt));
+      const messages = await db.select().from(marketplaceMessages).where(and(inArray(marketplaceMessages.conversationId, convoIds), eq(marketplaceMessages.hidden, false))).orderBy(desc(marketplaceMessages.createdAt));
       const latestByConvo = new Map;
       const messagesByConvo = new Map;
       for (const message of messages) {
@@ -66510,7 +79281,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const names = await marketplaceCompanyNames(platformDb(ctx), [myCompanyId, otherCompanyId]);
       const otherPartyName = isInquiry ? listing?.companyName || "Unknown company" : names.get(otherCompanyId) || `Company ${otherCompanyId}`;
       const myName = names.get(myCompanyId) || "";
-      const rows = await db.select().from(marketplaceMessages).where(eq(marketplaceMessages.conversationId, convo.id)).orderBy(marketplaceMessages.createdAt);
+      const rows = await db.select().from(marketplaceMessages).where(and(eq(marketplaceMessages.conversationId, convo.id), eq(marketplaceMessages.hidden, false))).orderBy(marketplaceMessages.createdAt);
       const messages = await Promise.all(rows.map(async (row) => {
         const outgoing = row.senderCompanyId === myCompanyId;
         return { id: row.id, conversationId: convo.id, body: row.body, imageUrl: row.imageBlobKey ? await ctx.blobs.getUrl(row.imageBlobKey) : null, imageFilename: row.imageFilename, outgoing, senderName: outgoing ? myName : otherPartyName, createdAt: row.createdAt.toISOString() };
@@ -66601,22 +79372,6 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx, args) {
       const rows = await ctx.db().select().from(marketplaceBookingRequests).orderBy(desc(marketplaceBookingRequests.createdAt));
       return { bookings: rows.filter((row) => !args.listingId || row.listingId === args.listingId).map((row) => ({ id: row.id, listingId: row.listingId, startDate: row.startDate, endDate: row.endDate, note: row.note, status: row.status, createdAt: row.createdAt.toISOString() })) };
-    }
-  }),
-  listMarketplaceRequests: defineAction({ request: object({}), response: object({ requests: array(marketplaceRequestSchema) }), async handler(ctx) {
-    const rows = await ctx.db().select().from(marketplaceRequests).orderBy(desc(marketplaceRequests.createdAt));
-    return { requests: rows.map(marketplaceRequestShape) };
-  } }),
-  createMarketplaceRequest: defineAction({
-    request: object({ title: string2().trim().min(1).max(180), category: marketplaceCategorySchema, listingType: _enum(["job", "project"]), description: string2().trim().max(5000), serviceArea: string2().trim().min(1).max(160), neededBy: string2().trim().max(80), companyName: string2().trim().max(180), companyPhone: string2().trim().max(80) }),
-    response: object({ id: number2() }),
-    async handler(ctx, args) {
-      const now = new Date;
-      const made = (await ctx.db().insert(marketplaceRequests).values({ ...args, createdAt: now, updatedAt: now }).returning({ id: marketplaceRequests.id }))[0];
-      if (!made)
-        throw new Error("The request could not be saved.");
-      ctx.invalidateQueries();
-      return { id: made.id };
     }
   }),
   getReferralStats: defineAction({
@@ -66743,7 +79498,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       }))
     }),
     async handler(ctx) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "moderator");
       const db = platformDb(ctx);
       const rows = await db.select().from(marketplaceListings).where(inArray(marketplaceListings.moderationStatus, ["auto_rejected", "pending_review"])).orderBy(desc(marketplaceListings.createdAt));
       const listingIds = rows.map((row) => row.id);
@@ -66793,7 +79548,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ listingId: number2().int().positive(), decision: _enum(["approve", "remove"]), note: string2().trim().max(500).default("") }),
     response: object({ ok: literal(true), status: string2() }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "moderator");
       const db = platformDb(ctx);
       const now = new Date;
       const listing = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
@@ -66979,7 +79734,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
   }),
   adminUsersList: defineAction({
-    request: object({ search: string2().trim().max(120).default(""), page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(20) }),
+    request: object({ search: string2().trim().max(120).default(""), tier: _enum(["all", "free", "premium"]).default("all"), status: _enum(["all", "active", "suspended", "founder"]).default("all"), page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(20) }),
     response: object({
       users: array(object({ id: number2(), name: string2(), email: string2(), tier: string2(), subscriptionStatus: string2(), companyId: number2(), companyName: string2(), createdAt: string2(), suspended: boolean2(), isPlatformAdmin: boolean2() })),
       total: number2(),
@@ -66987,10 +79742,21 @@ If that was you, just sign in again. If not, we recommend changing your password
       pageSize: number2()
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const term = `%${args.search}%`;
-      const whereClause = args.search ? or(like(authUsers.name, term), like(authUsers.email, term)) : undefined;
+      const conds = [];
+      if (args.search)
+        conds.push(or(like(authUsers.name, term), like(authUsers.email, term)));
+      if (args.tier !== "all")
+        conds.push(eq(authUsers.tier, args.tier));
+      if (args.status === "active")
+        conds.push(isNull(authUsers.suspendedAt));
+      else if (args.status === "suspended")
+        conds.push(sql`${authUsers.suspendedAt} IS NOT NULL`);
+      else if (args.status === "founder")
+        conds.push(eq(authUsers.subscriptionStatus, "founder"));
+      const whereClause = conds.length ? and(...conds) : undefined;
       const all = await db.select().from(authUsers).where(whereClause).orderBy(desc(authUsers.createdAt));
       const total = all.length;
       const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
@@ -67048,7 +79814,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       audit: array(object({ id: number2(), action: string2(), adminName: string2(), details: string2(), createdAt: string2() }))
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support", "moderator");
       const db = platformDb(ctx);
       const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
       if (!user)
@@ -67117,7 +79883,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ userId: number2().int().positive() }),
     response: object({ ok: literal(true), revoked: number2() }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const now = new Date;
       if (admin.id === args.userId)
@@ -67137,7 +79903,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ userId: number2().int().positive() }),
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const now = new Date;
       const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
@@ -67156,7 +79922,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ userId: number2().int().positive() }),
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const now = new Date;
       const user = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
@@ -67243,7 +80009,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
   }),
   adminAuditLog: defineAction({
-    request: object({ page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(25) }),
+    request: object({ page: number2().int().min(1).default(1), pageSize: number2().int().min(1).max(100).default(25), action: string2().trim().max(80).default(""), actorId: number2().int().positive().nullable().default(null), since: string2().max(30).default(""), until: string2().max(30).default("") }),
     response: object({
       entries: array(object({ id: number2(), adminUserId: number2(), adminName: string2(), action: string2(), targetType: string2(), targetId: string2(), details: string2(), createdAt: string2() })),
       total: number2(),
@@ -67253,9 +80019,20 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx, args) {
       await requirePlatformAdmin(ctx);
       const db = platformDb(ctx);
-      const all = await db.select().from(adminAuditLog).orderBy(desc(adminAuditLog.createdAt));
-      const total = all.length;
-      const page = all.slice((args.page - 1) * args.pageSize, args.page * args.pageSize);
+      const conditions = [];
+      if (args.action)
+        conditions.push(like(adminAuditLog.action, `%${args.action.replace(/[%_]/g, "")}%`));
+      if (args.actorId)
+        conditions.push(eq(adminAuditLog.adminUserId, args.actorId));
+      const sinceMs = Date.parse(args.since);
+      if (args.since && Number.isFinite(sinceMs))
+        conditions.push(gte(adminAuditLog.createdAt, new Date(sinceMs)));
+      const untilMs = Date.parse(args.until);
+      if (args.until && Number.isFinite(untilMs))
+        conditions.push(lte(adminAuditLog.createdAt, new Date(untilMs)));
+      const where = conditions.length ? and(...conditions) : undefined;
+      const total = (await db.select({ n: sql`count(*)` }).from(adminAuditLog).where(where))[0]?.n ?? 0;
+      const page = await db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt), desc(adminAuditLog.id)).limit(args.pageSize).offset((args.page - 1) * args.pageSize);
       const adminIds = [...new Set(page.map((row) => row.adminUserId))];
       const admins = adminIds.length ? await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(inArray(authUsers.id, adminIds)) : [];
       const nameById = new Map(admins.map((row) => [row.id, row.name]));
@@ -67294,15 +80071,37 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
   }),
   platformSupportInbox: defineAction({
-    request: object({}),
+    request: object({
+      status: _enum(["open", "resolved", "all"]).default("all"),
+      priority: _enum(["low", "normal", "high", "urgent", "all"]).default("all"),
+      assignedTo: union([number2().int().positive(), _null3(), literal("all")]).default("all"),
+      search: string2().trim().max(120).default("")
+    }),
     response: object({
-      reports: array(object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), language: string2(), status: string2(), isUnread: boolean2(), replyCount: number2(), lastReplyAt: string2().nullable(), createdAt: string2(), resolvedAt: string2().nullable() })),
+      reports: array(object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), language: string2(), status: string2(), isUnread: boolean2(), replyCount: number2(), lastReplyAt: string2().nullable(), createdAt: string2(), resolvedAt: string2().nullable(), priority: string2(), assignedTo: object({ id: number2(), name: string2() }).nullable(), noteCount: number2() })),
       unreadCount: number2()
     }),
-    async handler(ctx) {
-      await requirePlatformAdmin(ctx);
+    async handler(ctx, args) {
+      await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
-      const reports = await db.select().from(platformSupportReports).orderBy(desc(platformSupportReports.createdAt), desc(platformSupportReports.id));
+      const status = args.status ?? "all";
+      const priority = args.priority ?? "all";
+      const assignedTo = args.assignedTo === undefined ? "all" : args.assignedTo;
+      const search = args.search ?? "";
+      const conditions = [];
+      if (status !== "all")
+        conditions.push(eq(platformSupportReports.status, status));
+      if (priority !== "all")
+        conditions.push(eq(platformSupportReports.priority, priority));
+      if (assignedTo === null)
+        conditions.push(isNull(platformSupportReports.assignedTo));
+      else if (assignedTo !== "all")
+        conditions.push(eq(platformSupportReports.assignedTo, assignedTo));
+      if (search) {
+        const pattern = `%${search.replace(/[%_\\]/g, "")}%`;
+        conditions.push(or(like(platformSupportReports.subject, pattern), like(platformSupportReports.message, pattern), like(platformSupportReports.userName, pattern), like(platformSupportReports.userEmail, pattern)));
+      }
+      const reports = await db.select().from(platformSupportReports).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(platformSupportReports.createdAt), desc(platformSupportReports.id));
       const reportIds = reports.map((r) => r.id);
       const replyRows = reportIds.length ? await db.select().from(platformSupportReplies).where(inArray(platformSupportReplies.reportId, reportIds)) : [];
       const countByReport = new Map;
@@ -67313,6 +80112,13 @@ If that was you, just sign in again. If not, we recommend changing your password
         if (!prev || reply.createdAt > prev)
           lastAtByReport.set(reply.reportId, reply.createdAt);
       }
+      const noteRows = reportIds.length ? await db.select({ reportId: platformSupportNotes.reportId }).from(platformSupportNotes).where(inArray(platformSupportNotes.reportId, reportIds)) : [];
+      const noteCountByReport = new Map;
+      for (const note of noteRows)
+        noteCountByReport.set(note.reportId, (noteCountByReport.get(note.reportId) ?? 0) + 1);
+      const assigneeIds = [...new Set(reports.map((r) => r.assignedTo).filter((id) => id != null))];
+      const assigneeRows = assigneeIds.length ? await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(inArray(authUsers.id, assigneeIds)) : [];
+      const assigneeNameById = new Map(assigneeRows.map((a) => [a.id, a.name]));
       return {
         reports: reports.map((r) => ({
           id: r.id,
@@ -67327,7 +80133,10 @@ If that was you, just sign in again. If not, we recommend changing your password
           replyCount: countByReport.get(r.id) ?? 0,
           lastReplyAt: lastAtByReport.get(r.id)?.toISOString() ?? null,
           createdAt: r.createdAt.toISOString(),
-          resolvedAt: r.resolvedAt?.toISOString() ?? null
+          resolvedAt: r.resolvedAt?.toISOString() ?? null,
+          priority: r.priority,
+          assignedTo: r.assignedTo != null ? { id: r.assignedTo, name: assigneeNameById.get(r.assignedTo) ?? `User ${r.assignedTo}` } : null,
+          noteCount: noteCountByReport.get(r.id) ?? 0
         })),
         unreadCount: reports.filter((r) => r.isUnread).length
       };
@@ -67336,18 +80145,19 @@ If that was you, just sign in again. If not, we recommend changing your password
   platformSupportThread: defineAction({
     request: object({ reportId: number2().int().positive() }),
     response: object({
-      report: object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), language: string2(), status: string2(), isUnread: boolean2(), createdAt: string2(), resolvedAt: string2().nullable() }),
+      report: object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), language: string2(), status: string2(), isUnread: boolean2(), createdAt: string2(), resolvedAt: string2().nullable(), priority: string2(), assignedTo: object({ id: number2(), name: string2() }).nullable() }),
       replies: array(object({ id: number2(), sender: string2(), message: string2(), createdAt: string2() }))
     }),
     async handler(ctx, args) {
-      await requirePlatformAdmin(ctx);
+      await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const report = (await db.select().from(platformSupportReports).where(eq(platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report)
         throw new Error("Report not found.");
+      const assignee = report.assignedTo != null ? (await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(eq(authUsers.id, report.assignedTo)).limit(1))[0] : undefined;
       const replies = await db.select().from(platformSupportReplies).where(eq(platformSupportReplies.reportId, report.id)).orderBy(platformSupportReplies.createdAt, platformSupportReplies.id);
       return {
-        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null },
+        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() }))
       };
     }
@@ -67356,7 +80166,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ reportId: number2().int().positive(), message: string2().trim().min(1).max(5000) }),
     response: object({ id: number2(), sender: string2(), message: string2(), createdAt: string2() }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const report = (await db.select().from(platformSupportReports).where(eq(platformSupportReports.id, args.reportId)).limit(1))[0];
       if (!report)
@@ -67367,6 +80177,14 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("The reply could not be sent.");
       await db.update(platformSupportReports).set({ isUnread: false, updatedAt: now }).where(eq(platformSupportReports.id, report.id));
       await logAdminAction(db, admin.id, "support.reply", "platform_support_report", String(report.id), `${report.userName} <${report.userEmail}> \u2014 ${report.subject}`);
+      try {
+        await sendPushToUser(db, report.userId, {
+          titleEn: "Crewkat support",
+          titleEs: "Soporte de Crewkat",
+          bodyEn: args.message.slice(0, 120),
+          bodyEs: args.message.slice(0, 120)
+        });
+      } catch {}
       ctx.invalidateQueries();
       return { id: made.id, sender: "admin", message: args.message, createdAt: now.toISOString() };
     }
@@ -67375,7 +80193,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     request: object({ id: number2().int().positive(), status: _enum(["open", "resolved"]), isUnread: boolean2() }),
     response: object({ ok: literal(true) }),
     async handler(ctx, args) {
-      const { admin } = await requirePlatformAdmin(ctx);
+      const { admin } = await requireTeamRole(ctx, "admin", "support");
       const db = platformDb(ctx);
       const now = new Date;
       const current = (await db.select().from(platformSupportReports).where(eq(platformSupportReports.id, args.id)).limit(1))[0];
@@ -67695,7 +80513,70 @@ If that was you, just sign in again. If not, we recommend changing your password
     await db.delete(bidBoardItems).where(eq(bidBoardItems.id, args.id));
     ctx.invalidateQueries();
     return { ok: true };
-  } })
+  } }),
+  craneRunSetOptIn: defineAction({
+    request: object({ optIn: boolean2() }),
+    response: object({ ok: literal(true), optIn: boolean2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      await db.update(authUsers).set({ leaderboardOptIn: args.optIn, updatedAt: new Date }).where(eq(authUsers.id, identity.workspaceUserId));
+      if (!args.optIn) {
+        const today = new Date().toISOString().slice(0, 10);
+        await db.delete(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), eq(dailyGameScores.scoreDate, today)));
+      }
+      return { ok: true, optIn: args.optIn };
+    }
+  }),
+  craneRunSubmitScore: defineAction({
+    request: object({ score: number2().int().min(0).max(999999) }),
+    response: object({ ok: boolean2(), stored: boolean2(), hint: string2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const score = Math.floor(args.score);
+      if (!Number.isFinite(score) || score < 0 || score > 999999)
+        throw new Error("Invalid score.");
+      const db = ctx.db();
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      if (!user.leaderboardOptIn)
+        return { ok: false, stored: false, hint: "opt-in" };
+      if (score <= 0)
+        return { ok: true, stored: false, hint: "no-score" };
+      const company = (await db.select({ companyName: settings.companyName }).from(settings).where(eq(settings.companyId, user.companyId)).limit(1))[0];
+      const displayName = ((company?.companyName ?? "").trim() || user.name.trim() || "Player").slice(0, 80);
+      const today = new Date().toISOString().slice(0, 10);
+      const existing = (await db.select().from(dailyGameScores).where(and(eq(dailyGameScores.userId, user.id), eq(dailyGameScores.scoreDate, today))).limit(1))[0];
+      if (!existing) {
+        await db.insert(dailyGameScores).values({ userId: user.id, displayName, score, scoreDate: today, createdAt: new Date });
+      } else if (score > existing.score) {
+        await db.update(dailyGameScores).set({ score, displayName }).where(eq(dailyGameScores.id, existing.id));
+      }
+      return { ok: true, stored: true, hint: "" };
+    }
+  }),
+  craneRunGetLeaderboard: defineAction({
+    request: object({}),
+    response: object({
+      optIn: boolean2(),
+      myBest: number2().nullable(),
+      entries: array(object({ rank: number2(), displayName: string2(), score: number2(), isMe: boolean2() }))
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const today = new Date().toISOString().slice(0, 10);
+      const user = (await db.select({ leaderboardOptIn: authUsers.leaderboardOptIn }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      const rows = await db.select({ userId: dailyGameScores.userId, displayName: dailyGameScores.displayName, score: dailyGameScores.score }).from(dailyGameScores).innerJoin(authUsers, eq(dailyGameScores.userId, authUsers.id)).where(and(eq(dailyGameScores.scoreDate, today), eq(authUsers.leaderboardOptIn, true))).orderBy(desc(dailyGameScores.score), asc(dailyGameScores.createdAt)).limit(5);
+      const mine = (await db.select({ score: dailyGameScores.score }).from(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), eq(dailyGameScores.scoreDate, today))).limit(1))[0];
+      return {
+        optIn: user?.leaderboardOptIn ?? false,
+        myBest: mine ? mine.score : null,
+        entries: rows.map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId }))
+      };
+    }
+  })
 };
 var PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap",
@@ -67709,6 +80590,8 @@ var PUBLIC_ACTIONS = new Set([
   "requestPasswordReset",
   "resetPassword",
   "handleStripeWebhook",
+  "getGoogleClientId",
+  "googleSignIn",
   "getPortalData",
   "portalUpdateSelection",
   "portalSignChangeOrder",
@@ -67718,7 +80601,12 @@ var PUBLIC_ACTIONS = new Set([
   "submitDocumentSignature",
   "submitEstimateRequest",
   "portalListJobMessages",
-  "portalSendJobMessage"
+  "portalSendJobMessage",
+  "getFeatureFlags",
+  "getMaintenanceStatus",
+  "getPlatformBranding",
+  "getPolicyVersion",
+  "verifyTotpLogin"
 ]);
 var PREMIUM_ACTIONS = new Set([
   "getAutomationCenter",
@@ -67811,16 +80699,30 @@ export {
   Actions,
   BaseActions,
   alertMatchesListing,
+  authEnvelopeSchema,
+  authUserShape,
   consumeMarketplaceUnlock,
+  deleteUserAccount,
+  getPlatformSetting,
+  googleAuth,
+  isPlatformTeamMember,
+  issueSession,
+  logAdminAction,
+  marketplaceZipCodeSchema,
+  normalizeZipCode,
   notifyAlertMatches,
   performBackup,
   performMonthlyVerify,
+  platformDb,
   recoverStaleBackupRuns,
+  requirePlatformAdmin,
+  requireSession,
   runEstimateNudgeTick,
   runRecurringInvoiceTick,
   runReviewRequestTick,
   runScheduledBackup,
   runWeeklyProgressTick,
   sendJobReviewEmail,
+  verifiedCompanyIdSet,
   workspaceIdentity
 };

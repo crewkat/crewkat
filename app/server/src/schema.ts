@@ -807,6 +807,9 @@ export const authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
+  // Crane Run daily leaderboard (0073): per-user opt-in, default private.
+  // Only opted-in users appear on the public daily top-5 board.
+  leaderboardOptIn: integer("leaderboard_opt_in", { mode: "boolean" }).notNull().default(false),
   // Google Sign-In subject ("sub" claim). Set when the user signs in with
   // Google; null for password-only accounts.
   googleSub: text("google_sub"),
@@ -1341,3 +1344,19 @@ export const promoCodeLog = sqliteTable("promo_code_log", {
   createdBy: integer("created_by").references(() => authUsers.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+// Crane Run daily leaderboard (0073, Danny 2026-10-11): one best score per
+// user per UTC day. The board always queries "today", so it resets daily
+// with no cron. display_name is resolved at submit time (company name when
+// the account has one, else the user's name).
+export const dailyGameScores = sqliteTable("daily_game_scores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull().default(""),
+  score: integer("score").notNull().default(0),
+  scoreDate: text("score_date").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("daily_game_scores_user_date_unique").on(table.userId, table.scoreDate),
+  index("daily_game_scores_date_score_idx").on(table.scoreDate, table.score),
+]);

@@ -5153,6 +5153,77 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   saveBidBoardItem: defineAction({ request: z.object({ id: z.number().int().positive().nullable().default(null), title: z.string().trim().min(1).max(200), listingId: z.number().int().positive().nullable().default(null), requestId: z.number().int().positive().nullable().default(null), stage: bidBoardStageSchema.default("interested"), dueDate: z.string().trim().max(10).default(""), remindAt: z.string().datetime().nullable().default(null), notes: z.string().trim().max(3000).default("") }), response: z.object({ id: z.number() }), async handler(ctx, args) { const identity = workspaceIdentity(ctx); const db = ctx.db<typeof schema>(); const now = new Date(); if (args.id) { const existing = (await db.select().from(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)).limit(1))[0]; if (!existing || existing.userId !== identity.workspaceUserId) throw new Error("Bid not found."); await db.update(schema.bidBoardItems).set({ title: args.title, listingId: args.listingId, requestId: args.requestId, stage: args.stage, dueDate: args.dueDate, remindAt: args.remindAt ? new Date(args.remindAt) : null, notes: args.notes, updatedAt: now }).where(eq(schema.bidBoardItems.id, args.id)); ctx.invalidateQueries(); return { id: args.id }; } const made = (await db.insert(schema.bidBoardItems).values({ companyId: identity.workspaceCompanyId, userId: identity.workspaceUserId, title: args.title, listingId: args.listingId, requestId: args.requestId, stage: args.stage, dueDate: args.dueDate, remindAt: args.remindAt ? new Date(args.remindAt) : null, notes: args.notes, createdAt: now, updatedAt: now }).returning({ id: schema.bidBoardItems.id }))[0]; if (!made) throw new Error("The bid could not be saved."); ctx.invalidateQueries(); return { id: made.id }; } }),
   moveBidBoardItem: defineAction({ request: z.object({ id: z.number().int().positive(), stage: bidBoardStageSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const identity = workspaceIdentity(ctx); const db = ctx.db<typeof schema>(); const existing = (await db.select().from(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)).limit(1))[0]; if (!existing || existing.userId !== identity.workspaceUserId) throw new Error("Bid not found."); await db.update(schema.bidBoardItems).set({ stage: args.stage, updatedAt: new Date() }).where(eq(schema.bidBoardItems.id, args.id)); ctx.invalidateQueries(); return { ok: true }; } }),
   deleteBidBoardItem: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const identity = workspaceIdentity(ctx); const db = ctx.db<typeof schema>(); const existing = (await db.select().from(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)).limit(1))[0]; if (!existing || existing.userId !== identity.workspaceUserId) throw new Error("Bid not found."); await db.delete(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)); ctx.invalidateQueries(); return { ok: true }; } }),
+  // -------------------------------------------------------------------------
+  // Crane Run daily leaderboard (0073, Danny 2026-10-11): global top-5 per
+  // UTC day, opt-in (default private). Company name when the account has
+  // one, else the user's name. Scores are client-reported (honor system),
+  // so the cap is enforced in the handler as well as the zod schema.
+  // -------------------------------------------------------------------------
+  craneRunSetOptIn: defineAction({
+    request: z.object({ optIn: z.boolean() }),
+    response: z.object({ ok: z.literal(true), optIn: z.boolean() }),
+    async handler(ctx, args): Promise<{ ok: true; optIn: boolean }> {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      await db.update(schema.authUsers).set({ leaderboardOptIn: args.optIn, updatedAt: new Date() }).where(eq(schema.authUsers.id, identity.workspaceUserId));
+      if (!args.optIn) {
+        const today = new Date().toISOString().slice(0, 10);
+        await db.delete(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), eq(schema.dailyGameScores.scoreDate, today)));
+      }
+      return { ok: true, optIn: args.optIn };
+    },
+  }),
+  craneRunSubmitScore: defineAction({
+    request: z.object({ score: z.number().int().min(0).max(999999) }),
+    response: z.object({ ok: z.boolean(), stored: z.boolean(), hint: z.string() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const score = Math.floor(args.score);
+      if (!Number.isFinite(score) || score < 0 || score > 999999) throw new Error("Invalid score.");
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      if (!user.leaderboardOptIn) return { ok: false, stored: false, hint: "opt-in" };
+      if (score <= 0) return { ok: true, stored: false, hint: "no-score" };
+      const company = (await db.select({ companyName: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.companyId, user.companyId)).limit(1))[0];
+      const displayName = ((company?.companyName ?? "").trim() || user.name.trim() || "Player").slice(0, 80);
+      const today = new Date().toISOString().slice(0, 10);
+      const existing = (await db.select().from(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, user.id), eq(schema.dailyGameScores.scoreDate, today))).limit(1))[0];
+      if (!existing) {
+        await db.insert(schema.dailyGameScores).values({ userId: user.id, displayName, score, scoreDate: today, createdAt: new Date() });
+      } else if (score > existing.score) {
+        await db.update(schema.dailyGameScores).set({ score, displayName }).where(eq(schema.dailyGameScores.id, existing.id));
+      }
+      return { ok: true, stored: true, hint: "" };
+    },
+  }),
+  craneRunGetLeaderboard: defineAction({
+    request: z.object({}),
+    response: z.object({
+      optIn: z.boolean(),
+      myBest: z.number().nullable(),
+      entries: z.array(z.object({ rank: z.number(), displayName: z.string(), score: z.number(), isMe: z.boolean() })),
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const today = new Date().toISOString().slice(0, 10);
+      const user = (await db.select({ leaderboardOptIn: schema.authUsers.leaderboardOptIn }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      const rows = await db
+        .select({ userId: schema.dailyGameScores.userId, displayName: schema.dailyGameScores.displayName, score: schema.dailyGameScores.score })
+        .from(schema.dailyGameScores)
+        .innerJoin(schema.authUsers, eq(schema.dailyGameScores.userId, schema.authUsers.id))
+        .where(and(eq(schema.dailyGameScores.scoreDate, today), eq(schema.authUsers.leaderboardOptIn, true)))
+        .orderBy(desc(schema.dailyGameScores.score), asc(schema.dailyGameScores.createdAt))
+        .limit(5);
+      const mine = (await db.select({ score: schema.dailyGameScores.score }).from(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), eq(schema.dailyGameScores.scoreDate, today))).limit(1))[0];
+      return {
+        optIn: user?.leaderboardOptIn ?? false,
+        myBest: mine ? mine.score : null,
+        entries: rows.map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId })),
+      };
+    },
+  }),
 } satisfies ActionsModule;
 
 const PUBLIC_ACTIONS = new Set([

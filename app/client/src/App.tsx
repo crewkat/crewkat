@@ -5322,11 +5322,40 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     highScore: lang === "es" ? "Récord" : "High score",
     tapToRestart: lang === "es" ? "Toca para reintentar" : "Tap to restart",
     newBest: lang === "es" ? "¡Nuevo récord!" : "New best!",
+    // Daily leaderboard (Danny 2026-10-11): global top-5 per UTC day, opt-in.
+    boardTitle: lang === "es" ? "Los 5 mejores de hoy" : "Today's Top 5",
+    showMe: lang === "es" ? "Mostrarme en la tabla" : "Show me on the leaderboard",
+    emptyBoard: lang === "es" ? "Aún no hay puntajes hoy — ¡sé el primero!" : "No scores yet today — be the first!",
+    loadingBoard: lang === "es" ? "Cargando…" : "Loading…",
   };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<CraneRunPhase>("ready");
   const [hud, setHud] = useState({ score: 0, high: 0, newBest: false });
+  // Daily leaderboard: everyone sees the board; only opted-in users appear.
+  const qc = useQueryClient();
+  const boardQuery = useQuery({ queryKey: ["crane-run-board"], queryFn: () => api.craneRunGetLeaderboard({}) });
+  const optInMutation = useMutation({
+    mutationFn: (optIn: boolean) => api.craneRunSetOptIn({ optIn }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crane-run-board"] }),
+  });
+  const optIn = boardQuery.data?.optIn ?? false;
+  const entries = boardQuery.data?.entries ?? [];
+  // Submit the final score once per game, only when opted in. Local high
+  // score (localStorage) keeps working regardless of opt-in.
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (phase === "running") submittedRef.current = false;
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== "over" || submittedRef.current) return;
+    submittedRef.current = true;
+    if (hud.score > 0 && optIn) {
+      api.craneRunSubmitScore({ score: hud.score })
+        .then(() => qc.invalidateQueries({ queryKey: ["crane-run-board"] }))
+        .catch(() => {});
+    }
+  }, [phase, hud.score, optIn, qc]);
   const simRef = useRef({
     phase: "ready" as CraneRunPhase,
     y: 0, // height above ground (virtual px)
@@ -5717,6 +5746,30 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   return (
     <main className="page crane-run-page">
       <PageHeader lang={lang} title={t.title} onBack={onBack} />
+      <section className="crane-run-board" aria-label={t.boardTitle}>
+        <div className="crane-run-board-head">
+          <strong>{t.boardTitle}</strong>
+          <label className="crane-run-optin">
+            <span>{t.showMe}</span>
+            <Switch checked={optIn} disabled={optInMutation.isPending} onChange={(v) => optInMutation.mutate(v)} ariaLabel={t.showMe} />
+          </label>
+        </div>
+        {boardQuery.isLoading ? (
+          <p className="crane-run-board-empty">{t.loadingBoard}</p>
+        ) : entries.length === 0 ? (
+          <p className="crane-run-board-empty">{t.emptyBoard}</p>
+        ) : (
+          <ol className="crane-run-board-list">
+            {entries.map((e) => (
+              <li key={e.rank} className={e.isMe ? "crane-run-me" : undefined}>
+                <span className="crane-run-rank">{e.rank}</span>
+                <span className="crane-run-name">{e.displayName}</span>
+                <span className="crane-run-pts">{e.score}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       <div
         ref={wrapRef}
         className="crane-run-wrap"
