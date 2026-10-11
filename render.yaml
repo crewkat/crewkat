@@ -53,6 +53,11 @@ services:
         sync: false
       - key: STRIPE_PREMIUM_PRICE_ID
         sync: false
+      # One-time price for the Marketplace "Feature for 7 days" listing boost
+      # (Build 3.0 promote flow). Create the Price in the Stripe dashboard,
+      # paste the price_... id here, then redeploy.
+      - key: STRIPE_BUMP_PRICE_ID
+        sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       # Set to the public URL once known (temporary *.onrender.com URL first,

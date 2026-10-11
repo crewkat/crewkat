@@ -43,11 +43,15 @@ describe("invoice/estimate cards are tappable", () => {
     );
   });
 
-  test("inner controls survive: status select and View document button", () => {
+  test("inner controls survive: status select and View action", () => {
+    // Build 3.0 item 10: the mockup's "Mark status | View" row — the select
+    // hides behind the Mark status label, View navigates to the preview.
     expect(APP).toContain(
-      '<select value={invoice.status} onChange={(e) => status.mutate(',
+      'value={invoice.status} onChange={(e) => status.mutate(',
     );
-    expect(APP).toContain("{t.viewDocument}</button>");
+    expect(APP).toContain('className="ck-status-select"');
+    expect(APP).toContain('className="ck-view-action"');
+    expect(APP).toContain('{lang === "es" ? "Ver" : "View"}');
   });
 
   test("tap affordance CSS exists (chevron + press state + reduced motion)", () => {

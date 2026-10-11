@@ -36,6 +36,7 @@ type PointerEvent,
 type ReactNode,
 type TouchEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
@@ -2500,6 +2501,19 @@ function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
       {day.isError && <p className="status error">{actionErrorMessage(day.error)}</p>}
       {day.data && (
         <PullToRefresh lang={lang} refreshing={day.isFetching && !day.isLoading} onRefresh={() => qc.invalidateQueries({ queryKey: ["crew-day"] })}>
+          {/* Build 3.0 (item 13): a fully clear day gets a designed empty state
+              with color, content, and quick actions instead of bare text. */}
+          {day.data.jobsToday.length === 0 && day.data.appointmentsToday.length === 0 && day.data.overdueInvoices.length === 0 ? (
+            <section className="crew-day-empty-state stagger-in" aria-label={lang === "es" ? "Día despejado" : "Clear day"}>
+              <span className="crew-day-empty-icon" aria-hidden="true"><Icon size={34}><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7"/></Icon></span>
+              <h2>{lang === "es" ? "Día despejado" : "Clear day"}</h2>
+              <p>{lang === "es" ? "No hay trabajos ni citas programados para hoy. Planifica el próximo trabajo o agenda una visita." : "No jobs or appointments scheduled today. Plan your next job or book a visit."}</p>
+              <div className="crew-day-empty-actions">
+                <button type="button" className="primary-button" onClick={() => setScreen({ name: "new" })}><PlusIcon />{lang === "es" ? "Agregar trabajo" : "Add job"}</button>
+                <button type="button" onClick={() => setScreen({ name: "operations", tab: "calendar" })}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3"/></Icon>{lang === "es" ? "Agregar cita" : "Add appointment"}</button>
+              </div>
+            </section>
+          ) : (
           <div className="crew-day-sections">
             {day.data.crewToday.length > 0 && (
               <section className="crew-day-section stagger-in" aria-label={lang === "es" ? "Equipo hoy" : "Crew today"}>
@@ -2539,6 +2553,7 @@ function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
               </section>
             )}
           </div>
+          )}
         </PullToRefresh>
       )}
     </main>
@@ -2914,11 +2929,13 @@ function CrewkatApplication() {
         <BookingRequestScreen lang={lang} />
       </div>
     );
-  // Build 0.4 (item 4): the invoice/estimate views bring their own action bar
-  // (Edit / Mark paid / Send / More) — hide the master bottom tab bar there.
-  // Build 0.5 fix: the builders hide it too, so the sticky Save can sit at the
-  // true bottom without ever overlapping the nav.
-  const hideMasterNav = screen.name === "invoicePreview" || screen.name === "quotePreview" || screen.name === "invoiceNew" || screen.name === "quoteNew" || screen.name === "invoiceAttachments" || screen.name === "quoteAttachments" || screen.name === "marketplaceThread";
+  // Build 3.0 (item 1): the master bottom tab bar lives ONLY on the four root
+  // tabs (Home, Jobs, Invoices, Marketplace — the central + opens its sheet
+  // over the current tab). It is hidden on every sub-page: Post to
+  // Marketplace, listing detail, the invoice/estimate builders and previews,
+  // Clients, Crew day, etc.
+  const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "invoices" || screen.name === "marketplace";
+  const hideMasterNav = !showMasterNav;
   return (
     <SettingsNavigationContext.Provider
       value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
@@ -2926,7 +2943,7 @@ function CrewkatApplication() {
     <ToolsNavigationContext.Provider
       value={screen.name === "tools" ? null : () => setScreen({ name: "tools" })}
     >
-    <div className={`app-shell${screen.name !== "legal" ? " has-bottom-nav" : ""}${hideMasterNav ? " master-nav-hidden" : ""}`} ref={appShellRef}>
+    <div className={`app-shell${showMasterNav ? " has-bottom-nav" : ""}${hideMasterNav && screen.name !== "legal" ? " master-nav-hidden" : ""}`} ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       <ImpersonationBanner lang={lang} />
       {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
@@ -4122,7 +4139,7 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
   lang: Lang;
   listingId: number | null;
   myListings: Array<{ id: number; title: string }>;
-  text: { promote: string; featured: string; featureFor7Days: string; bumpBlurb: string; bumpActive: string; bumpPaying: string; bumpError: string; billingNotConnected: string; close: string };
+  text: { promote: string; featured: string; featureFor7Days: string; bumpBlurb: string; bumpActive: string; bumpPaying: string; bumpError: string; billingNotConnected: string; billingNote: string; topPlacement: string; oneTime: string; openCheckout: string; checkNewTab: string; close: string };
   onClose: () => void;
 }) {
   const [targetId, setTargetId] = useState<number | null>(listingId);
@@ -4134,12 +4151,35 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
     queryFn: () => api.getListingBumpStatus({ listingId: targetId as number }),
     enabled: targetId !== null,
   });
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const pay = useMutation({
     mutationFn: () => api.startListingBumpCheckout({ listingId: targetId as number }),
+    onMutate: () => setPopupBlocked(false),
     onSuccess: (result) => {
-      if (result.checkoutUrl) window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+      if (!result.checkoutUrl) return;
+      const win = window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+      // Popup blockers return null — fall back to an explicit tap-to-open link.
+      if (!win) setPopupBlocked(true);
     },
   });
+  // The checkout opens in a new tab; when the user comes back, re-check the
+  // boost status so a completed payment reflects without a manual refresh.
+  useEffect(() => {
+    if (!pay.data?.checkoutUrl) return;
+    const onFocus = () => { void status.refetch(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [pay.data?.checkoutUrl, status]);
+  const price = status.data?.price ?? null;
+  // Billing is ready when the server reports a configured price and the last
+  // checkout attempt didn't come back unconfigured.
+  const billingReady = (status.data?.configured ?? false) && !(pay.data && !pay.data.configured);
+  const blurb = price
+    ? (lang === "es"
+      ? `Pago único de ${price} vía Stripe. Tu publicación aparece primero en el mercado durante 7 días.`
+      : `One-time payment of ${price} via Stripe. Your listing floats to the top of the Marketplace for 7 days.`)
+    : text.bumpBlurb;
+  const payLabel = pay.isPending ? text.bumpPaying : price ? `${text.featureFor7Days} · ${price}` : text.featureFor7Days;
   const featuredUntil = status.data?.featuredUntil ? new Date(status.data.featuredUntil).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
   return (
     <div className={`sheet-backdrop${closing ? " closing" : ""}`} onClick={close}>
@@ -4164,13 +4204,21 @@ function BumpPurchaseSheet({ lang, listingId, myListings, text, onClose }: {
         )}
         {targetId !== null && status.data && !status.data.featured && (
           <>
-            <div className="launch-option"><Icon><path d="M12 3v18M5 10l7-7 7 7" /></Icon><strong>{lang === "es" ? "Parte superior del mercado por 7 días" : "Top of Marketplace for 7 days"}</strong></div>
-            <p className="bump-blurb">{text.bumpBlurb}</p>
+            <div className="launch-option"><Icon><path d="M12 3v18M5 10l7-7 7 7" /></Icon><div className="launch-option-copy"><strong>{text.topPlacement}</strong>{price && <span className="launch-option-price">{price} · {text.oneTime}</span>}</div></div>
+            <p className="bump-blurb">{blurb}</p>
             {pay.isError && <p className="status error">{text.bumpError}</p>}
-            {pay.data && !pay.data.configured && <p className="status error" role="status"><strong>{text.billingNotConnected}.</strong></p>}
-            <button type="button" className="primary-button" disabled={pay.isPending} onClick={() => pay.mutate()}>
-              {pay.isPending ? text.bumpPaying : text.featureFor7Days}
-            </button>
+            {!billingReady ? (
+              <p className="status error" role="status"><strong>{text.billingNotConnected}.</strong> {text.billingNote}</p>
+            ) : (
+              <>
+                <button type="button" className="primary-button bump-pay" disabled={pay.isPending} onClick={() => pay.mutate()}>
+                  {payLabel}
+                </button>
+                {popupBlocked && pay.data?.checkoutUrl && (
+                  <p className="bump-blurb" role="status">{text.checkNewTab} <a href={pay.data.checkoutUrl} target="_blank" rel="noopener noreferrer">{text.openCheckout}</a></p>
+                )}
+              </>
+            )}
           </>
         )}
         <button type="button" className="secondary-button" onClick={close}>{text.close}</button>
@@ -4262,6 +4310,10 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     if (params.get("bump") === "success") {
       setBumpJustPaid(true);
       buzz([20, 40, 20]);
+      // The webhook may have already featured the listing — refresh the feed
+      // and any bump status so the boost shows without a manual refresh.
+      void qc.invalidateQueries({ queryKey: ["listing-bump"] });
+      void qc.invalidateQueries({ queryKey: ["marketplace-listings"] });
       params.delete("bump");
       const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
       window.history.replaceState(null, "", clean);
@@ -4440,9 +4492,9 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     }
   };
   const text = lang === "es" ? {
-    post: "Publicar", postNew: "Publicar un anuncio", wanted: "Se busca", available: "Disponible", explore: "Explorar", more: "Más", search: "¿Qué servicio necesitas?", location: "Área o código postal", all: "Todos", saved: "Guardados", savedNote: "Publicaciones que guardaste", top: "Categorías principales", categories: "Todas las categorías", emptyTitle: savedOnly ? "No tienes publicaciones guardadas" : "Aún no hay publicaciones", emptyBody: savedOnly ? "Toca el marcador en una publicación para guardarla aquí." : "Las publicaciones aparecerán aquí a medida que se unan empresas. Puedes publicar la primera ahora.",  clear: "Borrar filtros", just: "Recién publicado", marketplaceSearch: "Buscar en el mercado", areaFilter: "Filtrar por área", myListings: "Mis publicaciones", myListingsNote: "Administra tu límite y promociones", quota: "publicaciones gratuitas usadas", promote: "Promocionar", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", moreSlots: "Obtener más espacios", launch: "Disponible en el lanzamiento", topPlacement: "Parte superior del mercado por 7 días", categoryFeature: "Destacado en la categoría", close: "Cerrar", promoted: "Promocionado", featured: "Destacado", featureFor7Days: "Destacar por 7 días", bumpBlurb: "Pago único vía Stripe. Tu publicación aparece primero en el mercado durante 7 días.", bumpActive: "Destacado hasta", bumpPaying: "Abriendo Stripe…", bumpError: "No se pudo iniciar el pago. Inténtalo de nuevo.", billingNotConnected: "La facturación aún no está conectada", pull: "Desliza para actualizar", release: "Suelta para actualizar", refreshing: "Actualizando publicaciones…",
+    post: "Publicar", postNew: "Publicar un anuncio", wanted: "Se busca", available: "Disponible", explore: "Explorar", more: "Más", search: "¿Qué servicio necesitas?", location: "Área o código postal", all: "Todos", saved: "Guardados", savedNote: "Publicaciones que guardaste", top: "Categorías principales", categories: "Todas las categorías", emptyTitle: savedOnly ? "No tienes publicaciones guardadas" : "Aún no hay publicaciones", emptyBody: savedOnly ? "Toca el marcador en una publicación para guardarla aquí." : "Las publicaciones aparecerán aquí a medida que se unan empresas. Puedes publicar la primera ahora.",  clear: "Borrar filtros", just: "Recién publicado", marketplaceSearch: "Buscar en el mercado", areaFilter: "Filtrar por área", myListings: "Mis publicaciones", myListingsNote: "Administra tu límite y promociones", quota: "publicaciones gratuitas usadas", promote: "Promocionar", edit: "Editar", remove: "Eliminar", removeTitle: "¿Eliminar esta publicación?", removeBody: "Se quitará del mercado y se liberará un espacio gratuito.", cancel: "Cancelar", deleting: "Eliminando…", removeError: "No se pudo eliminar. Inténtalo de nuevo.", moreSlots: "Obtener más espacios", launch: "Disponible en el lanzamiento", topPlacement: "Parte superior del mercado por 7 días", categoryFeature: "Destacado en la categoría", close: "Cerrar", promoted: "Promocionado", featured: "Destacado", featureFor7Days: "Destacar por 7 días", bumpBlurb: "Pago único vía Stripe. Tu publicación aparece primero en el mercado durante 7 días.", bumpActive: "Destacado hasta", bumpPaying: "Abriendo Stripe…", bumpError: "No se pudo iniciar el pago. Inténtalo de nuevo.", billingNotConnected: "La promoción pagada aún no está disponible", billingNote: "Todavía estamos terminando la configuración de facturación. Vuelve pronto.", oneTime: "pago único", openCheckout: "Abrir el pago de Stripe", checkNewTab: "Completa tu pago en la pestaña nueva: tu publicación se destacará automáticamente.", pull: "Desliza para actualizar", release: "Suelta para actualizar", refreshing: "Actualizando publicaciones…",
   } : {
-    post: "Post", postNew: "Post a new listing", wanted: "Wanted", available: "Available", explore: "Explore", more: "More", search: "What service do you need?", location: "Service area or ZIP", all: "All", saved: "Saved items", savedNote: "Listings you bookmarked", top: "Top categories", categories: "All categories", emptyTitle: savedOnly ? "No saved listings yet" : "No listings yet", emptyBody: savedOnly ? "Tap the bookmark on a listing to keep it here." : "Listings will appear here as companies join. You can add the first one now.",  clear: "Clear filters", just: "Just listed", marketplaceSearch: "Search Marketplace", areaFilter: "Filter by service area", myListings: "My listings", myListingsNote: "Manage your quota and promotions", quota: "free listings used", promote: "Promote", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", moreSlots: "Get more listing slots", launch: "Available at launch", topPlacement: "Top of Marketplace for 7 days", categoryFeature: "Featured in category", close: "Close", promoted: "Promoted", featured: "Featured", featureFor7Days: "Feature for 7 days", bumpBlurb: "One-time payment via Stripe. Your listing floats to the top of the Marketplace for 7 days.", bumpActive: "Featured until", bumpPaying: "Opening Stripe…", bumpError: "Couldn't start the payment. Try again.", billingNotConnected: "Billing isn’t connected yet", pull: "Pull to refresh", release: "Release to refresh", refreshing: "Refreshing listings…",
+    post: "Post", postNew: "Post a new listing", wanted: "Wanted", available: "Available", explore: "Explore", more: "More", search: "What service do you need?", location: "Service area or ZIP", all: "All", saved: "Saved items", savedNote: "Listings you bookmarked", top: "Top categories", categories: "All categories", emptyTitle: savedOnly ? "No saved listings yet" : "No listings yet", emptyBody: savedOnly ? "Tap the bookmark on a listing to keep it here." : "Listings will appear here as companies join. You can add the first one now.",  clear: "Clear filters", just: "Just listed", marketplaceSearch: "Search Marketplace", areaFilter: "Filter by service area", myListings: "My listings", myListingsNote: "Manage your quota and promotions", quota: "free listings used", promote: "Promote", edit: "Edit", remove: "Delete", removeTitle: "Delete this listing?", removeBody: "It will be removed from Marketplace and one free listing slot will open up.", cancel: "Cancel", deleting: "Deleting…", removeError: "The listing could not be deleted. Try again.", moreSlots: "Get more listing slots", launch: "Available at launch", topPlacement: "Top of Marketplace for 7 days", categoryFeature: "Featured in category", close: "Close", promoted: "Promoted", featured: "Featured", featureFor7Days: "Feature for 7 days", bumpBlurb: "One-time payment via Stripe. Your listing floats to the top of the Marketplace for 7 days.", bumpActive: "Featured until", bumpPaying: "Opening Stripe…", bumpError: "Couldn't start the payment. Try again.", billingNotConnected: "Paid promotion isn't available yet", billingNote: "We're still finishing the billing setup — check back soon.", oneTime: "one-time", openCheckout: "Open Stripe checkout", checkNewTab: "Complete your payment in the new tab — your listing will be featured automatically.", pull: "Pull to refresh", release: "Release to refresh", refreshing: "Refreshing listings…",
   };
   if (gate.data && !gate.data.enabled) {
     return <main className="page marketplace-page"><div className="market-empty"><span><Icon size={32}><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon></span><h2>{lang === "es" ? "Marketplace pausado" : "Marketplace paused"}</h2><p>{lang === "es" ? "El Marketplace está temporalmente desactivado. Vuelve a intentarlo más tarde." : "The Marketplace is temporarily disabled. Please check back later."}</p></div></main>;
@@ -4836,9 +4888,9 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <button type="button" key={photo.id} className={`market-detail-photo${index === 0 ? " primary" : ""}`} onClick={() => { buzz(8); setLightboxIndex(index); }} aria-label={lang === "es" ? `Ver foto ${index + 1}` : `View photo ${index + 1}`}><img src={photo.url} alt={`${listing.title} ${index + 1}`} loading="lazy"/></button>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-intent ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "Se busca" : "Wanted") : (lang === "es" ? "Disponible" : "Available")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
-    <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { if (listing.isMine) { setConvoPickerOpen(true); } else { startConvo.mutate(); } }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>{startConvo.isError && <p className="status error">{t.startError}</p>}
+    {!listing.isMine && <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { startConvo.mutate(); }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>}{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
-    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />}</section>
+    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{!listing.isMine && (listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />)}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
     {deleteOpenSheet.render && <div className={`sheet-backdrop${deleteOpenSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
     {reportOpenSheet.render && <div className={`sheet-backdrop${reportOpenSheet.closing ? " closing" : ""}`} onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
@@ -12872,6 +12924,30 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
   const updateCustom = <K extends keyof DocumentCustomize>(key: K, value: DocumentCustomize[K]) => setCustom((current) => ({ ...current, [key]: value }));
   const previewSettings = localSettings ? { ...localSettings, logoUrl: logoPreview || localSettings.logoUrl } : settings;
   const preview: FinancialDocument = { ...document, ...design, customizeJson: JSON.stringify(custom) };
+  // Build 3.0 (item 16a): the preview shows the exact generated PDF (not the
+  // tiny scaled HTML mock). Rebuilds are debounced so design keystrokes stay
+  // live; the last good render stays up while the next one builds.
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  // Stable signature: preview/previewSettings are fresh object identities on
+  // every render — rebuilding off those would loop forever (new blob ->
+  // re-render -> new identities -> rebuild).
+  const previewSignature = JSON.stringify([preview, previewSettings, lang, kind]);
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const strings = { discount: copy[lang].discount, tax: copy[lang].tax, paymentInstructions: copy[lang].paymentInstructions };
+          const pdf = kind === "invoice"
+            ? await buildInvoicePdf(preview, previewSettings ?? null, lang, strings)
+            : await buildQuotePdf(preview, previewSettings ?? null, lang, strings);
+          if (!cancelled) setPdfBlob(new Blob([pdf], { type: "application/pdf" }));
+        } catch { /* keep the last good preview */ }
+      })();
+    }, 450);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewSignature]);
   const closeSheet = async () => {
     if (sheet === "business" && localSettings) {
       const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = localSettings;
@@ -12907,10 +12983,15 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
     {sheet === "terms" && <div className="sheet-form"><label><span>{text.terms}</span><textarea rows={7} value={custom.termsConditions} onChange={(e) => updateCustom("termsConditions", e.target.value)}/></label></div>}
     {sheet === "labels" && <div className="sheet-form label-grid">{(Object.keys(custom.labels) as Array<keyof DocumentLabels>).map((key) => <label key={key}><span>{{ headline: text.headline, billTo: lang === "es" ? "Facturar a" : "Bill to", description: lang === "es" ? "Descripción" : "Description", amount: lang === "es" ? "Importe" : "Amount", subtotal: "Subtotal", total: "Total", paid: lang === "es" ? "Pagado" : "Paid", balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due", number: lang === "es" ? "Número" : "Number", date: lang === "es" ? "Fecha" : "Date", dueDate: text.dueDate }[key]}</span><input value={custom.labels[key]} onChange={(e) => updateCustom("labels", { ...custom.labels, [key]: e.target.value })}/></label>)}</div>}
   </section></div>;
-  return <div className="document-overlay customize-overlay" role="dialog" aria-modal="true" aria-label={text.title}>
+  // Build 3.0 (item 15): the overlay opens nested inside scrolled/animated
+  // sheets (builders, detail screens). On mobile Chrome a position:fixed
+  // element there can paint half-offset — half the old screen, half the
+  // preview — until the next scroll forces a layout recompute. Portaling to
+  // document.body keeps inset:0 relative to the true viewport on open.
+  const overlay = (<div className="document-overlay customize-overlay" role="dialog" aria-modal="true" aria-label={text.title}>
     <header className="document-overlay-head customize-head"><button type="button" onClick={onClose} aria-label={text.back}><BackIcon /></button><strong>{text.title}</strong><span /></header>
     <div className="customize-workspace">
-      <section className="customize-preview-wrap"><div className="customize-preview-card"><QuotePaper quote={preview} settings={previewSettings} lang={lang} kind={kind}/><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></div></section>
+      <section className="customize-preview-wrap"><div className="customize-preview-card">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></section>
       <aside className="design-panel custom-design-panel" aria-live="polite">
         <div key={tab} className="custom-tab-content">
           {tab === "template" && <><div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}><Icon><path d="M7 10v11H3V10h4Zm0 9h10a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 10h-5l1-5-2-2-5 7"/></Icon></button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}><Icon><path d="M7 14V3H3v11h4Zm0-9h10a2 2 0 0 1 2 1.6l1 5A2 2 0 0 1 18 14h-5l1 5-2 2-5-7"/></Icon></button></div></div><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><label className="design-font"><span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></>}
@@ -12924,9 +13005,11 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
       </aside>
     </div>
     <nav className="customize-tabs" aria-label={text.title}>{tabs.map((item)=><button type="button" key={item.id} className={tab===item.id?"active":""} aria-current={tab===item.id?"page":undefined} onClick={()=>setTab(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>
-    {fullScreen&&<div className="document-overlay fullscreen-preview customize-fullscreen" role="dialog" aria-modal="true"><header className="document-overlay-head"><button type="button" onClick={()=>setFullScreen(false)}><BackIcon/><span>{text.back}</span></button><strong>{text.title}</strong><span/></header><div className="fullscreen-paper"><QuotePaper quote={preview} settings={previewSettings} lang={lang} kind={kind}/></div></div>}
+    {fullScreen&&<div className="document-overlay fullscreen-preview customize-fullscreen" role="dialog" aria-modal="true"><header className="document-overlay-head"><button type="button" onClick={()=>setFullScreen(false)}><BackIcon/><span>{text.back}</span></button><strong>{text.title}</strong><span/></header><div className="fullscreen-paper">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div></div>}
     {renderedSheet}
-  </div>;
+  </div>);
+  // NOTE: the `document` prop shadows the DOM document here — globalThis it is.
+  return typeof globalThis.document === "undefined" ? overlay : createPortal(overlay, globalThis.document.body);
 }
 
 async function downloadPdfAsImage(blob: Blob, filename: string) {
@@ -12968,11 +13051,10 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // Build 0.6: preview Send opens explicit options (PDF/messages/link/email)
   // instead of nativeShare, which silently degrades to a download in the TWA.
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
-  // Build 0.6: the preview sheet renders the document as HTML (QuotePaper) —
-  // blob: PDF URLs do not render inside <iframe> in the installed app.
-  const [editorPreviewDoc, setEditorPreviewDoc] = useState<FinancialDocument | null>(null);
-  const editorPreviewUrl = useMemo(() => (editorPreview ? URL.createObjectURL(editorPreview) : null), [editorPreview]);
-  useEffect(() => () => { if (editorPreviewUrl) URL.revokeObjectURL(editorPreviewUrl); }, [editorPreviewUrl]);
+  // Build 3.0 (item 8): the preview sheet renders the exact generated PDF
+  // through PdfFrame (server-rendered page images) instead of the QuotePaper
+  // HTML mock. PdfFrame works in the installed app, where PDF URLs do not
+  // render inside an <iframe>.
   const totals = financialTotals(form.lineItems, form.discountType, showDiscount ? form.discountValue : "0", form.taxType, showTax ? form.taxValue : "0");
   const move = (index: number, direction: -1 | 1) => { const next = [...form.lineItems]; const target = index + direction; if (target < 0 || target >= next.length) return; const current = next[index]; const other = next[target]; if (!current || !other) return; next[index] = other; next[target] = current; setForm({...form,lineItems:next}); };
   // Build 0.3 (item 4): the edit sheet used to show a single "Item" input per
@@ -12988,7 +13070,6 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote };
     const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
     const pdf = kind === "invoice" ? await buildInvoicePdf(doc, settings ?? null, lang, strings) : await buildQuotePdf(doc, settings ?? null, lang, strings);
-    setEditorPreviewDoc(doc as FinancialDocument);
     setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
   };
   // Build 1.2 (part A): the exit X runs the same path as Save ("the exit
@@ -13000,7 +13081,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const collapseDiscount = () => { setShowDiscount(false); exitAndSave(); };
   const collapseTax = () => { setShowTax(false); exitAndSave(); };
   useEscapeToClose(true, exitAndSave);
-  const closeEditorPreview = () => { setEditorPreview(null); setEditorPreviewDoc(null); };
+  const closeEditorPreview = () => { setEditorPreview(null); };
   useEscapeToClose(editorPreview!==null,()=>closeEditorPreview());
   // Build 0.3 (item 7): hardware back while editing saves the document, then
   // closes the sheet — one press never loses work. The sheet closes when the
@@ -13011,9 +13092,10 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     void Promise.resolve(saveRef.current()).catch(() => {}).finally(() => cancelRef.current());
     return true;
   }), []);
-  return <div className="sheet-backdrop floating-doc-backdrop" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)exitAndSave();}}>
+  // Build 3.0 (item 7): the edit screen is a full-screen window — the
+  // line-item editor is no longer a card inside a card.
+  return <div className="sheet-backdrop floating-doc-backdrop doc-fullscreen" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)exitAndSave();}}>
     <section className="more-sheet editor-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar documento" : "Edit document"}>
-    <div className="sheet-handle" />
     <FloatingDocHeader
       lang={lang}
       title={kind === "invoice" ? t.invoices : capFirst(estTerms.singular)}
@@ -13041,6 +13123,8 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
               <span className="doc-line-index">{t.item} {index+1}</span>
             )}
             <span className="doc-line-total">{usd(lineTotal)}</span>
+            {/* Build 3.0 (item 7): every line item gets an X to close/delete it. */}
+            <button type="button" className="doc-line-remove" aria-label={`${lang === "es" ? "Eliminar partida" : "Remove item"} ${index+1}`} onClick={() => setForm({...form,lineItems:form.lineItems.filter((_,i)=>i!==index)})}>×</button>
           </div>
           <input
             className="doc-line-name"
@@ -13094,7 +13178,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
-    {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewDoc ? <div className="editor-preview-paper"><QuotePaper quote={editorPreviewDoc} settings={settings ?? null} lang={lang} kind={kind}/></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
+    {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewSheet.value ? <div className="editor-preview-paper"><PdfFrame blob={editorPreviewSheet.value} title={lang === "es" ? "Vista previa del documento" : "Document preview"} /></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
   </div>;
 }
@@ -13551,8 +13635,11 @@ function QuotePreview({
   const remove = useMutation({mutationFn:()=>api.deleteQuote({id:quoteId}),onSuccess:async()=>{await qc.invalidateQueries({queryKey:["quotes"]});onBack();}});
   // A stale remembered id (deleted estimate, or another account's id left in
   // sessionStorage) lands here with nothing to show. Bounce back instead of
-  // stranding the user on a dead-end screen.
-  const quoteGone = query.isSuccess && !quote;
+  // stranding the user on a dead-end screen — but only after fresh data
+  // settles: React Query reports isSuccess with a stale cache while a
+  // background refetch is in flight, and bouncing on that stale miss ejects
+  // the user even though the estimate exists (Build 3.0 item 14).
+  const quoteGone = query.isSuccess && !query.isFetching && !quote;
   useEffect(()=>{ if(quoteGone) onBack(); },[quoteGone]);
   if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isError ? <div className="empty-state"><p>{lang === "es" ? "Esta cotización ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div> : <div className="loading-block"/>}</main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
@@ -13758,16 +13845,20 @@ function InvoicesScreen({
           <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
           <TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
             <button type="button" className={`ck-check${invoice.status === "paid" ? " done" : ""}`} aria-label={invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid")} onClick={() => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); }}>{invoice.status === "paid" && <CheckIcon />}</button>
+            {/* Build 3.0 (item 10): compact card — INV + client | amount + pill | Mark status | View. */}
             <span className="ck-invoice-row-copy">
-              <strong>{lang === "es" ? "Factura" : "Invoice"} #{invoice.invoiceNumber} - {invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</strong>
+              <strong>{invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4, "0")}`}</strong>
               <small>{invoice.clientName}</small>
+            </span>
+            <span className="ck-invoice-row-side">
+              <strong className="ck-invoice-row-amount">{usd(money(invoice.totalWithLateFee))}</strong>
               <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</span>
             </span>
-            <strong className="ck-invoice-row-amount">{usd(money(invoice.totalWithLateFee))}</strong>
-            <div className="row-actions">
-              <select value={invoice.status} onChange={(e) => status.mutate({ id: invoice.id, status: e.target.value as InvoiceStatus })} aria-label={`${t.invoiceStatus} #${invoice.id}`}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select>
-              <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>{t.viewDocument}</button>
-            </div>
+            <span className="ck-invoice-actions">
+              <span className="ck-mark-status"><Icon size={14}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon><span>{lang === "es" ? "Marcar estado" : "Mark status"}</span><select className="ck-status-select" value={invoice.status} onChange={(e) => status.mutate({ id: invoice.id, status: e.target.value as InvoiceStatus })} aria-label={`${t.invoiceStatus} #${invoice.id}`}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select></span>
+              <span className="ck-actions-sep" aria-hidden="true" />
+              <button type="button" className="ck-view-action" onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><Icon size={15}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon><span>{lang === "es" ? "Ver" : "View"}</span></button>
+            </span>
           </TapArticle>
           </SwipeRow>
         ))}
@@ -14232,8 +14323,9 @@ function InvoicePreview({
   const remove=useMutation({mutationFn:()=>api.deleteInvoice({id:invoiceId}),onSuccess:async()=>{await refresh();onBack();}});
   // A stale remembered id (deleted invoice, or another account's id left in
   // sessionStorage) lands here with nothing to show. Bounce back instead of
-  // stranding the user on a dead-end screen.
-  const invoiceGone=query.isSuccess&&!invoice;
+  // stranding the user on a dead-end screen — but only after fresh data
+  // settles (see the estimate screen: never bounce on a stale-cache miss).
+  const invoiceGone=query.isSuccess&&!query.isFetching&&!invoice;
   useEffect(()=>{if(invoiceGone)onBack();},[invoiceGone]);
   const schedulesQuery=useQuery({queryKey:["recurring-schedules"],queryFn:()=>api.listRecurringSchedules({})});
   const [scheduleFrequency,setScheduleFrequency]=useState<"weekly"|"monthly">("monthly");
@@ -14509,6 +14601,13 @@ type ClientSort = "alphabetical" | "balance" | "paid" | "invoices";
 type SortDirection = "asc" | "desc";
 function clientInitials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase() || "?";
+}
+// Build 3.0 (item 12): contact-row avatars reuse the Contacts-page color
+// tones; names without a client id hash into one deterministically.
+function avatarTone(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 6;
 }
 function ClientsScreen({
   lang,
@@ -18219,13 +18318,17 @@ function TodayScreen({
         </AutomationGroup>
       )}
       {quoteChase.length > 0 && (
-        <div className="quote-chase">
-        <AutomationGroup
-          title={lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}
-          count={quoteChase.length}
-        >
+        /* Build 3.0 (item 6): no parent wrapper card — every quote is its own
+           standalone full-width card, smaller overall, with compact buttons. */
+        <section className="quote-chase-standalone" aria-label={lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}>
+          <header className="quote-chase-header">
+            <span className="automation-group-icon" aria-hidden="true"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span>
+            <h2>{lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}</h2>
+            <span className="quote-chase-count">{quoteChase.length}</span>
+          </header>
           {quoteChase.map((q, index) => (
             <TapArticle
+              baseClass="quote-chase-card"
               className={index === 0 ? "top-pick" : ""}
               key={q.id}
               onTap={() => setScreen({ name: "quotePreview", quoteId: q.id })}
@@ -18285,8 +18388,7 @@ function TodayScreen({
               </div>
             </TapArticle>
           ))}
-        </AutomationGroup>
-        </div>
+        </section>
       )}
       {d.reminders.length + d.reviews.length + d.reengagement.length > 0 && (
         <AutomationGroup
@@ -18758,7 +18860,7 @@ function MoneyCardModal({
             {stats.outstandingRows.length > 0 && (
               <ul className="b06-money-list">
                 {stats.outstandingRows.slice(0, 5).map((row, i) => (
-                  <li key={`${row.name}-${i}`}><span>{row.name}</span><strong>{usd(row.balance)}</strong></li>
+                  <li key={`${row.name}-${i}`}><span className="b06-money-contact"><span className={`client-avatar tone-${avatarTone(row.name)}`}>{clientInitials(row.name)}</span><span className="b06-money-name">{row.name}</span></span><strong>{usd(row.balance)}</strong></li>
                 ))}
               </ul>
             )}
@@ -18778,7 +18880,7 @@ function MoneyCardModal({
             {stats.weekRows.length > 0 && (
               <ul className="b06-money-list">
                 {stats.weekRows.slice(0, 5).map((row, i) => (
-                  <li key={`${row.name}-${i}`}><span>{row.name}</span><strong>{usd(row.balance)}</strong></li>
+                  <li key={`${row.name}-${i}`}><span className="b06-money-contact"><span className={`client-avatar tone-${avatarTone(row.name)}`}>{clientInitials(row.name)}</span><span className="b06-money-name">{row.name}</span></span><strong>{usd(row.balance)}</strong></li>
                 ))}
               </ul>
             )}

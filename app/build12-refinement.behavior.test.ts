@@ -162,14 +162,18 @@ describe("visual audit: job detail stepper and tabs", () => {
 });
 
 describe("visual audit: quote chase button grid", () => {
-  test("actions are a 3-col grid with full-width last button at 48px", () => {
-    const actions = exactRuleBody(".quote-chase .automation-actions");
+  // Build 3.0 item 6: standalone compact cards, half-size buttons, no parent wrapper.
+  test("actions are a 3-col grid with full-width last button, compact half-size buttons", () => {
+    const actions = exactRuleBody(".quote-chase-card .automation-actions");
     expect(actions).toContain("grid-template-columns: repeat(3, 1fr)");
-    expect(exactRuleBody(".quote-chase .automation-actions > :last-child")).toContain("grid-column: 1 / -1");
+    expect(exactRuleBody(".quote-chase-card .automation-actions > :last-child")).toContain("grid-column: 1 / -1");
+    expect(CSS).toContain(".quote-chase-card .automation-actions button { min-height: 26px;");
   });
 
-  test("quote chase wrapper exists in JSX", () => {
+  test("quote chase standalone section exists in JSX (no wrapper card)", () => {
     const tsx = readFileSync(join(import.meta.dir, "client/src/App.tsx"), "utf8");
-    expect(tsx).toContain('className="quote-chase"');
+    expect(tsx).toContain('className="quote-chase-standalone"');
+    expect(tsx).toContain('baseClass="quote-chase-card"');
+    expect(tsx).not.toContain('className="quote-chase"');
   });
 });

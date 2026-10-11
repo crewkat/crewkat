@@ -24,8 +24,8 @@ describe("bottom nav", () => {
   const nav = baseRuleBody(".bottom-nav");
 
   test("nav is a floating pill with slight rounding", () => {
-    // Detached from the bottom edge, inset on the sides.
-    expect(nav).toContain("inset: auto 14px calc(12px + env(safe-area-inset-bottom)) 14px");
+    // Detached from the bottom edge, inset on the sides. Build 3.0: sits slightly lower.
+    expect(nav).toContain("inset: auto 14px calc(8px + env(safe-area-inset-bottom)) 14px");
     // Slight rounding, not fully round.
     expect(nav).toContain("border-radius: 20px");
     expect(nav).not.toContain("border-radius: 999px");

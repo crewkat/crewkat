@@ -1116,10 +1116,10 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .app-shell { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 /* b12: floating pill nav (Invoice Fly) — detached from the bottom edge, elevated shadow.
    Zero functionality change: same 5 slots, same center + button, badges, active states. */
-.bottom-nav { position: fixed; inset: auto 14px calc(12px + env(safe-area-inset-bottom)) 14px; z-index: 80; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr)); min-height: 66px; padding: 6px 10px; overflow: visible; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
-.bottom-nav button { min-width: 0; min-height: 56px; display: grid; place-items: center; align-content: center; gap: 3px; border: 0; border-radius: 9px; background: transparent; color: var(--dim); font-size: 10px; font-weight: 750; cursor: pointer; }
+.bottom-nav { position: fixed; inset: auto 14px calc(8px + env(safe-area-inset-bottom)) 14px; z-index: 80; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr)); min-height: 56px; padding: 4px 10px; overflow: visible; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.bottom-nav button { min-width: 0; min-height: 48px; display: grid; place-items: center; align-content: center; gap: 2px; border: 0; border-radius: 9px; background: transparent; color: var(--dim); font-size: 10px; font-weight: 750; cursor: pointer; }
 .bottom-nav button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.bottom-nav svg { width: 22px; height: 22px; }
+.bottom-nav svg { width: 20px; height: 20px; }
 .bottom-nav span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
 /* Root dashboards (b12: denser) */
@@ -1284,7 +1284,7 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 @media (min-width:760px) { .document-action-bar { left:50%; right:auto; width:min(100%,920px); transform:translateX(-50%); } .document-preview-card { height:430px; } .document-preview-card .quote-paper { transform:translateX(-50%) scale(.52); } }
 /* Build 0.4 (item 4): hide the master bottom tab bar inside invoice/estimate
    views — their own action bar drops to the true bottom instead. */
-.app-shell.has-bottom-nav.master-nav-hidden .page { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.app-shell.master-nav-hidden .page { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .app-shell.master-nav-hidden .document-action-bar { inset: auto 0 env(safe-area-inset-bottom); }
 @media (min-width:760px) { .app-shell.master-nav-hidden .document-action-bar { left:50%; right:auto; transform:translateX(-50%); } }
 @media (max-width:430px) { .document-preview-card { height:300px; } .document-preview-card .quote-paper { transform:translateX(-50%) scale(.35); } .document-detail-summary > div strong { font-size:30px; } .editor-line-item { grid-template-columns:auto minmax(0,1fr); } .editor-line-item .amount-input { grid-column:2; width:100%; } .customize-tabs button { font-size:9px; } }
@@ -1495,6 +1495,9 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .market-price-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .market-photo-picker small { overflow-wrap:anywhere; color:var(--dim); font-size:12px; line-height:1.4; }
 .marketplace-detail { max-width:720px; }
+/* build 3.0 item 3: listing-detail sub-header spans edge to edge. */
+.marketplace-detail .app-header { margin:0 -16px; padding-inline:16px; }
+@media (min-width:720px) { .marketplace-detail .app-header { margin:0 -28px; padding-inline:28px; } }
 .market-detail-gallery { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin:0 -16px; background:var(--surface-2); }
 .market-detail-photo { padding:0; border:0; background:none; cursor:pointer; min-width:0; transition:transform .12s ease, opacity .12s ease; }
 .market-detail-photo:active { transform:scale(.98); }
@@ -1507,9 +1510,9 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .market-detail-kickers { display:flex; align-items:center; gap:8px; }
 .market-detail-kickers > span { padding:4px 6px; border-radius:4px; background:var(--accent); color:var(--accent-ink); font-size:10px; font-weight:900; text-transform:uppercase; }
 .market-detail-kickers small { color:var(--green); font-weight:800; }
-.market-detail-main h1 { margin:8px 0; font:800 28px/1.1 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; }
-.market-price.detail strong { font-size:24px; }
-.market-price.detail del { font-size:15px; }
+.market-detail-main h1 { margin:8px 0; font:800 22px/1.15 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; }
+.market-price.detail strong { font-size:20px; }
+.market-price.detail del { font-size:14px; }
 .market-detail-area { display:flex; align-items:center; gap:6px; margin:10px 0; color:var(--dim); }
 .market-detail-area svg { width:18px; }
 .market-detail-save { min-height:42px; display:flex; align-items:center; gap:7px; padding:7px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-weight:800; }
@@ -1579,8 +1582,8 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .daily-rate { margin:7px 0; color:var(--green); }
 .market-contact-actions { display:grid; grid-template-columns:1fr; gap:8px; padding:14px 0; border-bottom:1px solid var(--border); }
 .market-contact-actions.bookable { grid-template-columns:1fr 1fr; }
-.market-contact-actions button { min-height:52px; display:flex; align-items:center; justify-content:center; gap:7px; }
-.market-contact-actions svg { width:20px; }
+.market-contact-actions button { min-height:44px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:15px; }
+.market-contact-actions svg { width:18px; }
 .conversation-sheet,.booking-sheet { max-height:88vh; gap:10px; }
 .sheet-title-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .sheet-title-row h2 { margin:0; }
@@ -1956,10 +1959,16 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .customize-head button svg{width:22px;height:22px;}
 .customize-head strong{font-size:16px;letter-spacing:-.01em;}
 .customize-workspace{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:12px;}
-.customize-preview-wrap{padding:12px 12px 6px;}
-.customize-preview-card{position:relative;height:328px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:#dfe3e2;box-shadow:0 8px 24px color-mix(in srgb,#000 10%,transparent);}
-.customize-preview-card>.quote-paper{position:absolute;left:50%;top:12px;width:612px;min-height:760px;margin:0;transform:translateX(-50%) scale(.39);transform-origin:top center;pointer-events:none;}
-.preview-expand{position:absolute;right:10px;bottom:10px;width:42px;height:42px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:rgba(17,24,23,.86);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);}
+.customize-preview-wrap{position:relative;padding:12px 12px 6px;}
+/* Build 3.0 (item 16a): the card shows the exact generated PDF (PdfFrame page
+   images) at a legible size — not the old 39%-scaled HTML mock. The card
+   scrolls so multi-page documents are fully reviewable; pinch-zoom stays
+   available on the pages. */
+.customize-preview-card{position:relative;height:min(54vh,470px);overflow-y:auto;border:1px solid var(--border);border-radius:12px;background:#dfe3e2;box-shadow:0 8px 24px color-mix(in srgb,#000 10%,transparent);touch-action:pan-x pan-y pinch-zoom;}
+.customize-preview-card .pdf-viewer{margin:0;}
+.customize-preview-card .pdf-pages{margin:0;gap:8px;padding:8px;}
+.customize-preview-card .b06-pdf-embed-loading{min-height:200px;}
+.preview-expand{position:absolute;right:22px;bottom:16px;width:42px;height:42px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:rgba(17,24,23,.86);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);}
 .preview-expand svg{width:20px;height:20px;}
 .custom-design-panel{overflow:visible;display:block;padding:10px 14px 118px;border:0;background:transparent;}
 .custom-tab-content{animation:custom-tab-in .18s ease both;}
@@ -2028,8 +2037,8 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .customize-fullscreen{z-index:205;}.customize-fullscreen .document-overlay-head{position:sticky;top:0;z-index:2;}
 .quote-paper{font-size:var(--paper-font-size,12px);line-height:var(--paper-line-height,1.35);}
 .quote-paper.customize-font-s{--paper-font-size:10.5px}.quote-paper.customize-font-m{--paper-font-size:12px}.quote-paper.customize-font-l{--paper-font-size:13.5px}.quote-paper.customize-font-xl{--paper-font-size:15px}.quote-paper.spacing-compact{--paper-line-height:1.18}.quote-paper.spacing-comfortable{--paper-line-height:1.4}.quote-paper.spacing-roomy{--paper-line-height:1.65}.quote-paper.soft-contrast{color:#47504e}.quote-paper.high-contrast{color:#101514}.quote-paper.color-gradient.theme-bold .quote-paper-band,.quote-paper.color-gradient.theme-bold .quote-line.heading,.quote-paper.color-gradient.theme-bold .document-totals .grand-total{background:linear-gradient(125deg,var(--quote-accent),color-mix(in srgb,var(--quote-accent) 46%,#111827));}.paper-logo{width:var(--logo-size);height:calc(var(--logo-size) * .7);display:grid;place-items:center;overflow:hidden;border-radius:4px;background:#fff;}.paper-logo.transparent{background:transparent;}.quote-paper-band .paper-logo img{width:100%;height:100%;object-fit:contain;}.quote-paper-client small{display:block}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 95px 88px}.quote-paper-lines.hide-amount .quote-line{grid-template-columns:minmax(0,1fr) 95px}.quote-paper-lines:not(.with-quantity).hide-amount .quote-line{grid-template-columns:1fr}.line-quantity{text-align:right;color:#5d6866}.paid-stamp{position:absolute;right:28px;top:112px;padding:4px 10px;border:3px double var(--quote-accent);color:var(--quote-accent);font-weight:900;letter-spacing:.12em;transform:rotate(-7deg)}.quote-paper{position:relative}.balance-due{font-weight:800}.paper-signature{width:170px;display:grid;gap:2px;margin:14px 0 0 auto;border-top:1px solid #cfd4d2;text-align:center}.paper-signature img{width:100%;height:55px;object-fit:contain}.paper-signature small{color:#5d6866}.paper-thank-you{text-align:center;color:var(--quote-accent);font-weight:800;margin:20px 0 2px;}
-@media(min-width:800px){.customize-workspace{display:grid;grid-template-columns:minmax(0,1fr) 390px;overflow:hidden}.customize-preview-wrap{overflow:auto;padding:20px}.customize-preview-card{height:calc(100vh - 154px);max-height:760px}.customize-preview-card>.quote-paper{top:18px;transform:translateX(-50%) scale(.68)}.custom-design-panel{overflow:auto;padding:18px 18px 100px;border-left:1px solid var(--border);background:var(--surface)}.customize-tabs{grid-column:1/-1}.template-carousel{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:430px){.customize-preview-card{height:294px}.customize-preview-card>.quote-paper{transform:translateX(-50%) scale(.35)}.palette-grid{grid-template-columns:repeat(5,40px);gap:7px}.palette-grid button{width:38px;height:38px}.label-grid{grid-template-columns:1fr}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 84px 72px}.customize-tabs button{font-size:9px}}
+@media(min-width:800px){.customize-workspace{display:grid;grid-template-columns:minmax(0,1fr) 390px;overflow:hidden}.customize-preview-wrap{overflow:hidden;padding:20px}.customize-preview-card{height:calc(100vh - 154px);max-height:760px}.custom-design-panel{overflow:auto;padding:18px 18px 100px;border-left:1px solid var(--border);background:var(--surface)}.customize-tabs{grid-column:1/-1}.template-carousel{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:430px){.customize-preview-card{height:min(50vh,400px)}.palette-grid{grid-template-columns:repeat(5,40px);gap:7px}.palette-grid button{width:38px;height:38px}.label-grid{grid-template-columns:1fr}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 84px 72px}.customize-tabs button{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.custom-tab-content,.customize-sheet{animation:none}.customize-sheet-backdrop,.customize-sheet-backdrop .customize-sheet{transition:none}}
 
 /* Jobs hub — compact, touch-first rows and the shared animated sheet pattern. */
@@ -2278,28 +2287,28 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
   /* Home render: standard flush tab bar, not a floating pill. */
   background: var(--surface);
 }
-.bottom-nav > button { min-height: 58px; border-radius: 12px; }
+.bottom-nav > button { min-height: 48px; border-radius: 12px; }
 .bottom-nav > button.active { color: var(--accent); background: transparent; }
 .bottom-nav > button.active .bottom-nav-icon { transform: translateY(-1px); }
 .bottom-nav .bottom-nav-add {
   position: relative;
   z-index: 2;
   align-self: center;
-  width: 52px;
-  min-width: 52px;
-  height: 52px;
-  min-height: 52px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
   margin: 0 auto;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 50%;
   background: var(--accent);
-  color: #1d1008;
+  color: #ffffff;
   box-shadow: none;
 }
 .bottom-nav .bottom-nav-add:active { transform: translateY(1px); }
-.bottom-nav .bottom-nav-add > span { display: block; overflow: visible; font-size: 34px; line-height: 1; font-weight: 500; transform: translateY(-1px); }
+.bottom-nav .bottom-nav-add > span { display: block; overflow: visible; font-size: 30px; line-height: 1; font-weight: 500; transform: translateY(-1px); }
 .quick-create-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; padding: 18px 12px 0; background: rgba(9, 13, 18, .58); }
 .quick-create-sheet { width: min(100%, 560px); padding: 18px 16px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface); box-shadow: 0 -20px 55px rgba(0,0,0,.2); }
 .quick-create-sheet > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
@@ -2882,7 +2891,18 @@ button { -webkit-tap-highlight-color: transparent; }
 .crew-day-card strong { display: block; font-size: .93rem; }
 .crew-day-card small { color: var(--muted); font-size: .82rem; }
 .crew-day-card.overdue { border-color: #ef4444; }
-.crew-day-empty { color: var(--muted); font-size: .88rem; margin: 0; }
+.crew-day-empty { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: .88rem; margin: 0; padding: 10px 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border-radius: 12px; }
+
+/* === Build 3.0 item 13: Crew day empty state — color, content, quick actions === */
+.crew-day-empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin: 18px 0 30px; padding: 30px 20px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 16px; }
+.crew-day-empty-icon { width: 72px; height: 72px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 42%, transparent); }
+.crew-day-empty-icon svg { width: 34px; height: 34px; }
+.crew-day-empty-state h2 { margin: 0; font-size: 1.25rem; }
+.crew-day-empty-state p { margin: 0; color: var(--dim); font-size: .9rem; line-height: 1.5; max-width: 300px; }
+.crew-day-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 6px; }
+.crew-day-empty-actions button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 18px; font-size: .9rem; font-weight: 800; cursor: pointer; }
+.crew-day-empty-actions button:not(.primary-button) { border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); }
+.crew-day-empty-actions button svg { width: 16px; height: 16px; }
 
 /* Build 4: portal estimate line items. */
 .portal-line-items { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -2899,8 +2919,12 @@ button { -webkit-tap-highlight-color: transparent; }
   animation: pop-in .4s cubic-bezier(.2,.9,.3,1.4) both;
 }
 .market-bump-sheet { position: relative; }
-.market-bump-sheet .primary-button { margin-top: 10px; width: 100%; }
+/* Build 3.0: the pay CTA must never wrap word-per-line (image15) — keep it
+   on one line at full sheet width. */
+.market-bump-sheet .primary-button { margin-top: 10px; width: 100%; white-space: nowrap; }
 .market-bump-sheet .secondary-button { margin-top: 8px; width: 100%; }
+.launch-option-copy { display: grid; gap: 2px; min-width: 0; }
+.launch-option-price { color: var(--accent); font-weight: 800; font-size: .9rem; }
 .bump-blurb { color: var(--muted); font-size: .9rem; line-height: 1.5; margin: 10px 0 4px; }
 .bump-active { display: flex; align-items: center; gap: 12px; background: color-mix(in srgb, #22c55e 10%, var(--surface)); border: 1px solid #22c55e; border-radius: 14px; padding: 14px; margin: 10px 0; }
 .bump-active p { margin: 0; font-size: .9rem; }
@@ -3516,6 +3540,11 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .line-item-description { resize: vertical; min-height: 44px; width: 100%; }
 .editor-preview-overlay { z-index: 90; }
 .editor-preview-sheet { display: flex; flex-direction: column; min-height: 70vh; }
+/* Build 3.0 (item 8): the sheet shows the exact generated PDF (PdfFrame page
+   images). Keep the browser's native pinch-zoom gesture available on the
+   document. */
+.editor-preview-paper { touch-action: pan-x pan-y pinch-zoom; }
+.editor-preview-paper .pdf-pages { width: 100%; }
 .editor-preview-iframe { width: 100%; height: 62vh; border: 0; border-radius: 8px; background: #fff; }
 /* 5. Breathing room: activity timeline rows + recurring subsections */
 .doc-timeline li { padding: 13px 6px; }
@@ -3941,6 +3970,10 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* The Preview & Customize overlay opens from inside the floating sheet —
    lift it above the floating backdrop. */
 .floating-doc-sheet .document-overlay { z-index: 200; }
+/* Build 3.0 (item 15): the customize overlay is portaled to document.body so
+   no scrolled/animated ancestor can offset its position:fixed layout. Keep it
+   above the floating backdrop (z-180) at the body level too. */
+body > .document-overlay.customize-overlay { z-index: 200; }
 /* Full-screen document builders (New estimate / New invoice): no card inset,
  * no dimmed margins — the builder is the whole window. */
 .floating-doc-backdrop.doc-fullscreen { padding: 0; background: var(--bg); }
@@ -4126,19 +4159,28 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* ---- JOB DETAIL: tab pills (ref: ~48pt tall pills) ---- */
 .workspace-tabs button { padding: 12px 18px; font-size: 14px; }
 
-/* ---- QUOTE CHASE: 3-col button grid + full-width View estimate (ref image4) ---- */
-.quote-chase .automation-card { padding: 14px 16px; border-radius: 16px; }
-.quote-chase .automation-card h3 { font-size: 18px; }
-.quote-chase .automation-actions {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px;
-}
-.quote-chase .automation-actions > :last-child { grid-column: 1 / -1; }
-.quote-chase .automation-actions a,
-.quote-chase .automation-actions button,
-.quote-chase .automation-actions span.status {
-  min-height: 48px; font-size: 14px; border-radius: 10px;
-  display: inline-flex; align-items: center; justify-content: center;
-}
+/* ---- QUOTE CHASE: 3-col button grid + full-width View estimate (ref image4) ----
+   Build 3.0 item 6: standalone compact quote cards — no parent wrapper. */
+.quote-chase-standalone { display: grid; gap: 8px; }
+.quote-chase-header { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 2px 2px 0; }
+.quote-chase-header h2 { margin: 0; font-size: .95rem; }
+.quote-chase-count { min-width: 1.6rem; height: 1.6rem; padding: 0 .4rem; display: grid; place-items: center; border-radius: 999px; background: var(--text); color: var(--bg); font-size: .75rem; font-weight: 800; }
+.quote-chase-card { position: relative; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent); }
+.quote-chase-card.top-pick { border: 2px solid var(--accent); }
+.quote-chase-card.tap-target { cursor: pointer; padding-right: 2.2rem; }
+.quote-chase-card.tap-target::after { content: "›"; position: absolute; top: .45rem; right: .7rem; font-size: 1.4rem; line-height: 1; color: var(--dim); opacity: .55; pointer-events: none; }
+.quote-chase-card h3 { margin: 0 0 2px; font-size: .92rem; }
+.quote-chase-card p { margin: 0 0 6px; color: var(--dim); font-size: .76rem; line-height: 1.35; }
+.quote-chase-card .qc-amount { color: var(--accent); }
+.quote-chase-card .text-first { background: none; border: 0; border-radius: 0; color: var(--accent); font-size: .72rem; font-weight: 800; padding: 0; margin: 0 0 2px; letter-spacing: 0; }
+.quote-chase-card .automation-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+.quote-chase-card .automation-actions.no-phone { grid-template-columns: repeat(2, 1fr); }
+.quote-chase-card .automation-actions > :last-child { grid-column: 1 / -1; }
+.quote-chase-card .automation-actions a,
+.quote-chase-card .automation-actions button { min-height: 26px; font-size: .75rem; padding: 4px 10px; border-radius: 8px; white-space: nowrap; }
+.quote-chase-card .automation-actions svg { width: 13px; height: 13px; }
+.quote-chase-card .qc-no-phone { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 0; background: #fdeceb; color: #b3261e; border-radius: 8px; padding: 6px 10px; font-size: .78rem; font-weight: 600; }
+.quote-chase-card .qc-no-phone svg { width: 15px; height: 15px; flex: none; }
 
 /* ---- Dark-mode coherence for the new tile treatments ---- */
 :root[data-theme="dark"] .glance-icon.tone-red { background: rgba(211,74,58,.16); }
@@ -4178,21 +4220,9 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .b06-money-icon { width: 22px; height: 22px; }
 .b06-money-icon svg { width: 20px; height: 20px; }
 
-/* === home restyle follow-up 3: compressed quote-chase cards, icon buttons, press colors === */
+/* === build 3.0 item 6: quote chase is standalone cards now; legacy wrapper styles removed === */
 .home-attention-card > span { position: relative; padding-bottom: 8px; }
 .home-attention-card > span::after { content: ""; position: absolute; left: 0; bottom: 0; width: 72px; height: 3px; border-radius: 2px; background: var(--accent); }
-.quote-chase .automation-group { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px; }
-.quote-chase .automation-group > header { padding: 2px 2px 8px; }
-.quote-chase .automation-group-icon { width: 34px; height: 34px; border-radius: 50%; }
-.quote-chase .automation-card { padding: 10px 12px; border-radius: 12px; box-shadow: none; }
-.quote-chase .automation-card h3 { font-size: 16px; }
-.quote-chase .automation-card p { font-size: 12.5px; }
-.quote-chase .qc-amount { color: var(--accent); }
-.quote-chase .text-first { background: none; border: 0; border-radius: 0; color: var(--accent); font-size: 12px; font-weight: 800; padding: 0; margin: 0 0 2px; letter-spacing: 0; }
-.quote-chase .automation-actions { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
-.quote-chase .automation-actions.no-phone { grid-template-columns: repeat(2, 1fr); }
-.quote-chase .automation-actions a,
-.quote-chase .automation-actions button { min-height: 44px; font-size: 13.5px; border-radius: 10px; white-space: nowrap; }
 /* App-wide: icon buttons + press colors on all automation actions. */
 .automation-actions a,
 .automation-actions button { gap: 6px; }
@@ -4206,9 +4236,7 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .automation-actions .primary-button:active { filter: brightness(.9); }
 /* App-wide: compressed automation cards on Home. */
 .today-page .automation-card { padding: 10px 12px; border-radius: 12px; box-shadow: none; }
-.quote-chase .qc-no-phone { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 0; background: #fdeceb; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 600; }
-.quote-chase .qc-no-phone svg { width: 18px; height: 18px; flex: none; }
-:root[data-theme="dark"] .quote-chase .qc-no-phone { background: rgba(211,74,58,.16); color: #ff8a80; }
+:root[data-theme="dark"] .quote-chase-card .qc-no-phone { background: rgba(211,74,58,.16); color: #ff8a80; }
 /* SMS cap pre-check banner (abuse controls): fixed bottom-center, above the nav. */
 .sms-blocked-banner { position: fixed; left: 14px; right: 14px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 120; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #fdeceb; color: #b3261e; border: 1px solid color-mix(in srgb, #b3261e 30%, transparent); box-shadow: 0 10px 28px rgba(0,0,0,.14); font-size: 14px; font-weight: 600; }
 .sms-blocked-banner > svg { width: 20px; height: 20px; flex: none; }
@@ -4240,12 +4268,6 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 .flow-dot svg { width: 16px; height: 16px; }
 .flow-label { font-size: 11px; }
 .workspace-tabs button { padding: 8px 14px; font-size: 13px; }
-/* Condensed: chase queue buttons */
-.quote-chase .automation-actions a,
-.quote-chase .automation-actions button,
-.quote-chase .automation-actions span.status { min-height: 44px; font-size: 13.5px; }
-.quote-chase .automation-card { padding: 12px 14px; }
-.quote-chase .automation-card h3 { font-size: 16px; }
 
 /* === Danny 2026-10-07: white text on orange, skinny buttons/cards, less rounding, tight === */
 .primary-button { color: #fff; min-height: 44px; border-radius: 6px; }
@@ -4347,9 +4369,13 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 /* --- 4. Clients screen: slimmer search, edge-to-edge compressed cards, vivid avatars --- */
 .client-search { min-height: 44px; border-radius: 10px; padding: 0 12px; }
 .client-search input { height: 42px; font-size: 15px; }
-.clients-page .client-list { margin: 0 -16px; gap: 0; border-top: 1px solid var(--border); }
+.clients-page .client-list { margin: 0 -16px; width: calc(100% + 32px); gap: 0; border-top: 1px solid var(--border); }
 .clients-page .client-list > button,
 .clients-page .client-list .swipe-row .swipe-content > button { min-height: 64px; padding: 8px 16px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
+/* === build 3.0 item 9: skinnier search (not full width) + guaranteed edge-to-edge rows === */
+.clients-page .clients-toolbar { grid-template-columns: minmax(0, 230px) 44px 44px; justify-content: start; gap: 8px; }
+.clients-page .client-list .swipe-row { width: 100%; }
+.clients-page .client-list .swipe-row .swipe-content > button { width: 100%; }
 .clients-page .client-avatar { width: 40px; height: 40px; font-size: 14px; }
 .clients-page .client-row-money strong { font-size: 15px; }
 .client-avatar.tone-0 { background: #1f7a5c; color: #fff; }
@@ -4369,13 +4395,100 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="dark"] { --beige: #201c15; }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) { --beige: #f5f0e6; } }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) { --beige: #201c15; } }
-.page.marketplace-page,
-.page.marketplace-thread,
 .page.tools-home,
 .page.toolkit-page,
 .page.expansion-page { background: var(--beige); }
+/* build 3.0 item 5: marketplace surfaces back to pure white (revert beige test). */
+:root[data-theme="light"] .page.marketplace-page,
+:root[data-theme="light"] .page.marketplace-thread,
+:root[data-theme="light"] .page.marketplace-detail,
+:root[data-theme="light"] .page.marketplace-form-page { background:#ffffff; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page, :root:not([data-theme]) .page.marketplace-thread, :root:not([data-theme]) .page.marketplace-detail, :root:not([data-theme]) .page.marketplace-form-page { background:#ffffff; } }
+:root[data-theme="light"] .page.marketplace-page .app-header,
+:root[data-theme="light"] .page.marketplace-thread .app-header,
+:root[data-theme="light"] .page.marketplace-detail .app-header,
+:root[data-theme="light"] .page.marketplace-form-page .app-header { background:#ffffff; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header, :root:not([data-theme]) .page.marketplace-thread .app-header, :root:not([data-theme]) .page.marketplace-detail .app-header, :root:not([data-theme]) .page.marketplace-form-page .app-header { background:#ffffff; } }
 
 /* --- 5c. Thread composer: bottom nav is hidden on marketplaceThread; anchor the composer --- */
-.app-shell.has-bottom-nav.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.app-shell.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 .marketplace-thread .message-thread.page-thread { flex: 1 1 auto; }
 .marketplace-thread .message-composer.page-composer { position: sticky; bottom: 0; z-index: 5; }
+
+/* ================= Build 3.0: invoices batch (items 7, 10, 12) ================= */
+
+/* --- Item 7: the invoice/estimate EDIT screen is a full-screen window —
+   the line-item editor is no longer a card inside a card. --- */
+.floating-doc-backdrop.doc-fullscreen .more-sheet.editor-sheet { width: 100%; max-width: none; height: 100dvh; max-height: none; border-radius: 0; box-shadow: none; }
+.floating-doc-backdrop.doc-fullscreen .editor-sheet .floating-doc-header { border-radius: 0; }
+
+/* --- Item 10: compact invoice cards — INV + client | amount + pill, "Mark status | View" action row. --- */
+.ck-invoice-row-side { display: grid; gap: 4px; justify-items: end; }
+.ck-invoice-actions { grid-column: 2 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.ck-mark-status { position: relative; display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; color: var(--dim); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ck-mark-status svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.ck-status-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.ck-actions-sep { width: 1px; height: 14px; background: var(--border); }
+.ck-view-action { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 2px 0; color: var(--dim); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ck-view-action svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.ck-check.done { background: #22c55e; border-color: #22c55e; }
+
+/* --- Item 12: much smaller money-popup buttons + avatar contact rows. --- */
+.b06-money-actions { gap: 8px; margin-top: 14px; }
+.b06-money-actions .primary-button { min-height: 0; padding: 9px 10px; font-size: 12.5px; }
+.b06-money-actions button:not(.primary-button) { padding: 9px 10px; font-size: 12.5px; }
+.b06-money-list .b06-money-contact { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+.b06-money-list .b06-money-contact .client-avatar { width: 28px; height: 28px; font-size: 10.5px; flex: 0 0 auto; }
+.b06-money-list .b06-money-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ============ Build 3.0: soft-shadow pass (test) ============
+   Soft shadows app-wide. Border-radius values intentionally untouched. */
+:root{
+  --shadow-soft: 0 1px 2px rgba(20,26,24,.07), 0 6px 18px rgba(20,26,24,.06);
+  --shadow-lift: 0 4px 12px rgba(20,26,24,.10), 0 18px 44px rgba(20,26,24,.14);
+  --shadow-btn: 0 1px 2px rgba(20,26,24,.12), 0 4px 12px rgba(20,26,24,.10);
+}
+:root[data-theme="dark"]{
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.40), 0 6px 18px rgba(0,0,0,.32);
+  --shadow-lift: 0 4px 12px rgba(0,0,0,.45), 0 18px 44px rgba(0,0,0,.45);
+  --shadow-btn: 0 1px 2px rgba(0,0,0,.45), 0 4px 12px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme]){
+    --shadow-soft: 0 1px 2px rgba(0,0,0,.40), 0 6px 18px rgba(0,0,0,.32);
+    --shadow-lift: 0 4px 12px rgba(0,0,0,.45), 0 18px 44px rgba(0,0,0,.45);
+    --shadow-btn: 0 1px 2px rgba(0,0,0,.45), 0 4px 12px rgba(0,0,0,.35);
+  }
+}
+/* Cards: articles in pages + any *-card surface (badges excluded). */
+.page article,
+[class*="card"]:not(.card-badges):not(.pa-card-head),
+.quote-chase-card,
+.ck-invoice-row,
+.client-row,
+.market-row{
+  box-shadow: var(--shadow-soft);
+}
+/* Sheets, modals, popups, dialogs lift off the page. */
+.more-sheet,
+.bottom-sheet,
+.floating-doc-sheet,
+.dialog-pop,
+.popup-map,
+[role="dialog"]{
+  box-shadow: var(--shadow-lift);
+}
+/* Fullscreen document windows stay flat (existing pattern). */
+.doc-fullscreen .more-sheet,
+.doc-fullscreen .floating-doc-sheet{
+  box-shadow: none;
+}
+/* Primary buttons + the orange FAB get a soft button shadow. */
+.primary-button,
+.bottom-nav .bottom-nav-add{
+  box-shadow: var(--shadow-btn);
+}
+/* Floating bottom tab bar. */
+.bottom-nav{
+  box-shadow: var(--shadow-soft);
+}

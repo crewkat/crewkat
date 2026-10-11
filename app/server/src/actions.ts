@@ -3957,14 +3957,23 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   }),
   getListingBumpStatus: defineAction({
     request: z.object({ listingId: z.number().int().positive() }),
-    response: z.object({ featured: z.boolean(), featuredUntil: z.string().nullable(), configured: z.boolean() }),
+    response: z.object({ featured: z.boolean(), featuredUntil: z.string().nullable(), configured: z.boolean(), price: z.string().nullable() }),
+    privileged: [privileged.getListingBumpPrice],
     async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>();
       const listing = (await db.select({ featuredUntil: schema.marketplaceListings.featuredUntil, companyId: schema.marketplaceListings.companyId }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
       if (!listing || listing.companyId !== identity.workspaceCompanyId) throw new Error("Listing not found.");
       const until = listing.featuredUntil && listing.featuredUntil.getTime() > Date.now() ? listing.featuredUntil : null;
-      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()) };
+      // Build 3.0: price display is best-effort — a Stripe hiccup must not
+      // break the status call the sheet depends on.
+      let price: string | null = null;
+      try {
+        price = (await ctx.executePrivileged(privileged.getListingBumpPrice, {})).priceDisplay;
+      } catch {
+        price = null;
+      }
+      return { featured: until !== null, featuredUntil: until?.toISOString() ?? null, configured: Boolean(process.env.STRIPE_BUMP_PRICE_ID?.trim()), price };
     },
   }),
   // Build 0.6 item 22: marketplace contact unlock monetization (hybrid model).

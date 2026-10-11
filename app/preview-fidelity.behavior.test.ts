@@ -139,3 +139,60 @@ describe("fullscreen PDF preview shows the real document", () => {
     expect(Number(y2) - Number(y1)).toBe(792);
   });
 });
+
+describe("build 3.0 pdf-bugs batch", () => {
+  test("item 15: the customize overlay portals to document.body so it opens fullscreen-clean", () => {
+    // The overlay used to mount nested inside scrolled/animated sheets; on
+    // mobile Chrome its position:fixed could paint half-offset (half the old
+    // screen, half the preview) until the next scroll. Portaled to the body,
+    // inset:0 is always the true viewport.
+    expect(APP_SRC).toContain(
+      "createPortal(overlay, globalThis.document.body)",
+    );
+    expect(THEME_CSS).toContain(
+      "body > .document-overlay.customize-overlay { z-index: 200; }",
+    );
+  });
+
+  test("item 8: the editor preview sheet shows the exact PDF blob, not the HTML mock", () => {
+    const line = APP_SRC.split("\n").find(
+      (l) =>
+        l.includes("editor-preview-sheet") && l.includes('role="dialog"'),
+    );
+    expect(line).toBeDefined();
+    // PdfFrame renders the real generated PDF pages (server-rasterized, so it
+    // works in the installed app where iframes do not).
+    expect(line!).toContain("<PdfFrame");
+    expect(line!).toContain("blob={editorPreviewSheet.value}");
+    expect(line!).not.toContain("<QuotePaper");
+  });
+
+  test("item 16a: the customize preview card shows the exact PDF blob, legible", () => {
+    const line = APP_SRC.split("\n").find((l) =>
+      l.includes("customize-preview-card"),
+    );
+    expect(line).toBeDefined();
+    expect(line!).toContain("<PdfFrame");
+    expect(line!).toContain("blob={pdfBlob}");
+    expect(line!).not.toContain("<QuotePaper");
+    // The card is sized for legibility now, not the old 39%-scaled mock.
+    const cardRule = THEME_CSS.match(
+      /\.customize-preview-card\s*\{[^}]*\}/,
+    );
+    expect(cardRule).not.toBeNull();
+    expect(cardRule![0]).toMatch(/height:\s*min\(54vh,\s*470px\)/);
+    expect(cardRule![0]).not.toMatch(/scale\(\.39\)/);
+  });
+
+  test("item 14: stale-cache misses never eject the user from estimate/invoice previews", () => {
+    // React Query reports isSuccess with a stale cache while a background
+    // refetch is in flight; bouncing on that stale miss stranded users on a
+    // dead screen even though the estimate exists.
+    expect(APP_SRC).toContain(
+      "const quoteGone = query.isSuccess && !query.isFetching && !quote;",
+    );
+    expect(APP_SRC).toContain(
+      "const invoiceGone=query.isSuccess&&!query.isFetching&&!invoice;",
+    );
+  });
+});

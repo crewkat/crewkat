@@ -91,6 +91,11 @@ const ctx = {
       const name = args.plan === "annual" ? "STRIPE_PREMIUM_ANNUAL_PRICE_ID" : "STRIPE_PREMIUM_PRICE_ID";
       return { configured: false, checkoutUrl: null, missing: ["STRIPE_SECRET_KEY", name, "CREWKAT_PUBLIC_URL"] };
     }
+    // getListingBumpPrice stub: env is empty in tests, so mirror the real
+    // handler's unconfigured branch (returns null, no Stripe call). Note:
+    // actions.ts uses the generated @space/privileged contracts (a different
+    // module instance), so match on the empty request shape, not identity.
+    if (args && Object.keys(args).length === 0) return { priceDisplay: null };
     // verifyStripeWebhook stub: serve canned events in order.
     const event = cannedWebhookEvents.shift();
     if (!event) throw new Error("no canned webhook event");
@@ -181,6 +186,7 @@ check("duplicate webhook event is not reprocessed", dup.duplicate === true && du
 // getListingBumpStatus reflects the active featured state.
 const status = await (BaseActions.getListingBumpStatus as any).handler({ ...ctx, workspaceCompanyId: 1 }, { listingId: listing!.id });
 check("bump status reports featured with expiry", status.featured === true && typeof status.featuredUntil === "string");
+check("bump status reports unconfigured billing without a price", status.configured === false && status.price === null, JSON.stringify({ configured: status.configured, price: status.price }));
 
 // --- 6. Crew Day view ----------------------------------------------------------
 const today = new Date().toISOString().slice(0, 10);

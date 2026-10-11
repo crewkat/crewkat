@@ -64,6 +64,16 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Build 3.0: display price for the marketplace listing-boost offer. Reads
+  // the STRIPE_BUMP_PRICE_ID price object so the sheet always shows the real
+  // amount Danny configured in the Stripe dashboard. Best-effort: null when
+  // billing isn't configured or the lookup fails.
+  getListingBumpPrice: {
+    request: z.object({}),
+    response: z.object({ priceDisplay: z.string().nullable() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   createCreditPackCheckout: {
     request: z.object({
       userId: z.number().int().positive(),

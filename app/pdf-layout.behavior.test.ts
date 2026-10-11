@@ -178,3 +178,68 @@ describe("invoice PDF redesign", () => {
     expect(raw).toContain("Tax");
   });
 });
+
+describe("build 3.0 item 16b: text stays dark across page breaks", () => {
+  // Regression: a long line item forced a page break inside the items loop.
+  // drawTableHeaderRow() leaves white text active on classic/bold themes, so
+  // every row after the break (and the totals) printed white-on-white — the
+  // PDF looked empty (header only) even though the text was in the file.
+  /** Fill color (gray `g` or rgb `rg`) active where `marker` text is drawn, per page. */
+  function fillColorAtMarker(raw: string, marker: string): Array<string | null> {
+    const colors: Array<string | null> = [];
+    const streams = raw.match(/stream\n([\s\S]*?)endstream/g) ?? [];
+    for (const block of streams) {
+      const body = block.replace(/^stream\n/, "").replace(/endstream$/, "");
+      const ops = body.matchAll(
+        /(?<rgb>[\d.]+ [\d.]+ [\d.]+ rg)|(?<gray>[\d.]+ g)|(?<text>\((?:\\.|[^\\()])*\))/g,
+      );
+      let current: string | null = null;
+      let found: string | null = null;
+      for (const op of ops) {
+        if (op.groups?.rgb ?? op.groups?.gray) current = (op.groups.rgb ?? op.groups.gray)!;
+        else if (op.groups?.text?.includes(marker)) { found = current; break; }
+      }
+      colors.push(found);
+    }
+    return colors;
+  }
+  const isWhite = (c: string | null) => c === "1. g" || c === "1. 1. 1. rg";
+
+  test("long line item: item text and totals print dark after the page break", async () => {
+    const longDesc =
+      "LONGITEMMARKER SCOPE OF WORK — " +
+      "Install recessed lights and ceiling fans in the lanai, wiring concealed inside the insulated panels. ".repeat(45);
+    const invoice = sampleInvoice({
+      lineItems: [
+        { name: "", description: longDesc, amount: "6500.00", quantity: 1, discount: "0", unit: "none" },
+      ],
+    });
+    const raw = await pdfText(await buildInvoicePdf(invoice, settings, "en", enStrings));
+    // Sanity: the item really did spill onto later pages.
+    const pageBreaks = fillColorAtMarker(raw, "LONGITEMMARKER");
+    const itemPage = pageBreaks.findIndex((c) => c !== null);
+    expect(itemPage).toBeGreaterThan(0);
+    expect(isWhite(pageBreaks[itemPage])).toBe(false);
+    // Totals must be dark too, wherever they landed.
+    const totalColors = fillColorAtMarker(raw, "Subtotal");
+    const totalPage = totalColors.findIndex((c) => c !== null);
+    expect(totalPage).toBeGreaterThan(-1);
+    expect(isWhite(totalColors[totalPage])).toBe(false);
+  });
+
+  test("quote PDFs get the same page-break color reset", async () => {
+    const longDesc =
+      "LONGITEMMARKER " +
+      "Framing, drywall, tape and texture, prime and two finish coats of paint. ".repeat(60);
+    const quote = sampleInvoice({
+      lineItems: [
+        { name: "", description: longDesc, amount: "3200.00", quantity: 1, discount: "0", unit: "none" },
+      ],
+    });
+    const raw = await pdfText(await buildQuotePdf(quote, settings, "en", enStrings));
+    const colors = fillColorAtMarker(raw, "LONGITEMMARKER");
+    const itemPage = colors.findIndex((c) => c !== null);
+    expect(itemPage).toBeGreaterThan(0);
+    expect(isWhite(colors[itemPage])).toBe(false);
+  });
+});

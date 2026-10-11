@@ -306,6 +306,13 @@ export async function buildFinancialPdf(
     doc.addPage();
     y = 40;
     drawTableHeaderRow();
+    // Build 3.0 (item 16b): the header row leaves white text active on the
+    // classic/bold themes. Without this reset, every line-item row and the
+    // totals drawn after a page break print white-on-white, so the PDF looks
+    // empty (header only) even though the text is in the file.
+    doc.setTextColor(24, 32, 30);
+    doc.setFont(font, "normal");
+    doc.setFontSize(9);
   };
   ensureSpace(40);
   drawTableHeaderRow();

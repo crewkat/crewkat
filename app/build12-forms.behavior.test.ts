@@ -31,8 +31,9 @@ describe("floating windows", () => {
     expect(APP).not.toContain('<main className="page form-page invoice-builder-page">');
   });
 
-  test("edit-existing-document sheet uses the floating backdrop", () => {
-    expect(APP).toContain('className="sheet-backdrop floating-doc-backdrop"');
+  test("build 3.0 item 7: edit-existing-document opens as a full-screen window", () => {
+    expect(APP).toContain('className="sheet-backdrop floating-doc-backdrop doc-fullscreen"');
+    expect(CSS).toContain(".floating-doc-backdrop.doc-fullscreen .more-sheet.editor-sheet");
   });
 
   test("floating shell CSS: centered, rounded on all sides, elevated", () => {
@@ -49,7 +50,7 @@ describe("floating windows", () => {
 
   test("animated open/close pattern reused (useAnimatedDismiss + .closing)", () => {
     expect(APP).toContain("const docDismiss = useAnimatedDismiss(docOpen);");
-    expect(APP).toContain('floating-doc-backdrop${docDismiss.closing ? " closing" : ""}');
+    expect(APP).toContain('floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}');
     expect(CSS).toContain("@keyframes floating-doc-in");
     expect(CSS).toContain(".floating-doc-backdrop.closing .floating-doc-sheet");
   });

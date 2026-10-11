@@ -85,3 +85,64 @@ describe("invoice detail mockup layout", () => {
     expect(APP).toContain("Mark as Paid");
   });
 });
+
+// Build 3.0 batch (items 7, 10, 12): fullscreen edit, compact invoice cards,
+// smaller money-popup buttons + avatar contact rows.
+describe("build 3.0 item 7: invoice edit is a full-screen window", () => {
+  test("FinancialEditor opens full-screen via doc-fullscreen", () => {
+    expect(APP).toContain(
+      'className="sheet-backdrop floating-doc-backdrop doc-fullscreen"',
+    );
+    expect(CSS).toContain(
+      ".floating-doc-backdrop.doc-fullscreen .more-sheet.editor-sheet",
+    );
+  });
+
+  test("every edit line item has an X to delete it", () => {
+    expect(APP).toContain(
+      'aria-label={`${lang === "es" ? "Eliminar partida" : "Remove item"} ${index+1}`}',
+    );
+    expect(APP).toContain(
+      "onClick={() => setForm({...form,lineItems:form.lineItems.filter((_,i)=>i!==index)})}",
+    );
+  });
+});
+
+describe("build 3.0 item 10: compact invoice cards", () => {
+  test("row shows INV number + client, amount + pill on the right", () => {
+    expect(APP).toContain("ck-invoice-row-side");
+    expect(APP).toContain(
+      "{invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4, \"0\")}`}",
+    );
+    expect(APP).toContain("ck-invoice-row-amount");
+    expect(APP).toContain("ck-pill-paid");
+    expect(APP).toContain("ck-pill-pending");
+  });
+
+  test("\"Mark status | View\" action row with the status select behind Mark status", () => {
+    expect(APP).toContain("ck-invoice-actions");
+    expect(APP).toContain("ck-mark-status");
+    expect(APP).toContain("ck-status-select");
+    expect(APP).toContain("ck-actions-sep");
+    expect(APP).toContain("ck-view-action");
+    expect(APP).toContain("Mark status");
+  });
+
+  test("paid status circle renders green like the mockup", () => {
+    expect(CSS).toContain(".ck-check.done { background: #22c55e;");
+  });
+});
+
+describe("build 3.0 item 12: money-to-collect popup", () => {
+  test("action buttons are much smaller", () => {
+    expect(CSS).toContain(".b06-money-actions .primary-button { min-height: 0;");
+    expect(CSS).toContain(".b06-money-actions button:not(.primary-button) { padding: 9px 10px;");
+  });
+
+  test("contact rows show avatar circles with initials like the Contacts page", () => {
+    expect(APP).toContain("b06-money-contact");
+    expect(APP).toContain("client-avatar tone-${avatarTone(row.name)}");
+    expect(APP).toContain("clientInitials(row.name)");
+    expect(CSS).toContain(".b06-money-list .b06-money-contact .client-avatar");
+  });
+});

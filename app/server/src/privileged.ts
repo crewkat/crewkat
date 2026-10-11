@@ -70,6 +70,16 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Build 3.0: display price for the marketplace listing-boost offer. Reads
+  // the STRIPE_BUMP_PRICE_ID price object so the sheet always shows the real
+  // amount Danny configured in the Stripe dashboard. Best-effort: null when
+  // billing isn't configured or the lookup fails.
+  getListingBumpPrice: {
+    request: z.object({}),
+    response: z.object({ priceDisplay: z.string().nullable() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   createCreditPackCheckout: {
     request: z.object({
       userId: z.number().int().positive(),
@@ -252,6 +262,10 @@ function stripeAdminAuthHeader(required: boolean): { Authorization: string } | n
   return { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
 }
 
+// Build 3.0: in-process cache for the listing-boost price display (Stripe
+// price objects change only when Danny edits the product in the dashboard).
+let bumpPriceCache: { priceId: string; display: string | null; at: number } | null = null;
+
 export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
     const directory = await mkdtemp(join(tmpdir(), "crewkat-pdf-"));
@@ -412,6 +426,41 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const result = await response.json() as { url?: unknown };
     if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url)) throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
+  // Build 3.0: display price for the listing-boost offer. Fetches the
+  // STRIPE_BUMP_PRICE_ID price object and formats unit_amount/currency.
+  // Cached in-process for 10 minutes; any failure resolves to null so the
+  // sheet can fall back to price-less copy instead of breaking.
+  async getListingBumpPrice() {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const priceId = process.env.STRIPE_BUMP_PRICE_ID?.trim();
+    if (!secretKey || !priceId) return { priceDisplay: null as string | null };
+    const cached = bumpPriceCache;
+    if (cached && cached.priceId === priceId && Date.now() - cached.at < 10 * 60_000) {
+      return { priceDisplay: cached.display };
+    }
+    let display: string | null = null;
+    try {
+      const response = await fetch(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (response.ok) {
+        const price = await response.json() as { unit_amount?: unknown; currency?: unknown };
+        if (typeof price.unit_amount === "number" && typeof price.currency === "string") {
+          const amount = price.unit_amount / 100;
+          display = price.currency.toLowerCase() === "usd"
+            ? `$${amount.toFixed(2)}`
+            : `${amount.toFixed(2)} ${price.currency.toUpperCase()}`;
+        }
+      }
+    } catch {
+      display = null;
+    }
+    bumpPriceCache = { priceId, display, at: Date.now() };
+    return { priceDisplay: display };
   },
   // Build 0.6 item 22: one-time Stripe purchase for marketplace contact-unlock
   // credit packs (5 for $9, 15 for $19). Credits never expire.

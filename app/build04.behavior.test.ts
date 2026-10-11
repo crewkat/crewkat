@@ -134,7 +134,7 @@ check("hideMasterNav covers invoicePreview + quotePreview", APP.includes('screen
 check("BottomNav is skipped when the master nav is hidden", APP.includes('{screen.name !== "legal" && !hideMasterNav && <BottomNav'));
 check("app-shell gets the master-nav-hidden modifier", APP.includes('master-nav-hidden'));
 check("CSS drops the action bar to the true bottom", CSS.includes(".app-shell.master-nav-hidden .document-action-bar { inset: auto 0 env(safe-area-inset-bottom); }"));
-check("CSS reduces page bottom padding when nav is hidden", CSS.includes(".app-shell.has-bottom-nav.master-nav-hidden .page"));
+check("CSS keeps the 96px hidden-nav page bottom padding", CSS.includes(".app-shell.master-nav-hidden .page"));
 
 // --- Item 5: recurring label padding (static) ------------------------------------
 check("recurring subsections get 16px horizontal padding", CSS.includes(".recurring-subsection { padding: 12px 16px; }"));
