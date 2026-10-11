@@ -93,7 +93,7 @@ export function defaultDocumentCustomize(kind: "quote" | "invoice", lang: PdfLan
     showSummaryInfo: true, showSubtotal: true, showPaidSummary: true, showBalanceDue: true,
     showPaidStamp: true, showBusinessSignature: false, showThankYou: true,
     showBusinessName: true, showShortBusinessName: false, showLicenseNumber: true, showDueDate: true,
-    headline: kind === "invoice" ? (lang === "es" ? "FACTURA" : "INVOICE") : (lang === "es" ? "COTIZACIÓN" : "ESTIMATE"),
+    headline: kind === "invoice" ? (lang === "es" ? "FACTURA" : "INVOICE") : (lang === "es" ? "ESTIMADO" : "ESTIMATE"),
     dateFormat: "long", termsConditions: "", signatureDataUrl: "",
     labels: { headline: "", billTo: lang === "es" ? "Facturar a" : "Bill to", description: lang === "es" ? "Descripción" : "Description", amount: lang === "es" ? "Importe" : "Amount", subtotal: lang === "es" ? "Subtotal" : "Subtotal", total: lang === "es" ? "Total" : "Total", paid: lang === "es" ? "Pagado" : "Paid", balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due", number: lang === "es" ? "Número" : "Number", date: lang === "es" ? "Fecha" : "Date", dueDate: lang === "es" ? "Vencimiento" : "Due date" },
     fontSize: "m", lineSpacing: "comfortable", highContrast: true,

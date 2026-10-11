@@ -144,12 +144,11 @@ describe("invoice PDF redesign", () => {
     expect(raw).toContain("Thank you for your business");
   });
 
-  test("spanish quote headline is COTIZACIÓN", async () => {
+  test("spanish estimate headline is ESTIMADO", async () => {
     const raw = await pdfText(
       await buildQuotePdf(sampleInvoice(), settings, "es", esStrings),
     );
-    // Ó is WinAnsi-encoded; the ASCII prefix is searchable.
-    expect(raw).toContain("COTIZACI");
+    expect(raw).toContain("ESTIMADO");
     expect(raw).toContain("Gracias por su preferencia");
   });
 

@@ -115,17 +115,17 @@ const HELP_CONTENT = {
       [
         "Jobs",
         "How do I keep a project organized?",
-        "Open Jobs, create the project, then use its grouped sections for photos, documents, quotes and invoices, client updates, and job tracking.",
+        "Open Jobs, create the project, then use its grouped sections for photos, documents, estimates and invoices, client updates, and job tracking.",
       ],
       [
         "Clients",
         "Can I reuse a client's details?",
-        "Yes. Add the client once, then choose them when creating a job or quote. Their jobs and quotes stay together in client history.",
+        "Yes. Add the client once, then choose them when creating a job or estimate. Their jobs and estimates stay together in client history.",
       ],
       [
-        "Quotes",
-        "What happens after I send a quote?",
-        "Set the sent and expiry dates. Today ranks quotes that need follow-up, and you can turn an accepted quote into a job or invoice.",
+        "Estimates",
+        "What happens after I send an estimate?",
+        "Set the sent and expiry dates. Today ranks estimates that need follow-up, and you can turn an accepted estimate into a job or invoice.",
       ],
       [
         "Invoices",
@@ -150,7 +150,7 @@ const HELP_CONTENT = {
       [
         "Leads",
         "How does the lead pipeline work?",
-        "Move each lead through New, Contacted, Quoted, Won, or Lost. The pipeline keeps the next sales step visible and calculates your win rate.",
+        "Move each lead through New, Contacted, Estimated, Won, or Lost. The pipeline keeps the next sales step visible and calculates your win rate.",
       ],
       [
         "Payments",
@@ -160,15 +160,15 @@ const HELP_CONTENT = {
       [
         "Today & automation",
         "What does Today automate?",
-        "Today ranks appointments, quote follow-ups, overdue-payment messages, material deadlines, expiring quotes, review requests, reminders, and crew updates.",
+        "Today ranks appointments, estimate follow-ups, overdue-payment messages, material deadlines, expiring estimates, review requests, reminders, and crew updates.",
       ],
     ],
     guidesList: [
       [
-        "Create your first quote",
+        "Create your first estimate",
         [
-          "Open Jobs, then Quotes.",
-          "Tap New quote and choose or enter the client.",
+          "Open Jobs, then Estimates.",
+          "Tap New estimate and choose or enter the client.",
           "Add work items, amounts, dates, and terms.",
           "Save, preview the PDF, then share it from your phone.",
         ],
@@ -229,17 +229,17 @@ const HELP_CONTENT = {
       [
         "Trabajos",
         "¿Cómo mantengo un proyecto organizado?",
-        "Abre Trabajos, crea el proyecto y usa sus secciones agrupadas para fotos, documentos, cotizaciones y facturas, actualizaciones al cliente y seguimiento.",
+        "Abre Trabajos, crea el proyecto y usa sus secciones agrupadas para fotos, documentos, estimados y facturas, actualizaciones al cliente y seguimiento.",
       ],
       [
         "Clientes",
         "¿Puedo reutilizar los datos de un cliente?",
-        "Sí. Agrega el cliente una vez y selecciónalo al crear un trabajo o cotización. Su historial mantiene juntos los trabajos y cotizaciones.",
+        "Sí. Agrega el cliente una vez y selecciónalo al crear un trabajo o estimado. Su historial mantiene juntos los trabajos y estimados.",
       ],
       [
-        "Cotizaciones",
-        "¿Qué pasa después de enviar una cotización?",
-        "Define las fechas de envío y vencimiento. Hoy prioriza las cotizaciones que necesitan seguimiento y puedes convertir una aceptada en trabajo o factura.",
+        "Estimados",
+        "¿Qué pasa después de enviar un estimado?",
+        "Define las fechas de envío y vencimiento. Hoy prioriza los estimados que necesitan seguimiento y puedes convertir uno aceptado en trabajo o factura.",
       ],
       [
         "Facturas",
@@ -264,7 +264,7 @@ const HELP_CONTENT = {
       [
         "Prospectos",
         "¿Cómo funciona el embudo de prospectos?",
-        "Mueve cada prospecto por Nuevo, Contactado, Cotizado, Ganado o Perdido. El embudo mantiene visible el próximo paso y calcula tu tasa de éxito.",
+        "Mueve cada prospecto por Nuevo, Contactado, Estimado, Ganado o Perdido. El embudo mantiene visible el próximo paso y calcula tu tasa de éxito.",
       ],
       [
         "Pagos",
@@ -274,15 +274,15 @@ const HELP_CONTENT = {
       [
         "Hoy y automatización",
         "¿Qué automatiza Hoy?",
-        "Hoy prioriza citas, seguimiento de cotizaciones, mensajes de cobro, fechas de materiales, cotizaciones por vencer, solicitudes de reseñas, recordatorios y avisos al equipo.",
+        "Hoy prioriza citas, seguimiento de estimados, mensajes de cobro, fechas de materiales, estimados por vencer, solicitudes de reseñas, recordatorios y avisos al equipo.",
       ],
     ],
     guidesList: [
       [
-        "Crear tu primera cotización",
+        "Crear tu primer estimado",
         [
-          "Abre Trabajos y después Cotizaciones.",
-          "Toca Nueva cotización y elige o escribe el cliente.",
+          "Abre Trabajos y después Estimados.",
+          "Toca Nuevo estimado y elige o escribe el cliente.",
           "Agrega partidas, montos, fechas y términos.",
           "Guarda, revisa el PDF y compártelo desde tu teléfono.",
         ],
@@ -342,6 +342,7 @@ type Screen =
   | { name: "marketplaceEdit"; listingId: number }
   | { name: "marketplaceDetail"; listingId: number }
   | { name: "marketplaceThread"; conversationId: number }
+  | { name: "more" }
   | { name: "tools" }
   | { name: "proWorkspace" }
   | { name: "upgrade" }
@@ -413,7 +414,7 @@ const copy = {
     searchClients: "Search clients",
     clientHistory: "Client history",
     deleteClient: "Delete client",
-    jobsAndQuotes: "Jobs & quotes",
+    jobsAndQuotes: "Jobs & estimates",
     noClients: "No clients yet.",
     before: "Before",
     during: "During",
@@ -441,17 +442,17 @@ const copy = {
       "The share sheet did not send the photos, so they were downloaded as a ZIP instead. The caption is copied—attach the photos to your post.",
     socialNoPhotos: "Add a Before or After photo before sharing.",
     socialError: "The photos could not be prepared. Try again.",
-    quoteBuilder: "Quotes",
+    quoteBuilder: "Estimates",
     followups: "Follow-ups",
     websiteGallery: "Website gallery",
     actionCenter: "Action center",
     overdue: "Overdue",
-    quoteFollowups: "Quote follow-ups",
+    quoteFollowups: "Estimate follow-ups",
     noActions: "Nothing needs attention.",
     fieldTools: "Job tools",
     photosGroup: "Photos",
     documentsGroup: "Documents",
-    quotesInvoicesGroup: "Quotes & invoices",
+    quotesInvoicesGroup: "Estimates & invoices",
     clientUpdatesGroup: "Client updates",
     jobTrackingGroup: "Job tracking",
     contract: "Contract signer",
@@ -471,7 +472,7 @@ const copy = {
     paymentNotes: "Payment notes",
     invoice: "Invoice details",
     paymentInstructions: "Payment instructions",
-    followDays: "Quote follow-up after days",
+    followDays: "Estimate follow-up after days",
     settings: "Settings",
     businessIdentity: "Business identity",
     contactAndPayments: "Contact & payments",
@@ -529,7 +530,7 @@ const copy = {
     arrow: "Arrow",
     saveCopy: "Save annotated copy",
     selectPhoto: "Select a photo to mark up",
-    newQuote: "New quote",
+    newQuote: "New estimate",
     lineItems: "Line items",
     item: "Work item",
     subtotal: "Subtotal",
@@ -541,12 +542,12 @@ const copy = {
     expiry: "Expiry date",
     sentDate: "Sent date",
     addLine: "Add line",
-    saveQuote: "Save quote",
+    saveQuote: "Save estimate",
     convertJob: "Convert to job",
     convertInvoice: "Create invoice",
     followUp: "Follow up",
     sentDays: "sent {days} days ago",
-    quoteEmpty: "No quotes yet.",
+    quoteEmpty: "No estimates yet.",
     previewPdf: "Preview PDF",
     quoteTheme: "Document theme",
     classic: "Classic",
@@ -576,7 +577,7 @@ const copy = {
     paid: "Paid",
     overdueStatus: "Overdue",
     saveInvoice: "Save invoice",
-    fromQuote: "Invoice created from quote",
+    fromQuote: "Invoice created from estimate",
     viewDocument: "View document",
     pdfPreview: "PDF preview",
     close: "Close",
@@ -730,7 +731,7 @@ const copy = {
     searchClients: "Buscar clientes",
     clientHistory: "Historial del cliente",
     deleteClient: "Eliminar cliente",
-    jobsAndQuotes: "Trabajos y cotizaciones",
+    jobsAndQuotes: "Trabajos y estimados",
     noClients: "Aún no hay clientes.",
     before: "Antes",
     during: "Durante",
@@ -758,17 +759,17 @@ const copy = {
       "El menú de compartir no envió las fotos, así que se descargaron en un ZIP. El texto está copiado; adjunta las fotos a tu publicación.",
     socialNoPhotos: "Agrega una foto de Antes o Después antes de compartir.",
     socialError: "No se pudieron preparar las fotos. Inténtalo de nuevo.",
-    quoteBuilder: "Cotizaciones",
+    quoteBuilder: "Estimados",
     followups: "Seguimientos",
     websiteGallery: "Galería web",
     actionCenter: "Centro de acciones",
     overdue: "Vencidos",
-    quoteFollowups: "Seguimiento de cotizaciones",
+    quoteFollowups: "Seguimiento de estimados",
     noActions: "Nada necesita atención.",
     fieldTools: "Herramientas",
     photosGroup: "Fotos",
     documentsGroup: "Documentos",
-    quotesInvoicesGroup: "Cotizaciones y facturas",
+    quotesInvoicesGroup: "Estimados y facturas",
     clientUpdatesGroup: "Actualizaciones al cliente",
     jobTrackingGroup: "Seguimiento del trabajo",
     contract: "Firmar contrato",
@@ -788,7 +789,7 @@ const copy = {
     paymentNotes: "Notas de pago",
     invoice: "Detalles de factura",
     paymentInstructions: "Instrucciones de pago",
-    followDays: "Seguimiento de cotización después de días",
+    followDays: "Seguimiento de estimado después de días",
     settings: "Configuración",
     businessIdentity: "Identidad del negocio",
     contactAndPayments: "Contacto y pagos",
@@ -846,7 +847,7 @@ const copy = {
     arrow: "Flecha",
     saveCopy: "Guardar copia anotada",
     selectPhoto: "Selecciona una foto para marcar",
-    newQuote: "Nueva cotización",
+    newQuote: "Nuevo estimado",
     lineItems: "Partidas",
     item: "Trabajo",
     subtotal: "Subtotal",
@@ -858,12 +859,12 @@ const copy = {
     expiry: "Vence",
     sentDate: "Fecha de envío",
     addLine: "Agregar partida",
-    saveQuote: "Guardar cotización",
+    saveQuote: "Guardar estimado",
     convertJob: "Convertir en trabajo",
     convertInvoice: "Crear factura",
     followUp: "Dar seguimiento",
     sentDays: "enviada hace {days} días",
-    quoteEmpty: "Aún no hay cotizaciones.",
+    quoteEmpty: "Aún no hay estimados.",
     previewPdf: "Vista previa PDF",
     quoteTheme: "Tema del documento",
     classic: "Clásico",
@@ -893,7 +894,7 @@ const copy = {
     paid: "Pagada",
     overdueStatus: "Vencida",
     saveInvoice: "Guardar factura",
-    fromQuote: "Factura creada desde cotización",
+    fromQuote: "Factura creada desde estimado",
     viewDocument: "Ver documento",
     pdfPreview: "Vista previa PDF",
     close: "Cerrar",
@@ -1148,59 +1149,80 @@ const CheckIcon = () => (
   </Icon>
 );
 
-type RootTab = "today" | "jobs" | "invoices" | "clients" | "marketplace" | "tools";
+// Build 3.1: five labeled tabs — Home, Jobs, Clients, Invoices, More. The
+// Marketplace tab and the center + button are gone from the bar: Marketplace
+// lives as the featured row of the More menu, and + becomes a floating action
+// button above the bar on the main tabs.
+type RootTab = "today" | "jobs" | "clients" | "invoices" | "more";
 function rootTabFor(screen: Screen): RootTab {
   if (screen.name === "today") return "today";
   if (["jobs", "new", "detail", "proof", "jobOps", "tool"].includes(screen.name)) return "jobs";
-  if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
   if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
-  if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail"].includes(screen.name)) return "marketplace";
-  return "tools";
+  if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
+  // The More tab stays active on the More menu itself, on every Marketplace
+  // screen, and on every other tool/settings screen.
+  return "more";
 }
-function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void; onNavigate: (screen: Screen) => void }) {
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
-  const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
-  // Platform admin suite: hide the Marketplace tab entirely when the flag is off.
-  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), staleTime: 5 * 60_000 });
-  const marketplaceEnabled = flagsQuery.data?.marketplace_enabled ?? true;
-  // Chunk D: the Marketplace badge covers both unread messages and notifications.
-  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
-  const allItems: Array<{ tab: RootTab; label: string; icon: ReactNode; badge?: number }> = [
-    { tab: "today", label: lang === "es" ? "Inicio" : "Home", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
-    { tab: "jobs", label: lang === "es" ? "Trabajos" : "Jobs", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
-    { tab: "invoices", label: lang === "es" ? "Facturas" : "Invoices", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
-    { tab: "marketplace", label: lang === "es" ? "Mercado" : "Marketplace", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>, badge: unreadMarketplace },
-  ];
-  const items = allItems.filter((item) => item.tab !== "marketplace" || marketplaceEnabled);
-  const quickActions: Array<{ label: string; destination: Screen; icon: ReactNode }> = [
+const ROOT_TABS: Array<{ tab: RootTab; en: string; es: string; icon: ReactNode }> = [
+  { tab: "today", en: "Home", es: "Inicio", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
+  { tab: "jobs", en: "Jobs", es: "Trabajos", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
+  { tab: "clients", en: "Clients", es: "Clientes", icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon> },
+  { tab: "invoices", en: "Invoices", es: "Facturas", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
+  { tab: "more", en: "More", es: "Más", icon: <Icon><path d="M4 7h16M4 12h16M4 17h16" /></Icon> },
+];
+function rootTabLabel(tab: RootTab, lang: Lang): string {
+  const entry = ROOT_TABS.find((item) => item.tab === tab);
+  return lang === "es" ? entry?.es ?? "" : entry?.en ?? "";
+}
+function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void }) {
+  return (
+    <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
+      {ROOT_TABS.map((item) => (
+        <button
+          type="button"
+          key={item.tab}
+          className={active === item.tab ? "active" : ""}
+          aria-current={active === item.tab ? "page" : undefined}
+          onClick={() => onSelect(item.tab)}
+        >
+          <span className="bottom-nav-icon">{item.icon}</span>
+          <span>{lang === "es" ? item.es : item.en}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+function quickActionsFor(lang: Lang): Array<{ label: string; destination: Screen; icon: ReactNode }> {
+  return [
     { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
     { label: lang === "es" ? "Nuevo estimado" : "New estimate", destination: { name: "quoteNew" }, icon: <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon> },
     { label: lang === "es" ? "Nueva factura" : "New invoice", destination: { name: "invoiceNew" }, icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon> },
-    { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7M19 4v6M16 7h6"/></Icon> },
+    { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7M19 4v6M16 7h6" /></Icon> },
   ];
-  // Build 3: the + sheet suggests the most relevant action for the current tab first.
-  const quickOrder: Record<RootTab, number[]> = {
-    today: [0, 2, 3, 1],
-    jobs: [0, 1, 2, 3],
-    invoices: [2, 1, 0, 3],
-    clients: [3, 0, 2, 1],
-    marketplace: [3, 0, 2, 1],
-    tools: [0, 2, 1, 3],
-  };
+}
+// Build 3: the + sheet suggests the most relevant action for the current tab first.
+const quickOrder: Record<RootTab, number[]> = {
+  today: [0, 2, 3, 1],
+  jobs: [0, 1, 2, 3],
+  clients: [3, 0, 2, 1],
+  invoices: [2, 1, 0, 3],
+  more: [0, 1, 2, 3],
+};
+// Build 3.1: the quick-create + is a floating action button above the tab bar
+// (visible on the same screens as the master nav). It opens the existing
+// quick-create sheet.
+function QuickCreateFab({ lang, active, onNavigate }: { lang: Lang; active: RootTab; onNavigate: (screen: Screen) => void }) {
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const quickActions = quickActionsFor(lang);
   const orderedQuickActions = (quickOrder[active] ?? [0, 1, 2, 3]).map((i) => quickActions[i]);
-  const activeTabLabel = items.find((item) => item.tab === active)?.label ?? "";
+  const activeTabLabel = rootTabLabel(active, lang);
   const goQuick = (close: () => void, destination: Screen) => {
     buzz(8);
     close();
     window.setTimeout(() => onNavigate(destination), 200);
   };
   return <>
-    <nav className="bottom-nav" aria-label={lang === "es" ? "Navegación principal" : "Main navigation"}>
-      {items.slice(0, 2).map((item) => <button type="button" key={item.tab} className={active === item.tab ? "active" : ""} aria-current={active === item.tab ? "page" : undefined} onClick={() => onSelect(item.tab)}><span className="bottom-nav-icon">{item.icon}{(item.badge ?? 0) > 0 && <span className="nav-unread-badge">{Math.min(item.badge ?? 0, 99)}</span>}</span><span>{item.label}</span></button>)}
-      <button type="button" className="bottom-nav-add" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><span aria-hidden="true">+</span></button>
-      {items.slice(2).map((item) => <button type="button" key={item.tab} className={active === item.tab ? "active" : ""} aria-current={active === item.tab ? "page" : undefined} onClick={() => onSelect(item.tab)}><span className="bottom-nav-icon">{item.icon}{(item.badge ?? 0) > 0 && <span className="nav-unread-badge">{Math.min(item.badge ?? 0, 99)}</span>}</span><span>{item.label}</span></button>)}
-    </nav>
+    <button type="button" className="quick-create-fab" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><span aria-hidden="true">+</span></button>
     {quickCreateOpen && <BottomSheet lang={lang} title={lang === "es" ? "¿Qué deseas crear?" : "What would you like to create?"} onClose={() => setQuickCreateOpen(false)}>
       {(close) => (<>
         <p className="quick-create-suggest">{lang === "es" ? `Sugerido en ${activeTabLabel}` : `Suggested for ${activeTabLabel}`} · {orderedQuickActions[0]?.label ?? ""}</p>
@@ -1212,26 +1234,20 @@ function BottomNav({ lang, active, onSelect, onNavigate }: { lang: Lang; active:
   </>;
 }
 
-const SettingsNavigationContext = createContext<(() => void) | null>(null);
-const ToolsNavigationContext = createContext<(() => void) | null>(null);
-
+// Build 3.1: headers stay clean — back button + title + at most one or two
+// contextual actions passed via `actions`. The old global Tools wrench and
+// Settings gear shortcuts are gone; both live in the More menu now.
 function PageHeader({
   lang,
   title,
   onBack,
   actions,
-  minimal,
-  leadingSettings,
 }: {
   lang: Lang;
   title: string;
   onBack?: () => void;
   actions?: ReactNode;
-  minimal?: boolean;
-  leadingSettings?: boolean;
 }) {
-  const openSettings = useContext(SettingsNavigationContext);
-  const openTools = useContext(ToolsNavigationContext);
   return (
     <header className="app-header">
       <div className="header-side">
@@ -1242,14 +1258,6 @@ function PageHeader({
             aria-label={copy[lang].back}
           >
             <BackIcon />
-          </button>
-        ) : leadingSettings && openSettings ? (
-          <button
-            className="icon-button"
-            onClick={openSettings}
-            aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}
-          >
-            <GearIcon />
           </button>
         ) : null}
       </div>
@@ -1263,24 +1271,6 @@ function PageHeader({
       </h1>
       <div className="header-actions">
         {actions}
-        {!minimal && openTools && (
-          <button
-            className="icon-button"
-            onClick={openTools}
-            aria-label={lang === "es" ? "Abrir herramientas" : "Open tools"}
-          >
-            <Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon>
-          </button>
-        )}
-        {!minimal && openSettings && (
-          <button
-            className="icon-button master-settings-button"
-            onClick={openSettings}
-            aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}
-          >
-            <GearIcon />
-          </button>
-        )}
       </div>
     </header>
   );
@@ -2492,6 +2482,14 @@ function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
   return (
     <main className="page crew-day-page">
       <PageHeader lang={lang} title={lang === "es" ? "Hoy en el equipo" : "Crew day"} onBack={onBack} />
+      {/* Build 3.1 (F): crew dispatch framing + cross-link back to the owner's
+          personal briefing (Home "today" screen). */}
+      <p className="crew-day-sub">{lang === "es" ? "Despacho del equipo — quién está en qué trabajo hoy" : "Crew dispatch — who's on what job today"}</p>
+      <button type="button" className="crew-day-crosslink" onClick={() => { buzz(8); setScreen({ name: "today" }); }}>
+        <span className="crew-day-crosslink-icon" aria-hidden="true"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></Icon></span>
+        <span><strong>{lang === "es" ? "Mi resumen" : "My briefing"}</strong><small>{lang === "es" ? "Tu día — trabajos, citas y dinero" : "Your day — jobs, appointments, money"}</small></span>
+        <BackIcon />
+      </button>
       <p className="crew-day-date">{dateLabel}</p>
       {day.isLoading && (
         <div className="crew-day-loading" aria-label={lang === "es" ? "Cargando" : "Loading"}>
@@ -2929,20 +2927,15 @@ function CrewkatApplication() {
         <BookingRequestScreen lang={lang} />
       </div>
     );
-  // Build 3.0 (item 1): the master bottom tab bar lives ONLY on the four root
-  // tabs (Home, Jobs, Invoices, Marketplace — the central + opens its sheet
+  // Build 3.1: the master bottom tab bar lives ONLY on the five root tabs
+  // (Home, Jobs, Clients, Invoices, More — the + is a floating action button
   // over the current tab). It is hidden on every sub-page: Post to
   // Marketplace, listing detail, the invoice/estimate builders and previews,
-  // Clients, Crew day, etc.
-  const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "invoices" || screen.name === "marketplace";
+  // Crew day, etc.
+  const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "clients" || screen.name === "invoices" || screen.name === "more";
   const hideMasterNav = !showMasterNav;
   return (
-    <SettingsNavigationContext.Provider
-      value={screen.name === "settings" ? null : () => setScreen({ name: "settings" })}
-    >
-    <ToolsNavigationContext.Provider
-      value={screen.name === "tools" ? null : () => setScreen({ name: "tools" })}
-    >
+  <>
     <div className={`app-shell${showMasterNav ? " has-bottom-nav" : ""}${hideMasterNav && screen.name !== "legal" ? " master-nav-hidden" : ""}`} ref={appShellRef}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       <ImpersonationBanner lang={lang} />
@@ -3224,7 +3217,11 @@ function CrewkatApplication() {
           onBack={goBack}
         />
       )}
-      {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} onNavigate={setScreen} />}
+      {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={rootTabFor(screen)} onSelect={openRoot} />}
+      {screen.name !== "legal" && !hideMasterNav && <QuickCreateFab lang={lang} active={rootTabFor(screen)} onNavigate={setScreen} />}
+      {screen.name === "more" && (
+        <MoreScreen lang={lang} setScreen={setScreen} />
+      )}
       <CelebrationOverlay />
       {/* SMS cap pre-check: shown when a text is blocked before the SMS app opens. */}
       <SmsBlockedBanner lang={lang} />
@@ -3245,9 +3242,8 @@ function CrewkatApplication() {
       {/* b07: one-time push opt-in prompt for first-time installers. */}
       <PushPromptSheet lang={lang} />
     </div>
-      {limitKind && <LimitReachedSheet lang={lang} kind={limitKind} onClose={dismissLimitHit} onUpgrade={() => { dismissLimitHit(); setScreen({ name: "upgrade" }); }} />}
-    </ToolsNavigationContext.Provider>
-    </SettingsNavigationContext.Provider>
+    {limitKind && <LimitReachedSheet lang={lang} kind={limitKind} onClose={dismissLimitHit} onUpgrade={() => { dismissLimitHit(); setScreen({ name: "upgrade" }); }} />}
+  </>
   );
 }
 
@@ -4243,6 +4239,61 @@ async function geocodeLocationForMapPreview(value: string): Promise<{ lat: strin
   return { lat: String(coords.lat), lon: String(coords.lon) };
 }
 
+// ---------------------------------------------------------------------------
+// Build 3.1 (E): one shared "Delete this listing?" confirm dialog. Used by the
+// Marketplace list (own-listing rows) and the listing detail page (owner
+// Manage-listing actions). The consequence line (detail) is a dynamic prop so
+// each context keeps its own copy; the caller drives delete behavior via
+// isPending / onConfirm. Markup and classes match the pre-3.1 dialogs exactly.
+// ---------------------------------------------------------------------------
+function DeleteListingDialog({
+  render,
+  closing,
+  listingTitle,
+  title,
+  detail,
+  cancelLabel,
+  deleteLabel,
+  deletingLabel,
+  errorText,
+  isPending,
+  onDismiss,
+  onConfirm,
+  titleId,
+}: {
+  render: boolean;
+  closing: boolean;
+  listingTitle: string;
+  title: string;
+  detail: string;
+  cancelLabel: string;
+  deleteLabel: string;
+  deletingLabel: string;
+  errorText: string | null;
+  isPending: boolean;
+  onDismiss: () => void;
+  onConfirm: () => void;
+  titleId: string;
+}) {
+  if (!render) return null;
+  return (
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} onClick={() => !isPending && onDismiss()}>
+      <section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle"/>
+        <span className="delete-sheet-icon"><TrashIcon/></span>
+        <h2 id={titleId}>{title}</h2>
+        <strong>{listingTitle}</strong>
+        <p>{detail}</p>
+        {errorText && <p className="status error">{errorText}</p>}
+        <div className="delete-sheet-actions">
+          <button type="button" disabled={isPending} onClick={onDismiss}>{cancelLabel}</button>
+          <button type="button" className="danger-button" disabled={isPending} onClick={onConfirm}>{isPending ? deletingLabel : deleteLabel}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
@@ -4515,15 +4566,15 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <span className="market-refresh-spinner" aria-hidden="true"/>
       <small>{refreshing ? text.refreshing : pullDistance >= 52 ? text.release : text.pull}</small>
     </div>}
-    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} minimal leadingSettings actions={<>
+    {/* Build 3.1: header keeps title + one contextual action (inbox). The old
+        company-profile shortcut moved to the More menu; the inbox view also
+        lives in the marketplace "More" popup. */}
+    <PageHeader lang={lang} title={`${APP_INFO.name} Marketplace`} actions={
       <button className="icon-button header-bell-button" type="button" aria-label={lang === "es" ? "Bandeja" : "Inbox"} onClick={() => { setView("inbox"); }}>
         <Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon>
         {unreadMarketplaceCount > 0 && <b className="header-unread-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}
       </button>
-      <button className="icon-button" type="button" aria-label={lang === "es" ? "Perfil de empresa" : "Company profile"} onClick={() => setScreen({ name: "companyProfile" })}>
-        <Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></Icon>
-      </button>
-    </>} />
+    } />
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-tabs" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
       <button type="button" className="market-tab market-tab-post" onClick={() => openNewListing(intentFilter === "need" ? "need" : "offer")}><span>{text.post}</span></button>
@@ -4569,7 +4620,23 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <p className="market-inbox-note">{lang === "es" ? "Las notificaciones push llegarán con las cuentas públicas en el lanzamiento." : "Push notifications arrive with public accounts at launch."}</p>
     </section>}
     {view === "alerts" && <AlertsView lang={lang} setScreen={setScreen} />}
-    {deleteTargetSheet.render && deleteTargetSheet.value && <div className={`sheet-backdrop${deleteTargetSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteTarget(null)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="delete-listing-title">{text.removeTitle}</h2><strong>{deleteTargetSheet.value.title}</strong><p>{text.removeBody}</p>{removeListing.isError && <p className="status error">{text.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteTarget(null)}>{text.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate(deleteTargetSheet.value.id)}>{removeListing.isPending ? text.deleting : text.remove}</button></div></section></div>}
+    {deleteTargetSheet.render && deleteTargetSheet.value && (
+      <DeleteListingDialog
+        render={deleteTargetSheet.render}
+        closing={deleteTargetSheet.closing}
+        listingTitle={deleteTargetSheet.value.title}
+        title={text.removeTitle}
+        detail={text.removeBody}
+        cancelLabel={text.cancel}
+        deleteLabel={text.remove}
+        deletingLabel={text.deleting}
+        errorText={removeListing.isError ? text.removeError : null}
+        isPending={removeListing.isPending}
+        onDismiss={() => setDeleteTarget(null)}
+        onConfirm={() => removeListing.mutate(deleteTargetSheet.value.id)}
+        titleId="delete-listing-title"
+      />
+    )}
     {bumpJustPaid && (
       <div className="bump-success-banner pop-in" role="status">
         <Confetti burstKey={1} />
@@ -4892,7 +4959,23 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
     <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{!listing.isMine && (listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />)}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
-    {deleteOpenSheet.render && <div className={`sheet-backdrop${deleteOpenSheet.closing ? " closing" : ""}`} onClick={() => !removeListing.isPending && setDeleteOpen(false)}><section className="more-sheet delete-listing-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-delete-listing-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><span className="delete-sheet-icon"><TrashIcon/></span><h2 id="detail-delete-listing-title">{t.removeTitle}</h2><strong>{listing.title}</strong><p>{t.removeBody}</p>{removeListing.isError && <p className="status error">{t.removeError}</p>}<div className="delete-sheet-actions"><button type="button" disabled={removeListing.isPending} onClick={() => setDeleteOpen(false)}>{t.cancel}</button><button type="button" className="danger-button" disabled={removeListing.isPending} onClick={() => removeListing.mutate()}>{removeListing.isPending ? t.deleting : t.remove}</button></div></section></div>}
+    {deleteOpenSheet.render && (
+      <DeleteListingDialog
+        render={deleteOpenSheet.render}
+        closing={deleteOpenSheet.closing}
+        listingTitle={listing.title}
+        title={t.removeTitle}
+        detail={t.removeBody}
+        cancelLabel={t.cancel}
+        deleteLabel={t.remove}
+        deletingLabel={t.deleting}
+        errorText={removeListing.isError ? t.removeError : null}
+        isPending={removeListing.isPending}
+        onDismiss={() => setDeleteOpen(false)}
+        onConfirm={() => removeListing.mutate()}
+        titleId="detail-delete-listing-title"
+      />
+    )}
     {reportOpenSheet.render && <div className={`sheet-backdrop${reportOpenSheet.closing ? " closing" : ""}`} onClick={() => !reportListing.isPending && setReportOpen(false)}><section className="more-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-listing-title" onClick={(event) => event.stopPropagation()}>
       <div className="sheet-handle"/><div className="sheet-title-row"><h2 id="report-listing-title">{t.reportTitle}</h2><button aria-label={t.close} onClick={() => setReportOpen(false)}>×</button></div>
       {reportDone ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.reportThanks}</h3><p>{t.reportThanksBody}</p><button className="primary-button" onClick={() => setReportOpen(false)}>{t.close}</button></div>
@@ -5014,6 +5097,286 @@ function LimitReachedSheet({ lang, kind, onClose, onUpgrade }: { lang: Lang; kin
   </div>;
 }
 
+const toolTileIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
+// Build 3.1: tool tile catalogs shared by the Tools home page and the More menu.
+function estimatingToolTiles(lang: Lang): ToolTile[] {
+  return lang === "es" ? [
+    { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Precios de materiales", description: "Guarda nombres, unidades y precios de materiales", screen: { name: "toolbox", tab: "materials" }, icon: toolTileIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
+    { title: "Ángulos", description: "Calcula ángulos y pendientes", screen: { name: "toolbox", tab: "angle" }, icon: toolTileIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
+    { title: "Convertidor de unidades", description: "Convierte medidas de obra", screen: { name: "toolbox", tab: "convert" }, icon: toolTileIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
+    { title: "Medidas", description: "Suma áreas y estima pintura", screen: { name: "toolbox", tab: "area" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
+    { title: "Concreto", description: "Yardas cúbicas y bolsas", screen: { name: "toolbox", tab: "yards" }, icon: toolTileIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
+    { title: "Madera", description: "Calcula pies tabla", screen: { name: "toolbox", tab: "board" }, icon: toolTileIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
+    { title: "Paneles de yeso", description: "Hojas, tornillos y compuesto", screen: { name: "toolbox", tab: "drywall" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
+    { title: "Techos", description: "Cuadrados, desperdicio y paquetes", screen: { name: "toolbox", tab: "roofing" }, icon: toolTileIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
+    { title: "Cajas de loseta", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "tile" }, icon: toolTileIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
+    { title: "Margen y recargo", description: "Convierte costo, margen y recargo", screen: { name: "toolbox", tab: "margin" }, icon: toolTileIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
+    { title: "Estimador de pintura", description: "Galones según área y manos", screen: { name: "toolbox", tab: "paint" }, icon: toolTileIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
+    { title: "Cajas de piso", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "flooring" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
+    { title: "Cerca y deck", description: "Estacas, postes y rieles", screen: { name: "toolbox", tab: "fence" }, icon: toolTileIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
+    { title: "Bloques y adoquines", description: "Bloques y adoquines por área", screen: { name: "toolbox", tab: "block" }, icon: toolTileIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
+    { title: "Grava y tierra", description: "Yardas cúbicas y toneladas", screen: { name: "toolbox", tab: "gravel" }, icon: toolTileIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
+    { title: "Zanca de escalera", description: "Contrahuellas, huellas y trazado", screen: { name: "toolbox", tab: "stairs" }, icon: toolTileIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
+    { title: "Aislante en rollos", description: "Rollos según área de pared o ático", screen: { name: "toolbox", tab: "insulation" }, icon: toolTileIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
+    { title: "Canalones y bajantes", description: "Pies de canalón, bajantes y codos", screen: { name: "toolbox", tab: "gutter" }, icon: toolTileIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
+    { title: "Tarifa facturable", description: "Calcula tu tarifa por hora", screen: { name: "toolbox", tab: "rate" }, icon: toolTileIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
+    { title: "Lista de pendientes", description: "Pendientes por trabajo con estados", screen: { name: "toolbox", tab: "punchlist" }, icon: toolTileIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
+  ] : [
+    { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Material prices", description: "Save your material names, units, and prices", screen: { name: "toolbox", tab: "materials" }, icon: toolTileIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
+    { title: "Angles", description: "Calculate angles and slopes", screen: { name: "toolbox", tab: "angle" }, icon: toolTileIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
+    { title: "Unit converter", description: "Convert job-site measurements", screen: { name: "toolbox", tab: "convert" }, icon: toolTileIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
+    { title: "Measurements", description: "Add areas and estimate paint", screen: { name: "toolbox", tab: "area" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
+    { title: "Concrete", description: "Cubic yards and bag counts", screen: { name: "toolbox", tab: "yards" }, icon: toolTileIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
+    { title: "Lumber", description: "Calculate board feet", screen: { name: "toolbox", tab: "board" }, icon: toolTileIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
+    { title: "Drywall sheets", description: "Sheets, screws, and compound", screen: { name: "toolbox", tab: "drywall" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
+    { title: "Roofing squares", description: "Squares, waste, and bundles", screen: { name: "toolbox", tab: "roofing" }, icon: toolTileIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
+    { title: "Tile boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "tile" }, icon: toolTileIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
+    { title: "Markup & margin", description: "Convert cost, margin, and markup", screen: { name: "toolbox", tab: "margin" }, icon: toolTileIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
+    { title: "Paint estimator", description: "Gallons from wall area and coats", screen: { name: "toolbox", tab: "paint" }, icon: toolTileIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
+    { title: "Flooring boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "flooring" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
+    { title: "Fence & deck", description: "Pickets, posts, and rails", screen: { name: "toolbox", tab: "fence" }, icon: toolTileIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
+    { title: "Block & pavers", description: "Blocks and pavers by area", screen: { name: "toolbox", tab: "block" }, icon: toolTileIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
+    { title: "Gravel & soil", description: "Cubic yards and tons", screen: { name: "toolbox", tab: "gravel" }, icon: toolTileIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
+    { title: "Stair stringer", description: "Risers, treads, and layout", screen: { name: "toolbox", tab: "stairs" }, icon: toolTileIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
+    { title: "Insulation batts", description: "Batts by wall or attic area", screen: { name: "toolbox", tab: "insulation" }, icon: toolTileIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
+    { title: "Gutter & downspouts", description: "Gutter feet, downspouts, and elbows", screen: { name: "toolbox", tab: "gutter" }, icon: toolTileIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
+    { title: "Billable rate", description: "Build your hourly rate", screen: { name: "toolbox", tab: "rate" }, icon: toolTileIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
+    { title: "Punch list", description: "Per-job open-items checklist", screen: { name: "toolbox", tab: "punchlist" }, icon: toolTileIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
+  ];
+}
+
+function officeToolTiles(lang: Lang): ToolTile[] {
+  return lang === "es" ? [
+    { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
+    { title: "Plantillas de estimados", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Millaje", description: "Registra viajes y totales mensuales", screen: { name: "businessTools", tab: "mileage" }, icon: toolTileIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
+    { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
+    { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
+    { title: "Escáner de documentos", description: "Guarda recibos, contratos y archivos", screen: { name: "expansion", tab: "scanner" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
+    { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
+  ] : [
+    { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
+    { title: "Estimate templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Mileage", description: "Record work trips and monthly totals", screen: { name: "businessTools", tab: "mileage" }, icon: toolTileIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
+    { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
+    { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
+    { title: "Document scanner", description: "Save receipts, contracts, and files", screen: { name: "expansion", tab: "scanner" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
+    { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
+  ];
+}
+
+function operationsToolTiles(lang: Lang): ToolTile[] {
+  return lang === "es" ? [
+    { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Despacho", description: "Calendario de citas con arrastrar y soltar", screen: { name: "dispatch" }, icon: toolTileIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
+    { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Pedidos esperando proveedores", description: "Compara cotizaciones y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
+    { title: "Cuidado del equipo", description: "Servicios y mantenimiento completado", screen: { name: "expansion", tab: "plans" }, icon: toolTileIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
+    { title: "Seguridad e incidentes", description: "Charlas, firmas e informes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
+    { title: "Licencias y certificados", description: "Vencimientos y renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Nómina", description: "Horas por tarifa y descarga CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
+    { title: "Horas del equipo", description: "Revisa las horas guardadas por persona", screen: { name: "expansion", tab: "crew" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+  ] : [
+    { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Dispatch", description: "Drag-and-drop appointment calendar", screen: { name: "dispatch" }, icon: toolTileIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
+    { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Orders waiting on suppliers", description: "Compare bids and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
+    { title: "Equipment upkeep", description: "Service schedules and completed maintenance", screen: { name: "expansion", tab: "plans" }, icon: toolTileIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
+    { title: "Safety & incidents", description: "Talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
+    { title: "Licenses & certificates", description: "Expiry dates and renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Payroll", description: "Hours by rate and CSV download", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
+    { title: "Crew hours", description: "Review saved hours by crew member", screen: { name: "expansion", tab: "crew" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+  ];
+}
+
+// Build 3.1: Pro-directory tiles whose destinations are not in the Tools
+// home catalog (the rest are shared by screen key, so the More menu shows
+// each destination exactly once).
+function proExtraTiles(lang: Lang): ToolTile[] {
+  return lang === "es" ? [
+    { title: "Directorio de proveedores", description: "Guarda contactos y archivos fiscales", screen: { name: "expansion", tab: "suppliers" }, icon: toolTileIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
+    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
+    { title: "Alertas de presupuesto", description: "Compara costos registrados con el valor cotizado", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolTileIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
+    { title: "Facturas recurrentes", description: "Programa la frecuencia y genera cada factura al vencer", screen: { name: "invoices" }, icon: toolTileIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Controles del dueño", description: "Administra equipo, reglas, bandeja y datos guardados", screen: { name: "admin" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Portal del cliente", description: "Abre un trabajo → Portal del cliente para crear un enlace seguro para tu cliente", screen: { name: "jobs" }, icon: toolTileIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
+  ] : [
+    { title: "Supplier directory", description: "Save contacts and tax files", screen: { name: "expansion", tab: "suppliers" }, icon: toolTileIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
+    { title: "Lead scoring", description: "Prioritize the pipeline and turn leads into estimates", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
+    { title: "Budget alerts", description: "Compare recorded costs with the quoted job value", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolTileIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
+    { title: "Recurring invoices", description: "Set a schedule and generate each invoice when due", screen: { name: "invoices" }, icon: toolTileIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Admin controls", description: "Manage team, rules, inbox, and stored data", screen: { name: "admin" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Client portal", description: "Open a job → Client portal to create a secure link for your client", screen: { name: "jobs" }, icon: toolTileIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
+  ];
+}
+
+// Build 3.1: the More menu — a full-page directory that replaces the old
+// unlabeled header shortcuts and the flat Tools list. Featured Marketplace
+// row on top (flag-gated, with the unread badge), then the Tools catalog and
+// the Pro Tools directory grouped into labeled categories, then the
+// standalone rows (Crew Day, Reports, Company profile, Settings, Help &
+// support). Same premium gating and Home pinning as the Tools home page.
+function MoreScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
+  const [soon, setSoon] = useState<ToolTile | null>(null);
+  const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
+  // Platform admin suite: the marketplace_enabled flag now gates the featured
+  // Marketplace row instead of a tab.
+  const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), staleTime: 5 * 60_000 });
+  const marketplaceEnabled = flagsQuery.data?.marketplace_enabled ?? true;
+  // The Marketplace badge covers both unread messages and notifications.
+  const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
+  const notificationsQuery = useQuery({ queryKey: ["marketplace-notifications"], queryFn: () => api.listNotifications({}), refetchInterval: 30000 });
+  const unreadMarketplace = (inboxQuery.data?.unreadCount ?? 0) + (notificationsQuery.data?.unreadCount ?? 0);
+  // Home-screen pinning, same as the Tools home page.
+  const qc = useQueryClient();
+  const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
+  const pinnedIds = new Set((pinsQuery.data?.tools ?? []).map((t) => t.toolId));
+  const pinMutation = useMutation({
+    mutationFn: async (toolId: string) => {
+      if (pinnedIds.has(toolId)) await api.unpinTool({ toolId });
+      else await api.pinTool({ toolId });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
+  });
+  const openTool = (tile: ToolTile) => {
+    if (!isPremium && (tile.pro || isProToolScreen(tile.screen))) setLockedTool(tile);
+    else if (tile.comingSoon) setSoon(tile);
+    else if (tile.screen) setScreen(tile.screen);
+  };
+  // One row per destination: the Tools catalog plus the Pro-only tiles.
+  const catalog = [...estimatingToolTiles(lang), ...officeToolTiles(lang), ...operationsToolTiles(lang), ...proExtraTiles(lang)];
+  const byKey = new Map<string, ToolTile>();
+  for (const tile of catalog) {
+    const key = toolIdForTile(tile) ?? tile.title;
+    if (!byKey.has(key)) byKey.set(key, tile);
+  }
+  const extra = (title: string, description: string, icon: ReactNode, screen: Screen): ToolTile => ({ title, description, icon, screen });
+  // Standalone destinations that are not tool tiles.
+  const crewDayTile = extra(
+    lang === "es" ? "Día del equipo" : "Crew day",
+    lang === "es" ? "Quién está en cada trabajo hoy" : "Who's on what job today",
+    toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>),
+    { name: "crewDay" },
+  );
+  const referralsTile = extra(
+    lang === "es" ? "Referidos" : "Referrals",
+    lang === "es" ? "Programa de referidos y recompensas" : "Referral program and rewards",
+    toolTileIcon(<path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z" />),
+    { name: "referrals" },
+  );
+  const referContractorTile = extra(
+    lang === "es" ? "Invita a un contratista" : "Refer a contractor",
+    lang === "es" ? "Comparte Crewkat con otro contratista" : "Share Crewkat with another contractor",
+    toolTileIcon(<path d="M4 12v7h16v-7M12 3v12M8 7l4-4 4 4" />),
+    { name: "referContractor" },
+  );
+  const galleryTile = extra(
+    lang === "es" ? "Galería web" : "Website gallery",
+    lang === "es" ? "Fotos de trabajos para tu sitio" : "Job photos for your website",
+    toolTileIcon(<path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4M9 9h.01" />),
+    { name: "gallery" },
+  );
+  const reportsTile = extra(
+    lang === "es" ? "Informes" : "Reports",
+    lang === "es" ? "Ingresos, gastos y estimado frente a real" : "Revenue, expenses, and estimate vs. actual",
+    toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />),
+    { name: "reports" },
+  );
+  const companyTile = extra(
+    lang === "es" ? "Perfil de empresa" : "Company profile",
+    lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links",
+    toolTileIcon(<path d="M4 21V7l8-4 8 4v14M8 21v-5h8v5" />),
+    { name: "companyProfile" },
+  );
+  const settingsTile = extra(
+    lang === "es" ? "Configuración" : "Settings",
+    lang === "es" ? "Cuenta, apariencia, idioma y más" : "Account, appearance, language, and more",
+    <span className="tool-tile-icon"><GearIcon /></span>,
+    { name: "settings" },
+  );
+  const helpTile = extra(
+    lang === "es" ? "Ayuda y soporte" : "Help & support",
+    lang === "es" ? "Respuestas rápidas y guías" : "Quick answers and walkthroughs",
+    toolTileIcon(<path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM9.5 9a2.6 2.6 0 1 1 4.2 2c-1 .7-1.7 1.2-1.7 2.5M12 17h.01" />),
+    { name: "settings" },
+  );
+  byKey.set("crewDay", crewDayTile);
+  byKey.set("referrals", referralsTile);
+  byKey.set("referContractor", referContractorTile);
+  byKey.set("gallery", galleryTile);
+  byKey.set("reports", reportsTile);
+  byKey.set("companyProfile", companyTile);
+  byKey.set("settings", settingsTile);
+  byKey.set("help", helpTile);
+  const pick = (keys: string[]): ToolTile[] =>
+    keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
+  const groups: Array<{ title: string; tiles: ToolTile[] }> = [
+    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "businessTools:price", "businessTools:templates", "businessTools:expenses", "businessTools:mileage", "toolbox:loan", "expansion:scanner", "fieldIntelligence:payroll", "fieldIntelligence:costs", "invoices"]) },
+    { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
+    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", tiles: pick(["followups", "operations:leads", "jobs", "referrals", "referContractor"]) },
+    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch", "fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "expansion:crew", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties"]) },
+    { title: lang === "es" ? "Marketing" : "Marketing", tiles: pick(["gallery"]) },
+    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["reports", "companyProfile", "settings", "help"]) },
+  ];
+  const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
+  const row = (tile: ToolTile, key: string) => {
+    const toolId = catalogKeys.has(key) ? toolIdForTile(tile) : null;
+    const pinned = toolId ? pinnedIds.has(toolId) : false;
+    const pinLabel = pinned ? (lang === "es" ? "Quitar" : "Unpin") : (lang === "es" ? "Fijar al inicio" : "Pin to Home");
+    const locked = !isPremium && (tile.pro || isProToolScreen(tile.screen));
+    return (
+      <div key={key} className="tool-row">
+        <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
+          {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} pro={locked} /></span><span className="tool-row-end"><BackIcon /></span>
+        </button>
+        {toolId && (
+          <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
+            <Icon size={18}><path d={PIN_ICON_PATH} /></Icon>
+          </button>
+        )}
+      </div>
+    );
+  };
+  const clockTitle = lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock";
+  const clockDesc = lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job.";
+  const bookingTitle = lang === "es" ? "Formulario público de estimado" : "Public estimate form";
+  const bookingDesc = lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website.";
+  return (
+    <main className="page more-page">
+      <PageHeader lang={lang} title={lang === "es" ? "Más" : "More"} />
+      {marketplaceEnabled && (
+        <button type="button" className="more-featured-marketplace" onClick={() => setScreen({ name: "marketplace" })}>
+          <span className="more-featured-icon"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b className="nav-unread-badge">{Math.min(unreadMarketplace, 99)}</b>}</span>
+          <span><strong>Marketplace</strong><small>{lang === "es" ? "Publica trabajos, encuentra ayuda y chatea" : "Post jobs, find help, and chat"}</small></span>
+          <BackIcon />
+        </button>
+      )}
+      {groups.map((group) => group.tiles.length > 0 && (
+        <section key={group.title} className="tool-group everyday-tool-group">
+          <div className="tool-group-heading"><h2>{group.title}</h2></div>
+          <div className="tool-directory">
+            {group.tiles.map((tile) => row(tile, toolIdForTile(tile) ?? tile.title))}
+            {group.title === (lang === "es" ? "Trabajos y equipo" : "Jobs & crew") && (
+              isPremium ? <CrewClockPanel lang={lang} /> : <ProFeatureCard title={clockTitle} description={clockDesc} onClick={() => setLockedTool({ title: clockTitle, description: "", icon: null, pro: true })} />
+            )}
+            {group.title === (lang === "es" ? "Marketing" : "Marketing") && (
+              isPremium ? <BookingLinkPanel lang={lang} /> : <ProFeatureCard title={bookingTitle} description={bookingDesc} onClick={() => setLockedTool({ title: bookingTitle, description: "", icon: null, pro: true })} />
+            )}
+          </div>
+        </section>
+      ))}
+      {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
+      {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
+    </main>
+  );
+}
+
 function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
@@ -5029,92 +5392,9 @@ function ToolsHomeScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen: 
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["home-pins"] }),
   });
-  const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
-  const estimating: ToolTile[] = lang === "es" ? [
-    { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Precios de materiales", description: "Guarda nombres, unidades y precios de materiales", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
-    { title: "Ángulos", description: "Calcula ángulos y pendientes", screen: { name: "toolbox", tab: "angle" }, icon: toolIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
-    { title: "Convertidor de unidades", description: "Convierte medidas de obra", screen: { name: "toolbox", tab: "convert" }, icon: toolIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
-    { title: "Medidas", description: "Suma áreas y estima pintura", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
-    { title: "Concreto", description: "Yardas cúbicas y bolsas", screen: { name: "toolbox", tab: "yards" }, icon: toolIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
-    { title: "Madera", description: "Calcula pies tabla", screen: { name: "toolbox", tab: "board" }, icon: toolIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
-    { title: "Paneles de yeso", description: "Hojas, tornillos y compuesto", screen: { name: "toolbox", tab: "drywall" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
-    { title: "Techos", description: "Cuadrados, desperdicio y paquetes", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
-    { title: "Cajas de loseta", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
-    { title: "Margen y recargo", description: "Convierte costo, margen y recargo", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
-    { title: "Estimador de pintura", description: "Galones según área y manos", screen: { name: "toolbox", tab: "paint" }, icon: toolIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
-    { title: "Cajas de piso", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "flooring" }, icon: toolIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
-    { title: "Cerca y deck", description: "Estacas, postes y rieles", screen: { name: "toolbox", tab: "fence" }, icon: toolIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
-    { title: "Bloques y adoquines", description: "Bloques y adoquines por área", screen: { name: "toolbox", tab: "block" }, icon: toolIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
-    { title: "Grava y tierra", description: "Yardas cúbicas y toneladas", screen: { name: "toolbox", tab: "gravel" }, icon: toolIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
-    { title: "Zanca de escalera", description: "Contrahuellas, huellas y trazado", screen: { name: "toolbox", tab: "stairs" }, icon: toolIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
-    { title: "Aislante en rollos", description: "Rollos según área de pared o ático", screen: { name: "toolbox", tab: "insulation" }, icon: toolIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
-    { title: "Canalones y bajantes", description: "Pies de canalón, bajantes y codos", screen: { name: "toolbox", tab: "gutter" }, icon: toolIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
-    { title: "Tarifa facturable", description: "Calcula tu tarifa por hora", screen: { name: "toolbox", tab: "rate" }, icon: toolIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
-    { title: "Lista de pendientes", description: "Pendientes por trabajo con estados", screen: { name: "toolbox", tab: "punchlist" }, icon: toolIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
-  ] : [
-    { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Material prices", description: "Save your material names, units, and prices", screen: { name: "toolbox", tab: "materials" }, icon: toolIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
-    { title: "Angles", description: "Calculate angles and slopes", screen: { name: "toolbox", tab: "angle" }, icon: toolIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
-    { title: "Unit converter", description: "Convert job-site measurements", screen: { name: "toolbox", tab: "convert" }, icon: toolIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
-    { title: "Measurements", description: "Add areas and estimate paint", screen: { name: "toolbox", tab: "area" }, icon: toolIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
-    { title: "Concrete", description: "Cubic yards and bag counts", screen: { name: "toolbox", tab: "yards" }, icon: toolIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
-    { title: "Lumber", description: "Calculate board feet", screen: { name: "toolbox", tab: "board" }, icon: toolIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
-    { title: "Drywall sheets", description: "Sheets, screws, and compound", screen: { name: "toolbox", tab: "drywall" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
-    { title: "Roofing squares", description: "Squares, waste, and bundles", screen: { name: "toolbox", tab: "roofing" }, icon: toolIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
-    { title: "Tile boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "tile" }, icon: toolIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
-    { title: "Markup & margin", description: "Convert cost, margin, and markup", screen: { name: "toolbox", tab: "margin" }, icon: toolIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
-    { title: "Paint estimator", description: "Gallons from wall area and coats", screen: { name: "toolbox", tab: "paint" }, icon: toolIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
-    { title: "Flooring boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "flooring" }, icon: toolIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
-    { title: "Fence & deck", description: "Pickets, posts, and rails", screen: { name: "toolbox", tab: "fence" }, icon: toolIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
-    { title: "Block & pavers", description: "Blocks and pavers by area", screen: { name: "toolbox", tab: "block" }, icon: toolIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
-    { title: "Gravel & soil", description: "Cubic yards and tons", screen: { name: "toolbox", tab: "gravel" }, icon: toolIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
-    { title: "Stair stringer", description: "Risers, treads, and layout", screen: { name: "toolbox", tab: "stairs" }, icon: toolIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
-    { title: "Insulation batts", description: "Batts by wall or attic area", screen: { name: "toolbox", tab: "insulation" }, icon: toolIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
-    { title: "Gutter & downspouts", description: "Gutter feet, downspouts, and elbows", screen: { name: "toolbox", tab: "gutter" }, icon: toolIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
-    { title: "Billable rate", description: "Build your hourly rate", screen: { name: "toolbox", tab: "rate" }, icon: toolIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
-    { title: "Punch list", description: "Per-job open-items checklist", screen: { name: "toolbox", tab: "punchlist" }, icon: toolIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
-  ];
-  const office: ToolTile[] = lang === "es" ? [
-    { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
-    { title: "Plantillas de presupuestos", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Millaje", description: "Registra viajes y totales mensuales", screen: { name: "businessTools", tab: "mileage" }, icon: toolIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
-    { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, icon: toolIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
-    { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, icon: toolIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Escáner de documentos", description: "Guarda recibos, contratos y archivos", screen: { name: "expansion", tab: "scanner" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
-    { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, icon: toolIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
-  ] : [
-    { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, icon: toolIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
-    { title: "Quote templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Mileage", description: "Record work trips and monthly totals", screen: { name: "businessTools", tab: "mileage" }, icon: toolIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
-    { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, icon: toolIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
-    { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, icon: toolIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Document scanner", description: "Save receipts, contracts, and files", screen: { name: "expansion", tab: "scanner" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
-    { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, icon: toolIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
-  ];
-  const operations: ToolTile[] = lang === "es" ? [
-    { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Despacho", description: "Calendario de citas con arrastrar y soltar", screen: { name: "dispatch" }, icon: toolIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
-    { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Pedidos esperando proveedores", description: "Compara cotizaciones y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Cuidado del equipo", description: "Servicios y mantenimiento completado", screen: { name: "expansion", tab: "plans" }, icon: toolIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
-    { title: "Seguridad e incidentes", description: "Charlas, firmas e informes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Licencias y certificados", description: "Vencimientos y renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Nómina", description: "Horas por tarifa y descarga CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Horas del equipo", description: "Revisa las horas guardadas por persona", screen: { name: "expansion", tab: "crew" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-  ] : [
-    { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Dispatch", description: "Drag-and-drop appointment calendar", screen: { name: "dispatch" }, icon: toolIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
-    { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Orders waiting on suppliers", description: "Compare bids and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Equipment upkeep", description: "Service schedules and completed maintenance", screen: { name: "expansion", tab: "plans" }, icon: toolIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
-    { title: "Safety & incidents", description: "Talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Licenses & certificates", description: "Expiry dates and renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Payroll", description: "Hours by rate and CSV download", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Crew hours", description: "Review saved hours by crew member", screen: { name: "expansion", tab: "crew" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-  ];
+  const estimating = estimatingToolTiles(lang);
+  const office = officeToolTiles(lang);
+  const operations = operationsToolTiles(lang);
   const openTool = (tile: ToolTile) => {
     if (!isPremium && (tile.pro || isProToolScreen(tile.screen))) setLockedTool(tile);
     else if (tile.comingSoon) setSoon(tile);
@@ -5368,7 +5648,7 @@ function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: (
     { title: "Seguridad e incidentes", description: "Guarda charlas, firmas e informes de incidentes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
     { title: "Nómina", description: "Calcula horas por tarifa y descarga un CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
     { title: "Licencias y certificados", description: "Guarda vencimientos y registra renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en cotizaciones", screen: { name: "operations", tab: "leads" }, icon: toolIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
+    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, icon: toolIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
     { title: "Alertas de presupuesto", description: "Compara costos registrados con el valor cotizado", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
     { title: "Entrada y salida del equipo", description: "Marca horas y ubicación GPS por trabajo", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
     { title: "Facturas recurrentes", description: "Programa la frecuencia y genera cada factura al vencer", screen: { name: "invoices" }, icon: toolIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
@@ -8588,7 +8868,7 @@ function SettingsScreen({
                 onChange={(e) => setForm({ ...form, paymentInstructions: e.target.value })}
               />
             </label>
-            <p className="privacy-note">{lang === "es" ? "Estas instrucciones aparecen en las facturas y cotizaciones que envía." : "These instructions appear on the invoices and estimates you send."}</p>
+            <p className="privacy-note">{lang === "es" ? "Estas instrucciones aparecen en las facturas y estimados que envía." : "These instructions appear on the invoices and estimates you send."}</p>
           </SettingsAccordion>
 
           <SettingsAccordion title={lang === "es" ? "Más opciones" : "More options"} icon={<FileIcon />}>
@@ -8603,7 +8883,7 @@ function SettingsScreen({
                   <span className="option-row-icon reminder"><Icon><circle cx="12" cy="13" r="8"/><path d="M12 9v5l3 2M8 2h8" /></Icon></span><span>{lang === "es" ? "Recordatorios de pago" : "Payment Reminders"}</span><BackIcon />
                 </button>
                 {morePanel === "payments" && <div className="more-option-detail"><label className="switch-row"><span>{lang === "es" ? "Mostrar recordatorios de pago" : "Show payment reminders"}</span><Switch checked={form.paymentRemindersEnabled} onChange={(v) => setForm({ ...form, paymentRemindersEnabled: v })} /></label><label><span>{t.paymentInstructions}</span><textarea rows={3} value={form.paymentInstructions} onChange={(e) => setForm({ ...form, paymentInstructions: e.target.value })} /></label></div>}
-                <label className="more-option-row toggle-row"><span>{lang === "es" ? "Firma en línea" : "Online signature"} <span className="info-icon" title={lang === "es" ? "Permite recoger firmas en cotizaciones y facturas" : "Lets you collect signatures on estimates and invoices"}>i</span></span><Switch checked={form.onlineSignatureEnabled} onChange={(v) => setForm({ ...form, onlineSignatureEnabled: v })} /></label>
+                <label className="more-option-row toggle-row"><span>{lang === "es" ? "Firma en línea" : "Online signature"} <span className="info-icon" title={lang === "es" ? "Permite recoger firmas en estimados y facturas" : "Lets you collect signatures on estimates and invoices"}>i</span></span><Switch checked={form.onlineSignatureEnabled} onChange={(v) => setForm({ ...form, onlineSignatureEnabled: v })} /></label>
               </section>
               <section className="more-options-section"><h3>{lang === "es" ? "Mis alertas" : "My alerts"}</h3>
                 <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "overdue" ? null : "overdue")} aria-expanded={morePanel === "overdue"}><span>{lang === "es" ? "Recordatorios de facturas vencidas" : "Overdue Invoice Reminders"}</span><BackIcon /></button>
@@ -8728,8 +9008,8 @@ function SettingsScreen({
             </label>
             <p className="privacy-note">
               {lang === "es"
-                ? "Los cargos aparecen separados del total original. Las alertas comparan costos registrados con la cotización del trabajo."
-                : "Late fees appear separately from the original total. Cost alerts compare recorded job costs with the job quote."}
+                ? "Los cargos aparecen separados del total original. Las alertas comparan costos registrados con el estimado del trabajo."
+                : "Late fees appear separately from the original total. Cost alerts compare recorded job costs with the job estimate."}
             </p>
           </SettingsAccordion>
 
@@ -9124,8 +9404,8 @@ function SettingsScreen({
               </dl>
               <p>
                 {lang === "es"
-                  ? "Crewkat reúne trabajos, clientes, cotizaciones, facturas, fotos, comprobantes, calendario, prospectos y recordatorios en un solo lugar para el equipo."
-                  : "Crewkat brings jobs, clients, quotes, invoices, photos, proof packets, scheduling, leads, and reminders together for the crew."}
+                  ? "Crewkat reúne trabajos, clientes, estimados, facturas, fotos, comprobantes, calendario, prospectos y recordatorios en un solo lugar para el equipo."
+                  : "Crewkat brings jobs, clients, estimates, invoices, photos, proof packets, scheduling, leads, and reminders together for the crew."}
               </p>
               <nav className="legal-nav-list" aria-label={lang === "es" ? "Documentos legales" : "Legal documents"}>
                 <button type="button" onClick={() => setScreen({ name: "legal", document: "terms" })}><span>{lang === "es" ? "Términos de servicio" : "Terms of Service"}</span><BackIcon /></button>
@@ -9991,8 +10271,8 @@ function PASupportView({ lang }: { lang: Lang }) {
   const [email, setEmail] = useState("");
   const [lookup, setLookup] = useState("");
   const t = lang === "es"
-    ? { title: "Vista de soporte", hint: "Solo lectura. Cada consulta queda registrada.", ph: "correo@ejemplo.com", view: "Ver", notFound: "Sin resultados para ese correo.", profile: "Perfil", subscription: "Suscripción", counts: "Contenido", activity: "Actividad reciente", tier: "Plan", status: "Estado", provider: "Proveedor", periodEnd: "Fin del período", cancelAtEnd: "Cancela al final", suspended: "Suspendido", admin: "Admin", created: "Creado", jobs: "Trabajos", clients: "Clientes", invoices: "Facturas", quotes: "Cotizaciones", loadError: "No se pudo cargar.", yes: "Sí", no: "No" }
-    : { title: "Support view", hint: "Read-only. Every lookup is audit-logged.", ph: "user@example.com", view: "View", notFound: "No user with that email.", profile: "Profile", subscription: "Subscription", counts: "Content", activity: "Recent activity", tier: "Tier", status: "Status", provider: "Provider", periodEnd: "Period end", cancelAtEnd: "Cancels at end", suspended: "Suspended", admin: "Admin", created: "Created", jobs: "Jobs", clients: "Clients", invoices: "Invoices", quotes: "Quotes", loadError: "Could not load.", yes: "Yes", no: "No" };
+    ? { title: "Vista de soporte", hint: "Solo lectura. Cada consulta queda registrada.", ph: "correo@ejemplo.com", view: "Ver", notFound: "Sin resultados para ese correo.", profile: "Perfil", subscription: "Suscripción", counts: "Contenido", activity: "Actividad reciente", tier: "Plan", status: "Estado", provider: "Proveedor", periodEnd: "Fin del período", cancelAtEnd: "Cancela al final", suspended: "Suspendido", admin: "Admin", created: "Creado", jobs: "Trabajos", clients: "Clientes", invoices: "Facturas", quotes: "Estimados", loadError: "No se pudo cargar.", yes: "Sí", no: "No" }
+    : { title: "Support view", hint: "Read-only. Every lookup is audit-logged.", ph: "user@example.com", view: "View", notFound: "No user with that email.", profile: "Profile", subscription: "Subscription", counts: "Content", activity: "Recent activity", tier: "Tier", status: "Status", provider: "Provider", periodEnd: "Period end", cancelAtEnd: "Cancels at end", suspended: "Suspended", admin: "Admin", created: "Created", jobs: "Jobs", clients: "Clients", invoices: "Invoices", quotes: "Estimates", loadError: "Could not load.", yes: "Yes", no: "No" };
   const query = useQuery({ queryKey: ["pa-support-view", lookup], queryFn: () => api.adminSupportView({ email: lookup }), enabled: lookup.length > 0 });
   const submit = () => { const v = email.trim(); if (v) setLookup(v); };
   return <article className="pa-card">
@@ -11616,8 +11896,8 @@ function AdminScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             {input(
               "quoteExpiryWarningDays",
               lang === "es"
-                ? "Aviso de vencimiento de cotización"
-                : "Quote expiry warning",
+                ? "Aviso de vencimiento de estimado"
+                : "Estimate expiry warning",
               "days",
             )}
             {input(
@@ -11927,7 +12207,7 @@ function QuotesScreen({
   });
   return (
     <main className="page">
-      <PageHeader lang={lang} title={t.quoteBuilder} onBack={onBack} />
+      <PageHeader lang={lang} title={capFirst(estTerms.plural)} onBack={onBack} />
       <div className="page-actions">
         <button
           className="primary-button"
@@ -11944,7 +12224,7 @@ function QuotesScreen({
             <div>
               <h2>{q.clientName}</h2>
               <p>
-                {q.jobType || t.quoteBuilder} · {usd(money(q.total))}
+                {q.jobType || capFirst(estTerms.plural)} · {usd(money(q.total))}
               </p>
               <small>
                 {q.sentAt ? `${t.sentDate}: ${formatDate(q.sentAt, lang)}` : ""}
@@ -11975,7 +12255,7 @@ function QuotesScreen({
           </article>
         ))}
         {query.data?.quotes.length === 0 && !query.isLoading && (
-          <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />
+          <EmptyState lang={lang} icon={<FileIcon />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />
         )}
       </section>
     </main>
@@ -12029,6 +12309,7 @@ function QuoteBuilder({
   onSaved?: () => void;
 }) {
   const t = copy[lang];
+  const estTerms = estimateTerms(lang, settings);
   const client = useQueryClient();
   const growth = useQuery({
     queryKey: ["growth-toolkit"],
@@ -12340,7 +12621,7 @@ function QuoteBuilder({
       role="presentation"
       onClick={(e) => { if (e.target === e.currentTarget) exitAndSave(); }}
     >
-      <section className="floating-doc-sheet b06-quote-builder-page" role="dialog" aria-modal="true" aria-label={t.newQuote}>
+      <section className="floating-doc-sheet b06-quote-builder-page" role="dialog" aria-modal="true" aria-label={estTerms.newDoc}>
       <form
         ref={formRef}
         className="job-form floating-doc-form"
@@ -12355,7 +12636,7 @@ function QuoteBuilder({
       >
         <FloatingDocHeader
           lang={lang}
-          title={t.newQuote}
+          title={estTerms.newDoc}
           onExit={exitAndSave}
           onPreview={() => setPreviewOpen(true)}
           saveLabel={t.save}
@@ -12958,7 +13239,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
     window.setTimeout(() => { setSheet(null); setSheetClosing(false); }, 180);
   };
   const text = lang === "es" ? {
-    title: "Vista previa y personalizar", back: "Atrás", template: "Plantilla", logo: "Logo", color: "Color", options: "Opciones", info: "Info", typography: "Tipografía", save: "Aplicar diseño", saving: "Guardando…", defaults: "Guardar como predeterminado", custom: "Color personalizado", solid: "Sólido", gradient: "Degradado", satisfied: kind === "invoice" ? "¿Satisfecho con esta factura?" : "¿Satisfecho con esta cotización?", thank: "Gracias por tu opinión", size: "Tamaño", removeBg: "Quitar fondo", huge: "Enorme", big: "Grande", medium: "Mediano", small: "Pequeño", content: "Contenido", summary: "Resumen", header: "Encabezado", showQty: "Mostrar cantidad y precio unitario", showDiscount: "Mostrar descuento", showTax: "Mostrar impuesto", showAmount: "Mostrar importe", summaryInfo: "Mostrar u ocultar resumen", paidStamp: "Mostrar sello PAGADO", businessSignature: "Mostrar firma de la empresa", thankYou: "Mostrar “Gracias por su preferencia”", headline: "Título predeterminado", businessName: "Mostrar nombre de la empresa", shortName: "Mostrar nombre corto", license: "Mostrar número de licencia", dueDate: "Mostrar fecha de vencimiento", dateFormat: "Formato de fecha", businessInfo: "Información y logo de la empresa", terms: "Términos y condiciones", labels: "Etiquetas personalizadas", fontSize: "Tamaño de letra", lineSpacing: "Espaciado de línea", highContrast: "Texto de alto contraste", compact: "Compacto", comfortable: "Cómodo", roomy: "Amplio", done: "Listo", changeLogo: "Cambiar logo", noLogo: "Agrega el logo de tu empresa", expand: "Ampliar vista previa"
+    title: "Vista previa y personalizar", back: "Atrás", template: "Plantilla", logo: "Logo", color: "Color", options: "Opciones", info: "Info", typography: "Tipografía", save: "Aplicar diseño", saving: "Guardando…", defaults: "Guardar como predeterminado", custom: "Color personalizado", solid: "Sólido", gradient: "Degradado", satisfied: kind === "invoice" ? "¿Satisfecho con esta factura?" : "¿Satisfecho con este estimado?", thank: "Gracias por tu opinión", size: "Tamaño", removeBg: "Quitar fondo", huge: "Enorme", big: "Grande", medium: "Mediano", small: "Pequeño", content: "Contenido", summary: "Resumen", header: "Encabezado", showQty: "Mostrar cantidad y precio unitario", showDiscount: "Mostrar descuento", showTax: "Mostrar impuesto", showAmount: "Mostrar importe", summaryInfo: "Mostrar u ocultar resumen", paidStamp: "Mostrar sello PAGADO", businessSignature: "Mostrar firma de la empresa", thankYou: "Mostrar “Gracias por su preferencia”", headline: "Título predeterminado", businessName: "Mostrar nombre de la empresa", shortName: "Mostrar nombre corto", license: "Mostrar número de licencia", dueDate: "Mostrar fecha de vencimiento", dateFormat: "Formato de fecha", businessInfo: "Información y logo de la empresa", terms: "Términos y condiciones", labels: "Etiquetas personalizadas", fontSize: "Tamaño de letra", lineSpacing: "Espaciado de línea", highContrast: "Texto de alto contraste", compact: "Compacto", comfortable: "Cómodo", roomy: "Amplio", done: "Listo", changeLogo: "Cambiar logo", noLogo: "Agrega el logo de tu empresa", expand: "Ampliar vista previa"
   } : {
     title: "Preview & Customize", back: "Back", template: "Template", logo: "Logo", color: "Color", options: "Options", info: "Info", typography: "Typography", save: "Apply design", saving: "Saving…", defaults: "Save as default", custom: "Custom color", solid: "Solid", gradient: "Gradient", satisfied: kind === "invoice" ? "Satisfied with this invoice?" : "Satisfied with this estimate?", thank: "Thanks for the feedback", size: "Size", removeBg: "Remove Background", huge: "Huge", big: "Big", medium: "Medium", small: "Small", content: "Content", summary: "Summary", header: "Header", showQty: "Show quantity and unit price", showDiscount: "Show discount", showTax: "Show tax", showAmount: "Show amount", summaryInfo: "Show or Hide Summary info", paidStamp: "Show “PAID” Stamp", businessSignature: "Show business signature", thankYou: "Show “Thank you for your business”", headline: "Default Headline", businessName: "Show business name", shortName: "Show short business name", license: "Show license number", dueDate: "Show due date", dateFormat: "Date format", businessInfo: "Business info & logo", terms: "Terms and conditions", labels: "Custom labels", fontSize: "Font size", lineSpacing: "Line spacing", highContrast: "High-contrast text", compact: "Compact", comfortable: "Comfortable", roomy: "Roomy", done: "Done", changeLogo: "Change logo", noLogo: "Add your company logo", expand: "Expand preview"
   };
@@ -13176,7 +13457,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
       {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={4} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
-      {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar cotización" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
+      {!confirmDelete?<button className="danger-button editor-delete" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar estimado" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
     {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewSheet.value ? <div className="editor-preview-paper"><PdfFrame blob={editorPreviewSheet.value} title={lang === "es" ? "Vista previa del documento" : "Document preview"} /></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
@@ -13641,7 +13922,7 @@ function QuotePreview({
   // the user even though the estimate exists (Build 3.0 item 14).
   const quoteGone = query.isSuccess && !query.isFetching && !quote;
   useEffect(()=>{ if(quoteGone) onBack(); },[quoteGone]);
-  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isError ? <div className="empty-state"><p>{lang === "es" ? "Esta cotización ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div> : <div className="loading-block"/>}</main>;
+  if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isError ? <div className="empty-state"><p>{lang === "es" ? "Este estimado ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div> : <div className="loading-block"/>}</main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
   // Phase 1: optimistic accept with a forgiving Undo.
@@ -13669,7 +13950,7 @@ function QuotePreview({
     }
   };
   return <main className="page financial-detail-page">
-    <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} minimal={editing} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <PageHeader lang={lang} title={`EST${String(quote.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
       quote.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: quote.jobId as number }) }
@@ -13693,7 +13974,7 @@ function QuotePreview({
     <details className="action-details version-details"><summary>{lang==="es"?"Historial de versiones":"Version history"}</summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
-    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de cotización":"Estimate actions"}><button onClick={()=>setEditing(true)}><Icon><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={toggleAccepted}><CheckIcon/><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
+    <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de estimado":"Estimate actions"}><button onClick={()=>setEditing(true)}><Icon><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon><span>{lang==="es"?"Editar":"Edit"}</span></button><button onClick={toggleAccepted}><CheckIcon/><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button>{quote.convertedToInvoiceId?<button onClick={()=>onOpenInvoice(quote.convertedToInvoiceId as number)}><FileIcon/><span>{lang==="es"?"Ver factura":"View invoice"}</span></button>:<button onClick={()=>{buzz(8);setConfirmConvert(true);setMoreOpen(true);}}><FileIcon/><span>{lang==="es"?"Convertir":"Convert"}</span></button>}<button onClick={()=>setMoreOpen(true)}><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`} /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
@@ -13773,7 +14054,7 @@ function InvoicesScreen({
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
-      <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? "Cotizado este mes" : "Estimated this month")}</span><strong><CountUp value={tab === "invoices" ? invoicedMonth : estimatedMonth} format={(n) => usd(n)} /></strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
+      <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? `${capFirst(estTerms.singular)} este mes` : `${capFirst(estTerms.singular)} this month`)}</span><strong><CountUp value={tab === "invoices" ? invoicedMonth : estimatedMonth} format={(n) => usd(n)} /></strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
       <div className="page-actions document-create">
         <button className="primary-button" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><PlusIcon />{tab === "invoices" ? (lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE") : (lang === "es" ? `CREAR ${estimateWord.toUpperCase()}` : `CREATE ${estimateWord.toUpperCase()}`)}</button>
       </div>
@@ -13871,13 +14152,13 @@ function InvoicesScreen({
           <TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
             <div className="document-row-copy">
               <span className={`status-chip ${quote.accepted || quote.automationStatus === "won" ? "paid" : quote.automationStatus === "lost" ? "overdue" : "sent"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
-              <h2>{quote.clientName}</h2><p>{quote.jobType || t.quoteBuilder} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
+              <h2>{quote.clientName}</h2><p>{quote.jobType || capFirst(estTerms.plural)} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
             </div>
             <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
           </TapArticle>
           </SwipeRow>
         ))}
-        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.quoteEmpty} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
+        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
   );
@@ -14341,7 +14622,7 @@ function InvoicePreview({
   const sendInvoice=()=>{buzz(8);setSendSheetOpen(true);};
   const markInvoiceSent=async()=>{if(invoice.status==="draft")await api.updateInvoiceStatus({id:invoice.id,status:"sent"});await refresh();};
   return <main className="page financial-detail-page">
-    <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} minimal={editing} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
+    <PageHeader lang={lang} title={invoice.invoiceNumber || `INV${String(invoice.id).padStart(4,"0")}`} onBack={onBack} actions={<button className="customize-button" onClick={()=>setDesignOpen(true)}>{lang==="es"?"Personalizar":"Customize"}</button>}/>
     <FlowStepper lang={lang} steps={[
       invoice.jobId
         ? { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "done" as FlowStepState, onTap: () => setScreen({ name: "detail", jobId: invoice.jobId as number }) }
@@ -14785,7 +15066,7 @@ function ClientDetail({
           >
             <span>
               <strong>
-                {t.quoteBuilder} #{q.id} · {usd(money(q.total))}
+                {lang === "es" ? "Estimados" : "Estimates"} #{q.id} · {usd(money(q.total))}
               </strong>
               <small>{q.jobType || q.jobAddress}</small>
             </span>
@@ -14822,6 +15103,7 @@ function FollowupsScreen({
   onBack: () => void;
 }) {
   const t = copy[lang];
+  const estTerms = estimateTerms(lang, settings);
   const jobs = useQuery({
     queryKey: ["jobs", ""],
     queryFn: () => api.listJobs({ search: "" }),
@@ -14921,7 +15203,7 @@ function FollowupsScreen({
         })}
       </section>
       <section className="reminder-section">
-        <h2>{t.quoteFollowups}</h2>
+        <h2>{lang === "es" ? `Seguimiento de ${estTerms.plural}` : `${capFirst(estTerms.plural)} follow-ups`}</h2>
         {follow.map((q) => {
           const days = Math.floor(
             (today.getTime() - new Date(`${q.sentAt}T00:00:00`).getTime()) /
@@ -14929,8 +15211,8 @@ function FollowupsScreen({
           );
           const message =
             lang === "es"
-              ? `Hola ${q.clientName}, solo quería dar seguimiento a la cotización de ${usd(money(q.total))} para ${q.jobType}. ¿Tienes alguna pregunta? — ${companySignature(settings)}`
-              : `Hi ${q.clientName}, just following up on the ${usd(money(q.total))} quote for ${q.jobType}. Do you have any questions? — ${companySignature(settings)}`;
+              ? `Hola ${q.clientName}, solo quería dar seguimiento a tu ${estTerms.singular} de ${usd(money(q.total))} para ${q.jobType}. ¿Tienes alguna pregunta? — ${companySignature(settings)}`
+              : `Hi ${q.clientName}, just following up on the ${usd(money(q.total))} ${estTerms.singular} for ${q.jobType}. Do you have any questions? — ${companySignature(settings)}`;
           return (
             <article key={q.id}>
               <div>
@@ -17713,6 +17995,7 @@ function TodayScreen({
   setScreen: (s: Screen) => void;
   toggleLanguage: () => void;
 }) {
+  const estTerms = estimateTerms(lang, settings);
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
   const now = new Date();
@@ -17803,8 +18086,8 @@ function TodayScreen({
   const sig = companySignature(settings);
   const quoteMessage = (q: NonNullable<typeof d>["quoteChase"][number]) =>
     lang === "es"
-      ? `Hola ${q.clientName}, quería dar seguimiento a la cotización #${q.id} por ${usd(money(q.total))}. ¿Tiene alguna pregunta? — ${sig}`
-      : `Hi ${q.clientName}, I wanted to follow up on quote #${q.id} for ${usd(money(q.total))}. Do you have any questions? — ${sig}`;
+      ? `Hola ${q.clientName}, quería dar seguimiento a tu ${estTerms.singular} #${q.id} por ${usd(money(q.total))}. ¿Tiene alguna pregunta? — ${sig}`
+      : `Hi ${q.clientName}, I wanted to follow up on ${estTerms.singular} #${q.id} for ${usd(money(q.total))}. Do you have any questions? — ${sig}`;
   const paymentMessage = (
     i: NonNullable<typeof d>["paymentEscalations"][number],
   ) =>
@@ -17821,8 +18104,8 @@ function TodayScreen({
           : `FINAL NOTICE: Invoice #${i.id} is ${i.daysOverdue} days overdue. Balance due: ${usd(i.balance)}. Please contact us today to resolve it. — ${sig}`;
   const expiryMessage = (q: NonNullable<typeof d>["quoteExpiry"][number]) =>
     lang === "es"
-      ? `Hola ${q.clientName}, su cotización #${q.id} por ${usd(money(q.total))} ${q.daysUntil < 0 ? "venció" : "vence pronto"}. Puedo renovarla o responder cualquier pregunta. — ${sig}`
-      : `Hi ${q.clientName}, your quote #${q.id} for ${usd(money(q.total))} ${q.daysUntil < 0 ? "has expired" : "expires soon"}. I can renew it or answer any questions. — ${sig}`;
+      ? `Hola ${q.clientName}, su ${estTerms.singular} #${q.id} por ${usd(money(q.total))} ${q.daysUntil < 0 ? "venció" : "vence pronto"}. Puedo renovarla o responder cualquier pregunta. — ${sig}`
+      : `Hi ${q.clientName}, your ${estTerms.singular} #${q.id} for ${usd(money(q.total))} ${q.daysUntil < 0 ? "has expired" : "expires soon"}. I can renew it or answer any questions. — ${sig}`;
   const reviewMessage = (r: NonNullable<typeof d>["reviews"][number]) =>
     lang === "es"
       ? `Hola ${r.clientName}, gracias por confiar en nosotros con su ${r.jobType}. Si está satisfecho, una reseña rápida significaría mucho para nuestro pequeño negocio: ${settings?.reviewUrl || ""} — ${sig}`
@@ -17926,6 +18209,7 @@ function TodayScreen({
             </div>
           </div>
           <strong className="home-greeting">{greeting}</strong>
+          <p className="home-briefing-sub">{lang === "es" ? "Tu resumen del día — trabajos, citas y dinero" : "My day briefing — jobs, appointments, money"}</p>
         </header>
         <div className="home-summary-card home-summary-loading"><span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span><strong>—</strong><small>{lang === "es" ? "Cargando actividad…" : "Loading activity…"}</small></div>
         <div className="loading-block" aria-label={lang === "es" ? "Cargando inicio" : "Loading home"} />
@@ -17944,6 +18228,7 @@ function TodayScreen({
           </div>
         </div>
         <strong className="home-greeting">{greeting}</strong>
+        <p className="home-briefing-sub">{lang === "es" ? "Tu resumen del día — trabajos, citas y dinero" : "My day briefing — jobs, appointments, money"}</p>
       </header>
       {/* Push nudge: slim banner for users without push enabled (7-day snooze). */}
       <PushNudgeBanner lang={lang} />
@@ -18025,7 +18310,7 @@ function TodayScreen({
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
         <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
         <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Trabajos, citas y vencidos" : "Jobs, appointments & overdue"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
         <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
       {pinnedTools.length > 0 && (
@@ -18260,7 +18545,7 @@ function TodayScreen({
       {d.quoteExpiry.length > 0 && (
         <AutomationGroup
           title={
-            lang === "es" ? "Cotizaciones por vencer" : "Quote expiry watch"
+            lang === "es" ? `${capFirst(estTerms.plural)} por vencer` : `${capFirst(estTerms.plural)} expiry watch`
           }
           count={d.quoteExpiry.length}
           tone="warning"
@@ -18320,10 +18605,10 @@ function TodayScreen({
       {quoteChase.length > 0 && (
         /* Build 3.0 (item 6): no parent wrapper card — every quote is its own
            standalone full-width card, smaller overall, with compact buttons. */
-        <section className="quote-chase-standalone" aria-label={lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}>
+        <section className="quote-chase-standalone" aria-label={lang === "es" ? `Cola de ${estTerms.plural}` : `${capFirst(estTerms.plural)} chase queue`}>
           <header className="quote-chase-header">
             <span className="automation-group-icon" aria-hidden="true"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span>
-            <h2>{lang === "es" ? "Cola de cotizaciones" : "Quote chase queue"}</h2>
+            <h2>{lang === "es" ? `Cola de ${estTerms.plural}` : `${capFirst(estTerms.plural)} chase queue`}</h2>
             <span className="quote-chase-count">{quoteChase.length}</span>
           </header>
           {quoteChase.map((q, index) => (
@@ -19084,10 +19369,10 @@ function HistoryPanel({
         : "Revenue history"
       : kind === "estimates"
         ? lang === "es"
-          ? "Historial de cotizaciones"
+          ? "Historial de estimados"
           : "Estimates history"
         : lang === "es"
-          ? "Cotizaciones vs. ingresos cerrados"
+          ? "Estimados vs. ingresos cerrados"
           : "Estimates vs. closed revenue";
   const description =
     kind === "revenue"
@@ -19097,10 +19382,10 @@ function HistoryPanel({
       : kind === "estimates"
         ? lang === "es"
           ? "Valor y cantidad emitida por mes"
-          : "Quoted value and count issued by month"
+          : "Estimated value and count issued by month"
         : lang === "es"
-          ? "Valor cotizado frente al dinero cobrado"
-          : "Quoted value beside money collected";
+          ? "Valor estimado frente al dinero cobrado"
+          : "Estimated value beside money collected";
   const hasValues =
     kind === "revenue"
       ? months.some((m) => m.revenue > 0)
@@ -19179,7 +19464,7 @@ function HistoryPanel({
                       ? "Ingresos cerrados"
                       : "Closed revenue"
                     : lang === "es"
-                      ? "Cotizaciones"
+                      ? "Estimados"
                       : "Estimates",
                 ]}
               />
@@ -19191,7 +19476,7 @@ function HistoryPanel({
                         ? "Ingresos cerrados"
                         : "Closed revenue"
                       : lang === "es"
-                        ? "Cotizaciones"
+                        ? "Estimados"
                         : "Estimates"
                   }
                 />
@@ -19240,7 +19525,7 @@ function HistoryPanel({
               <>
                 <strong>{compactMoney(month.estimated)}</strong>
                 <small>
-                  {month.estimateCount} {lang === "es" ? "cotiz." : "quotes"}
+                  {month.estimateCount} {lang === "es" ? "est." : "estimates"}
                 </small>
               </>
             ) : (
@@ -19285,7 +19570,7 @@ function MonthDetail({
       {kind === "comparison" && (
         <div className="comparison-summary">
           <span>
-            {lang === "es" ? "Cotizado" : "Estimated"}
+            {lang === "es" ? "Estimado" : "Estimated"}
             <strong>{usd(month.estimated)}</strong>
           </span>
           <span>
@@ -19344,7 +19629,7 @@ function MonthDetail({
         ) : (
           <p className="detail-empty">
             {lang === "es"
-              ? "No se emitieron cotizaciones este mes."
+              ? "No se emitieron estimados este mes."
               : "No estimates issued this month."}
           </p>
         ))}
@@ -19748,7 +20033,7 @@ function BusinessToolsScreen({
       : {
           title: "Business toolkit",
           price: "Saved prices",
-          templates: "Quote templates",
+          templates: "Estimate templates",
           mileage: "Mileage",
           expenses: "Expenses",
           analysis: "Estimate vs. actual",
@@ -20345,6 +20630,7 @@ function OperationsScreen({
   initialTab?: "calendar" | "leads";
 }) {
   const qc = useQueryClient();
+  const estTerms = estimateTerms(lang, settings);
   const [tab] = useState<"calendar" | "leads">(initialTab ?? "calendar");
   const [view, setView] = useState<"day" | "week">("week");
   const appointments = useQuery({
@@ -20844,7 +21130,7 @@ function OperationsScreen({
                             });
                           }}
                         >
-                          {lang === "es" ? "Crear cotización" : "Create quote"}
+                          {lang === "es" ? `Crear ${estTerms.singular}` : `Create ${estTerms.singular}`}
                         </button>
                       )}
                     </article>
@@ -20864,14 +21150,14 @@ function stageLabel(
   const en = {
     new: "New",
     contacted: "Contacted",
-    quoted: "Quoted",
+    quoted: "Estimated",
     won: "Won",
     lost: "Lost",
   };
   const es = {
     new: "Nuevo",
     contacted: "Contactado",
-    quoted: "Cotizado",
+    quoted: "Estimado",
     won: "Ganado",
     lost: "Perdido",
   };
@@ -22606,7 +22892,7 @@ function LossReport({
         <strong>{usd(total)}</strong>
         <small>
           {rows.reduce((s, r) => s + r.count, 0)}{" "}
-          {lang === "es" ? "cotizaciones" : "quotes"}
+          {lang === "es" ? "estimados" : "estimates"}
         </small>
       </div>
       <div className="loss-bars">
@@ -22627,8 +22913,8 @@ function LossReport({
       </div>
       <p className="privacy-note">
         {lang === "es"
-          ? "Marca una cotización como Perdida en Hoy para registrar el motivo."
-          : "Mark a quote Lost in Today to capture the reason."}
+          ? "Marca un estimado como Perdido en Hoy para registrar el motivo."
+          : "Mark an estimate Lost in Today to capture the reason."}
       </p>
     </section>
   );
@@ -25311,7 +25597,7 @@ function PublicToolsScreen({ slug }: { slug: string }) {
     <section className="public-cta-band">
       <div>
         <h2>{lang === "es" ? "Lleva estas calculadoras a cada trabajo" : "Take these calculators to every job"}</h2>
-        <p>{lang === "es" ? "Crewkat es gratis para contratistas: cotizaciones, facturas, fotos y más." : "Crewkat is free for contractors: estimates, invoices, photos and more."}</p>
+        <p>{lang === "es" ? "Crewkat es gratis para contratistas: estimados, facturas, fotos y más." : "Crewkat is free for contractors: estimates, invoices, photos and more."}</p>
       </div>
       <a className="public-cta-button" href="/app">{lang === "es" ? "Crear cuenta gratis" : "Create free account"}</a>
     </section>

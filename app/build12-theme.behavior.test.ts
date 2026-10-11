@@ -1,7 +1,9 @@
 // Build 1.2 (part B): app-wide Invoice Fly theme — standard flush bottom tab bar,
 // near-white light-mode background, denser cards/lists. Home restyle (Oct 7):
 // flat bordered 12px cards, plain colored icons, hero line-art, full amounts.
-// Zero functionality removed: same 5 tabs, center + button, badges, quick-create sheet.
+// Build 3.1: 5 labeled tabs (Home/Jobs/Clients/Invoices/More), quick-create +
+// moved to a floating action button, Marketplace badge moved to the More menu.
+// Zero functionality removed: same quick-create sheet, badges, active states.
 //
 // Static assertions on App.tsx + theme.css.
 // Run from app/:  bun test build12-theme.behavior.test.ts
@@ -108,29 +110,31 @@ describe("denser cards and lists", () => {
 });
 
 describe("functionality preserved", () => {
-  test("bottom nav still renders all 5 slots (4 tabs + center +)", () => {
-    // The four tab definitions.
-    for (const tab of ['tab: "today"', 'tab: "jobs"', 'tab: "invoices"', 'tab: "marketplace"']) {
+  test("bottom nav renders the 5 labeled tabs (no center +; quick-create is a FAB)", () => {
+    // The five tab definitions (Build 3.1: Marketplace moved to the More menu).
+    for (const tab of ['tab: "today"', 'tab: "jobs"', 'tab: "clients"', 'tab: "invoices"', 'tab: "more"']) {
       expect(APP).toContain(tab);
     }
-    // The center + button.
-    expect(APP).toContain('className="bottom-nav-add"');
+    expect(APP).not.toContain('tab: "marketplace"');
+    // The + is now a floating action button above the bar.
+    expect(APP).toContain('className="quick-create-fab"');
     expect(APP).toContain('aria-label={lang === "es" ? "Crear nuevo" : "Create new"}');
-    // Two tabs render left of +, two right of +.
-    expect(APP).toContain("items.slice(0, 2).map");
-    expect(APP).toContain("items.slice(2).map");
+    expect(APP).not.toContain('className="bottom-nav-add"');
+    // All five render as plain tab buttons in one row.
+    expect(APP).toContain("ROOT_TABS.map((item)");
   });
 
   test("nav labels, active states, and unread badges kept", () => {
-    for (const label of ["Home", "Inicio", "Jobs", "Trabajos", "Invoices", "Facturas", "Marketplace", "Mercado"]) {
+    for (const label of ["Home", "Inicio", "Jobs", "Trabajos", "Clients", "Clientes", "Invoices", "Facturas", "More", "Más"]) {
       expect(APP).toContain(label);
     }
     expect(APP).toContain('className={active === item.tab ? "active" : ""}');
+    // The marketplace unread badge moved to the More menu's featured row.
     expect(APP).toContain("nav-unread-badge");
     expect(APP).toContain("unreadMarketplace");
   });
 
-  test("quick-create sheet still opens from the + button", () => {
+  test("quick-create sheet still opens from the + FAB", () => {
     expect(APP).toContain("quick-create-grid");
     expect(APP).toContain("setQuickCreateOpen(true)");
     expect(APP).toContain("What would you like to create?");

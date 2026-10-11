@@ -234,9 +234,11 @@ for (const [label, snippet] of escapeTargets) {
 
 check("bottom-nav content clearance rule exists",
   cssSrc.includes(".app-shell.has-bottom-nav .page"));
-check("bottom nav keeps the dedicated 62px center track (FAB must not cover labels)",
-  cssSrc.includes("repeat(2, minmax(0, 1fr)) 62px repeat(2, minmax(0, 1fr))") &&
-  !/\.bottom-nav\s*\{[^}]*grid-template-columns:\s*repeat\(5/.test(cssSrc));
+check("bottom nav uses 5 equal tab tracks (Build 3.1: no center + in the bar)",
+  /\.bottom-nav\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/.test(cssSrc) &&
+  !cssSrc.includes("bottom-nav-add"));
+check("quick-create FAB floats above the tab bar",
+  cssSrc.includes(".quick-create-fab {") && /quick-create-fab[^}]*position:\s*fixed/.test(cssSrc));
 check("settings accordion panel wraps without clipping",
   cssSrc.includes(".settings-accordion-panel .privacy-note"));
 check("login exposes verify-email recovery",
