@@ -410,15 +410,7 @@ const copy = {
     newClient: "New client",
     pickFromContacts: "Pick from contacts",
     contactsUnavailable: "Contacts aren't available here",
-    contactsSheetTitle: "Add from contacts",
-    contactsSheetSubtitle: "Your browser can't open contacts directly. Choose another way:",
-    openInChrome: "Open in Chrome",
-    openInChromeDesc: "Continue in Chrome, where contact access works",
-    importVCard: "Import vCard (.vcf)",
-    importVCardDesc: "Choose a .vcf file from your phone",
-    typeManually: "Type it manually",
     contactImported: "Contact imported",
-    vcardFirstUsed: "Used the first contact in the file",
     vcardReadFailed: "Couldn't read that contact file",
     chooseClient: "Choose an existing client",
     searchClients: "Search clients",
@@ -737,15 +729,7 @@ const copy = {
     newClient: "Nuevo cliente",
     pickFromContacts: "Elegir de contactos",
     contactsUnavailable: "Los contactos no están disponibles aquí",
-    contactsSheetTitle: "Agregar desde contactos",
-    contactsSheetSubtitle: "Tu navegador no puede abrir los contactos directamente. Elige otra opción:",
-    openInChrome: "Abrir en Chrome",
-    openInChromeDesc: "Continuar en Chrome, donde el acceso a contactos sí funciona",
-    importVCard: "Importar vCard (.vcf)",
-    importVCardDesc: "Elige un archivo .vcf de tu teléfono",
-    typeManually: "Escribir manualmente",
     contactImported: "Contacto importado",
-    vcardFirstUsed: "Se usó el primer contacto del archivo",
     vcardReadFailed: "No se pudo leer ese archivo",
     chooseClient: "Elegir cliente existente",
     searchClients: "Buscar clientes",
@@ -14775,82 +14759,6 @@ function showContactsButton(): boolean {
     return false;
   }
 }
-// Fallback sheet for "Pick from contacts" when the native Contact Picker API
-// is unavailable (installed TWA / WebView / Samsung Internet). One shared
-// component — every contact-picker call site uses this, no duplicated logic.
-function ContactFallbackSheet({
-  render,
-  lang,
-  onDismiss,
-  onImport,
-}: {
-  render: boolean;
-  lang: Lang;
-  onDismiss: () => void;
-  onImport: (contact: VCardContact, multiple: boolean) => void;
-}) {
-  const t = copy[lang];
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  if (!render) return null;
-  // "Open in Chrome": intent link back to this exact form (?newClient=1 is
-  // handled on app boot). Must run in the tap gesture or the intent is blocked.
-  const openInChrome = () => {
-    window.location.href = "intent://crewkat.com/app?newClient=1#Intent;scheme=https;package=com.android.chrome;end";
-  };
-  const onFileChosen = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const contact = parseVCard(text);
-      if (!contact) {
-        showUndoToast(t.vcardReadFailed, t.close, () => {}, 3500);
-        return;
-      }
-      const multiple = (text.match(/BEGIN:VCARD/gi) || []).length > 1;
-      onImport(contact, multiple);
-    } catch {
-      showUndoToast(t.vcardReadFailed, t.close, () => {}, 3500);
-    }
-  };
-  return (
-    <div className="sheet-backdrop" onClick={onDismiss}>
-      <section
-        className="more-sheet contacts-fallback-sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t.contactsSheetTitle}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="sheet-handle" />
-        <h2>{t.contactsSheetTitle}</h2>
-        <p className="sheet-sub">{t.contactsSheetSubtitle}</p>
-        <button type="button" onClick={openInChrome}>
-          <Icon><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /><path d="M12 3v5.5M20.5 16.5l-4.8-2.8M3.5 16.5l4.8-2.8" /></Icon>
-          <span><strong>{t.openInChrome}</strong><span className="opt-sub">{t.openInChromeDesc}</span></span>
-        </button>
-        <button type="button" onClick={() => fileRef.current?.click()}>
-          <Icon><path d="M6 2h8l5 5v15H6z" /><path d="M14 2v5h5" /><path d="M9 13h7M9 17h7" /></Icon>
-          <span><strong>{t.importVCard}</strong><span className="opt-sub">{t.importVCardDesc}</span></span>
-        </button>
-        <button type="button" onClick={onDismiss}>
-          <Icon><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6" /></Icon>
-          <span><strong>{t.typeManually}</strong></span>
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".vcf,text/vcard"
-          hidden
-          aria-hidden="true"
-          tabIndex={-1}
-          onChange={onFileChosen}
-        />
-      </section>
-    </div>
-  );
-}
 function ClientForm({
   lang,
   initial = blankClient,
@@ -14876,7 +14784,6 @@ function ClientForm({
     };
   });
   const [tagDraft, setTagDraft] = useState("");
-  const [fallbackOpen, setFallbackOpen] = useState(false);
   const clients = useQuery({
     queryKey: ["clients", ""],
     queryFn: () => api.listClients({ search: "" }),
@@ -14892,12 +14799,11 @@ function ClientForm({
     setTagDraft("");
   };
   // Contacts button: directly attempt the native Contact Picker. If the API
-  // is missing, open the fallback sheet (Open in Chrome / vCard import /
-  // type manually) instead of the dead-end toast.
+  // is missing or fails, show a brief note and leave the manual form alone.
   const pickFromContacts = async () => {
     const selectContact = (navigator as NavigatorWithContacts).contacts?.select;
     if (typeof selectContact !== "function") {
-      setFallbackOpen(true);
+      showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500);
       return;
     }
     try {
@@ -14921,18 +14827,6 @@ function ClientForm({
         showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500);
       }
     }
-  };
-  // vCard import from the fallback sheet: fill the form, note multi-contact files.
-  const importContact = (contact: VCardContact, multiple: boolean) => {
-    setForm((f) => ({
-      ...f,
-      name: contact.name || f.name,
-      phone: contact.phone || f.phone,
-      email: contact.email || f.email,
-      address: contact.address || f.address,
-    }));
-    setFallbackOpen(false);
-    showUndoToast(multiple ? `${t.contactImported} — ${t.vcardFirstUsed}` : t.contactImported, t.close, () => {}, 3500);
   };
   return (
     <>
@@ -15003,12 +14897,6 @@ function ClientForm({
         {save.isPending ? t.saving : t.save}
       </button>
     </form>
-    <ContactFallbackSheet
-      render={fallbackOpen}
-      lang={lang}
-      onDismiss={() => setFallbackOpen(false)}
-      onImport={importContact}
-    />
     </>
   );
 }

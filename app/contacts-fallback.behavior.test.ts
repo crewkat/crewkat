@@ -1,8 +1,7 @@
-// Danny 2026-10-11: the 2026-10-01 decision is reversed — "Pick from contacts"
-// was a dead end (toast only) on browsers without the Contact Picker API
-// (installed TWA / Samsung Internet). Now a missing API opens a shared
-// fallback bottom sheet: Open in Chrome (intent:// + ?newClient=1),
-// Import vCard (.vcf), Type manually. Static assertions on the new behavior.
+// Danny 2026-10-01 (build0.4): "Pick from contacts" directly attempts the
+// native Contact Picker. The "Open in Chrome" / vCard fallback sheet is gone:
+// if the API is missing or fails, a brief toast says contacts aren't
+// available and nothing else happens. Static assertions on the new behavior.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,60 +16,30 @@ describe("contacts button visibility", () => {
   });
 });
 
-describe("contacts picker — native first, fallback sheet when API missing", () => {
-  test("pickFromContacts calls navigator.contacts.select directly when available", () => {
+describe("contacts picker — direct attempt, no fallback sheet", () => {
+  test("pickFromContacts calls navigator.contacts.select directly", () => {
     expect(APP).toContain("const pickFromContacts = async () => {");
     expect(APP).toContain("contacts?.select");
     expect(APP).toContain('await selectContact(["name", "email", "tel", "address"]');
   });
 
-  test("missing API opens the shared fallback sheet instead of the dead-end toast", () => {
-    expect(APP).toContain("function ContactFallbackSheet(");
-    expect(APP).toContain("setFallbackOpen(true)");
-    // The sheet is rendered once, inside ClientForm, wired to the form.
-    expect(APP).toContain("<ContactFallbackSheet");
-    expect(APP).toContain("onImport={importContact}");
+  test("missing API or failure shows a brief 'not available' toast and nothing else", () => {
+    expect(APP).toContain("showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500)");
+    // The old fallback-sheet wiring is gone.
+    expect(APP).not.toContain("contactsFallbackOpen");
+    expect(APP).not.toContain("openInChrome");
+    expect(APP).not.toContain("importVCardFile");
+    expect(APP).not.toContain("hasNativeContactPicker");
+    expect(APP).not.toContain("package=com.android.chrome");
   });
 
-  test("sheet offers Open in Chrome via intent link with ?newClient=1", () => {
-    expect(APP).toContain("package=com.android.chrome");
-    expect(APP).toContain("intent://crewkat.com/app?newClient=1");
-    expect(APP).toContain("t.openInChrome");
-  });
-
-  test("sheet offers vCard import backed by the shared parser", () => {
-    expect(APP).toContain('import { parseVCard, type VCardContact } from "./vcard"');
-    expect(APP).toContain('accept=".vcf,text/vcard"');
-    expect(APP).toContain("parseVCard(text)");
-    expect(APP).toContain("t.importVCard");
-  });
-
-  test("vCard import fills the form and notes multi-contact files", () => {
-    expect(APP).toContain("const importContact = (contact: VCardContact, multiple: boolean) => {");
-    expect(APP).toContain("t.vcardFirstUsed");
-    expect(APP).toContain("t.contactImported");
-  });
-
-  test("sheet offers type-manually which just dismisses", () => {
-    expect(APP).toContain("t.typeManually");
-  });
-
-  test("user dismissing the native picker (AbortError) stays silent", () => {
+  test("user dismissing the picker (AbortError) stays silent", () => {
     expect(APP).toContain('"AbortError"');
   });
 
-  test("genuine picker failures still show the brief toast", () => {
-    expect(APP).toContain("showUndoToast(t.contactsUnavailable, t.close, () => {}, 3500)");
-  });
-
-  test("fallback sheet has dialog semantics and backdrop dismiss", () => {
-    expect(APP).toContain("contacts-fallback-sheet");
-    expect(APP).toContain('role="dialog"');
-  });
-
-  test("sheet styles present in theme", () => {
-    expect(CSS).toContain(".contacts-fallback-sheet");
-    expect(CSS).toContain(".opt-sub");
+  test("fallback sheet styles removed from theme", () => {
+    expect(CSS).not.toContain(".contacts-fallback");
+    expect(CSS).not.toContain(".contacts-vcard-label");
   });
 });
 
@@ -83,23 +52,13 @@ describe("newClient deep link", () => {
   });
 });
 
-describe("contacts fallback copy (en + es)", () => {
-  for (const [lang, key, text] of [
-    ["en", "contactsSheetTitle", "Add from contacts"],
-    ["es", "contactsSheetTitle", "Agregar desde contactos"],
-    ["en", "openInChrome", "Open in Chrome"],
-    ["es", "openInChrome", "Abrir en Chrome"],
-    ["en", "importVCard", "Import vCard (.vcf)"],
-    ["es", "importVCard", "Importar vCard (.vcf)"],
-    ["en", "typeManually", "Type it manually"],
-    ["es", "typeManually", "Escribir manualmente"],
-    ["en", "contactImported", "Contact imported"],
-    ["es", "contactImported", "Contacto importado"],
-    ["en", "vcardReadFailed", "Couldn't read that contact file"],
-    ["es", "vcardReadFailed", "No se pudo leer ese archivo"],
+describe("contacts unavailable copy (en + es)", () => {
+  for (const [lang, text] of [
+    ["en", "Contacts aren't available here"],
+    ["es", "Los contactos no están disponibles aquí"],
   ] as const) {
-    test(`${lang} ${key} present`, () => {
-      expect(APP).toContain(`${key}: "${text}"`);
+    test(`${lang} copy present`, () => {
+      expect(APP).toContain(`contactsUnavailable: "${text}"`);
     });
   }
 });
