@@ -174,4 +174,16 @@ describe("Crane Run daily leaderboard UI (Danny 2026-10-11)", () => {
     expect(CSS).toMatch(/\.crane-run-board\s*\{[\s\S]*?border-radius:\s*8px/);
     expect(CSS).toContain("var(--shadow-soft)");
   });
+
+  test("own leaderboard row uses an orange hairline, no beige fill (Danny 2026-10-11)", () => {
+    const meRule = CSS.match(/\.crane-run-board-list li\.crane-run-me\s*\{([\s\S]*?)\}/);
+    expect(meRule).not.toBeNull();
+    expect(meRule![1]).toMatch(/border-color:\s*var\(--accent\)/);
+    expect(meRule![1]).not.toMatch(/background/);
+  });
+
+  test("leaderboard card is compact and sizes to content", () => {
+    expect(CSS).toMatch(/\.crane-run-board\s*\{[\s\S]*?flex:\s*0 0 auto/);
+    expect(CSS).toMatch(/\.crane-run-board-list li\s*\{[\s\S]*?padding:\s*3px 6px/);
+  });
 });
