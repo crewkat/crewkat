@@ -345,7 +345,6 @@ type Screen =
   | { name: "marketplaceThread"; conversationId: number }
   | { name: "tools" }
   | { name: "craneRun" }
-  | { name: "proWorkspace" }
   | { name: "upgrade" }
   | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" | "paint" | "flooring" | "fence" | "block" | "gravel" | "stairs" | "insulation" | "gutter" | "rate" | "punchlist" }
   | { name: "jobs" }
@@ -3260,9 +3259,6 @@ function CrewkatApplication() {
       {screen.name === "craneRun" && (
         <CraneRunScreen lang={lang} onBack={goBackOrTools} />
       )}
-      {screen.name === "proWorkspace" && (
-        <ProWorkspaceScreen lang={lang} onBack={goBackOrTools} setScreen={setScreen} />
-      )}
       {screen.name === "upgrade" && (
         <UpgradeScreen lang={lang} onBack={goBack} />
       )}
@@ -5094,7 +5090,7 @@ type ToolTile = {
 
 function isProToolScreen(screen?: Screen) {
   if (!screen) return false;
-  return screen.name === "proWorkspace" || screen.name === "businessTools" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
+  return screen.name === "businessTools" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
 }
 
 // Tool ids for Home-screen pinning: `<screenName>` or `<screenName>:<tab>`,
@@ -5915,25 +5911,36 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   byKey.set("craneRun", craneRunTile);
   const pick = (keys: string[]): ToolTile[] =>
     keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
-  const groups: Array<{ title: string; tiles: ToolTile[] }> = [
-    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "businessTools:price", "businessTools:templates", "businessTools:expenses", "businessTools:mileage", "toolbox:loan", "expansion:scanner", "fieldIntelligence:payroll", "fieldIntelligence:costs", "invoices", "reports"]) },
+  // Danny 2026-10-11: all tools in one place, clear divisions. Free groups on
+  // top; Pro tools grouped together at the bottom (standalone Pro screen retired).
+  const groups: Array<{ title: string; tiles: ToolTile[]; pro?: boolean }> = [
+    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "toolbox:loan", "invoices"]) },
     { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
-    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", tiles: pick(["followups", "operations:leads", "jobs", "referrals", "referContractor"]) },
-    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch", "fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "expansion:crew", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties"]) },
+    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", tiles: pick(["operations:leads", "jobs", "referrals", "referContractor"]) },
+    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch"]) },
     { title: lang === "es" ? "Marketing" : "Marketing", tiles: pick(["gallery"]) },
     { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["companyProfile", "settings", "help"]) },
     { title: lang === "es" ? "Solo por diversión" : "Just for fun", tiles: pick(["craneRun"]) },
+    { title: lang === "es" ? "Pro — Dinero y oficina" : "Pro — Money & office", tiles: pick(["businessTools:price", "businessTools:templates", "businessTools:mileage", "businessTools:expenses", "expansion:scanner", "reports", "fieldIntelligence:payroll", "fieldIntelligence:costs"]), pro: true },
+    { title: lang === "es" ? "Pro — Campo y equipo" : "Pro — Field & crew", tiles: pick(["fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:crew"]), pro: true },
+    { title: lang === "es" ? "Pro — Clientes y administración" : "Pro — Clients & admin", tiles: pick(["followups", "admin", "expansion:warranties"]), pro: true },
   ];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
     const toolId = catalogKeys.has(key) ? toolIdForTile(tile) : null;
     const pinned = toolId ? pinnedIds.has(toolId) : false;
     const pinLabel = pinned ? (lang === "es" ? "Quitar" : "Unpin") : (lang === "es" ? "Fijar al inicio" : "Pin to Home");
-    const locked = !isPremium && (tile.pro || isProToolScreen(tile.screen));
+    const isPro = Boolean(tile.pro || isProToolScreen(tile.screen));
+    // Danny 2026-10-11: every Pro tool carries a tiny PRO badge; it is muted
+    // while locked and takes the accent color once Premium is active. The
+    // badge replaces the wordy "Premium tool" pill for Pro rows.
+    const status = tile.comingSoon
+      ? <ToolStatus lang={lang} comingSoon={tile.comingSoon} />
+      : !isPro ? <ToolStatus lang={lang} pro={false} /> : null;
     return (
       <div key={key} className="tool-row">
         <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
-          {tile.icon}<span><strong>{tile.title}</strong><small>{tile.description}</small><ToolStatus lang={lang} pro={locked} /></span><span className="tool-row-end"><BackIcon /></span>
+          {tile.icon}<span><span className="tool-row-title"><strong>{tile.title}</strong>{isPro && <span className={`pro-badge${isPremium ? "" : " is-locked"}`}>PRO</span>}</span><small>{tile.description}</small>{status}</span><span className="tool-row-end"><BackIcon /></span>
         </button>
         {toolId && (
           <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
@@ -5951,8 +5958,11 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     <main className="page more-page">
       <PageHeader lang={lang} title={lang === "es" ? "Herramientas" : "Tools"} onBack={onBack} />
       {groups.map((group) => group.tiles.length > 0 && (
-        <section key={group.title} className="tool-group everyday-tool-group">
-          <div className="tool-group-heading"><h2>{group.title}</h2></div>
+        <details key={group.title} className={`tool-group everyday-tool-group${group.pro ? " pro-tool-group" : ""}`}>
+          <summary className="tool-group-heading">
+            <h2>{group.title}</h2>
+            <span className="tool-group-pill"><span className="tool-group-count">{group.tiles.length}</span><span className="tool-group-chevron" aria-hidden="true">▾</span></span>
+          </summary>
           <div className="tool-directory">
             {group.tiles.map((tile) => row(tile, toolIdForTile(tile) ?? tile.title))}
             {group.title === (lang === "es" ? "Trabajos y equipo" : "Jobs & crew") && (
@@ -5962,7 +5972,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
               isPremium ? <BookingLinkPanel lang={lang} /> : <ProFeatureCard title={bookingTitle} description={bookingDesc} onClick={() => setLockedTool({ title: bookingTitle, description: "", icon: null, pro: true })} />
             )}
           </div>
-        </section>
+        </details>
       ))}
       {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
       {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
@@ -6130,148 +6140,6 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     {isPremium && <div className="active-plan-note" role="status"><strong>{lang === "es" ? "Premium activo" : "Premium active"}</strong><span>{subscription.data?.provider === "play" ? (lang === "es" ? "Facturado por Google Play · adminístralo en la app Play Store." : "Billed through Google Play · manage it in the Play Store app.") : subscription.data?.status === "founder" ? (lang === "es" ? "Plan fundador" : "Founder plan") : subscription.data?.cancelAtPeriodEnd ? (lang === "es" ? "Activo hasta el final del período" : "Active through the end of the billing period") : (lang === "es" ? "Todas las herramientas Pro están desbloqueadas" : "All Pro tools are unlocked")}</span></div>}
     <p className="upgrade-fine-print">{playOffered && !isPremium ? (lang === "es" ? "Pago mensual a través de Google Play. Cancela cuando quieras en la app Play Store; Premium permanece activo hasta el final del período pagado." : "Monthly billing through Google Play. Cancel anytime in the Play Store app; Premium remains active through the paid billing period.") : (lang === "es" ? "Pago mensual o anual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly or annual billing. Cancel anytime; Premium remains active through the paid billing period.")}</p>
   </main>;
-}
-
-// Build 0.6 (item 19): descriptions for the estimating toolbox tiles shown on
-// the Pro tools page. Titles and icons come from PUBLIC_TOOL_META.
-const TOOLBOX_BLURBS: Record<ToolboxTab, { en: string; es: string }> = {
-  loan: { en: "Calculate monthly payment and interest", es: "Calcula pago mensual e interés" },
-  materials: { en: "Save your material names, units, and prices", es: "Guarda nombres, unidades y precios de materiales" },
-  angle: { en: "Calculate angles and slopes", es: "Calcula ángulos y pendientes" },
-  convert: { en: "Convert job-site measurements", es: "Convierte medidas de obra" },
-  area: { en: "Add areas and estimate paint", es: "Suma áreas y estima pintura" },
-  yards: { en: "Cubic yards and bag counts", es: "Yardas cúbicas y bolsas" },
-  board: { en: "Calculate board feet", es: "Calcula pies tabla" },
-  drywall: { en: "Sheets, screws, and compound", es: "Hojas, tornillos y compuesto" },
-  roofing: { en: "Squares, waste, and bundles", es: "Cuadrados, desperdicio y paquetes" },
-  tile: { en: "Coverage, waste, and box count", es: "Cobertura, desperdicio y cajas" },
-  margin: { en: "Convert cost, margin, and markup", es: "Convierte costo, margen y recargo" },
-  paint: { en: "Gallons from wall area and coats", es: "Galones según área y manos" },
-  flooring: { en: "Coverage, waste, and box count", es: "Cobertura, desperdicio y cajas" },
-  fence: { en: "Pickets, posts, and rails", es: "Estacas, postes y rieles" },
-  block: { en: "Blocks and pavers by area", es: "Bloques y adoquines por área" },
-  gravel: { en: "Cubic yards and tons", es: "Yardas cúbicas y toneladas" },
-  stairs: { en: "Risers, treads, and layout", es: "Contrahuellas, huellas y trazado" },
-  insulation: { en: "Batts by wall or attic area", es: "Rollos según área de pared o ático" },
-  gutter: { en: "Gutter feet, downspouts, and elbows", es: "Pies de canalón, bajantes y codos" },
-  rate: { en: "Build your hourly rate", es: "Calcula tu tarifa por hora" },
-  punchlist: { en: "Per-job open-items checklist", es: "Pendientes por trabajo con estados" },
-};
-function ProWorkspaceScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
-  const auth = useContext(AuthContext);
-  const isPremium = auth?.user.tier === "premium";
-  const [soon, setSoon] = useState<ToolTile | null>(null);
-  // Build 0.6 (item 20): preview mode — tapping a locked tool prompts the
-  // upgrade flow instead of opening the tool.
-  const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
-  const toolIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
-  const tiles: ToolTile[] = lang === "es" ? [
-    { title: "Pedidos esperando proveedores", description: "Compara cotizaciones, crea órdenes y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Directorio de proveedores", description: "Guarda contactos y archivos fiscales", screen: { name: "expansion", tab: "suppliers" }, icon: toolIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
-    { title: "Garantías", description: "Guarda coberturas, vencimientos y certificados", screen: { name: "expansion", tab: "warranties" }, icon: toolIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Inventario de equipo", description: "Registra equipo, préstamos y ubicación actual", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Cuidado del equipo", description: "Programa servicios y marca mantenimiento completado", screen: { name: "expansion", tab: "plans" }, icon: toolIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
-    { title: "Seguridad e incidentes", description: "Guarda charlas, firmas e informes de incidentes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Nómina", description: "Calcula horas por tarifa y descarga un CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Licencias y certificados", description: "Guarda vencimientos y registra renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, icon: toolIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
-    { title: "Alertas de presupuesto", description: "Compara costos registrados con el valor cotizado", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
-    { title: "Entrada y salida del equipo", description: "Marca horas y ubicación GPS por trabajo", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Facturas recurrentes", description: "Programa la frecuencia y genera cada factura al vencer", screen: { name: "invoices" }, icon: toolIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Controles del dueño", description: "Administra equipo, reglas, bandeja y datos guardados", screen: { name: "admin" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Portal del cliente", description: "Abre un trabajo → Portal del cliente para crear un enlace seguro para tu cliente", screen: { name: "jobs" }, icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
-  ] : [
-    { title: "Orders waiting on suppliers", description: "Compare bids, create orders, and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Supplier directory", description: "Save contacts and tax files", screen: { name: "expansion", tab: "suppliers" }, icon: toolIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
-    { title: "Warranties", description: "Save coverage, expiry dates, and certificates", screen: { name: "expansion", tab: "warranties" }, icon: toolIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Equipment inventory", description: "Track equipment, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Equipment upkeep", description: "Schedule service and mark maintenance complete", screen: { name: "expansion", tab: "plans" }, icon: toolIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
-    { title: "Safety & incidents", description: "Save talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Payroll", description: "Calculate hours by rate and download a CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Licenses & certificates", description: "Save expiry dates and record renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Lead scoring", description: "Prioritize the pipeline and turn leads into estimates", screen: { name: "operations", tab: "leads" }, icon: toolIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
-    { title: "Budget alerts", description: "Compare recorded costs with the quoted job value", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
-    { title: "Crew clock-in/out", description: "Record time and GPS location by job", screen: { name: "operations", tab: "calendar" }, icon: toolIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Recurring invoices", description: "Set a schedule and generate each invoice when due", screen: { name: "invoices" }, icon: toolIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Admin controls", description: "Manage team, rules, inbox, and stored data", screen: { name: "admin" }, icon: toolIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Client portal", description: "Open a job → Client portal to create a secure link for your client", screen: { name: "jobs" }, icon: toolIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
-  ];
-  const openTool = (tile: ToolTile) => {
-    // Build 0.6 (item 20): in preview mode tools are visible but not
-    // functional — tapping one opens the upgrade prompt instead.
-    if (!isPremium) { setLockedTool(tile); return; }
-    if (tile.comingSoon) setSoon(tile);
-    else if (tile.screen) setScreen(tile.screen);
-  };
-  // Build 0.6 (item 19): the estimating toolbox lives on the Pro page too —
-  // every entry is wired to its real toolbox screen (no placeholders).
-  const estimatingTiles: ToolTile[] = PUBLIC_TOOL_ORDER.map((tab) => {
-    const meta = PUBLIC_TOOL_META[tab];
-    return {
-      title: lang === "es" ? meta.es : meta.en,
-      description: TOOLBOX_BLURBS[tab][lang],
-      screen: { name: "toolbox", tab },
-      icon: <span className="tool-tile-icon"><Icon><path d={meta.icon} /></Icon></span>,
-    };
-  });
-  // Build 0.6 (item 19): Crew GPS clock + Public estimate form reuse the same
-  // functional panels as the Tools home page for Premium users.
-  const featuredPanels: { id: string; title: string; description: string; panel: ReactNode }[] = [
-    { id: "crewClock", title: lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock", description: lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job.", panel: <CrewClockPanel lang={lang} /> },
-    { id: "bookingLink", title: lang === "es" ? "Formulario público de estimado" : "Public estimate form", description: lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website.", panel: <BookingLinkPanel lang={lang} /> },
-  ];
-  // Build 0.6 (item 21): every Pro tool card carries a small PRO pill badge.
-  const proCard = (tile: ToolTile) => (
-    <button key={tile.title} type="button" className="b06-pro-card" onClick={() => openTool(tile)}>
-      {tile.icon}<span><span className="b06-pro-card-title"><strong>{tile.title}</strong><span className="b06-pro-pill">PRO</span></span><small>{tile.description}</small><ToolStatus lang={lang} comingSoon={tile.comingSoon} pro /></span>{tile.comingSoon ? <span className="soon-dot" aria-hidden="true" /> : <BackIcon />}
-    </button>
-  );
-  return (
-    <main className={`page pro-workspace${isPremium ? "" : " b06-pro-preview"}`}>
-      {/* Build 0.6 (item 20): diagonal watermark over the whole page in preview mode. */}
-      {!isPremium && (
-        <div className="b06-preview-watermark" aria-hidden="true">
-          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
-          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
-          <span>PRO PREVIEW · PRO PREVIEW · PRO PREVIEW</span>
-        </div>
-      )}
-      <PageHeader lang={lang} title={lang === "es" ? "Herramientas Pro" : "Pro Tools"} onBack={onBack} actions={<span className="pro-header-badge">PRO</span>} />
-      <section className="pro-workspace-hero">
-        <span className="pro-identity">PRO</span>
-        <div><h2>{lang === "es" ? "Control avanzado" : "Advanced control"}</h2><p>{isPremium ? (lang === "es" ? "Cada herramienta muestra si funciona ahora o qué necesita para activarse." : "Every tool shows whether it works now or what it needs before it can turn on.") : (lang === "es" ? "Vista previa: toca cualquier herramienta para ver Premium." : "Preview: tap any tool to see Premium.")}</p></div>
-      </section>
-      {!isPremium && (
-        <button type="button" className="b06-preview-upgrade-cta" onClick={() => setScreen({ name: "upgrade" })}>
-          <strong>{lang === "es" ? "Desbloquea todas las herramientas Pro" : "Unlock every Pro tool"}</strong>
-          <small>{lang === "es" ? "Ver Premium" : "View Premium"}</small>
-        </button>
-      )}
-      <div className="pro-directory">
-        {tiles.map(proCard)}
-      </div>
-      <div className="b06-pro-section">
-        <div className="tool-group-heading"><h2>{lang === "es" ? "Equipo y reservas" : "Crew & booking"}</h2></div>
-        {featuredPanels.map((entry) => isPremium ? (
-          <div key={entry.id} className="b06-pro-panel">{entry.panel}</div>
-        ) : (
-          <button key={entry.id} type="button" className="b06-pro-panel-locked" onClick={() => openTool({ title: entry.title, description: entry.description, icon: null, pro: true })}>
-            <span className="tool-tile-icon"><Icon><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon></span>
-            <span><span className="b06-pro-card-title"><strong>{entry.title}</strong><span className="b06-pro-pill">PRO</span></span><small>{entry.description}</small></span>
-            <BackIcon />
-          </button>
-        ))}
-      </div>
-      <div className="b06-pro-section">
-        <div className="tool-group-heading"><h2>{lang === "es" ? "Herramientas para estimar" : "Estimating toolbox"}</h2></div>
-        <div className="pro-directory">
-          {estimatingTiles.map(proCard)}
-        </div>
-      </div>
-      {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
-      {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
-    </main>
-  );
 }
 
 function JobsScreen({

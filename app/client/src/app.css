@@ -24,6 +24,8 @@
 .recurring-subsection:last-child { border-bottom: none; }
 .recurring-subsection h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
 .pro-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; color: #fff; background: var(--accent); border-radius: 4px; vertical-align: middle; }
+/* Danny 2026-10-11: PRO badge on Tools rows — muted while the tool is locked, accent once Premium is active. */
+.pro-badge.is-locked { background: #6b7280; }
 
 /* Build0.2: make document action bar more prominent */
 .document-action-bar { border-top: 2px solid var(--accent); background: var(--surface); }
