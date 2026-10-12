@@ -2158,7 +2158,7 @@ export const BaseActions = {
     },
   }),
   signUp: defineAction({
-    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: z.string().trim().max(16).optional() }),
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: z.string().trim().max(16).optional(), language: languageSchema.optional() }),
     response: z.object({ ok: z.literal(true), email: z.string(), verificationCode: z.string().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: z.boolean() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
@@ -2178,6 +2178,14 @@ export const BaseActions = {
       const referralCode = await uniqueReferralCode(db);
       const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
+      // Auth-screen language choice (EN/ES toggle): persist it on the new
+      // company's settings so the first signed-in session opens in the
+      // language the owner picked while signing up.
+      if (args.language) {
+        const existingSettings = (await db.select({ id: schema.settings.id }).from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+        if (existingSettings) await db.update(schema.settings).set({ language: args.language, updatedAt: now }).where(eq(schema.settings.id, existingSettings.id));
+        else await db.insert(schema.settings).values({ companyId, companyName: "", language: args.language, updatedAt: now });
+      }
       // Referral loop: record the event now (rewarded=false); the +5 listing
       // bonus lands when the referred user completes email verification.
       const referrerCode = normalizeReferralCode(args.referralCode);
@@ -5263,7 +5271,22 @@ const PUBLIC_ACTIONS = new Set([
 ]);
 
 const PREMIUM_ACTIONS = new Set([
-  "getAutomationCenter", "logAutomationSend", "updateQuoteAutomationStatus", "updateSelectionLeadTime", "renewQuote", "getGrowthToolkit", "savePriceBookItem", "deletePriceBookItem", "saveQuoteTemplate", "deleteQuoteTemplate", "saveMileageTrip", "deleteMileageTrip", "saveBusinessExpense", "deleteBusinessExpense", "listSubcontractors", "saveSubcontractor", "deleteSubcontractor", "saveShareImage", "deleteShareImage", "listShareImages", "getWeatherOutlook", "getExpansionSuite", "saveWarranty", "saveSupplier", "saveMaintenancePlan", "completeMaintenancePlan", "saveSlideshowVideo", "getTaxExport", "getDocumentParameters", "getAdminConsole", "updateSupportReport", "addAppUser", "updateAppUser", "deleteAppUser", "updateAdminParameters", "createPortalLink", "revokePortalLink", "getPortalLinkInfo", "rotatePortalLink", "createDocumentLink", "getDocumentLinkInfo", "revokeDocumentLink", "deleteDocument", "updateJobSiteLocation", "suggestJobsByLocation", "updateQuoteVersion", "createQuoteVersion", "sendQuoteVersion", "acceptQuoteVersion", "getQuoteVersions", "listMaterialCosts", "saveMaterialCost", "deleteMaterialCost", "getFieldIntelligence", "saveSupplierQuote", "createPurchaseOrder", "updatePurchaseOrderStatus", "receivePurchaseOrder", "saveEquipment", "setEquipmentCheckout", "completeEquipmentMaintenance", "deleteFieldTestRecord", "exportBackup", "restoreBackup", "verifyBackupRoundTrip"
+  // Home briefing fix (2026-10-12): getAutomationCenter + logAutomationSend are
+  // NOT premium-gated. TodayScreen (Home) is a core free surface — its
+  // appointments/reminders/glance data comes from getAutomationCenter, and
+  // the wrapper's "Premium required" throw made every free account's Home
+  // show "Couldn't load activity". The Pro Automations workspace actions
+  // below stay gated.
+  // Send-link ruling (2026-10-12): createDocumentLink + revokeDocumentLink +
+  // getDocumentLinkInfo are NOT premium-gated. Sending an estimate/invoice
+  // by link or email is part
+  // of the free document experience — free creation is already capped by the
+  // free-tier allowance (assertInvoiceLimit at creation), so any document
+  // that exists is within allowance and must stay sendable, and revoke is
+  // the safety valve for a link sent in error. The JOB PORTAL link actions
+  // (createPortalLink, revokePortalLink, listPortalLinks, rotatePortalLink,
+  // getPortalAdminSummary) stay premium-gated as decided for Portal v2.
+  "updateQuoteAutomationStatus", "updateSelectionLeadTime", "renewQuote", "getGrowthToolkit", "savePriceBookItem", "deletePriceBookItem", "saveQuoteTemplate", "deleteQuoteTemplate", "saveMileageTrip", "deleteMileageTrip", "saveBusinessExpense", "deleteBusinessExpense", "listSubcontractors", "saveSubcontractor", "deleteSubcontractor", "saveShareImage", "deleteShareImage", "listShareImages", "getWeatherOutlook", "getExpansionSuite", "saveWarranty", "saveSupplier", "saveMaintenancePlan", "completeMaintenancePlan", "saveSlideshowVideo", "getTaxExport", "getDocumentParameters", "getAdminConsole", "updateSupportReport", "addAppUser", "updateAppUser", "deleteAppUser", "updateAdminParameters", "createPortalLink", "revokePortalLink", "getPortalLinkInfo", "rotatePortalLink", "deleteDocument", "updateJobSiteLocation", "suggestJobsByLocation", "updateQuoteVersion", "createQuoteVersion", "sendQuoteVersion", "acceptQuoteVersion", "getQuoteVersions", "listMaterialCosts", "saveMaterialCost", "deleteMaterialCost", "getFieldIntelligence", "saveSupplierQuote", "createPurchaseOrder", "updatePurchaseOrderStatus", "receivePurchaseOrder", "saveEquipment", "setEquipmentCheckout", "completeEquipmentMaintenance", "deleteFieldTestRecord", "exportBackup", "restoreBackup", "verifyBackupRoundTrip"
 ]);
 
 function protectActions<T extends ActionsModule>(actions: T): T {

@@ -2091,6 +2091,28 @@ var $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
     return payload;
   };
 });
+var $ZodLiteral = /* @__PURE__ */ $constructor("$ZodLiteral", (inst, def) => {
+  $ZodType.init(inst, def);
+  if (def.values.length === 0) {
+    throw new Error("Cannot create literal schema with no valid values");
+  }
+  const values = new Set(def.values);
+  inst._zod.values = values;
+  inst._zod.pattern = new RegExp(`^(${def.values.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$`);
+  inst._zod.parse = (payload, _ctx) => {
+    const input = payload.value;
+    if (values.has(input)) {
+      return payload;
+    }
+    payload.issues.push({
+      code: "invalid_value",
+      values: def.values,
+      input,
+      inst
+    });
+    return payload;
+  };
+});
 var $ZodTransform = /* @__PURE__ */ $constructor("$ZodTransform", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.optin = "optional";
@@ -3296,6 +3318,44 @@ var enumProcessor = (schema, _ctx, json, _params) => {
     json.type = "string";
   json.enum = values;
 };
+var literalProcessor = (schema, ctx, json, _params) => {
+  const def = schema._zod.def;
+  const vals = [];
+  for (const val of def.values) {
+    if (val === undefined) {
+      if (ctx.unrepresentable === "throw") {
+        throw new Error("Literal `undefined` cannot be represented in JSON Schema");
+      }
+    } else if (typeof val === "bigint") {
+      if (ctx.unrepresentable === "throw") {
+        throw new Error("BigInt literals cannot be represented in JSON Schema");
+      } else {
+        vals.push(Number(val));
+      }
+    } else {
+      vals.push(val);
+    }
+  }
+  if (vals.length === 0) {} else if (vals.length === 1) {
+    const val = vals[0];
+    json.type = val === null ? "null" : typeof val;
+    if (ctx.target === "draft-04" || ctx.target === "openapi-3.0") {
+      json.enum = [val];
+    } else {
+      json.const = val;
+    }
+  } else {
+    if (vals.every((v) => typeof v === "number"))
+      json.type = "number";
+    if (vals.every((v) => typeof v === "string"))
+      json.type = "string";
+    if (vals.every((v) => typeof v === "boolean"))
+      json.type = "boolean";
+    if (vals.every((v) => v === null))
+      json.type = "null";
+    json.enum = vals;
+  }
+};
 var customProcessor = (_schema, ctx, _json, _params) => {
   if (ctx.unrepresentable === "throw") {
     throw new Error("Custom types cannot be represented in JSON Schema");
@@ -4113,6 +4173,27 @@ function _enum(values, params) {
     ...normalizeParams(params)
   });
 }
+var ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
+  $ZodLiteral.init(inst, def);
+  ZodType.init(inst, def);
+  inst._zod.processJSONSchema = (ctx, json, params) => literalProcessor(inst, ctx, json, params);
+  inst.values = new Set(def.values);
+  Object.defineProperty(inst, "value", {
+    get() {
+      if (def.values.length > 1) {
+        throw new Error("This schema contains multiple valid literal values. Use `.values` instead.");
+      }
+      return def.values[0];
+    }
+  });
+});
+function literal(value, params) {
+  return new ZodLiteral({
+    type: "literal",
+    values: Array.isArray(value) ? value : [value],
+    ...normalizeParams(params)
+  });
+}
 var ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
   $ZodTransform.init(inst, def);
   ZodType.init(inst, def);
@@ -4406,6 +4487,12 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  getListingBumpPrice: {
+    request: object({}),
+    response: object({ priceDisplay: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   createCreditPackCheckout: {
     request: object({
       userId: number2().int().positive(),
@@ -4466,6 +4553,109 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  listStripeSubscriptions: {
+    request: object({ status: _enum(["active", "trialing", "past_due", "canceled", "all"]).default("all"), limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      subscriptions: array(object({
+        id: string2(),
+        customerId: string2(),
+        customerEmail: string2().nullable(),
+        status: string2(),
+        amountCents: number2().int(),
+        interval: string2(),
+        currentPeriodEnd: number2().int().nullable(),
+        cancelAtPeriodEnd: boolean2()
+      })),
+      hasMore: boolean2()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripePayments: {
+    request: object({ limit: number2().int().min(1).max(100).default(25), startingAfter: string2().max(200).optional() }),
+    response: object({
+      configured: boolean2(),
+      charges: array(object({
+        id: string2(),
+        amount: number2().int(),
+        amountRefunded: number2().int(),
+        currency: string2(),
+        created: number2().int(),
+        status: string2(),
+        customerEmail: string2().nullable(),
+        description: string2().nullable()
+      })),
+      hasMore: boolean2()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripeFailedPayments: {
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      failed: array(object({
+        invoiceId: string2(),
+        customerEmail: string2().nullable(),
+        amountCents: number2().int(),
+        currency: string2(),
+        status: string2(),
+        attemptCount: number2().int(),
+        nextRetryAt: number2().int().nullable(),
+        created: number2().int()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createStripeCoupon: {
+    request: object({
+      code: string2().trim().min(2).max(40),
+      percentOff: number2().min(1).max(100).optional(),
+      amountOffCents: number2().int().positive().max(1e7).optional(),
+      duration: _enum(["once", "repeating", "forever"]).default("once"),
+      durationInMonths: number2().int().min(1).max(36).optional()
+    }),
+    response: object({ id: string2(), code: string2().nullable(), percentOff: number2().nullable(), amountOff: number2().nullable(), duration: string2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripeCoupons: {
+    request: object({ limit: number2().int().min(1).max(100).default(25) }),
+    response: object({
+      configured: boolean2(),
+      coupons: array(object({
+        id: string2(),
+        code: string2().nullable(),
+        percentOff: number2().nullable(),
+        amountOff: number2().nullable(),
+        currency: string2().nullable(),
+        duration: string2(),
+        timesRedeemed: number2().int()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  deleteStripeCoupon: {
+    request: object({ couponId: string2().min(1).max(200) }),
+    response: object({ ok: literal(true), id: string2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getStripeRevenueStats: {
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      mrrCents: number2().nullable(),
+      activeSubscriptions: number2().nullable(),
+      trialing: number2().nullable(),
+      failedPayments: number2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 30000
+  },
   verifyPlayPurchase: {
     request: object({ purchaseToken: string2().min(1).max(2000), sku: string2().min(1).max(200) }),
     response: object({
@@ -4487,6 +4677,16 @@ var privileged = definePrivilegedContracts({
     timeoutMs: 1e4
   }
 });
+function stripeAdminAuthHeader(required) {
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!secretKey) {
+    if (required)
+      throw new Error("Stripe is not configured.");
+    return null;
+  }
+  return { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
+}
+var bumpPriceCache = null;
 var privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
     const directory = await mkdtemp(join(tmpdir(), "crewkat-pdf-"));
@@ -4650,6 +4850,36 @@ var privilegedHandlers = definePrivilegedHandlers(privileged, {
     if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url))
       throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
+  async getListingBumpPrice() {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const priceId = process.env.STRIPE_BUMP_PRICE_ID?.trim();
+    if (!secretKey || !priceId)
+      return { priceDisplay: null };
+    const cached = bumpPriceCache;
+    if (cached && cached.priceId === priceId && Date.now() - cached.at < 10 * 60000) {
+      return { priceDisplay: cached.display };
+    }
+    let display = null;
+    try {
+      const response = await fetch(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.ok) {
+        const price = await response.json();
+        if (typeof price.unit_amount === "number" && typeof price.currency === "string") {
+          const amount = price.unit_amount / 100;
+          display = price.currency.toLowerCase() === "usd" ? `$${amount.toFixed(2)}` : `${amount.toFixed(2)} ${price.currency.toUpperCase()}`;
+        }
+      }
+    } catch {
+      display = null;
+    }
+    bumpPriceCache = { priceId, display, at: Date.now() };
+    return { priceDisplay: display };
   },
   async createCreditPackCheckout(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
@@ -4901,6 +5131,246 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       currency: typeof result.currency === "string" ? result.currency : "usd",
       status: typeof result.status === "string" ? result.status : "unknown"
     };
+  },
+  async listStripeSubscriptions(args) {
+    const unconfigured = { configured: false, subscriptions: [], hasMore: false };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader)
+      return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit), "expand[]": "data.customer" });
+    if (args.status !== "all")
+      params.set("status", args.status);
+    if (args.startingAfter)
+      params.set("starting_after", args.startingAfter);
+    const response = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
+      method: "GET",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe subscriptions.");
+    const result = await response.json();
+    const subscriptions = (result.data ?? []).map((sub) => {
+      const item = sub.items?.data?.[0];
+      const customer = sub.customer;
+      return {
+        id: typeof sub.id === "string" ? sub.id : "",
+        customerId: typeof customer === "object" && customer && typeof customer.id === "string" ? customer.id : typeof sub.customer === "string" ? sub.customer : "",
+        customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+        status: typeof sub.status === "string" ? sub.status : "unknown",
+        amountCents: typeof item?.price?.unit_amount === "number" ? Math.round(item.price.unit_amount) : 0,
+        interval: typeof item?.price?.recurring?.interval === "string" ? item.price.recurring.interval : "month",
+        currentPeriodEnd: typeof sub.current_period_end === "number" ? Math.round(sub.current_period_end) : null,
+        cancelAtPeriodEnd: sub.cancel_at_period_end === true
+      };
+    }).filter((s) => s.id);
+    return { configured: true, subscriptions, hasMore: result.has_more === true };
+  },
+  async listStripePayments(args) {
+    const unconfigured = { configured: false, charges: [], hasMore: false };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader)
+      return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit), "expand[]": "data.customer" });
+    if (args.startingAfter)
+      params.set("starting_after", args.startingAfter);
+    const response = await fetch(`https://api.stripe.com/v1/charges?${params}`, {
+      method: "GET",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe payments.");
+    const result = await response.json();
+    const charges = (result.data ?? []).map((charge) => {
+      const customer = charge.customer;
+      return {
+        id: typeof charge.id === "string" ? charge.id : "",
+        amount: typeof charge.amount === "number" ? Math.round(charge.amount) : 0,
+        amountRefunded: typeof charge.amount_refunded === "number" ? Math.round(charge.amount_refunded) : 0,
+        currency: typeof charge.currency === "string" ? charge.currency : "usd",
+        created: typeof charge.created === "number" ? Math.round(charge.created) : 0,
+        status: typeof charge.status === "string" ? charge.status : "unknown",
+        customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+        description: typeof charge.description === "string" ? charge.description : null
+      };
+    }).filter((c) => c.id);
+    return { configured: true, charges, hasMore: result.has_more === true };
+  },
+  async listStripeFailedPayments() {
+    const unconfigured = { configured: false, failed: [] };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader)
+      return unconfigured;
+    const params = new URLSearchParams({ limit: "50", "expand[]": "data.customer" });
+    const response = await fetch(`https://api.stripe.com/v1/invoices?${params}`, {
+      method: "GET",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe invoices.");
+    const result = await response.json();
+    const failed = (result.data ?? []).filter((inv) => inv.status === "open" && inv.attempt_count > 0).map((inv) => {
+      const customer = inv.customer;
+      return {
+        invoiceId: typeof inv.id === "string" ? inv.id : "",
+        customerEmail: typeof customer === "object" && customer && typeof customer.email === "string" ? customer.email : null,
+        amountCents: typeof inv.amount_due === "number" ? Math.round(inv.amount_due) : 0,
+        currency: typeof inv.currency === "string" ? inv.currency : "usd",
+        status: typeof inv.status === "string" ? inv.status : "unknown",
+        attemptCount: typeof inv.attempt_count === "number" ? Math.round(inv.attempt_count) : 0,
+        nextRetryAt: typeof inv.next_payment_attempt === "number" ? Math.round(inv.next_payment_attempt) : null,
+        created: typeof inv.created === "number" ? Math.round(inv.created) : 0
+      };
+    }).filter((f) => f.invoiceId);
+    return { configured: true, failed };
+  },
+  async createStripeCoupon(args) {
+    const authHeader = stripeAdminAuthHeader(true);
+    if (!args.percentOff && !args.amountOffCents)
+      throw new Error("Set a percent or an amount off.");
+    if (args.percentOff && args.amountOffCents)
+      throw new Error("Set either percent or amount off, not both.");
+    const body = new URLSearchParams({ duration: args.duration });
+    body.set("id", `crewkat_${args.code.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`);
+    if (args.percentOff)
+      body.set("percent_off", String(args.percentOff));
+    else
+      body.set("amount_off", String(args.amountOffCents));
+    if (!args.percentOff)
+      body.set("currency", "usd");
+    if (args.duration === "repeating")
+      body.set("duration_in_months", String(args.durationInMonths ?? 3));
+    const response = await fetch("https://api.stripe.com/v1/coupons", {
+      method: "POST",
+      headers: { ...authHeader, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      let detail = "Stripe could not create this coupon.";
+      try {
+        const err = await response.json();
+        if (typeof err.error?.message === "string")
+          detail = err.error.message;
+      } catch {}
+      throw new Error(detail);
+    }
+    const result = await response.json();
+    if (typeof result.id !== "string")
+      throw new Error("Stripe did not return a valid coupon.");
+    return {
+      id: result.id,
+      code: args.code.toUpperCase(),
+      percentOff: typeof result.percent_off === "number" ? result.percent_off : null,
+      amountOff: typeof result.amount_off === "number" ? Math.round(result.amount_off) : null,
+      duration: typeof result.duration === "string" ? result.duration : args.duration
+    };
+  },
+  async listStripeCoupons(args) {
+    const unconfigured = { configured: false, coupons: [] };
+    const authHeader = stripeAdminAuthHeader(false);
+    if (!authHeader)
+      return unconfigured;
+    const params = new URLSearchParams({ limit: String(args.limit) });
+    const response = await fetch(`https://api.stripe.com/v1/coupons?${params}`, {
+      method: "GET",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe coupons.");
+    const result = await response.json();
+    const coupons = (result.data ?? []).map((c) => ({
+      id: typeof c.id === "string" ? c.id : "",
+      code: typeof c.id === "string" ? c.id.replace(/^crewkat_/, "").replace(/_/g, " ").toUpperCase() : null,
+      percentOff: typeof c.percent_off === "number" ? c.percent_off : null,
+      amountOff: typeof c.amount_off === "number" ? Math.round(c.amount_off) : null,
+      currency: typeof c.currency === "string" ? c.currency : null,
+      duration: typeof c.duration === "string" ? c.duration : "once",
+      timesRedeemed: typeof c.times_redeemed === "number" ? Math.round(c.times_redeemed) : 0
+    })).filter((c) => c.id);
+    return { configured: true, coupons };
+  },
+  async deleteStripeCoupon(args) {
+    const authHeader = stripeAdminAuthHeader(true);
+    const response = await fetch(`https://api.stripe.com/v1/coupons/${encodeURIComponent(args.couponId)}`, {
+      method: "DELETE",
+      headers: authHeader,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Stripe could not delete this coupon.");
+    return { ok: true, id: args.couponId };
+  },
+  async getStripeRevenueStats() {
+    const unconfigured = { configured: false, mrrCents: null, activeSubscriptions: null, trialing: null, failedPayments: null };
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey)
+      return unconfigured;
+    const authHeader = { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
+    try {
+      let mrrCents = 0;
+      let activeSubscriptions = 0;
+      let startingAfter = null;
+      for (let page = 0;page < 5; page++) {
+        const params = new URLSearchParams({ status: "active", limit: "100", "expand[]": "data.items" });
+        if (startingAfter)
+          params.set("starting_after", startingAfter);
+        const response = await fetch(`https://api.stripe.com/v1/subscriptions?${params}`, {
+          method: "GET",
+          headers: authHeader,
+          redirect: "error",
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok)
+          throw new Error(`Stripe subscriptions request failed: ${response.status}`);
+        const result = await response.json();
+        const subs = result.data ?? [];
+        activeSubscriptions += subs.length;
+        for (const sub of subs) {
+          for (const item of sub.items?.data ?? []) {
+            const qty = typeof item.quantity === "number" ? item.quantity : 1;
+            const unit = typeof item.price?.unit_amount === "number" ? Math.round(item.price.unit_amount) : 0;
+            const interval = item.price?.recurring?.interval;
+            mrrCents += interval === "month" ? unit * qty : interval === "year" ? Math.round(unit * qty / 12) : 0;
+          }
+        }
+        if (result.has_more !== true || !subs.length)
+          break;
+        const lastId = subs[subs.length - 1]?.id;
+        if (typeof lastId !== "string")
+          break;
+        startingAfter = lastId;
+      }
+      const count = async (path) => {
+        const response = await fetch(`https://api.stripe.com${path}`, {
+          method: "GET",
+          headers: authHeader,
+          redirect: "error",
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!response.ok)
+          return null;
+        const result = await response.json();
+        return typeof result.total_count === "number" ? Math.round(result.total_count) : null;
+      };
+      const [trialing, failedPayments] = await Promise.all([
+        count("/v1/subscriptions?status=trialing&limit=1"),
+        count("/v1/invoices?status=open&limit=1")
+      ]);
+      return { configured: true, mrrCents, activeSubscriptions, trialing, failedPayments };
+    } catch (error) {
+      console.error("[crewkat][platform-admin] Stripe revenue stats failed:", error);
+      return unconfigured;
+    }
   },
   async getPlayBillingStatus() {
     const sku = process.env.PLAY_PREMIUM_SKU?.trim() || "crewkat_premium_monthly";

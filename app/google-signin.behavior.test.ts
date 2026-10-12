@@ -42,6 +42,7 @@ async function throwsError(fn: () => Promise<unknown>, match: RegExp): Promise<b
 
 const clientSrc = await readFile("client/src/App.tsx", "utf8");
 const serverSrc = await readFile("server/src/actions.ts", "utf8");
+const serverMjs = await readFile("../server.mjs", "utf8");
 
 // --- 1. Migration 0068 --------------------------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-google-"));
@@ -166,10 +167,19 @@ check("server: uses google-auth-library", serverSrc.includes('from "google-auth-
 check("server: rejects when unconfigured", serverSrc.includes("Google sign-in is not configured."));
 check("client: GIS script loaded", clientSrc.includes("https://accounts.google.com/gsi/client"));
 check("client: GoogleSignInButton component", clientSrc.includes("function GoogleSignInButton"));
-check("client: calls api.googleSignIn", clientSrc.includes("api.googleSignIn({ idToken:"));
+// Redirect flow (2026-10-12): the One Tap/popup flow was blocked by
+// third-party sign-in restrictions, so the button now renders in redirect
+// mode and Google POSTs the ID token to our callback, which dispatches the
+// same googleSignIn action — the client no longer posts the token itself.
+check("client: GIS redirect mode", clientSrc.includes('ux_mode: "redirect"'));
+check("client: GIS renders the button", clientSrc.includes("renderButton"));
+check("client: login_uri is our callback", clientSrc.includes("/auth/google/callback"));
+check("client: no One Tap prompt flow remains", !clientSrc.includes("id.prompt("));
+check("server.mjs: callback route exists", serverMjs.includes('path === "/auth/google/callback"'));
+check("server.mjs: callback dispatches googleSignIn", serverMjs.includes('dispatchAction("googleSignIn"'));
+check("server.mjs: callback lands in the app", serverMjs.includes("/app/#google=ok") && serverMjs.includes("/app/#google=error"));
 check("client: calls api.getGoogleClientId", clientSrc.includes("api.getGoogleClientId({})"));
 check("client: button hidden without client ID", clientSrc.includes("googleCfg.data?.clientId &&"));
-check("client: G logo inline", clientSrc.includes("GoogleGLogo"));
 
 // Regression: the login screen has no session, so both actions must be
 // public in the protected Actions export (no _sessionToken required).

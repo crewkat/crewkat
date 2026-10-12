@@ -1918,30 +1918,134 @@ function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" 
   </div>;
 }
 
-// Google "G" mark (brand asset) for the Continue-with-Google button.
-function GoogleGLogo() {
-  return <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-    <path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81z" />
-    <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.07.72-2.44 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A12 12 0 0 0 12 24z" />
-    <path fill="#FBBC05" d="M5.27 14.28A7.2 7.2 0 0 1 4.89 12c0-.79.14-1.56.38-2.28v-3.1H1.29a12 12 0 0 0 0 10.76l3.98-3.1z" />
-    <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.8l3.44-3.44A11.98 11.98 0 0 0 12 0 12 12 0 0 0 1.29 6.62l3.98 3.1C6.22 6.88 8.87 4.77 12 4.77z" />
-  </svg>;
+// Auth-screen language choice (EN/ES toggle). Pre-login there is no company
+// settings row yet, so the choice lives in localStorage: it seeds the auth
+// UI, is passed to signUp (persisted on the new company's settings), and is
+// consumed once by the signed-in app for accounts created another way
+// (Google sign-up) so the session opens in the picked language.
+const AUTH_LANG_STORAGE_KEY = "crewkat-auth-lang";
+
+// Auth-screen copy in both app languages. Server-thrown errors stay in the
+// server's wording (same as the rest of the app); everything the auth
+// screens render or compose themselves comes from here.
+function authStrings(lang: Lang) {
+  if (lang === "es") return {
+    restoringIn: "Iniciando tu sesión…",
+    titleLogin: "Bienvenido de nuevo", titleSignup: "Configura tu cuenta de propietario", titleVerify: "Verifica tu correo",
+    titleForgot: "Restablece tu contraseña", titleReset: "Ingresa tu código de restablecimiento", titleTotp: "Autenticación de dos factores",
+    introLogin: "Inicia sesión para gestionar tus trabajos, facturas y clientes.",
+    introSignup: "Crea una cuenta de propietario segura y un espacio de empresa vacío.",
+    introVerify: (email: string) => `Ingresa el código de 6 dígitos para ${email}.`,
+    introTotp: "Ingresa el código de 6 dígitos de tu app de autenticación.",
+    introCode: "Usa un código de un solo uso para elegir una contraseña nueva.",
+    closedTitle: "Registros cerrados", closedBody: "Las cuentas nuevas están desactivadas temporalmente. Vuelve pronto.",
+    claimTitle: "Tu espacio existente está listo",
+    claimCounts: (jobs: number, clients: number, invoices: number) => `${jobs} trabajos · ${clients} clientes · ${invoices} facturas`,
+    claimNote: "Estos registros se mantendrán intactos y se vincularán a la cuenta del propietario.",
+    referralTitle: "Invitado por un amigo",
+    referralBody: (code: string) => `Fuiste invitado con el código ${code} — tu amigo gana listados extra en el Marketplace cuando te unes.`,
+    name: "Nombre", email: "Correo electrónico", password: "Contraseña", newPassword: "Contraseña nueva",
+    passwordHint: "Usa al menos 10 caracteres.", code: "Código de 6 dígitos",
+    consentTermsA: "Acepto los ", termsLabel: "Términos de servicio", consentTermsB: " y reconozco la ", privacyLabel: "Política de privacidad",
+    consentMarketplaceA: "Acepto los ", marketplaceTermsLabel: "Términos de uso del Marketplace",
+    testingCode: "Código de prueba",
+    testingCodeNote: "No hay una clave de correo transaccional configurada, por eso se muestra este código aquí. Vence en 30 minutos.",
+    pleaseWait: "Espera…", createAccount: "Crear cuenta", verifyEmailBtn: "Verificar correo", verifyBtn: "Verificar",
+    getResetCode: "Obtener código", savePassword: "Guardar contraseña nueva", signIn: "Iniciar sesión",
+    orDivider: "o", forgotPassword: "¿Olvidaste tu contraseña?", verifyResend: "Verificar correo / reenviar código",
+    verifyInstead: "Verificar mi correo en su lugar",
+    createCompanyAccount: "Crear una cuenta de empresa", alreadyHaveAccount: "¿Ya tienes cuenta? Inicia sesión",
+    backToSignIn: "Volver a iniciar sesión", getNewCode: "Obtener un código nuevo",
+    securityNote: "Las contraseñas se almacenan con hash. Permaneces conectado en este dispositivo — cierra sesión cuando quieras en Ajustes → Cuenta.",
+    marketplaceTermsLink: "Términos del Marketplace",
+    enterEmailFirst: "Escribe tu correo arriba primero y luego verifícalo.",
+    emailSendFailed: "No se pudo enviar el correo. Inténtalo de nuevo en un momento.",
+    codeEmailed: (email: string) => `Enviamos un código de verificación a ${email}.`,
+    mustAgreeTerms: "Debes aceptar los Términos de servicio y la Política de privacidad para crear una cuenta.",
+    mustAgreeMarketplace: "Debes aceptar los Términos de uso del Marketplace para crear una cuenta.",
+    accountEmailFailed: "Tu cuenta fue creada, pero el correo no pudo enviarse. Usa «Obtener un código nuevo» para intentarlo otra vez.",
+    accountClaim: "Cuenta creada. Usa el código de prueba de abajo para reclamar el espacio existente de Crewkat.",
+    accountTesting: "Cuenta creada. Usa el código de prueba de abajo para continuar.",
+    emailVerified: "Correo verificado. Inicia sesión para abrir Crewkat.",
+    resetFallback: "Usa el código de prueba de abajo para restablecer tu contraseña.",
+    resetFailed: "Si esa cuenta existe, su correo de restablecimiento no pudo enviarse. Intenta pedir un código nuevo.",
+    resetSent: "Si esa cuenta existe, enviamos un código de restablecimiento por correo.",
+    passwordUpdated: "Contraseña actualizada. Inicia sesión con tu nueva contraseña.",
+    newCodeTesting: "Usa el nuevo código de prueba de abajo.",
+    newCodeSent: (email: string) => `Enviamos un nuevo código de verificación a ${email}.`,
+    googleFailed: "El inicio de sesión con Google no se completó. Inténtalo de nuevo o entra con tu contraseña.",
+    languageLabel: "Idioma",
+  };
+  return {
+    restoringIn: "Signing you back in…",
+    titleLogin: "Welcome back", titleSignup: "Set up your owner account", titleVerify: "Verify your email",
+    titleForgot: "Reset your password", titleReset: "Enter your reset code", titleTotp: "Two-factor authentication",
+    introLogin: "Sign in to manage your jobs, invoices, and clients.",
+    introSignup: "Create a secure owner account and an empty company workspace.",
+    introVerify: (email: string) => `Enter the 6-digit code for ${email}.`,
+    introTotp: "Enter the 6-digit code from your authenticator app.",
+    introCode: "Use a one-time code to choose a new password.",
+    closedTitle: "Registrations are closed", closedBody: "New accounts are temporarily disabled. Please check back soon.",
+    claimTitle: "Your existing workspace is ready",
+    claimCounts: (jobs: number, clients: number, invoices: number) => `${jobs} jobs · ${clients} clients · ${invoices} invoices`,
+    claimNote: "These records will stay intact and attach to the owner account.",
+    referralTitle: "Invited by a friend",
+    referralBody: (code: string) => `You were invited with code ${code} — your friend earns bonus Marketplace listings when you join.`,
+    name: "Name", email: "Email", password: "Password", newPassword: "New password",
+    passwordHint: "Use at least 10 characters.", code: "6-digit code",
+    consentTermsA: "I agree to the ", termsLabel: "Terms of Service", consentTermsB: " and acknowledge the ", privacyLabel: "Privacy Policy",
+    consentMarketplaceA: "I agree to the ", marketplaceTermsLabel: "Marketplace Terms of Use",
+    testingCode: "Testing code",
+    testingCodeNote: "No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.",
+    pleaseWait: "Please wait…", createAccount: "Create account", verifyEmailBtn: "Verify email", verifyBtn: "Verify",
+    getResetCode: "Get reset code", savePassword: "Save new password", signIn: "Sign in",
+    orDivider: "or", forgotPassword: "Forgot password?", verifyResend: "Verify email / resend code",
+    verifyInstead: "Verify my email instead",
+    createCompanyAccount: "Create a company account", alreadyHaveAccount: "Already have an account? Sign in",
+    backToSignIn: "Back to sign in", getNewCode: "Get a new code",
+    securityNote: "Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.",
+    marketplaceTermsLink: "Marketplace Terms",
+    enterEmailFirst: "Enter your email above first, then verify it.",
+    emailSendFailed: "The email could not be sent. Try again in a moment.",
+    codeEmailed: (email: string) => `We emailed a verification code to ${email}.`,
+    mustAgreeTerms: "You must agree to the Terms of Service and Privacy Policy to create an account.",
+    mustAgreeMarketplace: "You must agree to the Marketplace Terms of Use to create an account.",
+    accountEmailFailed: "Your account was created, but the email could not be sent. Use Get a new code to try again.",
+    accountClaim: "Account created. Use the testing code below to claim the existing Crewkat workspace.",
+    accountTesting: "Account created. Use the testing code below to continue.",
+    emailVerified: "Email verified. Sign in to open Crewkat.",
+    resetFallback: "Use the testing code below to reset your password.",
+    resetFailed: "If that account exists, its reset email could not be sent. Try requesting a new code.",
+    resetSent: "If that account exists, we emailed a reset code.",
+    passwordUpdated: "Password updated. Sign in with your new password.",
+    newCodeTesting: "Use the new testing code below.",
+    newCodeSent: (email: string) => `We emailed a new verification code to ${email}.`,
+    googleFailed: "Google sign-in didn't complete. Try again, or sign in with your password.",
+    languageLabel: "Language",
+  };
 }
 
-// "Continue with Google" — Google Identity Services ID-token flow. The GIS
-// script loads only when a client ID is configured; the button hides entirely
-// otherwise (and if the script fails to load) so unconfigured deploys never
-// show a dead button. The ID token goes to api.googleSignIn, which verifies
-// it server-side before creating any session.
-function GoogleSignInButton({ clientId, disabled, onSuccess, onError }: {
+// "Continue with Google" — Google Identity Services rendered button in
+// REDIRECT mode. Tapping it navigates the whole page through Google's
+// account chooser; Google then POSTs the ID token to /auth/google/callback,
+// where the server verifies it (api.googleSignIn), sets the session
+// cookies, and lands the user back in the app — the refresh cookie silently
+// restores the session, exactly like a password sign-in. The previous One
+// Tap/popup flow was blocked outright by browsers with third-party sign-in
+// restrictions (the old "sign-in was blocked by your browser" error),
+// stranding users — a full-page redirect cannot be blocked that way. The
+// button renders only when a client ID is configured and the GIS script
+// loads, so unconfigured deploys never show a dead button. NOTE: the
+// login_uri must be registered as an Authorized redirect URI in the Google
+// Cloud Console or Google refuses the redirect.
+function GoogleSignInButton({ clientId, disabled, lang, context }: {
   clientId: string;
   disabled?: boolean;
-  onSuccess: (result: { sessionToken: string; user: AuthUser } & Record<string, unknown>) => void;
-  onError: (message: string) => void;
+  lang: Lang;
+  context: "signin" | "signup";
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
   const [gisReady, setGisReady] = useState(false);
-  const [waiting, setWaiting] = useState(false);
-  const busyRef = useRef(false);
   useEffect(() => {
     if (window.google?.accounts?.id) { setGisReady(true); return; }
     const script = document.createElement("script");
@@ -1951,50 +2055,34 @@ function GoogleSignInButton({ clientId, disabled, onSuccess, onError }: {
     script.onload = () => setGisReady(Boolean(window.google?.accounts?.id));
     script.onerror = () => setGisReady(false);
     document.head.appendChild(script);
-    return () => { try { window.google?.accounts?.id.cancel(); } catch { /* noop */ } };
   }, []);
-  if (!gisReady) return null;
-  const start = () => {
-    if (busyRef.current || disabled) return;
-    busyRef.current = true;
-    setWaiting(true);
-    const done = () => { busyRef.current = false; setWaiting(false); };
+  useEffect(() => {
+    if (!gisReady || !hostRef.current) return;
+    const id = window.google?.accounts?.id;
+    if (!id) return;
     try {
-      const id = window.google?.accounts?.id;
-      if (!id) throw new Error("unavailable");
       id.initialize({
         client_id: clientId,
+        ux_mode: "redirect",
+        login_uri: `${window.location.origin}/auth/google/callback`,
         auto_select: false,
-        callback: (response) => {
-          void (async () => {
-            try {
-              const result = await api.googleSignIn({ idToken: response.credential });
-              done();
-              onSuccess(result as { sessionToken: string; user: AuthUser } & Record<string, unknown>);
-            } catch (caught) {
-              done();
-              onError(actionErrorMessage(caught));
-            }
-          })();
-        },
+        context,
       });
-      id.prompt((notification) => {
-        // One Tap suppressed (previously dismissed, third-party cookies
-        // blocked, etc.) — tell the user instead of hanging on "waiting".
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          done();
-          onError("Google sign-in was blocked by your browser. Allow third-party sign-in for this site and try again.");
-        }
+      hostRef.current.replaceChildren();
+      const measured = Math.floor(hostRef.current.getBoundingClientRect().width);
+      id.renderButton(hostRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "rectangular",
+        logo_alignment: "center",
+        width: Math.max(200, Math.min(400, measured || 320)),
+        locale: lang === "es" ? "es" : "en",
       });
-    } catch {
-      done();
-      onError("Google sign-in could not start. Check your connection and try again.");
-    }
-  };
-  return <button type="button" className="google-signin-button" onClick={start} disabled={disabled || waiting}>
-    <GoogleGLogo />
-    <span>{waiting ? "Waiting for Google…" : "Continue with Google"}</span>
-  </button>;
+    } catch { /* GIS refused to render — email/password sign-in remains available */ }
+  }, [gisReady, clientId, lang, context]);
+  if (!gisReady) return null;
+  return <div ref={hostRef} className={`google-signin-host${disabled ? " is-disabled" : ""}`} aria-hidden={disabled || undefined} />;
 }
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
@@ -2010,9 +2098,22 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   // Restore the previous session so the owner stays signed in across app
   // restarts: first a legacy pre-cookie token (transition window), otherwise
   // a silent refresh via the HttpOnly cookie. Falls through to sign-in.
+  // A Google redirect sign-in also lands here: #google=ok means the server
+  // just set a fresh refresh cookie (force the restore even without the
+  // local cookie-session marker); #google=error surfaces the failure.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      let googleOkLanding = false;
+      let googleFailedLanding = false;
+      try {
+        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        googleOkLanding = hash.get("google") === "ok";
+        googleFailedLanding = hash.get("google") === "error";
+        if (googleOkLanding || googleFailedLanding) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+      } catch { /* no hash to read */ }
       const legacy = getStoredSessionToken();
       if (legacy) {
         restoreLegacySessionToken(legacy);
@@ -2029,7 +2130,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
           // legacy token and still try the cookie path before showing sign-in.
         }
       }
-      const refreshed = await trySilentRefresh(Boolean(legacy)).catch(() => false);
+      const refreshed = await trySilentRefresh(Boolean(legacy) || googleOkLanding).catch(() => false);
       if (cancelled) return;
       if (refreshed) {
         try {
@@ -2043,9 +2144,13 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
           // Both restoration paths failed; show the sign-in form below.
         }
       }
+      if (googleFailedLanding) setError(authStrings(authLang).googleFailed);
       setRestoring(false);
     })();
     return () => { cancelled = true; };
+    // authLang is read once for the landing error message; the restoring
+    // panel has no toggle, so the initial language is the right one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onAuthenticated]);
   const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset" | "totp">("login");
   const [name, setName] = useState("");
@@ -2063,12 +2168,27 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   // was never verified (e.g. the user navigated away mid-signup), plus a
   // persistent "Verify email / resend code" link on the sign-in form.
   const [verifyRecovery, setVerifyRecovery] = useState(false);
-  // The auth screen itself stays English (user language loads after
-  // sign-in); these NEW recovery strings follow the browser language.
-  const authLang: Lang = useMemo(
-    () => (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en"),
-    []
-  );
+  // Auth-screen language: the EN/ES toggle on this screen. Initialized from
+  // the stored auth choice, then the shared pre-login preference (public
+  // tools), then the browser language. The choice persists through sign-up
+  // (signUp language arg) and into the session (see AUTH_LANG_STORAGE_KEY).
+  const [authLang, setAuthLang] = useState<Lang>(() => {
+    try {
+      const saved = window.localStorage.getItem(AUTH_LANG_STORAGE_KEY);
+      if (saved === "es" || saved === "en") return saved;
+      const shared = window.localStorage.getItem("crewkat-public-lang");
+      if (shared === "es" || shared === "en") return shared;
+    } catch { /* storage unavailable */ }
+    return typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en";
+  });
+  const chooseAuthLang = (next: Lang) => {
+    setAuthLang(next);
+    try {
+      window.localStorage.setItem(AUTH_LANG_STORAGE_KEY, next);
+      window.localStorage.setItem("crewkat-public-lang", next);
+    } catch { /* storage unavailable */ }
+  };
+  const t = authStrings(authLang);
   // Chrome renders fake autofill dots in an untouched password field while
   // the real value is still empty; keep the field read-only until focused so
   // the dots it shows are always real.
@@ -2085,36 +2205,36 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
   const move = (next: typeof mode) => { setMode(next); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false); setPwEditable(false); };
   const startEmailVerify = async (emailValue: string) => {
     const target = emailValue.trim();
-    if (!target) { setError(authLang === "es" ? "Escribe tu correo arriba primero y luego verifícalo." : "Enter your email above first, then verify it."); return; }
+    if (!target) { setError(t.enterEmailFirst); return; }
     setEmail(target); setMode("verify"); setError(""); setNotice(""); setCode(""); setDevCode(""); setVerifyRecovery(false);
     setBusy(true);
     try {
       const result = await api.resendVerification({ email: target });
       setDevCode(result.verificationCode ?? "");
-      setNotice(result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a verification code to ${target}.`);
+      setNotice(result.emailDelivery === "failed" ? t.emailSendFailed : t.codeEmailed(target));
     } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); }
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
       if (mode === "signup") {
-        if (!acceptedTerms) { setError("You must agree to the Terms of Service and Privacy Policy to create an account."); return; }
-        if (!acceptedMarketplaceTerms) { setError("You must agree to the Marketplace Terms of Use to create an account."); return; }
-        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true, referralCode: referralCode || undefined });
+        if (!acceptedTerms) { setError(t.mustAgreeTerms); return; }
+        if (!acceptedMarketplaceTerms) { setError(t.mustAgreeMarketplace); return; }
+        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true, referralCode: referralCode || undefined, language: authLang });
         setEmail(result.email); setDevCode(result.verificationCode ?? ""); setMode("verify"); setPassword("");
-        if (result.emailDelivery === "sent") setNotice(`We emailed a verification code to ${result.email}.`);
-        else if (result.emailDelivery === "failed") setNotice("Your account was created, but the email could not be sent. Use Get a new code to try again.");
-        else setNotice(result.existingDataClaimed ? "Account created. Use the testing code below to claim the existing Crewkat workspace." : "Account created. Use the testing code below to continue.");
+        if (result.emailDelivery === "sent") setNotice(t.codeEmailed(result.email));
+        else if (result.emailDelivery === "failed") setNotice(t.accountEmailFailed);
+        else setNotice(result.existingDataClaimed ? t.accountClaim : t.accountTesting);
       } else if (mode === "verify") {
         await api.verifyEmail({ email, code });
-        await bootstrap.refetch(); setMode("login"); setCode(""); setDevCode(""); setNotice("Email verified. Sign in to open Crewkat.");
+        await bootstrap.refetch(); setMode("login"); setCode(""); setDevCode(""); setNotice(t.emailVerified);
       } else if (mode === "forgot") {
         const result = await api.requestPasswordReset({ email });
         setDevCode(result.resetCode ?? ""); setMode("reset");
-        setNotice(result.emailDelivery === "fallback" ? "Use the testing code below to reset your password." : result.emailDelivery === "failed" ? "If that account exists, its reset email could not be sent. Try requesting a new code." : "If that account exists, we emailed a reset code.");
+        setNotice(result.emailDelivery === "fallback" ? t.resetFallback : result.emailDelivery === "failed" ? t.resetFailed : t.resetSent);
       } else if (mode === "reset") {
         await api.resetPassword({ email, code, password });
-        setMode("login"); setCode(""); setPassword(""); setDevCode(""); setNotice("Password updated. Sign in with your new password.");
+        setMode("login"); setCode(""); setPassword(""); setDevCode(""); setNotice(t.passwordUpdated);
       } else if (mode === "totp") {
         // Admin panel Phase 2: the pending proof is already the active session
         // token (parked when login returned totpRequired); the fetch layer
@@ -2129,7 +2249,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
           // proof as the active token and ask for the authenticator code.
           setActiveSessionToken(result.sessionToken);
           setCode("");
-          setNotice(authLang === "es" ? "Ingresa el código de 6 dígitos de tu app de autenticación." : "Enter the 6-digit code from your authenticator app.");
+          setNotice(t.introTotp);
           setMode("totp");
         } else {
           if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
@@ -2138,13 +2258,21 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         }
       }
     } catch (caught) {
-      const friendly = friendlyActionMessage(caught, "en");
+      const friendly = friendlyActionMessage(caught, authLang);
       setError(friendly);
-      setVerifyRecovery(mode === "login" && /verify your email/i.test(friendly));
+      setVerifyRecovery(mode === "login" && /verify your email|verifica tu correo/i.test(friendly));
     } finally { setBusy(false); }
   };
-  const title = mode === "totp" ? "Two-factor authentication" : mode === "signup" ? "Set up your owner account" : mode === "verify" ? "Verify your email" : mode === "forgot" ? "Reset your password" : mode === "reset" ? "Enter your reset code" : "Welcome back";
+  const title = mode === "totp" ? t.titleTotp : mode === "signup" ? t.titleSignup : mode === "verify" ? t.titleVerify : mode === "forgot" ? t.titleForgot : mode === "reset" ? t.titleReset : t.titleLogin;
   if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} lang={authLang} onBack={() => setLegalDocument(null)} /></div>;
+  const langToggle = (
+    <div className="auth-lang-row">
+      <div className="public-lang-toggle" role="group" aria-label={t.languageLabel}>
+        <button type="button" className={authLang === "en" ? "active" : ""} onClick={() => chooseAuthLang("en")} aria-pressed={authLang === "en"}>EN</button>
+        <button type="button" className={authLang === "es" ? "active" : ""} onClick={() => chooseAuthLang("es")} aria-pressed={authLang === "es"}>ES</button>
+      </div>
+    </div>
+  );
   if (restoring) return <main className="auth-page">
     <SafeAreaTopScrim backgroundColor="var(--bg)" />
     <section className="auth-panel">
@@ -2152,56 +2280,53 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         <img src={crewkatLogo} alt="Crewkat charcoal cat mascot holding a wrench" />
         <span>Crewkat</span>
       </div>
-      <p className="auth-intro">Signing you back in…</p>
+      <p className="auth-intro">{t.restoringIn}</p>
     </section>
   </main>;
   return <main className="auth-page">
     <SafeAreaTopScrim backgroundColor="var(--bg)" />
     <section className="auth-panel">
+      {langToggle}
       <div className="auth-brand" aria-label="Crewkat">
         <img src={crewkatLogo} alt="Crewkat charcoal cat mascot holding a wrench" />
         <span>Crewkat</span>
       </div>
       <h1>{title}</h1>
-      <p className="auth-intro">{mode === "login" ? "Sign in to manage your jobs, invoices, and clients." : mode === "signup" ? "Create a secure owner account and an empty company workspace." : mode === "verify" ? `Enter the 6-digit code for ${email}.` : mode === "totp" ? "Enter the 6-digit code from your authenticator app." : "Use a one-time code to choose a new password."}</p>
-      {mode === "signup" && !signupsEnabled && <div className="auth-claim"><strong>Registrations are closed</strong><span>New accounts are temporarily disabled. Please check back soon.</span></div>}
-      {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>Your existing workspace is ready</strong><span>{bootstrap.data.recordCounts.jobs} jobs · {bootstrap.data.recordCounts.clients} clients · {bootstrap.data.recordCounts.invoices} invoices</span><small>These records will stay intact and attach to the owner account.</small></div>}
-      {mode === "signup" && referralCode && <div className="auth-claim"><strong>Invited by a friend</strong><span>You were invited with code {referralCode} — your friend earns bonus Marketplace listings when you join.</span></div>}
+      <p className="auth-intro">{mode === "login" ? t.introLogin : mode === "signup" ? t.introSignup : mode === "verify" ? t.introVerify(email) : mode === "totp" ? t.introTotp : t.introCode}</p>
+      {mode === "signup" && !signupsEnabled && <div className="auth-claim"><strong>{t.closedTitle}</strong><span>{t.closedBody}</span></div>}
+      {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>{t.claimTitle}</strong><span>{t.claimCounts(bootstrap.data.recordCounts.jobs, bootstrap.data.recordCounts.clients, bootstrap.data.recordCounts.invoices)}</span><small>{t.claimNote}</small></div>}
+      {mode === "signup" && referralCode && <div className="auth-claim"><strong>{t.referralTitle}</strong><span>{t.referralBody(referralCode)}</span></div>}
       <form className="auth-form" onSubmit={submit}>
-        {mode === "signup" && <label><span>Name</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
-        <label><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset" || mode === "totp"} /></label>
-        {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} readOnly={!pwEditable} onFocus={() => setPwEditable(true)} /><small>{mode !== "login" ? "Use at least 10 characters." : ""}</small></label>}
-        {(mode === "verify" || mode === "reset" || mode === "totp") && <label><span>6-digit code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
-        {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>Terms of Service</button> and acknowledge the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button>.</span></div>}
-        {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Marketplace Terms of Use" type="checkbox" checked={acceptedMarketplaceTerms} onChange={(event) => setAcceptedMarketplaceTerms(event.target.checked)} required /><span>I agree to the <button type="button" className="legal-inline-button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms of Use</button>.</span></div>}
-        {devCode && <div className="dev-code" role="status"><strong>Testing code</strong><code>{devCode}</code><small>No transactional email key is configured, so this fallback code is shown here. It expires in 30 minutes.</small></div>}
+        {mode === "signup" && <label><span>{t.name}</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
+        <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset" || mode === "totp"} /></label>
+        {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? t.newPassword : t.password}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} readOnly={!pwEditable} onFocus={() => setPwEditable(true)} /><small>{mode !== "login" ? t.passwordHint : ""}</small></label>}
+        {(mode === "verify" || mode === "reset" || mode === "totp") && <label><span>{t.code}</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
+        {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>{t.consentTermsA}<button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>{t.termsLabel}</button>{t.consentTermsB}<button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>{t.privacyLabel}</button>.</span></div>}
+        {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Marketplace Terms of Use" type="checkbox" checked={acceptedMarketplaceTerms} onChange={(event) => setAcceptedMarketplaceTerms(event.target.checked)} required /><span>{t.consentMarketplaceA}<button type="button" className="legal-inline-button" onClick={() => setLegalDocument("marketplace")}>{t.marketplaceTermsLabel}</button>.</span></div>}
+        {devCode && <div className="dev-code" role="status"><strong>{t.testingCode}</strong><code>{devCode}</code><small>{t.testingCodeNote}</small></div>}
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
-        {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar mi correo en su lugar" : "Verify my email instead"}</button>}
-        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "verify" ? "Verify email" : mode === "totp" ? "Verify" : mode === "forgot" ? "Get reset code" : mode === "reset" ? "Save new password" : "Sign in"}</button>
+        {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{t.verifyInstead}</button>}
+        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? t.pleaseWait : mode === "signup" ? t.createAccount : mode === "verify" ? t.verifyEmailBtn : mode === "totp" ? t.verifyBtn : mode === "forgot" ? t.getResetCode : mode === "reset" ? t.savePassword : t.signIn}</button>
       </form>
       {(mode === "login" || mode === "signup") && googleCfg.data?.clientId && <div className="auth-google">
-        <div className="auth-divider" aria-hidden="true"><span>or</span></div>
+        <div className="auth-divider" aria-hidden="true"><span>{t.orDivider}</span></div>
         <GoogleSignInButton
           clientId={googleCfg.data.clientId}
+          lang={authLang}
+          context={mode === "signup" ? "signup" : "signin"}
           disabled={busy || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms))}
-          onSuccess={(result) => {
-            if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
-            else persistLegacySessionToken(result.sessionToken);
-            onAuthenticated(result.user);
-          }}
-          onError={(message) => setError(message)}
         />
       </div>}
       <div className="auth-links">
-        {mode === "login" && <button type="button" onClick={() => move("forgot")}>Forgot password?</button>}
-        {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{authLang === "es" ? "Verificar correo / reenviar código" : "Verify email / resend code"}</button>}
-        {mode === "login" && <button type="button" onClick={() => move("signup")}>Create a company account</button>}
-        {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>Already have an account? Sign in</button>}
-        {(mode === "forgot" || mode === "reset" || mode === "verify" || mode === "totp") && <button type="button" onClick={() => move("login")}>Back to sign in</button>}
-        {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? "Use the new testing code below." : result.emailDelivery === "failed" ? "The email could not be sent. Try again in a moment." : `We emailed a new verification code to ${email}.`); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>Get a new code</button>}
+        {mode === "login" && <button type="button" onClick={() => move("forgot")}>{t.forgotPassword}</button>}
+        {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{t.verifyResend}</button>}
+        {mode === "login" && <button type="button" onClick={() => move("signup")}>{t.createCompanyAccount}</button>}
+        {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>{t.alreadyHaveAccount}</button>}
+        {(mode === "forgot" || mode === "reset" || mode === "verify" || mode === "totp") && <button type="button" onClick={() => move("login")}>{t.backToSignIn}</button>}
+        {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? t.newCodeTesting : result.emailDelivery === "failed" ? t.emailSendFailed : t.newCodeSent(email)); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>{t.getNewCode}</button>}
       </div>
-      <div className="auth-security"><p>Passwords are hashed before storage. You stay signed in on this device — sign out any time from Settings → Account.</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>Terms of Service</button><button type="button" onClick={() => setLegalDocument("privacy")}>Privacy Policy</button><button type="button" onClick={() => setLegalDocument("marketplace")}>Marketplace Terms</button></nav></div>
+      <div className="auth-security"><p>{t.securityNote}</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>{t.termsLabel}</button><button type="button" onClick={() => setLegalDocument("privacy")}>{t.privacyLabel}</button><button type="button" onClick={() => setLegalDocument("marketplace")}>{t.marketplaceTermsLink}</button></nav></div>
     </section>
   </main>;
 }
@@ -2799,6 +2924,31 @@ function CrewkatApplication() {
     screenStackRef.current = [{ name: "tools" }];
     requestNavigationScroll({ mode: "top" });
   };
+  // Navigation-loop fix (2026-10-12): completion navigations (save/delete)
+  // must REPLACE or POP, never push. setScreen() pushes, so a form whose
+  // save pushed its parent list left the finished form buried in the stack
+  // — Back from the list resurrected the form, whose exit pushed the list
+  // again: an infinite Estimates list ↔ New Estimate loop with no tab bar
+  // to escape through. (goJob above already replaces for the same reason.)
+  const replaceScreen = (next: Screen) => {
+    const currentIndex = Math.max(0, screenStack.length - 1);
+    scrollSnapshotsRef.current[currentIndex] = undefined;
+    const nextStack = [...screenStackRef.current.slice(0, -1), next];
+    setScreenStack(nextStack);
+    screenStackRef.current = nextStack;
+    requestNavigationScroll({ mode: "top" });
+  };
+  // New Estimate close/save: land on the Estimates list deterministically.
+  // When the builder was opened from a document list (Estimates or the
+  // combined Invoices & Estimates screen), pop back to that very list so
+  // ITS back button keeps going to its own parent; from anywhere else
+  // (job/client detail, quick-create), swap the form for the list.
+  const closeQuoteBuilder = () => {
+    const stack = screenStackRef.current;
+    const below = stack[stack.length - 2];
+    if (below && (below.name === "quotes" || below.name === "invoices")) popScreenStack();
+    else replaceScreen({ name: "quotes" });
+  };
   const openRoot = (tab: RootTab) => {
     scrollSnapshotsRef.current = [];
     // Build 0.3: returning to the Invoices tab restores the last-viewed
@@ -2911,6 +3061,27 @@ function CrewkatApplication() {
     mutationFn: (v: SettingsInput) => api.updateSettings(v),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
+  // Auth-screen language hand-off: when the owner picked EN/ES on the
+  // sign-in/sign-up screens, apply it to this company's settings once, so
+  // the session opens in that language (covers Google sign-ups, which
+  // never pass through the signUp action's language arg). The marker is
+  // consumed either way so it can't override a later settings change.
+  const authLangAppliedRef = useRef(false);
+  useEffect(() => {
+    if (authLangAppliedRef.current || !settings.data) return;
+    authLangAppliedRef.current = true;
+    let pending: string | null = null;
+    try {
+      pending = window.localStorage.getItem(AUTH_LANG_STORAGE_KEY);
+      if (pending === "es" || pending === "en") window.localStorage.removeItem(AUTH_LANG_STORAGE_KEY);
+    } catch { /* storage unavailable */ }
+    if (pending !== "es" && pending !== "en") return;
+    if (pending === settings.data.language) return;
+    const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+    saveSettings.mutate({ ...input, language: pending });
+    // saveSettings is a stable mutation object for this purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.data]);
   // Simple Mode gating removed 2026-10-11: it was derived from a workspace
   // screen entry that nothing navigates to, so simpleMode was stuck ON for
   // all users and hid the portal panel, profit strip, Pipeline button, etc.
@@ -3129,8 +3300,9 @@ function CrewkatApplication() {
           clientId={screen.clientId}
           jobId={screen.jobId}
           onBack={goBack}
-          // Build 0.6 (item 6): saving an estimate lands on the Estimates tab.
-          onSaved={() => setScreen({ name: "quotes" })}
+          // Build 0.6 (item 6): saving an estimate lands on the Estimates
+          // tab — via pop/replace, never a push (see closeQuoteBuilder).
+          onSaved={closeQuoteBuilder}
         />
       )}
       {screen.name === "quotePreview" && (
@@ -3241,13 +3413,13 @@ function CrewkatApplication() {
         <DispatchScreen lang={lang} onBack={goBackOrTools} />
       )}
       {screen.name === "marketplaceNew" && (
-        <MarketplaceListingForm lang={lang} settings={appSettings} initialIntent={screen.intent} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
+        <MarketplaceListingForm lang={lang} settings={appSettings} initialIntent={screen.intent} onBack={goBack} onSaved={(listingId) => replaceScreen({ name: "marketplaceDetail", listingId })} />
       )}
       {screen.name === "marketplaceEdit" && (
-        <MarketplaceListingForm lang={lang} settings={appSettings} listingId={screen.listingId} onBack={goBack} onSaved={(listingId) => setScreen({ name: "marketplaceDetail", listingId })} />
+        <MarketplaceListingForm lang={lang} settings={appSettings} listingId={screen.listingId} onBack={goBack} onSaved={(listingId) => replaceScreen({ name: "marketplaceDetail", listingId })} />
       )}
       {screen.name === "marketplaceDetail" && (
-        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} onBack={goBack} onOpenThread={(conversationId) => setScreen({ name: "marketplaceThread", conversationId })} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={() => setScreen({ name: "marketplace" })} />
+        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} onBack={goBack} onOpenThread={(conversationId) => setScreen({ name: "marketplaceThread", conversationId })} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={goBack} />
       )}
       {screen.name === "marketplaceThread" && (
         <MarketplaceThreadScreen lang={lang} conversationId={screen.conversationId} onBack={goBack} />
@@ -6093,17 +6265,20 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
   // Danny 2026-10-11: all tools in one place, clear divisions. Free groups on
   // top; Pro tools grouped together at the bottom (standalone Pro screen retired).
-  const groups: Array<{ title: string; tiles: ToolTile[]; pro?: boolean }> = [
-    { title: lang === "es" ? "Dinero" : "Money", tiles: pick(["toolbox:rate", "toolbox:margin", "toolbox:loan", "invoices"]) },
-    { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
-    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", tiles: pick(["operations:leads", "jobs", "referrals", "referContractor"]) },
-    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", tiles: pick(["crewDay", "operations:calendar", "dispatch"]) },
-    { title: lang === "es" ? "Marketing" : "Marketing", tiles: pick(["gallery"]) },
-    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", tiles: pick(["companyProfile", "settings", "help"]) },
-    { title: lang === "es" ? "Solo por diversión" : "Just for fun", tiles: pick(["craneRun"]) },
-    { title: lang === "es" ? "Pro — Dinero y oficina" : "Pro — Money & office", tiles: pick(["businessTools:price", "businessTools:templates", "businessTools:mileage", "businessTools:expenses", "expansion:scanner", "reports", "fieldIntelligence:payroll", "fieldIntelligence:costs"]), pro: true },
-    { title: lang === "es" ? "Pro — Campo y equipo" : "Pro — Field & crew", tiles: pick(["fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:crew"]), pro: true },
-    { title: lang === "es" ? "Pro — Clientes y administración" : "Pro — Clients & admin", tiles: pick(["followups", "admin", "expansion:warranties"]), pro: true },
+  // Fix 7 (2026-10-12): each group carries its own icon from the app icon
+  // set; the Pro groups dropped the "Pro — " title prefix and wear the
+  // standard PRO badge next to the title instead (same badge as Pro rows).
+  const groups: Array<{ title: string; tiles: ToolTile[]; pro?: boolean; icon: ReactNode }> = [
+    { title: lang === "es" ? "Dinero" : "Money", icon: <Icon size={19}><path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" /></Icon>, tiles: pick(["toolbox:rate", "toolbox:margin", "toolbox:loan", "invoices"]) },
+    { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", icon: <Icon size={19}><path d="M4 19h16L4 5zM8 15h5" /></Icon>, tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
+    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", icon: <Icon size={19}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon>, tiles: pick(["operations:leads", "jobs", "referrals", "referContractor"]) },
+    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", icon: <Icon size={19}><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>, tiles: pick(["crewDay", "operations:calendar", "dispatch"]) },
+    { title: lang === "es" ? "Marketing" : "Marketing", icon: <Icon size={19}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4M9 9h.01" /></Icon>, tiles: pick(["gallery"]) },
+    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", icon: <span className="tool-group-gear"><GearIcon /></span>, tiles: pick(["companyProfile", "settings", "help"]) },
+    { title: lang === "es" ? "Solo por diversión" : "Just for fun", icon: <Icon size={19}><path d="M8.5 21v-4.5M13 21v-4.5" /><path d="M5 15.5c0-2.4 2.7-4 5.8-4 1.5 0 2.9.4 3.9 1.1l1.7-4.2.8-3.4" /><circle cx="17.4" cy="4.6" r="1.7" /><path d="M19 4.9l3 1.2-3.1 1.2" /></Icon>, tiles: pick(["craneRun"]) },
+    { title: lang === "es" ? "Dinero y oficina" : "Money & office", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:price", "businessTools:templates", "businessTools:mileage", "businessTools:expenses", "expansion:scanner", "reports", "fieldIntelligence:payroll", "fieldIntelligence:costs"]), pro: true },
+    { title: lang === "es" ? "Campo y equipo" : "Field & crew", icon: <Icon size={19}><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z" /></Icon>, tiles: pick(["fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:crew"]), pro: true },
+    { title: lang === "es" ? "Clientes y administración" : "Clients & admin", icon: <Icon size={19}><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon>, tiles: pick(["followups", "admin", "expansion:warranties"]), pro: true },
   ];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
@@ -6140,7 +6315,11 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
       {groups.map((group) => group.tiles.length > 0 && (
         <details key={group.title} className={`tool-group everyday-tool-group${group.pro ? " pro-tool-group" : ""}`}>
           <summary className="tool-group-heading">
-            <h2>{group.title}</h2>
+            <span className="tool-group-title">
+              <span className="tool-group-icon" aria-hidden="true">{group.icon}</span>
+              <h2>{group.title}</h2>
+              {group.pro && <span className={`pro-badge${isPremium ? "" : " is-locked"}`}>PRO</span>}
+            </span>
             <span className="tool-group-pill"><span className="tool-group-count">{group.tiles.length}</span><span className="tool-group-chevron" aria-hidden="true">▾</span></span>
           </summary>
           <div className="tool-directory">
@@ -9436,6 +9615,8 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
   const accountKey = `crewkat:push-prompt-seen:uid:${userId}`;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const dismissTimerRef = useRef<number | null>(null);
   const sheet = useAnimatedDismiss(open);
   useEffect(() => {
     let cancelled = false;
@@ -9452,6 +9633,7 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
     return () => { cancelled = true; };
   }, []);
   const dismiss = () => {
+    if (dismissTimerRef.current !== null) { window.clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
     try {
       localStorage.setItem(PUSH_PROMPT_SEEN_KEY, "1");
       localStorage.setItem(accountKey, "1");
@@ -9462,11 +9644,21 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
     setOpen(false);
   };
   useEscapeToClose(sheet.render, dismiss);
+  // The subscribe call now always settles (push.ts races every step against
+  // a timeout), but this handler is written defensively anyway: busy always
+  // clears, success dismisses immediately, and any failure shows a brief
+  // note and then continues — the user is NEVER trapped on "Enabling…".
   const enable = async () => {
+    if (busy) return;
     setBusy(true);
-    try { await requestPushPermissionAndSubscribe(); } catch { /* status surfaces in Settings */ }
+    let status: Awaited<ReturnType<typeof requestPushPermissionAndSubscribe>> = "error";
+    try { status = await requestPushPermissionAndSubscribe(); } catch { status = "error"; }
     setBusy(false);
-    dismiss();
+    if (status === "subscribed") { dismiss(); return; }
+    setNote(status === "denied"
+      ? (lang === "es" ? "Las notificaciones están bloqueadas en este navegador — puedes activarlas luego en Ajustes." : "Notifications are blocked in this browser — you can turn them on later in Settings.")
+      : (lang === "es" ? "No se pudieron activar aquí — puedes intentarlo luego en Ajustes." : "Couldn't turn them on here — you can try again later in Settings."));
+    dismissTimerRef.current = window.setTimeout(dismiss, 2200);
   };
   if (!sheet.render) return null;
   const t = lang === "es"
@@ -9478,6 +9670,7 @@ function PushPromptSheet({ lang }: { lang: Lang }) {
         <div className="sheet-handle" />
         <div className="sheet-title-row"><h2>{t.title}</h2></div>
         <p className="muted-note">{t.body}</p>
+        {note && <p className="status error" role="status">{note}</p>}
         <div className="push-prompt-actions">
           <button type="button" className="primary-button" disabled={busy} onClick={enable}>{busy ? t.enabling : t.enable}</button>
           <button type="button" className="secondary-button" onClick={dismiss}>{t.notNow}</button>
@@ -19368,6 +19561,42 @@ function AttentionSheet({ lang, onClose, setScreen, rows }: {
   );
 }
 
+// Shrink-to-fit label (Danny's rule, 2026-10-12): card labels are shown in
+// FULL — never truncated, never overflowing their card. Measures the text
+// at its designed size and steps the font down only when it would overflow
+// (longer ES strings), so EN renders exactly as designed. Re-measures on
+// resize and once webfonts settle (condensed faces change text width).
+function FitLabel({ as = "span", text, className, minFontSize = 8.5 }: {
+  as?: "span" | "small" | "strong";
+  text: string;
+  className?: string;
+  minFontSize?: number;
+}) {
+  const ref = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let cancelled = false;
+    const fit = () => {
+      if (cancelled) return;
+      el.style.fontSize = "";
+      const base = parseFloat(window.getComputedStyle(el).fontSize) || 12;
+      const avail = el.clientWidth;
+      const full = el.scrollWidth;
+      if (avail > 0 && full > avail + 1) {
+        const size = Math.max(minFontSize, Math.floor(base * (avail / full) * 10) / 10);
+        el.style.fontSize = `${size}px`;
+      }
+    };
+    fit();
+    if (document.fonts?.ready) void document.fonts.ready.then(fit).catch(() => {});
+    window.addEventListener("resize", fit);
+    return () => { cancelled = true; window.removeEventListener("resize", fit); };
+  }, [text, minFontSize]);
+  const Tag = as as "span";
+  return <Tag ref={ref as React.RefObject<HTMLSpanElement>} className={`fit-label${className ? ` ${className}` : ""}`}>{text}</Tag>;
+}
+
 function TodayScreen({
   lang,
   settings,
@@ -19610,6 +19839,11 @@ function TodayScreen({
           <div className="home-header-actions">
             <button className="icon-button" type="button" onClick={() => { buzz(8); setSearchOpen(true); }} aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}><Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon></button>
             <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
+            {/* Build 3.1.1 parity fix (2026-10-12): the loaded header dropped
+                the Tools/Settings shortcuts the loading header shows — they
+                are permanent main-tab actions and must not vanish when data
+                arrives. */}
+            <MainTabHeaderActions lang={lang} setScreen={setScreen} />
             <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>
           </div>
         </div>
@@ -19659,17 +19893,17 @@ function TodayScreen({
             <button type="button" className={`glance-card${paymentEscalations.length > 0 ? " alert" : ""}`} onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
               <span className="glance-icon tone-red" aria-hidden="true"><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M12 15v4M10 17h4" /></Icon></span>
               <strong><CountUp value={paymentEscalations.length} format={(n) => String(Math.round(n))} /></strong>
-              <small>{lang === "es" ? "Facturas vencidas" : "Overdue invoices"}</small>
+              <FitLabel as="small" text={lang === "es" ? "Facturas vencidas" : "Overdue invoices"} />
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen(upcomingJobs[0] ? { name: "detail", jobId: upcomingJobs[0].id } : { name: "jobs" }); }}>
               <span className="glance-icon tone-blue" aria-hidden="true"><Icon><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" /></Icon></span>
               <strong><CountUp value={upcomingJobs.length} format={(n) => String(Math.round(n))} /></strong>
-              <small>{lang === "es" ? "Hoy y mañana" : "Today & tomorrow"}</small>
+              <FitLabel as="small" text={lang === "es" ? "Hoy y mañana" : "Today & tomorrow"} />
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
               <span className="glance-icon tone-purple" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
               <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
-              <small>{lang === "es" ? "Estimados pendientes" : "Estimates pending"}</small>
+              <FitLabel as="small" text={lang === "es" ? "Estimados pendientes" : "Estimates pending"} />
             </button>
           </section>
         );
@@ -19694,10 +19928,10 @@ function TodayScreen({
         <b className={`status-chip ${latestInvoice.status}`}>{invoiceStatusLabel(latestInvoice.status)}</b>
       </button>}
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
-        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><strong>{lang === "es" ? "Clientes" : "Clients"}</strong><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
-        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><strong>{lang === "es" ? "Mercado" : "Marketplace"}</strong><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><strong>{lang === "es" ? "Día del equipo" : "Crew day"}</strong><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><strong>{lang === "es" ? "Herramientas" : "Tools"}</strong><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Clientes" : "Clients"} /><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
+        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><FitLabel as="strong" text={lang === "es" ? "Mercado" : "Marketplace"} /><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Día del equipo" : "Crew day"} /><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Herramientas" : "Tools"} /><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
       {pinnedTools.length > 0 && (
         <section className="home-pinned" aria-label={lang === "es" ? "Fijados" : "Pinned"}>
@@ -20689,7 +20923,7 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
       {cards.map((card, index) => (
         <button key={card.id} type="button" className={`b06-money-card stagger-in b06-accent-${card.accent}`} style={{ animationDelay: `${index * 80}ms` }} onClick={() => setOpenCard(card.id)} aria-haspopup="dialog">
           <span className="b06-money-icon"><Icon>{card.icon}</Icon></span>
-          <span className="b06-money-label">{card.label}</span>
+          <FitLabel as="span" className="b06-money-label" text={card.label} />
           <strong>{card.value}</strong>
           <span className="b06-money-sub">{card.sub}</span>
         </button>

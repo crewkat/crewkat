@@ -25,6 +25,35 @@ function pushSupported(): boolean {
   );
 }
 
+// Push hang fix (2026-10-12): every awaited step in the subscribe flow can
+// stall forever in some contexts — Notification.requestPermission() inside
+// WebView/TWA shells, navigator.serviceWorker.ready when no worker ever
+// becomes active (different scope, failed registration), pushManager
+// .subscribe(). The onboarding sheet sat on "Enabling…" forever. Every
+// promise below is now raced against a timeout so callers ALWAYS settle
+// with a PushStatus they can act on.
+const PUSH_STEP_TIMEOUT_MS = 8_000;
+const PUSH_ENABLE_TIMEOUT_MS = 12_000;
+
+function withPushTimeout<T, F>(promise: Promise<T>, ms: number, fallback: F): Promise<T | F> {
+  return new Promise<T | F>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      () => { clearTimeout(timer); resolve(fallback); },
+    );
+  });
+}
+
+/** serviceWorker.ready, but null after a few seconds instead of never. */
+async function readyRegistration(): Promise<ServiceWorkerRegistration | null> {
+  try {
+    return await withPushTimeout(navigator.serviceWorker.ready, PUSH_STEP_TIMEOUT_MS, null);
+  } catch {
+    return null;
+  }
+}
+
 /** Fired on window when a freshly deployed service worker takes control. */
 export const SW_UPDATE_AVAILABLE_EVENT = "crewkat:sw-update";
 
@@ -103,7 +132,8 @@ export async function ensurePushSubscription(): Promise<PushStatus> {
     if (!publicKey) return "unavailable";
     if (Notification.permission === "denied") return "denied";
     if (Notification.permission !== "granted") return "needs-permission";
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await readyRegistration();
+    if (!registration) return "unavailable";
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
@@ -120,25 +150,34 @@ export async function ensurePushSubscription(): Promise<PushStatus> {
   }
 }
 
-/** Call from a user gesture (Settings toggle). Prompts for permission, then subscribes. */
+/**
+ * Call from a user gesture (Settings toggle, onboarding sheet, nudge
+ * banner). Prompts for permission, then subscribes. HARD GUARANTEE: this
+ * always settles within ~PUSH_ENABLE_TIMEOUT_MS — a wedged permission
+ * prompt or push service must never leave a button stuck on "Enabling…".
+ */
 export async function requestPushPermissionAndSubscribe(): Promise<PushStatus> {
-  try {
-    if (!pushSupported()) return "unavailable";
-    const { publicKey } = await api.getVapidPublicKey({});
-    if (!publicKey) return "unavailable";
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return "denied";
-    return ensurePushSubscription();
-  } catch {
-    return "error";
-  }
+  const attempt = (async (): Promise<PushStatus> => {
+    try {
+      if (!pushSupported()) return "unavailable";
+      const { publicKey } = await api.getVapidPublicKey({});
+      if (!publicKey) return "unavailable";
+      const permission = await withPushTimeout(Notification.requestPermission(), PUSH_STEP_TIMEOUT_MS, "denied" as NotificationPermission);
+      if (permission !== "granted") return "denied";
+      return ensurePushSubscription();
+    } catch {
+      return "error";
+    }
+  })();
+  return withPushTimeout(attempt, PUSH_ENABLE_TIMEOUT_MS, "error");
 }
 
 /** Removes the local subscription and deletes it server-side. */
 export async function disablePushSubscription(): Promise<void> {
   try {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await readyRegistration();
+    if (!registration) return;
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
       try {
@@ -169,7 +208,8 @@ export async function getPushReadiness(): Promise<PushReadiness> {
     if (!publicKey) return base;
     base.vapidConfigured = true;
     if (Notification.permission !== "granted") return base;
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await readyRegistration();
+    if (!registration) return base;
     const subscription = await registration.pushManager.getSubscription();
     base.subscribed = Boolean(subscription);
     return base;

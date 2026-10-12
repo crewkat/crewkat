@@ -727,6 +727,54 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Google Sign-In, redirect mode (2026-10-12): the GIS button now sends
+    // the browser through Google's full-page account chooser, and Google
+    // POSTs the ID token here. The old One Tap/popup flow was blocked
+    // outright in browsers with third-party sign-in restrictions, stranding
+    // users on an error. Verify via the existing googleSignIn action, set
+    // its session cookies on this response, and land the user in the app —
+    // the refresh cookie silently restores the session on arrival and the
+    // #google=ok flag tells the client to attempt that restore.
+    // Requires https://crewkat.com/auth/google/callback (and the www
+    // variant) registered as Authorized redirect URIs in the Google Cloud
+    // Console OAuth client — without that, Google refuses the redirect.
+    if (path === "/auth/google/callback" && req.method === "POST") {
+      const fail = (reason) => {
+        console.error(`[crewkat] Google sign-in callback failed: ${reason}`);
+        res.writeHead(303, { location: "/app/#google=error" });
+        res.end();
+      };
+      try {
+        const form = new URLSearchParams(await readBody(req, { raw: true }));
+        const credential = form.get("credential") ?? "";
+        const csrfBody = form.get("g_csrf_token") ?? "";
+        const csrfCookie = parseCookies(req.headers.cookie)["g_csrf_token"] ?? "";
+        if (!credential) { fail("missing credential"); return; }
+        // Double-submit CSRF check (GIS sets the cookie when the button
+        // renders; some browsers withhold it on the cross-site POST, so it
+        // is enforced when present and the body token is always required).
+        if (!csrfBody || (csrfCookie && csrfCookie !== csrfBody)) { fail("csrf token mismatch"); return; }
+        const ipSalt = process.env.SESSION_IP_SALT?.trim();
+        const reqMeta = {
+          refreshToken: undefined,
+          userAgent: req.headers["user-agent"] ?? "",
+          ipHash: ipSalt ? await sha256Hex(`${ipSalt}:${clientIp(req)}`) : "",
+          clientIp: clientIp(req),
+          isProdCookie: process.env.NODE_ENV === "production",
+        };
+        const { body } = await dispatchAction("googleSignIn", { idToken: credential }, reqMeta);
+        if (body?.error || !body?.data) { fail(body?.error ?? "no session issued"); return; }
+        const setCookies = Array.isArray(body.data.setCookies) ? body.data.setCookies : [];
+        const headers = { location: "/app/#google=ok" };
+        if (setCookies.length) headers["set-cookie"] = setCookies;
+        res.writeHead(303, headers);
+        res.end();
+      } catch (error) {
+        fail(error?.message ?? "unexpected error");
+      }
+      return;
+    }
+
     if (path === "/actions" && req.method === "POST") {
       // CSRF guard: browser POSTs must be same-origin (Origin/Referer check).
       if (!sameOriginRequest(req)) {

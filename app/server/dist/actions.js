@@ -41722,6 +41722,7 @@ var portalTokens = sqliteTable("portal_tokens", {
   jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
+  shortCode: text("short_code").unique(),
   revokedAt: integer2("revoked_at", { mode: "timestamp_ms" }),
   expiresAt: integer2("expires_at", { mode: "timestamp_ms" }),
   viewCount: integer2("view_count").notNull().default(0),
@@ -73711,6 +73712,16 @@ async function uniqueDocumentShortCode(ctx) {
   }
   return randomShortCode() + randomShortCode();
 }
+async function uniquePortalShortCode(ctx) {
+  const db = ctx.db();
+  for (let attempt = 0;attempt < 5; attempt++) {
+    const code = randomShortCode();
+    const existing = (await db.select({ id: portalTokens.id }).from(portalTokens).where(eq(portalTokens.shortCode, code)).limit(1))[0];
+    if (!existing)
+      return code;
+  }
+  return randomShortCode() + randomShortCode();
+}
 var PORTAL_RATE_LIMIT_IP_PER_MIN = 30;
 var PORTAL_RATE_LIMIT_TOKEN_PER_MIN = 120;
 var PORTAL_VIEW_EVENT_THROTTLE_MS = 60 * 60000;
@@ -73789,9 +73800,15 @@ var googleAuth = {
 };
 async function requirePortalAccess(ctx, token, opts) {
   const db = ctx.db();
-  const hash = await hashPortalToken(token);
-  await checkPortalRateLimit(ctx, hash);
-  const access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
+  let access;
+  if (/^[A-Za-z0-9]{8,24}$/.test(token) && token.length < 32) {
+    await checkPortalRateLimit(ctx, `portal-short:${token}`);
+    access = (await db.select().from(portalTokens).where(eq(portalTokens.shortCode, token)).limit(1))[0];
+  } else {
+    const hash = await hashPortalToken(token);
+    await checkPortalRateLimit(ctx, hash);
+    access = (await db.select().from(portalTokens).where(eq(portalTokens.tokenHash, hash)).limit(1))[0];
+  }
   if (!access || access.revokedAt)
     throw new Error("This portal link is no longer active.");
   if (access.expiresAt && access.expiresAt.getTime() < Date.now())
@@ -75524,7 +75541,7 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
     }
   }),
   signUp: defineAction({
-    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: string2().trim().max(16).optional() }),
+    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: string2().trim().max(16).optional(), language: languageSchema.optional() }),
     response: object({ ok: literal(true), email: string2(), verificationCode: string2().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: boolean2() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args) {
@@ -75547,6 +75564,13 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
       if (!made)
         throw new Error("The account could not be created.");
+      if (args.language) {
+        const existingSettings = (await db.select({ id: settings.id }).from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+        if (existingSettings)
+          await db.update(settings).set({ language: args.language, updatedAt: now }).where(eq(settings.id, existingSettings.id));
+        else
+          await db.insert(settings).values({ companyId, companyName: "", language: args.language, updatedAt: now });
+      }
       const referrerCode = normalizeReferralCode(args.referralCode);
       if (referrerCode) {
         try {
@@ -77923,59 +77947,68 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
+  createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), shortCode: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
     const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
     const hash = await hashPortalToken(token);
+    const shortCode = await uniquePortalShortCode(ctx);
     await db.update(portalTokens).set({ revokedAt: new Date }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt)));
     const expiresAt = args.expiresInDays === 0 ? null : new Date(Date.now() + args.expiresInDays * 86400000);
-    await db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), expiresAt, createdAt: new Date });
+    await db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), shortCode, expiresAt, createdAt: new Date });
     ctx.invalidateQueries();
-    return { token, route: `#portal=${encodeURIComponent(token)}`, expiresAt: expiresAt?.toISOString() ?? null };
+    return { token, shortCode, route: `p/${encodeURIComponent(shortCode)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
   revokePortalLink: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().update(portalTokens).set({ revokedAt: new Date }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt)));
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  getPortalLinkInfo: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ link: object({ hint: string2(), expiresAt: string2().nullable(), expired: boolean2(), viewCount: number2(), firstViewedAt: string2().nullable(), lastViewedAt: string2().nullable(), createdAt: string2() }).nullable() }), async handler(ctx, args) {
+  getPortalLinkInfo: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ link: object({ hint: string2(), shortCode: string2().nullable(), expiresAt: string2().nullable(), expired: boolean2(), viewCount: number2(), firstViewedAt: string2().nullable(), lastViewedAt: string2().nullable(), createdAt: string2() }).nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const link = (await db.select().from(portalTokens).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt))).orderBy(desc(portalTokens.createdAt)).limit(1))[0];
     if (!link)
       return { link: null };
-    return { link: { hint: link.tokenHint, expiresAt: link.expiresAt?.toISOString() ?? null, expired: link.expiresAt ? link.expiresAt.getTime() < Date.now() : false, viewCount: link.viewCount, firstViewedAt: link.firstViewedAt?.toISOString() ?? null, lastViewedAt: link.lastViewedAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() } };
+    let shortCode = link.shortCode;
+    if (!shortCode) {
+      shortCode = await uniquePortalShortCode(ctx);
+      await db.update(portalTokens).set({ shortCode }).where(eq(portalTokens.id, link.id));
+    }
+    return { link: { hint: link.tokenHint, shortCode, expiresAt: link.expiresAt?.toISOString() ?? null, expired: link.expiresAt ? link.expiresAt.getTime() < Date.now() : false, viewCount: link.viewCount, firstViewedAt: link.firstViewedAt?.toISOString() ?? null, lastViewedAt: link.lastViewedAt?.toISOString() ?? null, createdAt: link.createdAt.toISOString() } };
   } }),
-  rotatePortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
+  rotatePortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), shortCode: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
     const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
     const hash = await hashPortalToken(token);
+    const shortCode = await uniquePortalShortCode(ctx);
     const now = new Date;
     const expiresAt = args.expiresInDays === 0 ? null : new Date(now.getTime() + args.expiresInDays * 86400000);
-    await db.batch([db.update(portalTokens).set({ revokedAt: now }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt))), db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), expiresAt, createdAt: now })]);
+    await db.batch([db.update(portalTokens).set({ revokedAt: now }).where(and(eq(portalTokens.jobId, args.jobId), isNull(portalTokens.revokedAt))), db.insert(portalTokens).values({ jobId: args.jobId, tokenHash: hash, tokenHint: token.slice(-6), shortCode, expiresAt, createdAt: now })]);
     ctx.invalidateQueries();
-    return { token, route: `#portal=${encodeURIComponent(token)}`, expiresAt: expiresAt?.toISOString() ?? null };
+    return { token, shortCode, route: `p/${encodeURIComponent(shortCode)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
-  getPortalData: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })) })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
+  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })) })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
+    const portalSettings = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
+    const portalCompany = { name: portalSettings?.companyName ?? "", phone: portalSettings?.phone ?? "", logoUrl: portalSettings?.logoBlobKey ? await ctx.blobs.getUrl(portalSettings.logoBlobKey) : null };
     const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments)]);
     const today = new Date().toISOString();
-    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
+    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
       const paid = payments2.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
       return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2) };
     }) };
   } }),
-  portalUpdateSelection: defineAction({ request: object({ token: string2().min(32).max(200), selectionId: number2().int().positive(), status: _enum(["approved", "rejected"]) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+  portalUpdateSelection: defineAction({ request: object({ token: string2().min(8).max(200), selectionId: number2().int().positive(), status: _enum(["approved", "rejected"]) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: false });
     const selection = (await db.select().from(selections).where(eq(selections.id, args.selectionId)).limit(1))[0];
@@ -77986,7 +78019,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  portalSignChangeOrder: defineAction({ request: object({ token: string2().min(32).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+  portalSignChangeOrder: defineAction({ request: object({ token: string2().min(8).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: false });
     const document2 = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
@@ -78025,6 +78058,16 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   revokeDocumentLink: defineAction({ request: object({ kind: documentKindSchema, id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().update(documentLinks).set({ revokedAt: new Date }).where(and(eq(documentLinks.documentKind, args.kind), eq(documentLinks.documentId, args.id), isNull(documentLinks.revokedAt)));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  deleteDocument: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const doc = (await db.select({ id: documents.id, kind: documents.kind }).from(documents).where(eq(documents.id, args.id)).limit(1))[0];
+    if (!doc)
+      throw new Error("Document not found.");
+    await db.delete(documentLinks).where(and(eq(documentLinks.documentKind, doc.kind), eq(documentLinks.documentId, args.id)));
+    await db.delete(documents).where(eq(documents.id, args.id));
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -80442,13 +80485,13 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
-  portalListJobMessages: defineAction({ request: object({ token: string2().min(32).max(200) }), response: object({ messages: array(object({ id: number2(), jobId: number2(), sender: _enum(["contractor", "client", "system"]), body: string2(), imageUrl: string2().nullable(), voiceUrl: string2().nullable(), voiceDurationSeconds: number2(), createdAt: string2() })) }), async handler(ctx, args) {
+  portalListJobMessages: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ messages: array(object({ id: number2(), jobId: number2(), sender: _enum(["contractor", "client", "system"]), body: string2(), imageUrl: string2().nullable(), voiceUrl: string2().nullable(), voiceDurationSeconds: number2(), createdAt: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: false });
-    const rows = await db.select().from(jobMessages).where(eq(jobMessages.jobId, access.jobId)).orderBy(jobMessages.createdAt, jobMessages.id);
+    const rows = await db.select().from(jobMessages).where(and(eq(jobMessages.jobId, access.jobId), inArray(jobMessages.sender, ["client", "system"]))).orderBy(jobMessages.createdAt, jobMessages.id);
     return { messages: await Promise.all(rows.map((m) => jobMessageShape(ctx, m))) };
   } }),
-  portalSendJobMessage: defineAction({ request: object({ token: string2().min(32).max(200), body: string2().trim().max(4000).default(""), imageDataBase64: string2().max(15000000).default(""), imageFilename: string2().max(240).default(""), imageContentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]).default("image/jpeg") }), response: object({ id: number2() }), async handler(ctx, args) {
+  portalSendJobMessage: defineAction({ request: object({ token: string2().min(8).max(200), body: string2().trim().max(4000).default(""), imageDataBase64: string2().max(15000000).default(""), imageFilename: string2().max(240).default(""), imageContentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]).default("image/jpeg") }), response: object({ id: number2() }), async handler(ctx, args) {
     if (!args.body && !args.imageDataBase64)
       throw new Error("Write a message or attach a photo.");
     const db = ctx.db();
@@ -80609,8 +80652,6 @@ var PUBLIC_ACTIONS = new Set([
   "verifyTotpLogin"
 ]);
 var PREMIUM_ACTIONS = new Set([
-  "getAutomationCenter",
-  "logAutomationSend",
   "updateQuoteAutomationStatus",
   "updateSelectionLeadTime",
   "renewQuote",
@@ -80648,9 +80689,7 @@ var PREMIUM_ACTIONS = new Set([
   "revokePortalLink",
   "getPortalLinkInfo",
   "rotatePortalLink",
-  "createDocumentLink",
-  "getDocumentLinkInfo",
-  "revokeDocumentLink",
+  "deleteDocument",
   "updateJobSiteLocation",
   "suggestJobsByLocation",
   "updateQuoteVersion",

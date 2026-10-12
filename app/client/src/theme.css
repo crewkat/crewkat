@@ -1150,7 +1150,9 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 
 /* Tools directory */
 .tools-intro { margin: 8px 0 20px; color: var(--dim); }
-.tool-group { margin: 0 0 26px; }
+/* Fix 7 (2026-10-12): every Tools group separated by a slim hairline with a
+   tightened vertical rhythm — dense and scannable, no bulky cards. */
+.tool-group { margin: 0; padding: 13px 0 15px; border-bottom: 1px solid var(--border); }
 .tool-group > h2 { margin: 0 0 8px; font: 800 17px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
 .tool-directory { overflow: hidden; border-block: 1px solid var(--border); }
 .tool-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; border-bottom: 1px solid var(--border); }
@@ -1346,9 +1348,19 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .mode-setting input[role="switch"]:checked::before { transform:translateX(16px); }
 .tool-group-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .tool-group-heading h2 { margin:0; }
-.tool-group-heading > span { border-radius:5px; padding:4px 7px; background:var(--accent); color:white; font-size:11px; font-weight:900; letter-spacing:.07em; }
-.pro-tool-group { margin-top:24px; padding-top:20px; border-top:3px solid var(--accent); }
-.pro-tool-group .tool-directory { border-color:color-mix(in srgb,var(--accent) 35%,var(--border)); }
+/* Fix 7: group title cluster — distinctive plain icon + title (+ PRO badge
+   for Pro groups). The count pill keeps its accent styling, now scoped to
+   the pill itself so the title cluster stays unstyled. */
+.tool-group-title { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+.tool-group-icon { display:grid; place-items:center; color:var(--dim); flex:none; }
+.tool-group-icon svg { width:19px; height:19px; }
+.tool-group-gear { display:grid; place-items:center; }
+.tool-group-gear svg { width:19px; height:19px; }
+.tool-group-heading > .tool-group-pill { border-radius:5px; padding:4px 7px; background:var(--accent); color:white; font-size:11px; font-weight:900; letter-spacing:.07em; }
+/* Fix 7: the old 3px orange rule + tinted directory are retired — the PRO
+   badge by the title carries the Pro distinction, hairlines separate all
+   groups uniformly. */
+.pro-tool-group { }
 /* Danny 2026-10-11: Tools groups are collapsible dropdowns (native details/summary). */
 details.tool-group > summary.tool-group-heading { cursor:pointer; list-style:none; }
 details.tool-group > summary.tool-group-heading::-webkit-details-marker { display:none; }
@@ -1820,8 +1832,16 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 
 
 /* Secure account entry */
-.auth-page { min-height:100%; overflow-y:auto; display:grid; place-items:center; padding:max(28px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom)); background:var(--bg); }
-.auth-panel { width:min(100%, 440px); }
+/* Auth scroll fix (2026-10-12): the page root is height:100% + overflow
+   hidden, and .auth-page only had min-height:100% — so on shorter screens
+   the panel grew past the root and was clipped with no way to scroll; the
+   bottom content (create-account / verify / legal links) was unreachable.
+   Cap the page at the root height and scroll it internally; the panel
+   centers via margin:auto when it fits and its top stays reachable when
+   it doesn't. */
+.auth-page { height:100%; overflow-y:auto; overflow-x:hidden; display:grid; padding:max(28px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom)); background:var(--bg); }
+.auth-panel { width:min(100%, 440px); margin:auto; }
+.auth-lang-row { display:flex; justify-content:flex-end; margin-bottom:16px; }
 .auth-brand { display:flex; align-items:center; gap:14px; margin-bottom:32px; color:var(--text); font-family:"IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size:26px; font-weight:850; letter-spacing:-.02em; }
 .auth-brand img { width:72px; height:72px; flex:0 0 auto; display:block; border-radius:18px; object-fit:cover; box-shadow:0 4px 16px rgba(0,0,0,.18); }
 .auth-brand span { line-height:1; }
@@ -1838,10 +1858,11 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .auth-divider::before, .auth-divider::after { content:""; flex:1; border-top:1px solid var(--border); }
 /* Continue with Google — white button with the G mark per Google's branding,
    sized like the app's auth buttons, slim and theme-aware. */
-.google-signin-button { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:52px; padding:0 16px; border:1px solid var(--border); border-radius:12px; background:#fff; color:#1f1f1f; font-size:16px; font-weight:700; cursor:pointer; transition:transform .15s var(--ease-out), box-shadow .15s var(--ease-out); }
-.google-signin-button:active { transform:scale(.985); }
-.google-signin-button:disabled { opacity:.55; cursor:default; transform:none; }
-@media (prefers-reduced-motion: reduce) { .google-signin-button { transition:none; } .google-signin-button:active { transform:none; } }
+/* GIS rendered button host (redirect mode). Google renders its own iframe
+   button inside; we only size the host and mute it while signup consent is
+   incomplete (the iframe can't be disabled natively). */
+.google-signin-host { width:100%; min-height:44px; }
+.google-signin-host.is-disabled { opacity:.55; pointer-events:none; }
 .auth-verify-recovery { width: 100%; margin: 2px 0 10px; }
 .auth-links { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 16px; margin-top:18px; }
 .auth-links button { min-height:40px; padding:5px 0; border:0; background:transparent; color:var(--green); font-weight:800; cursor:pointer; }
@@ -2394,9 +2415,13 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .home-quick-access { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 10px 0; }
 .home-quick-access > button { position: relative; min-width: 0; min-height: 84px; display: grid; grid-template-columns: 30px minmax(0,1fr); align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; box-shadow: none; }
 .home-quick-access > button > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
-.home-quick-access strong, .home-quick-access small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* FitLabel (Fix 6, 2026-10-12): single-line labels that shrink to fit their
+   card instead of truncating or overflowing — the JS steps the font size
+   down only when the text would overflow, so fitted languages (EN) render
+   at the designed size. */
+.fit-label { display: block; max-width: 100%; white-space: nowrap; }
 .home-quick-access strong { font-size: 14px; }
-.home-quick-access small { color: var(--dim); font-size: 10px; }
+.home-quick-access small { color: var(--dim); font-size: 10px; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
 .home-quick-access > button > svg { position: absolute; top: 10px; right: 9px; width: 15px; transform: rotate(180deg); color: var(--dim); }
 .home-pinned { margin: 2px 0 14px; }
 .home-pinned > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

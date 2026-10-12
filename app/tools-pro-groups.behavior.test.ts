@@ -23,20 +23,33 @@ describe("Tools page group structure", () => {
     }
   });
 
+  // Fix 7 refinement (2026-10-12): the "Pro — " prefix is gone from the
+  // group titles; the standard PRO badge next to the title marks them.
   test("Pro groups exist in EN and ES, at the bottom", () => {
-    for (const t of ["Pro — Money & office", "Pro — Field & crew", "Pro — Clients & admin"]) {
+    for (const t of ["Money & office", "Field & crew", "Clients & admin"]) {
       expect(APP).toContain(t);
     }
-    for (const t of ["Pro — Dinero y oficina", "Pro — Campo y equipo", "Pro — Clientes y administración"]) {
+    for (const t of ["Dinero y oficina", "Campo y equipo", "Clientes y administración"]) {
       expect(APP).toContain(t);
     }
+    expect(APP).not.toContain("Pro — Money & office");
+    expect(APP).not.toContain("Pro — Clients & admin");
     // Pro groups are declared after every free group in the groups array.
     const lastFree = Math.max(
       APP.indexOf('"Just for fun"'),
       APP.indexOf('"Cuenta y ajustes"'),
     );
-    const firstPro = APP.indexOf('"Pro — Money & office"');
+    const firstPro = APP.indexOf('"Money & office"');
     expect(firstPro).toBeGreaterThan(lastFree);
+  });
+
+  test("Pro group titles carry the standard PRO badge", () => {
+    expect(APP).toMatch(/group\.pro && <span className=\{`pro-badge/);
+  });
+
+  test("every group has its own icon (Fix 7)", () => {
+    expect(APP).toContain("tool-group-icon");
+    expect(APP).toContain("icon: <Icon size={19}>");
   });
 
   test("groups render as collapsible details/summary dropdowns", () => {
