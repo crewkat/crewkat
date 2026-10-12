@@ -5203,6 +5203,43 @@ function UpgradeGateSheet({ lang, tool, onClose, onUpgrade }: { lang: Lang; tool
   </div>;
 }
 
+// Pro showcase gating: a Pro feature stays visible to everyone with a PRO
+// badge; free users tapping it get the upgrade sheet instead of the feature.
+function ProShowcase({ lang, isPremium, title, setScreen, children, className }: {
+  lang: Lang;
+  isPremium: boolean;
+  title: string;
+  setScreen: (s: Screen) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [showGate, setShowGate] = useState(false);
+  if (isPremium) return <>{children}</>;
+  return (
+    <>
+      <div
+        className={`pro-showcase${className ? ` ${className}` : ""}`}
+        onClick={() => setShowGate(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowGate(true); } }}
+        aria-label={title}
+      >
+        <span className="pro-badge is-locked pro-showcase-badge">PRO</span>
+        <div className="pro-showcase-inner" aria-hidden="true">{children}</div>
+      </div>
+      {showGate && (
+        <UpgradeGateSheet
+          lang={lang}
+          tool={{ title, description: "", icon: null, pro: true }}
+          onClose={() => setShowGate(false)}
+          onUpgrade={() => { setShowGate(false); setScreen({ name: "upgrade" }); }}
+        />
+      )}
+    </>
+  );
+}
+
 function LimitReachedSheet({ lang, kind, onClose, onUpgrade }: { lang: Lang; kind: LimitKind; onClose: () => void; onUpgrade: () => void }) {
   useEscapeToClose(true, onClose);
   const title = lang === "es" ? "Límite del plan gratuito" : "Free plan limit";
@@ -6178,7 +6215,6 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
 
 function JobsScreen({
   lang,
-  settings,
   onBack,
   setScreen,
   toggleLanguage,
@@ -6192,6 +6228,9 @@ function JobsScreen({
   const t = copy[lang];
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "completed" | "all">("active");
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
+  const [pipelineGate, setPipelineGate] = useState(false);
   const jobs = useQuery({
     queryKey: ["jobs", search],
     queryFn: () => api.listJobs({ search }),
@@ -6238,9 +6277,21 @@ function JobsScreen({
       </section>
       <nav className="section-switcher" aria-label={lang === "es" ? "Vistas de trabajos" : "Job views"}>
         <button className="active" aria-current="page">{lang === "es" ? "Trabajos" : "Jobs"}</button>
-        {settings?.simpleMode !== true && <button onClick={() => setScreen({ name: "operations", tab: "leads" })}>{lang === "es" ? "Embudo" : "Pipeline"}</button>}
+        {isPremium ? (
+          <button onClick={() => setScreen({ name: "operations", tab: "leads" })}>{lang === "es" ? "Embudo" : "Pipeline"}</button>
+        ) : (
+          <button onClick={() => setPipelineGate(true)}>{lang === "es" ? "Embudo" : "Pipeline"} <span className="pro-badge is-locked">PRO</span></button>
+        )}
         <button onClick={() => setScreen({ name: "operations", tab: "calendar" })}>{lang === "es" ? "Calendario" : "Schedule"}</button>
       </nav>
+      {pipelineGate && !isPremium && (
+        <UpgradeGateSheet
+          lang={lang}
+          tool={{ title: lang === "es" ? "Embudo" : "Pipeline", description: "", icon: null, pro: true }}
+          onClose={() => setPipelineGate(false)}
+          onUpgrade={() => { setPipelineGate(false); setScreen({ name: "upgrade" }); }}
+        />
+      )}
       <label className="status-filter"><span>{lang === "es" ? "Estado" : "Status"}</span><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}><option value="active">{lang === "es" ? "Activos" : "Active"}</option><option value="completed">{lang === "es" ? "Completados" : "Completed"}</option><option value="all">{lang === "es" ? "Todos" : "All"}</option></select></label>
       <section className="job-list">
         {jobs.isPending && (
@@ -7726,6 +7777,8 @@ function JobDetail({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
   const estTerms = estimateTerms(lang, settings);
   const [stage, setStage] = useState<Stage>("before");
   const [editing, setEditing] = useState(false);
@@ -8141,7 +8194,7 @@ function JobDetail({
           </div>
         )}
       </section>
-      {settings?.simpleMode !== true && operationsQuery.data && (
+      {operationsQuery.data && (
         <section className="profit-strip">
           <div>
             <span>{lang === "es" ? "Facturado" : "Invoiced"}</span>
@@ -8171,17 +8224,27 @@ function JobDetail({
           </button>
         </section>
       )}
-      {settings?.simpleMode !== true && <PortalOwnerPanel lang={lang} jobId={jobId} />}
+      <ProShowcase lang={lang} isPremium={isPremium} title={lang === "es" ? "Portal del cliente" : "Client portal"} setScreen={setScreen}>
+        <PortalOwnerPanel lang={lang} jobId={jobId} />
+      </ProShowcase>
       {editing && (
-        <EditJobForm
+        <BottomSheet
           lang={lang}
-          job={job}
-          onDone={() => {
-            setEditing(false);
-            client.invalidateQueries({ queryKey: ["job", jobId] });
-            client.invalidateQueries({ queryKey: ["automation-center"] });
-          }}
-        />
+          title={lang === "es" ? "Editar trabajo" : "Edit job"}
+          onClose={() => setEditing(false)}
+        >
+          {() => (
+            <EditJobForm
+              lang={lang}
+              job={job}
+              onDone={() => {
+                setEditing(false);
+                client.invalidateQueries({ queryKey: ["job", jobId] });
+                client.invalidateQueries({ queryKey: ["automation-center"] });
+              }}
+            />
+          )}
+        </BottomSheet>
       )}
       {settings?.simpleMode !== true && (<section className="completion-panel completion-v2" id="job-completion">
         <div className="completion-hero">
@@ -18612,6 +18675,7 @@ function TodayScreen({
   const estTerms = estimateTerms(lang, settings);
   const qc = useQueryClient();
   const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
   const now = new Date();
   const today = now.toLocaleDateString("en-CA");
   // Build 3: global search entry point lives on the Home header.
@@ -18651,12 +18715,12 @@ function TodayScreen({
   const fieldIntel = useQuery({
     queryKey: ["field-intelligence-today", today],
     queryFn: () => api.getFieldIntelligence({ today, periodStart: today, periodEnd: today }),
-    enabled: settings !== null && settings.simpleMode !== true,
+    enabled: settings !== null && isPremium,
   }).data;
   const expansion = useQuery({
     queryKey: ["expansion-suite", today],
     queryFn: () => api.getExpansionSuite({ today }),
-    enabled: settings !== null && settings.simpleMode !== true,
+    enabled: settings !== null && isPremium,
   }).data;
   const [lostQuote, setLostQuote] = useState<number | null>(null);
   useEscapeToClose(lostQuote !== null, () => setLostQuote(null));
@@ -18743,7 +18807,7 @@ function TodayScreen({
   };
   const recurringProcessed = useRef("");
   useEffect(() => {
-    if (!settings || settings.simpleMode) return;
+    if (!settings || !isPremium) return;
     if (recurringProcessed.current === today) return;
     recurringProcessed.current = today;
     void api.processRecurringInvoices({ runDate: today }).then((r) => {
@@ -18752,7 +18816,7 @@ function TodayScreen({
         qc.invalidateQueries({ queryKey: ["automation-center"] });
       }
     });
-  }, [today, qc, settings?.simpleMode]);
+  }, [today, qc, isPremium]);
   const proAttentionCount = fieldIntel ? fieldIntel.today.poAwaiting + fieldIntel.today.maintenanceDue + fieldIntel.today.credentialWarnings + fieldIntel.today.costAlerts + fieldIntel.today.hotLeads : 0;
   const paymentEscalations = (settings?.notificationsEnabled === false || settings?.paymentRemindersEnabled === false || settings?.overdueInvoiceRemindersEnabled === false) ? [] : (d?.paymentEscalations ?? []).filter((item) => item.daysOverdue >= (settings?.overdueReminderDays ?? 3));
   const quoteChase = settings?.notificationsEnabled === false ? [] : (d?.quoteChase ?? []);
@@ -18978,17 +19042,26 @@ function TodayScreen({
           ].filter(Boolean) as Array<{ icon: ReactNode; label: string; count: number; target: Screen }>}
         />
       )}
-      {!settings?.simpleMode && fieldIntel && (
-        proAttentionCount > 0 ? <section className="today-field-strip">
-          <div className="section-heading"><div><span>PRO</span><h2>{lang === "es" ? "Operaciones que necesitan atención" : "Operations needing attention"}</h2></div><button onClick={() => setScreen({ name: "fieldIntelligence" })}>{lang === "es" ? "Abrir" : "Open"}<BackIcon /></button></div>
-          <div className="today-field-counts">
-            {fieldIntel.today.poAwaiting > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "purchasing" })}><Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8" /></Icon><strong>{fieldIntel.today.poAwaiting}</strong>{lang === "es" ? "Pedidos esperando al proveedor" : "Orders waiting on suppliers"}</button>}
-            {fieldIntel.today.maintenanceDue > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "equipment" })}><Icon><path d="M14 6a4 4 0 0 0-5 5L4 16l4 4 5-5a4 4 0 0 0 5-5l-3 3-4-4z" /></Icon><strong>{fieldIntel.today.maintenanceDue}</strong>{lang === "es" ? "Cuidado del equipo" : "Equipment upkeep"}</button>}
-            {fieldIntel.today.credentialWarnings > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "credentials" })}><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" /></Icon><strong>{fieldIntel.today.credentialWarnings}</strong>{lang === "es" ? "Licencias y certificados" : "Licenses & certificates"}</button>}
-            {fieldIntel.today.costAlerts > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "costs" })}><Icon><path d="M4 19V9M10 19V5M16 19v-8M22 19H2" /></Icon><strong>{fieldIntel.today.costAlerts}</strong>{lang === "es" ? "Alertas de presupuesto" : "Budget alerts"}</button>}
-            {fieldIntel.today.hotLeads > 0 && <button onClick={() => setScreen({ name: "operations", tab: "leads" })}><Icon><path d="M5 5h14M7 10h10M9 15h6M11 20h2" /></Icon><strong>{fieldIntel.today.hotLeads}</strong>{lang === "es" ? "Mejores prospectos" : "Best leads"}</button>}
-          </div>
-        </section> : <button className="today-pro-clear" type="button" onClick={() => setScreen({ name: "tools" })}><span><strong>PRO</strong>{lang === "es" ? "Operaciones al día" : "Operations are all caught up"}</span><BackIcon /></button>
+      {isPremium ? (
+        fieldIntel && (
+          proAttentionCount > 0 ? <section className="today-field-strip">
+            <div className="section-heading"><div><span>PRO</span><h2>{lang === "es" ? "Operaciones que necesitan atención" : "Operations needing attention"}</h2></div><button onClick={() => setScreen({ name: "fieldIntelligence" })}>{lang === "es" ? "Abrir" : "Open"}<BackIcon /></button></div>
+            <div className="today-field-counts">
+              {fieldIntel.today.poAwaiting > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "purchasing" })}><Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8" /></Icon><strong>{fieldIntel.today.poAwaiting}</strong>{lang === "es" ? "Pedidos esperando al proveedor" : "Orders waiting on suppliers"}</button>}
+              {fieldIntel.today.maintenanceDue > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "equipment" })}><Icon><path d="M14 6a4 4 0 0 0-5 5L4 16l4 4 5-5a4 4 0 0 0 5-5l-3 3-4-4z" /></Icon><strong>{fieldIntel.today.maintenanceDue}</strong>{lang === "es" ? "Cuidado del equipo" : "Equipment upkeep"}</button>}
+              {fieldIntel.today.credentialWarnings > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "credentials" })}><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" /></Icon><strong>{fieldIntel.today.credentialWarnings}</strong>{lang === "es" ? "Licencias y certificados" : "Licenses & certificates"}</button>}
+              {fieldIntel.today.costAlerts > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "costs" })}><Icon><path d="M4 19V9M10 19V5M16 19v-8M22 19H2" /></Icon><strong>{fieldIntel.today.costAlerts}</strong>{lang === "es" ? "Alertas de presupuesto" : "Budget alerts"}</button>}
+              {fieldIntel.today.hotLeads > 0 && <button onClick={() => setScreen({ name: "operations", tab: "leads" })}><Icon><path d="M5 5h14M7 10h10M9 15h6M11 20h2" /></Icon><strong>{fieldIntel.today.hotLeads}</strong>{lang === "es" ? "Mejores prospectos" : "Best leads"}</button>}
+            </div>
+          </section> : <button className="today-pro-clear" type="button" onClick={() => setScreen({ name: "tools" })}><span><strong>PRO</strong>{lang === "es" ? "Operaciones al día" : "Operations are all caught up"}</span><BackIcon /></button>
+        )
+      ) : (
+        <ProShowcase lang={lang} isPremium={false} title={lang === "es" ? "Inteligencia de campo" : "Field Intelligence"} setScreen={setScreen}>
+          <section className="today-field-strip">
+            <div className="section-heading"><div><h2>{lang === "es" ? "Inteligencia de campo" : "Field Intelligence"}</h2></div></div>
+            <p className="muted">{lang === "es" ? "Pedidos, equipo, licencias, costos y prospectos — todo lo que necesita atención, en un vistazo." : "Orders, equipment, licenses, costs, and leads — everything needing attention, at a glance."}</p>
+          </section>
+        </ProShowcase>
       )}
       {actionCount === 0 && (
         <div className="empty-state today-clear">
@@ -19361,8 +19434,14 @@ function TodayScreen({
             </TapArticle>
           ))}
           {d.reengagement.map((r) => (
+            <ProShowcase
+              key={`pro-e${r.jobId}-${r.months}`}
+              lang={lang}
+              isPremium={isPremium}
+              title={lang === "es" ? "Reactivar clientes" : "Client re-engagement"}
+              setScreen={setScreen}
+            >
             <TapArticle
-              key={`e${r.jobId}-${r.months}`}
               onTap={
                 r.clientPhone
                   ? () => {
@@ -19402,9 +19481,11 @@ function TodayScreen({
                 <span className="status error">{copy[lang].noPhone}</span>
               )}
             </TapArticle>
+            </ProShowcase>
           ))}
         </AutomationGroup>
       )}
+      <ProShowcase lang={lang} isPremium={isPremium} title={lang === "es" ? "Automatizaciones" : "Automations"} setScreen={setScreen}>
       <section className="crew-compose">
         <div>
           <span>
@@ -19426,6 +19507,9 @@ function TodayScreen({
           </SmsLink>
         )}
       </section>
+      </ProShowcase>
+      {isPremium ? (
+        <>
       {expansion &&
         expansion.warranties.filter((w) => w.status !== "active").length >
           0 && (
@@ -19514,6 +19598,15 @@ function TodayScreen({
               ))}
           </AutomationGroup>
         )}
+        </>
+      ) : (
+        <ProShowcase lang={lang} isPremium={false} title={lang === "es" ? "Expansión" : "Expansion Suite"} setScreen={setScreen}>
+          <section className="today-field-strip">
+            <div className="section-heading"><div><h2>{lang === "es" ? "Expansión" : "Expansion Suite"}</h2></div></div>
+            <p className="muted">{lang === "es" ? "Garantías, proveedores y mantenimiento de equipo — haz crecer el negocio." : "Warranties, suppliers, and equipment upkeep — grow the business."}</p>
+          </section>
+        </ProShowcase>
+      )}
       {lostQuote !== null && (
         <div className="sheet-backdrop" role="presentation">
           <form

@@ -27,6 +27,11 @@
 /* Danny 2026-10-11: PRO badge on Tools rows — muted while the tool is locked, accent once Premium is active. */
 .pro-badge.is-locked { background: #6b7280; }
 
+/* Pro showcase gating: section stays visible, tap opens the upgrade sheet. */
+.pro-showcase { position: relative; cursor: pointer; }
+.pro-showcase-badge { position: absolute; top: 8px; right: 8px; z-index: 2; margin-left: 0; }
+.pro-showcase-inner { pointer-events: none; user-select: none; }
+
 /* Build0.2: make document action bar more prominent */
 .document-action-bar { border-top: 2px solid var(--accent); background: var(--surface); }
 .document-action-bar button { color: var(--text); font-size: 11px; }
