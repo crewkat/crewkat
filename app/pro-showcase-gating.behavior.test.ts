@@ -93,7 +93,10 @@ describe("Financials NOT gated (scope adjustment)", () => {
   });
 
   test("profit strip renders for everyone with data", () => {
-    expect(APP).toMatch(/\{\s*operationsQuery\.data && \(\s*<section className="profit-strip">/);
+    // Financial consolidation (1fa5200): the strip is now a tappable button
+    // that deep-links to the unified Financials tab.
+    expect(APP).toMatch(/\{\s*operationsQuery\.data && \(\s*<button[\s\S]*?className="profit-strip profit-strip-link"/);
+    expect(APP).toContain('onClick={() => setWsTab("financials")}');
   });
 });
 

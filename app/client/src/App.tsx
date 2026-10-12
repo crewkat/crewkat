@@ -3627,6 +3627,125 @@ function ProgressRing({ value, size = 60 }: { value: number; size?: number }) {
     </svg>
   );
 }
+
+// The full photo-completeness workflow (required-stage toggles, override
+// note, mark-complete/reopen). Lives in the Photos tab; the Overview shows
+// only a compact summary card that deep-links here.
+function JobCompletionWorkflow({
+  lang,
+  job,
+  t,
+  requirements,
+  completionNote,
+  setCompletionNote,
+  complete,
+  completionError,
+  reopen,
+  optimisticCompleted,
+}: {
+  lang: Lang;
+  job: { id: number; photoCompleteness: number; requiredPhotoStages: Stage[]; completedAt: string | null; completionOverrideNote: string | null };
+  t: { before: string; during: string; after: string };
+  requirements: { mutate: (stages: Stage[]) => void };
+  completionNote: string;
+  setCompletionNote: (v: string) => void;
+  complete: { mutate: () => void; isPending: boolean };
+  completionError: string;
+  reopen: { mutate: () => void; isPending: boolean };
+  optimisticCompleted: boolean;
+}) {
+  return (
+    <section className="completion-panel completion-v2" id="job-completion" aria-label={lang === "es" ? "Completitud de fotos" : "Photo completeness"}>
+      <div className="completion-hero">
+        <ProgressRing value={job.photoCompleteness} />
+        <div className="completion-hero-text">
+          <strong>
+            {lang === "es" ? "Completitud de fotos" : "Photo completeness"}
+          </strong>
+          <span>
+            {lang === "es"
+              ? `${job.requiredPhotoStages.length} de 3 etapas requeridas`
+              : `${job.requiredPhotoStages.length} of 3 stages required`}
+          </span>
+        </div>
+      </div>
+      <fieldset className="completion-stages">
+        <legend>
+          {lang === "es" ? "Etapas requeridas" : "Required stages"}
+        </legend>
+        <div className="requirement-checks">
+          {(["before", "during", "after"] as Stage[]).map((item) => (
+            <label key={item} className={job.requiredPhotoStages.includes(item) ? "on" : ""}>
+              <input
+                type="checkbox"
+                checked={job.requiredPhotoStages.includes(item)}
+                onChange={(e) =>
+                  requirements.mutate(
+                    e.target.checked
+                      ? [...job.requiredPhotoStages, item]
+                      : job.requiredPhotoStages.filter(
+                          (stageName) => stageName !== item,
+                        ),
+                  )
+                }
+              />
+              <span>{t[item]}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {(job.completedAt || optimisticCompleted) ? (
+        <p className="status success">
+          <CheckIcon />
+          {job.completedAt
+            ? (lang === "es"
+              ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
+              : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`)
+            : (lang === "es" ? "Completado" : "Completed")}
+          {job.completionOverrideNote
+            ? ` · ${job.completionOverrideNote}`
+            : ""}
+          {/* Phase 1: persistent reopen affordance next to the undo toast. */}
+          <button
+            type="button"
+            className="small-button reopen-inline"
+            disabled={reopen.isPending}
+            onClick={() => { buzz(8); reopen.mutate(); }}
+          >
+            {lang === "es" ? "Reabrir" : "Reopen"}
+          </button>
+        </p>
+      ) : (
+        <>
+          <label>
+            <span>
+              {lang === "es"
+                ? "Nota de excepción si faltan fotos"
+                : "Override note if required photos are missing"}
+            </span>
+            <textarea
+              rows={2}
+              value={completionNote}
+              onChange={(e) => setCompletionNote(e.target.value)}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={complete.isPending}
+            onClick={() => complete.mutate()}
+          >
+            {lang === "es" ? "Marcar trabajo completo" : "Mark job complete"}
+          </button>
+          {completionError && (
+            <p className="status error" role="alert">
+              {completionError}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
 function FlowStepper({
   lang,
   steps,
@@ -6936,6 +7055,8 @@ type WorkspacePanelProps = {
   quotes: Awaited<ReturnType<typeof api.listQuotes>>["quotes"];
   operations: Awaited<ReturnType<typeof api.getJobOperations>> | undefined;
   setScreen: (s: Screen) => void;
+  // Full photo-completeness workflow, rendered by the Photos tab above the gallery.
+  completionWorkflow?: React.ReactNode;
 };
 
 function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "operations">) {
@@ -7944,12 +8065,13 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
 }
 
 
-function WorkspacePhotosPanel({ lang, photos }: Pick<WorkspacePanelProps, "lang" | "photos">) {
+function WorkspacePhotosPanel({ lang, photos, completionWorkflow }: Pick<WorkspacePanelProps, "lang" | "photos" | "completionWorkflow">) {
   const stages = ["before", "during", "after"] as const;
   const label = (s: string) =>
     s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "during" ? (lang === "es" ? "Durante" : "During") : (lang === "es" ? "Después" : "After");
   return (
     <section className="workspace-panel" aria-label={lang === "es" ? "Fotos" : "Photos"}>
+      {completionWorkflow}
       {stages.map((s) => {
         const list = photos.filter((p) => p.stage === s);
         return (
@@ -8495,10 +8617,11 @@ function JobDetail({
           ? "Agrega una nota para explicar las fotos requeridas que faltan."
           : "Add a note explaining any missing required photos.",
       );
-      // The override note lives in the completion section below — bring it into view.
+      // The override note lives in the Photos tab — switch there, then bring it into view.
+      setWsTab("photos");
       window.setTimeout(() => {
         document.getElementById("job-completion")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 60);
+      }, 120);
     },
   });
   const reopen = useMutation({
@@ -8752,6 +8875,20 @@ function JobDetail({
           quotes={quotesQuery.data?.quotes ?? []}
           operations={operationsQuery.data}
           setScreen={setScreen}
+          completionWorkflow={settings?.simpleMode !== true ? (
+            <JobCompletionWorkflow
+              lang={lang}
+              job={job}
+              t={t}
+              requirements={requirements}
+              completionNote={completionNote}
+              setCompletionNote={setCompletionNote}
+              complete={complete}
+              completionError={completionError}
+              reopen={reopen}
+              optimisticCompleted={optimisticCompleted}
+            />
+          ) : undefined}
         />
       ) : (
         <>
@@ -8885,95 +9022,27 @@ function JobDetail({
           )}
         </BottomSheet>
       )}
-      {settings?.simpleMode !== true && (<section className="completion-panel completion-v2" id="job-completion">
-        <div className="completion-hero">
-          <ProgressRing value={job.photoCompleteness} />
-          <div className="completion-hero-text">
-            <strong>
-              {lang === "es" ? "Completitud de fotos" : "Photo completeness"}
-            </strong>
-            <span>
+      {settings?.simpleMode !== true && (
+        <button
+          type="button"
+          className="completion-summary-card"
+          onClick={() => setWsTab("photos")}
+          aria-label={lang === "es" ? "Ver fotos y completitud" : "View photos and completeness"}
+        >
+          <ProgressRing value={job.photoCompleteness} size={52} />
+          <span className="completion-summary-text">
+            <strong>{lang === "es" ? "Completitud de fotos" : "Photo completeness"}</strong>
+            <small>
               {lang === "es"
                 ? `${job.requiredPhotoStages.length} de 3 etapas requeridas`
                 : `${job.requiredPhotoStages.length} of 3 stages required`}
-            </span>
-          </div>
-        </div>
-        <fieldset className="completion-stages">
-          <legend>
-            {lang === "es" ? "Etapas requeridas" : "Required stages"}
-          </legend>
-          <div className="requirement-checks">
-            {(["before", "during", "after"] as Stage[]).map((item) => (
-              <label key={item} className={job.requiredPhotoStages.includes(item) ? "on" : ""}>
-                <input
-                  type="checkbox"
-                  checked={job.requiredPhotoStages.includes(item)}
-                  onChange={(e) =>
-                    requirements.mutate(
-                      e.target.checked
-                        ? [...job.requiredPhotoStages, item]
-                        : job.requiredPhotoStages.filter(
-                            (stageName) => stageName !== item,
-                          ),
-                    )
-                  }
-                />
-                <span>{t[item]}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        {(job.completedAt || optimisticCompleted) ? (
-          <p className="status success">
-            <CheckIcon />
-            {job.completedAt
-              ? (lang === "es"
-                ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
-                : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`)
-              : (lang === "es" ? "Completado" : "Completed")}
-            {job.completionOverrideNote
-              ? ` · ${job.completionOverrideNote}`
-              : ""}
-            {/* Phase 1: persistent reopen affordance next to the undo toast. */}
-            <button
-              type="button"
-              className="small-button reopen-inline"
-              disabled={reopen.isPending}
-              onClick={() => { buzz(8); reopen.mutate(); }}
-            >
-              {lang === "es" ? "Reabrir" : "Reopen"}
-            </button>
-          </p>
-        ) : (
-          <>
-            <label>
-              <span>
-                {lang === "es"
-                  ? "Nota de excepción si faltan fotos"
-                  : "Override note if required photos are missing"}
-              </span>
-              <textarea
-                rows={2}
-                value={completionNote}
-                onChange={(e) => setCompletionNote(e.target.value)}
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={complete.isPending}
-              onClick={() => complete.mutate()}
-            >
-              {lang === "es" ? "Marcar trabajo completo" : "Mark job complete"}
-            </button>
-            {completionError && (
-              <p className="status error" role="alert">
-                {completionError}
-              </p>
-            )}
-          </>
-        )}
-      </section>)}
+            </small>
+          </span>
+          <span className="completion-summary-cta">
+            {lang === "es" ? "Fotos \u2192" : "Photos \u2192"}
+          </span>
+        </button>
+      )}
       <section className="job-accordion job-hub" aria-label={lang === "es" ? "Centro del trabajo" : "Job hub"}>
         <AccordionSection title={lang === "es" ? "Facturas" : "Invoices"} count={jobInvoices.length} tone="blue" icon={<Icon><path d="M7 3h10v18l-2-1-3 1-3-1-2 1z"/><path d="M9 8h6M9 12h6M9 16h4"/></Icon>} defaultOpen>
           <div className="job-section-heading"><p>{lang === "es" ? "Facturas vinculadas a este trabajo" : "Invoices linked to this job"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar factura" : "Add invoice"} onClick={() => { setLinkTab("new"); setActiveJobSheet("invoices"); }}>＋</button></div>

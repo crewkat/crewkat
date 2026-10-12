@@ -4794,6 +4794,18 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 
 /* Point 5: premium photo-completeness redesign. */
 .completion-v2 { display:grid; gap:14px; }
+
+/* Compact Overview summary card — deep-links to the Photos tab. */
+.completion-summary-card {
+  display:flex; align-items:center; gap:14px; width:100%;
+  padding:14px 16px; border:1px solid var(--hairline); border-radius:8px;
+  background:var(--surface); color:var(--text); cursor:pointer; text-align:left;
+}
+.completion-summary-card:active { border-color:var(--accent); }
+.completion-summary-text { display:grid; gap:3px; flex:1; }
+.completion-summary-text strong { font-size:1rem; letter-spacing:-.01em; }
+.completion-summary-text small { font-size:.82rem; color:var(--dim); }
+.completion-summary-cta { font-size:.85rem; font-weight:700; color:var(--accent); white-space:nowrap; }
 .completion-hero { display:flex; align-items:center; gap:14px; }
 .progress-ring-text { font-size:13px; font-weight:800; fill:var(--text); font-family:inherit; }
 .completion-hero-text { display:grid; gap:3px; }
