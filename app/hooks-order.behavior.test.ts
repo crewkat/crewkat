@@ -80,3 +80,33 @@ describe("JobDetail hooks-before-early-return", () => {
     ).toEqual([]);
   });
 });
+
+// Regression test — 2026-10-12: tapping Home's "Estimates expiry watch" or
+// "Estimates chase queue" cards blanked the whole app to a white screen.
+// Root cause: QuotePreview called `useState` (optimisticAccepted) AFTER its
+// `if (!quote) return ...` loading early return. Entered from the Estimates
+// list the ["quotes"] query is already cached, so the bug hid; entered from
+// Home the query is cold, the first render takes the early return, and when
+// the data lands the extra hook call makes React throw and unmount the tree
+// (no error boundary). Same class as the JobDetail incident above.
+// InvoicePreview is guarded too: it is the other Home briefing tap target
+// (Overdue payments cards) and shares the same `if (!doc) return` shape.
+describe.each([
+  ["QuotePreview"],
+  ["InvoicePreview"],
+])("%s hooks-before-early-return", (name) => {
+  const body = extractFunction(SRC, name);
+
+  test(`${name} exists and has a loading early return`, () => {
+    expect(body.length).toBeGreaterThan(50);
+    expect(firstConditionalEarlyReturn(body)).toBeGreaterThan(-1);
+  });
+
+  test(`no hook is called after the conditional early return in ${name}`, () => {
+    const early = firstConditionalEarlyReturn(body);
+    const bad = hookCallLines(body).filter((h) => h.line > early);
+    expect(
+      bad.map((h) => `${h.hook} at relative line ${h.line + 1}`),
+    ).toEqual([]);
+  });
+});

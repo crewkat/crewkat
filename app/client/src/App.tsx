@@ -15468,11 +15468,18 @@ function QuotePreview({
   // the user even though the estimate exists (Build 3.0 item 14).
   const quoteGone = query.isSuccess && !query.isFetching && !quote;
   useEffect(()=>{ if(quoteGone) onBack(); },[quoteGone]);
+  // Phase 1: optimistic accept with a forgiving Undo. This hook MUST stay
+  // above the `if (!quote)` early return below: entered from Home, the
+  // ["quotes"] query is cold, so the first render takes the early return and
+  // the quote only appears on the next render — a hook after the return made
+  // React throw "Rendered more hooks than during the previous render" and,
+  // with no error boundary, the whole app unmounted to a blank white screen
+  // (2026-10-12: Home expiry-watch / chase-queue cards). Same class as the
+  // 2026-09-29 JobDetail incident guarded by hooks-order.behavior.test.ts.
+  const [optimisticAccepted, setOptimisticAccepted] = useState<boolean | null>(null);
   if (!quote) return <main className="page"><PageHeader lang={lang} title={capFirst(estTerms.singular)} onBack={onBack}/>{query.isError ? <div className="empty-state"><p>{lang === "es" ? "Este estimado ya no existe." : "This estimate no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div> : <div className="loading-block"/>}</main>;
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
-  // Phase 1: optimistic accept with a forgiving Undo.
-  const [optimisticAccepted, setOptimisticAccepted] = useState<boolean | null>(null);
   const acceptedNow = optimisticAccepted ?? quote.accepted;
   const status = acceptedNow || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Abierta" : "Opened") : (lang === "es" ? "Borrador" : "Draft");
   const toggleAccepted = async () => {
