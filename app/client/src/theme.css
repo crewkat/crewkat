@@ -4832,3 +4832,19 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .doc-view-facts dt { font-size:.75rem; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
 .doc-view-facts dd { margin:0; font-size:.9rem; }
 .danger-button { background:var(--danger,#c0392b); border-color:var(--danger,#c0392b); color:#fff; }
+.fin-unified{display:grid;gap:18px;padding:6px 0 26px}
+.fin-hero{margin:0;padding:20px;border-radius:12px;background:var(--green);color:#fff}
+.fin-hero h2{margin:0 0 16px;font-size:20px;color:#fff}
+.fin-hero-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.fin-hero-grid>div{display:grid;gap:4px}
+.fin-hero-grid span{font-size:11px;color:rgba(255,255,255,.75)}
+.fin-hero-grid strong{font-size:17px;color:#fff}
+.fin-hero-total{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.25)}
+.fin-hero-total span{font-size:13px;color:rgba(255,255,255,.85)}
+.fin-hero-total strong{font-size:26px;color:#fff}
+.fin-stats{margin:0}
+.fin-module{margin:0}
+.fin-module .module-heading{margin-bottom:12px}
+button.profit-strip-link{cursor:pointer;width:100%;text-align:left;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:center;font:inherit;color:inherit}
+button.profit-strip-link:hover{border-color:var(--green)}
+.profit-strip-cta{font-size:13px;font-weight:800;color:var(--green);white-space:nowrap}

@@ -380,7 +380,6 @@ type Screen =
   | { name: "admin" }
   | { name: "platformAdmin"; tab?: PlatformAdminTab; refundEmail?: string }
   | { name: "platformAdminUser"; userId: number }
-  | { name: "jobOps"; jobId: number }
   | { name: "tool"; jobId: number; mode: ToolMode; photoId?: number };
 
 const copy = {
@@ -1160,7 +1159,7 @@ const CheckIcon = () => (
 type RootTab = "today" | "jobs" | "clients" | "invoices" | "marketplace";
 function rootTabFor(screen: Screen): RootTab | null {
   if (screen.name === "today") return "today";
-  if (["jobs", "new", "detail", "proof", "jobOps", "tool"].includes(screen.name)) return "jobs";
+  if (["jobs", "new", "detail", "proof", "tool"].includes(screen.name)) return "jobs";
   if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
   if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
   if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail", "marketplaceThread"].includes(screen.name)) return "marketplace";
@@ -3286,15 +3285,6 @@ function CrewkatApplication() {
           onOpenSettings={() => setScreen({ name: "settings" })}
           initialTab={screen.tab}
           onOpenJob={(jobId) => setScreen({ name: "detail", jobId })}
-        />
-      )}
-      {screen.name === "jobOps" && (
-        <JobOperationsScreen
-          lang={lang}
-          jobId={screen.jobId}
-          settings={appSettings}
-          onBack={goBack}
-          setScreen={setScreen}
         />
       )}
       {screen.name === "tool" && (
@@ -7196,116 +7186,763 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
   );
 }
 
-function WorkspaceFinancialsPanel({ lang, jobId, job, invoices, operations, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "invoices" | "operations" | "setScreen">) {
-  const mine = invoices.filter((i) => i.jobId === jobId);
-  const totalInvoiced = mine.reduce((s, i) => s + Number(i.totalWithLateFee || i.total || 0), 0);
-  const totalPaid = mine.reduce((s, i) => s + Number(i.paidToDate || 0), 0);
+type FinData = NonNullable<WorkspacePanelProps["operations"]>;
+type FinJob = NonNullable<WorkspacePanelProps["job"]>;
+
+function FinSelectionsSection({ lang, jobId, job, data, refresh }: {
+  lang: Lang; jobId: number; job: FinJob; data: FinData; refresh: () => void;
+}) {
+  const [selection, setSelection] = useState({
+    category: "",
+    item: "",
+    vendor: "",
+    approvalStatus: "pending" as "pending" | "approved" | "rejected",
+    leadTimeDays: 0,
+    estimatedCost: "",
+    actualCost: "",
+  });
+  const [selectionFile, setSelectionFile] = useState<File | null>(null);
+  const saveSelectionCosts = async (
+    s: (typeof data.selections)[number],
+    estimatedCost: string,
+    actualCost: string,
+  ) => {
+    await api.saveSelection({
+      id: s.id,
+      jobId,
+      category: s.category,
+      item: s.item,
+      vendor: s.vendor,
+      approvalStatus: s.approvalStatus,
+      leadTimeDays: s.leadTimeDays,
+      estimatedCost,
+      actualCost,
+      photoFilename: "",
+      photoContentType: "",
+      photoDataBase64: "",
+    });
+    refresh();
+  };
+  const shareSelections = async () => {
+    const text = [
+      `${job.clientName} — ${job.jobType}`,
+      ...data.selections.map(
+        (s) =>
+          `${s.category}: ${s.item}${s.vendor ? ` (${s.vendor})` : ""} — ${s.approvalStatus}`,
+      ),
+    ].join("\n");
+    if (navigator.share)
+      await navigator
+        .share({ title: lang === "es" ? "Selecciones" : "Selections", text })
+        .catch(() => undefined);
+    else await copyText(text);
+  };
   return (
-    <section className="workspace-panel" aria-label={lang === "es" ? "Finanzas" : "Financials"}>
-      <div className="panel-card money-grid">
-        <div>
-          <small>{lang === "es" ? "Facturado" : "Invoiced"}</small>
-          <strong>{usd(totalInvoiced)}</strong>
-        </div>
-        <div>
-          <small>{lang === "es" ? "Cobrado" : "Paid"}</small>
-          <strong>{usd(totalPaid)}</strong>
-        </div>
-        <div>
-          <small>{lang === "es" ? "Depósito" : "Deposit"}</small>
-          <strong>{usd(money(job.depositAmount))}</strong>
-        </div>
+    <section className="pa-chart-section fin-module">
+      <div className="module-heading">
+        <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#a855f7" }} />{lang === "es" ? "Selecciones del cliente" : "Client selections"}</h3>
+        <button
+          className="small-button"
+          onClick={() => void shareSelections()}
+        >
+          <ShareIcon />
+          {lang === "es" ? "Compartir resumen" : "Share summary"}
+        </button>
       </div>
-      {operations?.profitability && (() => {
-        const p = operations.profitability;
-        const selPct = p.selectionBudget > 0
-          ? Math.min(100, (p.selectionActual / p.selectionBudget) * 100)
-          : p.selectionActual > 0 ? 100 : 0;
-        return (
-          <>
-            <div className="panel-card">
-              <h3>{lang === "es" ? "Presupuesto" : "Budget"}</h3>
-              <ul className="panel-list budget-rows">
-                <li>
-                  <span>{lang === "es" ? "Presupuesto total" : "Budget total"}</span>
-                  <strong>{usd(p.budgetTotal)}</strong>
-                </li>
-                <li>
-                  <span>{lang === "es" ? "Órdenes de cambio" : "Change orders"}</span>
-                  <strong>{usd(p.changeOrdersTotal)}</strong>
-                </li>
-                <li>
-                  <span>
-                    {lang === "es" ? "Selecciones" : "Selections"}
-                    <small>
-                      {usd(p.selectionActual)} / {usd(p.selectionBudget)}
-                    </small>
-                  </span>
-                  <strong>{selPct.toFixed(0)}%</strong>
-                </li>
-              </ul>
-              <div
-                className={`budget-bar${selPct >= 100 && p.selectionBudget > 0 ? " over" : ""}`}
-                role="progressbar"
-                aria-valuenow={Math.round(selPct)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={lang === "es" ? "Presupuesto de selecciones usado" : "Selection budget used"}
-              >
-                <span style={{ width: `${selPct}%` }} />
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!selection.category || !selection.item) return;
+          let encoded = { dataBase64: "" };
+          const compressedSelection = selectionFile ? await compressImageFile(selectionFile, "photo") : null;
+          if (compressedSelection) encoded = await fileToBase64(compressedSelection);
+          await api.saveSelection({
+            id: null,
+            jobId,
+            ...selection,
+            photoFilename: compressedSelection?.name ?? "",
+            photoContentType: (compressedSelection?.type ?? "") as
+              "" | "image/jpeg" | "image/png" | "image/webp",
+            photoDataBase64: encoded.dataBase64,
+          });
+          setSelection({
+            category: "",
+            item: "",
+            vendor: "",
+            approvalStatus: "pending",
+            leadTimeDays: 0,
+            estimatedCost: "",
+            actualCost: "",
+          });
+          setSelectionFile(null);
+          refresh();
+        }}
+      >
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Categoría" : "Category"}</span>
+            <input
+              value={selection.category}
+              onChange={(e) =>
+                setSelection({ ...selection, category: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            <span>
+              {lang === "es" ? "Artículo / acabado" : "Item / finish"}
+            </span>
+            <input
+              value={selection.item}
+              onChange={(e) =>
+                setSelection({ ...selection, item: e.target.value })
+              }
+            />
+          </label>
+        </div>
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Proveedor" : "Vendor"}</span>
+            <input
+              value={selection.vendor}
+              onChange={(e) =>
+                setSelection({ ...selection, vendor: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            <span>
+              {lang === "es" ? "Plazo (días)" : "Lead time (days)"}
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="730"
+              value={selection.leadTimeDays}
+              onChange={(e) =>
+                setSelection({
+                  ...selection,
+                  leadTimeDays: Number(e.target.value) || 0,
+                })
+              }
+            />
+          </label>
+        </div>
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Costo estimado ($)" : "Estimated cost ($)"}</span>
+            <input
+              inputMode="decimal"
+              placeholder="0.00"
+              value={selection.estimatedCost}
+              onChange={(e) =>
+                setSelection({ ...selection, estimatedCost: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Costo real ($)" : "Actual cost ($)"}</span>
+            <input
+              inputMode="decimal"
+              placeholder="0.00"
+              value={selection.actualCost}
+              onChange={(e) =>
+                setSelection({ ...selection, actualCost: e.target.value })
+              }
+            />
+          </label>
+        </div>
+        <label>
+          <span>{lang === "es" ? "Foto opcional" : "Optional photo"}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => setSelectionFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        <button className="primary-button">{copy[lang].save}</button>
+      </form>
+      <div className="selection-list">
+        {data.selections.map((s) => (
+          <article key={s.id}>
+            {s.photoUrl && (
+              <img src={s.photoUrl} alt={`${s.category}: ${s.item}`} />
+            )}
+            <div>
+              <strong>{s.category}</strong>
+              <span>{s.item}</span>
+              <small>{s.vendor}</small>
+              <label className="lead-time-inline">
+                <span>{lang === "es" ? "Plazo" : "Lead time"}</span>
+                <input
+                  aria-label={`${s.item} ${lang === "es" ? "plazo en días" : "lead time days"}`}
+                  type="number"
+                  min="0"
+                  max="730"
+                  defaultValue={s.leadTimeDays}
+                  onBlur={async (e) => {
+                    await api.updateSelectionLeadTime({
+                      id: s.id,
+                      leadTimeDays: Number(e.target.value) || 0,
+                    });
+                    refresh();
+                  }}
+                />
+                <small>
+                  {s.leadTimeDays > 0
+                    ? lang === "es"
+                      ? `${s.leadTimeDays} días antes del inicio`
+                      : `${s.leadTimeDays} days before start`
+                    : lang === "es"
+                      ? "Sin plazo"
+                      : "No lead time"}
+                </small>
+              </label>
+              <div className="selection-costs">
+                <label>
+                  <span>{lang === "es" ? "Est. $" : "Est. $"}</span>
+                  <input
+                    inputMode="decimal"
+                    aria-label={`${s.item} ${lang === "es" ? "costo estimado" : "estimated cost"}`}
+                    defaultValue={s.estimatedCost}
+                    key={`est-${s.id}-${s.estimatedCost}`}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v === s.estimatedCost) return;
+                      void saveSelectionCosts(s, v || "0", s.actualCost);
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>{lang === "es" ? "Real $" : "Actual $"}</span>
+                  <input
+                    inputMode="decimal"
+                    aria-label={`${s.item} ${lang === "es" ? "costo real" : "actual cost"}`}
+                    defaultValue={s.actualCost}
+                    key={`act-${s.id}-${s.actualCost}`}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v === s.actualCost) return;
+                      void saveSelectionCosts(s, s.estimatedCost, v || "0");
+                    }}
+                  />
+                </label>
               </div>
             </div>
-            <div className="panel-card">
-              <h3>{lang === "es" ? "Rentabilidad" : "Profitability"}</h3>
-              <ul className="panel-list profit-rows">
-                <li>
-                  <span>{lang === "es" ? "Materiales" : "Materials"}</span>
-                  <strong>{usd(p.materials)}</strong>
-                </li>
-                <li>
-                  <span>{lang === "es" ? "Mano de obra" : "Labor"}</span>
-                  <strong>{usd(p.laborCost)}</strong>
-                </li>
-                <li>
-                  <span>{lang === "es" ? "Gastos" : "Expenses"}</span>
-                  <strong>{usd(p.expenses)}</strong>
-                </li>
-                <li>
-                  <span>{lang === "es" ? "Subcontratistas" : "Subcontractors"}</span>
-                  <strong>{usd(p.subcontractors)}</strong>
-                </li>
-              </ul>
-              <p className="profit-hero">
-                <strong>{usd(p.profit)}</strong>
-                <span>
-                  {lang === "es" ? "Margen" : "Margin"} {p.margin.toFixed(1)}%
-                </span>
-              </p>
-            </div>
-          </>
-        );
-      })()}
-      <div className="panel-card">
-        <h3>{lang === "es" ? "Facturas" : "Invoices"}</h3>
-        {mine.length === 0 ? (
-          <p className="muted">{lang === "es" ? "Sin facturas en este trabajo." : "No invoices on this job."}</p>
-        ) : (
-          <ul className="panel-list">
-            {mine.map((i) => (
-              <li key={i.id}>
-                <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
-                <span className={`status-chip ${i.status}`}>{i.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <button type="button" className="secondary-button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>
-          {lang === "es" ? "Nueva factura" : "New invoice"}
-        </button>
+            <select
+              value={s.approvalStatus}
+              onChange={async (e) => {
+                await api.updateSelectionStatus({
+                  id: s.id,
+                  approvalStatus: e.target.value as typeof s.approvalStatus,
+                });
+                refresh();
+              }}
+            >
+              <option value="pending">
+                {lang === "es" ? "Pendiente" : "Pending"}
+              </option>
+              <option value="approved">
+                {lang === "es" ? "Aprobado" : "Approved"}
+              </option>
+              <option value="rejected">
+                {lang === "es" ? "Rechazado" : "Rejected"}
+              </option>
+            </select>
+          </article>
+        ))}
       </div>
     </section>
   );
 }
+
+function FinDailyLogSection({ lang, jobId, photos, data, refresh }: {
+  lang: Lang; jobId: number; photos: WorkspacePanelProps["photos"]; data: FinData; refresh: () => void;
+}) {
+  const [log, setLog] = useState({
+    logDate: new Date().toLocaleDateString("en-CA"),
+    crew: "",
+    hours: "",
+    photoIds: [] as number[],
+    notes: "",
+    blockers: "",
+    clientSummary: "",
+    sharedWithClient: true,
+  });
+  return (
+    <section className="pa-chart-section fin-module">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#22c55e" }} />{lang === "es" ? "Registro diario" : "Daily log"}</h3>
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await api.saveDailyLog({ jobId, ...log });
+          setLog({ ...log, crew: "", hours: "", photoIds: [], notes: "", blockers: "", clientSummary: "" });
+          refresh();
+        }}
+      >
+        <div className="field-pair">
+          <label>
+            <span>{copy[lang].date}</span>
+            <input
+              type="date"
+              value={log.logDate}
+              onChange={(e) => setLog({ ...log, logDate: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Horas" : "Hours"}</span>
+            <input
+              inputMode="decimal"
+              value={log.hours}
+              onChange={(e) => setLog({ ...log, hours: e.target.value })}
+            />
+          </label>
+        </div>
+        <label>
+          <span>{lang === "es" ? "Personal en obra" : "Crew on site"}</span>
+          <input
+            value={log.crew}
+            onChange={(e) => setLog({ ...log, crew: e.target.value })}
+          />
+        </label>
+        <fieldset className="photo-picker">
+          <legend>{lang === "es" ? "Fotos del día" : "Day photos"}</legend>
+          <div>
+            {photos.map((p) => (
+              <label key={p.id}>
+                <img src={p.url} alt={p.caption || p.stage} />
+                <input
+                  type="checkbox"
+                  checked={log.photoIds.includes(p.id)}
+                  onChange={(e) =>
+                    setLog({
+                      ...log,
+                      photoIds: e.target.checked
+                        ? [...log.photoIds, p.id]
+                        : log.photoIds.filter((id) => id !== p.id),
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label>
+          <span>{copy[lang].notes}</span>
+          <textarea
+            rows={4}
+            value={log.notes}
+            onChange={(e) => setLog({ ...log, notes: e.target.value })}
+          />
+        </label>
+        <label>
+          <span>{lang === "es" ? "Bloqueos / pendientes" : "Blockers"}</span>
+          <textarea
+            rows={2}
+            value={log.blockers}
+            onChange={(e) => setLog({ ...log, blockers: e.target.value })}
+            placeholder={lang === "es" ? "Material en espera, clima, acceso…" : "Waiting on material, weather, access…"}
+          />
+        </label>
+        <label>
+          <span>{lang === "es" ? "Resumen para el cliente" : "Client summary"}</span>
+          <textarea
+            rows={3}
+            value={log.clientSummary}
+            onChange={(e) => setLog({ ...log, clientSummary: e.target.value })}
+            placeholder={lang === "es" ? "Lo que el cliente verá en su correo semanal…" : "What the client will see in their weekly email…"}
+          />
+        </label>
+        <label className="market-bookable-switch">
+          <span>
+            <strong>{lang === "es" ? "Compartir con el cliente" : "Share with client"}</strong>
+            <small>{lang === "es" ? "Incluir este día en el correo semanal de avance." : "Include this day in the weekly progress email."}</small>
+          </span>
+          <Switch
+            checked={log.sharedWithClient}
+            onChange={(v) => setLog({ ...log, sharedWithClient: v })}
+          />
+        </label>
+        <button className="primary-button">{copy[lang].save}</button>
+      </form>
+      <div className="timeline-list">
+        {data.dailyLogs.map((l) => (
+          <article key={l.id}>
+            <time>{formatDate(l.logDate, lang)}</time>
+            <div>
+              <strong>
+                {l.crew || "—"} · {l.hours || "0"}h
+              </strong>
+              <p>{l.notes || "—"}</p>
+              {l.blockers && <p className="log-blockers"><strong>{lang === "es" ? "Bloqueos: " : "Blockers: "}</strong>{l.blockers}</p>}
+              <small>
+                {l.photoIds.length} {copy[lang].photos}
+                {l.sharedWithClient ? (lang === "es" ? " · Compartido" : " · Shared") : (lang === "es" ? " · Privado" : " · Private")}
+              </small>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FinPrivateNotesSection({ lang, jobId, job, data, refresh }: {
+  lang: Lang; jobId: number; job: FinJob; data: FinData; refresh: () => void;
+}) {
+  const [note, setNote] = useState({ note: "", reminderDate: "" });
+  return (
+    <section className="pa-chart-section fin-module">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#64748b" }} />{lang === "es" ? "Notas internas" : "Internal notes"}</h3>
+      <p className="privacy-note">
+        {lang === "es"
+          ? "Privadas: nunca aparecen en los PDF del cliente."
+          : "Private: never shown on client-facing PDFs."}
+      </p>
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!note.note) return;
+          await api.saveInternalNote({
+            jobId,
+            clientId: job.clientId,
+            ...note,
+          });
+          setNote({ note: "", reminderDate: "" });
+          refresh();
+        }}
+      >
+        <label>
+          <span>{copy[lang].notes}</span>
+          <textarea
+            rows={3}
+            value={note.note}
+            onChange={(e) => setNote({ ...note, note: e.target.value })}
+          />
+        </label>
+        <label>
+          <span>
+            {lang === "es" ? "Fecha de recordatorio" : "Reminder date"}
+          </span>
+          <input
+            type="date"
+            value={note.reminderDate}
+            onChange={(e) =>
+              setNote({ ...note, reminderDate: e.target.value })
+            }
+          />
+        </label>
+        <button className="primary-button">{copy[lang].save}</button>
+      </form>
+      <div className="private-note-list">
+        {data.internalNotes.map((n) => (
+          <label key={n.id}>
+            <input
+              type="checkbox"
+              checked={n.completed}
+              onChange={async (e) => {
+                await api.toggleInternalNote({
+                  id: n.id,
+                  completed: e.target.checked,
+                });
+                refresh();
+              }}
+            />
+            <span className={n.completed ? "complete" : ""}>
+              <strong>{n.note}</strong>
+              <small>
+                {n.reminderDate ? formatDate(n.reminderDate, lang) : ""}
+              </small>
+            </span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
+  lang: Lang; jobId: number; data: FinData; refresh: () => void; setScreen: (s: Screen) => void;
+}) {
+  const [milestone, setMilestone] = useState({
+    label: "",
+    amount: "",
+    percentage: "",
+    dueDate: "",
+  });
+  return (
+    <section className="pa-chart-section fin-module">
+      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#14b8a6" }} />{lang === "es" ? "Programa de pagos" : "Payment schedule"}</h3>
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!milestone.label) return;
+          await api.saveMilestone({ jobId, ...milestone });
+          setMilestone({
+            label: "",
+            amount: "",
+            percentage: "",
+            dueDate: "",
+          });
+          refresh();
+        }}
+      >
+        <label>
+          <span>{lang === "es" ? "Hito" : "Milestone"}</span>
+          <input
+            value={milestone.label}
+            onChange={(e) =>
+              setMilestone({ ...milestone, label: e.target.value })
+            }
+            placeholder={
+              lang === "es"
+                ? "Depósito, progreso, final"
+                : "Deposit, progress, final"
+            }
+          />
+        </label>
+        <div className="field-pair">
+          <label>
+            <span>{copy[lang].amount}</span>
+            <input
+              inputMode="decimal"
+              value={milestone.amount}
+              onChange={(e) =>
+                setMilestone({ ...milestone, amount: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            <span>
+              {lang === "es"
+                ? "Porcentaje opcional"
+                : "Optional percentage"}
+            </span>
+            <input
+              inputMode="decimal"
+              value={milestone.percentage}
+              onChange={(e) =>
+                setMilestone({ ...milestone, percentage: e.target.value })
+              }
+            />
+          </label>
+        </div>
+        <label>
+          <span>{copy[lang].dueDate}</span>
+          <input
+            type="date"
+            value={milestone.dueDate}
+            onChange={(e) =>
+              setMilestone({ ...milestone, dueDate: e.target.value })
+            }
+          />
+        </label>
+        <button className="primary-button">{copy[lang].save}</button>
+      </form>
+      <div className="milestone-list">
+        {data.milestones.map((m) => (
+          <article key={m.id}>
+            <div>
+              <strong>{m.label}</strong>
+              <span>
+                {usd(money(m.amount))}
+                {m.percentage ? ` · ${m.percentage}%` : ""}
+              </span>
+              <small>{m.dueDate ? formatDate(m.dueDate, lang) : ""}</small>
+            </div>
+            <div className="row-actions">
+              <select
+                value={m.status}
+                onChange={async (e) => {
+                  await api.updateMilestoneStatus({
+                    id: m.id,
+                    status: e.target.value as typeof m.status,
+                  });
+                  refresh();
+                }}
+              >
+                <option value="pending">
+                  {lang === "es" ? "Pendiente" : "Pending"}
+                </option>
+                <option value="paid">{copy[lang].paid}</option>
+              </select>
+              {m.invoiceId ? (
+                <button
+                  onClick={() =>
+                    setScreen({
+                      name: "invoicePreview",
+                      invoiceId: m.invoiceId as number,
+                    })
+                  }
+                >
+                  {lang === "es" ? "Ver factura" : "View invoice"}
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    const r = await api.invoiceMilestone({ id: m.id, today: localToday() });
+                    refresh();
+                    setScreen({
+                      name: "invoicePreview",
+                      invoiceId: r.invoiceId,
+                    });
+                  }}
+                >
+                  {lang === "es" ? "Crear factura" : "Create invoice"}
+                </button>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operations, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "operations" | "setScreen">) {
+  const auth = useContext(AuthContext);
+  const isPremium = auth?.user.tier === "premium";
+  const qc = useQueryClient();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["job-operations", jobId] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  const mine = invoices.filter((i) => i.jobId === jobId);
+  const totalInvoiced = mine.reduce((s, i) => s + Number(i.totalWithLateFee || i.total || 0), 0);
+  const totalPaid = mine.reduce((s, i) => s + Number(i.paidToDate || 0), 0);
+  const p = operations?.profitability;
+  const selPct = p && p.selectionBudget > 0
+    ? Math.min(100, (p.selectionActual / p.selectionBudget) * 100)
+    : p && p.selectionActual > 0 ? 100 : 0;
+  const t = {
+    title: lang === "es" ? "Finanzas del trabajo" : "Job financials",
+    profitability: lang === "es" ? "Rentabilidad" : "Profitability",
+    estimated: lang === "es" ? "Estimado" : "Estimated",
+    invoiced: lang === "es" ? "Facturado" : "Invoiced",
+    variance: lang === "es" ? "Diferencia" : "Variance",
+    materials: lang === "es" ? "Materiales" : "Materials",
+    expenses: lang === "es" ? "Gastos" : "Expenses",
+    subcontractors: lang === "es" ? "Subcontratistas" : "Subcontractors",
+    labor: lang === "es" ? "Mano de obra" : "Labor",
+    profit: lang === "es" ? "Ganancia" : "Profit",
+    margin: lang === "es" ? "Margen" : "Margin",
+    paid: lang === "es" ? "Cobrado" : "Paid",
+    deposit: lang === "es" ? "Depósito" : "Deposit",
+    budget: lang === "es" ? "Presupuesto" : "Budget",
+    budgetTotal: lang === "es" ? "Presupuesto total" : "Budget total",
+    changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
+    selections: lang === "es" ? "Selecciones" : "Selections",
+    invoicesTitle: lang === "es" ? "Facturas" : "Invoices",
+    noInvoices: lang === "es" ? "Sin facturas en este trabajo." : "No invoices on this job.",
+    newInvoice: lang === "es" ? "Nueva factura" : "New invoice",
+  };
+  return (
+    <ProShowcase lang={lang} isPremium={isPremium} title={t.title} setScreen={setScreen} className="fin-showcase">
+      <section className="workspace-panel fin-unified" aria-label={lang === "es" ? "Finanzas" : "Financials"}>
+        {p && (
+          <section className="fin-hero" aria-label={t.profitability}>
+            <h2>{t.profitability}</h2>
+            <div className="fin-hero-grid">
+              <div><span>{t.estimated}</span><strong>{usd(p.quoted)}</strong></div>
+              <div><span>{t.invoiced}</span><strong>{usd(p.invoiced)}</strong></div>
+              <div><span>{t.variance}</span><strong>{p.variance >= 0 ? "+" : ""}{usd(p.variance)}</strong></div>
+              <div><span>{t.materials}</span><strong>{usd(p.materials)}</strong></div>
+              <div><span>{t.expenses}</span><strong>{usd(p.expenses)}</strong></div>
+              <div><span>{t.subcontractors}</span><strong>{usd(p.subcontractors)}</strong></div>
+            </div>
+            <div className="fin-hero-total">
+              <span>{t.profit}</span>
+              <strong>{usd(p.profit)} · {p.margin.toFixed(1)}%</strong>
+            </div>
+          </section>
+        )}
+        <div className="pa-stat-grid fin-stats">
+          <div className="pa-stat">
+            <PAStatIcon path="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />
+            <div className="pa-stat-text"><span className="pa-stat-value">{usd(totalInvoiced)}</span><span className="pa-stat-label">{t.invoiced}</span></div>
+          </div>
+          <div className="pa-stat">
+            <PAStatIcon path="M20 6L9 17l-5-5" />
+            <div className="pa-stat-text"><span className="pa-stat-value">{usd(totalPaid)}</span><span className="pa-stat-label">{t.paid}</span></div>
+          </div>
+          <div className="pa-stat">
+            <PAStatIcon path="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />
+            <div className="pa-stat-text"><span className="pa-stat-value">{usd(money(job.depositAmount))}</span><span className="pa-stat-label">{t.deposit}</span></div>
+          </div>
+          <div className="pa-stat">
+            <PAStatIcon path="M4 19V9M10 19V5M16 19v-8M22 19H2" />
+            <div className="pa-stat-text"><span className="pa-stat-value">{p ? usd(p.budgetTotal) : "—"}</span><span className="pa-stat-label">{t.budget}</span></div>
+          </div>
+        </div>
+        {p && (
+          <section className="pa-chart-section">
+            <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.budget}</h3>
+            <ul className="panel-list budget-rows">
+              <li>
+                <span>{t.budgetTotal}</span>
+                <strong>{usd(p.budgetTotal)}</strong>
+              </li>
+              <li>
+                <span>{t.changeOrders}</span>
+                <strong>{usd(p.changeOrdersTotal)}</strong>
+              </li>
+              <li>
+                <span>
+                  {t.selections}
+                  <small>
+                    {usd(p.selectionActual)} / {usd(p.selectionBudget)}
+                  </small>
+                </span>
+                <strong>{(selPct ?? 0).toFixed(0)}%</strong>
+              </li>
+            </ul>
+            <div
+              className={`budget-bar${(selPct ?? 0) >= 100 && p.selectionBudget > 0 ? " over" : ""}`}
+              role="progressbar"
+              aria-valuenow={Math.round(selPct ?? 0)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={lang === "es" ? "Presupuesto de selecciones usado" : "Selection budget used"}
+            >
+              <span style={{ width: `${selPct ?? 0}%` }} />
+            </div>
+          </section>
+        )}
+        <section className="pa-chart-section">
+          <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#3b82f6" }} />{t.invoicesTitle}</h3>
+          {mine.length === 0 ? (
+            <p className="muted">{t.noInvoices}</p>
+          ) : (
+            <ul className="panel-list">
+              {mine.map((i) => (
+                <li key={i.id}>
+                  <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
+                  <span className={`status-chip ${i.status}`}>{i.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="secondary-button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>
+            {t.newInvoice}
+          </button>
+        </section>
+        {operations && (
+          <>
+            <FinSelectionsSection lang={lang} jobId={jobId} job={job} data={operations} refresh={refresh} />
+            <FinDailyLogSection lang={lang} jobId={jobId} photos={photos} data={operations} refresh={refresh} />
+            <FinPrivateNotesSection lang={lang} jobId={jobId} job={job} data={operations} refresh={refresh} />
+            <FinPaymentsSection lang={lang} jobId={jobId} data={operations} refresh={refresh} setScreen={setScreen} />
+          </>
+        )}
+      </section>
+    </ProShowcase>
+  );
+}
+
 
 function WorkspacePhotosPanel({ lang, photos }: Pick<WorkspacePanelProps, "lang" | "photos">) {
   const stages = ["before", "during", "after"] as const;
@@ -8195,7 +8832,12 @@ function JobDetail({
         )}
       </section>
       {operationsQuery.data && (
-        <section className="profit-strip">
+        <button
+          type="button"
+          className="profit-strip profit-strip-link"
+          onClick={() => setWsTab("financials")}
+          aria-label={lang === "es" ? "Ver finanzas" : "View financials"}
+        >
           <div>
             <span>{lang === "es" ? "Facturado" : "Invoiced"}</span>
             <strong>{usd(operationsQuery.data.profitability.invoiced)}</strong>
@@ -8216,13 +8858,10 @@ function JobDetail({
               {operationsQuery.data.profitability.margin.toFixed(1)}%
             </strong>
           </div>
-          <button
-            className="small-button"
-            onClick={() => setScreen({ name: "jobOps", jobId })}
-          >
-            {lang === "es" ? "Ver operaciones" : "View operations"}
-          </button>
-        </section>
+          <span className="profit-strip-cta">
+            {lang === "es" ? "Finanzas →" : "Financials →"}
+          </span>
+        </button>
       )}
       <ProShowcase lang={lang} isPremium={isPremium} title={lang === "es" ? "Portal del cliente" : "Client portal"} setScreen={setScreen}>
         <PortalOwnerPanel lang={lang} jobId={jobId} />
@@ -8372,7 +9011,7 @@ function JobDetail({
           <VoiceNotes lang={lang} data={query.data} />
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} tone="gold" icon={<CheckIcon />}>
-          <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Operaciones del trabajo" : "Job operations"} onClick={() => setScreen({ name: "jobOps", jobId })}/></div>
+          <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Finanzas" : "Financials"} onClick={() => setWsTab("financials")}/></div>
         </AccordionSection>
       </section>
       </>)}
@@ -19135,7 +19774,7 @@ function TodayScreen({
           {d.materials.map((m) => (
             <TapArticle
               key={m.selectionId}
-              onTap={() => setScreen({ name: "jobOps", jobId: m.jobId })}
+              onTap={() => setScreen({ name: "detail", jobId: m.jobId, tab: "financials" })}
             >
               <div className="urgency-badge">
                 {m.daysUntil < 0
@@ -19158,7 +19797,7 @@ function TodayScreen({
                   : `Order by ${formatDate(m.orderByDate, lang)} or the job slips`}
               </strong>
               <button
-                onClick={() => setScreen({ name: "jobOps", jobId: m.jobId })}
+                onClick={() => setScreen({ name: "detail", jobId: m.jobId, tab: "financials" })}
               >
                 <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>
                 {lang === "es" ? "Abrir selección" : "Open selection"}
@@ -22761,725 +23400,6 @@ function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   );
 }
 
-function JobOperationsScreen({
-  lang,
-  jobId,
-  settings,
-  onBack,
-  setScreen,
-}: {
-  lang: Lang;
-  jobId: number;
-  settings: Settings | null;
-  onBack: () => void;
-  setScreen: (s: Screen) => void;
-}) {
-  const qc = useQueryClient();
-  const jobQuery = useQuery({
-    queryKey: ["job", jobId],
-    queryFn: () => api.getJob({ id: jobId }),
-  });
-  const query = useQuery({
-    queryKey: ["job-operations", jobId],
-    queryFn: () => api.getJobOperations({ jobId }),
-  });
-  const [open, setOpen] = useState<
-    "selections" | "logs" | "notes" | "payments"
-  >("selections");
-  const [selection, setSelection] = useState({
-    category: "",
-    item: "",
-    vendor: "",
-    approvalStatus: "pending" as "pending" | "approved" | "rejected",
-    leadTimeDays: 0,
-    estimatedCost: "",
-    actualCost: "",
-  });
-  const [selectionFile, setSelectionFile] = useState<File | null>(null);
-  const [log, setLog] = useState({
-    logDate: new Date().toLocaleDateString("en-CA"),
-    crew: "",
-    hours: "",
-    photoIds: [] as number[],
-    notes: "",
-    blockers: "",
-    clientSummary: "",
-    sharedWithClient: true,
-  });
-  const [note, setNote] = useState({ note: "", reminderDate: "" });
-  const [milestone, setMilestone] = useState({
-    label: "",
-    amount: "",
-    percentage: "",
-    dueDate: "",
-  });
-  const job = jobQuery.data?.job;
-  const data = query.data;
-  if (!job || !data)
-    return (
-      <main className="page">
-        <PageHeader lang={lang} title="…" onBack={onBack} />
-        <div className="loading-block" />
-      </main>
-    );
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["job-operations", jobId] });
-    qc.invalidateQueries({ queryKey: ["dashboard"] });
-  };
-  const saveSelectionCosts = async (
-    s: (typeof data.selections)[number],
-    estimatedCost: string,
-    actualCost: string,
-  ) => {
-    await api.saveSelection({
-      id: s.id,
-      jobId,
-      category: s.category,
-      item: s.item,
-      vendor: s.vendor,
-      approvalStatus: s.approvalStatus,
-      leadTimeDays: s.leadTimeDays,
-      estimatedCost,
-      actualCost,
-      photoFilename: "",
-      photoContentType: "",
-      photoDataBase64: "",
-    });
-    refresh();
-  };
-  const shareSelections = async () => {
-    const text = [
-      `${job.clientName} — ${job.jobType}`,
-      ...data.selections.map(
-        (s) =>
-          `${s.category}: ${s.item}${s.vendor ? ` (${s.vendor})` : ""} — ${s.approvalStatus}`,
-      ),
-    ].join("\n");
-    if (navigator.share)
-      await navigator
-        .share({ title: lang === "es" ? "Selecciones" : "Selections", text })
-        .catch(() => undefined);
-    else await copyText(text);
-  };
-  return (
-    <main className="page job-ops-page b06-job-ops">
-      <PageHeader
-        lang={lang}
-        title={lang === "es" ? "Operaciones del trabajo" : "Job operations"}
-        onBack={onBack}
-      />
-      <section className="profit-card">
-        <h2>{lang === "es" ? "Rentabilidad" : "Profitability"}</h2>
-        <div>
-          <span>
-            {lang === "es" ? "Estimado" : "Estimated"}
-            <strong>{usd(data.profitability.quoted)}</strong>
-          </span>
-          <span>
-            {lang === "es" ? "Facturado" : "Invoiced"}
-            <strong>{usd(data.profitability.invoiced)}</strong>
-          </span>
-          <span>
-            {lang === "es" ? "Diferencia" : "Variance"}
-            <strong>
-              {data.profitability.variance >= 0 ? "+" : ""}
-              {usd(data.profitability.variance)}
-              {data.profitability.variancePercent !== null
-                ? ` · ${data.profitability.variancePercent.toFixed(1)}%`
-                : ""}
-            </strong>
-          </span>
-          <span>
-            {lang === "es" ? "Materiales" : "Materials"}
-            <strong>{usd(data.profitability.materials)}</strong>
-          </span>
-          <span>
-            {lang === "es" ? "Gastos" : "Expenses"}
-            <strong>{usd(data.profitability.expenses)}</strong>
-          </span>
-          <span>
-            {lang === "es" ? "Subcontratistas" : "Subcontractors"}
-            <strong>{usd(data.profitability.subcontractors)}</strong>
-          </span>
-          <span>
-            {lang === "es" ? "Mano de obra" : "Labor"}
-            <strong>{usd(data.profitability.laborCost)}</strong>
-          </span>
-          <span className="profit-total">
-            {lang === "es" ? "Ganancia" : "Profit"}
-            <strong>
-              {usd(data.profitability.profit)} ·{" "}
-              {data.profitability.margin.toFixed(1)}%
-            </strong>
-          </span>
-        </div>
-        <small>
-          {data.profitability.laborHours.toFixed(1)}h ×{" "}
-          {usd(money(settings?.hourlyCostRate ?? "0"))}/h
-        </small>
-      </section>
-      <div className="job-ops-tabs">
-        {(["selections", "logs", "notes", "payments"] as const).map((key) => (
-          <button
-            className={open === key ? "active" : ""}
-            onClick={() => setOpen(key)}
-            key={key}
-          >
-            {key === "selections"
-              ? lang === "es"
-                ? "Selecciones"
-                : "Selections"
-              : key === "logs"
-                ? lang === "es"
-                  ? "Diario"
-                  : "Daily log"
-                : key === "notes"
-                  ? lang === "es"
-                    ? "Notas privadas"
-                    : "Private notes"
-                  : lang === "es"
-                    ? "Pagos"
-                    : "Payments"}
-          </button>
-        ))}
-      </div>
-      {open === "selections" && (
-        <section className="operation-module">
-          <div className="module-heading">
-            <h2>
-              {lang === "es" ? "Selecciones del cliente" : "Client selections"}
-            </h2>
-            <button
-              className="small-button"
-              onClick={() => void shareSelections()}
-            >
-              <ShareIcon />
-              {lang === "es" ? "Compartir resumen" : "Share summary"}
-            </button>
-          </div>
-          <form
-            className="compact-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!selection.category || !selection.item) return;
-              let encoded = { dataBase64: "" };
-              const compressedSelection = selectionFile ? await compressImageFile(selectionFile, "photo") : null;
-              if (compressedSelection) encoded = await fileToBase64(compressedSelection);
-              await api.saveSelection({
-                id: null,
-                jobId,
-                ...selection,
-                photoFilename: compressedSelection?.name ?? "",
-                photoContentType: (compressedSelection?.type ?? "") as
-                  "" | "image/jpeg" | "image/png" | "image/webp",
-                photoDataBase64: encoded.dataBase64,
-              });
-              setSelection({
-                category: "",
-                item: "",
-                vendor: "",
-                approvalStatus: "pending",
-                leadTimeDays: 0,
-                estimatedCost: "",
-                actualCost: "",
-              });
-              setSelectionFile(null);
-              refresh();
-            }}
-          >
-            <div className="field-pair">
-              <label>
-                <span>{lang === "es" ? "Categoría" : "Category"}</span>
-                <input
-                  value={selection.category}
-                  onChange={(e) =>
-                    setSelection({ ...selection, category: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>
-                  {lang === "es" ? "Artículo / acabado" : "Item / finish"}
-                </span>
-                <input
-                  value={selection.item}
-                  onChange={(e) =>
-                    setSelection({ ...selection, item: e.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <div className="field-pair">
-              <label>
-                <span>{lang === "es" ? "Proveedor" : "Vendor"}</span>
-                <input
-                  value={selection.vendor}
-                  onChange={(e) =>
-                    setSelection({ ...selection, vendor: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>
-                  {lang === "es" ? "Plazo (días)" : "Lead time (days)"}
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  max="730"
-                  value={selection.leadTimeDays}
-                  onChange={(e) =>
-                    setSelection({
-                      ...selection,
-                      leadTimeDays: Number(e.target.value) || 0,
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <div className="field-pair">
-              <label>
-                <span>{lang === "es" ? "Costo estimado ($)" : "Estimated cost ($)"}</span>
-                <input
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={selection.estimatedCost}
-                  onChange={(e) =>
-                    setSelection({ ...selection, estimatedCost: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>{lang === "es" ? "Costo real ($)" : "Actual cost ($)"}</span>
-                <input
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={selection.actualCost}
-                  onChange={(e) =>
-                    setSelection({ ...selection, actualCost: e.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <label>
-              <span>{lang === "es" ? "Foto opcional" : "Optional photo"}</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => setSelectionFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button className="primary-button">{copy[lang].save}</button>
-          </form>
-          <div className="selection-list">
-            {data.selections.map((s) => (
-              <article key={s.id}>
-                {s.photoUrl && (
-                  <img src={s.photoUrl} alt={`${s.category}: ${s.item}`} />
-                )}
-                <div>
-                  <strong>{s.category}</strong>
-                  <span>{s.item}</span>
-                  <small>{s.vendor}</small>
-                  <label className="lead-time-inline">
-                    <span>{lang === "es" ? "Plazo" : "Lead time"}</span>
-                    <input
-                      aria-label={`${s.item} ${lang === "es" ? "plazo en días" : "lead time days"}`}
-                      type="number"
-                      min="0"
-                      max="730"
-                      defaultValue={s.leadTimeDays}
-                      onBlur={async (e) => {
-                        await api.updateSelectionLeadTime({
-                          id: s.id,
-                          leadTimeDays: Number(e.target.value) || 0,
-                        });
-                        refresh();
-                      }}
-                    />
-                    <small>
-                      {s.leadTimeDays > 0
-                        ? lang === "es"
-                          ? `${s.leadTimeDays} días antes del inicio`
-                          : `${s.leadTimeDays} days before start`
-                        : lang === "es"
-                          ? "Sin plazo"
-                          : "No lead time"}
-                    </small>
-                  </label>
-                  <div className="selection-costs">
-                    <label>
-                      <span>{lang === "es" ? "Est. $" : "Est. $"}</span>
-                      <input
-                        inputMode="decimal"
-                        aria-label={`${s.item} ${lang === "es" ? "costo estimado" : "estimated cost"}`}
-                        defaultValue={s.estimatedCost}
-                        key={`est-${s.id}-${s.estimatedCost}`}
-                        onBlur={(e) => {
-                          const v = e.target.value.trim();
-                          if (v === s.estimatedCost) return;
-                          void saveSelectionCosts(s, v || "0", s.actualCost);
-                        }}
-                      />
-                    </label>
-                    <label>
-                      <span>{lang === "es" ? "Real $" : "Actual $"}</span>
-                      <input
-                        inputMode="decimal"
-                        aria-label={`${s.item} ${lang === "es" ? "costo real" : "actual cost"}`}
-                        defaultValue={s.actualCost}
-                        key={`act-${s.id}-${s.actualCost}`}
-                        onBlur={(e) => {
-                          const v = e.target.value.trim();
-                          if (v === s.actualCost) return;
-                          void saveSelectionCosts(s, s.estimatedCost, v || "0");
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <select
-                  value={s.approvalStatus}
-                  onChange={async (e) => {
-                    await api.updateSelectionStatus({
-                      id: s.id,
-                      approvalStatus: e.target.value as typeof s.approvalStatus,
-                    });
-                    refresh();
-                  }}
-                >
-                  <option value="pending">
-                    {lang === "es" ? "Pendiente" : "Pending"}
-                  </option>
-                  <option value="approved">
-                    {lang === "es" ? "Aprobado" : "Approved"}
-                  </option>
-                  <option value="rejected">
-                    {lang === "es" ? "Rechazado" : "Rejected"}
-                  </option>
-                </select>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-      {open === "logs" && (
-        <section className="operation-module">
-          <h2>{lang === "es" ? "Registro diario" : "Daily log"}</h2>
-          <form
-            className="compact-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              await api.saveDailyLog({ jobId, ...log });
-              setLog({ ...log, crew: "", hours: "", photoIds: [], notes: "", blockers: "", clientSummary: "" });
-              refresh();
-            }}
-          >
-            <div className="field-pair">
-              <label>
-                <span>{copy[lang].date}</span>
-                <input
-                  type="date"
-                  value={log.logDate}
-                  onChange={(e) => setLog({ ...log, logDate: e.target.value })}
-                />
-              </label>
-              <label>
-                <span>{lang === "es" ? "Horas" : "Hours"}</span>
-                <input
-                  inputMode="decimal"
-                  value={log.hours}
-                  onChange={(e) => setLog({ ...log, hours: e.target.value })}
-                />
-              </label>
-            </div>
-            <label>
-              <span>{lang === "es" ? "Personal en obra" : "Crew on site"}</span>
-              <input
-                value={log.crew}
-                onChange={(e) => setLog({ ...log, crew: e.target.value })}
-              />
-            </label>
-            <fieldset className="photo-picker">
-              <legend>{lang === "es" ? "Fotos del día" : "Day photos"}</legend>
-              <div>
-                {jobQuery.data?.photos.map((p) => (
-                  <label key={p.id}>
-                    <img src={p.url} alt={p.caption || p.stage} />
-                    <input
-                      type="checkbox"
-                      checked={log.photoIds.includes(p.id)}
-                      onChange={(e) =>
-                        setLog({
-                          ...log,
-                          photoIds: e.target.checked
-                            ? [...log.photoIds, p.id]
-                            : log.photoIds.filter((id) => id !== p.id),
-                        })
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <label>
-              <span>{copy[lang].notes}</span>
-              <textarea
-                rows={4}
-                value={log.notes}
-                onChange={(e) => setLog({ ...log, notes: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>{lang === "es" ? "Bloqueos / pendientes" : "Blockers"}</span>
-              <textarea
-                rows={2}
-                value={log.blockers}
-                onChange={(e) => setLog({ ...log, blockers: e.target.value })}
-                placeholder={lang === "es" ? "Material en espera, clima, acceso…" : "Waiting on material, weather, access…"}
-              />
-            </label>
-            <label>
-              <span>{lang === "es" ? "Resumen para el cliente" : "Client summary"}</span>
-              <textarea
-                rows={3}
-                value={log.clientSummary}
-                onChange={(e) => setLog({ ...log, clientSummary: e.target.value })}
-                placeholder={lang === "es" ? "Lo que el cliente verá en su correo semanal…" : "What the client will see in their weekly email…"}
-              />
-            </label>
-            <label className="market-bookable-switch">
-              <span>
-                <strong>{lang === "es" ? "Compartir con el cliente" : "Share with client"}</strong>
-                <small>{lang === "es" ? "Incluir este día en el correo semanal de avance." : "Include this day in the weekly progress email."}</small>
-              </span>
-              <Switch
-                checked={log.sharedWithClient}
-                onChange={(v) => setLog({ ...log, sharedWithClient: v })}
-              />
-            </label>
-            <button className="primary-button">{copy[lang].save}</button>
-          </form>
-          <div className="timeline-list">
-            {data.dailyLogs.map((l) => (
-              <article key={l.id}>
-                <time>{formatDate(l.logDate, lang)}</time>
-                <div>
-                  <strong>
-                    {l.crew || "—"} · {l.hours || "0"}h
-                  </strong>
-                  <p>{l.notes || "—"}</p>
-                  {l.blockers && <p className="log-blockers"><strong>{lang === "es" ? "Bloqueos: " : "Blockers: "}</strong>{l.blockers}</p>}
-                  <small>
-                    {l.photoIds.length} {copy[lang].photos}
-                    {l.sharedWithClient ? (lang === "es" ? " · Compartido" : " · Shared") : (lang === "es" ? " · Privado" : " · Private")}
-                  </small>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-      {open === "notes" && (
-        <section className="operation-module">
-          <h2>{lang === "es" ? "Notas internas" : "Internal notes"}</h2>
-          <p className="privacy-note">
-            {lang === "es"
-              ? "Privadas: nunca aparecen en los PDF del cliente."
-              : "Private: never shown on client-facing PDFs."}
-          </p>
-          <form
-            className="compact-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!note.note) return;
-              await api.saveInternalNote({
-                jobId,
-                clientId: job.clientId,
-                ...note,
-              });
-              setNote({ note: "", reminderDate: "" });
-              refresh();
-            }}
-          >
-            <label>
-              <span>{copy[lang].notes}</span>
-              <textarea
-                rows={3}
-                value={note.note}
-                onChange={(e) => setNote({ ...note, note: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>
-                {lang === "es" ? "Fecha de recordatorio" : "Reminder date"}
-              </span>
-              <input
-                type="date"
-                value={note.reminderDate}
-                onChange={(e) =>
-                  setNote({ ...note, reminderDate: e.target.value })
-                }
-              />
-            </label>
-            <button className="primary-button">{copy[lang].save}</button>
-          </form>
-          <div className="private-note-list">
-            {data.internalNotes.map((n) => (
-              <label key={n.id}>
-                <input
-                  type="checkbox"
-                  checked={n.completed}
-                  onChange={async (e) => {
-                    await api.toggleInternalNote({
-                      id: n.id,
-                      completed: e.target.checked,
-                    });
-                    refresh();
-                  }}
-                />
-                <span className={n.completed ? "complete" : ""}>
-                  <strong>{n.note}</strong>
-                  <small>
-                    {n.reminderDate ? formatDate(n.reminderDate, lang) : ""}
-                  </small>
-                </span>
-              </label>
-            ))}
-          </div>
-        </section>
-      )}
-      {open === "payments" && (
-        <section className="operation-module">
-          <h2>{lang === "es" ? "Programa de pagos" : "Payment schedule"}</h2>
-          <form
-            className="compact-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!milestone.label) return;
-              await api.saveMilestone({ jobId, ...milestone });
-              setMilestone({
-                label: "",
-                amount: "",
-                percentage: "",
-                dueDate: "",
-              });
-              refresh();
-            }}
-          >
-            <label>
-              <span>{lang === "es" ? "Hito" : "Milestone"}</span>
-              <input
-                value={milestone.label}
-                onChange={(e) =>
-                  setMilestone({ ...milestone, label: e.target.value })
-                }
-                placeholder={
-                  lang === "es"
-                    ? "Depósito, progreso, final"
-                    : "Deposit, progress, final"
-                }
-              />
-            </label>
-            <div className="field-pair">
-              <label>
-                <span>{copy[lang].amount}</span>
-                <input
-                  inputMode="decimal"
-                  value={milestone.amount}
-                  onChange={(e) =>
-                    setMilestone({ ...milestone, amount: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>
-                  {lang === "es"
-                    ? "Porcentaje opcional"
-                    : "Optional percentage"}
-                </span>
-                <input
-                  inputMode="decimal"
-                  value={milestone.percentage}
-                  onChange={(e) =>
-                    setMilestone({ ...milestone, percentage: e.target.value })
-                  }
-                />
-              </label>
-            </div>
-            <label>
-              <span>{copy[lang].dueDate}</span>
-              <input
-                type="date"
-                value={milestone.dueDate}
-                onChange={(e) =>
-                  setMilestone({ ...milestone, dueDate: e.target.value })
-                }
-              />
-            </label>
-            <button className="primary-button">{copy[lang].save}</button>
-          </form>
-          <div className="milestone-list">
-            {data.milestones.map((m) => (
-              <article key={m.id}>
-                <div>
-                  <strong>{m.label}</strong>
-                  <span>
-                    {usd(money(m.amount))}
-                    {m.percentage ? ` · ${m.percentage}%` : ""}
-                  </span>
-                  <small>{m.dueDate ? formatDate(m.dueDate, lang) : ""}</small>
-                </div>
-                <div className="row-actions">
-                  <select
-                    value={m.status}
-                    onChange={async (e) => {
-                      await api.updateMilestoneStatus({
-                        id: m.id,
-                        status: e.target.value as typeof m.status,
-                      });
-                      refresh();
-                    }}
-                  >
-                    <option value="pending">
-                      {lang === "es" ? "Pendiente" : "Pending"}
-                    </option>
-                    <option value="paid">{copy[lang].paid}</option>
-                  </select>
-                  {m.invoiceId ? (
-                    <button
-                      onClick={() =>
-                        setScreen({
-                          name: "invoicePreview",
-                          invoiceId: m.invoiceId as number,
-                        })
-                      }
-                    >
-                      {lang === "es" ? "Ver factura" : "View invoice"}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        const r = await api.invoiceMilestone({ id: m.id, today: localToday() });
-                        refresh();
-                        setScreen({
-                          name: "invoicePreview",
-                          invoiceId: r.invoiceId,
-                        });
-                      }}
-                    >
-                      {lang === "es" ? "Crear factura" : "Create invoice"}
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-    </main>
-  );
-}
 
 type ExpansionTab =
   | "losses"
