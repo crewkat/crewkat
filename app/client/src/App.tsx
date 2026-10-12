@@ -3603,6 +3603,40 @@ function buzz(pattern: number | number[] = 12) {
 }
 
 type FlowStepState = "done" | "current" | "todo";
+// Job Overview redesign 2026-10-11 (point 5): premium SVG progress ring for
+// the photo-completeness section.
+function ProgressRing({ value, size = 60 }: { value: number; size?: number }) {
+  const r = (size - 8) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <svg
+      className="progress-ring"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`${Math.round(pct)}%`}
+    >
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-2)" strokeWidth="7" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="var(--green)"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c - (c * pct) / 100}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" dy=".35em" textAnchor="middle" className="progress-ring-text">
+        {Math.round(pct)}%
+      </text>
+    </svg>
+  );
+}
 function FlowStepper({
   lang,
   steps,
@@ -6950,6 +6984,69 @@ function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<Workspace
 
 function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "documents" | "setScreen">) {
   const mine = documents.filter((d) => d.jobId === jobId);
+  type Doc = (typeof mine)[number];
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<Doc | null>(null);
+  const [viewing, setViewing] = useState<Doc | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<Doc | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const kindLabel = (d: Doc) =>
+    d.kind === "contract"
+      ? (lang === "es" ? "Contrato" : "Contract")
+      : (lang === "es" ? "Orden de cambio" : "Change order");
+  const statusLabel = (d: Doc) =>
+    d.clientSignedAt
+      ? (lang === "es" ? "Firmado" : "Signed")
+      : (lang === "es" ? "Sin firmar" : "Unsigned");
+
+  const sendDoc = async (d: Doc) => {
+    if (busy) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      const res = await api.createDocumentLink({ kind: d.kind, id: d.id });
+      const url = `${window.location.origin}/d/${res.shortCode}`;
+      const text =
+        lang === "es"
+          ? `Aquí está tu ${kindLabel(d).toLowerCase()}: ${d.title}`
+          : `Here is your ${kindLabel(d).toLowerCase()}: ${d.title}`;
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          await navigator.share({ title: d.title, text, url });
+          setSelected(null);
+        } catch (e) {
+          if (!(e instanceof DOMException && e.name === "AbortError")) {
+            const ok = await copyText(url);
+            setNotice(ok ? (lang === "es" ? "Enlace copiado" : "Link copied") : (lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link"));
+          }
+        }
+      } else {
+        const ok = await copyText(url);
+        setNotice(ok ? (lang === "es" ? "Enlace copiado" : "Link copied") : (lang === "es" ? "No se pudo copiar el enlace" : "Couldn't copy the link"));
+        if (ok) setSelected(null);
+      }
+    } catch {
+      setNotice(lang === "es" ? "No se pudo crear el enlace" : "Couldn't create the link");
+    }
+    setBusy(false);
+  };
+
+  const deleteDoc = async (d: Doc) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api.deleteDocument({ id: d.id });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      setConfirmingDelete(null);
+      setSelected(null);
+      setNotice(lang === "es" ? "Documento eliminado" : "Document deleted");
+    } catch {
+      setNotice(lang === "es" ? "No se pudo eliminar" : "Couldn't delete");
+    }
+    setBusy(false);
+  };
+
   return (
     <section className="workspace-panel" aria-label={lang === "es" ? "Documentos" : "Documents"}>
       <div className="panel-card">
@@ -6957,20 +7054,21 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
         {mine.length === 0 ? (
           <p className="muted">{lang === "es" ? "Sin documentos en este trabajo." : "No documents on this job."}</p>
         ) : (
-          <ul className="panel-list">
+          <ul className="panel-list doc-list">
             {mine.map((d) => (
               <li key={d.id}>
-                <strong>{d.title}</strong>
-                <span>
-                  {d.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}
-                  {d.clientSignedAt
-                    ? (lang === "es" ? " · Firmado" : " · Signed")
-                    : (lang === "es" ? " · Sin firmar" : " · Unsigned")}
-                </span>
+                <button type="button" className="doc-row" onClick={() => { setSelected(d); setNotice(""); }}>
+                  <span>
+                    <strong>{d.title}</strong>
+                    <small>{kindLabel(d)} · {statusLabel(d)}</small>
+                  </span>
+                  <BackIcon />
+                </button>
               </li>
             ))}
           </ul>
         )}
+        {notice && <p className="status" role="status">{notice}</p>}
         <div className="row-actions">
           <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>
             {lang === "es" ? "Nuevo contrato" : "New contract"}
@@ -6980,6 +7078,69 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
           </button>
         </div>
       </div>
+      {selected && !viewing && !confirmingDelete && (
+        <BottomSheet lang={lang} title={selected.title} onClose={() => setSelected(null)}>
+          {(close) => (
+            <div className="bottom-sheet-body">
+              <button type="button" onClick={() => { setViewing(selected); }}>
+                <Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>
+                <span>{lang === "es" ? "Ver documento" : "View document"}</span>
+              </button>
+              <button type="button" disabled={busy} onClick={() => void sendDoc(selected)}>
+                <Icon><path d="M4 12v7h16v-7M12 3v13M7 8l5-5 5 5"/></Icon>
+                <span>{busy ? (lang === "es" ? "Enviando…" : "Sending…") : (lang === "es" ? "Enviar enlace" : "Send link")}</span>
+              </button>
+              <button type="button" onClick={() => setConfirmingDelete(selected)}>
+                <Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></Icon>
+                <span>{lang === "es" ? "Eliminar" : "Delete"}</span>
+              </button>
+              <button type="button" onClick={close}>
+                <Icon><path d="M6 6l12 12M18 6L6 18"/></Icon>
+                <span>{lang === "es" ? "Cancelar" : "Cancel"}</span>
+              </button>
+            </div>
+          )}
+        </BottomSheet>
+      )}
+      {viewing && (
+        <BottomSheet lang={lang} title={viewing.title} onClose={() => setViewing(null)}>
+          {(close) => (
+            <div className="doc-view">
+              <p className="doc-view-meta">{kindLabel(viewing)} · {statusLabel(viewing)}{viewing.amount ? ` · ${viewing.amount}` : ""}</p>
+              {viewing.bodyText && <p className="doc-view-body">{viewing.bodyText}</p>}
+              <dl className="doc-view-facts">
+                <div><dt>{lang === "es" ? "Firmado por" : "Signed by"}</dt><dd>{viewing.signerName} · {new Date(viewing.signedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</dd></div>
+                {viewing.clientSignerName && <div><dt>{lang === "es" ? "Cliente" : "Client"}</dt><dd>{viewing.clientSignerName}{viewing.clientSignedAt ? ` · ${new Date(viewing.clientSignedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}` : ""}</dd></div>}
+              </dl>
+              <div className="row-actions">
+                <button type="button" className="secondary-button" disabled={busy} onClick={() => void sendDoc(viewing)}>
+                  {busy ? (lang === "es" ? "Enviando…" : "Sending…") : (lang === "es" ? "Enviar enlace" : "Send link")}
+                </button>
+                <button type="button" className="secondary-button" onClick={close}>{lang === "es" ? "Cerrar" : "Close"}</button>
+              </div>
+            </div>
+          )}
+        </BottomSheet>
+      )}
+      {confirmingDelete && (
+        <BottomSheet lang={lang} title={lang === "es" ? "¿Eliminar documento?" : "Delete document?"} onClose={() => setConfirmingDelete(null)}>
+          {(close) => (
+            <>
+              <p className="quick-create-suggest">
+                {lang === "es"
+                  ? `Se eliminará "${confirmingDelete.title}" y sus enlaces. Esta acción no se puede deshacer.`
+                  : `"${confirmingDelete.title}" and its share links will be deleted. This can't be undone.`}
+              </p>
+              <div className="row-actions">
+                <button type="button" className="primary-button danger-button" disabled={busy} onClick={() => void deleteDoc(confirmingDelete)}>
+                  {busy ? (lang === "es" ? "Eliminando…" : "Deleting…") : (lang === "es" ? "Eliminar" : "Delete")}
+                </button>
+                <button type="button" className="secondary-button" onClick={close}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+              </div>
+            </>
+          )}
+        </BottomSheet>
+      )}
     </section>
   );
 }
@@ -7568,6 +7729,7 @@ function JobDetail({
   const estTerms = estimateTerms(lang, settings);
   const [stage, setStage] = useState<Stage>("before");
   const [editing, setEditing] = useState(false);
+  const [clientCardOpen, setClientCardOpen] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [socialNotice, setSocialNotice] = useState("");
   const [socialNoticeError, setSocialNoticeError] = useState(false);
@@ -7959,19 +8121,25 @@ function JobDetail({
           </button>
         )}
       </section>
-      <section className="job-client-selector">
-        <span>{lang === "es" ? "Cliente" : "Client"}</span>
-        <button type="button" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }}>
-          <span><strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong><small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small></span><BackIcon />
-        </button>
-      </section>
-      <section className="job-summary">
-        <div>
-          <p className="job-type">{job.jobType}</p>
-          <button type="button" className="job-address-button" onClick={() => setActiveJobSheet("address")}><h2>{job.jobAddress}</h2><small>{lang === "es" ? "Copiar o abrir en Maps" : "Copy or open in Maps"}</small></button>
-          <p>{formatDate(job.jobDate, lang)}</p>
+      <section className="job-client-card">
+        <div className="job-client-card-top">
+          <button type="button" className="job-client-pick" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }} aria-label={lang === "es" ? "Cambiar cliente" : "Change client"}>
+            <span className="job-client-card-label">{lang === "es" ? "Cliente" : "Client"}</span>
+            <strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong>
+            <small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small>
+          </button>
+          <button type="button" className={`job-client-expand${clientCardOpen ? " open" : ""}`} onClick={() => setClientCardOpen(!clientCardOpen)} aria-expanded={clientCardOpen} aria-label={lang === "es" ? "Detalles del trabajo" : "Job details"}>
+            <BackIcon />
+          </button>
         </div>
-        <button className="small-button" onClick={() => setEditing(!editing)}>{editing ? t.done : t.edit}</button>
+        {clientCardOpen && (
+          <div className="job-client-card-details">
+            <p className="job-type">{job.jobType}</p>
+            <button type="button" className="job-address-button" onClick={() => setActiveJobSheet("address")}><h2>{job.jobAddress}</h2><small>{lang === "es" ? "Copiar o abrir en Maps" : "Copy or open in Maps"}</small></button>
+            <p>{formatDate(job.jobDate, lang)}</p>
+            <button className="small-button" onClick={() => setEditing(!editing)}>{editing ? t.done : t.edit}</button>
+          </div>
+        )}
       </section>
       {settings?.simpleMode !== true && operationsQuery.data && (
         <section className="profit-strip">
@@ -8015,23 +8183,27 @@ function JobDetail({
           }}
         />
       )}
-      {settings?.simpleMode !== true && (<section className="completion-panel" id="job-completion">
-        <div className="completion-heading">
-          <div>
-            <span>
+      {settings?.simpleMode !== true && (<section className="completion-panel completion-v2" id="job-completion">
+        <div className="completion-hero">
+          <ProgressRing value={job.photoCompleteness} />
+          <div className="completion-hero-text">
+            <strong>
               {lang === "es" ? "Completitud de fotos" : "Photo completeness"}
+            </strong>
+            <span>
+              {lang === "es"
+                ? `${job.requiredPhotoStages.length} de 3 etapas requeridas`
+                : `${job.requiredPhotoStages.length} of 3 stages required`}
             </span>
-            <strong>{job.photoCompleteness}%</strong>
           </div>
-          <progress max="100" value={job.photoCompleteness} />
         </div>
-        <fieldset>
+        <fieldset className="completion-stages">
           <legend>
             {lang === "es" ? "Etapas requeridas" : "Required stages"}
           </legend>
           <div className="requirement-checks">
             {(["before", "during", "after"] as Stage[]).map((item) => (
-              <label key={item}>
+              <label key={item} className={job.requiredPhotoStages.includes(item) ? "on" : ""}>
                 <input
                   type="checkbox"
                   checked={job.requiredPhotoStages.includes(item)}
@@ -8101,22 +8273,22 @@ function JobDetail({
         )}
       </section>)}
       <section className="job-accordion job-hub" aria-label={lang === "es" ? "Centro del trabajo" : "Job hub"}>
-        <AccordionSection title={lang === "es" ? "Facturas" : "Invoices"} count={jobInvoices.length} icon={<Icon><path d="M7 3h10v18l-2-1-3 1-3-1-2 1z"/><path d="M9 8h6M9 12h6M9 16h4"/></Icon>} defaultOpen>
+        <AccordionSection title={lang === "es" ? "Facturas" : "Invoices"} count={jobInvoices.length} tone="blue" icon={<Icon><path d="M7 3h10v18l-2-1-3 1-3-1-2 1z"/><path d="M9 8h6M9 12h6M9 16h4"/></Icon>} defaultOpen>
           <div className="job-section-heading"><p>{lang === "es" ? "Facturas vinculadas a este trabajo" : "Invoices linked to this job"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar factura" : "Add invoice"} onClick={() => { setLinkTab("new"); setActiveJobSheet("invoices"); }}>＋</button></div>
           {jobInvoices.length ? <div className="job-linked-list">{jobInvoices.map((invoice) => <article key={invoice.id}><button type="button" onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{invoice.invoiceNumber}</strong><small>{usd(money(invoice.totalWithLateFee))} · {t[invoice.status]}</small></span><BackIcon /></button><button type="button" className="unlink-button" onClick={() => linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: null })}>{lang === "es" ? "Desvincular" : "Unlink"}</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay facturas vinculadas." : "No linked invoices yet."}</p>}
           {jobQuotes.length > 0 && <div className="related-estimates"><strong>{lang === "es" ? "Presupuestos relacionados" : "Related estimates"}</strong>{jobQuotes.map((quote) => <button key={quote.id} type="button" onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}><span>#{quote.id} · {usd(money(quote.total))}</span><BackIcon /></button>)}</div>}
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} icon={<FileIcon />}>
+        <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
           {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: doc.kind === "contract" ? "contract" : "change" })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
+        <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} tone="green" icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
           <div className="job-value-row"><p>{job.paymentNotes || (lang === "es" ? "Sin notas de pago" : "No payment notes")}</p><button type="button" className="small-button" onClick={() => setActiveJobSheet("payment")}>{job.paymentNotes ? t.edit : (lang === "es" ? "Agregar" : "Add")}</button></div>
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Depósitos" : "Deposits"} count={job.depositAmount ? 1 : 0} icon={<Icon><path d="M4 7h16v12H4zM8 11h8M8 15h5"/></Icon>}>
+        <AccordionSection title={lang === "es" ? "Depósitos" : "Deposits"} count={job.depositAmount ? 1 : 0} tone="teal" icon={<Icon><path d="M4 7h16v12H4zM8 11h8M8 15h5"/></Icon>}>
           <div className="job-value-row"><p><strong>{job.depositAmount ? usd(money(job.depositAmount)) : usd(0)}</strong></p><button type="button" className="small-button" onClick={() => setActiveJobSheet("deposit")}>{job.depositAmount ? t.edit : (lang === "es" ? "Registrar" : "Record")}</button></div>
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Fotos" : "Pictures"} count={query.data.photos.length} icon={<CameraIcon />}>
+        <AccordionSection title={lang === "es" ? "Fotos" : "Pictures"} count={query.data.photos.length} tone="purple" icon={<CameraIcon />}>
           <div className="accordion-actions"><button onClick={shareSocial} disabled={shareBusy}><ShareIcon /><span>{shareBusy ? t.socialWait : t.social}</span></button></div>
           {socialNotice && <p className={`status social-notice${socialNoticeError ? " error" : ""}`} role="status">{socialNotice}</p>}
           <div className="photo-workspace">
@@ -8126,17 +8298,17 @@ function JobDetail({
             {query.data.photos.filter((p) => p.stage === stage).length === 0 && <div className="stage-empty"><CameraIcon /><p>{t.noPhotos}</p></div>}
           </div>
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Otra información del trabajo" : "Other job info"} count={[job.notes, job.jobDate, job.appointmentAt].filter(Boolean).length} icon={<Icon><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></Icon>}>
+        <AccordionSection title={lang === "es" ? "Otra información del trabajo" : "Other job info"} count={[job.notes, job.jobDate, job.appointmentAt].filter(Boolean).length} tone="slate" icon={<Icon><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></Icon>}>
           <button className="job-plus-row detail-date-row" type="button" onClick={() => setActiveJobSheet("dates")}><span><b>＋</b><span><strong>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</strong><small>{formatDate(job.jobDate, lang)}{job.appointmentAt ? ` · ${new Date(job.appointmentAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></span></span><BackIcon /></button>
           <label className="job-notes-editor"><span>{t.notes}</span><textarea rows={3} value={detailDraft.notes} onChange={(event) => setDetailDraft({ ...detailDraft, notes: event.target.value })}/></label>
           <button className="secondary-button" type="button" disabled={saveJobInfo.isPending} onClick={() => saveJobInfo.mutate()}>{saveJobInfo.isPending ? t.saving : t.save}</button>
         </AccordionSection>
         {/* Build 4: voice notes surfaced directly in job detail — record and
             play back without leaving the job. */}
-        <AccordionSection title={t.voiceNotes} count={query.data.voiceNotes.length} icon={<Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>}>
+        <AccordionSection title={t.voiceNotes} count={query.data.voiceNotes.length} tone="red" icon={<Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>}>
           <VoiceNotes lang={lang} data={query.data} />
         </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} icon={<CheckIcon />}>
+        <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} tone="gold" icon={<CheckIcon />}>
           <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Operaciones del trabajo" : "Job operations"} onClick={() => setScreen({ name: "jobOps", jobId })}/></div>
         </AccordionSection>
       </section>
@@ -8159,12 +8331,14 @@ function AccordionSection({
   title,
   count,
   icon,
+  tone,
   defaultOpen = false,
   children,
 }: {
   title: string;
   count: number;
   icon: ReactNode;
+  tone?: "blue" | "orange" | "green" | "teal" | "purple" | "slate" | "red" | "gold";
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
@@ -8179,7 +8353,7 @@ function AccordionSection({
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="accordion-icon">{icon}</span>
+        <span className={`accordion-icon${tone ? ` tone-${tone}` : ""}`}>{icon}</span>
         <span className="accordion-title">{title}</span>
         <span className="accordion-count">{count}</span>
         <span className="accordion-chevron">
