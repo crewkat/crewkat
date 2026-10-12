@@ -838,6 +838,65 @@ const server = createServer(async (req, res) => {
       } catch { /* fall through to the SPA below */ }
     }
 
+    // Client Portal v2: short public portal links (/p/:code).
+    // Mirrors /d/:code — unfurlers read the OG tags without JS, real browsers
+    // JS-redirect to the #portal= client page (fragment keeps the credential
+    // out of server logs). No view counting here; the client's getPortalData
+    // call owns that side effect. Unknown/expired/revoked codes fall through.
+    // Privacy: no client name, address, or amounts in the OG tags.
+    const shortPortalMatch = (req.method === "GET" || req.method === "HEAD") ? /^\/p\/([A-Za-z0-9]{8,24})$/.exec(path) : null;
+    if (shortPortalMatch) {
+      try {
+        const code = shortPortalMatch[1];
+        const rows = await libsql.execute({
+          sql: `SELECT id FROM portal_tokens WHERE short_code = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) LIMIT 1`,
+          args: [code, Date.now()],
+        });
+        if (rows.rows.length) {
+          const host = req.headers.host || "crewkat.com";
+          const proto = req.headers["x-forwarded-proto"] || "https";
+          const base = PUBLIC_URL || `${proto}://${host}`;
+          const pageUrl = `${base}/p/${encodeURIComponent(code)}`;
+          const target = `${proto}://${host}/app/#portal=${encodeURIComponent(code)}`;
+          let company = "";
+          try {
+            const r = await libsql.execute({
+              sql: `SELECT company_name FROM settings WHERE id = 1 LIMIT 1`,
+            });
+            company = String(r.rows[0]?.company_name ?? "").trim();
+          } catch { /* keep generic */ }
+          const title = escapeHtmlAttr(company ? `${company} — Your project portal` : "Your project portal · Crewkat");
+          const description = escapeHtmlAttr("Follow progress, photos, and updates for your project.");
+          const image = escapeHtmlAttr(`${base}/marketing/og-portal.jpg`);
+          const html =
+            `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+            `<title>${title}</title>` +
+            `<link rel="icon" href="/favicon.ico?v=20261005">` +
+            `<meta property="og:type" content="website">` +
+            `<meta property="og:site_name" content="Crewkat">` +
+            `<meta property="og:title" content="${title}">` +
+            `<meta property="og:description" content="${description}">` +
+            `<meta property="og:image" content="${image}">` +
+            `<meta property="og:url" content="${escapeHtmlAttr(pageUrl)}">` +
+            `<meta name="twitter:card" content="summary_large_image">` +
+            `<meta name="twitter:title" content="${title}">` +
+            `<meta name="twitter:description" content="${description}">` +
+            `<meta name="twitter:image" content="${image}">` +
+            `<script>location.replace(${JSON.stringify(target)});</script>` +
+            `</head><body><p><a href="${escapeHtmlAttr(target)}">${title}</a></p></body></html>`;
+          const bytes = Buffer.from(html, "utf8");
+          res.writeHead(200, {
+            "content-type": "text/html; charset=utf-8",
+            "content-length": bytes.length,
+            "x-content-type-options": "nosniff",
+            "cache-control": "private, max-age=60",
+          });
+          if (req.method === "GET") res.end(bytes); else res.end();
+          return;
+        }
+      } catch { /* fall through to the SPA below */ }
+    }
+
     // Build 0.4 (item 2): server-rendered PDF for client document links.
     // Chrome on Android cannot render blob: PDF URLs in an <iframe>, so the
     // client link embeds this endpoint (<object>/<embed> + "Open PDF").

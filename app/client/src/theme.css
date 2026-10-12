@@ -4674,3 +4674,98 @@ body > .document-overlay.customize-overlay { z-index: 200; }
   font-size: 12px;
   color: var(--muted, #667);
 }
+
+/* Client Portal v2: premium branded client experience. Flat cards, hairline
+   borders, 8px radius, orange accent. */
+.portal-v2 { background: var(--bg); }
+.portal-v2-brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px;
+  background: var(--surface);
+  border-bottom: 2px solid var(--accent);
+  position: sticky; top: 0; z-index: 5;
+}
+.portal-v2-brand > div { display: grid; gap: 2px; }
+.portal-v2-brand strong { font-size: 1rem; letter-spacing: -.01em; }
+.portal-v2-brand span { font-size: .8rem; color: var(--dim); }
+.portal-v2-logo { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: var(--bg); border: 1px solid var(--border); }
+.portal-v2-mark {
+  width: 40px; height: 40px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-size: 1.3rem;
+}
+.portal-v2-hero { padding: 26px 20px 18px; text-align: center; }
+.portal-v2-kicker {
+  margin: 0 0 6px; font-size: .78rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+}
+.portal-v2-hero h1 { margin: 0 0 6px; font-size: 1.65rem; letter-spacing: -.02em; }
+.portal-v2-address { margin: 0; color: var(--dim); }
+.portal-v2-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  padding: 0 16px 16px;
+}
+.portal-v2-stat {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 6px; text-align: center;
+  display: grid; gap: 2px;
+}
+.portal-v2-stat strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.portal-v2-stat span { font-size: .7rem; color: var(--dim); }
+.portal-v2-stat.is-alert { border-color: var(--accent); }
+.portal-v2-stat.is-alert strong { color: var(--accent); }
+.portal-v2-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin: 0 16px 16px; padding: 16px;
+}
+.portal-v2-card > h2 { margin: 0 0 12px; font-size: 1.05rem; letter-spacing: -.01em; }
+.portal-v2-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.portal-v2-tabs button {
+  border: 1px solid var(--border); background: var(--bg); color: var(--dim);
+  border-radius: 999px; padding: 6px 14px; font-size: .82rem;
+}
+.portal-v2-tabs button.is-active {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+}
+.portal-v2-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.portal-v2-thumb {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; padding: 0; background: var(--bg); cursor: pointer;
+}
+.portal-v2-thumb img { width: 100%; height: 96px; object-fit: cover; display: block; }
+.portal-v2-thumb.sm img { height: 64px; }
+.portal-v2-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.portal-v2-timeline li { display: flex; gap: 12px; align-items: flex-start; }
+.portal-v2-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); margin-top: 5px; flex: none;
+}
+.portal-v2-timeline strong { display: block; font-size: .92rem; }
+.portal-v2-timeline p { margin: 4px 0 0; color: var(--dim); font-size: .88rem; }
+.portal-v2-approval {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 10px; display: grid; gap: 10px;
+}
+.portal-v2-approval > div:first-child { display: grid; gap: 4px; }
+.portal-v2-approval.decided { opacity: .85; }
+.portal-v2-approval .row-actions { display: flex; gap: 8px; }
+.portal-v2-approval .row-actions .sm { padding: 8px 14px; font-size: .85rem; }
+.portal-v2-caught-up { color: var(--dim); margin: 0; }
+.portal-v2-co { margin-bottom: 10px; }
+.portal-v2-invoice {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 10px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.portal-v2-invoice > div { display: grid; gap: 4px; }
+.portal-v2-balance { color: var(--accent); white-space: nowrap; }
+.portal-v2-lightbox {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, .88);
+  display: grid; place-items: center; padding: 20px;
+}
+.portal-v2-lightbox img {
+  max-width: 100%; max-height: 100%; border-radius: var(--radius);
+}

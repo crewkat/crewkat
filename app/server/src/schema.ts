@@ -592,6 +592,7 @@ export const portalTokens = sqliteTable("portal_tokens", {
   jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
+  shortCode: text("short_code").unique(),
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
   viewCount: integer("view_count").notNull().default(0),

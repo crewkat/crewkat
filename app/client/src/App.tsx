@@ -24559,6 +24559,10 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         creating: "Creando…",
         copy: "Copiar enlace",
         copied: "Enlace copiado.",
+        share: "Compartir",
+        textLink: "Enviar por SMS",
+        shareTitle: "Portal de su proyecto",
+        shareText: (url: string) => `¡Hola! Aquí está su portal del proyecto — toque para ver avances, fotos y novedades: ${url}`,
         copyUnavailable: "Por seguridad, el enlace completo solo aparece después de crearlo o rotarlo.",
         rotate: "Rotar",
         rotating: "Rotando…",
@@ -24595,6 +24599,10 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         creating: "Creating…",
         copy: "Copy link",
         copied: "Link copied.",
+        share: "Share",
+        textLink: "Text link",
+        shareTitle: "Your project portal",
+        shareText: (url: string) => `Hi! Here's your project portal — tap to follow progress, photos, and updates: ${url}`,
         copyUnavailable: "For security, the full link is available only right after creation or rotation.",
         rotate: "Rotate",
         rotating: "Rotating…",
@@ -24643,7 +24651,29 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
   });
   const requiresNeverConfirmation = expiryDays === 0 && !neverConfirmed;
   const busy = create.isPending || rotate.isPending || revoke.isPending;
-  const shareUrl = issuedRoute ? `https://crewkat.com/${issuedRoute}` : "";
+  // Client Portal v2: share the short URL (crewkat.com/p/<code>). Prefer the
+  // just-issued route; fall back to the existing active link's short code so
+  // previously created links are shareable too.
+  const shareUrl = issuedRoute
+    ? `https://crewkat.com/${issuedRoute}`
+    : link?.shortCode
+      ? `https://crewkat.com/p/${encodeURIComponent(link.shortCode)}`
+      : "";
+  // Native share sheet (Messages, WhatsApp, …); falls back to an SMS deep
+  // link with a prefilled message when Web Share isn't available.
+  const shareVia = async () => {
+    if (!shareUrl || busy) return;
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: t.shareTitle, text: t.shareText(shareUrl), url: shareUrl });
+        return;
+      } catch (e) {
+        // User dismissed the sheet — don't fall through to SMS.
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    window.location.href = `sms:?body=${encodeURIComponent(t.shareText(shareUrl))}`;
+  };
   const formatPortalDateTime = (value: string) =>
     new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
       dateStyle: "medium",
@@ -24725,6 +24755,15 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         )}
         {link && (
           <div className="portal-link-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!shareUrl || busy}
+              title={shareUrl ? undefined : t.copyUnavailable}
+              onClick={shareVia}
+            >
+              {t.share}
+            </button>
             <button
               type="button"
               className="secondary-button"
@@ -25706,6 +25745,12 @@ function DocumentLinkPanel({
   );
 }
 
+// Client Portal v2: premium branded client experience. Branded header with
+// company logo/name, hero card, at-a-glance stats, tabbed photo gallery,
+// timeline visits, and card-based approvals. All portal capabilities kept:
+// progress photos, visits, messages, selections, change orders, estimates,
+// invoices. EN/ES throughout. Design: flat cards, hairline borders, 8px
+// radius, orange accent.
 function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   const qc = useQueryClient();
   const q = useQuery({
@@ -25716,9 +25761,11 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   const [signer, setSigner] = useState("");
   const [sig, setSig] = useState("");
   const [note, setNote] = useState("");
+  const [photoStage, setPhotoStage] = useState<"all" | "before" | "during" | "after">("all");
+  const [lightbox, setLightbox] = useState<string | null>(null);
   if (q.isLoading)
     return (
-      <main className="page public-page">
+      <main className="page public-page portal-v2">
         <div className="loading-block" />
       </main>
     );
@@ -25726,7 +25773,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     const errorMessage = q.error instanceof Error ? q.error.message : String(q.error ?? "");
     const expired = errorMessage.toLowerCase().includes("has expired");
     return (
-      <main className="page public-page">
+      <main className="page public-page portal-v2">
         <section className="empty-state">
           {expired ? (
             <>
@@ -25756,73 +25803,264 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     );
   }
   const d = q.data;
-  const stage = (s: string) =>
+  const company = d.company;
+  const stageLabel = (s: string) =>
     s === "before"
-      ? lang === "es"
-        ? "Antes"
-        : "Before"
+      ? lang === "es" ? "Antes" : "Before"
       : s === "during"
-        ? lang === "es"
-          ? "Durante"
-          : "During"
-        : lang === "es"
-          ? "Después"
-          : "After";
+        ? lang === "es" ? "Durante" : "During"
+        : lang === "es" ? "Después" : "After";
+  // At-a-glance numbers.
+  const pendingSelections = d.selections.filter((s) => s.approvalStatus === "pending");
+  const unsignedOrders = d.changeOrders.filter((o) => !o.clientSignedAt);
+  const needsAttention = pendingSelections.length + unsignedOrders.length;
+  const openBalance = d.invoices.reduce((sum, inv) => sum + Number(inv.balanceDue || 0), 0);
+  const fmtDateTime = (value: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  const shownPhotos = photoStage === "all" ? d.photos : d.photos.filter((p) => p.stage === photoStage);
+  const t = {
+    project: lang === "es" ? "Su proyecto" : "Your project",
+    photos: lang === "es" ? "fotos" : "photos",
+    visits: lang === "es" ? "visitas" : "visits",
+    approvals: lang === "es" ? "por aprobar" : "to approve",
+    balance: lang === "es" ? "saldo" : "balance",
+    gallery: lang === "es" ? "Avance en fotos" : "Progress in photos",
+    all: lang === "es" ? "Todas" : "All",
+    upcoming: lang === "es" ? "Próximas visitas" : "Upcoming visits",
+    noVisits: lang === "es" ? "No hay visitas programadas." : "No visits scheduled.",
+    attention: lang === "es" ? "Requiere su atención" : "Needs your attention",
+    allCaughtUp: lang === "es" ? "Todo al día. ¡Buen trabajo!" : "All caught up. Nice!",
+    approve: lang === "es" ? "Aprobar" : "Approve",
+    decline: lang === "es" ? "Rechazar" : "Decline",
+    approved: lang === "es" ? "Aprobada" : "Approved",
+    rejected: lang === "es" ? "Rechazada" : "Declined",
+    pending: lang === "es" ? "Pendiente" : "Pending",
+    changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
+    signedBy: lang === "es" ? "Firmada por" : "Signed by",
+    signerName: lang === "es" ? "Nombre del firmante" : "Signer name",
+    signature: lang === "es" ? "Firma" : "Signature",
+    clear: lang === "es" ? "Borrar" : "Clear",
+    optionalNote: lang === "es" ? "Nota opcional" : "Optional note",
+    signOrder: lang === "es" ? "Firmar orden" : "Sign change order",
+    estimates: lang === "es" ? "Presupuestos" : "Estimates",
+    noEstimates: lang === "es" ? "No hay presupuestos." : "No estimates yet.",
+    estimate: lang === "es" ? "Presupuesto" : "Estimate",
+    accepted: lang === "es" ? "Aceptado" : "Accepted",
+    invoices: lang === "es" ? "Facturas" : "Invoices",
+    noInvoices: lang === "es" ? "No hay facturas." : "No invoices yet.",
+    due: lang === "es" ? "Vence" : "Due",
+    messages: lang === "es" ? "Mensajes" : "Messages",
+  };
   return (
-    <main className="page public-page">
-      <header className="public-hero">
-        <p>{d.job.jobType}</p>
-        <h1>{lang === "es" ? "Su proyecto" : "Your project"}</h1>
-        <span>{d.job.jobAddress}</span>
+    <main className="page public-page portal-v2">
+      {/* Branded company header */}
+      <header className="portal-v2-brand">
+        {company.logoUrl ? (
+          <img src={company.logoUrl} alt={company.name} className="portal-v2-logo" />
+        ) : (
+          <span className="portal-v2-mark" aria-hidden="true">⌂</span>
+        )}
+        <div>
+          <strong>{company.name || "Crewkat"}</strong>
+          {company.phone && <span>{company.phone}</span>}
+        </div>
       </header>
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Fotos de avance" : "Progress photos"}</h2>
-        {(["before", "during", "after"] as const).map((s) => (
-          <div key={s}>
-            <h3>{stage(s)}</h3>
-            <div className="photo-grid">
-              {d.photos
-                .filter((p) => p.stage === s)
-                .map((p) => (
-                  <figure key={p.id}>
-                    <img src={p.url} alt={p.caption || stage(s)} />
-                    {p.caption && <figcaption>{p.caption}</figcaption>}
-                  </figure>
-                ))}
-            </div>
-          </div>
-        ))}
+
+      {/* Project hero */}
+      <section className="portal-v2-hero">
+        <p className="portal-v2-kicker">{d.job.jobType}</p>
+        <h1>{t.project}</h1>
+        <p className="portal-v2-address">{d.job.jobAddress}</p>
       </section>
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Próximas visitas" : "Upcoming visits"}</h2>        {d.appointments.map((a) => (
-          <article className="tool-record" key={a.id}>
-            <strong>
-              {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              }).format(new Date(a.startsAt))}
-            </strong>
-            <span>{a.notes}</span>
-          </article>
-        ))}
-        {!d.appointments.length && (
-          <p>
-            {lang === "es"
-              ? "No hay visitas programadas."
-              : "No visits scheduled."}
-          </p>
+
+      {/* At-a-glance stats */}
+      <section className="portal-v2-stats" aria-label={t.project}>
+        <div className="portal-v2-stat">
+          <strong>{d.photos.length}</strong>
+          <span>{t.photos}</span>
+        </div>
+        <div className="portal-v2-stat">
+          <strong>{d.appointments.length}</strong>
+          <span>{t.visits}</span>
+        </div>
+        <div className={`portal-v2-stat${needsAttention ? " is-alert" : ""}`}>
+          <strong>{needsAttention}</strong>
+          <span>{t.approvals}</span>
+        </div>
+        <div className="portal-v2-stat">
+          <strong>{usd(openBalance)}</strong>
+          <span>{t.balance}</span>
+        </div>
+      </section>
+
+      {/* Photo gallery with stage tabs */}
+      <section className="portal-v2-card">
+        <h2>{t.gallery}</h2>
+        <div className="portal-v2-tabs" role="tablist">
+          {(["all", "before", "during", "after"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={photoStage === s}
+              className={photoStage === s ? "is-active" : ""}
+              onClick={() => setPhotoStage(s)}
+            >
+              {s === "all" ? t.all : stageLabel(s)}
+            </button>
+          ))}
+        </div>
+        {shownPhotos.length ? (
+          <div className="portal-v2-grid">
+            {shownPhotos.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="portal-v2-thumb"
+                onClick={() => setLightbox(p.url)}
+                aria-label={p.caption || stageLabel(p.stage)}
+              >
+                <img src={p.url} alt={p.caption || stageLabel(p.stage)} loading="lazy" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="dim">{lang === "es" ? "Aún no hay fotos aquí." : "No photos here yet."}</p>
         )}
       </section>
-      {/* Phase 2: two-way client messaging in the portal. */}
-      <PortalMessages lang={lang} token={token} />
-      {/* Build 4: read-only estimate + invoice status in the client portal. */}
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Presupuestos" : "Estimates"}</h2>
+
+      {/* Upcoming visits timeline */}
+      <section className="portal-v2-card">
+        <h2>{t.upcoming}</h2>
+        {d.appointments.length ? (
+          <ol className="portal-v2-timeline">
+            {d.appointments.map((a) => (
+              <li key={a.id}>
+                <span className="portal-v2-dot" aria-hidden="true" />
+                <div>
+                  <strong>{fmtDateTime(a.startsAt)}</strong>
+                  {a.notes && <p>{a.notes}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="dim">{t.noVisits}</p>
+        )}
+      </section>
+
+      {/* Messages */}
+      <section className="portal-v2-card">
+        <h2>{t.messages}</h2>
+        <PortalMessages lang={lang} token={token} />
+      </section>
+
+      {/* Needs attention: selections + change orders */}
+      <section className="portal-v2-card">
+        <h2>{t.attention}</h2>
+        {!needsAttention && <p className="portal-v2-caught-up">{t.allCaughtUp}</p>}
+        {pendingSelections.map((s) => (
+          <article className="portal-v2-approval" key={`sel-${s.id}`}>
+            <div>
+              <strong>{s.category}: {s.item}</strong>
+              {s.vendor && <span className="dim">{s.vendor}</span>}
+              {s.photoUrl && (
+                <button type="button" className="portal-v2-thumb sm" onClick={() => setLightbox(s.photoUrl!)}>
+                  <img src={s.photoUrl} alt={s.item} loading="lazy" />
+                </button>
+              )}
+            </div>
+            <div className="row-actions">
+              <button
+                className="primary-button sm"
+                onClick={async () => {
+                  await api.portalUpdateSelection({ token, selectionId: s.id, status: "approved" });
+                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
+                }}
+              >
+                {t.approve}
+              </button>
+              <button
+                className="secondary-button sm"
+                onClick={async () => {
+                  await api.portalUpdateSelection({ token, selectionId: s.id, status: "rejected" });
+                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
+                }}
+              >
+                {t.decline}
+              </button>
+            </div>
+          </article>
+        ))}
+        {d.selections.filter((s) => s.approvalStatus !== "pending").map((s) => (
+          <article className="portal-v2-approval decided" key={`sel-${s.id}`}>
+            <div>
+              <strong>{s.category}: {s.item}</strong>
+              <span className={`status-chip ${s.approvalStatus === "approved" ? "paid" : "sent"}`}>
+                {s.approvalStatus === "approved" ? t.approved : s.approvalStatus === "rejected" ? t.rejected : t.pending}
+              </span>
+            </div>
+          </article>
+        ))}
+        {unsignedOrders.map((o) => (
+          <details className="action-details portal-v2-co" key={`co-${o.id}`}>
+            <summary>
+              {o.title} · {usd(money(o.amount))}
+              <span className="status-chip sent">{t.pending}</span>
+            </summary>
+            <p>{o.description}</p>
+            <div className="compact-form">
+              <label>
+                <span>{t.signerName}</span>
+                <input value={signer} onChange={(e) => setSigner(e.target.value)} />
+              </label>
+              <SignaturePad label={t.signature} clearLabel={t.clear} onChange={setSig} />
+              <label>
+                <span>{t.optionalNote}</span>
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} />
+              </label>
+              <button
+                className="primary-button"
+                disabled={!signer || !sig}
+                onClick={async () => {
+                  await api.portalSignChangeOrder({
+                    token,
+                    documentId: o.id,
+                    signerName: signer,
+                    signatureDataBase64: sig,
+                  });
+                  setSigner("");
+                  setSig("");
+                  setNote("");
+                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
+                }}
+              >
+                {t.signOrder}
+              </button>
+            </div>
+          </details>
+        ))}
+        {d.changeOrders.filter((o) => o.clientSignedAt).map((o) => (
+          <article className="portal-v2-approval decided" key={`co-${o.id}`}>
+            <div>
+              <strong>{o.title} · {usd(money(o.amount))}</strong>
+              <span className="dim">{t.signedBy} {o.clientSignerName}</span>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      {/* Estimates */}
+      <section className="portal-v2-card">
+        <h2>{t.estimates}</h2>
         {d.estimates.map((e) => (
           <details className="action-details" key={e.id}>
             <summary>
-              {lang === "es" ? "Presupuesto" : "Estimate"} · {usd(money(e.total))}
-              <span className={`status-chip ${e.accepted ? "paid" : "sent"}`}>{e.accepted ? (lang === "es" ? "Aceptado" : "Accepted") : (lang === "es" ? "Pendiente" : "Pending")}</span>
+              {t.estimate} · {usd(money(e.total))}
+              <span className={`status-chip ${e.accepted ? "paid" : "sent"}`}>{e.accepted ? t.accepted : t.pending}</span>
             </summary>
             <ul className="portal-line-items">
               {e.lineItems.map((item, i) => (
@@ -25831,127 +26069,39 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
             </ul>
           </details>
         ))}
-        {!d.estimates.length && <p>{lang === "es" ? "No hay presupuestos." : "No estimates yet."}</p>}
+        {!d.estimates.length && <p className="dim">{t.noEstimates}</p>}
       </section>
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Facturas" : "Invoices"}</h2>
+
+      {/* Invoices */}
+      <section className="portal-v2-card">
+        <h2>{t.invoices}</h2>
         {d.invoices.map((inv) => (
-          <article className="tool-record" key={inv.id}>
-            <strong>{inv.invoiceNumber} · {usd(money(inv.total))}</strong>
-            <span>
-              <span className={`status-chip ${inv.status}`}>{inv.status}</span>
-              {" · "}{lang === "es" ? "Vence" : "Due"} {inv.dueDate}
-              {Number(inv.balanceDue) > 0 && <> · <strong>{lang === "es" ? "Saldo" : "Balance"} {usd(money(inv.balanceDue))}</strong></>}
-            </span>
-          </article>
-        ))}
-        {!d.invoices.length && <p>{lang === "es" ? "No hay facturas." : "No invoices yet."}</p>}
-      </section>
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Selecciones" : "Selections"}</h2>
-        {d.selections.map((s) => (
-          <article className="tool-record" key={s.id}>
-            <strong>
-              {s.category}: {s.item}
-            </strong>
-            <span>{s.vendor}</span>
-            <div className="row-actions">
-              <button
-                onClick={async () => {
-                  await api.portalUpdateSelection({
-                    token,
-                    selectionId: s.id,
-                    status: "approved",
-                  });
-                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
-                }}
-              >
-                {lang === "es" ? "Aprobar" : "Approve"}
-              </button>
-              <button
-                onClick={async () => {
-                  await api.portalUpdateSelection({
-                    token,
-                    selectionId: s.id,
-                    status: "rejected",
-                  });
-                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
-                }}
-              >
-                {lang === "es" ? "Rechazar" : "Decline"}
-              </button>
+          <article className="portal-v2-invoice" key={inv.id}>
+            <div>
+              <strong>{inv.invoiceNumber} · {usd(money(inv.total))}</strong>
+              <span className="dim">
+                <span className={`status-chip ${inv.status}`}>{inv.status}</span>
+                {" · "}{t.due} {inv.dueDate}
+              </span>
             </div>
-            <small>{s.approvalStatus}</small>
+            {Number(inv.balanceDue) > 0 && (
+              <strong className="portal-v2-balance">{t.balance}: {usd(money(inv.balanceDue))}</strong>
+            )}
           </article>
         ))}
+        {!d.invoices.length && <p className="dim">{t.noInvoices}</p>}
       </section>
-      <section className="portal-section">
-        <h2>{lang === "es" ? "Órdenes de cambio" : "Change orders"}</h2>
-        {d.changeOrders.map((o) => (
-          <details className="action-details" key={o.id}>
-            <summary>
-              {o.title} · {usd(money(o.amount))}
-            </summary>
-            <p>{o.description}</p>
-            {o.clientSignedAt ? (
-              <p className="status">
-                {lang === "es" ? "Firmada por" : "Signed by"}{" "}
-                {o.clientSignerName}
-              </p>
-            ) : (
-              <div className="compact-form">
-                <label>
-                  <span>
-                    {lang === "es" ? "Nombre del firmante" : "Signer name"}
-                  </span>
-                  <input
-                    value={signer}
-                    onChange={(e) => setSigner(e.target.value)}
-                  />
-                </label>
-                <SignaturePad
-                  label={lang === "es" ? "Firma" : "Signature"}
-                  clearLabel={lang === "es" ? "Borrar" : "Clear"}
-                  onChange={setSig}
-                />
-                <label>
-                  <span>
-                    {lang === "es" ? "Nota opcional" : "Optional note"}
-                  </span>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                </label>
-                <button
-                  className="primary-button"
-                  disabled={!signer || !sig}
-                  onClick={async () => {
-                    await api.portalSignChangeOrder({
-                      token,
-                      documentId: o.id,
-                      signerName: signer,
-                      signatureDataBase64: sig,
-                    });
-                    setSigner("");
-                    setSig("");
-                    setNote("");
-                    qc.invalidateQueries({
-                      queryKey: ["client-portal", token],
-                    });
-                  }}
-                >
-                  {lang === "es" ? "Firmar orden" : "Sign change order"}
-                </button>
-              </div>
-            )}
-          </details>
-        ))}
-      </section>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="portal-v2-lightbox" onClick={() => setLightbox(null)} role="dialog" aria-modal="true">
+          <img src={lightbox} alt="" />
+        </div>
+      )}
     </main>
   );
 }
-// ---------------------------------------------------------------------------
+
 // Build 4: public no-login calculator funnel (/tools, /tools/<slug>).
 // Shareable calculator pages with signup CTAs — the growth funnel. Fully
 // bilingual, mobile-first, staggered-entrance animations. Reuses the in-app

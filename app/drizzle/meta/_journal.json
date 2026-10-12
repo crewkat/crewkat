@@ -512,6 +512,13 @@
    "when": 1791736500000,
    "tag": "0073_crane_run_leaderboard",
    "breakpoints": true
+  },
+  {
+   "idx": 73,
+   "version": "6",
+   "when": 1791736600000,
+   "tag": "0074_portal_short_codes",
+   "breakpoints": true
   }
  ]
 }
