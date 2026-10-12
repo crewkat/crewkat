@@ -1904,9 +1904,9 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* Client directory */
 .clients-page { position:relative; padding-bottom:calc(96px + env(safe-area-inset-bottom)); }
 .clients-toolbar { display:grid; grid-template-columns:minmax(0,1fr) 48px 48px; gap:9px; padding:16px 0 12px; }
-.client-search { min-width:0; min-height:50px; display:flex; align-items:center; gap:9px; padding:0 13px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--dim); }
-.client-search input { min-width:0; height:48px; padding:0; border:0; outline:0; background:transparent; }
-.client-tool-button { position:relative; width:48px; height:50px; display:grid; place-items:center; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); cursor:pointer; }
+.client-search { min-width:0; min-height:42px; display:flex; align-items:center; gap:8px; padding:0 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--dim); }
+.client-search input { min-width:0; height:40px; min-height:0; padding:0; border:0; outline:0; background:transparent; font-size:14px; }
+.client-tool-button { position:relative; width:42px; height:42px; display:grid; place-items:center; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); cursor:pointer; }
 .client-tool-button.active { border-color:var(--accent); color:var(--accent); }
 .client-tool-button b { position:absolute; top:-5px; right:-5px; min-width:19px; height:19px; display:grid; place-items:center; padding:0 5px; border:2px solid var(--bg); border-radius:999px; background:var(--accent); color:var(--accent-ink); font-size:10px; }
 .active-client-filters { display:flex; flex-wrap:wrap; gap:7px; padding:0 0 12px; }
@@ -1963,7 +1963,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 @keyframes client-backdrop-in { from { background:rgba(9,13,12,0); } to { background:rgba(9,13,12,.56); } }
 @keyframes client-backdrop-out { from { background:rgba(9,13,12,.56); } to { background:rgba(9,13,12,0); } }
 @media (min-width:720px) { .add-client-fab { right:max(28px,calc((100vw - 920px)/2 + 28px)); } }
-@media (max-width:390px) { .clients-toolbar { grid-template-columns:minmax(0,1fr) 46px 46px; } .client-list > button, .client-list .swipe-row .swipe-content > button { grid-template-columns:44px minmax(0,1fr) auto; gap:10px; padding-inline:10px; } .client-avatar { width:44px; height:44px; } .client-row-money strong { font-size:15px; } }
+@media (max-width:390px) { .clients-toolbar { grid-template-columns:minmax(0,1fr) 42px 42px; } .client-list > button, .client-list .swipe-row .swipe-content > button { grid-template-columns:44px minmax(0,1fr) auto; gap:10px; padding-inline:10px; } .client-avatar { width:44px; height:44px; } .client-row-money strong { font-size:15px; } }
 @media (prefers-reduced-motion:reduce) { .client-sheet-backdrop,.client-sheet-backdrop.closing,.client-sheet,.client-sheet-backdrop.closing .client-sheet { animation:none!important; } .sticky-submit { transition:none; } }
 
 /* Invoice editor — phone-first, field-ready */
@@ -4415,7 +4415,7 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .clients-page .client-list > button,
 .clients-page .client-list .swipe-row .swipe-content > button { min-height: 64px; padding: 8px 16px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; }
 /* === build 3.0 item 9: skinnier search (not full width) + guaranteed edge-to-edge rows === */
-.clients-page .clients-toolbar { grid-template-columns: minmax(0, 230px) 44px 44px; justify-content: start; gap: 8px; }
+.clients-page .clients-toolbar { grid-template-columns: minmax(0,1fr) 42px 42px; gap: 8px; }
 .clients-page .client-list .swipe-row { width: 100%; }
 .clients-page .client-list .swipe-row .swipe-content > button { width: 100%; }
 .clients-page .client-avatar { width: 40px; height: 40px; font-size: 14px; }
