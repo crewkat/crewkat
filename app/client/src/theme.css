@@ -4778,7 +4778,6 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .job-client-card { margin:12px 0 0; border:1px solid var(--border); border-radius:16px; background:var(--surface); box-shadow:0 5px 18px color-mix(in srgb,var(--text) 6%,transparent); overflow:hidden; }
 .job-client-card-top { display:flex; align-items:stretch; }
 .job-client-pick { flex:1 1 auto; min-width:0; display:grid; gap:3px; padding:12px 4px 12px 14px; border:0; background:transparent; color:var(--text); text-align:left; cursor:pointer; }
-.job-client-card-label { display:block; color:var(--muted); font-size:.72rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; background:transparent; box-shadow:none; text-shadow:none; }
 .job-client-pick strong { font-size:1rem; }
 .job-client-pick small { color:var(--muted); font-size:.82rem; overflow-wrap:anywhere; }
 .job-client-expand { flex:0 0 auto; width:48px; border:0; background:transparent; color:var(--dim); cursor:pointer; display:grid; place-items:center; }

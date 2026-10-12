@@ -8951,7 +8951,6 @@ function JobDetail({
       <section className="job-client-card">
         <div className="job-client-card-top">
           <button type="button" className="job-client-pick" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }} aria-label={lang === "es" ? "Cambiar cliente" : "Change client"}>
-            <span className="job-client-card-label">{lang === "es" ? "Cliente" : "Client"}</span>
             <strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong>
             <small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small>
           </button>
