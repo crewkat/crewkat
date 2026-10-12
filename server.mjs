@@ -180,6 +180,51 @@ console.log(`[crewkat] applying migrations from ${join(APP_DIR, "drizzle")} ...`
 await migrate(db, { migrationsFolder: join(APP_DIR, "drizzle") });
 console.log("[crewkat] migrations applied.");
 
+// Repair: migration 0036 (portal link hardening) was skipped on some databases
+// because its journal timestamp collided with 0035's (both 1790668800000), and
+// Drizzle's libsql migrate() only compares each entry's `when` against the
+// single latest applied migration. Ensure its columns and tables exist.
+// Idempotent: checks PRAGMA / IF NOT EXISTS first, so it's a no-op when 0036
+// already applied (e.g. fresh databases).
+console.log("[crewkat] verifying portal link hardening (0036) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`portal_tokens`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  const missingColumns = [
+    ["expires_at", "ALTER TABLE `portal_tokens` ADD COLUMN `expires_at` integer"],
+    ["view_count", "ALTER TABLE `portal_tokens` ADD COLUMN `view_count` integer NOT NULL DEFAULT 0"],
+    ["first_viewed_at", "ALTER TABLE `portal_tokens` ADD COLUMN `first_viewed_at` integer"],
+    ["last_viewed_at", "ALTER TABLE `portal_tokens` ADD COLUMN `last_viewed_at` integer"],
+  ];
+  for (const [column, ddl] of missingColumns) {
+    if (!existing.has(column)) {
+      console.log(`[crewkat] repair: adding missing column portal_tokens.${column}`);
+      await libsql.execute(ddl);
+    }
+  }
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`portal_link_events\` (
+    \`company_id\` integer NOT NULL DEFAULT 1,
+    \`id\` integer PRIMARY KEY AUTOINCREMENT,
+    \`link_id\` integer NOT NULL REFERENCES \`portal_tokens\`(\`id\`) ON DELETE CASCADE,
+    \`event_type\` text NOT NULL,
+    \`user_agent\` text NOT NULL DEFAULT '',
+    \`occurred_at\` integer NOT NULL
+  )`);
+  await libsql.execute(
+    "CREATE INDEX IF NOT EXISTS `idx_portal_link_events_link` ON `portal_link_events` (`link_id`, `occurred_at` DESC)",
+  );
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`rate_limit_events\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT,
+    \`scope\` text NOT NULL,
+    \`key\` text NOT NULL,
+    \`occurred_at\` integer NOT NULL
+  )`);
+  await libsql.execute(
+    "CREATE INDEX IF NOT EXISTS `idx_rate_limit_scope_key` ON `rate_limit_events` (`scope`, `key`, `occurred_at`)",
+  );
+}
+console.log("[crewkat] portal link hardening verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------
