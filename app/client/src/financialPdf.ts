@@ -156,6 +156,76 @@ export type FinancialDocument = {
   depositValue?: string;
 };
 
+// Phase 2 (PDF polish): line-item descriptions use **bold** lead-ins (e.g.
+// "**SCOPE OF WORK — ...**"). jsPDF draws one font per text call, so the
+// label is parsed into styled runs, wrapped by measured word widths, and
+// drawn run by run. Before this, the asterisks printed literally.
+export type RichRun = { text: string; bold: boolean };
+
+export function parseRichRuns(text: string): RichRun[] {
+  const parts = text.split("**");
+  if ((parts.length - 1) % 2 === 1) {
+    // Unbalanced marker: keep the trailing "**" literal rather than bolding
+    // the rest of the string.
+    const last = parts.pop() as string;
+    parts[parts.length - 1] = `${parts[parts.length - 1]}**${last}`;
+  }
+  const runs = parts
+    .map((part, index) => ({ text: part, bold: index % 2 === 1 }))
+    .filter((run) => run.text.length > 0);
+  return runs.length ? runs : [{ text, bold: false }];
+}
+
+function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: DocumentFont): RichRun[][] {
+  type Word = { text: string; bold: boolean; width: number };
+  const words: Word[] = [];
+  for (const run of runs) {
+    doc.setFont(font, run.bold ? "bold" : "normal");
+    for (const token of run.text.split(/(\s+)/)) {
+      if (token) words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
+    }
+  }
+  const lines: RichRun[][] = [];
+  let line: Word[] = [];
+  let lineWidth = 0;
+  const flush = () => {
+    while (line.length && line[line.length - 1]!.text.trim() === "") line.pop();
+    const merged: RichRun[] = [];
+    for (const word of line) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.bold === word.bold) prev.text += word.text;
+      else merged.push({ text: word.text, bold: word.bold });
+    }
+    lines.push(merged);
+    line = [];
+    lineWidth = 0;
+  };
+  for (const word of words) {
+    if (word.text.trim() === "") {
+      if (line.length) {
+        line.push(word);
+        lineWidth += word.width;
+      }
+      continue;
+    }
+    if (line.length && lineWidth + word.width > maxWidth) flush();
+    line.push(word);
+    lineWidth += word.width;
+  }
+  if (line.length || !lines.length) flush();
+  return lines;
+}
+
+function drawRichLine(doc: jsPDF, line: RichRun[], x: number, y: number, font: DocumentFont) {
+  let cursor = x;
+  for (const run of line) {
+    doc.setFont(font, run.bold ? "bold" : "normal");
+    doc.text(run.text, cursor, y);
+    cursor += doc.getTextWidth(run.text);
+  }
+  doc.setFont(font, "normal");
+}
+
 export async function buildFinancialPdf(
   document: FinancialDocument,
   settings: Settings | null,
@@ -232,6 +302,12 @@ export async function buildFinancialPdf(
   if (theme === "bold") doc.setTextColor(255, 255, 255);
   else doc.setTextColor(24, 32, 30);
   doc.text(docTitle, margin, titleY);
+  // Phase 2: short accent rule under the document title (white inside the
+  // bold theme's accent band, template accent everywhere else).
+  doc.setLineWidth(2.5);
+  if (theme === "bold") doc.setDrawColor(255, 255, 255);
+  else doc.setDrawColor(r, g, b);
+  doc.line(margin, titleY + 9, margin + 46, titleY + 9);
   doc.setFont(font, "normal");
   doc.setFontSize(8);
   if (theme === "bold") doc.setTextColor(255, 255, 255);
@@ -272,18 +348,28 @@ export async function buildFinancialPdf(
     );
     ry += 13;
   }
-  if (kind === "invoice" && document.issueDate) {
+  if (document.issueDate) {
     doc.setFont(font, "normal");
     doc.text(`${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right",
     });
     ry += 13;
   }
+  // Phase 2: the due date lives in the header meta block (it used to print
+  // alone under the totals). Estimates show their expiry date here.
+  const metaDueDate = kind === "invoice" ? document.dueDate : document.expiryDate;
+  if (custom.showDueDate && metaDueDate) {
+    doc.setFont(font, "normal");
+    doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
+      align: "right",
+    });
+    ry += 13;
+  }
   let y = Math.max(infoY + 13 + clientLines.length * 10 + 14, ry + 10);
   // Build 0.6 (item 13): paginate long documents. Content must stay above the
-  // fixed footer zone (payment terms ~680, thank-you 742, license line 752):
-  // without page breaks the line items ran off the bottom of the page and
-  // the fixed footer printed on top of the flowing text.
+  // footer zone (thank-you ~748, footer hairline 758): without page breaks
+  // the line items ran off the bottom of the page and the footer printed on
+  // top of the flowing text.
   const PAGE_BOTTOM = 648;
   const drawTableHeaderRow = () => {
     if (theme !== "minimal") {
@@ -319,22 +405,37 @@ export async function buildFinancialPdf(
   doc.setTextColor(24, 32, 30);
   doc.setFont(font, "normal");
   doc.setFontSize(9);
+  let rowIndex = 0;
   for (const item of document.lineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
-    const detail = !custom.showQuantityUnitPrice || (qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0)
-      ? itemLabel
-      : `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
-    const lines = doc.splitTextToSize(detail, w - margin * 2 - 130) as string[];
-    const rowH = Math.max(20, lines.length * 11 + 6);
+    const suffix = !custom.showQuantityUnitPrice || (qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0)
+      ? ""
+      : ` (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
+    // Phase 2: **bold** lead-ins render as real bold (parseRichRuns), and
+    // alternating rows get a whisper zebra fill on the banded themes.
+    const runs = parseRichRuns(itemLabel);
+    if (suffix) runs.push({ text: suffix, bold: false });
+    const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
+    const rowH = Math.max(20, richLines.length * 11 + 6);
     ensureSpace(rowH);
-    doc.text(lines, margin + 8, y);
-    if (custom.showAmount) doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+    if (theme !== "minimal" && rowIndex % 2 === 1) {
+      doc.setFillColor(247, 249, 248);
+      doc.rect(margin, y - 11, w - margin * 2, rowH, "F");
+    }
+    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(9);
+    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * 11, font));
+    if (custom.showAmount) {
+      doc.setFont(font, "normal");
+      doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+    }
     doc.setDrawColor(224, 227, 226);
     doc.setLineWidth(0.5);
     doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
     y += rowH;
+    rowIndex += 1;
   }
   y += 6;
   const totals = financialTotals(
@@ -345,64 +446,82 @@ export async function buildFinancialPdf(
     document.taxValue,
   );
   if (custom.showSummaryInfo) {
-  ensureSpace(120);
-  doc.setDrawColor(r, g, b);
-  doc.line(w - margin - 200, y, w - margin, y);
-  y += 16;
-  doc.setFontSize(9);
-  if (custom.showSubtotal) doc.text(`${labels.subtotal}: ${usd(totals.subtotal)}`, w - margin, y, { align: "right" });
-  if (custom.showDiscount && document.showDiscountLine && totals.discount > 0) {
-    y += 14;
-    doc.text(`${strings.discount}: -${usd(totals.discount)}`, w - margin, y, {
-      align: "right",
-    });
-  }
-  if (custom.showTax && document.showTaxLine && totals.tax > 0) {
-    y += 14;
-    doc.text(`${strings.tax}: ${usd(totals.tax)}`, w - margin, y, { align: "right" });
-  }
-  if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && money(document.paidToDate ?? "0") > 0) {
-    y += 14;
-    doc.text(`${lang === "es" ? "Monto pagado" : "Amount paid"}: -${usd(money(document.paidToDate ?? "0"))}`, w - margin, y, { align: "right" });
-  }
-  const lateFee =
-    kind === "invoice" ? money(document.lateFeeAccrued ?? "0") : 0;
-  if (lateFee > 0) {
-    y += 14;
-    doc.text(
-      `${lang === "es" ? "Cargo por atraso" : "Late fee"}: ${usd(lateFee)}`,
-      w - margin,
-      y,
-      { align: "right" },
-    );
-  }
-  y += 18;
-  const totalLabel =
-    kind === "invoice" && lateFee > 0
-      ? lang === "es"
-        ? "Total con cargo"
-        : "Total with fee"
-      : labels.total;
-  const totalValue = usd(
-    kind === "invoice" ? money(document.totalWithLateFee ?? document.total) : totals.total,
-  );
-  if (custom.showAmount && theme === "classic") {
-    doc.setFillColor(23, 26, 28);
-    doc.rect(w - margin - 250, y - 12, 250, 22, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont(font, "bold");
-    doc.setFontSize(13);
-    doc.text(`${totalLabel}: ${totalValue}`, w - margin - 8, y + 3, {
-      align: "right",
-    });
-  } else if (custom.showAmount) {
-    doc.setFont(font, "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(r, g, b);
-    doc.text(`${totalLabel}: ${totalValue}`, w - margin, y, {
-      align: "right",
-    });
-  }
+    // Phase 2: the totals live in a boxed summary panel — label left, amount
+    // right, divider, then the emphasized Total. The classic theme keeps its
+    // dark total band, inset 6pt inside the 262pt panel so the band keeps
+    // its exact legacy 250pt width. Invoices also get a Balance due row that
+    // accounts for payments already made.
+    const panelW = 262;
+    const panelX = w - margin - panelW;
+    const rowStep = 15;
+    const paidToDate = kind === "invoice" ? money(document.paidToDate ?? "0") : 0;
+    const lateFee = kind === "invoice" ? money(document.lateFeeAccrued ?? "0") : 0;
+    const totalLabel =
+      kind === "invoice" && lateFee > 0
+        ? lang === "es"
+          ? "Total con cargo"
+          : "Total with fee"
+        : labels.total;
+    const totalNum = kind === "invoice" ? money(document.totalWithLateFee ?? document.total) : totals.total;
+    const totalValue = usd(totalNum);
+    const balanceDue = kind === "invoice" ? Math.max(0, totalNum - paidToDate) : 0;
+    const showBalance = kind === "invoice" && custom.showBalanceDue && (paidToDate > 0 || balanceDue > 0);
+    type TotalRow = { label: string; value: string };
+    const rows: TotalRow[] = [];
+    if (custom.showSubtotal) rows.push({ label: `${labels.subtotal}:`, value: usd(totals.subtotal) });
+    if (custom.showDiscount && document.showDiscountLine && totals.discount > 0) rows.push({ label: `${strings.discount}:`, value: `-${usd(totals.discount)}` });
+    if (custom.showTax && document.showTaxLine && totals.tax > 0) rows.push({ label: `${strings.tax}:`, value: usd(totals.tax) });
+    if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && paidToDate > 0) rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
+    if (lateFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
+    const totalRowH = custom.showAmount ? 24 : 0;
+    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + 8;
+    ensureSpace(panelH + 6);
+    doc.setFillColor(249, 251, 250);
+    doc.setDrawColor(219, 223, 221);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(panelX, y, panelW, panelH, 6, 6, "FD");
+    let by = y + 21;
+    doc.setFont(font, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(24, 32, 30);
+    for (const row of rows) {
+      doc.text(row.label, panelX + 12, by);
+      doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
+      by += rowStep;
+    }
+    if (rows.length && totalRowH) {
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(panelX + 12, by - 9, panelX + panelW - 12, by - 9);
+      by += 6;
+    }
+    if (custom.showAmount && theme === "classic") {
+      doc.setFillColor(23, 26, 28);
+      doc.rect(panelX + 6, by - 12, 250, 22, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(font, "bold");
+      doc.setFontSize(13);
+      doc.text(`${totalLabel}:`, panelX + 16, by + 3);
+      doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
+      by += 24;
+    } else if (custom.showAmount) {
+      doc.setFont(font, "bold");
+      doc.setFontSize(12.5);
+      doc.setTextColor(r, g, b);
+      doc.text(`${totalLabel}:`, panelX + 12, by + 3);
+      doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
+      by += 24;
+    }
+    if (showBalance) {
+      doc.setFont(font, "bold");
+      doc.setFontSize(10);
+      if (balanceDue > 0) doc.setTextColor(r, g, b);
+      else doc.setTextColor(34, 120, 70);
+      doc.text(`${labels.balanceDue}:`, panelX + 12, by + 4);
+      doc.text(usd(balanceDue), panelX + panelW - 12, by + 4, { align: "right" });
+      by += 19;
+    }
+    y += panelH;
   }
   // Deposit request line (estimates): "Deposit due (50%): $3,250.00" + balance.
   const depType = document.depositType === "percent" || document.depositType === "fixed" ? document.depositType : "none";
@@ -425,52 +544,81 @@ export async function buildFinancialPdf(
     doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}: ${usd(balance)}`, w - margin, y, { align: "right" });
   }
   y += 24;
-  doc.setTextColor(70, 78, 76);
-  const dateValue = kind === "quote" ? document.expiryDate : document.dueDate;
-  const dateLabel = labels.dueDate;
-  if (custom.showDueDate && dateValue) {
-    ensureSpace(24);
-    y += 6;
-    doc.setFont(font, "normal");
-    doc.setFontSize(9);
-    doc.text(`${dateLabel}: ${formatDocumentDate(dateValue, custom.dateFormat, lang)}`, margin, y);
-    y += 8;
-  }
+  // Phase 2: footnote / payment instructions / terms share one light shaded
+  // panel in the flow. They used to print at fixed positions (y 680/715) on
+  // the last page only, where long documents could collide with them.
+  doc.setFont(font, "normal");
+  doc.setFontSize(8);
+  const noteSections: string[][] = [];
   if (document.showFooterNotes && document.footnote) {
-    y += 16;
+    noteSections.push(doc.splitTextToSize(document.footnote, w - margin * 2 - 20) as string[]);
+  }
+  if (document.showPaymentTerms && settings?.paymentInstructions) {
+    noteSections.push(doc.splitTextToSize(`${strings.paymentInstructions}: ${settings.paymentInstructions}`, w - margin * 2 - 20) as string[]);
+  }
+  if (custom.termsConditions) {
+    noteSections.push((doc.splitTextToSize(`${lang === "es" ? "Términos y condiciones" : "Terms and conditions"}: ${custom.termsConditions}`, w - margin * 2 - 20) as string[]).slice(0, 4));
+  }
+  if (noteSections.length) {
+    const noteLineCount = noteSections.reduce((sum, section) => sum + section.length, 0);
+    const notesH = noteLineCount * 10 + (noteSections.length - 1) * 5 + 16;
+    ensureSpace(notesH + 14);
+    y += 6;
+    doc.setFillColor(246, 248, 247);
+    doc.setDrawColor(226, 230, 228);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(margin, y, w - margin * 2, notesH, 5, 5, "FD");
+    let ny = y + 14;
     doc.setFont(font, "normal");
     doc.setFontSize(8);
     doc.setTextColor(70, 78, 76);
-    const lines = doc.splitTextToSize(
-      document.footnote,
-      w - margin * 2,
-    ) as string[];
-    ensureSpace(lines.length * 10 + 12);
-    doc.text(lines, margin, y);
-    y += lines.length * 10 + 6;
+    for (const section of noteSections) {
+      doc.text(section, margin + 10, ny);
+      ny += section.length * 10 + 5;
+    }
+    y += notesH + 8;
   }
-  if (document.showPaymentTerms && settings?.paymentInstructions) {
-    const paymentLines = doc.splitTextToSize(`${strings.paymentInstructions}: ${settings.paymentInstructions}`, w - margin * 2) as string[];
-    doc.setFont(font, "normal"); doc.setFontSize(8); doc.setTextColor(70, 78, 76); doc.text(paymentLines, margin, 680);
-  }
-  if (custom.termsConditions) {
-    const terms = doc.splitTextToSize(`${lang === "es" ? "Términos y condiciones" : "Terms and conditions"}: ${custom.termsConditions}`, w - margin * 2) as string[];
-    doc.setFont(font, "normal"); doc.setFontSize(8); doc.setTextColor(70, 78, 76); doc.text(terms.slice(0, 4), margin, 715);
-  }
+  // Phase 2: styled business-signature block — image over a signature rule
+  // with a caption (it used to float unstyled at a fixed position).
   if (custom.showBusinessSignature && custom.signatureDataUrl) {
-    try { doc.addImage(`data:image/png;base64,${custom.signatureDataUrl}`, "PNG", w - margin - 120, 665, 110, 38, undefined, "FAST"); } catch { /* keep PDF usable */ }
+    ensureSpace(72);
+    y += 6;
+    try { doc.addImage(`data:image/png;base64,${custom.signatureDataUrl}`, "PNG", w - margin - 120, y, 110, 38, undefined, "FAST"); } catch { /* keep PDF usable */ }
+    const sigLineY = y + 46;
+    doc.setDrawColor(120, 128, 125);
+    doc.setLineWidth(0.75);
+    doc.line(w - margin - 130, sigLineY, w - margin, sigLineY);
+    doc.setFont(font, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(70, 78, 76);
+    doc.text(lang === "es" ? "Firma de la empresa" : "Business signature", w - margin - 130, sigLineY + 11);
+    y = sigLineY + 18;
   }
-  if (custom.showThankYou) { doc.setFont(font, "italic"); doc.setFontSize(8); doc.setTextColor(r, g, b); doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 742, { align: "center" }); }
+  // Phase 2: a real footer on EVERY page — thank-you line, hairline, then
+  // license/contact on the left and Page X of Y on the right.
+  const pageCount = doc.getNumberOfPages();
+  const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website, settings?.address].filter(Boolean) as string[];
   doc.setFont(font, "normal");
   doc.setFontSize(7);
-  doc.setTextColor(90, 98, 96);
-  if (document.showCompanyInfo) doc.text(
-    [settings?.licenseNumber, companyContact(settings)]
-      .filter(Boolean)
-      .join(" · "),
-    margin,
-    752,
-  );
+  while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" · ")) > 425) footerParts.pop();
+  const footerLeft = document.showCompanyInfo ? footerParts.join(" · ") : "";
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    if (custom.showThankYou) {
+      doc.setFont(font, "italic");
+      doc.setFontSize(7.5);
+      doc.setTextColor(r, g, b);
+      doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 748, { align: "center" });
+    }
+    doc.setDrawColor(224, 227, 226);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 758, w - margin, 758);
+    doc.setFont(font, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(90, 98, 96);
+    if (footerLeft) doc.text(footerLeft, margin, 770);
+    doc.text(`${lang === "es" ? "Página" : "Page"} ${page} ${lang === "es" ? "de" : "of"} ${pageCount}`, w - margin, 770, { align: "right" });
+  }
   return doc.output("blob");
 }
 export async function buildQuotePdf(

@@ -55592,14 +55592,6 @@ function money(value) {
   const parsed = Number(value.replace(/[^0-9.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
-function companyContact(settings, separator = " \xB7 ") {
-  return [
-    settings?.phone,
-    settings?.email,
-    settings?.website,
-    settings?.address
-  ].filter(Boolean).join(separator);
-}
 function financialTotals(items, discountType, discountValue, taxType, taxValue) {
   const subtotal = items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
   const discountRaw = Math.max(0, money(discountValue));
@@ -55682,6 +55674,68 @@ function formatDocumentDate(value, format, lang) {
     return new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
   return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
+function parseRichRuns(text) {
+  const parts = text.split("**");
+  if ((parts.length - 1) % 2 === 1) {
+    const last = parts.pop();
+    parts[parts.length - 1] = `${parts[parts.length - 1]}**${last}`;
+  }
+  const runs = parts.map((part, index) => ({ text: part, bold: index % 2 === 1 })).filter((run) => run.text.length > 0);
+  return runs.length ? runs : [{ text, bold: false }];
+}
+function wrapRichLines(doc, runs, maxWidth, font) {
+  const words = [];
+  for (const run of runs) {
+    doc.setFont(font, run.bold ? "bold" : "normal");
+    for (const token of run.text.split(/(\s+)/)) {
+      if (token)
+        words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
+    }
+  }
+  const lines = [];
+  let line = [];
+  let lineWidth = 0;
+  const flush = () => {
+    while (line.length && line[line.length - 1].text.trim() === "")
+      line.pop();
+    const merged = [];
+    for (const word of line) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.bold === word.bold)
+        prev.text += word.text;
+      else
+        merged.push({ text: word.text, bold: word.bold });
+    }
+    lines.push(merged);
+    line = [];
+    lineWidth = 0;
+  };
+  for (const word of words) {
+    if (word.text.trim() === "") {
+      if (line.length) {
+        line.push(word);
+        lineWidth += word.width;
+      }
+      continue;
+    }
+    if (line.length && lineWidth + word.width > maxWidth)
+      flush();
+    line.push(word);
+    lineWidth += word.width;
+  }
+  if (line.length || !lines.length)
+    flush();
+  return lines;
+}
+function drawRichLine(doc, line, x, y, font) {
+  let cursor = x;
+  for (const run of line) {
+    doc.setFont(font, run.bold ? "bold" : "normal");
+    doc.text(run.text, cursor, y);
+    cursor += doc.getTextWidth(run.text);
+  }
+  doc.setFont(font, "normal");
+}
 async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   const custom = parseDocumentCustomize(document2.customizeJson, kind, lang);
   const labels = custom.labels;
@@ -55742,6 +55796,12 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   else
     doc.setTextColor(24, 32, 30);
   doc.text(docTitle, margin, titleY);
+  doc.setLineWidth(2.5);
+  if (theme === "bold")
+    doc.setDrawColor(255, 255, 255);
+  else
+    doc.setDrawColor(r, g, b);
+  doc.line(margin, titleY + 9, margin + 46, titleY + 9);
   doc.setFont(font, "normal");
   doc.setFontSize(8);
   if (theme === "bold")
@@ -55777,9 +55837,17 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.text(`${labels.number}: ${docNumber}`, rightX, ry, { align: "right" });
     ry += 13;
   }
-  if (kind === "invoice" && document2.issueDate) {
+  if (document2.issueDate) {
     doc.setFont(font, "normal");
     doc.text(`${labels.date}: ${formatDocumentDate(document2.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
+      align: "right"
+    });
+    ry += 13;
+  }
+  const metaDueDate = kind === "invoice" ? document2.dueDate : document2.expiryDate;
+  if (custom.showDueDate && metaDueDate) {
+    doc.setFont(font, "normal");
+    doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right"
     });
     ry += 13;
@@ -55824,71 +55892,110 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   doc.setTextColor(24, 32, 30);
   doc.setFont(font, "normal");
   doc.setFontSize(9);
+  let rowIndex = 0;
   for (const item of document2.lineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
-    const detail = !custom.showQuantityUnitPrice || qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0 ? itemLabel : `${itemLabel} (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
-    const lines = doc.splitTextToSize(detail, w - margin * 2 - 130);
-    const rowH = Math.max(20, lines.length * 11 + 6);
+    const suffix = !custom.showQuantityUnitPrice || qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0 ? "" : ` (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
+    const runs = parseRichRuns(itemLabel);
+    if (suffix)
+      runs.push({ text: suffix, bold: false });
+    const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
+    const rowH = Math.max(20, richLines.length * 11 + 6);
     ensureSpace(rowH);
-    doc.text(lines, margin + 8, y);
-    if (custom.showAmount)
+    if (theme !== "minimal" && rowIndex % 2 === 1) {
+      doc.setFillColor(247, 249, 248);
+      doc.rect(margin, y - 11, w - margin * 2, rowH, "F");
+    }
+    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(9);
+    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * 11, font));
+    if (custom.showAmount) {
+      doc.setFont(font, "normal");
       doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+    }
     doc.setDrawColor(224, 227, 226);
     doc.setLineWidth(0.5);
     doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
     y += rowH;
+    rowIndex += 1;
   }
   y += 6;
   const totals = financialTotals(document2.lineItems, document2.discountType, document2.discountValue, document2.taxType, document2.taxValue);
   if (custom.showSummaryInfo) {
-    ensureSpace(120);
-    doc.setDrawColor(r, g, b);
-    doc.line(w - margin - 200, y, w - margin, y);
-    y += 16;
-    doc.setFontSize(9);
-    if (custom.showSubtotal)
-      doc.text(`${labels.subtotal}: ${usd(totals.subtotal)}`, w - margin, y, { align: "right" });
-    if (custom.showDiscount && document2.showDiscountLine && totals.discount > 0) {
-      y += 14;
-      doc.text(`${strings.discount}: -${usd(totals.discount)}`, w - margin, y, {
-        align: "right"
-      });
-    }
-    if (custom.showTax && document2.showTaxLine && totals.tax > 0) {
-      y += 14;
-      doc.text(`${strings.tax}: ${usd(totals.tax)}`, w - margin, y, { align: "right" });
-    }
-    if (kind === "invoice" && custom.showPaidSummary && document2.showPaidLine && money(document2.paidToDate ?? "0") > 0) {
-      y += 14;
-      doc.text(`${lang === "es" ? "Monto pagado" : "Amount paid"}: -${usd(money(document2.paidToDate ?? "0"))}`, w - margin, y, { align: "right" });
-    }
+    const panelW = 262;
+    const panelX = w - margin - panelW;
+    const rowStep = 15;
+    const paidToDate = kind === "invoice" ? money(document2.paidToDate ?? "0") : 0;
     const lateFee = kind === "invoice" ? money(document2.lateFeeAccrued ?? "0") : 0;
-    if (lateFee > 0) {
-      y += 14;
-      doc.text(`${lang === "es" ? "Cargo por atraso" : "Late fee"}: ${usd(lateFee)}`, w - margin, y, { align: "right" });
-    }
-    y += 18;
     const totalLabel = kind === "invoice" && lateFee > 0 ? lang === "es" ? "Total con cargo" : "Total with fee" : labels.total;
-    const totalValue = usd(kind === "invoice" ? money(document2.totalWithLateFee ?? document2.total) : totals.total);
+    const totalNum = kind === "invoice" ? money(document2.totalWithLateFee ?? document2.total) : totals.total;
+    const totalValue = usd(totalNum);
+    const balanceDue = kind === "invoice" ? Math.max(0, totalNum - paidToDate) : 0;
+    const showBalance = kind === "invoice" && custom.showBalanceDue && (paidToDate > 0 || balanceDue > 0);
+    const rows = [];
+    if (custom.showSubtotal)
+      rows.push({ label: `${labels.subtotal}:`, value: usd(totals.subtotal) });
+    if (custom.showDiscount && document2.showDiscountLine && totals.discount > 0)
+      rows.push({ label: `${strings.discount}:`, value: `-${usd(totals.discount)}` });
+    if (custom.showTax && document2.showTaxLine && totals.tax > 0)
+      rows.push({ label: `${strings.tax}:`, value: usd(totals.tax) });
+    if (kind === "invoice" && custom.showPaidSummary && document2.showPaidLine && paidToDate > 0)
+      rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
+    if (lateFee > 0)
+      rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
+    const totalRowH = custom.showAmount ? 24 : 0;
+    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + 8;
+    ensureSpace(panelH + 6);
+    doc.setFillColor(249, 251, 250);
+    doc.setDrawColor(219, 223, 221);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(panelX, y, panelW, panelH, 6, 6, "FD");
+    let by = y + 21;
+    doc.setFont(font, "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(24, 32, 30);
+    for (const row of rows) {
+      doc.text(row.label, panelX + 12, by);
+      doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
+      by += rowStep;
+    }
+    if (rows.length && totalRowH) {
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(panelX + 12, by - 9, panelX + panelW - 12, by - 9);
+      by += 6;
+    }
     if (custom.showAmount && theme === "classic") {
       doc.setFillColor(23, 26, 28);
-      doc.rect(w - margin - 250, y - 12, 250, 22, "F");
+      doc.rect(panelX + 6, by - 12, 250, 22, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFont(font, "bold");
       doc.setFontSize(13);
-      doc.text(`${totalLabel}: ${totalValue}`, w - margin - 8, y + 3, {
-        align: "right"
-      });
+      doc.text(`${totalLabel}:`, panelX + 16, by + 3);
+      doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
+      by += 24;
     } else if (custom.showAmount) {
       doc.setFont(font, "bold");
-      doc.setFontSize(12);
+      doc.setFontSize(12.5);
       doc.setTextColor(r, g, b);
-      doc.text(`${totalLabel}: ${totalValue}`, w - margin, y, {
-        align: "right"
-      });
+      doc.text(`${totalLabel}:`, panelX + 12, by + 3);
+      doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
+      by += 24;
     }
+    if (showBalance) {
+      doc.setFont(font, "bold");
+      doc.setFontSize(10);
+      if (balanceDue > 0)
+        doc.setTextColor(r, g, b);
+      else
+        doc.setTextColor(34, 120, 70);
+      doc.text(`${labels.balanceDue}:`, panelX + 12, by + 4);
+      doc.text(usd(balanceDue), panelX + panelW - 12, by + 4, { align: "right" });
+      by += 19;
+    }
+    y += panelH;
   }
   const depType = document2.depositType === "percent" || document2.depositType === "fixed" ? document2.depositType : "none";
   const depVal = Number(document2.depositValue ?? "0");
@@ -55910,57 +56017,78 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}: ${usd(balance)}`, w - margin, y, { align: "right" });
   }
   y += 24;
-  doc.setTextColor(70, 78, 76);
-  const dateValue = kind === "quote" ? document2.expiryDate : document2.dueDate;
-  const dateLabel = labels.dueDate;
-  if (custom.showDueDate && dateValue) {
-    ensureSpace(24);
-    y += 6;
-    doc.setFont(font, "normal");
-    doc.setFontSize(9);
-    doc.text(`${dateLabel}: ${formatDocumentDate(dateValue, custom.dateFormat, lang)}`, margin, y);
-    y += 8;
-  }
+  doc.setFont(font, "normal");
+  doc.setFontSize(8);
+  const noteSections = [];
   if (document2.showFooterNotes && document2.footnote) {
-    y += 16;
-    doc.setFont(font, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(70, 78, 76);
-    const lines = doc.splitTextToSize(document2.footnote, w - margin * 2);
-    ensureSpace(lines.length * 10 + 12);
-    doc.text(lines, margin, y);
-    y += lines.length * 10 + 6;
+    noteSections.push(doc.splitTextToSize(document2.footnote, w - margin * 2 - 20));
   }
   if (document2.showPaymentTerms && settings?.paymentInstructions) {
-    const paymentLines = doc.splitTextToSize(`${strings.paymentInstructions}: ${settings.paymentInstructions}`, w - margin * 2);
-    doc.setFont(font, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(70, 78, 76);
-    doc.text(paymentLines, margin, 680);
+    noteSections.push(doc.splitTextToSize(`${strings.paymentInstructions}: ${settings.paymentInstructions}`, w - margin * 2 - 20));
   }
   if (custom.termsConditions) {
-    const terms = doc.splitTextToSize(`${lang === "es" ? "T\xE9rminos y condiciones" : "Terms and conditions"}: ${custom.termsConditions}`, w - margin * 2);
+    noteSections.push(doc.splitTextToSize(`${lang === "es" ? "T\xE9rminos y condiciones" : "Terms and conditions"}: ${custom.termsConditions}`, w - margin * 2 - 20).slice(0, 4));
+  }
+  if (noteSections.length) {
+    const noteLineCount = noteSections.reduce((sum, section) => sum + section.length, 0);
+    const notesH = noteLineCount * 10 + (noteSections.length - 1) * 5 + 16;
+    ensureSpace(notesH + 14);
+    y += 6;
+    doc.setFillColor(246, 248, 247);
+    doc.setDrawColor(226, 230, 228);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(margin, y, w - margin * 2, notesH, 5, 5, "FD");
+    let ny = y + 14;
     doc.setFont(font, "normal");
     doc.setFontSize(8);
     doc.setTextColor(70, 78, 76);
-    doc.text(terms.slice(0, 4), margin, 715);
+    for (const section of noteSections) {
+      doc.text(section, margin + 10, ny);
+      ny += section.length * 10 + 5;
+    }
+    y += notesH + 8;
   }
   if (custom.showBusinessSignature && custom.signatureDataUrl) {
+    ensureSpace(72);
+    y += 6;
     try {
-      doc.addImage(`data:image/png;base64,${custom.signatureDataUrl}`, "PNG", w - margin - 120, 665, 110, 38, undefined, "FAST");
+      doc.addImage(`data:image/png;base64,${custom.signatureDataUrl}`, "PNG", w - margin - 120, y, 110, 38, undefined, "FAST");
     } catch {}
+    const sigLineY = y + 46;
+    doc.setDrawColor(120, 128, 125);
+    doc.setLineWidth(0.75);
+    doc.line(w - margin - 130, sigLineY, w - margin, sigLineY);
+    doc.setFont(font, "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(70, 78, 76);
+    doc.text(lang === "es" ? "Firma de la empresa" : "Business signature", w - margin - 130, sigLineY + 11);
+    y = sigLineY + 18;
   }
-  if (custom.showThankYou) {
-    doc.setFont(font, "italic");
-    doc.setFontSize(8);
-    doc.setTextColor(r, g, b);
-    doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 742, { align: "center" });
-  }
+  const pageCount = doc.getNumberOfPages();
+  const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website, settings?.address].filter(Boolean);
   doc.setFont(font, "normal");
   doc.setFontSize(7);
-  doc.setTextColor(90, 98, 96);
-  if (document2.showCompanyInfo)
-    doc.text([settings?.licenseNumber, companyContact(settings)].filter(Boolean).join(" \xB7 "), margin, 752);
+  while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" \xB7 ")) > 425)
+    footerParts.pop();
+  const footerLeft = document2.showCompanyInfo ? footerParts.join(" \xB7 ") : "";
+  for (let page = 1;page <= pageCount; page++) {
+    doc.setPage(page);
+    if (custom.showThankYou) {
+      doc.setFont(font, "italic");
+      doc.setFontSize(7.5);
+      doc.setTextColor(r, g, b);
+      doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 748, { align: "center" });
+    }
+    doc.setDrawColor(224, 227, 226);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 758, w - margin, 758);
+    doc.setFont(font, "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(90, 98, 96);
+    if (footerLeft)
+      doc.text(footerLeft, margin, 770);
+    doc.text(`${lang === "es" ? "P\xE1gina" : "Page"} ${page} ${lang === "es" ? "de" : "of"} ${pageCount}`, w - margin, 770, { align: "right" });
+  }
   return doc.output("blob");
 }
 async function buildQuotePdf(quote, settings, lang, strings) {
@@ -70991,8 +71119,10 @@ async function appendAttachmentsToPdf(mainPdfBytes, attachments, imagesPerPage) 
   for (let i = 0;i < images.length; i += perPage) {
     const group = images.slice(i, i + perPage);
     const page = out.addPage([PAGE_W, PAGE_H]);
-    const cellW = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
-    const cellH = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellW0 = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
+    const cellH0 = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellW = perPage === 1 ? Math.min(cellW0, 468) : cellW0;
+    const cellH = perPage === 1 ? Math.min(cellH0, 528) : cellH0;
     for (let g = 0;g < group.length; g++) {
       const att = group[g];
       let embedded;
@@ -71004,8 +71134,8 @@ async function appendAttachmentsToPdf(mainPdfBytes, attachments, imagesPerPage) 
       const { w, h } = fitInCell(embedded.width, embedded.height, cellW, cellH);
       const col = g % cols;
       const row = Math.floor(g / cols);
-      const x = MARGIN + col * (cellW + 12) + (cellW - w) / 2;
-      const topY = PAGE_H - MARGIN - row * (cellH + 12);
+      const x = MARGIN + col * (cellW0 + 12) + (cellW0 - cellW) / 2 + (cellW - w) / 2;
+      const topY = PAGE_H - MARGIN - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
       const y = topY - cellH + (cellH - h) / 2;
       page.drawImage(embedded, { x, y, width: w, height: h });
     }
@@ -75427,6 +75557,28 @@ async function getDocumentLinkPayload(ctx, token) {
 }
 var docPdfCache = new Map;
 var DOC_PDF_CACHE_MAX = 30;
+async function documentLinkPdfBase64(ctx, token, lang) {
+  const { payload } = await getDocumentLinkPayload(ctx, token);
+  const kind = payload.kind;
+  if (kind !== "invoice" && kind !== "quote")
+    throw new Error("This document is only available as a web page.");
+  const cacheKey = `${kind}:${payload.documentId}:${lang}`;
+  const hit = docPdfCache.get(cacheKey);
+  if (hit && hit.updatedAtMs === payload.updatedAtMs) {
+    return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+  }
+  const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, lang);
+  const pdfBase64 = Buffer.from(bytes).toString("base64");
+  if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
+    const oldest = docPdfCache.keys().next().value;
+    if (oldest)
+      docPdfCache.delete(oldest);
+  }
+  docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: payload.updatedAtMs ?? 0 });
+  return { pdfBase64, filename, kind };
+}
+var docPdfPagesCache = new Map;
+var DOC_PDF_PAGES_CACHE_MAX = 8;
 var documentAttachmentSchema = object({ id: number2(), docType: _enum(["quote", "invoice"]), docId: number2(), kind: _enum(["image", "pdf"]), fileName: string2(), contentType: string2(), sortOrder: number2(), url: string2().nullable(), createdAt: string2() });
 async function assertDocumentAttachmentAccess(ctx, docType, docId) {
   const db = ctx.db();
@@ -78130,24 +78282,28 @@ If that was you, just sign in again. If not, we recommend changing your password
     return payload;
   } }),
   getDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pdfBase64: string2(), filename: string2(), kind: string2() }), async handler(ctx, args) {
+    return documentLinkPdfBase64(ctx, args.token, args.lang);
+  } }),
+  getDocumentLinkPdfPages: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pagesBase64: array(string2()).max(20), filename: string2(), kind: string2() }), privileged: [privileged.renderPdfPages], async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
     if (kind !== "invoice" && kind !== "quote")
       throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
-    const hit = docPdfCache.get(cacheKey);
-    if (hit && hit.updatedAtMs === payload.updatedAtMs) {
-      return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+    const updatedAtMs = payload.updatedAtMs ?? 0;
+    const hit = docPdfPagesCache.get(cacheKey);
+    if (hit && hit.updatedAtMs === updatedAtMs) {
+      return { pagesBase64: hit.pagesBase64, filename: hit.filename, kind };
     }
-    const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, args.lang);
-    const pdfBase64 = Buffer.from(bytes).toString("base64");
-    if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
-      const oldest = docPdfCache.keys().next().value;
+    const { pdfBase64, filename } = await documentLinkPdfBase64(ctx, args.token, args.lang);
+    const { pagesBase64 } = await ctx.executePrivileged(privileged.renderPdfPages, { dataBase64: pdfBase64 });
+    if (docPdfPagesCache.size >= DOC_PDF_PAGES_CACHE_MAX) {
+      const oldest = docPdfPagesCache.keys().next().value;
       if (oldest)
-        docPdfCache.delete(oldest);
+        docPdfPagesCache.delete(oldest);
     }
-    docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: payload.updatedAtMs ?? 0 });
-    return { pdfBase64, filename, kind };
+    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs });
+    return { pagesBase64, filename, kind };
   } }),
   validateDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ ok: literal(true), kind: string2() }), async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
@@ -80640,6 +80796,7 @@ var PUBLIC_ACTIONS = new Set([
   "portalSignChangeOrder",
   "resolveDocumentLink",
   "getDocumentLinkPdf",
+  "getDocumentLinkPdfPages",
   "validateDocumentLinkPdf",
   "submitDocumentSignature",
   "submitEstimateRequest",

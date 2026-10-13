@@ -2033,6 +2033,35 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
 const docPdfCache = new Map<string, { pdfBase64: string; filename: string; updatedAtMs: number }>();
 const DOC_PDF_CACHE_MAX = 30;
 
+// Phase 2 (client-link PDF polish): shared by getDocumentLinkPdf (raw bytes
+// for download/open) and getDocumentLinkPdfPages (server-rasterized pages for
+// inline display — Android Chrome can't render PDFs in-page, and the old
+// browser-side pdf.js load failed there, leaving "The PDF couldn't be shown
+// here." as the primary experience). No view counting here —
+// resolveDocumentLink owns that side effect, exactly as before.
+async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es"): Promise<{ pdfBase64: string; filename: string; kind: string }> {
+  const { payload } = await getDocumentLinkPayload(ctx, token);
+  const kind = payload.kind;
+  if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
+  const cacheKey = `${kind}:${payload.documentId}:${lang}`;
+  const hit = docPdfCache.get(cacheKey);
+  if (hit && hit.updatedAtMs === (payload as { updatedAtMs?: number }).updatedAtMs) {
+    return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+  }
+  const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, lang);
+  const pdfBase64 = Buffer.from(bytes).toString("base64");
+  if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
+    const oldest = docPdfCache.keys().next().value;
+    if (oldest) docPdfCache.delete(oldest);
+  }
+  docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: (payload as { updatedAtMs?: number }).updatedAtMs ?? 0 });
+  return { pdfBase64, filename, kind };
+}
+
+// Rasterized pages are heavier than the PDF bytes — keep this cache small.
+const docPdfPagesCache = new Map<string, { pagesBase64: string[]; filename: string; updatedAtMs: number }>();
+const DOC_PDF_PAGES_CACHE_MAX = 8;
+
 // Build 0.6: document attachments (images + PDFs) on estimates/quotes and
 // invoices. Appended to the generated PDF after the main document pages.
 // All mutations bump the parent document's updatedAt so the server PDF cache
@@ -3361,22 +3390,30 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // an <iframe>, so the client link embeds this endpoint instead. No view
   // counting here — resolveDocumentLink owns that side effect.
   getDocumentLinkPdf: defineAction({ request: z.object({ token: z.string().min(8).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pdfBase64: z.string(), filename: z.string(), kind: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string; kind: string }> {
+    return documentLinkPdfBase64(ctx, args.token, args.lang);
+  } }),
+  // Phase 2: server-rasterized document pages for the public client link, so
+  // the document displays inline as images on every browser (the in-app
+  // PdfFrame approach). Same token validation + PDF bytes as
+  // getDocumentLinkPdf; no view counting (resolveDocumentLink owns it).
+  getDocumentLinkPdfPages: defineAction({ request: z.object({ token: z.string().min(8).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pagesBase64: z.array(z.string()).max(20), filename: z.string(), kind: z.string() }), privileged: [privileged.renderPdfPages], async handler(ctx, args): Promise<{ pagesBase64: string[]; filename: string; kind: string }> {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
     if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
-    const hit = docPdfCache.get(cacheKey);
-    if (hit && hit.updatedAtMs === (payload as { updatedAtMs?: number }).updatedAtMs) {
-      return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+    const updatedAtMs = (payload as { updatedAtMs?: number }).updatedAtMs ?? 0;
+    const hit = docPdfPagesCache.get(cacheKey);
+    if (hit && hit.updatedAtMs === updatedAtMs) {
+      return { pagesBase64: hit.pagesBase64, filename: hit.filename, kind };
     }
-    const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind }, args.lang);
-    const pdfBase64 = Buffer.from(bytes).toString("base64");
-    if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
-      const oldest = docPdfCache.keys().next().value;
-      if (oldest) docPdfCache.delete(oldest);
+    const { pdfBase64, filename } = await documentLinkPdfBase64(ctx, args.token, args.lang);
+    const { pagesBase64 } = await ctx.executePrivileged(privileged.renderPdfPages, { dataBase64: pdfBase64 });
+    if (docPdfPagesCache.size >= DOC_PDF_PAGES_CACHE_MAX) {
+      const oldest = docPdfPagesCache.keys().next().value;
+      if (oldest) docPdfPagesCache.delete(oldest);
     }
-    docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: (payload as { updatedAtMs?: number }).updatedAtMs ?? 0 });
-    return { pdfBase64, filename, kind };
+    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs });
+    return { pagesBase64, filename, kind };
   } }),
   // Lightweight side-effect-free probe for the /doc/:token/pdf endpoint's
   // HEAD check — validates the token without generating the PDF.
@@ -5261,7 +5298,7 @@ const PUBLIC_ACTIONS = new Set([
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
   "getGoogleClientId", "googleSignIn",
-  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
   "getFeatureFlags",
   // Admin panel Phase 2 (Settings): maintenance status, branding, and the
   // public policy version are read by any client; verifyTotpLogin completes

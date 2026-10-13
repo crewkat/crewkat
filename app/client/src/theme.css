@@ -3782,6 +3782,14 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .client-doc-pdf-open { display: grid; gap: 10px; justify-items: center; padding: 28px 16px; text-align: center; }
 .client-doc-pdf-open p { margin: 0; font-size: 14px; color: var(--muted); }
 .client-doc-open-btn { display: inline-flex; align-items: center; justify-content: center; margin: 10px 0 2px; text-decoration: none; }
+/* Phase 2 (client link polish): server-rasterized pages sit in a floating
+   document card; toolbar actions are compact icon+label buttons (~44px). */
+.client-doc-card { background: #fff; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; box-shadow: 0 1px 2px rgba(23,26,28,.05), 0 10px 24px rgba(23,26,28,.06); padding: 10px; margin: 12px 0; }
+.client-doc-card .pdf-pages { margin: 0; gap: 10px; }
+.client-doc-card .pdf-pages img { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 5px; }
+.client-doc-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 800; text-decoration: none; cursor: pointer; }
+.client-doc-action-btn > span { display: inline-flex; }
+.client-doc-action-btn:active { background: var(--surface-2, var(--surface)); }
 /* 11. Contract card: single action button spans full width, consistent style */
 .saved-section .row-actions:has(> :only-child) { grid-template-columns: 1fr; }
 

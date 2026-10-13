@@ -25418,9 +25418,15 @@ async function buildClientSignedContractPdf(
   } catch {
     /* typed name below still records the signature */
   }
-  y += 56;
+  y += 52;
+  // Styled signature block: rule under the signature image, then name + date.
+  pdf.setDrawColor(120, 128, 125);
+  pdf.setLineWidth(0.75);
+  pdf.line(margin, y, margin + 190, y);
+  y += 14;
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
+  pdf.setTextColor(24, 32, 30);
   pdf.text(signerName, margin, y);
   y += 14;
   pdf.setFontSize(8);
@@ -25525,56 +25531,43 @@ function OnMyWayScreen({
   );
 }
 
-// Build 0.6: renders actual PDF pages inline via PDF.js. Embedded
-// <object>/<iframe> PDF viewers do not work inside the installed app (TWA),
-// so pages are drawn to canvas instead. Loaded on demand to keep it out of
-// the main bundle.
-function PdfPageView({ url, title }: { url: string; title: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<"loading" | "error">("loading");
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          "pdfjs-dist/build/pdf.worker.min.mjs",
-          import.meta.url
-        ).toString();
-        const pdf = await pdfjs.getDocument({ url }).promise;
-        if (cancelled) return;
-        const container = containerRef.current;
-        if (!container) return;
-        container.innerHTML = "";
-        const scale = 1.6;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          if (cancelled) return;
-          const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          canvas.className = "pdf-page-canvas";
-          canvas.setAttribute("aria-label", `${title} — page ${i}`);
-          container.appendChild(canvas);
-          await page.render({ canvas, viewport }).promise;
-        }
-        if (!cancelled) setStatus("loading");
-      } catch {
-        if (!cancelled) setStatus("error");
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [url, title]);
-  if (status === "error") {
+// Build 0.6: renders actual PDF pages inline. Embedded <object>/<iframe>
+// PDF viewers do not work inside the installed app (TWA).
+// Phase 2: pages are rasterized ON THE SERVER (pdftoppm, the same pipeline
+// as the in-app PdfFrame) and displayed as images. The old browser-side
+// pdf.js load failed on Android Chrome, leaving "The PDF couldn't be shown
+// here." as the primary experience; server rasterization works everywhere.
+// The raw PDF stays one tap away in the actions row (Open PDF).
+function PdfPageView({ token, lang, title }: { token: string; lang: Lang; title: string }) {
+  const pagesQuery = useQuery({
+    queryKey: ["client-document-pages", token, lang],
+    queryFn: () => api.getDocumentLinkPdfPages({ token, lang }),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  if (pagesQuery.isError) {
     return (
       <div className="client-doc-pdf-open">
         <p>The PDF couldn't be shown here.</p>
-        <a className="secondary-button" href={url}>Open PDF</a>
+        <a className="secondary-button" href={`/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`}>Open PDF</a>
       </div>
     );
   }
-  return <div ref={containerRef} className="pdf-pages" aria-label={title} />;
+  const pages = pagesQuery.data?.pagesBase64 ?? [];
+  return (
+    <div className="client-doc-card">
+      {pagesQuery.isPending ? (
+        <div className="loading-block" />
+      ) : (
+        <div className="pdf-pages" aria-label={title}>
+          {pages.map((page, index) => (
+            <img key={`${token}-${lang}-${index}`} src={`data:image/jpeg;base64,${page}`} alt={`${title} — page ${index + 1}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ClientDocumentScreen({ token }: { token: string }) {
@@ -25722,12 +25715,15 @@ function ClientDocumentScreen({ token }: { token: string }) {
       {langToggle}
       <div className="client-doc-actions">
         {financialKind ? (
-          <a className="secondary-button" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</a>
+          <a className="client-doc-action-btn" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar PDF" : "Download PDF"}</a>
         ) : (
-          <button type="button" className="secondary-button" onClick={downloadPdf}>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+          <button type="button" className="client-doc-action-btn" onClick={downloadPdf}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
         )}
-        <button type="button" className="secondary-button" onClick={shareDoc}>{lang === "es" ? "Compartir" : "Share"}</button>
-        <button type="button" className="secondary-button" onClick={printDoc}>{lang === "es" ? "Imprimir" : "Print"}</button>
+        <button type="button" className="client-doc-action-btn" onClick={shareDoc}><span aria-hidden="true"><Icon size={15}><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="5.5" r="2.5" /><circle cx="17" cy="18.5" r="2.5" /><path d="M8.2 10.8l6.6-4M8.2 13.2l6.6 4" /></Icon></span>{lang === "es" ? "Compartir" : "Share"}</button>
+        <button type="button" className="client-doc-action-btn" onClick={printDoc}><span aria-hidden="true"><Icon size={15}><path d="M7 8V4h10v4" /><rect x="4" y="8" width="16" height="8" rx="1.5" /><path d="M7 13h10v7H7z" /></Icon></span>{lang === "es" ? "Imprimir" : "Print"}</button>
+        {financialKind && (
+          <a className="client-doc-action-btn" href={serverPdfUrl} target="_blank" rel="noopener"><span aria-hidden="true"><Icon size={15}><path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M20 14v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 1.5-1.5H10" /></Icon></span>{lang === "es" ? "Abrir PDF" : "Open PDF"}</a>
+        )}
       </div>
       <header className="client-doc-company">
         {c.logoUrl && <img src={c.logoUrl} alt={c.name} />}
@@ -25740,7 +25736,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
       </header>
       {previewDoc && financialKind ? (
         <>
-          <PdfPageView url={serverPdfUrl} title={doc.title} />
+          <PdfPageView token={token} lang={lang} title={doc.title} />
           {(doc.attachedImages ?? []).length > 0 && (
             <section className="client-doc-gallery">
               <h3>{t.attachedPhotos}</h3>

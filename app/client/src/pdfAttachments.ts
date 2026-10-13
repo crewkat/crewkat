@@ -37,15 +37,19 @@ export async function appendAttachmentsToPdf(
 
   const out = await PDFDocument.load(mainPdfBytes, { ignoreEncryption: true });
 
-  // Image pages: 1 per page = full-bleed-ish, 2 = stacked rows, 4 = 2x2 grid.
+  // Image pages: 2 = stacked rows, 4 = 2x2 grid. Phase 2: a lone photo no
+  // longer blows up to nearly the full page — the 1-per-page cell is capped
+  // (468x528pt) and centered on the page, aspect preserved.
   const perPage = imagesPerPage === 2 ? 2 : imagesPerPage === 4 ? 4 : 1;
   const cols = perPage === 4 ? 2 : 1;
   const rows = perPage === 4 ? 2 : perPage;
   for (let i = 0; i < images.length; i += perPage) {
     const group = images.slice(i, i + perPage);
     const page = out.addPage([PAGE_W, PAGE_H]);
-    const cellW = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
-    const cellH = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellW0 = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
+    const cellH0 = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellW = perPage === 1 ? Math.min(cellW0, 468) : cellW0;
+    const cellH = perPage === 1 ? Math.min(cellH0, 528) : cellH0;
     for (let g = 0; g < group.length; g++) {
       const att = group[g]!;
       let embedded;
@@ -60,8 +64,8 @@ export async function appendAttachmentsToPdf(
       const { w, h } = fitInCell(embedded.width, embedded.height, cellW, cellH);
       const col = g % cols;
       const row = Math.floor(g / cols);
-      const x = MARGIN + col * (cellW + 12) + (cellW - w) / 2;
-      const topY = PAGE_H - MARGIN - row * (cellH + 12);
+      const x = MARGIN + col * (cellW0 + 12) + (cellW0 - cellW) / 2 + (cellW - w) / 2;
+      const topY = PAGE_H - MARGIN - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
       const y = topY - cellH + (cellH - h) / 2;
       page.drawImage(embedded, { x, y, width: w, height: h });
     }
