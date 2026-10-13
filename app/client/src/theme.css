@@ -1153,8 +1153,11 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 /* Tools group restyle (2026-10-12, Danny's inspiration shot): each group is
    a floating card — white surface, larger rounding, soft shadow, real
    breathing room between groups. The card separation replaces the Fix 7
-   hairline separator; the two are not stacked. */
-.tool-group { margin: 0 0 14px; padding: 4px 14px 8px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
+   hairline separator; the two are not stacked.
+   Compact pass (2026-10-12 follow-up): Danny loved the cards but wants all
+   10 collapsed groups on one screen — chip 42→34px, tighter header/card
+   padding, gap 14→8px. Collapsed card = 59px; 10×59 + 9×8 = 662px. */
+.tool-group { margin: 0 0 8px; padding: 3px 14px 5px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
 .tool-group > h2 { margin: 0 0 8px; font: 800 17px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
 .tool-directory { overflow: hidden; }
 .tool-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; border-bottom: 1px solid var(--border); }
@@ -1348,23 +1351,23 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .mode-setting input[role="switch"]::before { content:""; display:block; width:18px; height:18px; border-radius:50%; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; }
 .mode-setting input[role="switch"]:checked { background:var(--green); }
 .mode-setting input[role="switch"]:checked::before { transform:translateX(16px); }
-.tool-group-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0 8px; }
+.tool-group-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0 7px; }
 .tool-group-heading h2 { margin:0; }
 /* Tools group restyle (2026-10-12): the group icon is a thin orange line
    icon in a soft peach chip (same tint family as the tool-row tile icons,
    larger and rounder); the count is a soft tinted pill with the chevron
    outside it. No solid orange blocks in the group header. */
-.tool-group-title { display:inline-flex; align-items:center; gap:10px; min-width:0; }
-.tool-group-icon { display:grid; place-items:center; width:42px; height:42px; border-radius:13px; background:color-mix(in srgb, var(--accent) 13%, var(--surface)); color:var(--accent); flex:none; }
-.tool-group-icon svg { width:21px; height:21px; }
+.tool-group-title { display:inline-flex; align-items:center; gap:9px; min-width:0; }
+.tool-group-icon { display:grid; place-items:center; width:34px; height:34px; border-radius:11px; background:color-mix(in srgb, var(--accent) 13%, var(--surface)); color:var(--accent); flex:none; }
+.tool-group-icon svg { width:18px; height:18px; }
 .tool-group-gear { display:grid; place-items:center; }
-.tool-group-gear svg { width:21px; height:21px; }
+.tool-group-gear svg { width:18px; height:18px; }
 .tool-group-pill { display:inline-flex; align-items:center; gap:7px; flex:none; }
-.tool-group-count { min-width:26px; padding:3px 8px; border-radius:999px; background:color-mix(in srgb, var(--accent) 15%, var(--surface)); color:color-mix(in srgb, var(--accent) 78%, var(--text)); font-size:12px; font-weight:800; text-align:center; }
+.tool-group-count { min-width:24px; padding:2px 7px; border-radius:999px; background:color-mix(in srgb, var(--accent) 15%, var(--surface)); color:color-mix(in srgb, var(--accent) 78%, var(--text)); font-size:12px; font-weight:800; text-align:center; }
 /* Exactly one PRO badge per Pro group, beside the title: a small soft pill —
    orange-tinted once Premium is active, soft gray while locked (free). The
    solid .pro-badge styling still applies to tool rows elsewhere. */
-.tool-group-heading .pro-badge { margin-left:0; padding:3px 8px; border-radius:999px; background:color-mix(in srgb, var(--accent) 16%, var(--surface)); color:color-mix(in srgb, var(--accent) 80%, var(--text)); }
+.tool-group-heading .pro-badge { margin-left:0; padding:2px 7px; border-radius:999px; background:color-mix(in srgb, var(--accent) 16%, var(--surface)); color:color-mix(in srgb, var(--accent) 80%, var(--text)); }
 .tool-group-heading .pro-badge.is-locked { background:var(--surface-2); color:var(--dim); }
 /* The PRO badge by the title carries the Pro distinction on the card. */
 .pro-tool-group { }
