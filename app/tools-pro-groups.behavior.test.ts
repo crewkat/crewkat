@@ -140,3 +140,18 @@ describe("premium gating untouched", () => {
     expect(APP).toMatch(/if\s*\(!isPremium && \(tile\.pro \|\| isProToolScreen\(tile\.screen\)\)\)/);
   });
 });
+
+// Danny 2026-10-12 (evening): with all 10 compact groups on one screen, the
+// fixed quick-create FAB sat on top of the last group (Clients & admin),
+// covering its count pill and chevron. The FAB's top edge is at
+// bottom 96px + 56px diameter = 152px (+ safe-area); both FAB pages
+// (Home .today-page, Tools .more-page) must carry bottom padding past it.
+describe("FAB-safe scroll clearance (Home + Tools)", () => {
+  test("FAB stays on Home and Tools only", () => {
+    expect(APP).toContain('SCREENS_WITH_QUICK_CREATE_FAB: ReadonlySet<Screen["name"]> = new Set(["today", "tools"])');
+  });
+
+  test("both FAB pages clear the FAB's top edge with bottom padding", () => {
+    expect(THEME).toMatch(/\.app-shell\.has-bottom-nav \.page\.today-page,\s*\.app-shell\.has-bottom-nav \.page\.more-page \{\s*padding-bottom: calc\(168px \+ env\(safe-area-inset-bottom\)\);/);
+  });
+});

@@ -2360,6 +2360,18 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 @media (min-width: 700px) {
   .quick-create-fab { right: calc(50% - 320px + 20px); }
 }
+/* FAB-safe scroll clearance (Danny 2026-10-12): the FAB is fixed at
+   bottom: 96px + safe-area with a 56px diameter, so its top edge sits at
+   152px + safe-area. Pages hosting it (Home = .today-page, Tools =
+   .more-page) need bottom padding past that edge — 168px = 96 offset + 56
+   diameter + 16px air — or the last card/item can rest trapped underneath
+   the FAB, its right end covered and untappable. The generic tab-bar
+   clearance (84px) and the older .today-page rules (108px/7rem) are both
+   inside the FAB band, so this higher-specificity rule sets the floor. */
+.app-shell.has-bottom-nav .page.today-page,
+.app-shell.has-bottom-nav .page.more-page {
+  padding-bottom: calc(168px + env(safe-area-inset-bottom));
+}
 .quick-create-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; padding: 18px 12px 0; background: rgba(9, 13, 18, .58); }
 .quick-create-sheet { width: min(100%, 560px); padding: 18px 16px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface); box-shadow: 0 -20px 55px rgba(0,0,0,.2); }
 .quick-create-sheet > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
