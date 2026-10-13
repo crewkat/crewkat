@@ -447,6 +447,10 @@ export async function buildFinancialPdf(
   // the line items ran off the bottom of the page and the footer printed on
   // top of the flowing text.
   const PAGE_BOTTOM = 648;
+  // Items area on a fresh continuation page: a break lands at y=40 and the
+  // repeated table-header row takes it to 66, so a row fits whole on one
+  // page only if its height is at most PAGE_BOTTOM - 66.
+  const FRESH_ITEMS_Y = 66;
   const drawTableHeaderRow = () => {
     if (theme !== "minimal") {
       if (theme === "classic") fillBand(margin, y - 13, w - margin * 2, 20, [23, 26, 28]);
@@ -465,8 +469,7 @@ export async function buildFinancialPdf(
     if (custom.showAmount) doc.text(labels.amount, w - margin - 8, y, { align: "right" });
     y += 26;
   };
-  const ensureSpace = (needed: number) => {
-    if (y + needed <= PAGE_BOTTOM) return;
+  const breakToFreshPage = () => {
     doc.addPage();
     y = 40;
     drawTableHeaderRow();
@@ -477,6 +480,10 @@ export async function buildFinancialPdf(
     doc.setTextColor(...ink);
     doc.setFont(font, "normal");
     doc.setFontSize(F(9));
+  };
+  const ensureSpace = (needed: number) => {
+    if (y + needed <= PAGE_BOTTOM) return;
+    breakToFreshPage();
   };
   ensureSpace(40);
   drawTableHeaderRow();
@@ -500,22 +507,72 @@ export async function buildFinancialPdf(
     doc.setFontSize(F(9));
     const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
     const rowH = Math.max(20, richLines.length * descStep + 6);
-    ensureSpace(rowH);
-    if (theme !== "minimal" && rowIndex % 2 === 1) {
-      doc.setFillColor(247, 249, 248);
-      doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
+    const zebraRow = theme !== "minimal" && rowIndex % 2 === 1;
+    if (rowH > PAGE_BOTTOM - FRESH_ITEMS_Y) {
+      // A row taller than one full page of items area can never fit whole:
+      // ensureSpace(rowH) would push the ENTIRE row off the current page
+      // (page 1 left holding just the header + PAID stamp) and every line
+      // past the next page's bottom was drawn off-page and silently lost —
+      // INV-0011's 3-page scope, Danny 2026-10-12. Instead the row STARTS
+      // on the current page and splits at description-line boundaries,
+      // flowing across pages: the item name + amount ride the first chunk,
+      // the repeated table header opens each continuation page, and the
+      // row's separator line closes the final chunk. Rows that fit on one
+      // page (the else branch) keep the move-whole behavior untouched.
+      let lineStart = 0;
+      let firstChunk = true;
+      while (lineStart < richLines.length) {
+        // Whole lines whose baselines stay inside the items area from here.
+        const fit = Math.floor((PAGE_BOTTOM - 6 - y) / descStep);
+        if (fit < 1) {
+          breakToFreshPage();
+          continue;
+        }
+        const remaining = richLines.length - lineStart;
+        const isLast = fit >= remaining;
+        const n = isLast ? remaining : fit;
+        if (zebraRow) {
+          doc.setFillColor(247, 249, 248);
+          doc.rect(margin, y - (firstChunk ? rowTopPad : 6), w - margin * 2, n * descStep + 6, "F");
+        }
+        doc.setTextColor(...ink);
+        doc.setFontSize(F(9));
+        for (let i = 0; i < n; i++) {
+          drawRichLine(doc, richLines[lineStart + i]!, margin + 8, y + i * descStep, font);
+        }
+        if (firstChunk && custom.showAmount) {
+          doc.setFont(font, "normal");
+          doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+        }
+        if (isLast) {
+          doc.setDrawColor(224, 227, 226);
+          doc.setLineWidth(0.5);
+          doc.line(margin, y + n * descStep - 1, w - margin, y + n * descStep - 1);
+          y += n * descStep + 6;
+        } else {
+          breakToFreshPage();
+        }
+        lineStart += n;
+        firstChunk = false;
+      }
+    } else {
+      ensureSpace(rowH);
+      if (zebraRow) {
+        doc.setFillColor(247, 249, 248);
+        doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
+      }
+      doc.setTextColor(...ink);
+      doc.setFontSize(F(9));
+      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+      if (custom.showAmount) {
+        doc.setFont(font, "normal");
+        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+      }
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+      y += rowH;
     }
-    doc.setTextColor(...ink);
-    doc.setFontSize(F(9));
-    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
-    if (custom.showAmount) {
-      doc.setFont(font, "normal");
-      doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
-    }
-    doc.setDrawColor(224, 227, 226);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
-    y += rowH;
     rowIndex += 1;
   }
   y += 6;

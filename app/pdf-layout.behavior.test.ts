@@ -335,3 +335,84 @@ describe("multi-line description line geometry (INV-0011 overprint regression)",
     expectUniformSteps(raw, 11.74);
   });
 });
+
+// Regression (Danny 2026-10-12, INV-0011 again): once the overprint fix made
+// row heights honest, a single line item whose description runs ~3 pages was
+// TALLER than one page's whole items area — so the whole-row page break
+// pushed it entirely off page 1 (page 1 shipped with just the header, table
+// head, and PAID stamp) and every line past the next page's bottom was drawn
+// off-page and silently lost (only 12 of 24 scope sections existed anywhere
+// in the file). A row taller than a full page must now START on the current
+// page and split at description-line boundaries. Rows that fit on one page
+// keep the move-whole behavior (pinned byte-for-byte by the control docs in
+// the fix's verification; the geometry tests above pin their layout).
+describe("taller-than-a-page line items split across pages (INV-0011)", () => {
+  const bodies = [
+    "Install two (2) new switches to the right of the lanai door: one for three (3) new exterior ceiling fans, one for two (2) new exterior recessed lights.",
+    "Remove four (4) existing lights from the exterior block wall; patch and refinish stucco to match.",
+    "Repurpose the existing block-wall lighting circuit to feed six (6) new recessed lights in the exterior lanai.",
+    "Install eight (8) recessed lights and three (3) ceiling fans in the lanai, wiring concealed inside the insulated panels.",
+  ];
+  const sections: string[] = [
+    "**SCOPE OF WORK — Residential Electrical: Lighting, Fan & Switch Upgrade** All work to be performed at the property located in Odessa, FL.",
+  ];
+  for (let i = 1; i <= 24; i++) {
+    sections.push(`${i}. Section ${i}: ${bodies[i % bodies.length]}`);
+    sections.push(bodies[(i + 1) % bodies.length]);
+    sections.push(bodies[(i + 2) % bodies.length]);
+  }
+  const tallDesc = sections.join("\n");
+
+  /** Content streams in page order (fixtures carry no image/font streams). */
+  function pageStreams(raw: string): string[] {
+    return (raw.match(/stream\n([\s\S]*?)endstream/g) ?? []).map((block) =>
+      block.replace(/^stream\n/, "").replace(/endstream$/, ""),
+    );
+  }
+
+  test("invoice: the tall item starts on page 1 and no text is lost", async () => {
+    const invoice = sampleInvoice({
+      lineItems: [
+        { name: "Work", description: tallDesc, amount: "6500", quantity: 1, discount: "0", unit: "none" },
+      ],
+      total: "$6,500.00",
+      subtotal: "$6,500.00",
+      status: "paid",
+      paidToDate: "6500",
+    });
+    const raw = await pdfText(await buildInvoicePdf(invoice, settings, "en", enStrings));
+    const pages = pageStreams(raw);
+    // Honest pagination for this fixture: 4 pages, footers agree.
+    expect(pages.length).toBe(4);
+    expect(raw.match(/\(Page \d+ of 4\)/g)?.length).toBe(4);
+    // Page 1 carries real description lines, not just header + stamp.
+    expect(pages[0]).toContain("SCOPE OF WORK");
+    expect(pages[0]).toContain("1. Section 1:");
+    // Nothing is drawn off-page and lost: every section survives somewhere.
+    const found = new Set([...raw.matchAll(/(\d+)\. Section \d+:/g)].map((m) => m[1]));
+    expect(found.size).toBe(24);
+    // The closing section and the totals panel land together on page 3;
+    // the notes panel then breaks to page 4 (existing ensureSpace flow).
+    expect(pages[2]).toContain("24. Section 24:");
+    expect(pages[2]).toContain("Balance due");
+  });
+
+  test("quote: a tall second row (zebra chunk) also starts on page 1", async () => {
+    const longPara =
+      "TALLQUOTEMARKER Framing, drywall, tape and texture, prime and two finish coats of paint across the whole lanai ceiling and both side walls. ".repeat(
+        60,
+      );
+    const quote = sampleInvoice({
+      lineItems: [
+        { name: "First", description: "Short first item.", amount: "100", quantity: 1, discount: "0", unit: "none" },
+        { name: "", description: longPara, amount: "3200", quantity: 1, discount: "0", unit: "none" },
+      ],
+    });
+    const raw = await pdfText(await buildQuotePdf(quote, settings, "en", enStrings));
+    const pages = pageStreams(raw);
+    expect(pages.length).toBe(3);
+    expect(raw.match(/\(Page \d+ of 3\)/g)?.length).toBe(3);
+    expect(pages[0]).toContain("TALLQUOTEMARKER");
+    expect(pages[0]).toContain("Short first item.");
+  });
+});
