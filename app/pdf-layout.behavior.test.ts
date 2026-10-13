@@ -242,3 +242,96 @@ describe("build 3.0 item 16b: text stays dark across page breaks", () => {
     expect(isWhite(colors[itemPage])).toBe(false);
   });
 });
+
+// Regression (Danny 2026-10-12, INV-0011): a line-item description typed with
+// line breaks — numbered scope sections, breaks INSIDE paragraphs — rendered
+// with its lines progressively overprinting each other. Root cause: the rich
+// text wrapper treated "\n" as a wrappable space and left newline characters
+// inside the strings handed to doc.text(); jsPDF splits those into extra
+// visual lines at its own line height (fontSize × 1.15 = 10.35pt), which the
+// layout (descStep advance, row height, pagination) never counts. The fix
+// makes the wrapper treat "\n" as a hard paragraph break. These tests pin
+// the geometry: description line baselines must advance by exactly descStep
+// (11pt at defaults; 11 × 1.16 × 0.92 at fontSize XL + lineSpacing compact),
+// and every source line must start on its own PDF line.
+describe("multi-line description line geometry (INV-0011 overprint regression)", () => {
+  const scopeDescription = [
+    "**SCOPE OF WORK — Exterior electrical** All work per NEC and local code.",
+    "1. Exterior / Lanai: Run new dedicated 20A circuit from the panel to the lanai columns.",
+    "Install weatherproof GFCI receptacles and seal all penetrations.",
+    "Test every device under load before leaving.",
+    "2. Entry: Replace the entry fixture with a client-supplied lantern and add a photocell.",
+    "Verify the switch leg, grounding, and patch paint where disturbed.",
+    "3. Garage: Install two 4-ft LED shop lights and add a receptacle above the workbench.",
+    "Label all new circuits in the panel directory.",
+    "4. Kitchen: Under-cabinet LED tape with a dimmable driver on its own switch leg.",
+    "GFCI protection within six feet of the sink.",
+    "5. Bathrooms: Humidity-sensing exhaust fans and vanity bar lights in both baths.",
+    "6. Bedrooms: Fan-rated boxes in all three bedrooms with remotes paired.",
+    "7. Living Room: LED retrofit trims and a dedicated media receptacle.",
+    "8. Panel: Upgrade to 200A service with whole-home surge protection.",
+    "9. Exterior Lighting: Low-voltage transformer and six pathway fixtures.",
+    "10. Fans: Two client-provided exterior-rated fans over the porch lights.",
+    "11. Repairs: Shorted wire repair, laundry receptacle, doorbell camera.",
+    "12. Additional Work: Extra gallon of paint, receipt attached, final walkthrough.",
+  ].join("\n");
+
+  // First text run of each description line: "x y Td" + "(text) Tj" in the
+  // content stream. Description lines start at x=50 (margin 42 + 8 indent);
+  // the items region sits between the table header (y≈637) and the totals.
+  function descriptionLines(raw: string): Array<{ y: number; text: string }> {
+    const out: Array<{ y: number; text: string }> = [];
+    const re = /([\d.]+) ([\d.]+) Td\n\(([^()]*)\) Tj/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw))) {
+      const x = Number(m[1]);
+      const y = Number(m[2]);
+      if (x === 50 && y > 250 && y < 630) out.push({ y, text: m[3]! });
+    }
+    return out;
+  }
+
+  function expectUniformSteps(raw: string, step: number) {
+    const lines = descriptionLines(raw);
+    expect(lines.length).toBe(18);
+    for (let i = 1; i < lines.length; i++) {
+      const dy = lines[i - 1]!.y - lines[i]!.y;
+      expect(dy).toBeGreaterThan(step - 0.06);
+      expect(dy).toBeLessThan(step + 0.06);
+    }
+    // Hard breaks honored: numbered sections begin their own lines.
+    const starts = lines.map((l) => l.text);
+    expect(starts.some((t) => t.startsWith("1. Exterior"))).toBe(true);
+    expect(starts.some((t) => t.startsWith("2. Entry"))).toBe(true);
+    expect(starts.some((t) => t.startsWith("12. Additional Work"))).toBe(true);
+    // Continuation lines of a broken paragraph start at the margin too.
+    expect(starts.some((t) => t.startsWith("Install weatherproof"))).toBe(true);
+    expect(starts.some((t) => t.startsWith("Test every device"))).toBe(true);
+  }
+
+  test("line baselines advance by exactly descStep at default design settings", async () => {
+    const invoice = sampleInvoice({
+      lineItems: [
+        { name: "", description: scopeDescription, amount: "6500", quantity: 1, discount: "0", unit: "none" },
+      ],
+      total: "$6,500.00",
+      subtotal: "$6,500.00",
+    });
+    const raw = await pdfText(await buildInvoicePdf(invoice, settings, "en", enStrings));
+    expectUniformSteps(raw, 11);
+  });
+
+  test("line baselines stay uniform at fontSize XL + lineSpacing compact", async () => {
+    const invoice = sampleInvoice({
+      lineItems: [
+        { name: "", description: scopeDescription, amount: "6500", quantity: 1, discount: "0", unit: "none" },
+      ],
+      total: "$6,500.00",
+      subtotal: "$6,500.00",
+      customizeJson: JSON.stringify({ fontSize: "xl", lineSpacing: "compact" }),
+    });
+    const raw = await pdfText(await buildInvoicePdf(invoice, settings, "en", enStrings));
+    // descStep = 11 × 1.16 (XL) × 0.92 (compact) = 11.7392
+    expectUniformSteps(raw, 11.74);
+  });
+});

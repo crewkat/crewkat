@@ -55684,48 +55684,66 @@ function parseRichRuns(text) {
   return runs.length ? runs : [{ text, bold: false }];
 }
 function wrapRichLines(doc, runs, maxWidth, font) {
-  const words = [];
+  const paragraphs = [[]];
   for (const run of runs) {
-    doc.setFont(font, run.bold ? "bold" : "normal");
-    for (const token of run.text.split(/(\s+)/)) {
-      if (token)
-        words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
-    }
+    run.text.split(/\r\n|\r|\n/).forEach((segment, index) => {
+      if (index > 0)
+        paragraphs.push([]);
+      if (segment)
+        paragraphs[paragraphs.length - 1].push({ text: segment, bold: run.bold });
+    });
   }
+  while (paragraphs.length > 1 && !paragraphs[0].length)
+    paragraphs.shift();
+  while (paragraphs.length > 1 && !paragraphs[paragraphs.length - 1].length)
+    paragraphs.pop();
   const lines = [];
-  let line = [];
-  let lineWidth = 0;
-  const flush = () => {
-    while (line.length && line[line.length - 1].text.trim() === "")
-      line.pop();
-    const merged = [];
-    for (const word of line) {
-      const prev = merged[merged.length - 1];
-      if (prev && prev.bold === word.bold)
-        prev.text += word.text;
-      else
-        merged.push({ text: word.text, bold: word.bold });
-    }
-    lines.push(merged);
-    line = [];
-    lineWidth = 0;
-  };
-  for (const word of words) {
-    if (word.text.trim() === "") {
-      if (line.length) {
-        line.push(word);
-        lineWidth += word.width;
+  for (const paragraph of paragraphs) {
+    const linesBefore = lines.length;
+    const words = [];
+    for (const run of paragraph) {
+      doc.setFont(font, run.bold ? "bold" : "normal");
+      for (const token of run.text.split(/(\s+)/)) {
+        if (token)
+          words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
       }
-      continue;
     }
-    if (line.length && lineWidth + word.width > maxWidth)
+    let line = [];
+    let lineWidth = 0;
+    const flush = () => {
+      while (line.length && line[line.length - 1].text.trim() === "")
+        line.pop();
+      const merged = [];
+      for (const word of line) {
+        const prev = merged[merged.length - 1];
+        if (prev && prev.bold === word.bold)
+          prev.text += word.text;
+        else
+          merged.push({ text: word.text, bold: word.bold });
+      }
+      lines.push(merged);
+      line = [];
+      lineWidth = 0;
+    };
+    for (const word of words) {
+      if (word.text.trim() === "") {
+        if (line.length) {
+          line.push(word);
+          lineWidth += word.width;
+        }
+        continue;
+      }
+      if (line.length && lineWidth + word.width > maxWidth)
+        flush();
+      line.push(word);
+      lineWidth += word.width;
+    }
+    if (line.length)
       flush();
-    line.push(word);
-    lineWidth += word.width;
+    if (lines.length === linesBefore)
+      lines.push([]);
   }
-  if (line.length || !lines.length)
-    flush();
-  return lines;
+  return lines.length ? lines : [[]];
 }
 function drawRichLine(doc, line, x, y, font) {
   let cursor = x;
@@ -71300,6 +71318,9 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
     issueDate: payload.issueDate || undefined,
     dueDate: payload.dueDate || undefined,
     status: ["draft", "sent", "paid", "overdue"].includes(payload.status) ? payload.status : undefined,
+    paidToDate: payload.paidToDate,
+    lateFeeAccrued: payload.lateFeeAccrued,
+    totalWithLateFee: payload.totalWithLateFee,
     depositType: payload.depositType === "percent" || payload.depositType === "fixed" ? payload.depositType : "none",
     depositValue: payload.depositValue || "0"
   };
@@ -75620,7 +75641,10 @@ async function getDocumentLinkPayload(ctx, token) {
     if (!row)
       throw new Error("This document is no longer available.");
     const attachedImages = await publicAttachmentImages(ctx, db, "invoice", link.documentId, link.companyId);
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    const paymentRows = await db.select().from(payments).where(eq(payments.invoiceId, row.id));
+    const fee = { type: settings2?.lateFeeType ?? "flat", value: Number(settings2?.lateFeeValue ?? 0), graceDays: settings2?.lateFeeGraceDays ?? 0 };
+    const shaped = invoiceShape(row, paymentRows, fee);
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(quotes).where(eq(quotes.id, link.documentId)).limit(1))[0];
@@ -77079,6 +77103,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       const nowPaid = paid >= total && total > 0;
       if (nowPaid)
         await db.update(invoices).set({ status: "paid", updatedAt: new Date }).where(eq(invoices.id, inv.id));
+      else
+        await db.update(invoices).set({ updatedAt: new Date }).where(eq(invoices.id, inv.id));
       if (nowPaid && !wasPaid) {
         try {
           const label = inv.invoiceNumber || `INV-${inv.id}`;
@@ -77097,7 +77123,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { id: made.id };
   } }),
   deletePayment: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    await ctx.db().delete(payments).where(eq(payments.id, args.id));
+    const db = ctx.db();
+    const payment = (await db.select().from(payments).where(eq(payments.id, args.id)).limit(1))[0];
+    await db.delete(payments).where(eq(payments.id, args.id));
+    if (payment)
+      await db.update(invoices).set({ updatedAt: new Date }).where(eq(invoices.id, payment.invoiceId));
     ctx.invalidateQueries();
     return { ok: true };
   } }),

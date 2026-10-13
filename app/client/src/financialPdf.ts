@@ -178,42 +178,69 @@ export function parseRichRuns(text: string): RichRun[] {
 
 function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: DocumentFont): RichRun[][] {
   type Word = { text: string; bold: boolean; width: number };
-  const words: Word[] = [];
+  // Hard line breaks: a "\n" in the source text is a paragraph break, never
+  // a wrappable space. jsPDF's doc.text() splits any string containing "\n"
+  // into extra visual lines at its own line height (fontSize × 1.15), which
+  // the layout (row height, page breaks) never counts — so every mid-run
+  // newline added an uncounted line and long multi-line descriptions
+  // progressively overprinted themselves (INV-0011, Danny 2026-10-12). Split
+  // the run stream into paragraphs first and wrap each one independently,
+  // so the lines returned here are exactly the lines drawn and no drawn run
+  // ever contains a newline.
+  const paragraphs: RichRun[][] = [[]];
   for (const run of runs) {
-    doc.setFont(font, run.bold ? "bold" : "normal");
-    for (const token of run.text.split(/(\s+)/)) {
-      if (token) words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
-    }
+    run.text.split(/\r\n|\r|\n/).forEach((segment, index) => {
+      if (index > 0) paragraphs.push([]);
+      if (segment) paragraphs[paragraphs.length - 1]!.push({ text: segment, bold: run.bold });
+    });
   }
+  // Leading/trailing blank lines carry no visible content — drop them so a
+  // stray trailing Enter doesn't grow the row. Blank lines BETWEEN
+  // paragraphs keep their height (handled below).
+  while (paragraphs.length > 1 && !paragraphs[0]!.length) paragraphs.shift();
+  while (paragraphs.length > 1 && !paragraphs[paragraphs.length - 1]!.length) paragraphs.pop();
   const lines: RichRun[][] = [];
-  let line: Word[] = [];
-  let lineWidth = 0;
-  const flush = () => {
-    while (line.length && line[line.length - 1]!.text.trim() === "") line.pop();
-    const merged: RichRun[] = [];
-    for (const word of line) {
-      const prev = merged[merged.length - 1];
-      if (prev && prev.bold === word.bold) prev.text += word.text;
-      else merged.push({ text: word.text, bold: word.bold });
-    }
-    lines.push(merged);
-    line = [];
-    lineWidth = 0;
-  };
-  for (const word of words) {
-    if (word.text.trim() === "") {
-      if (line.length) {
-        line.push(word);
-        lineWidth += word.width;
+  for (const paragraph of paragraphs) {
+    const linesBefore = lines.length;
+    const words: Word[] = [];
+    for (const run of paragraph) {
+      doc.setFont(font, run.bold ? "bold" : "normal");
+      for (const token of run.text.split(/(\s+)/)) {
+        if (token) words.push({ text: token, bold: run.bold, width: doc.getTextWidth(token) });
       }
-      continue;
     }
-    if (line.length && lineWidth + word.width > maxWidth) flush();
-    line.push(word);
-    lineWidth += word.width;
+    let line: Word[] = [];
+    let lineWidth = 0;
+    const flush = () => {
+      while (line.length && line[line.length - 1]!.text.trim() === "") line.pop();
+      const merged: RichRun[] = [];
+      for (const word of line) {
+        const prev = merged[merged.length - 1];
+        if (prev && prev.bold === word.bold) prev.text += word.text;
+        else merged.push({ text: word.text, bold: word.bold });
+      }
+      lines.push(merged);
+      line = [];
+      lineWidth = 0;
+    };
+    for (const word of words) {
+      if (word.text.trim() === "") {
+        if (line.length) {
+          line.push(word);
+          lineWidth += word.width;
+        }
+        continue;
+      }
+      if (line.length && lineWidth + word.width > maxWidth) flush();
+      line.push(word);
+      lineWidth += word.width;
+    }
+    if (line.length) flush();
+    // A paragraph with no wrappable words (a blank source line between
+    // paragraphs) still owns one line of height, exactly as typed.
+    if (lines.length === linesBefore) lines.push([]);
   }
-  if (line.length || !lines.length) flush();
-  return lines;
+  return lines.length ? lines : [[]];
 }
 
 function drawRichLine(doc: jsPDF, line: RichRun[], x: number, y: number, font: DocumentFont) {

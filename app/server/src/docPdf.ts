@@ -67,6 +67,11 @@ export interface DocumentLinkPdfPayload {
   dueDate: string;
   expiryDate: string;
   status: string;
+  // Payment truth (invoiceShape-derived in getDocumentLinkPayload). Without
+  // these the server render showed every invoice as unpaid (Danny 2026-10-12).
+  paidToDate?: string;
+  lateFeeAccrued?: string;
+  totalWithLateFee?: string;
   discountType: string;
   discountValue: string;
   taxType: string;
@@ -150,6 +155,9 @@ export async function buildDocumentLinkPdf(
     issueDate: payload.issueDate || undefined,
     dueDate: payload.dueDate || undefined,
     status: (["draft", "sent", "paid", "overdue"] as const).includes(payload.status as never) ? (payload.status as FinancialDocument["status"]) : undefined,
+    paidToDate: payload.paidToDate,
+    lateFeeAccrued: payload.lateFeeAccrued,
+    totalWithLateFee: payload.totalWithLateFee,
     depositType: (payload.depositType === "percent" || payload.depositType === "fixed" ? payload.depositType : "none") as FinancialDocument["depositType"],
     depositValue: payload.depositValue || "0",
   };
