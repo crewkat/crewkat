@@ -3673,6 +3673,47 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .financial-detail-page .action-details[open ] > summary::after { transform: rotate(180deg); }
 .payment-section-title { display: flex; align-items: center; gap: 10px; }
 
+/* Floating action bar + total-card pop (Danny 2026-10-12): the document
+   action bar lifts off the screen edge into a floating rounded bar in the
+   main tab bar's language (12px side margins, 18px radius, whisper border,
+   two-layer shadow). Ghost actions carry the doc-row tinted chip so they
+   read by shape; Send — the money action — is a filled accent pill,
+   findable by color alone. The estimate/invoice summary cards get a soft
+   accent wash across the top and filled status chips (the same filled
+   treatment as the client-link VIEWED chip). The estimate summary's
+   client row becomes a real flex row (the .document-detail-summary > div
+   grid rule was silently overriding .ck-quote-client-row's flex, which is
+   why the Viewed badge stretched into a full-width strip), so the badge
+   sits as a small chip beside the client name. The preview strip's
+   "Tap to enlarge" hint moves out of the document area into a footer
+   strip under the render — it can never sit on the document's Total line
+   or header text again. Layered with .four / summary-scoped selectors so
+   the base bar rules stay intact. */
+.document-action-bar.four { inset: auto 12px calc(92px + env(safe-area-inset-bottom)) 12px; min-height: 60px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.app-shell.master-nav-hidden .document-action-bar.four { inset: auto 12px calc(10px + env(safe-area-inset-bottom)) 12px; }
+@media (min-width:760px) { .document-action-bar.four { left: 50%; right: auto; width: min(calc(100% - 24px), 920px); transform: translateX(-50%); } }
+.app-shell.master-nav-hidden .page.financial-detail-page { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }
+.document-action-bar.four button { border-radius: 12px; }
+.document-action-bar .doc-action-chip { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.document-action-bar .doc-action-chip svg { width: 16px; height: 16px; color: inherit; }
+.document-action-bar button.active .doc-action-chip { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
+.document-action-bar button.doc-action-send { margin: 2px; border-radius: 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
+.document-action-bar button.doc-action-send svg { width: 18px; height: 18px; color: #fff; }
+.document-action-bar button.doc-action-send:active { background: color-mix(in srgb, var(--accent) 84%, #000); color: #fff; }
+.document-detail-summary.ck-quote-summary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
+.financial-detail-page .ck-invoice-detail { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
+.ck-quote-total .ck-inv-label { justify-self: start; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: color-mix(in srgb, var(--accent) 80%, var(--text)); font-size: 10px; }
+.ck-quote-summary .ck-pill-pending, .ck-invoice-detail .ck-pill-pending { background: color-mix(in srgb, #f97316 32%, var(--surface)); color: color-mix(in srgb, #f97316 80%, var(--text)); }
+.ck-quote-summary .ck-pill-paid, .ck-invoice-detail .ck-pill-paid { background: color-mix(in srgb, #22c55e 30%, var(--surface)); color: color-mix(in srgb, #22c55e 74%, var(--text)); }
+.ck-quote-summary .ck-pill-completed, .ck-invoice-detail .ck-pill-completed { background: color-mix(in srgb, #3b82f6 30%, var(--surface)); color: color-mix(in srgb, #3b82f6 78%, var(--text)); }
+.ck-quote-summary .ck-pill-overdue, .ck-invoice-detail .ck-pill-overdue { background: color-mix(in srgb, var(--danger) 27%, var(--surface)); color: var(--danger); }
+.ck-quote-summary .ck-pill-draft, .ck-invoice-detail .ck-pill-draft { background: color-mix(in srgb, var(--dim) 20%, var(--surface)); color: var(--text); }
+.document-detail-summary .ck-quote-client-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.document-preview-card { display: flex; flex-direction: column; }
+.document-preview-card .pdf-viewer { flex: 1 1 auto; min-height: 0; height: auto; margin: 0; overflow: hidden; }
+.document-preview-card > span { position: static; display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding: 5px 10px; border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 0; background: var(--surface); color: var(--dim); font-size: 11px; font-weight: 750; }
+.document-preview-card > span svg { width: 13px; height: 13px; }
+
 /* ---- Build0.3 dogfood batch (2026-09-30) ---- */
 /* 1: visible resize grip on invoice description textareas */
 .invoice-line-card textarea::-webkit-resizer { background: var(--accent); border-top-left-radius: 6px; }
