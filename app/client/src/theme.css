@@ -1117,7 +1117,7 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .app-shell { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 /* b12: floating pill nav (Invoice Fly) — detached from the bottom edge, elevated shadow.
    Zero functionality change: same 5 slots, same center + button, badges, active states. */
-.bottom-nav { position: fixed; inset: auto 14px calc(8px + env(safe-area-inset-bottom)) 14px; z-index: 80; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: 56px; padding: 4px 10px; overflow: visible; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.bottom-nav { position: fixed; inset: auto 14px calc(8px + env(safe-area-inset-bottom)) 14px; z-index: 80; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: 56px; padding: 4px 10px; overflow: visible; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 20px; background: var(--surface); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
 .bottom-nav button { min-width: 0; min-height: 48px; display: grid; place-items: center; align-content: center; gap: 2px; border: 0; border-radius: 9px; background: transparent; color: var(--dim); font-size: 10px; font-weight: 750; cursor: pointer; }
 .bottom-nav button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .bottom-nav svg { width: 20px; height: 20px; }
@@ -3689,10 +3689,26 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
    strip under the render — it can never sit on the document's Total line
    or header text again. Layered with .four / summary-scoped selectors so
    the base bar rules stay intact. */
-.document-action-bar.four { inset: auto 12px calc(92px + env(safe-area-inset-bottom)) 12px; min-height: 60px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--surface) 97%, transparent); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.document-action-bar.four { inset: auto 12px calc(92px + env(safe-area-inset-bottom)) 12px; min-height: 60px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: var(--surface); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
 .app-shell.master-nav-hidden .document-action-bar.four { inset: auto 12px calc(10px + env(safe-area-inset-bottom)) 12px; }
 @media (min-width:760px) { .document-action-bar.four { left: 50%; right: auto; width: min(calc(100% - 24px), 920px); transform: translateX(-50%); } }
-.app-shell.master-nav-hidden .page.financial-detail-page { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }
+/* Floating-bar opacity + clearance fix (Danny 2026-10-12): the .four bar
+   shipped with a 97% color-mix background — page content ghosted through
+   it (the expanded client-link panel's URL row read straight through the
+   bar on INV-0011). The bar's background above is now solid var(--surface);
+   radius, shadow, chips, and the filled Send pill are unchanged.
+   Clearance: in master-nav-hidden the bar is 60px tall (min-height,
+   border-box) floating 10px + safe-area above the viewport bottom, so
+   its top edge sits at 70px + safe-area and the floor for bottom
+   padding is 86px + safe-area (70 + 16px air). The shipped 106px met
+   that on paper, but in the field the panel's last lines (the
+   copy-it-now security note) still rested sliced behind the bar: the
+   nominal air doesn't survive the nested .app-shell scroller on
+   Danny's WebView — the same clip the 168px FAB inset (above) works
+   around with headroom instead of a bare minimum. 150px = 70px
+   footprint + 80px headroom, so the last line clears the bar with
+   air to spare at max scroll, expanded panel included. */
+.app-shell.master-nav-hidden .page.financial-detail-page { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 .document-action-bar.four button { border-radius: 12px; }
 .document-action-bar .doc-action-chip { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
 .document-action-bar .doc-action-chip svg { width: 16px; height: 16px; color: inherit; }
