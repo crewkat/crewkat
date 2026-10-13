@@ -6318,7 +6318,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
             <span className="tool-group-title">
               <span className="tool-group-icon" aria-hidden="true">{group.icon}</span>
               <h2>{group.title}</h2>
-              {group.pro && <span className={`pro-badge${isPremium ? "" : " is-locked"}`}>PRO</span>}
+              {group.pro && <span className={`pro-badge pro-group-badge${isPremium ? "" : " is-locked"}`}>PRO</span>}
             </span>
             <span className="tool-group-pill"><span className="tool-group-count">{group.tiles.length}</span><span className="tool-group-chevron" aria-hidden="true">▾</span></span>
           </summary>

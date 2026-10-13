@@ -125,7 +125,9 @@ check("fix6: fit-label CSS keeps text on one line, full width", THEME.includes("
 // --- Fix 7: tools groups ---------------------------------------------------------
 check("fix7: groups render distinctive icons", APP.includes("tool-group-icon") && APP.includes("icon: <Icon size={19}>"));
 check("fix7: Pro groups dropped the prefix and wear the badge", !APP.includes("Pro — Money & office") && /group\.pro && <span className=\{`pro-badge/.test(APP));
-check("fix7: every group separated by a hairline", /\.tool-group \{[^}]*border-bottom: 1px solid var\(--border\)/.test(THEME));
+// Superseded 2026-10-12 (Tools group restyle): groups are floating cards
+// now — card separation replaced the hairline, and the two are not stacked.
+check("fix7: groups are floating cards, no hairline separator", /\.tool-group \{[^}]*border-radius: 16px/.test(THEME) && /\.tool-group \{[^}]*box-shadow:/.test(THEME) && !/\.tool-group \{[^}]*border-bottom:/.test(THEME));
 
 // --- Fix 8: header actions on the loaded Home header ------------------------------
 check("fix8: MainTabHeaderActions on both Home header variants + all main tabs", (APP.match(/<MainTabHeaderActions lang=\{lang\} setScreen=\{setScreen\} \/>/g) ?? []).length >= 6, String((APP.match(/<MainTabHeaderActions/g) ?? []).length));

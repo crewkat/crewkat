@@ -86,6 +86,35 @@ describe("PRO badge behavior", () => {
   });
 });
 
+describe("Tools group header restyle (2026-10-12, Danny's inspiration shot)", () => {
+  test("exactly one PRO badge renders per Pro group (PROPRO regression)", () => {
+    expect(APP.match(/group\.pro &&/g)?.length).toBe(1);
+    expect(APP).toContain("pro-group-badge");
+  });
+
+  test("group icons sit in soft tinted chips, not solid circles", () => {
+    expect(THEME).toMatch(/\.tool-group-icon \{[^}]*background:\s*color-mix\(in srgb, var\(--accent\)/);
+    expect(THEME).toMatch(/\.tool-group-icon \{[^}]*color:\s*var\(--accent\)/);
+  });
+
+  test("count is a soft tinted pill, chevron outside it", () => {
+    expect(THEME).toMatch(/\.tool-group-count \{[^}]*border-radius:\s*999px/);
+    expect(THEME).toMatch(/\.tool-group-count \{[^}]*background:\s*color-mix/);
+    expect(THEME).not.toContain(".tool-group-heading > .tool-group-pill");
+  });
+
+  test("group PRO badge is a soft pill: tinted premium, gray locked", () => {
+    expect(THEME).toMatch(/\.tool-group-heading \.pro-badge \{[^}]*border-radius:\s*999px/);
+    expect(THEME).toContain(".tool-group-heading .pro-badge.is-locked");
+  });
+
+  test("groups are floating cards with shadow, no hairline separator", () => {
+    expect(THEME).toMatch(/\.tool-group \{[^}]*border-radius:\s*16px/);
+    expect(THEME).toMatch(/\.tool-group \{[^}]*box-shadow:/);
+    expect(THEME).not.toMatch(/\.tool-group \{[^}]*border-bottom:/);
+  });
+});
+
 describe("proWorkspace screen is gone", () => {
   test("no references remain in client source", () => {
     expect(APP).not.toContain("proWorkspace");

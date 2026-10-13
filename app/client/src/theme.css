@@ -1150,11 +1150,13 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 
 /* Tools directory */
 .tools-intro { margin: 8px 0 20px; color: var(--dim); }
-/* Fix 7 (2026-10-12): every Tools group separated by a slim hairline with a
-   tightened vertical rhythm — dense and scannable, no bulky cards. */
-.tool-group { margin: 0; padding: 13px 0 15px; border-bottom: 1px solid var(--border); }
+/* Tools group restyle (2026-10-12, Danny's inspiration shot): each group is
+   a floating card — white surface, larger rounding, soft shadow, real
+   breathing room between groups. The card separation replaces the Fix 7
+   hairline separator; the two are not stacked. */
+.tool-group { margin: 0 0 14px; padding: 4px 14px 8px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
 .tool-group > h2 { margin: 0 0 8px; font: 800 17px/1.2 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
-.tool-directory { overflow: hidden; border-block: 1px solid var(--border); }
+.tool-directory { overflow: hidden; }
 .tool-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; border-bottom: 1px solid var(--border); }
 .tool-row:last-child { border-bottom: 0; }
 .tool-row-main { width: 100%; min-height: 72px; display: grid; grid-template-columns: 42px minmax(0, 1fr) 18px; align-items: center; gap: 12px; padding: 10px 4px; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--text); }
@@ -1178,7 +1180,7 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
   /* b12: floating pill stays a centered pill on desktop — narrower than the page. */
   .bottom-nav { left: 50%; right: auto; width: min(640px, 100%); transform: translateX(-50%); }
   .tool-directory { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); }
-  .tool-row { border-bottom: 0; background: var(--bg); }
+  .tool-row { border-bottom: 0; background: var(--surface); }
   .money-snapshot strong { font-size: 25px; }
 }
 
@@ -1346,27 +1348,31 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .mode-setting input[role="switch"]::before { content:""; display:block; width:18px; height:18px; border-radius:50%; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; }
 .mode-setting input[role="switch"]:checked { background:var(--green); }
 .mode-setting input[role="switch"]:checked::before { transform:translateX(16px); }
-.tool-group-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.tool-group-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0 8px; }
 .tool-group-heading h2 { margin:0; }
-/* Fix 7: group title cluster — distinctive plain icon + title (+ PRO badge
-   for Pro groups). The count pill keeps its accent styling, now scoped to
-   the pill itself so the title cluster stays unstyled. */
-.tool-group-title { display:inline-flex; align-items:center; gap:8px; min-width:0; }
-.tool-group-icon { display:grid; place-items:center; color:var(--dim); flex:none; }
-.tool-group-icon svg { width:19px; height:19px; }
+/* Tools group restyle (2026-10-12): the group icon is a thin orange line
+   icon in a soft peach chip (same tint family as the tool-row tile icons,
+   larger and rounder); the count is a soft tinted pill with the chevron
+   outside it. No solid orange blocks in the group header. */
+.tool-group-title { display:inline-flex; align-items:center; gap:10px; min-width:0; }
+.tool-group-icon { display:grid; place-items:center; width:42px; height:42px; border-radius:13px; background:color-mix(in srgb, var(--accent) 13%, var(--surface)); color:var(--accent); flex:none; }
+.tool-group-icon svg { width:21px; height:21px; }
 .tool-group-gear { display:grid; place-items:center; }
-.tool-group-gear svg { width:19px; height:19px; }
-.tool-group-heading > .tool-group-pill { border-radius:5px; padding:4px 7px; background:var(--accent); color:white; font-size:11px; font-weight:900; letter-spacing:.07em; }
-/* Fix 7: the old 3px orange rule + tinted directory are retired — the PRO
-   badge by the title carries the Pro distinction, hairlines separate all
-   groups uniformly. */
+.tool-group-gear svg { width:21px; height:21px; }
+.tool-group-pill { display:inline-flex; align-items:center; gap:7px; flex:none; }
+.tool-group-count { min-width:26px; padding:3px 8px; border-radius:999px; background:color-mix(in srgb, var(--accent) 15%, var(--surface)); color:color-mix(in srgb, var(--accent) 78%, var(--text)); font-size:12px; font-weight:800; text-align:center; }
+/* Exactly one PRO badge per Pro group, beside the title: a small soft pill —
+   orange-tinted once Premium is active, soft gray while locked (free). The
+   solid .pro-badge styling still applies to tool rows elsewhere. */
+.tool-group-heading .pro-badge { margin-left:0; padding:3px 8px; border-radius:999px; background:color-mix(in srgb, var(--accent) 16%, var(--surface)); color:color-mix(in srgb, var(--accent) 80%, var(--text)); }
+.tool-group-heading .pro-badge.is-locked { background:var(--surface-2); color:var(--dim); }
+/* The PRO badge by the title carries the Pro distinction on the card. */
 .pro-tool-group { }
 /* Danny 2026-10-11: Tools groups are collapsible dropdowns (native details/summary). */
 details.tool-group > summary.tool-group-heading { cursor:pointer; list-style:none; }
 details.tool-group > summary.tool-group-heading::-webkit-details-marker { display:none; }
 details.tool-group > summary.tool-group-heading::marker { content:""; }
-.tool-group-pill { display:inline-flex; align-items:center; gap:6px; }
-.tool-group-chevron { display:inline-block; transition:transform 0.15s ease; }
+.tool-group-chevron { display:inline-block; color:var(--dim); font-size:12px; transition:transform 0.15s ease; }
 details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 .tool-row-title { display:inline-flex; align-items:center; }
 .pro-hidden-note { width:100%; display:grid; grid-template-columns:minmax(0,1fr) 20px; align-items:center; gap:12px; margin-top:20px; padding:14px 2px; border:0; border-top:1px solid var(--border); background:transparent; color:var(--text); text-align:left; }
