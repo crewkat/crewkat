@@ -55907,6 +55907,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   let y = Math.max(infoY + 13 + clientLines.length * 10 * FONT_SCALE + 14, ry + 10);
   const PAGE_BOTTOM = 648;
+  const FRESH_ITEMS_Y = 66;
   const drawTableHeaderRow = () => {
     if (theme !== "minimal") {
       if (theme === "classic")
@@ -55931,15 +55932,18 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       doc.text(labels.amount, w - margin - 8, y, { align: "right" });
     y += 26;
   };
-  const ensureSpace = (needed) => {
-    if (y + needed <= PAGE_BOTTOM)
-      return;
+  const breakToFreshPage = () => {
     doc.addPage();
     y = 40;
     drawTableHeaderRow();
     doc.setTextColor(...ink);
     doc.setFont(font, "normal");
     doc.setFontSize(F(9));
+  };
+  const ensureSpace = (needed) => {
+    if (y + needed <= PAGE_BOTTOM)
+      return;
+    breakToFreshPage();
   };
   ensureSpace(40);
   drawTableHeaderRow();
@@ -55958,22 +55962,61 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setFontSize(F(9));
     const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
     const rowH = Math.max(20, richLines.length * descStep + 6);
-    ensureSpace(rowH);
-    if (theme !== "minimal" && rowIndex % 2 === 1) {
-      doc.setFillColor(247, 249, 248);
-      doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
+    const zebraRow = theme !== "minimal" && rowIndex % 2 === 1;
+    if (rowH > PAGE_BOTTOM - FRESH_ITEMS_Y) {
+      let lineStart = 0;
+      let firstChunk = true;
+      while (lineStart < richLines.length) {
+        const fit = Math.floor((PAGE_BOTTOM - 6 - y) / descStep);
+        if (fit < 1) {
+          breakToFreshPage();
+          continue;
+        }
+        const remaining = richLines.length - lineStart;
+        const isLast = fit >= remaining;
+        const n = isLast ? remaining : fit;
+        if (zebraRow) {
+          doc.setFillColor(247, 249, 248);
+          doc.rect(margin, y - (firstChunk ? rowTopPad : 6), w - margin * 2, n * descStep + 6, "F");
+        }
+        doc.setTextColor(...ink);
+        doc.setFontSize(F(9));
+        for (let i = 0;i < n; i++) {
+          drawRichLine(doc, richLines[lineStart + i], margin + 8, y + i * descStep, font);
+        }
+        if (firstChunk && custom.showAmount) {
+          doc.setFont(font, "normal");
+          doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+        }
+        if (isLast) {
+          doc.setDrawColor(224, 227, 226);
+          doc.setLineWidth(0.5);
+          doc.line(margin, y + n * descStep - 1, w - margin, y + n * descStep - 1);
+          y += n * descStep + 6;
+        } else {
+          breakToFreshPage();
+        }
+        lineStart += n;
+        firstChunk = false;
+      }
+    } else {
+      ensureSpace(rowH);
+      if (zebraRow) {
+        doc.setFillColor(247, 249, 248);
+        doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
+      }
+      doc.setTextColor(...ink);
+      doc.setFontSize(F(9));
+      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+      if (custom.showAmount) {
+        doc.setFont(font, "normal");
+        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+      }
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+      y += rowH;
     }
-    doc.setTextColor(...ink);
-    doc.setFontSize(F(9));
-    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
-    if (custom.showAmount) {
-      doc.setFont(font, "normal");
-      doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
-    }
-    doc.setDrawColor(224, 227, 226);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
-    y += rowH;
     rowIndex += 1;
   }
   y += 6;
