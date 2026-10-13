@@ -2009,7 +2009,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 
 
 /* Preview & Customize — phone-first document studio */
-.customize-overlay{grid-template-rows:auto minmax(0,1fr) auto;background:color-mix(in srgb,var(--bg) 94%,var(--border));}
+.customize-overlay{grid-template-rows:auto minmax(0,1fr) auto auto;background:color-mix(in srgb,var(--bg) 94%,var(--border));}
 .customize-head{z-index:4;box-shadow:0 1px 8px color-mix(in srgb,#000 8%,transparent);}
 .customize-head button{width:42px;padding:0;justify-content:center;border:0;background:transparent;}
 .customize-head button svg{width:22px;height:22px;}
@@ -2026,8 +2026,16 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .customize-preview-card .b06-pdf-embed-loading{min-height:200px;}
 .preview-expand{position:absolute;right:22px;bottom:16px;width:42px;height:42px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:rgba(17,24,23,.86);color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.22);}
 .preview-expand svg{width:20px;height:20px;}
-.custom-design-panel{overflow:visible;display:block;padding:10px 14px 118px;border:0;background:transparent;}
+.custom-design-panel{overflow:visible;display:block;padding:10px 14px 24px;border:0;background:transparent;}
 .custom-tab-content{animation:custom-tab-in .18s ease both;}
+/* Design overhaul (Danny 2026-10-12): panel controls live in floating
+   cards with the Tools-page treatment — 16px rounding, whisper border,
+   soft two-layer shadow — instead of bare rows on a bordered slab. */
+.custom-card{border:1px solid color-mix(in srgb,var(--border) 45%,transparent);border-radius:16px;background:var(--surface);box-shadow:0 1px 2px rgba(23,26,28,.05),0 8px 20px rgba(23,26,28,.05);padding:14px;margin-bottom:12px;}
+.custom-card .custom-check-row,.custom-card .custom-nav-row,.custom-card .control-row{padding-inline:0;}
+.custom-card .custom-check-row:last-child,.custom-card .custom-nav-row:last-child,.custom-card .control-row:last-child{border-bottom:0;}
+.logo-custom-grid .custom-card,.custom-options .custom-card{margin-bottom:0;}
+.custom-default-card{margin-top:16px;}
 @keyframes custom-tab-in{from{opacity:.3;transform:translateY(5px)}to{opacity:1;transform:none}}
 .customize-tabs{position:relative;z-index:5;min-height:68px;padding:4px 4px max(5px,env(safe-area-inset-bottom));box-shadow:0 -8px 24px color-mix(in srgb,#000 8%,transparent);}
 .customize-tabs button{min-height:58px;display:grid;place-items:center;align-content:center;gap:3px;padding:3px;border-top:0!important;border-radius:8px;}
@@ -2037,17 +2045,18 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .design-feedback button{display:grid;place-items:center;padding:0;color:var(--dim);}
 .design-feedback button.active{color:var(--accent);}
 .design-feedback svg{width:19px;height:19px;}
-.template-carousel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px;}
-.template-carousel>button{min-width:0;display:grid;gap:7px;padding:7px;border:2px solid transparent;border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 2px 10px color-mix(in srgb,#000 7%,transparent);}
+.template-carousel{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:6px 2px 10px;margin-bottom:10px;scrollbar-width:none;}
+.template-carousel::-webkit-scrollbar{display:none;}
+.template-carousel>button{flex:0 0 162px;scroll-snap-align:start;min-width:0;display:grid;gap:7px;padding:7px;border:2px solid transparent;border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 2px 10px color-mix(in srgb,#000 7%,transparent);}
 .template-carousel>button.active{border-color:var(--accent);}
 .template-paper{position:relative;height:200px;overflow:hidden;background:#e6e9e8;}
 .template-paper>.quote-paper{position:absolute;left:50%;top:3px;width:612px;min-height:760px;margin:0;transform:translateX(-50%) scale(.24);transform-origin:top center;pointer-events:none;}
 .template-carousel strong{font-size:12px;}
-.design-font{padding:12px;border-top:1px solid var(--border);background:var(--surface);}
+.design-font{display:grid;gap:8px;padding:0;border:0;background:transparent;}
 .design-font>span,.logo-custom-grid>div>strong{font-size:13px;}
-.logo-custom-grid{display:grid;gap:0;background:var(--surface);border-block:1px solid var(--border);}
-.logo-custom-grid>div{padding:14px 2px;border-bottom:1px solid var(--border);}
-.logo-custom-grid>div:last-child{display:flex;align-items:center;justify-content:space-between;border-bottom:0;}
+.logo-custom-grid{display:grid;gap:12px;background:transparent;border-block:0;}
+.logo-custom-grid>div{border-bottom:0;}
+.logo-custom-grid>div:last-child{display:flex;align-items:center;justify-content:space-between;}
 .logo-edit-control{position:relative;min-height:132px;display:grid;place-items:center;margin:10px 0 2px;border:1px dashed var(--border);border-radius:10px;background:var(--surface-2);cursor:pointer;}
 .logo-edit-control img{max-width:75%;max-height:96px;object-fit:contain;}
 .logo-edit-control>span{color:var(--dim);font-size:13px;}
@@ -2063,14 +2072,15 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .segmented-control{display:grid;grid-template-columns:repeat(2,1fr);gap:3px;padding:3px;border-radius:10px;background:var(--surface-2);}
 .segmented-control button{min-height:40px;border:0;border-radius:8px;background:transparent;color:var(--dim);font-weight:800;}
 .segmented-control button.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px color-mix(in srgb,#000 12%,transparent);}
-.palette-grid{display:grid;grid-template-columns:repeat(5,44px);justify-content:space-between;gap:12px;margin:22px 0;}
+.logo-size-list button:last-child{border-bottom:0;}
+.palette-grid{display:grid;grid-template-columns:repeat(5,44px);justify-content:space-between;gap:12px;margin:16px 0 6px;}
 .palette-grid button{width:42px;height:42px;padding:0;border:3px solid var(--surface);border-radius:50%;box-shadow:0 0 0 1px var(--border);}
 .palette-grid button.active{box-shadow:0 0 0 3px var(--text);}
-.custom-color-row{min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-top:1px solid var(--border);font-weight:750;}
+.custom-color-row{min-height:56px;display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:8px 0 0;border-top:1px solid var(--border);font-weight:750;}
 .custom-color-row input{width:54px;height:38px;padding:2px;border:1px solid var(--border);background:var(--surface);}
-.custom-options,.info-options{display:grid;background:var(--surface);border-block:1px solid var(--border);}
-.custom-section-title{display:flex;align-items:center;gap:9px;margin:0;padding:18px 2px 8px;background:var(--bg);font-size:15px;}
-.custom-section-title:first-child{padding-top:8px;}
+.custom-options{display:grid;gap:12px;background:transparent;border-block:0;}
+.info-options{display:grid;}
+.custom-section-title{display:flex;align-items:center;gap:9px;margin:0 0 4px;padding:0 0 6px;background:transparent;font-size:15px;}
 .custom-section-title svg{width:20px;height:20px;color:var(--accent);}
 .custom-check-row,.custom-nav-row,.control-row{width:100%;min-height:54px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 3px;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);text-align:left;font-size:14px;font-weight:700;}
 .custom-check-row span,.custom-nav-row span,.control-row>span{min-width:0;}
@@ -2082,8 +2092,11 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .mini-segments button{width:34px;height:34px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dim);font-weight:850;}
 .mini-segments button.active{background:var(--surface);color:var(--accent);box-shadow:0 1px 3px color-mix(in srgb,#000 12%,transparent);}
 .density-buttons{display:flex;gap:5px;}.density-buttons button{width:38px;height:36px;display:grid;place-items:center;padding:0;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--dim);}.density-buttons button.active{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface));}.density-buttons svg{width:19px;height:19px;}
-.default-design{margin:16px 0 12px;padding:2px;}
-.apply-design{position:sticky;bottom:2px;width:100%;min-height:50px;box-shadow:0 -5px 18px var(--bg);}
+/* Design overhaul (Danny 2026-10-12): Apply design is a fixed bar in the
+   overlay grid, pinned directly above the tab bar — always reachable and
+   never floating over scroll content on any tab. */
+.customize-apply-bar{padding:10px 14px;background:var(--surface);border-top:1px solid var(--border);z-index:5;}
+.apply-design{width:100%;min-height:50px;}
 .customize-sheet-backdrop{z-index:210;transition:opacity .18s ease;}.customize-sheet-backdrop.closing{opacity:0;}
 .customize-sheet{width:min(100%,560px);max-height:min(84vh,760px);overflow:auto;padding:8px 16px calc(20px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;background:var(--surface);box-shadow:0 -12px 36px rgba(0,0,0,.24);animation:custom-sheet-in .2s ease both;}
 .customize-sheet-backdrop.closing .customize-sheet{transform:translateY(100%);transition:transform .18s ease;}
@@ -2093,14 +2106,14 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .customize-fullscreen{z-index:205;}.customize-fullscreen .document-overlay-head{position:sticky;top:0;z-index:2;}
 .quote-paper{font-size:var(--paper-font-size,12px);line-height:var(--paper-line-height,1.35);}
 .quote-paper.customize-font-s{--paper-font-size:10.5px}.quote-paper.customize-font-m{--paper-font-size:12px}.quote-paper.customize-font-l{--paper-font-size:13.5px}.quote-paper.customize-font-xl{--paper-font-size:15px}.quote-paper.spacing-compact{--paper-line-height:1.18}.quote-paper.spacing-comfortable{--paper-line-height:1.4}.quote-paper.spacing-roomy{--paper-line-height:1.65}.quote-paper.soft-contrast{color:#47504e}.quote-paper.high-contrast{color:#101514}.quote-paper.color-gradient.theme-bold .quote-paper-band,.quote-paper.color-gradient.theme-bold .quote-line.heading,.quote-paper.color-gradient.theme-bold .document-totals .grand-total{background:linear-gradient(125deg,var(--quote-accent),color-mix(in srgb,var(--quote-accent) 46%,#111827));}.paper-logo{width:var(--logo-size);height:calc(var(--logo-size) * .7);display:grid;place-items:center;overflow:hidden;border-radius:4px;background:#fff;}.paper-logo.transparent{background:transparent;}.quote-paper-band .paper-logo img{width:100%;height:100%;object-fit:contain;}.quote-paper-client small{display:block}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 95px 88px}.quote-paper-lines.hide-amount .quote-line{grid-template-columns:minmax(0,1fr) 95px}.quote-paper-lines:not(.with-quantity).hide-amount .quote-line{grid-template-columns:1fr}.line-quantity{text-align:right;color:#5d6866}.paid-stamp{position:absolute;right:28px;top:112px;padding:4px 10px;border:3px double var(--quote-accent);color:var(--quote-accent);font-weight:900;letter-spacing:.12em;transform:rotate(-7deg)}.quote-paper{position:relative}.balance-due{font-weight:800}.paper-signature{width:170px;display:grid;gap:2px;margin:14px 0 0 auto;border-top:1px solid #cfd4d2;text-align:center}.paper-signature img{width:100%;height:55px;object-fit:contain}.paper-signature small{color:#5d6866}.paper-thank-you{text-align:center;color:var(--quote-accent);font-weight:800;margin:20px 0 2px;}
-@media(min-width:800px){.customize-workspace{display:grid;grid-template-columns:minmax(0,1fr) 390px;overflow:hidden}.customize-preview-wrap{overflow:hidden;padding:20px}.customize-preview-card{height:calc(100vh - 154px);max-height:760px}.custom-design-panel{overflow:auto;padding:18px 18px 100px;border-left:1px solid var(--border);background:var(--surface)}.customize-tabs{grid-column:1/-1}.template-carousel{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:800px){.customize-workspace{display:grid;grid-template-columns:minmax(0,1fr) 390px;overflow:hidden}.customize-preview-wrap{overflow:hidden;padding:20px}.customize-preview-card{height:calc(100vh - 154px);max-height:760px}.custom-design-panel{overflow:auto;padding:18px 18px 24px;border-left:1px solid var(--border);background:var(--surface)}.customize-tabs{grid-column:1/-1}.customize-apply-bar{width:390px;justify-self:end;padding:12px 18px;border-left:1px solid var(--border)}}
 @media(max-width:430px){.customize-preview-card{height:min(50vh,400px)}.palette-grid{grid-template-columns:repeat(5,40px);gap:7px}.palette-grid button{width:38px;height:38px}.label-grid{grid-template-columns:1fr}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 84px 72px}.customize-tabs button{font-size:9px}}
 /* Design overhaul (Danny 2026-10-12): on phones the customize workspace
    scrolls as one column, so the document preview pins as a sticky MINI
    preview at the top while the Template/Logo/Color/Options/Info panel
    scrolls underneath it. Desktop (>=800px) keeps the side-by-side layout
    where the full preview is always visible — no pinning needed there. */
-@media(max-width:799px){.customize-preview-wrap{position:sticky;top:0;z-index:6;background:color-mix(in srgb,var(--bg) 94%,var(--border));box-shadow:0 12px 18px -14px rgba(23,26,28,.45)}.customize-preview-card{height:min(30vh,250px)}}
+@media(max-width:799px){.customize-preview-wrap{position:sticky;top:0;z-index:6;background:color-mix(in srgb,var(--bg) 94%,var(--border));box-shadow:0 12px 18px -14px rgba(23,26,28,.45)}.customize-preview-card{height:min(15vh,140px)}.customize-preview-wrap::after{content:"";position:absolute;left:12px;right:12px;bottom:6px;height:46px;border-radius:0 0 12px 12px;background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--bg) 94%,var(--border)));pointer-events:none;z-index:1}.preview-expand{z-index:2}}
 @media(prefers-reduced-motion:reduce){.custom-tab-content,.customize-sheet{animation:none}.customize-sheet-backdrop,.customize-sheet-backdrop .customize-sheet{transition:none}}
 
 /* Jobs hub — compact, touch-first rows and the shared animated sheet pattern. */
