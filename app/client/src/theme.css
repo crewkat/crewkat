@@ -89,22 +89,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Screens with the floating pill nav need enough bottom clearance that the last
    row can scroll fully into view. Pill footprint ≈ 84-96px above the safe area. */
 .app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-.app-header { position: sticky; top: calc(8px + env(safe-area-inset-top)); z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-inline: -8px; margin-bottom: 8px; padding: 4px 10px; }
-/* Header BAR (Danny 2026-10-12 late, supersedes the same-day floating
-   CARD): "make that header rectangle slightly floating. Defined but
-   frosted slight see thru." So: a rectangular bar, slightly floating —
-   the element bleeds 8px past the page column on each side (16px page
-   padding → the bar's edges sit ~8px from the screen edge on phones),
-   sticky top 8px + safe-area, 8px flow gap below. DEFINED: the ::before
-   layer carries a full-strength 1px var(--border) edge and
-   var(--shadow-soft), so the boundary reads at a glance against any
-   content. FROSTED, SLIGHT SEE-THRU: a UNIFORM tint — var(--bg) at 84%,
-   no gradient, no melt — over an 18px backdrop blur + saturate, so
-   content behind the bar shows only as soft blurred shapes, never
-   readable text. Modest 12px radius: a bar, not a pill/card. The
-   title/buttons stay fully opaque above the layer.
-   pointer-events:none: the layer is visual only. */
-.app-header::before, .intelligence-page .page-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); box-shadow: var(--shadow-soft); }
+.app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-inline: -16px; padding: max(6px, env(safe-area-inset-top)) 16px 4px; background: var(--surface); border-bottom: 1px solid var(--border); }
+@media (min-width: 720px) { .app-header { margin-inline: -28px; padding-inline: 28px; } }
+/* Plain white header (Danny 2026-10-13, supersedes the same-evening
+   frost experiments — fade 83662da, full frost b7b656a, floating card
+   f91afe7, frosted bar e79cd8a): "go back to a plain white header
+   extended side to side not floating. The designs are just not
+   clicking." A solid var(--surface) bar, flush with the top of the
+   screen: the element bleeds past the .page column (margin-inline
+   -16px, -28px at ≥720px — the client-doc-brandbar technique) while
+   its padding grows by the same amount, so the background runs edge
+   to edge but the back/title/actions stay aligned to the column.
+   The safe-area zone is covered by the bar itself (padding-top
+   max(6px, safe-area-inset-top), the content row below it); a single
+   var(--border) hairline defines the bottom edge. No blur, no tint,
+   no radius, no shadow, no ::before layer — and no margin below:
+   screens carry their own top spacing, as they did before the
+   experiments. .intelligence-page .page-header mirrors this rule. */
 .app-header h1 { margin: 0; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
 .app-brand-lockup img { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 9px; object-fit: cover; }
@@ -1477,7 +1478,8 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 @media (min-width:760px) { .pro-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); } .pro-directory > button { border:0; background:var(--bg); } }
 @media (max-width:390px) { .app-header { grid-template-columns:minmax(42px,auto) minmax(0,1fr) minmax(42px,auto); } .header-actions { gap:3px; } .pro-workspace-launch { grid-template-columns:52px minmax(0,1fr) 18px; padding-inline:10px; } .pro-launch-mark { width:50px; height:50px; } }
 
-.intelligence-page .page-header { position:sticky; top:calc(8px + env(safe-area-inset-top)); z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-inline:-8px; margin-bottom:8px; padding:4px 10px; }
+.intelligence-page .page-header { position:sticky; top:0; z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-inline:-16px; padding:max(6px, env(safe-area-inset-top)) 16px 4px; background:var(--surface); border-bottom:1px solid var(--border); }
+@media (min-width: 720px) { .intelligence-page .page-header { margin-inline:-28px; padding-inline:28px; } }
 .intelligence-page .page-header h1 { margin:0; overflow:hidden; font:700 22px/1 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 
 
@@ -1571,10 +1573,9 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 .market-photo-picker small { overflow-wrap:anywhere; color:var(--dim); font-size:12px; line-height:1.4; }
 .marketplace-detail { max-width:720px; }
 /* build 3.0 item 3: listing-detail sub-header spanned edge to edge.
-   The edge-to-edge bleed stays removed — the detail header is a plain
-   .app-header and follows the shared header-bar treatment (slight
-   float, defined frosted bar) like every other screen, so no
-   margin/padding override remains here. */
+   The detail header is a plain .app-header and follows the shared
+   header treatment (plain solid bar, full-bleed background) like
+   every other screen, so no margin/padding override remains here. */
 .market-detail-gallery { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin:0 -16px; background:var(--surface-2); }
 .market-detail-photo { padding:0; border:0; background:none; cursor:pointer; min-width:0; transition:transform .12s ease, opacity .12s ease; }
 .market-detail-photo:active { transform:scale(.98); }
@@ -4712,15 +4713,13 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 :root[data-theme="light"] .page.marketplace-detail,
 :root[data-theme="light"] .page.marketplace-form-page { background:#ffffff; }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page, :root:not([data-theme]) .page.marketplace-thread, :root:not([data-theme]) .page.marketplace-detail, :root:not([data-theme]) .page.marketplace-form-page { background:#ffffff; } }
-/* The header frost lives on ::before; these keep the marketplace pages'
-   frost pure white in light theme (was a solid #fff header background).
-   Full-frost values to match the base rule: .95 → .88, never transparent —
-   the marketplace photo grid is exactly the busy content the melt exposed. */
-:root[data-theme="light"] .page.marketplace-page .app-header::before,
-:root[data-theme="light"] .page.marketplace-thread .app-header::before,
-:root[data-theme="light"] .page.marketplace-detail .app-header::before,
-:root[data-theme="light"] .page.marketplace-form-page .app-header::before { background:rgba(255,255,255,.84); }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header::before, :root:not([data-theme]) .page.marketplace-thread .app-header::before, :root:not([data-theme]) .page.marketplace-detail .app-header::before, :root:not([data-theme]) .page.marketplace-form-page .app-header::before { background:rgba(255,255,255,.84); } }
+/* Marketplace light pages force a pure-white page background above; the
+   header matches it exactly (solid #fff, as before the frost era). */
+:root[data-theme="light"] .page.marketplace-page .app-header,
+:root[data-theme="light"] .page.marketplace-thread .app-header,
+:root[data-theme="light"] .page.marketplace-detail .app-header,
+:root[data-theme="light"] .page.marketplace-form-page .app-header { background:#ffffff; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header, :root:not([data-theme]) .page.marketplace-thread .app-header, :root:not([data-theme]) .page.marketplace-detail .app-header, :root:not([data-theme]) .page.marketplace-form-page .app-header { background:#ffffff; } }
 
 /* --- 5c. Thread composer: bottom nav is hidden on marketplaceThread; anchor the composer --- */
 .app-shell.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
