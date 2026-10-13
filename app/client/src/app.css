@@ -7,7 +7,7 @@
 
 /* Build0.2: client document page — action menu + proportions (match app PDF preview) */
 .client-doc-page { max-width: 640px; margin: 0 auto; padding: 0 16px 32px; }
-.client-doc-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.client-doc-actions { display: flex; flex-wrap: nowrap; gap: 6px; margin: 10px 0; }
 .client-doc-actions .secondary-button { flex: 1; min-width: 100px; }
 .client-doc-page .quote-paper { margin: 8px 0 24px; }
 @media (max-width: 480px) {
@@ -16,7 +16,7 @@
   .client-doc-page .quote-paper h2 { font-size: 18px; }
 }
 @media print {
-  .client-doc-actions, .client-lang-toggle { display: none !important; }
+  .client-doc-actions, .client-doc-brandbar, .client-lang-toggle { display: none !important; }
 }
 
 /* Build0.2: merged recurring section */

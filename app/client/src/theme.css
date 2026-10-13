@@ -1853,6 +1853,20 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .client-lang-toggle { display: flex; gap: 6px; justify-content: flex-end; padding: 10px 0 0; }
 .client-lang-toggle button { padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--dim); font-weight: 800; font-size: 12px; }
 .client-lang-toggle button.active { background: var(--text); color: var(--bg); }
+/* Client link brand bar (Danny 2026-10-12, Invoice Fly pattern, Crewkat
+   execution): one slim bar tops the public document page for EVERY
+   account — Crewkat wordmark left (platform branding, no tier logic),
+   the compact EN/ES toggle right — and the four document actions share
+   ONE equal row beneath it instead of wrapping 3 + 1 with Open PDF
+   orphaned on a second row. The contractor's own company header stays
+   below the actions, unchanged, so the client still sees whose document
+   it is. The bar bleeds to the page column's edges (.page padding is
+   16px, 28px at ≥720px). */
+.client-doc-brandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; margin: 0 -16px; padding: 6px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+@media (min-width: 720px) { .client-doc-brandbar { margin-inline: -28px; padding-inline: 28px; } }
+.client-doc-wordmark { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 19px; font-weight: 850; letter-spacing: -.01em; }
+.client-doc-wordmark img { width: 30px; height: 30px; display: block; border-radius: 8px; object-fit: cover; }
+.client-doc-brandbar .client-lang-toggle { padding: 0; }
 .client-doc-company { display: flex; align-items: center; gap: 12px; padding: 14px 4px 0; }
 .client-doc-company img { width: 52px; height: 38px; object-fit: contain; }
 .client-doc-company div { display: grid; gap: 2px; }
@@ -3712,8 +3726,22 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .document-action-bar.four button { border-radius: 12px; }
 .document-action-bar .doc-action-chip { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
 .document-action-bar .doc-action-chip svg { width: 16px; height: 16px; color: inherit; }
-.document-action-bar button.active .doc-action-chip { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
-.document-action-bar button.doc-action-send { margin: 2px; border-radius: 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
+/* Bar consistency (Danny 2026-10-12): ONE chip spec for every ghost action
+   — the 30px / 13%-tint / 16px-glyph .doc-chip spec the rows above the bar
+   already use. The paid state broke it twice over: the base rule's
+   button.active background washed the button's WHOLE cell pale orange,
+   and the chip deepened to 24% on top of that, so Paid rendered bigger
+   and a different shade than Edit/More (his INV-0011 shot). The state now
+   lives inside the same footprint: no cell wash, the chip turns
+   paid-green (the same green family as the summary's PAID pill) and the
+   label goes bold green. The cell wash survives ONLY as press feedback —
+   uniform across buttons and gone on release. Send's pill fills its grid
+   cell exactly (the old 2px margin shrank its tap area below the ghost
+   buttons' full-height cells); its glyph sits directly on the orange. */
+.document-action-bar.four button.active { background: transparent; color: color-mix(in srgb, #22c55e 68%, var(--text)); font-weight: 900; }
+.document-action-bar.four button:active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.document-action-bar button.active .doc-action-chip { background: color-mix(in srgb, #22c55e 30%, var(--surface)); color: color-mix(in srgb, #22c55e 72%, var(--text)); }
+.document-action-bar button.doc-action-send { margin: 0; border-radius: 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
 .document-action-bar button.doc-action-send svg { width: 18px; height: 18px; color: #fff; }
 .document-action-bar button.doc-action-send:active { background: color-mix(in srgb, var(--accent) 84%, #000); color: #fff; }
 .document-detail-summary.ck-quote-summary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
@@ -3814,7 +3842,12 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .client-doc-zoom-bar { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 6px 8px; border-radius: 999px; background: rgba(18, 22, 24, .62); color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .client-doc-zoom-bar button { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .16); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
 .client-doc-zoom-bar button:disabled { opacity: .35; cursor: default; }
-.client-doc-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 800; text-decoration: none; cursor: pointer; }
+/* One equal row, never wraps (Danny 2026-10-12): each action takes an
+   equal flex share of the single .client-doc-actions row, icon over a
+   short label — the app's own tab-bar language — so all four fit one
+   level even on a 360px phone (inline icon+label at this label length
+   cannot). ~38px tall. */
+.client-doc-action-btn { flex: 1 1 0; min-width: 0; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 38px; padding: 3px 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 10.5px; font-weight: 800; white-space: nowrap; text-decoration: none; cursor: pointer; }
 .client-doc-action-btn > span { display: inline-flex; }
 .client-doc-action-btn:active { background: var(--surface-2, var(--surface)); }
 /* 11. Contract card: single action button spans full width, consistent style */

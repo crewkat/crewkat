@@ -1,5 +1,5 @@
 // Crewkat app service worker — offline mode + web push.
-// Served at /app/sw.js (scope /app/). build.mjs stamps c86c1ef with the
+// Served at /app/sw.js (scope /app/). build.mjs stamps b0ea1ac with the
 // git commit (or a build timestamp) so EVERY deploy produces a new worker and
 // the browser installs it immediately instead of serving a stale shell.
 //
@@ -12,7 +12,7 @@
 //   client understands; never served stale.
 // - Everything else same-origin: network-first with cache fallback.
 
-const BUILD_ID = "c86c1ef";
+const BUILD_ID = "b0ea1ac";
 const SHELL_CACHE = `crewkat-shell-${BUILD_ID}`;
 const RUNTIME_CACHE = `crewkat-runtime-${BUILD_ID}`;
 const PRECACHE = [

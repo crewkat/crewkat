@@ -25916,17 +25916,28 @@ function ClientDocumentScreen({ token }: { token: string }) {
       </button>
     </div>
   );
+  // Brand bar (Danny 2026-10-12): Crewkat wordmark + the EN/ES toggle in
+  // one slim bar at the very top of the client page, every account.
+  const brandBar = (
+    <div className="client-doc-brandbar">
+      <span className="client-doc-wordmark" aria-label={APP_INFO.name}>
+        <img src={crewkatLogo} alt="" aria-hidden="true" />
+        <span>{APP_INFO.name}</span>
+      </span>
+      {langToggle}
+    </div>
+  );
   if (q.isLoading)
     return (
       <main className="page public-page">
-        {langToggle}
+        {brandBar}
         <div className="loading-block" />
       </main>
     );
   if (q.isError || !q.data)
     return (
       <main className="page public-page">
-        {langToggle}
+        {brandBar}
         <section className="empty-state">
           <h1>{t.linkInvalid}</h1>
           <p>{t.linkInvalidHint}</p>
@@ -25989,12 +26000,12 @@ function ClientDocumentScreen({ token }: { token: string }) {
   const printDoc = () => window.print();
   return (
     <main className="page public-page client-doc-page">
-      {langToggle}
+      {brandBar}
       <div className="client-doc-actions">
         {financialKind ? (
-          <a className="client-doc-action-btn" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar PDF" : "Download PDF"}</a>
+          <a className="client-doc-action-btn" href={serverPdfUrl} download={`${financialKind}-${doc.documentId}.pdf`}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar" : "Download"}</a>
         ) : (
-          <button type="button" className="client-doc-action-btn" onClick={downloadPdf}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar PDF" : "Download PDF"}</button>
+          <button type="button" className="client-doc-action-btn" onClick={downloadPdf}><span aria-hidden="true"><Icon size={15}><path d="M12 4v11m0 0-4-4m4 4 4-4" /><path d="M4 20h16" /></Icon></span>{lang === "es" ? "Descargar" : "Download"}</button>
         )}
         <button type="button" className="client-doc-action-btn" onClick={shareDoc}><span aria-hidden="true"><Icon size={15}><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="5.5" r="2.5" /><circle cx="17" cy="18.5" r="2.5" /><path d="M8.2 10.8l6.6-4M8.2 13.2l6.6 4" /></Icon></span>{lang === "es" ? "Compartir" : "Share"}</button>
         <button type="button" className="client-doc-action-btn" onClick={printDoc}><span aria-hidden="true"><Icon size={15}><path d="M7 8V4h10v4" /><rect x="4" y="8" width="16" height="8" rx="1.5" /><path d="M7 13h10v7H7z" /></Icon></span>{lang === "es" ? "Imprimir" : "Print"}</button>
