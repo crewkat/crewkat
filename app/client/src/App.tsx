@@ -25538,7 +25538,269 @@ function OnMyWayScreen({
 // pdf.js load failed on Android Chrome, leaving "The PDF couldn't be shown
 // here." as the primary experience; server rasterization works everywhere.
 // The raw PDF stays one tap away in the actions row (Open PDF).
+// Client document page viewer: tapping a rendered page on the public
+// client page opens it fullscreen — pinch to zoom (1×–4×), drag to pan
+// while zoomed, double-tap toggles 1× ↔ 2.2×, swipe or the arrows move
+// between pages, +/− buttons cover desktop/accessibility, wheel zooms on
+// desktop. Reuse audit: the app has NO pinch implementation — the photo
+// lightboxes are scroll-snap strips and the chat viewer is a fixed-step
+// double-tap zoom — so the gesture math lives here, built on the shared
+// lightbox chrome (.lightbox-backdrop / -close / -nav), useEscapeToClose,
+// and the SignaturePad pointer-capture convention. Zoom is a CSS
+// transform on the page image inside an overflow-hidden stage with
+// touch-action: none, so gestures never fight the browser; scroll behind
+// the viewer is locked while it is open.
+function ClientDocPageViewer({ pages, index, title, lang, onClose, onNavigate }: {
+  pages: string[];
+  index: number;
+  title: string;
+  lang: Lang;
+  onClose: () => void;
+  onNavigate: (index: number) => void;
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
+  const [animating, setAnimating] = useState(false);
+  const viewRef = useRef(view);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestureRef = useRef<{
+    mode: "none" | "pan" | "maybe" | "pinch";
+    startX: number;
+    startY: number;
+    startView: { scale: number; x: number; y: number };
+    startDist: number;
+    midX: number;
+    midY: number;
+    moved: boolean;
+  }>({ mode: "none", startX: 0, startY: 0, startView: { scale: 1, x: 0, y: 0 }, startDist: 0, midX: 0, midY: 0, moved: false });
+  const lastTapRef = useRef<{ t: number } | null>(null);
+
+  const applyView = (next: { scale: number; x: number; y: number }, animate: boolean) => {
+    viewRef.current = next;
+    setAnimating(animate);
+    setView(next);
+  };
+  const clampOffset = (x: number, y: number, scale: number) => {
+    const stage = stageRef.current;
+    const img = imgRef.current;
+    if (!stage || !img) return { x, y };
+    const maxX = Math.max(0, (img.clientWidth * scale - stage.clientWidth) / 2);
+    const maxY = Math.max(0, (img.clientHeight * scale - stage.clientHeight) / 2);
+    return { x: Math.min(maxX, Math.max(-maxX, x)), y: Math.min(maxY, Math.max(-maxY, y)) };
+  };
+  // Zoom toward a stage point, keeping the content under it stationary.
+  // The page image is grid-centered in the stage, so its center is the
+  // stage center plus the current offset; content coords are unscaled
+  // offsets from the image center.
+  const zoomAt = (px: number, py: number, target: number, animate: boolean) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const cur = viewRef.current;
+    const next = Math.min(4, Math.max(1, target));
+    const cx = stage.clientWidth / 2;
+    const cy = stage.clientHeight / 2;
+    const contentX = (px - cx - cur.x) / cur.scale;
+    const contentY = (py - cy - cur.y) / cur.scale;
+    const clamped = clampOffset(px - cx - contentX * next, py - cy - contentY * next, next);
+    applyView({ scale: next, x: clamped.x, y: clamped.y }, animate);
+  };
+  const resetView = (animate: boolean) => applyView({ scale: 1, x: 0, y: 0 }, animate);
+  const goTo = (next: number) => {
+    if (next >= 0 && next < pages.length && next !== index) onNavigate(next);
+  };
+  const stepZoom = (direction: 1 | -1) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    zoomAt(stage.clientWidth / 2, stage.clientHeight / 2, viewRef.current.scale * (direction === 1 ? 1.4 : 1 / 1.4), true);
+  };
+
+  useEscapeToClose(true, onClose);
+
+  // Fresh page, fresh zoom.
+  useEffect(() => {
+    pointersRef.current.clear();
+    gestureRef.current.mode = "none";
+    lastTapRef.current = null;
+    applyView({ scale: 1, x: 0, y: 0 }, false);
+    // applyView is ref/setState-only; it is stable for this reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  // Lock scroll behind the viewer: the .app-shell scroller plus body.
+  useEffect(() => {
+    const shell = document.querySelector(".app-shell") as HTMLElement | null;
+    const prevBody = document.body.style.overflow;
+    const prevShell = shell ? shell.style.overflow : "";
+    document.body.style.overflow = "hidden";
+    if (shell) shell.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBody;
+      if (shell) shell.style.overflow = prevShell;
+    };
+  }, []);
+
+  // Desktop wheel zoom — needs a non-passive listener to preventDefault.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      zoomAt(event.clientX - rect.left, event.clientY - rect.top, viewRef.current.scale * Math.exp(-event.deltaY * 0.0016), false);
+    };
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+    // zoomAt reads only refs and setState; safe to bind once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const stagePoint = (clientX: number, clientY: number) => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    const rect = stage.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    setAnimating(false);
+    const pts = [...pointersRef.current.values()];
+    const cur = viewRef.current;
+    const first = pts[0];
+    const second = pts[1];
+    if (pts.length === 2 && first && second) {
+      gestureRef.current = {
+        mode: "pinch",
+        startX: first.x, startY: first.y,
+        startView: { ...cur },
+        startDist: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+        midX: (first.x + second.x) / 2, midY: (first.y + second.y) / 2,
+        moved: true,
+      };
+    } else if (pts.length === 1) {
+      gestureRef.current = {
+        mode: cur.scale > 1 ? "pan" : "maybe",
+        startX: event.clientX, startY: event.clientY,
+        startView: { ...cur },
+        startDist: 0, midX: 0, midY: 0,
+        moved: false,
+      };
+    }
+  };
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const gesture = gestureRef.current;
+    const pts = [...pointersRef.current.values()];
+    const moveFirst = pts[0];
+    const moveSecond = pts[1];
+    if (gesture.mode === "pinch" && pts.length === 2 && moveFirst && moveSecond) {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const dist = Math.max(1, Math.hypot(moveFirst.x - moveSecond.x, moveFirst.y - moveSecond.y));
+      const mid = stagePoint((moveFirst.x + moveSecond.x) / 2, (moveFirst.y + moveSecond.y) / 2);
+      const startMid = stagePoint(gesture.midX, gesture.midY);
+      const target = Math.min(4, Math.max(1, gesture.startView.scale * (dist / gesture.startDist)));
+      const cx = stage.clientWidth / 2;
+      const cy = stage.clientHeight / 2;
+      const contentX = (startMid.x - cx - gesture.startView.x) / gesture.startView.scale;
+      const contentY = (startMid.y - cy - gesture.startView.y) / gesture.startView.scale;
+      const clamped = clampOffset(mid.x - cx - contentX * target, mid.y - cy - contentY * target, target);
+      applyView({ scale: target, x: clamped.x, y: clamped.y }, false);
+    } else if (pts.length === 1) {
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 8) gesture.moved = true;
+      if (gesture.mode === "pan") {
+        const clamped = clampOffset(gesture.startView.x + dx, gesture.startView.y + dy, viewRef.current.scale);
+        applyView({ scale: viewRef.current.scale, x: clamped.x, y: clamped.y }, false);
+      }
+    }
+  };
+  const handlePointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    const cancelled = event.type === "pointercancel";
+    const gesture = gestureRef.current;
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size === 1) {
+      // One finger remains after a pinch: re-base as a fresh drag so its
+      // eventual lift can't register as a tap or make the image jump.
+      const remaining = [...pointersRef.current.values()][0];
+      if (remaining) {
+        gestureRef.current = {
+          mode: viewRef.current.scale > 1 ? "pan" : "maybe",
+          startX: remaining.x, startY: remaining.y,
+          startView: { ...viewRef.current },
+          startDist: 0, midX: 0, midY: 0,
+          moved: true,
+        };
+      }
+      return;
+    }
+    if (pointersRef.current.size > 0) return;
+    gestureRef.current = { ...gesture, mode: "none" };
+    if (cancelled) return;
+    if ((gesture.mode === "maybe" || gesture.mode === "pan") && !gesture.moved) {
+      // A still tap: a second one inside the window toggles the zoom.
+      const now = performance.now();
+      if (lastTapRef.current && now - lastTapRef.current.t < 320) {
+        lastTapRef.current = null;
+        if (viewRef.current.scale > 1.01) resetView(true);
+        else {
+          const point = stagePoint(event.clientX, event.clientY);
+          zoomAt(point.x, point.y, 2.2, true);
+        }
+      } else {
+        lastTapRef.current = { t: now };
+      }
+    } else if (gesture.mode === "maybe" && gesture.moved) {
+      // Unzoomed horizontal swipe changes page.
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+        if (dx < 0) goTo(index + 1);
+        else goTo(index - 1);
+      }
+    }
+  };
+
+  return (
+    <div className="lightbox-backdrop client-doc-zoom" role="dialog" aria-modal="true" aria-label={title}>
+      <div
+        ref={stageRef}
+        className="client-doc-zoom-stage"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
+        <img
+          ref={imgRef}
+          src={`data:image/jpeg;base64,${pages[index]}`}
+          alt={`${title} — page ${index + 1}`}
+          draggable={false}
+          onDragStart={(dragEvent) => dragEvent.preventDefault()}
+          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transition: animating ? "transform .18s ease-out" : "none" }}
+        />
+      </div>
+      <button type="button" className="lightbox-close" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
+      {pages.length > 1 && index > 0 && (
+        <button type="button" className="lightbox-nav lightbox-prev" aria-label={lang === "es" ? "Página anterior" : "Previous page"} onClick={() => goTo(index - 1)}>‹</button>
+      )}
+      {pages.length > 1 && index < pages.length - 1 && (
+        <button type="button" className="lightbox-nav lightbox-next" aria-label={lang === "es" ? "Página siguiente" : "Next page"} onClick={() => goTo(index + 1)}>›</button>
+      )}
+      <div className="client-doc-zoom-bar">
+        <button type="button" aria-label={lang === "es" ? "Alejar" : "Zoom out"} onClick={() => stepZoom(-1)} disabled={view.scale <= 1.001}>−</button>
+        <span>{lang === "es" ? `Página ${index + 1} de ${pages.length}` : `Page ${index + 1} of ${pages.length}`}</span>
+        <button type="button" aria-label={lang === "es" ? "Acercar" : "Zoom in"} onClick={() => stepZoom(1)} disabled={view.scale >= 3.999}>+</button>
+      </div>
+    </div>
+  );
+}
+
 function PdfPageView({ token, lang, title }: { token: string; lang: Lang; title: string }) {
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const pagesQuery = useQuery({
     queryKey: ["client-document-pages", token, lang],
     queryFn: () => api.getDocumentLinkPdfPages({ token, lang }),
@@ -25560,11 +25822,26 @@ function PdfPageView({ token, lang, title }: { token: string; lang: Lang; title:
       {pagesQuery.isPending ? (
         <div className="loading-block" />
       ) : (
-        <div className="pdf-pages" aria-label={title}>
-          {pages.map((page, index) => (
-            <img key={`${token}-${lang}-${index}`} src={`data:image/jpeg;base64,${page}`} alt={`${title} — page ${index + 1}`} />
-          ))}
-        </div>
+        <>
+          <div className="pdf-pages" aria-label={title}>
+            {pages.map((page, index) => (
+              <img key={`${token}-${lang}-${index}`} src={`data:image/jpeg;base64,${page}`} alt={`${title} — page ${index + 1}`} onClick={() => setViewerIndex(index)} />
+            ))}
+          </div>
+          {pages.length > 0 && (
+            <p className="client-doc-zoom-hint">{lang === "es" ? "Toca una página para ampliarla" : "Tap a page to enlarge it"}</p>
+          )}
+        </>
+      )}
+      {viewerIndex !== null && pages[viewerIndex] && (
+        <ClientDocPageViewer
+          pages={pages}
+          index={viewerIndex}
+          title={title}
+          lang={lang}
+          onClose={() => setViewerIndex(null)}
+          onNavigate={setViewerIndex}
+        />
       )}
     </div>
   );
