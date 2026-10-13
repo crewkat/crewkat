@@ -55748,19 +55748,50 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   const docTitle = labels.headline || custom.headline;
   const docNumber = kind === "invoice" && document2.invoiceNumber ? document2.invoiceNumber : document2.id ? `${kind === "quote" ? "EST" : "INV"}${String(document2.id).padStart(4, "0")}` : "";
   const font = document2.font || settings?.defaultDocumentFont || "helvetica";
+  const FONT_SCALE = { s: 0.92, m: 1, l: 1.08, xl: 1.16 }[custom.fontSize];
+  const LINE_FACTOR = { compact: 0.92, comfortable: 1, roomy: 1.12 }[custom.lineSpacing];
+  const F = (size) => size * FONT_SCALE;
+  const descStep = 11 * FONT_SCALE * LINE_FACTOR;
+  const noteStep = 10 * FONT_SCALE * LINE_FACTOR;
+  const metaStep = 13 * FONT_SCALE;
+  const rowTopPad = 11 * FONT_SCALE;
+  const ink = custom.highContrast ? [0, 0, 0] : [24, 32, 30];
+  const dimInk = custom.highContrast ? [38, 43, 41] : [70, 78, 76];
+  const faintInk = custom.highContrast ? [52, 58, 55] : [90, 98, 96];
+  const bandDimInk = custom.highContrast ? [255, 255, 255] : [214, 218, 217];
+  const DARK_SHADE = [17, 24, 39];
+  const mixTo = (base, target, t) => [
+    Math.round(base[0] + (target[0] - base[0]) * t),
+    Math.round(base[1] + (target[1] - base[1]) * t),
+    Math.round(base[2] + (target[2] - base[2]) * t)
+  ];
+  const fillBand = (x, y, bw, bh, base, vertical = false) => {
+    if (custom.colorMode !== "gradient") {
+      doc.setFillColor(base[0], base[1], base[2]);
+      doc.rect(x, y, bw, bh, "F");
+      return;
+    }
+    const end = mixTo(base, DARK_SHADE, 0.54);
+    const steps = 48;
+    for (let i = 0;i < steps; i++) {
+      const c = mixTo(base, end, i / (steps - 1));
+      doc.setFillColor(c[0], c[1], c[2]);
+      if (vertical)
+        doc.rect(x, y + bh * i / steps, bw, bh / steps + 0.75, "F");
+      else
+        doc.rect(x + bw * i / steps, y, bw / steps + 0.75, bh, "F");
+    }
+  };
   const bandH = theme === "bold" ? 72 : 56;
   const inBand = theme === "bold" || theme === "classic";
   if (theme === "bold") {
-    doc.setFillColor(r, g, b);
-    doc.rect(0, 0, w, bandH, "F");
+    fillBand(0, 0, w, bandH, [r, g, b]);
     doc.setTextColor(255, 255, 255);
   } else if (theme === "modern") {
-    doc.setFillColor(r, g, b);
-    doc.rect(0, 0, 12, 792, "F");
+    fillBand(0, 0, 12, 792, [r, g, b], true);
     doc.setTextColor(r, g, b);
   } else if (theme === "classic") {
-    doc.setFillColor(23, 26, 28);
-    doc.rect(0, 0, w, bandH, "F");
+    fillBand(0, 0, w, bandH, [23, 26, 28]);
     doc.setTextColor(255, 255, 255);
   } else
     doc.setTextColor(r, g, b);
@@ -55771,43 +55802,47 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   doc.setFont(font, "bold");
   if (document2.showCompanyInfo && inBand) {
-    doc.setFontSize(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9);
+    doc.setFontSize(F(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9));
     if (custom.showBusinessName)
       doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", w - margin, 22, { align: "right" });
     doc.setFont(font, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(214, 218, 217);
+    doc.setFontSize(F(7));
+    doc.setTextColor(...bandDimInk);
     const infoBits = [settings?.phone, custom.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean);
     if (infoBits.length)
       doc.text(infoBits.join("  \xB7  "), w - margin, 33, { align: "right" });
     if (settings?.address)
       doc.text(settings.address, w - margin, 43, { align: "right" });
   } else if (document2.showCompanyInfo) {
-    doc.setFontSize(11);
-    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(F(11));
+    doc.setTextColor(...ink);
     if (custom.showBusinessName)
       doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", logo ? margin + 50 : margin, 30);
   }
   const titleY = theme === "bold" ? 58 : inBand ? bandH + 26 : 82;
   doc.setFont(font, "bold");
-  doc.setFontSize(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20);
+  doc.setFontSize(F(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20));
   if (theme === "bold")
     doc.setTextColor(255, 255, 255);
   else
-    doc.setTextColor(24, 32, 30);
+    doc.setTextColor(...ink);
   doc.text(docTitle, margin, titleY);
-  doc.setLineWidth(2.5);
-  if (theme === "bold")
-    doc.setDrawColor(255, 255, 255);
-  else
-    doc.setDrawColor(r, g, b);
-  doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+  if (custom.colorMode === "gradient" && theme !== "bold") {
+    fillBand(margin, titleY + 9 - 1.25, 46, 2.5, [r, g, b]);
+  } else {
+    doc.setLineWidth(2.5);
+    if (theme === "bold")
+      doc.setDrawColor(255, 255, 255);
+    else
+      doc.setDrawColor(r, g, b);
+    doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+  }
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(F(8));
   if (theme === "bold")
     doc.setTextColor(255, 255, 255);
   else
-    doc.setTextColor(70, 78, 76);
+    doc.setTextColor(...dimInk);
   if (docNumber)
     doc.text(docNumber, w - margin, titleY, { align: "right" });
   const infoY = titleY + 24;
@@ -55818,31 +55853,31 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   const clientX = margin + clientPad;
   const rightX = w - margin - clientPad;
-  doc.setTextColor(24, 32, 30);
+  doc.setTextColor(...ink);
   doc.setFont(font, "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(F(9));
   doc.text(`${labels.billTo}: ${document2.clientName}`, clientX, infoY);
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(70, 78, 76);
+  doc.setFontSize(F(8));
+  doc.setTextColor(...dimInk);
   const clientSub = [document2.jobType, document2.jobAddress, document2.shippingAddress].filter((s) => s && s.trim()).join("  \xB7  ");
   const clientLines = clientSub ? doc.splitTextToSize(clientSub, (w - margin * 2) * 0.58).slice(0, 3) : [];
   if (clientLines.length)
     doc.text(clientLines, clientX, infoY + 13);
   let ry = infoY;
   doc.setFont(font, "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(24, 32, 30);
+  doc.setFontSize(F(8));
+  doc.setTextColor(...ink);
   if (docNumber) {
     doc.text(`${labels.number}: ${docNumber}`, rightX, ry, { align: "right" });
-    ry += 13;
+    ry += metaStep;
   }
   if (document2.issueDate) {
     doc.setFont(font, "normal");
     doc.text(`${labels.date}: ${formatDocumentDate(document2.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right"
     });
-    ry += 13;
+    ry += metaStep;
   }
   const metaDueDate = kind === "invoice" ? document2.dueDate : document2.expiryDate;
   if (custom.showDueDate && metaDueDate) {
@@ -55850,26 +55885,27 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right"
     });
-    ry += 13;
+    ry += metaStep;
   }
-  let y = Math.max(infoY + 13 + clientLines.length * 10 + 14, ry + 10);
+  let y = Math.max(infoY + 13 + clientLines.length * 10 * FONT_SCALE + 14, ry + 10);
   const PAGE_BOTTOM = 648;
   const drawTableHeaderRow = () => {
     if (theme !== "minimal") {
       if (theme === "classic")
-        doc.setFillColor(23, 26, 28);
+        fillBand(margin, y - 13, w - margin * 2, 20, [23, 26, 28]);
       else if (theme === "bold")
-        doc.setFillColor(r, g, b);
-      else
+        fillBand(margin, y - 13, w - margin * 2, 20, [r, g, b]);
+      else {
         doc.setFillColor(238, 241, 240);
-      doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+        doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+      }
       if (theme === "bold" || theme === "classic")
         doc.setTextColor(255, 255, 255);
       else
-        doc.setTextColor(24, 32, 30);
+        doc.setTextColor(...ink);
     }
     doc.setFont(font, "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(F(9));
     doc.text(labels.description, margin + 8, y);
     if (custom.showQuantityUnitPrice)
       doc.text(lang === "es" ? "Cant. \xD7 Precio" : "Qty \xD7 Price", w - margin - 92, y, { align: "right" });
@@ -55883,15 +55919,15 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.addPage();
     y = 40;
     drawTableHeaderRow();
-    doc.setTextColor(24, 32, 30);
+    doc.setTextColor(...ink);
     doc.setFont(font, "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(F(9));
   };
   ensureSpace(40);
   drawTableHeaderRow();
-  doc.setTextColor(24, 32, 30);
+  doc.setTextColor(...ink);
   doc.setFont(font, "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(F(9));
   let rowIndex = 0;
   for (const item of document2.lineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
@@ -55901,16 +55937,17 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     const runs = parseRichRuns(itemLabel);
     if (suffix)
       runs.push({ text: suffix, bold: false });
+    doc.setFontSize(F(9));
     const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
-    const rowH = Math.max(20, richLines.length * 11 + 6);
+    const rowH = Math.max(20, richLines.length * descStep + 6);
     ensureSpace(rowH);
     if (theme !== "minimal" && rowIndex % 2 === 1) {
       doc.setFillColor(247, 249, 248);
-      doc.rect(margin, y - 11, w - margin * 2, rowH, "F");
+      doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
     }
-    doc.setTextColor(24, 32, 30);
-    doc.setFontSize(9);
-    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * 11, font));
+    doc.setTextColor(...ink);
+    doc.setFontSize(F(9));
+    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
     if (custom.showAmount) {
       doc.setFont(font, "normal");
       doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
@@ -55926,7 +55963,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   if (custom.showSummaryInfo) {
     const panelW = 262;
     const panelX = w - margin - panelW;
-    const rowStep = 15;
+    const rowStep = 15 * FONT_SCALE;
     const paidToDate = kind === "invoice" ? money(document2.paidToDate ?? "0") : 0;
     const lateFee = kind === "invoice" ? money(document2.lateFeeAccrued ?? "0") : 0;
     const totalLabel = kind === "invoice" && lateFee > 0 ? lang === "es" ? "Total con cargo" : "Total with fee" : labels.total;
@@ -55954,8 +55991,8 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.roundedRect(panelX, y, panelW, panelH, 6, 6, "FD");
     let by = y + 21;
     doc.setFont(font, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(F(9));
+    doc.setTextColor(...ink);
     for (const row of rows) {
       doc.text(row.label, panelX + 12, by);
       doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
@@ -55968,17 +56005,16 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       by += 6;
     }
     if (custom.showAmount && theme === "classic") {
-      doc.setFillColor(23, 26, 28);
-      doc.rect(panelX + 6, by - 12, 250, 22, "F");
+      fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
       doc.setTextColor(255, 255, 255);
       doc.setFont(font, "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(F(13));
       doc.text(`${totalLabel}:`, panelX + 16, by + 3);
       doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
       by += 24;
     } else if (custom.showAmount) {
       doc.setFont(font, "bold");
-      doc.setFontSize(12.5);
+      doc.setFontSize(F(12.5));
       doc.setTextColor(r, g, b);
       doc.text(`${totalLabel}:`, panelX + 12, by + 3);
       doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
@@ -55986,7 +56022,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     }
     if (showBalance) {
       doc.setFont(font, "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(F(10));
       if (balanceDue > 0)
         doc.setTextColor(r, g, b);
       else
@@ -56004,21 +56040,21 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     const depAmount = depType === "percent" ? totalNum * depVal / 100 : depVal;
     const depLabel = lang === "es" ? "Anticipo requerido" : "Deposit due";
     const depDetail = depType === "percent" ? ` (${depVal}%)` : "";
-    y += 16;
+    y += 16 * FONT_SCALE;
     doc.setFont(font, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(10));
+    doc.setTextColor(...dimInk);
     doc.text(`${depLabel}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
     const balance = Math.max(0, totalNum - depAmount);
-    y += 14;
+    y += 14 * FONT_SCALE;
     doc.setFont(font, "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(F(10));
     doc.setTextColor(r, g, b);
     doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}: ${usd(balance)}`, w - margin, y, { align: "right" });
   }
   y += 24;
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(F(8));
   const noteSections = [];
   if (document2.showFooterNotes && document2.footnote) {
     noteSections.push(doc.splitTextToSize(document2.footnote, w - margin * 2 - 20));
@@ -56031,7 +56067,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   if (noteSections.length) {
     const noteLineCount = noteSections.reduce((sum, section) => sum + section.length, 0);
-    const notesH = noteLineCount * 10 + (noteSections.length - 1) * 5 + 16;
+    const notesH = noteLineCount * noteStep + (noteSections.length - 1) * 5 + 16;
     ensureSpace(notesH + 14);
     y += 6;
     doc.setFillColor(246, 248, 247);
@@ -56040,11 +56076,11 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.roundedRect(margin, y, w - margin * 2, notesH, 5, 5, "FD");
     let ny = y + 14;
     doc.setFont(font, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
     for (const section of noteSections) {
       doc.text(section, margin + 10, ny);
-      ny += section.length * 10 + 5;
+      ny += section.length * noteStep + 5;
     }
     y += notesH + 8;
   }
@@ -56059,15 +56095,59 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setLineWidth(0.75);
     doc.line(w - margin - 130, sigLineY, w - margin, sigLineY);
     doc.setFont(font, "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(7.5));
+    doc.setTextColor(...dimInk);
     doc.text(lang === "es" ? "Firma de la empresa" : "Business signature", w - margin - 130, sigLineY + 11);
     y = sigLineY + 18;
+  }
+  if (kind === "invoice" && custom.showPaidStamp && document2.status === "paid") {
+    doc.setPage(1);
+    const stampText = labels.paid.toUpperCase();
+    const stampSize = 30 * FONT_SCALE;
+    const cx = margin + 150;
+    const cy = 402;
+    const angleRad = -12 * Math.PI / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    const rot = (dx, dy) => [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+    doc.setFont(font, "bold");
+    doc.setFontSize(stampSize);
+    const charSpace = 3;
+    const boxW = doc.getTextWidth(stampText) + charSpace * stampText.length + 44;
+    const boxH = stampSize + 26;
+    const ring = (inset, lineWidth) => {
+      const hw = boxW / 2 - inset;
+      const hh = boxH / 2 - inset;
+      const pts = [rot(-hw, -hh), rot(hw, -hh), rot(hw, hh), rot(-hw, hh)];
+      doc.setDrawColor(r, g, b);
+      doc.setLineWidth(lineWidth);
+      for (let i = 0;i < 4; i++) {
+        const [x1, y1] = pts[i];
+        const [x2, y2] = pts[(i + 1) % 4];
+        doc.line(x1, y1, x2, y2);
+      }
+    };
+    let stampStateSaved = false;
+    try {
+      doc.saveGraphicsState();
+      doc.setGState(new O2({ opacity: 0.55 }));
+      stampStateSaved = true;
+    } catch {}
+    ring(0, 2.2);
+    ring(4.5, 0.8);
+    doc.setTextColor(r, g, b);
+    const [tx, ty] = rot(0, stampSize * 0.36);
+    doc.text(stampText, tx, ty, { align: "center", angle: -12, charSpace });
+    if (stampStateSaved) {
+      try {
+        doc.restoreGraphicsState();
+      } catch {}
+    }
   }
   const pageCount = doc.getNumberOfPages();
   const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website, settings?.address].filter(Boolean);
   doc.setFont(font, "normal");
-  doc.setFontSize(7);
+  doc.setFontSize(F(7));
   while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" \xB7 ")) > 425)
     footerParts.pop();
   const footerLeft = document2.showCompanyInfo ? footerParts.join(" \xB7 ") : "";
@@ -56075,7 +56155,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setPage(page);
     if (custom.showThankYou) {
       doc.setFont(font, "italic");
-      doc.setFontSize(7.5);
+      doc.setFontSize(F(7.5));
       doc.setTextColor(r, g, b);
       doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 748, { align: "center" });
     }
@@ -56083,8 +56163,8 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setLineWidth(0.5);
     doc.line(margin, 758, w - margin, 758);
     doc.setFont(font, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(90, 98, 96);
+    doc.setFontSize(F(7));
+    doc.setTextColor(...faintInk);
     if (footerLeft)
       doc.text(footerLeft, margin, 770);
     doc.text(`${lang === "es" ? "P\xE1gina" : "Page"} ${page} ${lang === "es" ? "de" : "of"} ${pageCount}`, w - margin, 770, { align: "right" });

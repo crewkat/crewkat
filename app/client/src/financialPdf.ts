@@ -1,7 +1,7 @@
 // Crewkat financial-document PDF builder (estimates + invoices).
 // Extracted from App.tsx so the document layout is unit-testable in bun.
 // Pure layout/drawing code: no React, no browser APIs at module load.
-import { jsPDF } from "jspdf";
+import { jsPDF, GState } from "jspdf";
 import type { api, ApiResponse } from "./api";
 
 export type PdfLang = "en" | "es";
@@ -250,19 +250,62 @@ export async function buildFinancialPdf(
       ? `${kind === "quote" ? "EST" : "INV"}${String(document.id).padStart(4, "0")}`
       : "";
   const font = document.font || settings?.defaultDocumentFont || "helvetica";
+  // Customize wiring (Danny 2026-10-12): fontSize, lineSpacing, highContrast,
+  // colorMode, and showPaidStamp were saved by the Customize UI and parsed
+  // into `custom`, but the generator never read them — the PDF always came
+  // out at the defaults. They are honored below. The middle steps
+  // (fontSize "m", lineSpacing "comfortable") and colorMode "solid" are
+  // exact no-ops vs the historical rendering.
+  const FONT_SCALE = ({ s: 0.92, m: 1, l: 1.08, xl: 1.16 } as const)[custom.fontSize];
+  const LINE_FACTOR = ({ compact: 0.92, comfortable: 1, roomy: 1.12 } as const)[custom.lineSpacing];
+  const F = (size: number) => size * FONT_SCALE;
+  const descStep = 11 * FONT_SCALE * LINE_FACTOR;
+  const noteStep = 10 * FONT_SCALE * LINE_FACTOR;
+  const metaStep = 13 * FONT_SCALE;
+  const rowTopPad = 11 * FONT_SCALE;
+  type Rgb = readonly [number, number, number];
+  // High contrast: body ink goes pure black and the secondary/dim grays
+  // darken substantially (the preview's #101514 vs #47504e treatment). Off =
+  // the historical palette, untouched.
+  const ink: Rgb = custom.highContrast ? [0, 0, 0] : [24, 32, 30];
+  const dimInk: Rgb = custom.highContrast ? [38, 43, 41] : [70, 78, 76];
+  const faintInk: Rgb = custom.highContrast ? [52, 58, 55] : [90, 98, 96];
+  const bandDimInk: Rgb = custom.highContrast ? [255, 255, 255] : [214, 218, 217];
+  const DARK_SHADE: Rgb = [17, 24, 39];
+  const mixTo = (base: Rgb, target: Rgb, t: number): [number, number, number] => [
+    Math.round(base[0] + (target[0] - base[0]) * t),
+    Math.round(base[1] + (target[1] - base[1]) * t),
+    Math.round(base[2] + (target[2] - base[2]) * t),
+  ];
+  // A flat fill in solid mode (identical calls to the old code, so default
+  // PDFs are unchanged); in gradient mode a 48-strip gradient from the base
+  // color to a darker shade of it — the PDF echo of the preview's
+  // linear-gradient(accent, accent mixed 46% with #111827).
+  const fillBand = (x: number, y: number, bw: number, bh: number, base: Rgb, vertical = false) => {
+    if (custom.colorMode !== "gradient") {
+      doc.setFillColor(base[0], base[1], base[2]);
+      doc.rect(x, y, bw, bh, "F");
+      return;
+    }
+    const end = mixTo(base, DARK_SHADE, 0.54);
+    const steps = 48;
+    for (let i = 0; i < steps; i++) {
+      const c = mixTo(base, end, i / (steps - 1));
+      doc.setFillColor(c[0], c[1], c[2]);
+      if (vertical) doc.rect(x, y + (bh * i) / steps, bw, bh / steps + 0.75, "F");
+      else doc.rect(x + (bw * i) / steps, y, bw / steps + 0.75, bh, "F");
+    }
+  };
   const bandH = theme === "bold" ? 72 : 56;
   const inBand = theme === "bold" || theme === "classic";
   if (theme === "bold") {
-    doc.setFillColor(r, g, b);
-    doc.rect(0, 0, w, bandH, "F");
+    fillBand(0, 0, w, bandH, [r, g, b]);
     doc.setTextColor(255, 255, 255);
   } else if (theme === "modern") {
-    doc.setFillColor(r, g, b);
-    doc.rect(0, 0, 12, 792, "F");
+    fillBand(0, 0, 12, 792, [r, g, b], true);
     doc.setTextColor(r, g, b);
   } else if (theme === "classic") {
-    doc.setFillColor(23, 26, 28);
-    doc.rect(0, 0, w, bandH, "F");
+    fillBand(0, 0, w, bandH, [23, 26, 28]);
     doc.setTextColor(255, 255, 255);
   } else doc.setTextColor(r, g, b);
   if (logo) {
@@ -283,35 +326,41 @@ export async function buildFinancialPdf(
   }
   doc.setFont(font, "bold");
   if (document.showCompanyInfo && inBand) {
-    doc.setFontSize(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9);
+    doc.setFontSize(F(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9));
     if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", w - margin, 22, { align: "right" });
     doc.setFont(font, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(214, 218, 217);
+    doc.setFontSize(F(7));
+    doc.setTextColor(...bandDimInk);
     const infoBits = [settings?.phone, custom.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean);
     if (infoBits.length) doc.text(infoBits.join("  ·  "), w - margin, 33, { align: "right" });
     if (settings?.address) doc.text(settings.address, w - margin, 43, { align: "right" });
   } else if (document.showCompanyInfo) {
-    doc.setFontSize(11);
-    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(F(11));
+    doc.setTextColor(...ink);
     if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", logo ? margin + 50 : margin, 30);
   }
   const titleY = theme === "bold" ? 58 : inBand ? bandH + 26 : 82;
   doc.setFont(font, "bold");
-  doc.setFontSize(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20);
+  doc.setFontSize(F(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20));
   if (theme === "bold") doc.setTextColor(255, 255, 255);
-  else doc.setTextColor(24, 32, 30);
+  else doc.setTextColor(...ink);
   doc.text(docTitle, margin, titleY);
   // Phase 2: short accent rule under the document title (white inside the
   // bold theme's accent band, template accent everywhere else).
-  doc.setLineWidth(2.5);
-  if (theme === "bold") doc.setDrawColor(255, 255, 255);
-  else doc.setDrawColor(r, g, b);
-  doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+  if (custom.colorMode === "gradient" && theme !== "bold") {
+    // The accent rule is Minimal's main accent element (it has no band) and
+    // a secondary one on classic/modern — gradient it like the bands.
+    fillBand(margin, titleY + 9 - 1.25, 46, 2.5, [r, g, b]);
+  } else {
+    doc.setLineWidth(2.5);
+    if (theme === "bold") doc.setDrawColor(255, 255, 255);
+    else doc.setDrawColor(r, g, b);
+    doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+  }
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(F(8));
   if (theme === "bold") doc.setTextColor(255, 255, 255);
-  else doc.setTextColor(70, 78, 76);
+  else doc.setTextColor(...dimInk);
   if (docNumber) doc.text(docNumber, w - margin, titleY, { align: "right" });
   const infoY = titleY + 24;
   const clientPad = theme === "modern" ? 12 : 0;
@@ -321,13 +370,13 @@ export async function buildFinancialPdf(
   }
   const clientX = margin + clientPad;
   const rightX = w - margin - clientPad;
-  doc.setTextColor(24, 32, 30);
+  doc.setTextColor(...ink);
   doc.setFont(font, "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(F(9));
   doc.text(`${labels.billTo}: ${document.clientName}`, clientX, infoY);
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(70, 78, 76);
+  doc.setFontSize(F(8));
+  doc.setTextColor(...dimInk);
   const clientSub = [document.jobType, document.jobAddress, document.shippingAddress]
     .filter((s) => s && s.trim())
     .join("  ·  ");
@@ -337,8 +386,8 @@ export async function buildFinancialPdf(
   if (clientLines.length) doc.text(clientLines, clientX, infoY + 13);
   let ry = infoY;
   doc.setFont(font, "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(24, 32, 30);
+  doc.setFontSize(F(8));
+  doc.setTextColor(...ink);
   if (docNumber) {
     doc.text(
       `${labels.number}: ${docNumber}`,
@@ -346,14 +395,14 @@ export async function buildFinancialPdf(
       ry,
       { align: "right" },
     );
-    ry += 13;
+    ry += metaStep;
   }
   if (document.issueDate) {
     doc.setFont(font, "normal");
     doc.text(`${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right",
     });
-    ry += 13;
+    ry += metaStep;
   }
   // Phase 2: the due date lives in the header meta block (it used to print
   // alone under the totals). Estimates show their expiry date here.
@@ -363,9 +412,9 @@ export async function buildFinancialPdf(
     doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
       align: "right",
     });
-    ry += 13;
+    ry += metaStep;
   }
-  let y = Math.max(infoY + 13 + clientLines.length * 10 + 14, ry + 10);
+  let y = Math.max(infoY + 13 + clientLines.length * 10 * FONT_SCALE + 14, ry + 10);
   // Build 0.6 (item 13): paginate long documents. Content must stay above the
   // footer zone (thank-you ~748, footer hairline 758): without page breaks
   // the line items ran off the bottom of the page and the footer printed on
@@ -373,15 +422,17 @@ export async function buildFinancialPdf(
   const PAGE_BOTTOM = 648;
   const drawTableHeaderRow = () => {
     if (theme !== "minimal") {
-      if (theme === "classic") doc.setFillColor(23, 26, 28);
-      else if (theme === "bold") doc.setFillColor(r, g, b);
-      else doc.setFillColor(238, 241, 240);
-      doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+      if (theme === "classic") fillBand(margin, y - 13, w - margin * 2, 20, [23, 26, 28]);
+      else if (theme === "bold") fillBand(margin, y - 13, w - margin * 2, 20, [r, g, b]);
+      else {
+        doc.setFillColor(238, 241, 240);
+        doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+      }
       if (theme === "bold" || theme === "classic") doc.setTextColor(255, 255, 255);
-      else doc.setTextColor(24, 32, 30);
+      else doc.setTextColor(...ink);
     }
     doc.setFont(font, "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(F(9));
     doc.text(labels.description, margin + 8, y);
     if (custom.showQuantityUnitPrice) doc.text(lang === "es" ? "Cant. × Precio" : "Qty × Price", w - margin - 92, y, { align: "right" });
     if (custom.showAmount) doc.text(labels.amount, w - margin - 8, y, { align: "right" });
@@ -396,15 +447,15 @@ export async function buildFinancialPdf(
     // classic/bold themes. Without this reset, every line-item row and the
     // totals drawn after a page break print white-on-white, so the PDF looks
     // empty (header only) even though the text is in the file.
-    doc.setTextColor(24, 32, 30);
+    doc.setTextColor(...ink);
     doc.setFont(font, "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(F(9));
   };
   ensureSpace(40);
   drawTableHeaderRow();
-  doc.setTextColor(24, 32, 30);
+  doc.setTextColor(...ink);
   doc.setFont(font, "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(F(9));
   let rowIndex = 0;
   for (const item of document.lineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
@@ -417,16 +468,19 @@ export async function buildFinancialPdf(
     // alternating rows get a whisper zebra fill on the banded themes.
     const runs = parseRichRuns(itemLabel);
     if (suffix) runs.push({ text: suffix, bold: false });
+    // wrapRichLines measures with the ambient font size — pin it to the
+    // scaled body size first so fontSize/lineSpacing flow into the wrap.
+    doc.setFontSize(F(9));
     const richLines = wrapRichLines(doc, runs, w - margin * 2 - 130, font);
-    const rowH = Math.max(20, richLines.length * 11 + 6);
+    const rowH = Math.max(20, richLines.length * descStep + 6);
     ensureSpace(rowH);
     if (theme !== "minimal" && rowIndex % 2 === 1) {
       doc.setFillColor(247, 249, 248);
-      doc.rect(margin, y - 11, w - margin * 2, rowH, "F");
+      doc.rect(margin, y - rowTopPad, w - margin * 2, rowH, "F");
     }
-    doc.setTextColor(24, 32, 30);
-    doc.setFontSize(9);
-    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * 11, font));
+    doc.setTextColor(...ink);
+    doc.setFontSize(F(9));
+    richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
     if (custom.showAmount) {
       doc.setFont(font, "normal");
       doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
@@ -453,7 +507,7 @@ export async function buildFinancialPdf(
     // accounts for payments already made.
     const panelW = 262;
     const panelX = w - margin - panelW;
-    const rowStep = 15;
+    const rowStep = 15 * FONT_SCALE;
     const paidToDate = kind === "invoice" ? money(document.paidToDate ?? "0") : 0;
     const lateFee = kind === "invoice" ? money(document.lateFeeAccrued ?? "0") : 0;
     const totalLabel =
@@ -482,8 +536,8 @@ export async function buildFinancialPdf(
     doc.roundedRect(panelX, y, panelW, panelH, 6, 6, "FD");
     let by = y + 21;
     doc.setFont(font, "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(24, 32, 30);
+    doc.setFontSize(F(9));
+    doc.setTextColor(...ink);
     for (const row of rows) {
       doc.text(row.label, panelX + 12, by);
       doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
@@ -496,17 +550,16 @@ export async function buildFinancialPdf(
       by += 6;
     }
     if (custom.showAmount && theme === "classic") {
-      doc.setFillColor(23, 26, 28);
-      doc.rect(panelX + 6, by - 12, 250, 22, "F");
+      fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
       doc.setTextColor(255, 255, 255);
       doc.setFont(font, "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(F(13));
       doc.text(`${totalLabel}:`, panelX + 16, by + 3);
       doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
       by += 24;
     } else if (custom.showAmount) {
       doc.setFont(font, "bold");
-      doc.setFontSize(12.5);
+      doc.setFontSize(F(12.5));
       doc.setTextColor(r, g, b);
       doc.text(`${totalLabel}:`, panelX + 12, by + 3);
       doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
@@ -514,7 +567,7 @@ export async function buildFinancialPdf(
     }
     if (showBalance) {
       doc.setFont(font, "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(F(10));
       if (balanceDue > 0) doc.setTextColor(r, g, b);
       else doc.setTextColor(34, 120, 70);
       doc.text(`${labels.balanceDue}:`, panelX + 12, by + 4);
@@ -531,15 +584,15 @@ export async function buildFinancialPdf(
     const depAmount = depType === "percent" ? (totalNum * depVal) / 100 : depVal;
     const depLabel = lang === "es" ? "Anticipo requerido" : "Deposit due";
     const depDetail = depType === "percent" ? ` (${depVal}%)` : "";
-    y += 16;
+    y += 16 * FONT_SCALE;
     doc.setFont(font, "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(10));
+    doc.setTextColor(...dimInk);
     doc.text(`${depLabel}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
     const balance = Math.max(0, totalNum - depAmount);
-    y += 14;
+    y += 14 * FONT_SCALE;
     doc.setFont(font, "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(F(10));
     doc.setTextColor(r, g, b);
     doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}: ${usd(balance)}`, w - margin, y, { align: "right" });
   }
@@ -548,7 +601,7 @@ export async function buildFinancialPdf(
   // panel in the flow. They used to print at fixed positions (y 680/715) on
   // the last page only, where long documents could collide with them.
   doc.setFont(font, "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(F(8));
   const noteSections: string[][] = [];
   if (document.showFooterNotes && document.footnote) {
     noteSections.push(doc.splitTextToSize(document.footnote, w - margin * 2 - 20) as string[]);
@@ -561,7 +614,7 @@ export async function buildFinancialPdf(
   }
   if (noteSections.length) {
     const noteLineCount = noteSections.reduce((sum, section) => sum + section.length, 0);
-    const notesH = noteLineCount * 10 + (noteSections.length - 1) * 5 + 16;
+    const notesH = noteLineCount * noteStep + (noteSections.length - 1) * 5 + 16;
     ensureSpace(notesH + 14);
     y += 6;
     doc.setFillColor(246, 248, 247);
@@ -570,11 +623,11 @@ export async function buildFinancialPdf(
     doc.roundedRect(margin, y, w - margin * 2, notesH, 5, 5, "FD");
     let ny = y + 14;
     doc.setFont(font, "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
     for (const section of noteSections) {
       doc.text(section, margin + 10, ny);
-      ny += section.length * 10 + 5;
+      ny += section.length * noteStep + 5;
     }
     y += notesH + 8;
   }
@@ -589,24 +642,72 @@ export async function buildFinancialPdf(
     doc.setLineWidth(0.75);
     doc.line(w - margin - 130, sigLineY, w - margin, sigLineY);
     doc.setFont(font, "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(70, 78, 76);
+    doc.setFontSize(F(7.5));
+    doc.setTextColor(...dimInk);
     doc.text(lang === "es" ? "Firma de la empresa" : "Business signature", w - margin - 130, sigLineY + 11);
     y = sigLineY + 18;
+  }
+  // Customize wiring: the PAID stamp — invoices only (an accepted estimate
+  // is not a paid document), and only when the invoice is fully paid and the
+  // toggle is on. A rotated double-rule stamp in the accent color, echoing
+  // the preview's .paid-stamp. It sits in the left-center body: the totals
+  // panel owns the right side and amounts are right-aligned, so the stamp
+  // can never cover either. Drawn on page 1, before the footer pass.
+  if (kind === "invoice" && custom.showPaidStamp && document.status === "paid") {
+    doc.setPage(1);
+    const stampText = labels.paid.toUpperCase();
+    const stampSize = 30 * FONT_SCALE;
+    const cx = margin + 150;
+    const cy = 402;
+    const angleRad = (-12 * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    const rot = (dx: number, dy: number): [number, number] => [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+    doc.setFont(font, "bold");
+    doc.setFontSize(stampSize);
+    const charSpace = 3;
+    const boxW = doc.getTextWidth(stampText) + charSpace * stampText.length + 44;
+    const boxH = stampSize + 26;
+    const ring = (inset: number, lineWidth: number) => {
+      const hw = boxW / 2 - inset;
+      const hh = boxH / 2 - inset;
+      const pts = [rot(-hw, -hh), rot(hw, -hh), rot(hw, hh), rot(-hw, hh)];
+      doc.setDrawColor(r, g, b);
+      doc.setLineWidth(lineWidth);
+      for (let i = 0; i < 4; i++) {
+        const [x1, y1] = pts[i]!;
+        const [x2, y2] = pts[(i + 1) % 4]!;
+        doc.line(x1, y1, x2, y2);
+      }
+    };
+    let stampStateSaved = false;
+    try {
+      doc.saveGraphicsState();
+      doc.setGState(new GState({ opacity: 0.55 }));
+      stampStateSaved = true;
+    } catch { /* full-strength stamp still reads fine */ }
+    ring(0, 2.2);
+    ring(4.5, 0.8);
+    doc.setTextColor(r, g, b);
+    const [tx, ty] = rot(0, stampSize * 0.36);
+    doc.text(stampText, tx, ty, { align: "center", angle: -12, charSpace });
+    if (stampStateSaved) {
+      try { doc.restoreGraphicsState(); } catch { /* nothing to restore */ }
+    }
   }
   // Phase 2: a real footer on EVERY page — thank-you line, hairline, then
   // license/contact on the left and Page X of Y on the right.
   const pageCount = doc.getNumberOfPages();
   const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website, settings?.address].filter(Boolean) as string[];
   doc.setFont(font, "normal");
-  doc.setFontSize(7);
+  doc.setFontSize(F(7));
   while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" · ")) > 425) footerParts.pop();
   const footerLeft = document.showCompanyInfo ? footerParts.join(" · ") : "";
   for (let page = 1; page <= pageCount; page++) {
     doc.setPage(page);
     if (custom.showThankYou) {
       doc.setFont(font, "italic");
-      doc.setFontSize(7.5);
+      doc.setFontSize(F(7.5));
       doc.setTextColor(r, g, b);
       doc.text(lang === "es" ? "Gracias por su preferencia" : "Thank you for your business", w / 2, 748, { align: "center" });
     }
@@ -614,8 +715,8 @@ export async function buildFinancialPdf(
     doc.setLineWidth(0.5);
     doc.line(margin, 758, w - margin, 758);
     doc.setFont(font, "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(90, 98, 96);
+    doc.setFontSize(F(7));
+    doc.setTextColor(...faintInk);
     if (footerLeft) doc.text(footerLeft, margin, 770);
     doc.text(`${lang === "es" ? "Página" : "Page"} ${page} ${lang === "es" ? "de" : "of"} ${pageCount}`, w - margin, 770, { align: "right" });
   }
