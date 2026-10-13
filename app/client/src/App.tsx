@@ -14821,7 +14821,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
       <section className="customize-preview-wrap"><div className="customize-preview-card">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></section>
       <aside className="design-panel custom-design-panel" aria-live="polite">
         <div key={tab} className="custom-tab-content">
-          {tab === "template" && <><div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}><Icon><path d="M7 10v11H3V10h4Zm0 9h10a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 10h-5l1-5-2-2-5 7"/></Icon></button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}><Icon><path d="M7 14V3H3v11h4Zm0-9h10a2 2 0 0 1 2 1.6l1 5A2 2 0 0 1 18 14h-5l1 5-2 2-5-7"/></Icon></button></div></div><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><label className="design-font"><span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></>}
+          {tab === "template" && <><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><label className="design-font"><span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></>}
           {tab === "logo" && <div className="logo-custom-grid"><div><strong>{text.logo}</strong><label className="logo-edit-control">{logoPreview ? <img src={logoPreview} alt={text.logo}/> : <span>{text.noLogo}</span>}<i aria-hidden="true"><Icon><path d="m4 20 4.5-1 10-10-3.5-3.5-10 10L4 20ZM13.5 7l3.5 3.5"/></Icon></i><input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={async(e)=>{const file=e.target.files?.[0];if(!file)return;const compressed=await compressImageFile(file,"logo");const data=await fileToBase64(compressed);await api.uploadLogo({filename:compressed.name,contentType:compressed.type as "image/png"|"image/jpeg",dataBase64:data.dataBase64});setLogoPreview(URL.createObjectURL(compressed));setDesign((current)=>({...current,showLogo:true}));await qc.invalidateQueries({queryKey:["settings"]});}}/></label>{checkRow(lang === "es" ? "Mostrar logo" : "Show logo", design.showLogo, (v) => setDesign({ ...design, showLogo: v }))}</div><div><strong>{text.size}</strong><div className="logo-size-list">{(["huge", "big", "medium", "small"] as const).map((size)=><button type="button" key={size} onClick={()=>updateCustom("logoSize",size)}><span>{text[size]}</span>{custom.logoSize===size&&<CheckIcon/>}</button>)}</div></div><div><strong>{text.removeBg}</strong><Switch ariaLabel={text.removeBg} checked={custom.removeLogoBackground} onChange={(v)=>updateCustom("removeLogoBackground",v)}/></div></div>}
           {tab === "color" && <><div className="segmented-control"><button type="button" className={custom.colorMode === "solid" ? "active" : ""} onClick={()=>updateCustom("colorMode","solid")}>{text.solid}</button><button type="button" className={custom.colorMode === "gradient" ? "active" : ""} onClick={()=>updateCustom("colorMode","gradient")}>{text.gradient}</button></div><div className="palette-grid">{palettes.map((color)=><button key={color} type="button" className={design.accentColor.toLowerCase()===color?"active":""} style={{background:color}} aria-label={`${text.color} ${color}`} aria-pressed={design.accentColor.toLowerCase()===color} onClick={()=>setDesign({...design,accentColor:color})}/>)}</div><label className="custom-color-row"><span>{text.custom}</span><input type="color" value={design.accentColor} onChange={(e)=>setDesign({...design,accentColor:e.target.value})}/></label></>}
           {tab === "options" && <div className="custom-options">{optionHeading(text.content,<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>)}{checkRow(text.showQty,custom.showQuantityUnitPrice,(v)=>updateCustom("showQuantityUnitPrice",v))}{checkRow(text.showDiscount,custom.showDiscount,(v)=>{updateCustom("showDiscount",v);setDesign({...design,showDiscountLine:v});})}{checkRow(text.showTax,custom.showTax,(v)=>{updateCustom("showTax",v);setDesign({...design,showTaxLine:v});})}{checkRow(text.showAmount,custom.showAmount,(v)=>updateCustom("showAmount",v))}{optionHeading(text.summary,<Icon><path d="M5 5h14M5 12h14M12 19h7"/></Icon>)}{navRow(text.summaryInfo,"summary")}{checkRow(text.paidStamp,custom.showPaidStamp,(v)=>updateCustom("showPaidStamp",v))}{checkRow(text.businessSignature,custom.showBusinessSignature,(v)=>updateCustom("showBusinessSignature",v))}{checkRow(text.thankYou,custom.showThankYou,(v)=>updateCustom("showThankYou",v))}{optionHeading(text.header,<Icon><path d="M4 6h16M7 10v9M17 10v9M7 14h10"/></Icon>)}{navRow(text.headline,"headline",custom.headline)}{checkRow(text.businessName,custom.showBusinessName,(v)=>{updateCustom("showBusinessName",v);setDesign({...design,showCompanyInfo:v});})}{checkRow(text.shortName,custom.showShortBusinessName,(v)=>updateCustom("showShortBusinessName",v))}{checkRow(text.license,custom.showLicenseNumber,(v)=>updateCustom("showLicenseNumber",v))}{checkRow(text.dueDate,custom.showDueDate,(v)=>updateCustom("showDueDate",v))}{navRow(text.dateFormat,"date",formatDocumentDate("2026-09-27",custom.dateFormat,lang))}</div>}
@@ -14829,6 +14829,11 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
         </div>
         <label className="default-design"><input type="checkbox" checked={saveDefault} onChange={(e)=>setSaveDefault(e.target.checked)}/><span>{text.defaults}</span></label>
         <button className="primary-button apply-design" disabled={saving} onClick={async()=>{setSaving(true);try{await onConfirm({...design,customizeJson:JSON.stringify(custom)},saveDefault);}finally{setSaving(false);}}}>{saving?text.saving:text.save}</button>
+        {/* Design overhaul (Danny 2026-10-12): the "Satisfied with this…?"
+            thumbs prompt moved from above the template picker to below the
+            Apply design button — same feedback mechanism, asked after the
+            design is applied instead of before it is picked. */}
+        <div className="design-feedback"><span>{feedback ? text.thank : text.satisfied}</span><div><button type="button" className={feedback === "up" ? "active" : ""} aria-label={lang === "es" ? "Me gusta" : "Thumbs up"} onClick={() => setFeedback("up")}><Icon><path d="M7 10v11H3V10h4Zm0 9h10a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 10h-5l1-5-2-2-5 7"/></Icon></button><button type="button" className={feedback === "down" ? "active" : ""} aria-label={lang === "es" ? "No me gusta" : "Thumbs down"} onClick={() => setFeedback("down")}><Icon><path d="M7 14V3H3v11h4Zm0-9h10a2 2 0 0 1 2 1.6l1 5A2 2 0 0 1 18 14h-5l1 5-2 2-5-7"/></Icon></button></div></div>
       </aside>
     </div>
     <nav className="customize-tabs" aria-label={text.title}>{tabs.map((item)=><button type="button" key={item.id} className={tab===item.id?"active":""} aria-current={tab===item.id?"page":undefined} onClick={()=>setTab(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>
@@ -16213,8 +16218,16 @@ function InvoicePreview({
         {money(invoice.discountValue) > 0 && <div><span>{t.discount}</span><strong>-{usd(money(invoice.discountValue))}</strong></div>}
         <div><span>{t.tax}</span><strong>{usd(money(invoice.taxValue))}</strong></div>
       </div>
-      <div className="ck-inv-total-bar"><span>{t.total}</span><strong>{usd(money(invoice.totalWithLateFee))}</strong></div>
-      <button type="button" className="ck-inv-pay-btn" onClick={openPaymentSheet}>{invoice.status === "paid" ? `✓ ${t.paid}` : (lang === "es" ? "Marcar como pagada ✓" : "Mark as Paid ✓")}</button>
+      {/* Design overhaul (Danny 2026-10-12): the giant in-page pay bar is
+          gone — the bottom action bar is the only action row (Paid opens the
+          payment sheet). Total / Paid / Balance now sit here as three slim
+          tiles directly under the line items. Amounts use FitLabel:
+          shrink-to-fit, never truncated. */}
+      <div className="ck-money-tiles">
+        <div className="ck-money-tile is-total"><span>{t.total}</span><FitLabel as="strong" text={usd(money(invoice.totalWithLateFee))} /></div>
+        <div className="ck-money-tile"><span>{t.paidToDate}</span><FitLabel as="strong" text={usd(Number(invoice.paidToDate))} /></div>
+        <div className="ck-money-tile"><span>{t.balanceRemaining}</span><FitLabel as="strong" text={usd(Number(invoice.balanceRemaining))} /></div>
+      </div>
       <button type="button" className="ck-btn-sm ck-btn-ghost" onClick={() => setFullScreen(true)}>{t.previewPdf}</button>
       <div className="ck-inv-links">
         <button onClick={() => invoice.clientId ? setScreen({ name: "client", clientId: invoice.clientId }) : setScreen({ name: "clients" })}>{invoice.clientName}</button>
@@ -16223,14 +16236,17 @@ function InvoicePreview({
       </div>
       {signature.data?.signature && <small className="signed-label"><CheckIcon />{lang === "es" ? "Firmada por" : "Signed by"} {signature.data.signature.signerName}</small>}
     </section>
-    <button className="primary-button send-document" disabled={!blob} onClick={sendInvoice}><ShareIcon/>{lang==="es"?"Enviar factura":"Send invoice"}</button>
+    {/* Design overhaul (Danny 2026-10-12): the full-width in-page Send
+        button is gone — Send lives in the bottom action bar only. Page
+        order: summary → client link → payments → attachments → recurring →
+        activity. */}
     <DocumentLinkPanel lang={lang} kind="invoice" id={invoice.id} />
-    <DocumentAttachmentsRow lang={lang} docType="invoice" docId={invoice.id} onOpen={() => setScreen({ name: "invoiceAttachments", invoiceId: invoice.id })} />
     <section className="payment-section" aria-label={t.partialPayments}>
-      <div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div>
+      <h3 className="payment-section-title">{t.partialPayments}</h3>
       {invoice.payments.filter((payment)=>payment.note!=="__paid_toggle__").map((payment)=><div className="payment-row" key={payment.id}><span><strong>{usd(money(payment.amount))}</strong><small>{formatDate(payment.paymentDate,lang)}{payment.method?` · ${payment.method}`:""}</small></span></div>)}
       <button className="secondary-button payment-record-button" onClick={openPaymentSheet}>{t.recordPayment}</button>
     </section>
+    <DocumentAttachmentsRow lang={lang} docType="invoice" docId={invoice.id} onOpen={() => setScreen({ name: "invoiceAttachments", invoiceId: invoice.id })} />
     <details className="action-details document-details"><summary>{t.recurring}{isPremium ? null : <span className="pro-badge">PRO</span>}</summary>{isPremium ? <><div className="recurring-subsection"><h4>{lang==="es"?"Manual":"Manual"}</h4><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></div><div className="recurring-subsection"><h4>{lang==="es"?"Automática":"Automatic"}</h4><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></div></> : <p className="privacy-note">{lang==="es"?"Las facturas recurrentes son una función Pro.":"Recurring invoices are a Pro feature."} <button type="button" className="text-button" onClick={()=>setScreen({name:"upgrade"})}>{lang==="es"?"Ver planes":"See plans"}</button></p>}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
@@ -26169,13 +26185,24 @@ function DocumentLinkPanel({
   };
   return (
     <details className="doc-link-panel">
-      <summary>
-        🔗 {t.clientLink}
-        {link && link.viewCount > 0 ? (
-          <> · <SeenIcon size={11} /> {t.viewed}</>
-        ) : (
-          ""
-        )}
+      {/* Design overhaul (Danny 2026-10-12): the old summary wrapped into
+          three ragged lines ("Client link ·" / ✓ alone / "Viewed" as a big
+          heading). One clean row now: link icon + label on the left, the
+          viewed state as a small chip on the right. The details body keeps
+          the existing view/copy/share/revoke behavior. */}
+      <summary className="doc-link-summary">
+        <span className="doc-link-title">
+          <Icon size={17}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></Icon>
+          {t.clientLink}
+        </span>
+        <span className="doc-link-side">
+          {link && (link.viewCount > 0 ? (
+            <span className="ck-pill ck-pill-paid"><SeenIcon size={10} /> {t.viewed}</span>
+          ) : (
+            <span className="ck-pill ck-pill-draft">{t.notViewed}</span>
+          ))}
+          <span className="doc-link-chevron" aria-hidden="true">▾</span>
+        </span>
       </summary>
       <div className="doc-link-body">
         <p className="dim">{t.clientLinkIntro}</p>

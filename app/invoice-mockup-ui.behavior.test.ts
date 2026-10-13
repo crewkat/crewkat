@@ -60,14 +60,19 @@ describe("invoice list compact rows", () => {
 });
 
 describe("invoice detail mockup layout", () => {
-  test("detail has the mockup header, items, totals, TOTAL bar, pay button", () => {
+  test("detail has the mockup header, items, totals, and money tiles", () => {
     expect(APP).toContain("ck-invoice-detail");
     expect(APP).toContain("ck-inv-number");
     expect(APP).toContain("INVOICE #{invoice.invoiceNumber.replace");
     expect(APP).toContain("ck-inv-items");
     expect(APP).toContain("ck-inv-totals");
-    expect(APP).toContain("ck-inv-total-bar");
-    expect(APP).toContain("ck-inv-pay-btn");
+    // Design overhaul (Danny approved 2026-10-12): the full-bleed TOTAL bar
+    // and the giant in-page pay button are retired — Total / Paid / Balance
+    // are three slim tiles now, and the bottom action bar is the only
+    // action row.
+    expect(APP).toContain("ck-money-tiles");
+    expect(APP).not.toContain("ck-inv-total-bar");
+    expect(APP).not.toContain("ck-inv-pay-btn");
   });
 
   test("pencil edit icon opens the financial editor", () => {
@@ -82,7 +87,9 @@ describe("invoice detail mockup layout", () => {
 
   test("mark-paid flow goes through the payment sheet", () => {
     expect(APP).toContain("onClick={openPaymentSheet}");
-    expect(APP).toContain("Mark as Paid");
+    // The action bar's Paid button (label "Mark paid" when unpaid) opens the
+    // same payment sheet the retired in-page pay button used to open.
+    expect(APP).toContain("Mark paid");
   });
 });
 

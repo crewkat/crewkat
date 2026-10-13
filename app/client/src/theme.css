@@ -582,7 +582,8 @@ fieldset { padding: 0; border: 0; }
 .payment-summary div { min-width:0; display:grid; gap:4px; padding:12px 8px; background:var(--surface); border-radius:9px; }
 .payment-summary span { color:var(--dim); font-size:11px; font-weight:750; }
 .payment-summary strong { overflow:hidden; text-overflow:ellipsis; font-size:15px; }
-.payment-section { margin: 18px 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--card, transparent); }
+.payment-section { margin: 18px 0; padding: 16px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
+.payment-section-title { margin: 0 0 6px; font-size: 13px; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; color: var(--dim); }
 .payment-section .payment-summary { margin: 0 0 12px; }
 .payment-section .payment-row { min-height: 0; padding: 10px 2px; }
 .payment-record-button { width: 100%; margin-top: 8px; }
@@ -1792,8 +1793,15 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* Secure client document links */
 .viewed-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--dim); font-size: 11px; font-weight: 700; }
 .viewed-badge.is-viewed { background: #e5f3ec; color: #1f6b4a; }
-.doc-link-panel { margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.doc-link-panel { margin: 12px 0; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
 .doc-link-panel summary { padding: 12px 14px; font-weight: 800; cursor: pointer; list-style: none; }
+.doc-link-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.doc-link-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14.5px; }
+.doc-link-title svg { color: var(--accent); flex: none; }
+.doc-link-side { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.doc-link-side .ck-pill { gap: 4px; }
+.doc-link-chevron { display: inline-block; color: var(--dim); font-size: 12px; transition: transform 0.15s ease; }
+.doc-link-panel[open ] .doc-link-chevron { transform: rotate(180deg); }
 .doc-link-panel summary::-webkit-details-marker { display: none; }
 .doc-link-body { display: grid; gap: 10px; padding: 0 14px 14px; }
 .doc-link-body p { margin: 0; }
@@ -2025,15 +2033,15 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .customize-tabs button{min-height:58px;display:grid;place-items:center;align-content:center;gap:3px;padding:3px;border-top:0!important;border-radius:8px;}
 .customize-tabs button.active{background:color-mix(in srgb,var(--accent) 10%,transparent);}
 .customize-tabs svg{width:21px;height:21px;}
-.design-feedback{margin-bottom:12px;padding:0 0 10px;border:0;border-bottom:1px solid var(--border);font-size:13px;font-weight:750;}
+.design-feedback{margin:14px 0 0;padding:12px 0 0;border:0;border-top:1px solid var(--border);font-size:13px;font-weight:750;}
 .design-feedback button{display:grid;place-items:center;padding:0;color:var(--dim);}
 .design-feedback button.active{color:var(--accent);}
 .design-feedback svg{width:19px;height:19px;}
 .template-carousel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px;}
 .template-carousel>button{min-width:0;display:grid;gap:7px;padding:7px;border:2px solid transparent;border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 2px 10px color-mix(in srgb,#000 7%,transparent);}
 .template-carousel>button.active{border-color:var(--accent);}
-.template-paper{position:relative;height:112px;overflow:hidden;background:#e6e9e8;}
-.template-paper>.quote-paper{position:absolute;left:50%;top:3px;width:612px;min-height:760px;margin:0;transform:translateX(-50%) scale(.145);transform-origin:top center;pointer-events:none;}
+.template-paper{position:relative;height:200px;overflow:hidden;background:#e6e9e8;}
+.template-paper>.quote-paper{position:absolute;left:50%;top:3px;width:612px;min-height:760px;margin:0;transform:translateX(-50%) scale(.24);transform-origin:top center;pointer-events:none;}
 .template-carousel strong{font-size:12px;}
 .design-font{padding:12px;border-top:1px solid var(--border);background:var(--surface);}
 .design-font>span,.logo-custom-grid>div>strong{font-size:13px;}
@@ -2087,6 +2095,12 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .quote-paper.customize-font-s{--paper-font-size:10.5px}.quote-paper.customize-font-m{--paper-font-size:12px}.quote-paper.customize-font-l{--paper-font-size:13.5px}.quote-paper.customize-font-xl{--paper-font-size:15px}.quote-paper.spacing-compact{--paper-line-height:1.18}.quote-paper.spacing-comfortable{--paper-line-height:1.4}.quote-paper.spacing-roomy{--paper-line-height:1.65}.quote-paper.soft-contrast{color:#47504e}.quote-paper.high-contrast{color:#101514}.quote-paper.color-gradient.theme-bold .quote-paper-band,.quote-paper.color-gradient.theme-bold .quote-line.heading,.quote-paper.color-gradient.theme-bold .document-totals .grand-total{background:linear-gradient(125deg,var(--quote-accent),color-mix(in srgb,var(--quote-accent) 46%,#111827));}.paper-logo{width:var(--logo-size);height:calc(var(--logo-size) * .7);display:grid;place-items:center;overflow:hidden;border-radius:4px;background:#fff;}.paper-logo.transparent{background:transparent;}.quote-paper-band .paper-logo img{width:100%;height:100%;object-fit:contain;}.quote-paper-client small{display:block}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 95px 88px}.quote-paper-lines.hide-amount .quote-line{grid-template-columns:minmax(0,1fr) 95px}.quote-paper-lines:not(.with-quantity).hide-amount .quote-line{grid-template-columns:1fr}.line-quantity{text-align:right;color:#5d6866}.paid-stamp{position:absolute;right:28px;top:112px;padding:4px 10px;border:3px double var(--quote-accent);color:var(--quote-accent);font-weight:900;letter-spacing:.12em;transform:rotate(-7deg)}.quote-paper{position:relative}.balance-due{font-weight:800}.paper-signature{width:170px;display:grid;gap:2px;margin:14px 0 0 auto;border-top:1px solid #cfd4d2;text-align:center}.paper-signature img{width:100%;height:55px;object-fit:contain}.paper-signature small{color:#5d6866}.paper-thank-you{text-align:center;color:var(--quote-accent);font-weight:800;margin:20px 0 2px;}
 @media(min-width:800px){.customize-workspace{display:grid;grid-template-columns:minmax(0,1fr) 390px;overflow:hidden}.customize-preview-wrap{overflow:hidden;padding:20px}.customize-preview-card{height:calc(100vh - 154px);max-height:760px}.custom-design-panel{overflow:auto;padding:18px 18px 100px;border-left:1px solid var(--border);background:var(--surface)}.customize-tabs{grid-column:1/-1}.template-carousel{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:430px){.customize-preview-card{height:min(50vh,400px)}.palette-grid{grid-template-columns:repeat(5,40px);gap:7px}.palette-grid button{width:38px;height:38px}.label-grid{grid-template-columns:1fr}.quote-paper-lines.with-quantity .quote-line{grid-template-columns:minmax(0,1fr) 84px 72px}.customize-tabs button{font-size:9px}}
+/* Design overhaul (Danny 2026-10-12): on phones the customize workspace
+   scrolls as one column, so the document preview pins as a sticky MINI
+   preview at the top while the Template/Logo/Color/Options/Info panel
+   scrolls underneath it. Desktop (>=800px) keeps the side-by-side layout
+   where the full preview is always visible — no pinning needed there. */
+@media(max-width:799px){.customize-preview-wrap{position:sticky;top:0;z-index:6;background:color-mix(in srgb,var(--bg) 94%,var(--border));box-shadow:0 12px 18px -14px rgba(23,26,28,.45)}.customize-preview-card{height:min(30vh,250px)}}
 @media(prefers-reduced-motion:reduce){.custom-tab-content,.customize-sheet{animation:none}.customize-sheet-backdrop,.customize-sheet-backdrop .customize-sheet{transition:none}}
 
 /* Jobs hub — compact, touch-first rows and the shared animated sheet pattern. */
@@ -3552,7 +3566,7 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .document-tap.ck-invoice-row .row-actions { grid-column: 1 / -1; margin-top: 2px; flex-wrap: nowrap; }
 
 /* Invoice detail: mockup layout */
-.ck-invoice-detail { display: grid; gap: 10px; padding: 14px; margin: 12px 0 16px; }
+.ck-invoice-detail { display: grid; gap: 10px; padding: 14px; margin: 12px 0 16px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
 .ck-inv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .ck-inv-head > div { display: grid; gap: 2px; min-width: 0; }
 .ck-inv-label { font-size: 11px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
@@ -3571,13 +3585,26 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .ck-inv-totals > div { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
 .ck-inv-totals span { color: var(--dim); }
 .ck-inv-totals strong { font-weight: 750; }
-.ck-inv-total-bar { display: flex; justify-content: space-between; align-items: center; margin: 0 -14px; padding: 10px 14px; background: var(--accent); color: var(--accent-ink); font-weight: 900; }
-.ck-inv-total-bar span { font-size: 13px; letter-spacing: .05em; }
-.ck-inv-total-bar strong { font-size: 17px; }
-.ck-inv-pay-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 15px; font-weight: 900; cursor: pointer; }
-.ck-inv-pay-btn:active { transform: scale(.99); }
+/* Design overhaul (Danny 2026-10-12): the full-bleed orange total bar and
+   the giant in-page pay button are retired. Total / Paid to date / Balance
+   remaining are three slim stat tiles under the line items; the Total tile
+   carries the accent tint. Amounts render through FitLabel (shrink-to-fit,
+   never truncated), so the tile value just needs min-width:0 + nowrap. */
+.ck-money-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ck-money-tile { display: grid; gap: 3px; min-width: 0; padding: 10px 9px; border-radius: 12px; background: var(--surface-2); }
+.ck-money-tile span { font-size: 10.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--dim); line-height: 1.25; }
+.ck-money-tile strong { font-size: 15.5px; font-weight: 850; line-height: 1.2; }
+.ck-money-tile.is-total { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.ck-money-tile.is-total strong { color: color-mix(in srgb, var(--accent) 82%, var(--text)); }
 .ck-invoice-detail .ck-btn-ghost { justify-self: center; }
-@media (prefers-reduced-motion: reduce) { .ck-btn-sm:active, .ck-inv-pay-btn:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ck-btn-sm:active { transform: none; } }
+/* Design overhaul (Danny 2026-10-12), same pass: the rest of the document
+   detail pages join the Tools floating-card language — soft two-layer
+   shadow, whisper border, 16px rounding. Scoped to the document pages so
+   other screens using these shared classes stay untouched. */
+.financial-detail-page .attachment-row { border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); padding: 13px 14px; }
+.action-details.document-details, .action-details.timeline-details, .action-details.version-details { border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); }
+.document-detail-summary { background: var(--surface); border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 16px; box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); padding: 14px; margin: 12px 0 14px; }
 
 /* ---- Build0.3 dogfood batch (2026-09-30) ---- */
 /* 1: visible resize grip on invoice description textareas */
