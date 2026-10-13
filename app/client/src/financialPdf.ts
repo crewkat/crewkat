@@ -337,13 +337,36 @@ export async function buildFinancialPdf(
   } else doc.setTextColor(r, g, b);
   if (logo) {
     try {
+      // Aspect-preserved draw (Danny 2026-10-12): the preset box is ~1.6:1,
+      // and the old fixed-box draw stretched any other aspect into it —
+      // his roughly square Stallions logo rendered squished wide/short in
+      // the band. Scale the image to FIT INSIDE the box (contain) using
+      // its intrinsic pixel size, left-aligned at the box's x and
+      // vertically centered in the box. A logo already at the box's aspect
+      // gets byte-identical geometry; if the intrinsic size can't be read,
+      // fall back to the old fixed box.
+      const boxW = { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize];
+      const boxH = { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize];
+      const boxY = inBand ? 12 : 18;
+      let drawW = boxW;
+      let drawH = boxH;
+      try {
+        const props = doc.getImageProperties(logo);
+        if (props.width > 0 && props.height > 0) {
+          const scale = Math.min(boxW / props.width, boxH / props.height);
+          drawW = props.width * scale;
+          drawH = props.height * scale;
+        }
+      } catch {
+        /* intrinsic size unavailable — fixed box */
+      }
       doc.addImage(
         logo,
         logo.startsWith("data:image/png") ? "PNG" : "JPEG",
         margin,
-        inBand ? 12 : 18,
-        { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize],
-        { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize],
+        boxY + (boxH - drawH) / 2,
+        drawW,
+        drawH,
         undefined,
         "FAST",
       );

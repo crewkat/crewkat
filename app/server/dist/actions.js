@@ -55815,7 +55815,20 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setTextColor(r, g, b);
   if (logo) {
     try {
-      doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", margin, inBand ? 12 : 18, { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize], { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize], undefined, "FAST");
+      const boxW = { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize];
+      const boxH = { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize];
+      const boxY = inBand ? 12 : 18;
+      let drawW = boxW;
+      let drawH = boxH;
+      try {
+        const props = doc.getImageProperties(logo);
+        if (props.width > 0 && props.height > 0) {
+          const scale = Math.min(boxW / props.width, boxH / props.height);
+          drawW = props.width * scale;
+          drawH = props.height * scale;
+        }
+      } catch {}
+      doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", margin, boxY + (boxH - drawH) / 2, drawW, drawH, undefined, "FAST");
     } catch {}
   }
   doc.setFont(font, "bold");
