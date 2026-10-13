@@ -89,23 +89,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Screens with the floating pill nav need enough bottom clearance that the last
    row can scroll fully into view. Pill footprint ≈ 84-96px above the safe area. */
 .app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-.app-header { position: sticky; top: calc(10px + env(safe-area-inset-top)); z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-bottom: 10px; padding: 4px 10px; }
-/* Floating header card (Danny 2026-10-12, supersedes the full-frost slab
-   from earlier the same day): the frost spanned the page column with
-   square corners and a hard bottom edge — "either extend the sides to the
-   edge or float the sides and bottom... Make it look good." The header now
-   floats like the bottom tab bar and the floating document action bar:
-   the frost lives on a ::before CARD (18px radius, the bars' 1px
-   color-mix(var(--border) 62%) border, and var(--shadow-soft) — the
-   two-layer shadow the bottom bar itself cascades to) clipped to the
-   rounded shape, and the header element is inset by its sticky top
-   (10px + safe-area, mirroring the bottom bar's 8px + safe-area float)
-   with a 10px flow gap below, so content scrolls behind and around the
-   card. The frost recipe is unchanged (16px blur + saturate over the
-   95% → 88% --bg tint) and the title/buttons stay fully opaque above the
-   layer. The b7b656a whisper hairline is gone: the card's border + shadow
-   define the edge. pointer-events:none: the layer is visual only. */
-.app-header::before, .intelligence-page .page-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 95%, transparent), color-mix(in srgb, var(--bg) 88%, transparent)); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); box-shadow: var(--shadow-soft); }
+.app-header { position: sticky; top: calc(8px + env(safe-area-inset-top)); z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-inline: -8px; margin-bottom: 8px; padding: 4px 10px; }
+/* Header BAR (Danny 2026-10-12 late, supersedes the same-day floating
+   CARD): "make that header rectangle slightly floating. Defined but
+   frosted slight see thru." So: a rectangular bar, slightly floating —
+   the element bleeds 8px past the page column on each side (16px page
+   padding → the bar's edges sit ~8px from the screen edge on phones),
+   sticky top 8px + safe-area, 8px flow gap below. DEFINED: the ::before
+   layer carries a full-strength 1px var(--border) edge and
+   var(--shadow-soft), so the boundary reads at a glance against any
+   content. FROSTED, SLIGHT SEE-THRU: a UNIFORM tint — var(--bg) at 84%,
+   no gradient, no melt — over an 18px backdrop blur + saturate, so
+   content behind the bar shows only as soft blurred shapes, never
+   readable text. Modest 12px radius: a bar, not a pill/card. The
+   title/buttons stay fully opaque above the layer.
+   pointer-events:none: the layer is visual only. */
+.app-header::before, .intelligence-page .page-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); box-shadow: var(--shadow-soft); }
 .app-header h1 { margin: 0; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
 .app-brand-lockup img { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 9px; object-fit: cover; }
@@ -1478,7 +1477,7 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 @media (min-width:760px) { .pro-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); } .pro-directory > button { border:0; background:var(--bg); } }
 @media (max-width:390px) { .app-header { grid-template-columns:minmax(42px,auto) minmax(0,1fr) minmax(42px,auto); } .header-actions { gap:3px; } .pro-workspace-launch { grid-template-columns:52px minmax(0,1fr) 18px; padding-inline:10px; } .pro-launch-mark { width:50px; height:50px; } }
 
-.intelligence-page .page-header { position:sticky; top:calc(10px + env(safe-area-inset-top)); z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-bottom:10px; padding:4px 10px; }
+.intelligence-page .page-header { position:sticky; top:calc(8px + env(safe-area-inset-top)); z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-inline:-8px; margin-bottom:8px; padding:4px 10px; }
 .intelligence-page .page-header h1 { margin:0; overflow:hidden; font:700 22px/1 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 
 
@@ -1572,9 +1571,10 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 .market-photo-picker small { overflow-wrap:anywhere; color:var(--dim); font-size:12px; line-height:1.4; }
 .marketplace-detail { max-width:720px; }
 /* build 3.0 item 3: listing-detail sub-header spanned edge to edge.
-   Floating-card pass (2026-10-12): the bleed is removed — the detail
-   header floats inset to the page column like every other .app-header,
-   so no margin/padding override remains here. */
+   The edge-to-edge bleed stays removed — the detail header is a plain
+   .app-header and follows the shared header-bar treatment (slight
+   float, defined frosted bar) like every other screen, so no
+   margin/padding override remains here. */
 .market-detail-gallery { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin:0 -16px; background:var(--surface-2); }
 .market-detail-photo { padding:0; border:0; background:none; cursor:pointer; min-width:0; transition:transform .12s ease, opacity .12s ease; }
 .market-detail-photo:active { transform:scale(.98); }
@@ -4719,8 +4719,8 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 :root[data-theme="light"] .page.marketplace-page .app-header::before,
 :root[data-theme="light"] .page.marketplace-thread .app-header::before,
 :root[data-theme="light"] .page.marketplace-detail .app-header::before,
-:root[data-theme="light"] .page.marketplace-form-page .app-header::before { background:linear-gradient(to bottom, rgba(255,255,255,.95), rgba(255,255,255,.88)); }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header::before, :root:not([data-theme]) .page.marketplace-thread .app-header::before, :root:not([data-theme]) .page.marketplace-detail .app-header::before, :root:not([data-theme]) .page.marketplace-form-page .app-header::before { background:linear-gradient(to bottom, rgba(255,255,255,.95), rgba(255,255,255,.88)); } }
+:root[data-theme="light"] .page.marketplace-form-page .app-header::before { background:rgba(255,255,255,.84); }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header::before, :root:not([data-theme]) .page.marketplace-thread .app-header::before, :root:not([data-theme]) .page.marketplace-detail .app-header::before, :root:not([data-theme]) .page.marketplace-form-page .app-header::before { background:rgba(255,255,255,.84); } }
 
 /* --- 5c. Thread composer: bottom nav is hidden on marketplaceThread; anchor the composer --- */
 .app-shell.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
