@@ -89,18 +89,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Screens with the floating pill nav need enough bottom clearance that the last
    row can scroll fully into view. Pill footprint ≈ 84-96px above the safe area. */
 .app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-.app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; padding-top: max(6px, env(safe-area-inset-top)); }
-/* Full frost (Danny 2026-10-12, supersedes the frosted fade tried earlier
-   the same day): the melt-to-transparent bottom edge left the title zone
-   exposed over busy photo content scrolling beneath (Marketplace grid) —
-   "make the header full frost, it fades at the center." The frost lives on
-   a ::before layer so the header's title/buttons stay fully opaque, and it
-   now covers the header's FULL height: 16px backdrop blur + saturate over
-   a --bg tint that stays substantially opaque top to bottom (a subtle
-   95% → 88% vertical gradient, never approaching transparency). A whisper
-   hairline on the layer's bottom edge gives the bar a clean, defined end
-   again. pointer-events:none: the layer is visual only. */
-.app-header::before, .intelligence-page .page-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 95%, transparent), color-mix(in srgb, var(--bg) 88%, transparent)); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent); }
+.app-header { position: sticky; top: calc(10px + env(safe-area-inset-top)); z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-bottom: 10px; padding: 4px 10px; }
+/* Floating header card (Danny 2026-10-12, supersedes the full-frost slab
+   from earlier the same day): the frost spanned the page column with
+   square corners and a hard bottom edge — "either extend the sides to the
+   edge or float the sides and bottom... Make it look good." The header now
+   floats like the bottom tab bar and the floating document action bar:
+   the frost lives on a ::before CARD (18px radius, the bars' 1px
+   color-mix(var(--border) 62%) border, and var(--shadow-soft) — the
+   two-layer shadow the bottom bar itself cascades to) clipped to the
+   rounded shape, and the header element is inset by its sticky top
+   (10px + safe-area, mirroring the bottom bar's 8px + safe-area float)
+   with a 10px flow gap below, so content scrolls behind and around the
+   card. The frost recipe is unchanged (16px blur + saturate over the
+   95% → 88% --bg tint) and the title/buttons stay fully opaque above the
+   layer. The b7b656a whisper hairline is gone: the card's border + shadow
+   define the edge. pointer-events:none: the layer is visual only. */
+.app-header::before, .intelligence-page .page-header::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 95%, transparent), color-mix(in srgb, var(--bg) 88%, transparent)); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); box-shadow: var(--shadow-soft); }
 .app-header h1 { margin: 0; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
 .app-brand-lockup img { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 9px; object-fit: cover; }
@@ -1473,7 +1478,7 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 @media (min-width:760px) { .pro-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); } .pro-directory > button { border:0; background:var(--bg); } }
 @media (max-width:390px) { .app-header { grid-template-columns:minmax(42px,auto) minmax(0,1fr) minmax(42px,auto); } .header-actions { gap:3px; } .pro-workspace-launch { grid-template-columns:52px minmax(0,1fr) 18px; padding-inline:10px; } .pro-launch-mark { width:50px; height:50px; } }
 
-.intelligence-page .page-header { position:sticky; top:0; z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; padding-top:max(6px,env(safe-area-inset-top)); }
+.intelligence-page .page-header { position:sticky; top:calc(10px + env(safe-area-inset-top)); z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-bottom:10px; padding:4px 10px; }
 .intelligence-page .page-header h1 { margin:0; overflow:hidden; font:700 22px/1 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 
 
@@ -1566,9 +1571,10 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 .market-price-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .market-photo-picker small { overflow-wrap:anywhere; color:var(--dim); font-size:12px; line-height:1.4; }
 .marketplace-detail { max-width:720px; }
-/* build 3.0 item 3: listing-detail sub-header spans edge to edge. */
-.marketplace-detail .app-header { margin:0 -16px; padding-inline:16px; }
-@media (min-width:720px) { .marketplace-detail .app-header { margin:0 -28px; padding-inline:28px; } }
+/* build 3.0 item 3: listing-detail sub-header spanned edge to edge.
+   Floating-card pass (2026-10-12): the bleed is removed — the detail
+   header floats inset to the page column like every other .app-header,
+   so no margin/padding override remains here. */
 .market-detail-gallery { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin:0 -16px; background:var(--surface-2); }
 .market-detail-photo { padding:0; border:0; background:none; cursor:pointer; min-width:0; transition:transform .12s ease, opacity .12s ease; }
 .market-detail-photo:active { transform:scale(.98); }
