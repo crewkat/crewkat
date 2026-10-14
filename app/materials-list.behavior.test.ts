@@ -128,6 +128,7 @@ const appTsx = await readFile(join("client", "src", "App.tsx"), "utf8");
 check("checklist saves through the synced action", appTsx.includes("api.saveQuoteMaterials"));
 check("checklist no longer persists to localStorage", !appTsx.includes("crewkat-materials-"));
 check("text prefill parser exists", appTsx.includes("parseMaterialsFromLines"));
+check("small copy-list button is wired", appTsx.includes("materials-copy-btn") && appTsx.includes("copyList"));
 check("checklist receives the quote's materials", appTsx.includes("materials={quote.materials ?? []}"));
 check("line-item edit sheet exists", appTsx.includes("function LineItemEditSheet"));
 check("all three editors render collapsed item cards", (appTsx.match(/doc-line-card collapsed/g) ?? []).length >= 2 && appTsx.includes("invoice-line-card doc-line-card collapsed"));

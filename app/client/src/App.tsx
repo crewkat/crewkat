@@ -15213,6 +15213,11 @@ function MaterialsChecklist({ lang, quoteId, materials, lineItems }: { lang: Lan
     save.mutate(next);
   };
   const prefill = () => { if (!suggested.length) return; setItems(suggested); setOpen(true); save.mutate(suggested); };
+  const [copied, setCopied] = useState(false);
+  const copyList = async () => {
+    const text = items.map((m) => `${m.checked ? "\u2713 " : ""}${m.name}${m.qty || m.unit ? ` - ${[m.qty, m.unit].filter(Boolean).join(" ")}` : ""}`).join("\n");
+    if (await copyText(text)) { buzz(8); setCopied(true); window.setTimeout(() => setCopied(false), 1600); }
+  };
   return (
     <section className="materials-checklist" aria-label={lang === "es" ? "Lista de materiales" : "Materials list"}>
       <div className="materials-head-row">
@@ -15224,6 +15229,9 @@ function MaterialsChecklist({ lang, quoteId, materials, lineItems }: { lang: Lan
           </span>
           <span className={`chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
         </button>
+        {items.length > 0 && !editing && (
+          <button type="button" className="materials-copy-btn" onClick={() => void copyList()}>{copied ? (lang === "es" ? "\u00a1Copiado!" : "Copied \u2713") : (lang === "es" ? "Copiar" : "Copy")}</button>
+        )}
         {items.length > 0 && !editing && (
           <button type="button" className="materials-edit-link" onClick={startEdit}>{lang === "es" ? "Editar" : "Edit"}</button>
         )}
