@@ -15727,18 +15727,22 @@ function InvoicesScreen({
     return ascending.length ? ascending : [{ key: month, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }];
   })();
   const monthLabel = (key: string) => new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "long", year: "numeric" }).format(new Date(`${key}-15T12:00:00`));
-  // Previous months sit to the LEFT: the strip opens on the current month
-  // (right end) once data lands; earlier months are a swipe back.
-  const monthsTrackRef = useRef<HTMLDivElement | null>(null);
-  const monthsInitRef = useRef(false);
-  useEffect(() => {
-    const el = monthsTrackRef.current;
-    if (el && !monthsInitRef.current && monthStats.length > 1) {
-      el.scrollLeft = el.scrollWidth;
-      setActiveMonthIdx(monthStats.length - 1);
-      monthsInitRef.current = true;
-    }
-  }, [monthStats]);
+  // Card strip (Danny 2026-10-14): the FIRST card is the year total; scrolling
+  // the carousel brings up the month cards (previous months to the left,
+  // current month at the right end).
+  const docCards = (() => {
+    type Card = { kind: "month" | "year"; key: string; label: string; invoiced: number; estimated: number; invCount: number; estCount: number };
+    const cards: Card[] = [];
+    const years = new Map<string, Card>();
+    monthStats.forEach((m) => {
+      const y = m.key.slice(0, 4);
+      let yc = years.get(y);
+      if (!yc) { yc = { kind: "year", key: `year-${y}`, label: y, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }; years.set(y, yc); cards.push(yc); }
+      yc.invoiced += m.invoiced; yc.estimated += m.estimated; yc.invCount += m.invCount; yc.estCount += m.estCount;
+      cards.push({ kind: "month", key: m.key, label: monthLabel(m.key), invoiced: m.invoiced, estimated: m.estimated, invCount: m.invCount, estCount: m.estCount });
+    });
+    return cards;
+  })();
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
@@ -15747,18 +15751,18 @@ function InvoicesScreen({
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
       <section className="doc-months" aria-label={lang === "es" ? "Totales por mes" : "Monthly totals"}>
-        <div className="doc-months-track" ref={monthsTrackRef} onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(monthStats.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
-          {monthStats.map((m) => (
-            <article className="doc-month-card" key={m.key}>
-              <header><span>{monthLabel(m.key)}</span>{m.key === month && <em>{lang === "es" ? "Este mes" : "This month"}</em>}</header>
+        <div className="doc-months-track" onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(docCards.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
+          {docCards.map((c) => (
+            <article className={`doc-month-card${c.kind === "year" ? " is-year" : ""}`} key={c.key}>
+              <header><span>{c.label}</span>{c.kind === "year" ? <em>{lang === "es" ? "Total del año" : "Year total"}</em> : c.key === month ? <em>{lang === "es" ? "Este mes" : "This month"}</em> : null}</header>
               <div className="doc-month-stats">
-                <span className="doc-month-stat"><small>{tab === "invoices" ? (lang === "es" ? "Facturado" : "Invoiced") : estimateWord}</small><strong>{usd(tab === "invoices" ? m.invoiced : m.estimated)}</strong></span>
+                <span className="doc-month-stat"><small>{tab === "invoices" ? (lang === "es" ? "Facturado" : "Invoiced") : estimateWord}</small><strong>{usd(tab === "invoices" ? c.invoiced : c.estimated)}</strong></span>
               </div>
-              <small className="doc-month-counts">{tab === "invoices" ? `${m.invCount} ${lang === "es" ? "facturas" : "invoices"}` : `${m.estCount} ${estTerms.plural}`}</small>
+              <small className="doc-month-counts">{tab === "invoices" ? `${c.invCount} ${lang === "es" ? "facturas" : "invoices"}` : `${c.estCount} ${estTerms.plural}`}</small>
             </article>
           ))}
         </div>
-        {monthStats.length > 1 && <div className="doc-months-dots" aria-hidden="true">{monthStats.map((m, i) => <i key={m.key} className={i === activeMonthIdx ? "on" : ""} />)}</div>}
+        {docCards.length > 1 && <div className="doc-months-dots" aria-hidden="true">{docCards.map((c, i) => <i key={c.key} className={i === activeMonthIdx ? "on" : ""} />)}</div>}
         {tab === "invoices" && <p className="doc-balance-line">{lang === "es" ? "Saldo pendiente" : "Balance due"}: <strong>{usd(balanceDue)}</strong></p>}
       </section>
       <div className="page-actions document-create">
