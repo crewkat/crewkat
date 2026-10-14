@@ -19,7 +19,11 @@
     <script>
       try {
         var ckTheme = window.localStorage.getItem("crewkat-theme") || window.localStorage.getItem("tradesign-theme");
-        if (ckTheme === "light" || ckTheme === "dark") document.documentElement.setAttribute("data-theme", ckTheme);
+        // No saved choice: the product default is light (2026-10-14), so the
+        // first paint is light instead of following the OS setting. React and
+        // the account-synced setting take over from here.
+        if (ckTheme !== "light" && ckTheme !== "dark") ckTheme = "light";
+        document.documentElement.setAttribute("data-theme", ckTheme);
         var ckAccent = window.localStorage.getItem("crewkat-accent");
         if (ckAccent === "orange" || ckAccent === "blue" || ckAccent === "green" || ckAccent === "purple" || ckAccent === "rose") document.documentElement.setAttribute("data-accent", ckAccent);
         // Keep the color-scheme meta in sync with the saved theme so browsers

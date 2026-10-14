@@ -272,7 +272,10 @@ export const settings = sqliteTable("settings", {
   accentColor: text("accent_color").notNull().default("#1f5a4a"),
   // App appearance follows the account, not the device (0055): the installed
   // app, the web app, and any other device always render the same theme.
-  themeMode: text("theme_mode", { enum: ["light", "dark", "system"] }).notNull().default("system"),
+  // Default is light (Danny, 2026-10-14: better first impression); users can
+  // switch to dark or system in Settings at any time. Existing rows keep
+  // whatever they already stored.
+  themeMode: text("theme_mode", { enum: ["light", "dark", "system"] }).notNull().default("light"),
   uiAccent: text("ui_accent", { enum: ["orange", "blue", "green", "purple", "red"] }).notNull().default("orange"),
   defaultQuoteTheme: text("default_quote_theme", { enum: ["classic", "modern", "bold", "minimal"] }).notNull().default("classic"),
   defaultDocumentFont: text("default_document_font", { enum: ["helvetica", "times", "courier", "palatino"] }).notNull().default("helvetica"),

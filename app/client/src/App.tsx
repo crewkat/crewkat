@@ -2852,9 +2852,11 @@ function CrewkatApplication() {
     return () => window.removeEventListener(SW_UPDATE_AVAILABLE_EVENT, onSwUpdate);
   }, []);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") return "system";
+    // Product default is light (2026-10-14) until the user picks something
+    // else; the account-synced setting overrides this once it loads.
+    if (typeof window === "undefined") return "light";
     const saved = window.localStorage.getItem("crewkat-theme") ?? window.localStorage.getItem("tradesign-theme");
-    return saved === "light" || saved === "dark" ? saved : "system";
+    return saved === "light" || saved === "dark" ? saved : "light";
   });
   const screen: Screen = screenStack[screenStack.length - 1] ?? {
     name: "today",
@@ -10053,7 +10055,7 @@ function SettingsScreen({
     socialWatermark: true,
     language: lang,
     accentColor: "#1f5a4a",
-    themeMode: "system" as const,
+    themeMode: "light" as const,
     uiAccent: "orange" as const,
     defaultQuoteTheme: "classic",
     defaultDocumentFont: "helvetica",
@@ -13889,7 +13891,10 @@ function QuoteBuilder({
     shippingAddress: "",
     jobType: "",
     expiryDate: "",
-    sentAt: new Date().toLocaleDateString("en-CA"),
+    // A new estimate is a draft: sentAt stays empty until the send flow
+    // stamps it (sendQuoteVersion). Defaulting it to today made every new
+    // estimate read "Opened" before it was ever sent (2026-10-14).
+    sentAt: "",
     theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme,
     font: (settings?.defaultDocumentFont ?? "helvetica") as DocumentFont,
     accentColor: settings?.accentColor ?? "#1f5a4a",

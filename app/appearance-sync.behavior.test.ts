@@ -1,8 +1,9 @@
 // Appearance-sync behavior tests (installed-app theme mismatch fix).
 //
 // Covers:
-//  1. Migration 0055 — settings gains theme_mode + ui_accent, backfilled to
-//     the product defaults (system / orange) on existing rows.
+//  1. Migration 0055 — settings gains theme_mode + ui_accent. Inserts without
+//     appearance fields get the product defaults (light / orange since
+//     2026-10-14; the 0055-era default was system).
 //  2. updateAppearance — saves theme + accent; creates the settings row when
 //     missing; request schema rejects out-of-enum values.
 //  3. getSettings — returns the synced appearance fields.
@@ -91,7 +92,7 @@ await db.insert(schema.authUsers).values({
 // Backfill: inserting without appearance fields gets the product defaults.
 await db.insert(schema.settings).values({ companyId: 1, companyName: "Stallions Test Co" });
 let row = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, 1)).limit(1))[0]!;
-check("theme_mode backfills to 'system'", (row as any).themeMode === "system", `got ${(row as any).themeMode}`);
+check("theme_mode backfills to 'light'", (row as any).themeMode === "light", `got ${(row as any).themeMode}`);
 check("ui_accent backfills to 'orange'", (row as any).uiAccent === "orange", `got ${(row as any).uiAccent}`);
 
 // --- 2. updateAppearance --------------------------------------------------------
