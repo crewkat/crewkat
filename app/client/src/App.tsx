@@ -19946,7 +19946,7 @@ function TodayScreen({
       <main className="page today-page" aria-busy="true">
         <header className="home-header">
           <div className="home-header-top">
-            <span>{dateHeading}</span>
+            <FitLabel text={dateHeading} className="home-date-fit" />
             <div className="home-header-actions">
               <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
               <MainTabHeaderActions lang={lang} setScreen={setScreen} />
@@ -19965,7 +19965,7 @@ function TodayScreen({
       <PullToRefresh lang={lang} refreshing={homeRefreshing} onRefresh={refreshAll}>
       <header className="home-header">
         <div className="home-header-top">
-          <span>{dateHeading}</span>
+          <FitLabel text={dateHeading} className="home-date-fit" />
           <div className="home-header-actions">
             <button className="icon-button" type="button" onClick={() => { buzz(8); setSearchOpen(true); }} aria-label={lang === "es" ? "Buscar en todo" : "Search everything"}><Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.8-3.8" /></Icon></button>
             <button className="lang-toggle" onClick={toggleLanguage} aria-label={copy[lang].language}>{lang === "en" ? "ES" : "EN"}</button>
