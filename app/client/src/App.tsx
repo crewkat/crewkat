@@ -15732,24 +15732,30 @@ function InvoicesScreen({
   // current month at the right end).
   const docCards = (() => {
     type Card = { kind: "month" | "year"; key: string; label: string; invoiced: number; estimated: number; invCount: number; estCount: number };
-    // Year card is the main card; to its right the months run newest-first
-    // (October, September, August...) per Danny 2026-10-14.
-    const yearAgg = new Map<string, { invoiced: number; estimated: number; invCount: number; estCount: number }>();
+    const cards: Card[] = [];
+    const yearsSeen = new Set<string>();
     monthStats.forEach((m) => {
       const y = m.key.slice(0, 4);
-      const a = yearAgg.get(y) ?? { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 };
-      a.invoiced += m.invoiced; a.estimated += m.estimated; a.invCount += m.invCount; a.estCount += m.estCount;
-      yearAgg.set(y, a);
-    });
-    const cards: Card[] = [];
-    [...monthStats].reverse().forEach((m) => {
-      const y = m.key.slice(0, 4);
-      const a = yearAgg.get(y);
-      if (a && !cards.some((c) => c.key === `year-${y}`)) cards.push({ kind: "year", key: `year-${y}`, label: y, invoiced: a.invoiced, estimated: a.estimated, invCount: a.invCount, estCount: a.estCount });
-      cards.push({ kind: "month", key: m.key, label: monthLabel(m.key), invoiced: m.invoiced, estimated: m.estimated, invCount: m.invCount, estCount: m.estCount });
+      if (yearsSeen.has(y)) return;
+      yearsSeen.add(y);
+      const monthsOfYear = monthStats.filter((x) => x.key.slice(0, 4) === y);
+      monthsOfYear.forEach((mm) => cards.push({ kind: "month", key: mm.key, label: monthLabel(mm.key), invoiced: mm.invoiced, estimated: mm.estimated, invCount: mm.invCount, estCount: mm.estCount }));
+      const agg = monthsOfYear.reduce((a, mm) => ({ invoiced: a.invoiced + mm.invoiced, estimated: a.estimated + mm.estimated, invCount: a.invCount + mm.invCount, estCount: a.estCount + mm.estCount }), { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 });
+      cards.push({ kind: "year", key: `year-${y}`, label: y, invoiced: agg.invoiced, estimated: agg.estimated, invCount: agg.invCount, estCount: agg.estCount });
     });
     return cards;
   })();
+  // The year card is the main card at the right end: open the strip there.
+  const docTrackRef = useRef<HTMLDivElement | null>(null);
+  const docTrackInitRef = useRef(false);
+  useEffect(() => {
+    const el = docTrackRef.current;
+    if (el && !docTrackInitRef.current && docCards.length > 1) {
+      el.scrollLeft = el.scrollWidth;
+      setActiveMonthIdx(docCards.length - 1);
+      docTrackInitRef.current = true;
+    }
+  }, [docCards]);
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
@@ -15758,7 +15764,7 @@ function InvoicesScreen({
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
       <section className="doc-months" aria-label={lang === "es" ? "Totales por mes" : "Monthly totals"}>
-        <div className="doc-months-track" onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(docCards.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
+        <div className="doc-months-track" ref={docTrackRef} onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(docCards.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
           {docCards.map((c) => (
             <article className={`doc-month-card${c.kind === "year" ? " is-year" : ""}`} key={c.key}>
               <header><span>{c.label}</span>{c.kind === "year" ? <em>{lang === "es" ? "Total del año" : "Year total"}</em> : c.key === month ? <em>{lang === "es" ? "Este mes" : "This month"}</em> : null}</header>
