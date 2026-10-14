@@ -2842,7 +2842,16 @@ function CrewkatApplication() {
   const scrollSnapshotsRef = useRef<Array<NavigationScrollSnapshot | undefined>>([]);
   const scrollIntentRef = useRef<NavigationScrollIntent>({ mode: "top" });
   const [scrollNavigationKey, setScrollNavigationKey] = useState(1);
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLang] = useState<Lang>(() => {
+    try {
+      const saved = window.localStorage.getItem("crewkat-lang") ?? window.localStorage.getItem("crewkat-public-lang") ?? window.localStorage.getItem(AUTH_LANG_STORAGE_KEY);
+      if (saved === "es" || saved === "en") return saved;
+    } catch { /* storage unavailable */ }
+    return typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en";
+  });
+  // The language the user picked this session. While set, the settings sync
+  // must not stomp it with a stale server value (see the sync effect).
+  const langIntentRef = useRef<Lang | null>(null);
   const limitKind = useSyncExternalStore(subscribeLimitHit, getLimitHit);
   // Build 3: service-worker update toast — a new build took control.
   const [swUpdateAvailable, setSwUpdateAvailable] = useState(false);
@@ -2975,7 +2984,9 @@ function CrewkatApplication() {
     queryFn: () => api.getSettings({}),
   });
   useEffect(() => {
-    if (settings.data) setLang(settings.data.language);
+    if (!settings.data) return;
+    if (langIntentRef.current && langIntentRef.current !== settings.data.language) return;
+    setLang(settings.data.language);
   }, [settings.data]);
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -3063,6 +3074,31 @@ function CrewkatApplication() {
     mutationFn: (v: SettingsInput) => api.updateSettings(v),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
+  const applyLanguage = (next: Lang) => {
+    langIntentRef.current = next;
+    setLang(next);
+    try {
+      window.localStorage.setItem("crewkat-lang", next);
+      window.localStorage.setItem("crewkat-public-lang", next);
+    } catch { /* storage unavailable */ }
+    if (settings.data) {
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+      saveSettings.mutate({ ...input, language: next });
+    }
+  };
+  // If the user picked a language before settings finished loading, the
+  // toggle had nothing to save against — land the save when settings arrive.
+  const langSaveAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!settings.data || langSaveAttemptedRef.current) return;
+    langSaveAttemptedRef.current = true;
+    const intent = langIntentRef.current;
+    if (intent && settings.data.language !== intent) {
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+      saveSettings.mutate({ ...input, language: intent });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.data]);
   // Auth-screen language hand-off: when the owner picked EN/ES on the
   // sign-in/sign-up screens, apply it to this company's settings once, so
   // the session opens in that language (covers Google sign-ups, which
@@ -3215,14 +3251,7 @@ function CrewkatApplication() {
           lang={lang}
           settings={appSettings}
           setScreen={setScreen}
-          toggleLanguage={() => {
-            const next = lang === "en" ? "es" : "en";
-            setLang(next);
-            if (settings.data) {
-              const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
-              saveSettings.mutate({ ...input, language: next });
-            }
-          }}
+          toggleLanguage={() => applyLanguage(lang === "en" ? "es" : "en")}
         />
       )}
       {screen.name === "jobs" && (
@@ -3231,14 +3260,7 @@ function CrewkatApplication() {
           settings={appSettings}
           onBack={goBack}
           setScreen={setScreen}
-          toggleLanguage={() => {
-            const next = lang === "en" ? "es" : "en";
-            setLang(next);
-            if (settings.data) {
-              const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
-              saveSettings.mutate({ ...input, language: next });
-            }
-          }}
+          toggleLanguage={() => applyLanguage(lang === "en" ? "es" : "en")}
         />
       )}
       {screen.name === "new" && (
