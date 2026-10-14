@@ -58,6 +58,7 @@ export interface DocumentLinkPdfPayload {
     quantity?: number;
     discount?: string;
     unit?: string;
+    optional?: boolean;
   }>;
   subtotal: string;
   total: string;
@@ -131,6 +132,7 @@ export async function buildDocumentLinkPdf(
       quantity: li.quantity ?? 1,
       discount: li.discount ?? "0",
       unit: (li.unit === "days" || li.unit === "hours" ? li.unit : "none") as "none" | "days" | "hours",
+      optional: li.optional === true,
     })),
     invoiceNumber: payload.invoiceNumber || undefined,
     subtotal: payload.subtotal,

@@ -39,7 +39,7 @@ type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
-import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
+import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
@@ -13940,7 +13940,9 @@ function QuoteBuilder({
     // invoice builder and the edit sheet.
     // Build 1.2 (part A): line items also carry a quantity so the Price |
     // Quantity row matches the invoice builder / edit sheet.
-    lineItems: [{ name: "", description: "", amount: "", quantity: 1 }],
+    // Estimate options (0076): items may be flagged optional (outside the
+    // base total) via the edit sheet.
+    lineItems: [{ name: "", description: "", amount: "", quantity: 1 }] as Array<{ name: string; description: string; amount: string; quantity: number; optional?: boolean }>,
   });
   useEffect(() => {
     if (settings && !defaultApplied.current) {
@@ -14020,6 +14022,10 @@ function QuoteBuilder({
     form.taxType,
     showTax ? form.taxValue : "0",
   );
+  // Estimate options (0076): optional lines sit outside the base totals
+  // (financialTotals already excludes them) — surfaced separately so the
+  // contractor sees what the client could add on top.
+  const optionalItemsTotal = lineItemsTotal(form.lineItems.filter((i) => i.optional));
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   // Phase 1: assemblies — templates can be applied additively ("Add") or as a
@@ -14033,7 +14039,7 @@ function QuoteBuilder({
     form.lineItems
       .filter((i) => i.description.trim() || (i.name ?? "").trim())
       .map((i) => ({ ...i, description: i.description.trim() || (i.name ?? "").trim() }));
-  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number }>) =>
+  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number; optional: boolean }>) =>
     setForm((current) => ({
       ...current,
       lineItems: current.lineItems.map((x, j) => (j === index ? { ...x, ...patch } : x)),
@@ -14380,6 +14386,7 @@ function QuoteBuilder({
                   <Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
                 </span>
                 <span className="doc-line-index">{t.item} {i + 1}</span>
+                {item.optional && <span className="doc-line-optional-chip">{lang === "es" ? "Opcional" : "Optional"}</span>}
                 <span className="doc-line-total">{usd(lineTotal)}</span>
                 {form.lineItems.length > 1 && (
                   <button
@@ -14417,11 +14424,12 @@ function QuoteBuilder({
           {editingItem !== null && form.lineItems[editingItem] && (
             <LineItemEditSheet
               lang={lang}
-              item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: "0", unit: "none" }}
+              item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: "0", unit: "none", optional: form.lineItems[editingItem].optional === true }}
               showUnit={false}
               showDiscount={false}
+              showOptional
               canRemove={form.lineItems.length > 1}
-              onCommit={(next) => updateLine(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity })}
+              onCommit={(next) => updateLine(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true })}
               onRemove={() => removeLineItem(editingItem)}
               onClose={() => setEditingItem(null)}
             />
@@ -14485,6 +14493,12 @@ function QuoteBuilder({
               {t.total}
               <strong>{usd(totals.total)}</strong>
             </span>
+            {optionalItemsTotal > 0 && (
+              <span className="options-total-row">
+                {lang === "es" ? "Opciones (no incluidas)" : "Options (not included)"}
+                <strong>{usd(optionalItemsTotal)}</strong>
+              </span>
+            )}
           </div>
         </div>
         <label>
@@ -14641,7 +14655,7 @@ function QuotePaper({
       {kind === "invoice" && c.showPaidStamp && quote.status === "paid" && <div className="paid-stamp">{labels.paid.toUpperCase()}</div>}
       <div className={`quote-paper-lines ${c.showQuantityUnitPrice ? "with-quantity" : ""} ${c.showAmount ? "" : "hide-amount"}`}>
         <div className="quote-line heading"><span>{labels.description}</span>{c.showQuantityUnitPrice && <span>{lang === "es" ? "Cant. × Precio" : "Qty × Price"}</span>}{c.showAmount && <span>{labels.amount}</span>}</div>
-        {quote.lineItems.filter((i) => i.description || i.name).map((item, i) => {
+        {quote.lineItems.filter((i) => (i.description || i.name) && !i.optional).map((item, i) => {
           const qty = item.quantity ?? 1;
           const amount = money(item.amount);
           const lineTotal = Math.max(0, amount * qty - money(item.discount ?? "0"));
@@ -14656,6 +14670,17 @@ function QuotePaper({
         {c.showAmount && <span className="grand-total">{labels.total}<strong>{usd(kind === "invoice" ? money(quote.totalWithLateFee ?? quote.total) : totals.total)}</strong></span>}
         {kind === "invoice" && c.showBalanceDue && <span className="balance-due">{labels.balanceDue}<strong>{usd(balance)}</strong></span>}
       </div>}
+      {kind === "quote" && quote.lineItems.some((i) => i.optional) && (
+        <div className="quote-paper-options">
+          <h3>{lang === "es" ? "Opciones" : "Options"}</h3>
+          <p>{lang === "es" ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons — not included in the estimate total unless selected."}</p>
+          {quote.lineItems.filter((i) => i.optional && (i.description || i.name)).map((item, i) => {
+            const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+            return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+          })}
+          <div className="quote-line options-sum"><span>{lang === "es" ? "Total de opciones" : "Options total"}</span><strong>{usd(lineItemsTotal(quote.lineItems.filter((i) => i.optional)))}</strong></div>
+        </div>
+      )}
       {quote.showFooterNotes && quote.footnote && <p className="quote-payment"><strong>{lang === "es" ? "Notas" : "Notes"}</strong>{quote.footnote}</p>}
       {quote.showPaymentTerms && settings?.paymentInstructions && <p className="quote-payment"><strong>{lang === "es" ? "Instrucciones de pago" : "Payment instructions"}</strong>{settings.paymentInstructions}</p>}
       {c.termsConditions && <p className="quote-payment"><strong>{lang === "es" ? "Términos y condiciones" : "Terms and conditions"}</strong>{c.termsConditions}</p>}
@@ -14899,7 +14924,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // line — the Name + Description fields from the new-invoice form were
   // missing. Keep an item when it has either, and fall back to the name when
   // the description is blank (same rule as the new-invoice form).
-  const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const}));
+  const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const,...(item.id?{id:item.id}:{}),...(item.optional?{optional:true}:{})}));
   const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
   // the current (unsaved) form values.
@@ -14959,6 +14984,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
             ) : (
               <span className="doc-line-index">{t.item} {index+1}</span>
             )}
+            {item.optional && <span className="doc-line-optional-chip">{lang === "es" ? "Opcional" : "Optional"}</span>}
             <span className="doc-line-total">{usd(lineTotal)}</span>
             {/* Build 3.0 (item 7): every line item gets an X to close/delete it. */}
             <button type="button" className="doc-line-remove" aria-label={`${lang === "es" ? "Eliminar partida" : "Remove item"} ${index+1}`} onClick={() => setForm({...form,lineItems:form.lineItems.filter((_,i)=>i!==index)})}>×</button>
@@ -14972,11 +14998,12 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       {editingItem !== null && form.lineItems[editingItem] && (
         <LineItemEditSheet
           lang={lang}
-          item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: form.lineItems[editingItem].discount ?? "0", unit: "none" }}
+          item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: form.lineItems[editingItem].discount ?? "0", unit: "none", optional: form.lineItems[editingItem].optional === true }}
           showUnit={false}
           showDiscount={false}
+          showOptional={kind === "quote"}
           canRemove
-          onCommit={(next) => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.map((x, i) => (i === idx ? { ...x, name: next.name, description: next.description, amount: next.amount, quantity: next.quantity } : x)) }); }}
+          onCommit={(next) => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.map((x, i) => (i === idx ? { ...x, name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true } : x)) }); }}
           onRemove={() => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== idx) }); }}
           onClose={() => setEditingItem(null)}
         />
@@ -15112,7 +15139,7 @@ function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice
 // a draft copy: Save commits into the parent form, X / backdrop / back
 // discards. Fields shown match what each editor's item supports.
 // ---------------------------------------------------------------------------
-type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours" };
+type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours"; id?: string; optional?: boolean };
 
 function lineItemSummary(item: { name?: string; description: string }, fallback: string): { title: string; preview: string } {
   const lines = item.description.split(/\n+/).map((s) => s.trim()).filter(Boolean);
@@ -15123,11 +15150,14 @@ function lineItemSummary(item: { name?: string; description: string }, fallback:
   return { title: fallback, preview: "" };
 }
 
-function LineItemEditSheet({ lang, item, showUnit, showDiscount, canRemove, onCommit, onRemove, onClose }: {
+function LineItemEditSheet({ lang, item, showUnit, showDiscount, showOptional, canRemove, onCommit, onRemove, onClose }: {
   lang: Lang;
   item: LineItemDraft;
   showUnit: boolean;
   showDiscount: boolean;
+  // Estimate options (0076): quote editors pass this to expose the Optional
+  // toggle. Invoice editors never do — invoice lines are always billable.
+  showOptional?: boolean;
   canRemove: boolean;
   onCommit: (next: LineItemDraft) => void;
   onRemove: () => void;
@@ -15158,6 +15188,15 @@ function LineItemEditSheet({ lang, item, showUnit, showDiscount, canRemove, onCo
           <div className="doc-price-qty">
             {showUnit && <label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={draft.unit} onChange={(e) => set({ unit: e.target.value as LineItemDraft["unit"] })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label>}
             {showDiscount && <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={draft.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="$0.00" /></label>}
+          </div>
+        )}
+        {showOptional && (
+          <div className="line-item-optional-row">
+            <div>
+              <strong>{lang === "es" ? "Opcional" : "Optional"}</strong>
+              <small>{lang === "es" ? "No se incluye en el total — el cliente lo marca en su página si lo quiere." : "Not included in the total — the client ticks it on their page if they want it."}</small>
+            </div>
+            <Switch checked={draft.optional === true} onChange={(next) => set({ optional: next })} ariaLabel={lang === "es" ? "Opcional" : "Optional"} />
           </div>
         )}
         {canRemove && <button type="button" className="line-item-remove" onClick={() => { onRemove(); close(); }}><TrashIcon />{lang === "es" ? "Eliminar artículo" : "Remove item"}</button>}
@@ -15547,6 +15586,65 @@ function DocumentAttachmentsScreen({
   );
 }
 
+// Estimate options (0076): contractor-side summary of the client's option
+// picks on one estimate — what they ticked on the client page, what was
+// frozen when the estimate was accepted, and the with-options total.
+// Renders nothing for estimates without optional lines.
+function QuoteOptionsSummary({ lang, quote }: {
+  lang: Lang;
+  quote: {
+    total: string;
+    lineItems: Array<{ description: string; amount: string; name?: string; quantity?: number; discount?: string; id?: string; optional?: boolean }>;
+    optionSelection: { selectedKeys: string[]; accepted: { items: Array<{ key: string; name: string; description: string; amount: string; quantity: number; discount: string; unit: string }>; optionsTotal: string; totalWithOptions: string; acceptedAt: string } | null };
+  };
+}) {
+  const optionals = quote.lineItems.filter((item) => item.optional);
+  if (!optionals.length) return null;
+  const accepted = quote.optionSelection.accepted;
+  const acceptedKeys = new Set(accepted?.items.map((item) => item.key) ?? []);
+  const selectedKeys = new Set(quote.optionSelection.selectedKeys);
+  const lineTotal = (item: { amount: string; quantity?: number; discount?: string }) => Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+  const labelOf = (item: { name?: string; description: string }) => [item.name, item.description].filter(Boolean).join(" — ") || item.description;
+  const selectedTotal = optionals.filter((item) => item.id && selectedKeys.has(item.id)).reduce((sum, item) => sum + lineTotal(item), 0);
+  return (
+    <section className="quote-options-summary">
+      <div className="quote-options-head">
+        <h3>{lang === "es" ? "Opciones del cliente" : "Client options"}</h3>
+        {accepted
+          ? <span className="quote-options-state accepted">{lang === "es" ? "Aceptadas" : "Accepted"} · {new Date(accepted.acceptedAt).toLocaleDateString(lang === "es" ? "es" : "en")}</span>
+          : selectedKeys.size > 0
+            ? <span className="quote-options-state">{lang === "es" ? "El cliente seleccionó" : "Client selected"}</span>
+            : <span className="quote-options-state muted">{lang === "es" ? "Sin selección aún" : "None selected yet"}</span>}
+      </div>
+      <ul className="quote-options-list">
+        {optionals.map((item) => {
+          const picked = accepted ? acceptedKeys.has(item.id ?? "") : selectedKeys.has(item.id ?? "");
+          return (
+            <li key={item.id ?? item.description} className={picked ? "picked" : "not-picked"}>
+              <span className="quote-options-check" aria-hidden="true">{picked ? "✓" : ""}</span>
+              <span className="quote-options-label">{labelOf(item)}</span>
+              <strong>{usd(lineTotal(item))}</strong>
+            </li>
+          );
+        })}
+      </ul>
+      {accepted ? (
+        <div className="quote-options-totals">
+          <span>{lang === "es" ? "Total de opciones" : "Options total"}<strong>{usd(money(accepted.optionsTotal))}</strong></span>
+          <span className="grand">{lang === "es" ? "Total con opciones" : "Total with options"}<strong>{usd(money(accepted.totalWithOptions))}</strong></span>
+        </div>
+      ) : selectedKeys.size > 0 ? (
+        <div className="quote-options-totals">
+          <span>{lang === "es" ? "Selección del cliente" : "Client's picks"}<strong>{usd(selectedTotal)}</strong></span>
+          <span className="grand">{lang === "es" ? "Total con opciones" : "Total with options"}<strong>{usd(money(quote.total) + selectedTotal)}</strong></span>
+        </div>
+      ) : (
+        <p className="quote-options-empty">{lang === "es" ? "Cuando tu cliente marque opciones en su página, las verás aquí." : "When your client ticks options on their page, you'll see them here."}</p>
+      )}
+    </section>
+  );
+}
+
 function QuotePreview({
   lang,
   quoteId,
@@ -15652,8 +15750,13 @@ function QuotePreview({
     <section className="document-detail-summary ck-quote-summary"><div className="ck-inv-head"><div className="ck-quote-total"><span className="ck-inv-label">{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`ck-pill ${acceptedNow ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : quote.sentAt ? "ck-pill-pending" : "ck-pill-draft"}`}>{status}</span></div><div className="ck-quote-client-row"><button type="button" className="ck-quote-client" onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button><ViewedBadge lang={lang} kind="quote" id={quote.id} />{quote.jobId && <button type="button" className="ck-quote-job-link" onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     <DocumentAttachmentsRow lang={lang} docType="quote" docId={quote.id} onOpen={() => setScreen({ name: "quoteAttachments", quoteId: quote.id })} />
-    {/* Materials buy list (0075): the estimate's own synced checklist. */}
-    <MaterialsChecklist lang={lang} quoteId={quote.id} materials={quote.materials ?? []} lineItems={quote.lineItems} />
+    {/* Materials buy list (0075): the estimate's own synced checklist.
+        Estimate options (0076): unaccepted optional lines stay out of the
+        prefill; ACCEPTED options are part of the job, so their lines feed
+        the parser like regular lines. */}
+    <MaterialsChecklist lang={lang} quoteId={quote.id} materials={quote.materials ?? []} lineItems={[...quote.lineItems.filter((item) => !item.optional), ...(quote.optionSelection.accepted?.items.map((item) => ({ description: item.description, amount: item.amount })) ?? [])]} />
+    {/* Estimate options (0076): the client's option picks on this estimate. */}
+    <QuoteOptionsSummary lang={lang} quote={quote} />
     <details className="action-details version-details"><summary><span className="doc-chip" aria-hidden="true"><Icon><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></Icon></span><span>{lang==="es"?"Historial de versiones":"Version history"}</span></summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
@@ -26052,6 +26155,80 @@ function PdfPageView({ token, lang, title }: { token: string; lang: Lang; title:
   );
 }
 
+// Estimate options (0076): the client's tick-box card for optional estimate
+// lines, shared by the document-link page and the job portal. Ticking saves
+// immediately (token-based public action) and the total updates live:
+// base estimate total + selected options. Once the estimate is accepted the
+// accepted snapshot renders locked — those options are part of the deal.
+function QuoteOptionsPicker({ lang, token, quoteId, baseTotal, options, initialSelectedKeys, accepted }: {
+  lang: Lang;
+  token: string;
+  quoteId: number;
+  baseTotal: string;
+  options: Array<{ key: string; name: string; description: string; amount: string; quantity: number; lineTotal: string }>;
+  initialSelectedKeys: string[];
+  accepted: { items: Array<{ key: string }>; optionsTotal: string; totalWithOptions: string; acceptedAt: string } | null;
+}) {
+  const [selected, setSelected] = useState<string[]>(initialSelectedKeys);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  if (!options.length) return null;
+  const labelOf = (o: { name: string; description: string }) => [o.name, o.description].filter(Boolean).join(" — ") || o.description;
+  const acceptedKeys = new Set(accepted?.items.map((item) => item.key) ?? []);
+  const selectedTotal = options.filter((o) => selected.includes(o.key)).reduce((sum, o) => sum + money(o.lineTotal), 0);
+  const toggle = async (key: string, next: boolean) => {
+    const nextSelected = next ? [...selected, key] : selected.filter((k) => k !== key);
+    const previous = selected;
+    setSelected(nextSelected);
+    setSaveError("");
+    setSaving(true);
+    try {
+      await api.saveQuoteOptionSelection({ token, quoteId, selectedKeys: nextSelected });
+    } catch {
+      setSelected(previous);
+      setSaveError(lang === "es" ? "No se pudo guardar tu selección. Inténtalo de nuevo." : "Couldn't save your selection. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section className="quote-options-picker" aria-label={lang === "es" ? "Opciones" : "Options"}>
+      <h3>{lang === "es" ? "Opciones" : "Options"}</h3>
+      <p className="quote-options-note">{accepted
+        ? (lang === "es" ? "Estas opciones fueron aceptadas y ya están incluidas en tu total." : "These options were accepted and are included in your total.")
+        : (lang === "es" ? "Marca las opciones que quieras agregar. No están incluidas en el total del estimado a menos que las selecciones." : "Tick any add-ons you'd like. They're not included in the estimate total unless you select them.")}</p>
+      <div className="quote-options-rows">
+        {options.map((option) => {
+          const isAccepted = acceptedKeys.has(option.key);
+          const checked = accepted ? isAccepted : selected.includes(option.key);
+          return (
+            <label key={option.key} className={`quote-options-row${checked ? " checked" : ""}${accepted ? " locked" : ""}`}>
+              <input type="checkbox" checked={checked} disabled={!!accepted || saving} onChange={(e) => void toggle(option.key, e.target.checked)} />
+              <span className="quote-options-row-label">{labelOf(option)}</span>
+              <strong>{usd(money(option.lineTotal))}</strong>
+            </label>
+          );
+        })}
+      </div>
+      <div className="quote-options-footer">
+        <span>{lang === "es" ? "Total del estimado" : "Estimate total"}<strong>{usd(money(baseTotal))}</strong></span>
+        {accepted ? (
+          <>
+            <span>{lang === "es" ? "Opciones aceptadas" : "Accepted options"}<strong>{usd(money(accepted.optionsTotal))}</strong></span>
+            <span className="grand">{lang === "es" ? "Tu total" : "Your total"}<strong>{usd(money(accepted.totalWithOptions))}</strong></span>
+          </>
+        ) : (
+          <>
+            <span>{lang === "es" ? "Opciones seleccionadas" : "Selected options"}<strong>{usd(selectedTotal)}</strong></span>
+            <span className="grand">{lang === "es" ? "Tu total" : "Your total"}<strong>{usd(money(baseTotal) + selectedTotal)}</strong></span>
+          </>
+        )}
+      </div>
+      {saveError && <p className="status error">{saveError}</p>}
+    </section>
+  );
+}
+
 function ClientDocumentScreen({ token }: { token: string }) {
   const [lang, setLang] = useState<Lang>("en");
   const t = copy[lang];
@@ -26278,6 +26455,9 @@ function ClientDocumentScreen({ token }: { token: string }) {
             {doc.dateValue ? ` · ${formatDate(doc.dateValue, lang)}` : ""}
           </p>
         </article>
+      )}
+      {doc.kind === "quote" && doc.options.length > 0 && (
+        <QuoteOptionsPicker lang={lang} token={token} quoteId={doc.documentId} baseTotal={doc.total} options={doc.options} initialSelectedKeys={doc.selectedOptionKeys} accepted={doc.acceptedOptions} />
       )}
       {doc.signable && !doc.alreadySigned && (
         <section className="client-sign-section">
@@ -27074,6 +27254,9 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
                 <li key={i}><span>{item.description}</span><strong>{usd(money(item.amount))}</strong></li>
               ))}
             </ul>
+            {e.options.length > 0 && (
+              <QuoteOptionsPicker lang={lang} token={token} quoteId={e.id} baseTotal={e.total} options={e.options} initialSelectedKeys={e.selectedOptionKeys} accepted={e.acceptedOptions} />
+            )}
           </details>
         ))}
         {!d.estimates.length && <p className="dim">{t.noEstimates}</p>}

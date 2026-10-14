@@ -100,6 +100,12 @@ export const quotes = sqliteTable("quotes", {
   // Per-estimate materials buy list (0075): JSON array of
   // { name, qty, unit, checked } — the crew's supply-house checklist.
   materialsJson: text("materials_json").notNull().default("[]"),
+  // Client option selections (0076): JSON object
+  // { selected: string[] (ids of optional line items the client ticked),
+  //   accepted: null | { items, optionsTotal, totalWithOptions, acceptedAt } }.
+  // The accepted snapshot freezes the options (at the prices shown) when the
+  // estimate is accepted, so conversion bills exactly what the client picked.
+  optionSelectionJson: text("option_selection_json").notNull().default("{}"),
   subtotal: text("subtotal").notNull().default("0"),
   discountType: text("discount_type", { enum: ["percent", "fixed"] }).notNull().default("percent"),
   discountValue: text("discount_value").notNull().default("0"),

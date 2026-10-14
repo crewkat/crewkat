@@ -45,14 +45,22 @@ export function companyContact(settings: Settings | null, separator = " · ") {
     .join(separator);
 }
 
+export function lineItemsTotal(items: Array<{ amount: string; quantity?: number; discount?: string }>) {
+  return items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
+}
+
 export function financialTotals(
-  items: Array<{ amount: string; quantity?: number; discount?: string }> ,
+  items: Array<{ amount: string; quantity?: number; discount?: string; optional?: boolean }> ,
   discountType: PdfAdjustmentType,
   discountValue: string,
   taxType: PdfAdjustmentType,
   taxValue: string,
 ) {
-  const subtotal = items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
+  // Estimate options (0076): optional line items are priced add-ons the
+  // client may select on the client page. They are NEVER part of the base
+  // subtotal/total — they are summed separately (lineItemsTotal) and shown
+  // in their own Options section on the document.
+  const subtotal = lineItemsTotal(items.filter((item) => !item.optional));
   const discountRaw = Math.max(0, money(discountValue));
   const discount = Math.min(
     subtotal,
@@ -133,7 +141,7 @@ export type FinancialDocument = {
   jobAddress: string;
   shippingAddress?: string;
   jobType: string;
-  lineItems: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>;
+  lineItems: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours"; id?: string; optional?: boolean }>;
   invoiceNumber?: string;
   subtotal: string;
   discountType: PdfAdjustmentType;
@@ -521,8 +529,11 @@ export async function buildFinancialPdf(
   doc.setTextColor(...ink);
   doc.setFont(font, "normal");
   doc.setFontSize(F(9));
+  // Estimate options render in their own section after the totals (below);
+  // the main table carries base items only.
+  const baseLineItems = document.lineItems.filter((item) => !item.optional);
   let rowIndex = 0;
-  for (const item of document.lineItems) {
+  for (const item of baseLineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
@@ -690,6 +701,62 @@ export async function buildFinancialPdf(
       by += 19;
     }
     y += panelH;
+  }
+  // Estimate options (0076): a distinct section under the base totals. Each
+  // option prints with its price; the note states plainly that options are
+  // not part of the estimate total unless the client selects them (on the
+  // client page, where tick-boxes drive the live total).
+  const optionItems = kind === "quote" ? document.lineItems.filter((item) => item.optional) : [];
+  if (optionItems.length) {
+    const optionsSum = lineItemsTotal(optionItems);
+    y += 16;
+    ensureSpace(46);
+    doc.setFont(font, "bold");
+    doc.setFontSize(F(10.5));
+    doc.setTextColor(r, g, b);
+    doc.text(lang === "es" ? "OPCIONES" : "OPTIONS", margin, y);
+    y += 12 * FONT_SCALE;
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
+    const optionsNote = lang === "es"
+      ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen."
+      : "Optional add-ons — not included in the estimate total unless selected.";
+    const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2) as string[];
+    doc.text(optionsNoteLines, margin, y);
+    y += optionsNoteLines.length * noteStep + 6;
+    doc.setTextColor(...ink);
+    for (const item of optionItems) {
+      const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
+      const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+      doc.setFontSize(F(9));
+      const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
+      const rowH = Math.max(20, richLines.length * descStep + 6);
+      ensureSpace(rowH);
+      doc.setTextColor(...ink);
+      doc.setFontSize(F(9));
+      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+      if (custom.showAmount) {
+        doc.setFont(font, "normal");
+        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+      }
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+      y += rowH;
+    }
+    ensureSpace(30);
+    doc.setFont(font, "bold");
+    doc.setFontSize(F(9.5));
+    doc.setTextColor(...ink);
+    doc.text(`${lang === "es" ? "Total de opciones" : "Options total"}:`, margin + 8, y + 4);
+    doc.text(usd(optionsSum), w - margin - 8, y + 4, { align: "right" });
+    y += 15 * FONT_SCALE;
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...dimInk);
+    doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
+    y += 8;
   }
   // Deposit request line (estimates): "Deposit due (50%): $3,250.00" + balance.
   const depType = document.depositType === "percent" || document.depositType === "fixed" ? document.depositType : "none";
