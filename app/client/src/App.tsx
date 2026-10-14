@@ -15732,13 +15732,20 @@ function InvoicesScreen({
   // current month at the right end).
   const docCards = (() => {
     type Card = { kind: "month" | "year"; key: string; label: string; invoiced: number; estimated: number; invCount: number; estCount: number };
-    const cards: Card[] = [];
-    const years = new Map<string, Card>();
+    // Year card is the main card; to its right the months run newest-first
+    // (October, September, August...) per Danny 2026-10-14.
+    const yearAgg = new Map<string, { invoiced: number; estimated: number; invCount: number; estCount: number }>();
     monthStats.forEach((m) => {
       const y = m.key.slice(0, 4);
-      let yc = years.get(y);
-      if (!yc) { yc = { kind: "year", key: `year-${y}`, label: y, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }; years.set(y, yc); cards.push(yc); }
-      yc.invoiced += m.invoiced; yc.estimated += m.estimated; yc.invCount += m.invCount; yc.estCount += m.estCount;
+      const a = yearAgg.get(y) ?? { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 };
+      a.invoiced += m.invoiced; a.estimated += m.estimated; a.invCount += m.invCount; a.estCount += m.estCount;
+      yearAgg.set(y, a);
+    });
+    const cards: Card[] = [];
+    [...monthStats].reverse().forEach((m) => {
+      const y = m.key.slice(0, 4);
+      const a = yearAgg.get(y);
+      if (a && !cards.some((c) => c.key === `year-${y}`)) cards.push({ kind: "year", key: `year-${y}`, label: y, invoiced: a.invoiced, estimated: a.estimated, invCount: a.invCount, estCount: a.estCount });
       cards.push({ kind: "month", key: m.key, label: monthLabel(m.key), invoiced: m.invoiced, estimated: m.estimated, invCount: m.invCount, estCount: m.estCount });
     });
     return cards;
