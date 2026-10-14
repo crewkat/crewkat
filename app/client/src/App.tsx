@@ -6549,22 +6549,23 @@ function JobsScreen({
       />
       <OfflineCacheNote lang={lang} action="listJobs" isLoading={jobs.isLoading} />
       <section className="jobs-tools">
-        <button
-          className="primary-button new-job-button"
-          onClick={() => setScreen({ name: "new" })}
-        >
-          <PlusIcon />
-          {t.newJob}
-        </button>
-        <label className="search-field">
-          <span className="sr-only">{t.search}</span>
+        <label className="search-field jobs-search">
+          <Icon><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Icon>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t.search}
             aria-label={t.search}
           />
+          {search && <button type="button" className="jobs-search-clear" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}
         </label>
+        <button
+          className="primary-button jobs-new-btn"
+          onClick={() => setScreen({ name: "new" })}
+        >
+          <PlusIcon />
+          {t.newJob}
+        </button>
       </section>
       <nav className="section-switcher" aria-label={lang === "es" ? "Vistas de trabajos" : "Job views"}>
         <button className="active" aria-current="page">{lang === "es" ? "Trabajos" : "Jobs"}</button>
@@ -15704,9 +15705,27 @@ function InvoicesScreen({
       i.nextDueDate <= today,
   );
   const month = today.slice(0, 7);
-  const invoicedMonth = sortedInvoices.filter((invoice) => invoice.issueDate.slice(0, 7) === month).reduce((sum, invoice) => sum + money(invoice.totalWithLateFee), 0);
   const balanceDue = sortedInvoices.reduce((sum, invoice) => sum + Number(invoice.balanceRemaining), 0);
-  const estimatedMonth = sortedQuotes.filter((quote) => (quote.sentAt || quote.createdAt).slice(0, 7) === month).reduce((sum, quote) => sum + money(quote.total), 0);
+  // Month carousel (2026-10-14): invoiced + estimated totals per month,
+  // newest first, back to the earliest document (capped at 12 months).
+  const [activeMonthIdx, setActiveMonthIdx] = useState(0);
+  const monthStats = (() => {
+    type Agg = { invoiced: number; estimated: number; invCount: number; estCount: number };
+    const byMonth = new Map<string, Agg>();
+    const agg = (key: string) => { let a = byMonth.get(key); if (!a) { a = { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }; byMonth.set(key, a); } return a; };
+    sortedInvoices.forEach((invoice) => { const a = agg(invoice.issueDate.slice(0, 7)); a.invoiced += money(invoice.totalWithLateFee); a.invCount += 1; });
+    sortedQuotes.forEach((quote) => { const a = agg((quote.sentAt || quote.createdAt).slice(0, 7)); a.estimated += money(quote.total); a.estCount += 1; });
+    const earliest = [...byMonth.keys()].sort()[0] ?? month;
+    const out: Array<{ key: string } & Agg> = [];
+    let cursor = month;
+    for (let n = 0; n < 12 && cursor >= earliest; n += 1) {
+      out.push({ key: cursor, ...(byMonth.get(cursor) ?? { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }) });
+      const prev = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 2, 1);
+      cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+    }
+    return out.length ? out : [{ key: month, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }];
+  })();
+  const monthLabel = (key: string) => new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "long", year: "numeric" }).format(new Date(`${key}-15T12:00:00`));
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
@@ -15714,7 +15733,22 @@ function InvoicesScreen({
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
-      <section className="document-hero"><span>{tab === "invoices" ? (lang === "es" ? "Facturado este mes" : "Invoiced this month") : (lang === "es" ? `${capFirst(estTerms.singular)} este mes` : `${capFirst(estTerms.singular)} this month`)}</span><strong><CountUp value={tab === "invoices" ? invoicedMonth : estimatedMonth} format={(n) => usd(n)} /></strong>{tab === "invoices" && <small>{lang === "es" ? "Saldo pendiente" : "Balance due"}: {usd(balanceDue)}</small>}</section>
+      <section className="doc-months" aria-label={lang === "es" ? "Totales por mes" : "Monthly totals"}>
+        <div className="doc-months-track" onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(monthStats.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
+          {monthStats.map((m) => (
+            <article className="doc-month-card" key={m.key}>
+              <header><span>{monthLabel(m.key)}</span>{m.key === month && <em>{lang === "es" ? "Este mes" : "This month"}</em>}</header>
+              <div className="doc-month-stats">
+                <span className="doc-month-stat"><small>{lang === "es" ? "Facturado" : "Invoiced"}</small><strong>{usd(m.invoiced)}</strong></span>
+                <span className="doc-month-stat"><small>{estimateWord}</small><strong>{usd(m.estimated)}</strong></span>
+              </div>
+              <small className="doc-month-counts">{m.invCount} {lang === "es" ? "facturas" : "invoices"} · {m.estCount} {estTerms.plural}</small>
+            </article>
+          ))}
+        </div>
+        {monthStats.length > 1 && <div className="doc-months-dots" aria-hidden="true">{monthStats.map((m, i) => <i key={m.key} className={i === activeMonthIdx ? "on" : ""} />)}</div>}
+        <p className="doc-balance-line">{lang === "es" ? "Saldo pendiente" : "Balance due"}: <strong>{usd(balanceDue)}</strong></p>
+      </section>
       <div className="page-actions document-create">
         <button className="primary-button" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><PlusIcon />{tab === "invoices" ? (lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE") : (lang === "es" ? `CREAR ${estimateWord.toUpperCase()}` : `CREATE ${estimateWord.toUpperCase()}`)}</button>
       </div>
