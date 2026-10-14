@@ -15723,9 +15723,22 @@ function InvoicesScreen({
       const prev = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 2, 1);
       cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
     }
-    return out.length ? out : [{ key: month, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }];
+    const ascending = out.reverse();
+    return ascending.length ? ascending : [{ key: month, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }];
   })();
   const monthLabel = (key: string) => new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "long", year: "numeric" }).format(new Date(`${key}-15T12:00:00`));
+  // Previous months sit to the LEFT: the strip opens on the current month
+  // (right end) once data lands; earlier months are a swipe back.
+  const monthsTrackRef = useRef<HTMLDivElement | null>(null);
+  const monthsInitRef = useRef(false);
+  useEffect(() => {
+    const el = monthsTrackRef.current;
+    if (el && !monthsInitRef.current && monthStats.length > 1) {
+      el.scrollLeft = el.scrollWidth;
+      setActiveMonthIdx(monthStats.length - 1);
+      monthsInitRef.current = true;
+    }
+  }, [monthStats]);
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
@@ -15734,7 +15747,7 @@ function InvoicesScreen({
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
       <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
       <section className="doc-months" aria-label={lang === "es" ? "Totales por mes" : "Monthly totals"}>
-        <div className="doc-months-track" onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(monthStats.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
+        <div className="doc-months-track" ref={monthsTrackRef} onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(monthStats.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
           {monthStats.map((m) => (
             <article className="doc-month-card" key={m.key}>
               <header><span>{monthLabel(m.key)}</span>{m.key === month && <em>{lang === "es" ? "Este mes" : "This month"}</em>}</header>
