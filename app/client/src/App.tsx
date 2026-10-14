@@ -15752,15 +15752,14 @@ function InvoicesScreen({
             <article className="doc-month-card" key={m.key}>
               <header><span>{monthLabel(m.key)}</span>{m.key === month && <em>{lang === "es" ? "Este mes" : "This month"}</em>}</header>
               <div className="doc-month-stats">
-                <span className="doc-month-stat"><small>{lang === "es" ? "Facturado" : "Invoiced"}</small><strong>{usd(m.invoiced)}</strong></span>
-                <span className="doc-month-stat"><small>{estimateWord}</small><strong>{usd(m.estimated)}</strong></span>
+                <span className="doc-month-stat"><small>{tab === "invoices" ? (lang === "es" ? "Facturado" : "Invoiced") : estimateWord}</small><strong>{usd(tab === "invoices" ? m.invoiced : m.estimated)}</strong></span>
               </div>
-              <small className="doc-month-counts">{m.invCount} {lang === "es" ? "facturas" : "invoices"} · {m.estCount} {estTerms.plural}</small>
+              <small className="doc-month-counts">{tab === "invoices" ? `${m.invCount} ${lang === "es" ? "facturas" : "invoices"}` : `${m.estCount} ${estTerms.plural}`}</small>
             </article>
           ))}
         </div>
         {monthStats.length > 1 && <div className="doc-months-dots" aria-hidden="true">{monthStats.map((m, i) => <i key={m.key} className={i === activeMonthIdx ? "on" : ""} />)}</div>}
-        <p className="doc-balance-line">{lang === "es" ? "Saldo pendiente" : "Balance due"}: <strong>{usd(balanceDue)}</strong></p>
+        {tab === "invoices" && <p className="doc-balance-line">{lang === "es" ? "Saldo pendiente" : "Balance due"}: <strong>{usd(balanceDue)}</strong></p>}
       </section>
       <div className="page-actions document-create">
         <button className="primary-button" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><PlusIcon />{tab === "invoices" ? (lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE") : (lang === "es" ? `CREAR ${estimateWord.toUpperCase()}` : `CREATE ${estimateWord.toUpperCase()}`)}</button>
