@@ -15170,40 +15170,55 @@ function LineItemEditSheet({ lang, item, showUnit, showDiscount, showOptional, c
   useEffect(() => pushHardwareBackInterceptor(() => { close(); return true; }), []);
   const set = (patch: Partial<LineItemDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const qtyLabel = draft.unit === "days" ? (lang === "es" ? "Días" : "Days") : draft.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cantidad" : "Quantity");
-  return (
+  const sheet = (
     <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <section className="more-sheet line-item-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar artículo" : "Edit item"}>
-        <div className="sheet-handle" />
-        <div className="section-title-row">
-          <h2>{lang === "es" ? "Editar artículo" : "Edit item"}</h2>
-          <button type="button" onClick={close} aria-label={lang === "es" ? "Cerrar" : "Close"}>×</button>
+        <div className="line-item-sheet-head">
+          <div className="sheet-handle" />
+          <div className="section-title-row">
+            <h2>{lang === "es" ? "Editar artículo" : "Edit item"}</h2>
+            <button type="button" onClick={close} aria-label={lang === "es" ? "Cerrar" : "Close"}>×</button>
+          </div>
         </div>
-        <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"} /></label>
-        <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={6} value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What's included"} /></label>
-        <div className="doc-price-qty">
-          <label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} placeholder="$0.00" /></label>
-          <label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={draft.quantity} onChange={(e) => set({ quantity: Number(e.target.value) })} /></label>
-        </div>
-        {(showUnit || showDiscount) && (
+        <div className="line-item-sheet-body">
+          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"} /></label>
+          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={6} value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What's included"} /></label>
           <div className="doc-price-qty">
-            {showUnit && <label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={draft.unit} onChange={(e) => set({ unit: e.target.value as LineItemDraft["unit"] })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label>}
-            {showDiscount && <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={draft.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="$0.00" /></label>}
+            <label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} placeholder="$0.00" /></label>
+            <label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={draft.quantity} onChange={(e) => set({ quantity: Number(e.target.value) })} /></label>
           </div>
-        )}
-        {showOptional && (
-          <div className="line-item-optional-row">
-            <div>
-              <strong>{lang === "es" ? "Opcional" : "Optional"}</strong>
-              <small>{lang === "es" ? "No se incluye en el total — el cliente lo marca en su página si lo quiere." : "Not included in the total — the client ticks it on their page if they want it."}</small>
+          {(showUnit || showDiscount) && (
+            <div className="doc-price-qty">
+              {showUnit && <label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={draft.unit} onChange={(e) => set({ unit: e.target.value as LineItemDraft["unit"] })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label>}
+              {showDiscount && <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={draft.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="$0.00" /></label>}
             </div>
-            <Switch checked={draft.optional === true} onChange={(next) => set({ optional: next })} ariaLabel={lang === "es" ? "Opcional" : "Optional"} />
-          </div>
-        )}
-        {canRemove && <button type="button" className="line-item-remove" onClick={() => { onRemove(); close(); }}><TrashIcon />{lang === "es" ? "Eliminar artículo" : "Remove item"}</button>}
-        <button type="button" className="primary-button" onClick={() => { onCommit(draft); close(); }}>{lang === "es" ? "Guardar" : "Save"}</button>
+          )}
+          {showOptional && (
+            <div className="line-item-optional-row">
+              <div>
+                <strong>{lang === "es" ? "Opcional" : "Optional"}</strong>
+                <small>{lang === "es" ? "No se incluye en el total — el cliente lo marca en su página si lo quiere." : "Not included in the total — the client ticks it on their page if they want it."}</small>
+              </div>
+              <Switch checked={draft.optional === true} onChange={(next) => set({ optional: next })} ariaLabel={lang === "es" ? "Opcional" : "Optional"} />
+            </div>
+          )}
+        </div>
+        <div className="line-item-sheet-foot">
+          {canRemove && <button type="button" className="line-item-remove" onClick={() => { onRemove(); close(); }}><TrashIcon />{lang === "es" ? "Eliminar artículo" : "Remove item"}</button>}
+          <button type="button" className="primary-button" onClick={() => { onCommit(draft); close(); }}>{lang === "es" ? "Guardar" : "Save"}</button>
+        </div>
       </section>
     </div>
   );
+  // Layout fix (2026-10-14): this sheet opens from inside the builders,
+  // which are themselves scrolled/animated sheet containers. A
+  // position:fixed backdrop nested there can paint offset and lose its
+  // viewport containment on mobile Chrome — the same failure the Customize
+  // overlay was portaled to document.body for (see Build 3.0 note there).
+  // Portaling keeps inset:0 relative to the true viewport in all editors.
+  // NOTE: a `document` prop shadows the DOM document in some hosts — use
+  // globalThis here too.
+  return typeof globalThis.document === "undefined" ? sheet : createPortal(sheet, globalThis.document.body);
 }
 
 // ---------------------------------------------------------------------------

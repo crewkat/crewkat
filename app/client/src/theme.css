@@ -3057,11 +3057,19 @@ button { -webkit-tap-highlight-color: transparent; }
 .doc-line-summary-text strong { font-size: .93rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-line-summary-text small { color: var(--muted); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-line-open { color: var(--muted); font-size: 1.3rem; line-height: 1; flex: none; }
-.line-item-sheet { gap: 12px; }
+/* Layout fix (2026-10-14): the sheet is a non-scrolling frame — pinned head
+   and foot, one internal scroll body — so tall content (e.g. EST0016's
+   multi-paragraph materials description) can never push the Optional row or
+   the Remove/Save actions past the screen edge. Height is capped in dvh
+   (stable under mobile browser chrome). Same grid-rows pattern as
+   .toolbox-window / .float-popup. */
+.line-item-sheet { gap: 12px; overflow: hidden; max-height: min(88dvh, 720px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.line-item-sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; display: grid; gap: 12px; align-content: start; }
+.line-item-sheet-foot { display: grid; gap: 12px; }
 .line-item-sheet label { display: grid; gap: 6px; }
 .line-item-sheet label > span { font-size: .85rem; color: var(--muted); font-weight: 600; }
 .line-item-sheet input, .line-item-sheet select, .line-item-sheet textarea { min-height: 44px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: .95rem; width: 100%; }
-.line-item-sheet textarea { min-height: 120px; field-sizing: content; max-height: 38vh; }
+.line-item-sheet textarea { min-height: 120px; field-sizing: content; max-height: 38dvh; }
 .line-item-sheet .section-title-row > button { background: transparent; border: 0; color: var(--muted); font-size: 1.35rem; line-height: 1; cursor: pointer; padding: 4px 8px; }
 .line-item-remove { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px; border-radius: 12px; border: 1px solid color-mix(in srgb, #e5484d 35%, transparent); background: color-mix(in srgb, #e5484d 7%, transparent); color: #e5484d; font-weight: 700; font-size: .92rem; cursor: pointer; }
 
