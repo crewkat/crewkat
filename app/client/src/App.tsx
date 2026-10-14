@@ -13987,6 +13987,7 @@ function QuoteBuilder({
   // start as collapsed "+ …" rows (FinancialEditor's showDiscount/showTax).
   const [showDiscount, setShowDiscount] = useState(false);
   const [showTax, setShowTax] = useState(false);
+  const [editingItem, setEditingItem] = useState<number | null>(null);
   // Build 0.6 (item 3): index of the work-item row currently being dragged.
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const totals = financialTotals(
@@ -14129,6 +14130,7 @@ function QuoteBuilder({
       api.saveQuote({
         ...form,
         lineItems: validLineItems(),
+        materials: [],
         discountValue: showDiscount ? form.discountValue : "0",
         taxValue: showTax ? form.taxValue : "0",
         subtotal: usd(totals.subtotal),
@@ -14337,8 +14339,9 @@ function QuoteBuilder({
           <div className="b06-line-list" ref={lineListRef}>
           {form.lineItems.map((item, i) => {
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1));
+            const summary = lineItemSummary(item, `${t.item} ${i + 1}`);
             return (
-            <div className={`doc-line-card${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
+            <div className={`doc-line-card collapsed${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
               <div className="doc-line-top">
                 <span
                   className="b06-grip"
@@ -14366,45 +14369,10 @@ function QuoteBuilder({
                   </button>
                 )}
               </div>
-              <input
-                className="doc-line-name"
-                aria-label={`${lang === "es" ? "Nombre de partida" : "Item name"} ${i + 1}`}
-                placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}
-                value={item.name ?? ""}
-                onChange={(e) => updateLine(i, { name: e.target.value })}
-              />
-              <textarea
-                className="doc-line-desc"
-                rows={4}
-                aria-label={`${lang === "es" ? "Descripción" : "Description"} ${i + 1}`}
-                placeholder={lang === "es" ? "Describe esta partida (opcional)" : "Describe this item (optional)"}
-                value={item.description}
-                onChange={(e) => updateLine(i, { description: e.target.value })}
-              />
-              <div className="doc-price-qty">
-                <label>
-                  <span>{lang === "es" ? "Precio" : "Price"}</span>
-                  <input
-                    aria-label={`${lang === "es" ? "Precio" : "Price"} ${i + 1}`}
-                    placeholder="$0.00"
-                    inputMode="decimal"
-                    value={item.amount}
-                    onChange={(e) => updateLine(i, { amount: e.target.value })}
-                  />
-                </label>
-                <label>
-                  <span>{lang === "es" ? "Cantidad" : "Quantity"}</span>
-                  <input
-                    aria-label={`${lang === "es" ? "Cantidad" : "Quantity"} ${i + 1}`}
-                    inputMode="decimal"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={item.quantity ?? 1}
-                    onChange={(e) => updateLine(i, { quantity: Number(e.target.value) })}
-                  />
-                </label>
-              </div>
+              <button type="button" className="doc-line-summary" onClick={() => setEditingItem(i)} aria-label={`${lang === "es" ? "Editar" : "Edit"} ${t.item} ${i + 1}`}>
+                <span className="doc-line-summary-text"><strong>{summary.title}</strong>{summary.preview && <small>{summary.preview}</small>}</span>
+                <span className="doc-line-open" aria-hidden="true">›</span>
+              </button>
             </div>
             );
           })}
@@ -14412,16 +14380,29 @@ function QuoteBuilder({
           <button
             className="primary-button add-item-wide"
             type="button"
-            onClick={() =>
+            onClick={() => {
+              setEditingItem(form.lineItems.length);
               setForm({
                 ...form,
                 lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1 }],
-              })
-            }
+              });
+            }}
           >
             <PlusIcon />
             {t.addLine}
           </button>
+          {editingItem !== null && form.lineItems[editingItem] && (
+            <LineItemEditSheet
+              lang={lang}
+              item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: "0", unit: "none" }}
+              showUnit={false}
+              showDiscount={false}
+              canRemove={form.lineItems.length > 1}
+              onCommit={(next) => updateLine(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity })}
+              onRemove={() => removeLineItem(editingItem)}
+              onClose={() => setEditingItem(null)}
+            />
+          )}
           {/* Build 0.6 (item 7): like the edit sheet, discount/tax start as
               collapsed "+ …" rows that expand into the compact editors. */}
           <div className="field-pair">
@@ -14873,6 +14854,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const [showDiscount, setShowDiscount] = useState(money(document.discountValue) > 0);
   const [showTax, setShowTax] = useState(money(document.taxValue) > 0);
   const [reorder, setReorder] = useState(false);
+  const [editingItem, setEditingItem] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -14913,7 +14895,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // persists the document automatically — no separate save tap.
   const collapseDiscount = () => { setShowDiscount(false); exitAndSave(); };
   const collapseTax = () => { setShowTax(false); exitAndSave(); };
-  useEscapeToClose(true, exitAndSave);
+  useEscapeToClose(editingItem === null, exitAndSave);
   const closeEditorPreview = () => { setEditorPreview(null); };
   useEscapeToClose(editorPreview!==null,()=>closeEditorPreview());
   // Build 0.3 (item 7): hardware back while editing saves the document, then
@@ -14943,9 +14925,8 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section editor-items-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=>{
         const qty = item.quantity ?? 1;
         const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
-        const setItem = (patch: Partial<{ name: string; description: string; amount: string; quantity: number }>) =>
-          setForm({...form,lineItems:form.lineItems.map((x,i)=>i===index?{...x,...patch}:x)});
-        return <article className="doc-line-card" key={index}>
+        const summary = lineItemSummary(item, `${t.item} ${index + 1}`);
+        return <article className="doc-line-card collapsed" key={index}>
           <div className="doc-line-top">
             {reorder ? (
               <div className="reorder-buttons">
@@ -14959,53 +14940,24 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
             {/* Build 3.0 (item 7): every line item gets an X to close/delete it. */}
             <button type="button" className="doc-line-remove" aria-label={`${lang === "es" ? "Eliminar partida" : "Remove item"} ${index+1}`} onClick={() => setForm({...form,lineItems:form.lineItems.filter((_,i)=>i!==index)})}>×</button>
           </div>
-          <input
-            className="doc-line-name"
-            aria-label={`${t.item} ${index+1}`}
-            placeholder={lang === "es" ? "Ej. Trabajo / Material" : "e.g. Work / Material"}
-            value={item.name ?? ""}
-            onChange={(e)=>setItem({name:e.target.value})}
-          />
-          <label>
-            <span>{lang === "es" ? "Descripción" : "Description"}</span>
-            <span className="textarea-grip-wrap">
-              <textarea
-                className="doc-line-desc"
-                aria-label={`${lang === "es" ? "Descripción" : "Description"} ${index+1}`}
-                placeholder={lang === "es" ? "Describe este artículo (opcional)" : "Describe this item (optional)"}
-                value={item.description}
-                rows={3}
-                onChange={(e)=>setItem({description:e.target.value})}
-              />
-              <ResizeGrip />
-            </span>
-          </label>
-          <div className="doc-price-qty">
-            <label>
-              <span>{lang === "es" ? "Precio" : "Price"}</span>
-              <input
-                aria-label={`${lang === "es" ? "Precio" : "Price"} ${index+1}`}
-                placeholder="0.00"
-                inputMode="decimal"
-                value={item.amount}
-                onChange={(e)=>setItem({amount:e.target.value})}
-              />
-            </label>
-            <label>
-              <span>{lang === "es" ? "Cantidad" : "Quantity"}</span>
-              <input
-                aria-label={`${lang === "es" ? "Cantidad" : "Quantity"} ${index+1}`}
-                inputMode="decimal"
-                type="number"
-                min="0"
-                step="any"
-                value={qty}
-                onChange={(e)=>setItem({quantity:Number(e.target.value)})}
-              />
-            </label>
-          </div>
+          <button type="button" className="doc-line-summary" disabled={reorder} onClick={() => setEditingItem(index)}>
+            <span className="doc-line-summary-text"><strong>{summary.title}</strong>{summary.preview && <small>{summary.preview}</small>}</span>
+            <span className="doc-line-open" aria-hidden="true">›</span>
+          </button>
         </article>;
-      })}<button className="add-item-row" type="button" onClick={()=>setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:""}]})}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      })}<button className="add-item-row" type="button" onClick={()=>{setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:"",quantity:1}]});setEditingItem(form.lineItems.length);}}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      {editingItem !== null && form.lineItems[editingItem] && (
+        <LineItemEditSheet
+          lang={lang}
+          item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: form.lineItems[editingItem].discount ?? "0", unit: "none" }}
+          showUnit={false}
+          showDiscount={false}
+          canRemove
+          onCommit={(next) => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.map((x, i) => (i === idx ? { ...x, name: next.name, description: next.description, amount: next.amount, quantity: next.quantity } : x)) }); }}
+          onRemove={() => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== idx) }); }}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
       {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={3} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
@@ -15130,51 +15082,194 @@ function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice
 }
 
 // ---------------------------------------------------------------------------
-// Build 4: auto-generated checkable materials list from an estimate's line
-// items. Check state persists in localStorage per estimate so the crew can
-// tick things off at the supply house.
+// Line-item editing (Danny, 2026-10-14): item cards in the estimate/invoice
+// builders and the document editor are COLLAPSED summary rows — name (or the
+// description's first line) plus the line total. Tapping a card opens this
+// floating sheet to edit just that item, Invoice Fly style. The sheet edits
+// a draft copy: Save commits into the parent form, X / backdrop / back
+// discards. Fields shown match what each editor's item supports.
 // ---------------------------------------------------------------------------
-function MaterialsChecklist({ lang, quoteId, lineItems }: { lang: Lang; quoteId: number; lineItems: Array<{ description: string; amount: string }> }) {
-  const storageKey = `crewkat-materials-${quoteId}`;
-  const [checked, setChecked] = useState<Record<number, boolean>>(() => {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      return raw ? (JSON.parse(raw) as Record<number, boolean>) : {};
-    } catch { return {}; }
-  });
-  const [open, setOpen] = useState(false);
-  const toggle = (index: number) => {
-    setChecked((prev) => {
-      const next = { ...prev, [index]: !prev[index] };
-      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
-      return next;
-    });
-    buzz(8);
+type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours" };
+
+function lineItemSummary(item: { name?: string; description: string }, fallback: string): { title: string; preview: string } {
+  const lines = item.description.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const name = (item.name ?? "").trim();
+  if (name) return { title: name, preview: lines[0] ?? "" };
+  const first = lines[0];
+  if (first) return { title: first, preview: lines[1] ?? "" };
+  return { title: fallback, preview: "" };
+}
+
+function LineItemEditSheet({ lang, item, showUnit, showDiscount, canRemove, onCommit, onRemove, onClose }: {
+  lang: Lang;
+  item: LineItemDraft;
+  showUnit: boolean;
+  showDiscount: boolean;
+  canRemove: boolean;
+  onCommit: (next: LineItemDraft) => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<LineItemDraft>(item);
+  const [closing, setClosing] = useState(false);
+  const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
+  useEscapeToClose(true, close);
+  useEffect(() => pushHardwareBackInterceptor(() => { close(); return true; }), []);
+  const set = (patch: Partial<LineItemDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  const qtyLabel = draft.unit === "days" ? (lang === "es" ? "Días" : "Days") : draft.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cantidad" : "Quantity");
+  return (
+    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <section className="more-sheet line-item-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Editar artículo" : "Edit item"}>
+        <div className="sheet-handle" />
+        <div className="section-title-row">
+          <h2>{lang === "es" ? "Editar artículo" : "Edit item"}</h2>
+          <button type="button" onClick={close} aria-label={lang === "es" ? "Cerrar" : "Close"}>×</button>
+        </div>
+        <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"} /></label>
+        <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={6} value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What's included"} /></label>
+        <div className="doc-price-qty">
+          <label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} placeholder="$0.00" /></label>
+          <label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={draft.quantity} onChange={(e) => set({ quantity: Number(e.target.value) })} /></label>
+        </div>
+        {(showUnit || showDiscount) && (
+          <div className="doc-price-qty">
+            {showUnit && <label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={draft.unit} onChange={(e) => set({ unit: e.target.value as LineItemDraft["unit"] })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label>}
+            {showDiscount && <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={draft.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="$0.00" /></label>}
+          </div>
+        )}
+        {canRemove && <button type="button" className="line-item-remove" onClick={() => { onRemove(); close(); }}><TrashIcon />{lang === "es" ? "Eliminar artículo" : "Remove item"}</button>}
+        <button type="button" className="primary-button" onClick={() => { onCommit(draft); close(); }}>{lang === "es" ? "Guardar" : "Save"}</button>
+      </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Materials buy list (0075): a real per-estimate list — name / qty / unit /
+// checked — stored on the quote so check-offs sync with the account. The old
+// Build 4 version mirrored line items verbatim (whole scope paragraphs and
+// prices rendered as "materials"); this one keeps its own data, edits inline,
+// and can prefill from the estimate's text once (splitting a MATERIALS block
+// into rows, pulling " - 432 sq ft"-style quantities out when present).
+// ---------------------------------------------------------------------------
+type MaterialItem = { name: string; qty: string; unit: string; checked: boolean };
+
+function parseMaterialsFromLines(lineItems: Array<{ description: string; amount: string }>): MaterialItem[] {
+  const out: MaterialItem[] = [];
+  const seen = new Set<string>();
+  const push = (name: string, qty = "", unit = "") => {
+    const clean = name.replace(/\s+/g, " ").trim();
+    if (clean.length < 3) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ name: clean, qty, unit, checked: false });
   };
-  const doneCount = lineItems.filter((_, i) => checked[i]).length;
-  const progress = lineItems.length ? Math.round((doneCount / lineItems.length) * 100) : 0;
+  for (const item of lineItems) {
+    for (const rawLine of item.description.split(/\n+/)) {
+      const line = rawLine.replace(/^[\s\u2022\-*]+/, "").trim();
+      if (!line) continue;
+      if (/^materials?\s+(included|list)\b/i.test(line)) continue; // section header
+      if (/add-on|optional/i.test(line)) continue; // conditional items are not buy-list items
+      if (/^\d+\.\s/.test(line)) continue; // numbered scope steps
+      const m = line.match(/^(.*?)\s*[-\u2014]\s*(\d+(?:\.\d+)?)\s*(sq ft|bags?|tubes?|rolls?|gallons?|gal\.?|sheets?|boxes|pcs|pieces|cans?|buckets?|lbs?|lf|sf|ft)\b/i);
+      if (m) { push(m[1]!.replace(/[(,]\s*$/, ""), m[2]!, m[3]!.trim()); continue; }
+      if (line.length > 90) continue; // long prose: scope paragraphs, option descriptions
+      push(line.replace(/\s*[-\u2014]\s*(as required|as needed)\s*$/i, ""));
+    }
+  }
+  return out.slice(0, 60);
+}
+
+function MaterialsChecklist({ lang, quoteId, materials, lineItems }: { lang: Lang; quoteId: number; materials: MaterialItem[]; lineItems: Array<{ description: string; amount: string }> }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [items, setItems] = useState<MaterialItem[]>(materials);
+  const [draft, setDraft] = useState<MaterialItem[]>([]);
+  // Adopt server state whenever it changes and we are not mid-edit (covers
+  // our own save refetch and changes made on another device).
+  const serverJson = JSON.stringify(materials);
+  useEffect(() => { if (!editing) setItems(JSON.parse(serverJson) as MaterialItem[]); }, [serverJson, editing]);
+  const save = useMutation({
+    mutationFn: (next: MaterialItem[]) => api.saveQuoteMaterials({ id: quoteId, materials: next }),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: ["quotes"] }); },
+  });
+  const suggested = useMemo(() => parseMaterialsFromLines(lineItems), [lineItems]);
+  const doneCount = items.filter((m) => m.checked).length;
+  const progress = items.length ? Math.round((doneCount / items.length) * 100) : 0;
+  const toggle = (index: number) => {
+    buzz(8);
+    const next = items.map((m, i) => (i === index ? { ...m, checked: !m.checked } : m));
+    setItems(next);
+    save.mutate(next);
+  };
+  const startEdit = () => { setDraft(items.length ? items.map((m) => ({ ...m })) : [{ name: "", qty: "", unit: "", checked: false }]); setEditing(true); setOpen(true); };
+  const saveEdit = () => {
+    const next = draft.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), qty: m.qty.trim(), unit: m.unit.trim(), checked: m.checked }));
+    setItems(next);
+    setEditing(false);
+    save.mutate(next);
+  };
+  const prefill = () => { if (!suggested.length) return; setItems(suggested); setOpen(true); save.mutate(suggested); };
   return (
     <section className="materials-checklist" aria-label={lang === "es" ? "Lista de materiales" : "Materials list"}>
-      <button type="button" className="materials-checklist-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="materials-checklist-title">
-          <span className="doc-chip" aria-hidden="true"><Icon><path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" /></Icon></span>
-          <strong>{lang === "es" ? "Lista de materiales" : "Materials list"}</strong>
-          <small>{doneCount}/{lineItems.length} · {progress}%</small>
-        </span>
-        <span className={`chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
-      </button>
+      <div className="materials-head-row">
+        <button type="button" className="materials-checklist-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <span className="materials-checklist-title">
+            <span className="doc-chip" aria-hidden="true"><Icon><path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" /></Icon></span>
+            <strong>{lang === "es" ? "Lista de materiales" : "Materials list"}</strong>
+            <small>{doneCount}/{items.length} · {progress}%</small>
+          </span>
+          <span className={`chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
+        </button>
+        {items.length > 0 && !editing && (
+          <button type="button" className="materials-edit-link" onClick={startEdit}>{lang === "es" ? "Editar" : "Edit"}</button>
+        )}
+      </div>
       <div className="materials-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></div>
-      {open && (
+      {open && !editing && items.length > 0 && (
         <ul className="materials-items">
-          {lineItems.map((item, i) => (
+          {items.map((item, i) => (
             <li key={i}>
-              <button type="button" className={`materials-item${checked[i] ? " done" : ""}`} onClick={() => toggle(i)} aria-pressed={!!checked[i]}>
-                <span className="materials-checkbox pop-in" aria-hidden="true">{checked[i] && <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 8.5l3.5 3.5L13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
-                <span className="materials-item-text"><strong>{item.description}</strong><small>{usd(money(item.amount))}</small></span>
+              <button type="button" className={`materials-item${item.checked ? " done" : ""}`} onClick={() => toggle(i)} aria-pressed={item.checked}>
+                <span className="materials-checkbox pop-in" aria-hidden="true">{item.checked && <svg viewBox="0 0 16 16" width="14" height="14"><path d="M3 8.5l3.5 3.5L13 4.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+                <span className="materials-item-text"><strong>{item.name}</strong>{(item.qty || item.unit) && <small>{[item.qty, item.unit].filter(Boolean).join(" ")}</small>}</span>
               </button>
             </li>
           ))}
         </ul>
+      )}
+      {open && !editing && items.length === 0 && (
+        <div className="materials-empty">
+          <p>{lang === "es" ? "Aún no hay materiales en la lista." : "No materials on the list yet."}</p>
+          <div className="materials-empty-actions">
+            {suggested.length > 0 && (
+              <button type="button" className="materials-cta primary" onClick={prefill}>{lang === "es" ? "Crear desde el texto del estimado" : "Build from estimate text"}</button>
+            )}
+            <button type="button" className="materials-cta" onClick={startEdit}>{lang === "es" ? "Agregar manualmente" : "Add manually"}</button>
+          </div>
+        </div>
+      )}
+      {open && editing && (
+        <div className="materials-editor">
+          {draft.map((m, i) => (
+            <div className="materials-edit-row" key={i}>
+              <input className="m-name" value={m.name} onChange={(e) => setDraft((d) => d.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder={lang === "es" ? "Nombre del material" : "Material name"} aria-label={`${lang === "es" ? "Material" : "Material"} ${i + 1}`} />
+              <input className="m-qty" value={m.qty} onChange={(e) => setDraft((d) => d.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} placeholder={lang === "es" ? "Cant." : "Qty"} inputMode="decimal" aria-label={`${lang === "es" ? "Cantidad" : "Quantity"} ${i + 1}`} />
+              <input className="m-unit" value={m.unit} onChange={(e) => setDraft((d) => d.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} placeholder={lang === "es" ? "Unidad" : "Unit"} aria-label={`${lang === "es" ? "Unidad" : "Unit"} ${i + 1}`} />
+              <button type="button" className="materials-del" onClick={() => setDraft((d) => d.filter((_, j) => j !== i))} aria-label={`${lang === "es" ? "Eliminar" : "Remove"} ${i + 1}`}>×</button>
+            </div>
+          ))}
+          <div className="materials-editor-foot">
+            <button type="button" className="materials-cta" onClick={() => setDraft((d) => [...d, { name: "", qty: "", unit: "", checked: false }])}>+ {lang === "es" ? "Agregar material" : "Add material"}</button>
+            <span className="materials-editor-actions">
+              <button type="button" className="materials-cta" onClick={() => setEditing(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+              <button type="button" className="materials-cta primary" onClick={saveEdit} disabled={save.isPending}>{lang === "es" ? "Guardar" : "Save"}</button>
+            </span>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -15526,9 +15621,8 @@ function QuotePreview({
     <section className="document-detail-summary ck-quote-summary"><div className="ck-inv-head"><div className="ck-quote-total"><span className="ck-inv-label">{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`ck-pill ${acceptedNow ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : quote.sentAt ? "ck-pill-pending" : "ck-pill-draft"}`}>{status}</span></div><div className="ck-quote-client-row"><button type="button" className="ck-quote-client" onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button><ViewedBadge lang={lang} kind="quote" id={quote.id} />{quote.jobId && <button type="button" className="ck-quote-job-link" onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     <DocumentAttachmentsRow lang={lang} docType="quote" docId={quote.id} onOpen={() => setScreen({ name: "quoteAttachments", quoteId: quote.id })} />
-    {/* Build 4: auto-generated checkable materials list from the estimate's
-        line items. Check state persists on-device per estimate. */}
-    <MaterialsChecklist lang={lang} quoteId={quote.id} lineItems={quote.lineItems} />
+    {/* Materials buy list (0075): the estimate's own synced checklist. */}
+    <MaterialsChecklist lang={lang} quoteId={quote.id} materials={quote.materials ?? []} lineItems={quote.lineItems} />
     <details className="action-details version-details"><summary><span className="doc-chip" aria-hidden="true"><Icon><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></Icon></span><span>{lang==="es"?"Historial de versiones":"Version history"}</span></summary>{versions.data?.versions.map((version)=><div className="version-compact" key={version.id}><span>v{version.versionNumber}</span><small>{version.accepted?(lang==="es"?"Aceptada":"Accepted"):version.sentAt?(lang==="es"?"Enviada":"Sent"):(lang==="es"?"Borrador":"Draft")}</small><strong>{usd(money(version.total))}</strong></div>)}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
@@ -15777,6 +15871,7 @@ function InvoiceBuilder({
   const jobQuery = useQuery({ queryKey: ["job", jobId], enabled: Boolean(jobId), queryFn: () => api.getJob({ id: jobId ?? 0 }) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const [activeSheet, setActiveSheet] = useState<"details" | "discount" | "tax" | null>(null);
+  const [editingItem, setEditingItem] = useState<number | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [error, setError] = useState("");
@@ -15879,7 +15974,7 @@ function InvoiceBuilder({
     flushInvoiceDraftRef.current();
     closeAfterSave(() => onBack());
   };
-  useEscapeToClose(docOpen && !activeSheet && !previewOpen, exitAndSave);
+  useEscapeToClose(docOpen && !activeSheet && !previewOpen && editingItem === null, exitAndSave);
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
@@ -15900,17 +15995,29 @@ function InvoiceBuilder({
       {/* Build 2.0: line items stand alone — no card-within-a-card; the
           rows extend side to side for more usable space. */}
       <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
-        {form.lineItems.map((item, index) => { const qtyLabel = item.unit === "days" ? (lang === "es" ? "Días" : "Days") : item.unit === "hours" ? (lang === "es" ? "Horas" : "Hours") : (lang === "es" ? "Cant." : "Qty"); const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); return <article className="invoice-line-card doc-line-card" key={index}>
+        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className="invoice-line-card doc-line-card collapsed" key={index}>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, Price | Quantity side-by-side. */}
           <div className="doc-line-top"><span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span><span className="doc-line-total">{usd(lineTotal)}</span>{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
-          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input className="doc-line-name" value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"}/></label>
-          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><span className="textarea-grip-wrap"><textarea className="doc-line-desc" rows={4} value={item.description} onChange={(e) => updateItem(index, { description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What’s included"}/><ResizeGrip /></span></label>
-          <div className="doc-price-qty"><label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={item.amount} onChange={(e) => updateItem(index, { amount: e.target.value })} placeholder="$0.00"/></label><label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={item.quantity} onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}/></label></div>
-          <div className="doc-price-qty"><label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={item.unit} onChange={(e) => updateItem(index, { unit: e.target.value as "none" | "days" | "hours" })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label><label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={item.discount} onChange={(e) => updateItem(index, { discount: e.target.value })} placeholder="$0.00"/></label></div>
+          <button type="button" className="doc-line-summary" onClick={() => setEditingItem(index)}>
+            <span className="doc-line-summary-text"><strong>{summary.title}</strong>{summary.preview && <small>{summary.preview}</small>}</span>
+            <span className="doc-line-open" aria-hidden="true">›</span>
+          </button>
         </article>})}
-        <button className="secondary-button" type="button" onClick={() => setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] })}><PlusIcon />{t.addLine}</button>
+        <button className="secondary-button" type="button" onClick={() => { setEditingItem(form.lineItems.length); setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] }); }}><PlusIcon />{t.addLine}</button>
       </div>
+      {editingItem !== null && form.lineItems[editingItem] && (
+        <LineItemEditSheet
+          lang={lang}
+          item={{ name: form.lineItems[editingItem].name, description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity, discount: form.lineItems[editingItem].discount, unit: form.lineItems[editingItem].unit }}
+          showUnit
+          showDiscount
+          canRemove={form.lineItems.length > 1}
+          onCommit={(next) => updateItem(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, discount: next.discount, unit: next.unit })}
+          onRemove={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== editingItem) })}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
       <section className="invoice-totals-block"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>
         {!discountEnabled ? <button type="button" onClick={() => setActiveSheet("discount")}><span>＋ {t.discount}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("discount")}><span>{t.discount}</span><strong>-{usd(totals.discount)}</strong></button>}
         {!taxEnabled ? <button type="button" onClick={() => setActiveSheet("tax")}><span>＋ {t.tax}</span><b>›</b></button> : <button type="button" onClick={() => setActiveSheet("tax")}><span>{t.tax}</span><strong>{usd(totals.tax)}</strong></button>}
