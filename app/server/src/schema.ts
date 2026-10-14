@@ -97,6 +97,9 @@ export const quotes = sqliteTable("quotes", {
   shippingAddress: text("shipping_address").notNull().default(""),
   jobType: text("job_type").notNull().default(""),
   lineItemsJson: text("line_items_json").notNull(),
+  // Per-estimate materials buy list (0075): JSON array of
+  // { name, qty, unit, checked } — the crew's supply-house checklist.
+  materialsJson: text("materials_json").notNull().default("[]"),
   subtotal: text("subtotal").notNull().default("0"),
   discountType: text("discount_type", { enum: ["percent", "fixed"] }).notNull().default("percent"),
   discountValue: text("discount_value").notNull().default("0"),

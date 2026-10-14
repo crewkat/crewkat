@@ -41181,6 +41181,7 @@ var quotes = sqliteTable("quotes", {
   shippingAddress: text("shipping_address").notNull().default(""),
   jobType: text("job_type").notNull().default(""),
   lineItemsJson: text("line_items_json").notNull(),
+  materialsJson: text("materials_json").notNull().default("[]"),
   subtotal: text("subtotal").notNull().default("0"),
   discountType: text("discount_type", { enum: ["percent", "fixed"] }).notNull().default("percent"),
   discountValue: text("discount_value").notNull().default("0"),
@@ -55657,7 +55658,11 @@ function parseDocumentCustomize(value, kind, lang) {
     return base;
   try {
     const parsed = JSON.parse(value);
-    return { ...base, ...parsed, labels: { ...base.labels, ...parsed.labels ?? {} } };
+    const merged = { ...base, ...parsed, labels: { ...base.labels, ...parsed.labels ?? {} } };
+    const otherKindStock = kind === "invoice" ? ["ESTIMATE", "ESTIMADO"] : ["INVOICE", "FACTURA"];
+    if (otherKindStock.includes(merged.headline))
+      merged.headline = base.headline;
+    return merged;
   } catch {
     return base;
   }
@@ -73809,6 +73814,7 @@ var punchItemSchema = object({ id: number2(), jobId: number2(), text: string2(),
 var punchSignoffSchema = object({ id: number2(), jobId: number2(), customerName: string2(), customerSignatureUrl: string2(), contractorName: string2(), contractorSignatureUrl: string2(), signedAt: string2() });
 var progressSchema = object({ id: number2(), jobId: number2(), dayNumber: number2(), note: string2(), photoIds: array(number2()), status: _enum(["draft", "sent"]), createdAt: string2(), updatedAt: string2() });
 var quoteItemSchema = object({ description: string2().trim().min(1).max(5000), amount: string2().trim().max(80) });
+var materialItemSchema = object({ name: string2().trim().min(1).max(300), qty: string2().trim().max(40), unit: string2().trim().max(40), checked: boolean2() });
 var invoiceItemSchema = quoteItemSchema.extend({
   name: string2().trim().max(160).default(""),
   quantity: number2().min(0).max(1e5).default(1),
@@ -73825,7 +73831,7 @@ var customizeJsonSchema = string2().max(5000000).refine((value) => {
   }
 }, "Invalid document customization.");
 var financialFieldsSchema = object({ subtotal: string2(), discountType: adjustmentTypeSchema, discountValue: string2(), taxType: adjustmentTypeSchema, taxValue: string2(), total: string2(), footnote: string2(), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape);
-var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
+var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), materials: array(materialItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var paymentSchema = object({ id: number2(), invoiceId: number2(), amount: string2(), paymentDate: string2(), method: string2(), note: string2(), createdAt: string2() });
 var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var timeEntrySchema = object({ id: number2(), jobId: number2(), crewMember: string2(), startedAt: string2(), endedAt: string2().nullable(), note: string2(), durationSeconds: number2() });
@@ -74151,8 +74157,18 @@ function quoteDiff(previous, next) {
   });
   return { added, removed, priceChanges, totalChange: (Number(next.total) - Number(previous.total)).toFixed(2) };
 }
+function parseMaterials(json) {
+  try {
+    const raw = JSON.parse(json ?? "[]");
+    if (!Array.isArray(raw))
+      return [];
+    return raw.filter((m) => m && typeof m.name === "string" && m.name.trim()).map((m) => ({ name: String(m.name), qty: typeof m.qty === "string" ? m.qty : "", unit: typeof m.unit === "string" ? m.unit : "", checked: m.checked === true }));
+  } catch {
+    return [];
+  }
+}
 function quoteShape(q) {
-  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
+  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
 }
 function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, graceDays: 0 }) {
   const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -76681,7 +76697,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(quotes).orderBy(desc(quotes.createdAt));
     return { quotes: rows.map(quoteShape) };
   } }),
-  saveQuote: defineAction({ request: object({ clientId: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240), shippingAddress: string2().trim().max(240).default(""), jobType: string2().trim().max(120), lineItems: array(quoteItemSchema).min(1).max(50), subtotal: string2().max(80), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), total: string2().max(80), footnote: string2().max(3000), expiryDate: string2().max(10), sentAt: string2().max(10), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema, depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0") }).extend(documentVisibilitySchema.shape), response: object({ id: number2() }), async handler(ctx, args) {
+  saveQuote: defineAction({ request: object({ clientId: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240), shippingAddress: string2().trim().max(240).default(""), jobType: string2().trim().max(120), lineItems: array(quoteItemSchema).min(1).max(50), subtotal: string2().max(80), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), total: string2().max(80), footnote: string2().max(3000), expiryDate: string2().max(10), sentAt: string2().max(10), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema, depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0"), materials: array(materialItemSchema).max(200).default([]) }).extend(documentVisibilitySchema.shape), response: object({ id: number2() }), async handler(ctx, args) {
     const now = new Date;
     const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress });
     const depositValue = normalizeMoney(args.depositValue, "0.00");
@@ -76689,7 +76705,8 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Deposit percent must be 0-100.");
     if (args.depositType === "fixed" && Number(depositValue) < 0)
       throw new Error("Deposit amount cannot be negative.");
-    const rows = await ctx.db().insert(quotes).values({ ...args, clientId, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), depositValue, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
+    const { materials, ...quoteArgs } = args;
+    const rows = await ctx.db().insert(quotes).values({ ...quoteArgs, clientId, materialsJson: JSON.stringify(materials), lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), depositValue, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save quote.");
@@ -76773,7 +76790,19 @@ If that was you, just sign in again. If not, we recommend changing your password
       return { invoiceId: prior.id };
     }
     const invoiceNumber = await nextInvoiceNumber(db);
-    const madeRows = await db.insert(invoices).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: clientToday(args), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, imagesPerPage: q.imagesPerPage, depositType: q.depositType, depositValue: q.depositValue, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const invoiceCustomizeJson = (() => {
+      try {
+        const c = JSON.parse(q.customizeJson);
+        if (c.headline === "ESTIMATE")
+          c.headline = "INVOICE";
+        else if (c.headline === "ESTIMADO")
+          c.headline = "FACTURA";
+        return JSON.stringify(c);
+      } catch {
+        return q.customizeJson;
+      }
+    })();
+    const madeRows = await db.insert(invoices).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: clientToday(args), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: invoiceCustomizeJson, imagesPerPage: q.imagesPerPage, depositType: q.depositType, depositValue: q.depositValue, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -78740,6 +78769,15 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  saveQuoteMaterials: defineAction({ request: object({ id: number2().int().positive(), materials: array(materialItemSchema).max(200) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const row = (await db.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
+    if (!row)
+      throw new Error("Quote not found.");
+    await db.update(quotes).set({ materialsJson: JSON.stringify(args.materials), updatedAt: new Date }).where(eq(quotes.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
   createQuoteVersion: defineAction({ request: object({ id: number2().int().positive() }), response: object({ id: number2(), versionNumber: number2() }), async handler(ctx, args) {
     const db = ctx.db();
     const source = (await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
@@ -78749,7 +78787,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
     const versionNumber = Math.max(...versions.map((q) => q.versionNumber), 0) + 1;
     const now = new Date;
-    const rows = await db.insert(quotes).values({ clientId: source.clientId, clientName: source.clientName, clientPhone: source.clientPhone, clientEmail: source.clientEmail, jobAddress: source.jobAddress, jobType: source.jobType, lineItemsJson: source.lineItemsJson, subtotal: source.subtotal, discountType: source.discountType, discountValue: source.discountValue, taxType: source.taxType, taxValue: source.taxValue, total: source.total, footnote: source.footnote, expiryDate: source.expiryDate, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", theme: source.theme, font: source.font, accentColor: source.accentColor, showTaxLine: source.showTaxLine, showDiscountLine: source.showDiscountLine, showPaidLine: source.showPaidLine, showPaymentTerms: source.showPaymentTerms, showFooterNotes: source.showFooterNotes, showLogo: source.showLogo, showCompanyInfo: source.showCompanyInfo, jobId: source.jobId, seriesId, parentQuoteId: source.id, versionNumber, superseded: false, accepted: false, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
+    const rows = await db.insert(quotes).values({ clientId: source.clientId, clientName: source.clientName, clientPhone: source.clientPhone, clientEmail: source.clientEmail, jobAddress: source.jobAddress, jobType: source.jobType, lineItemsJson: source.lineItemsJson, materialsJson: source.materialsJson, subtotal: source.subtotal, discountType: source.discountType, discountValue: source.discountValue, taxType: source.taxType, taxValue: source.taxValue, total: source.total, footnote: source.footnote, expiryDate: source.expiryDate, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", theme: source.theme, font: source.font, accentColor: source.accentColor, showTaxLine: source.showTaxLine, showDiscountLine: source.showDiscountLine, showPaidLine: source.showPaidLine, showPaymentTerms: source.showPaymentTerms, showFooterNotes: source.showFooterNotes, showLogo: source.showLogo, showCompanyInfo: source.showCompanyInfo, jobId: source.jobId, seriesId, parentQuoteId: source.id, versionNumber, superseded: false, accepted: false, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not create quote version.");

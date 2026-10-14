@@ -105,7 +105,15 @@ export function parseDocumentCustomize(value: string | undefined, kind: "quote" 
   if (!value || value === "{}") return base;
   try {
     const parsed = JSON.parse(value) as Partial<DocumentCustomize>;
-    return { ...base, ...parsed, labels: { ...base.labels, ...(parsed.labels ?? {}) } };
+    const merged = { ...base, ...parsed, labels: { ...base.labels, ...(parsed.labels ?? {}) } };
+    // Converting an estimate to an invoice copies customizeJson verbatim, so
+    // a stored headline can be the OTHER kind's stock word ("ESTIMATE" on an
+    // invoice). A stock headline of the wrong kind is never a deliberate
+    // choice — render this kind's stock headline instead. Custom headlines
+    // pass through untouched.
+    const otherKindStock = kind === "invoice" ? ["ESTIMATE", "ESTIMADO"] : ["INVOICE", "FACTURA"];
+    if (otherKindStock.includes(merged.headline)) merged.headline = base.headline;
+    return merged;
   } catch { return base; }
 }
 
