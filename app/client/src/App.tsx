@@ -5357,8 +5357,8 @@ function MarketplaceProProfile({ lang, companyId, listingId, onBack, setScreen }
     onError: () => {},
   });
   const t = lang === "es"
-    ? { notFound: "No se encontró el perfil de este profesional.", listings: "Publicaciones", noListings: "Sin publicaciones activas por ahora.", message: "Mensaje", starting: "Abriendo conversación…", startError: "No se pudo abrir la conversación. Inténtalo de nuevo.", freeEstimates: "Estimados gratis", just: "Recién publicado", promoted: "Promocionado", featured: "Destacado", save: "Guardar publicación", saved: "Guardado", website: "Sitio web", reviews: "Reseñas" }
-    : { notFound: "This pro profile could not be found.", listings: "Listings", noListings: "No active listings right now.", message: "Message", starting: "Opening conversation…", startError: "The conversation could not be opened. Try again.", freeEstimates: "Free estimates", just: "Just listed", promoted: "Promoted", featured: "Featured", save: "Save listing", saved: "Saved", website: "Website", reviews: "Reviews" };
+    ? { notFound: "No se encontró el perfil de este profesional.", listings: "Publicaciones", noListings: "Sin publicaciones activas por ahora.", message: "Mensaje", starting: "Abriendo conversación…", startError: "No se pudo abrir la conversación. Inténtalo de nuevo.", freeEstimates: "Estimados gratis", just: "Recién publicado", promoted: "Promocionado", featured: "Destacado", save: "Guardar publicación", saved: "Guardado", website: "Sitio web" }
+    : { notFound: "This pro profile could not be found.", listings: "Listings", noListings: "No active listings right now.", message: "Message", starting: "Opening conversation…", startError: "The conversation could not be opened. Try again.", freeEstimates: "Free estimates", just: "Just listed", promoted: "Promoted", featured: "Featured", save: "Save listing", saved: "Saved", website: "Website" };
   const toggleSaved = (id: number) => setSavedIds((current) => {
     const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
     window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next));
@@ -5366,12 +5366,18 @@ function MarketplaceProProfile({ lang, companyId, listingId, onBack, setScreen }
   });
   const webHref = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
   const isOwnProfile = !!profile && profile.listings.some((listing) => listing.isMine);
+  // Danny 2026-10-14: no Reviews option on the profile until the pro has
+  // reviews to show. Crewkat has no in-app reviews yet (ratings/reviews
+  // are parked until completed-booking volume exists), so the option is
+  // absent for everyone — never a dead or greyed entry. The payload still
+  // carries reviewUrl for the pro's OWN review-request flows (Settings,
+  // PDFs); it is simply not rendered as a public profile link. When a
+  // real reviews system ships, re-add the entry gated on actual reviews.
   const socials = profile ? [
     { label: t.website, url: profile.website },
     { label: "Facebook", url: profile.facebookUrl },
     { label: "Instagram", url: profile.instagramUrl },
     { label: "YouTube", url: profile.youtubeUrl },
-    { label: t.reviews, url: profile.reviewUrl },
   ].filter((item) => item.url.trim()) : [];
   return <main className="page marketplace-profile"><PageHeader lang={lang} title={lang === "es" ? "Perfil del profesional" : "Pro profile"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !profile ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="pro-profile-head">
