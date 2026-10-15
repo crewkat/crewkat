@@ -1,18 +1,21 @@
-// Crane Run daily leaderboard behavior tests (2026-10-11, Danny: global
-// top-5 per UTC day, opt-in default private, company name when the account
-// has one else the user's name).
+// Crane Run leaderboard behavior tests (2026-10-11 daily; weekly since
+// 0077, 2026-10-14, Danny: global top-5 per America/New_York calendar
+// week, opt-in default private, company name when the account has one
+// else the user's name; a player's weekly score is their best daily row
+// that week, and score rows are keyed by ET date).
 //
 // Covers:
 //  1. Migration 0073: daily_game_scores table + indexes, auth_users.
-//     leaderboard_opt_in; journal newest tag is 0073_crane_run_leaderboard
-//     with strictly newer `when` than 0072.
+//     leaderboard_opt_in; journal ordering (0077 newest, strictly
+//     increasing `when`).
 //  2. craneRunSetOptIn: default off, toggles on/off; opting out deletes
-//     today's row.
+//     this week's rows.
 //  3. craneRunSubmitScore: refuses when not opted in (nothing stored);
-//     stores first score; keeps the max per day; resolves display name
-//     (company name first, user name fallback); rejects insane scores.
-//  4. craneRunGetLeaderboard: top 5 of today only, opted-in only, score
-//     desc, isMe/myBest/optIn flags.
+//     stores first score under today's ET date; keeps the max per day;
+//     resolves display name (company name first, user name fallback);
+//     rejects insane scores.
+//  4. craneRunGetLeaderboard: top 5 of this week only, opted-in only,
+//     score desc, isMe/myBest/optIn flags.
 //
 // Run from app/:  bun crane-run-leaderboard.behavior.test.ts
 import { mkdtemp } from "node:fs/promises";
@@ -24,6 +27,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { and, eq } from "drizzle-orm";
 import { BaseActions } from "./server/src/actions.ts";
 import * as schema from "./server/src/schema.ts";
+import { addDays, currentWeekStart, etDateString } from "./server/src/craneWeek.ts";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail = "") {
@@ -54,8 +58,8 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0076_quote_option_selection", last.tag === "0076_quote_option_selection", last.tag);
-check("0073 when is strictly newer than 0072 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
+check("newest migration tag is 0077_crane_run_weekly", last.tag === "0077_crane_run_weekly", last.tag);
+check("newest when is strictly newer than previous (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Migration 0073 schema ----------------------------------------------------
 const tables = (await client.execute("SELECT name FROM sqlite_master WHERE type='table'")).rows.map((r) => (r as any).name as string);
@@ -68,8 +72,8 @@ check("index daily_game_scores_date_score_idx exists", idxs.includes("daily_game
 
 // --- 4. Fixtures -------------------------------------------------------------------
 const now = new Date();
-const today = new Date().toISOString().slice(0, 10);
-const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+const today = etDateString(now);
+const lastSunday = addDays(currentWeekStart(), -1);
 
 await db.insert(schema.settings).values({ id: 1, companyId: 1, companyName: "Stallions Construction", updatedAt: now });
 await db.insert(schema.settings).values({ id: 2, companyId: 2, companyName: "", updatedAt: now });
@@ -138,16 +142,16 @@ for (const [i, id] of extraIds.entries()) {
 // One opted-OUT user with a giant score must not appear.
 const ghostId = await mkUser("Ghost", "ghost@test.com", 1);
 await db.insert(schema.dailyGameScores).values({ userId: ghostId, displayName: "Ghost", score: 99999, scoreDate: today, createdAt: now });
-// One opted-in user whose only row is yesterday must not appear today.
+// One opted-in user whose only row is last week must not appear this week.
 const oldId = await mkUser("Old Timer", "old@test.com", 1);
 await actions.craneRunSetOptIn.handler(ctxFor(oldId, 1), { optIn: true });
-await db.insert(schema.dailyGameScores).values({ userId: oldId, displayName: "Old Timer", score: 77777, scoreDate: yesterday, createdAt: now });
+await db.insert(schema.dailyGameScores).values({ userId: oldId, displayName: "Old Timer", score: 77777, scoreDate: lastSunday, createdAt: now });
 
 const board = await actions.craneRunGetLeaderboard.handler(ctxFor(dannyId, 1), {});
 check("board returns exactly 5 entries", board.entries.length === 5, String(board.entries.length));
 check("board is score-desc", board.entries.every((e: any, i: number, a: any[]) => i === 0 || a[i - 1].score >= e.score));
 check("opted-out ghost excluded", !board.entries.some((e: any) => e.displayName === "Ghost"));
-check("yesterday's row excluded", !board.entries.some((e: any) => e.displayName === "Old Timer"));
+check("last week's row excluded", !board.entries.some((e: any) => e.displayName === "Old Timer"));
 check("ranks are 1..5", board.entries.map((e: any) => e.rank).join(",") === "1,2,3,4,5");
 const dannyEntry = board.entries.find((e: any) => e.isMe);
 check("isMe marks the caller's row", !!dannyEntry && dannyEntry.displayName === "Stallions Construction");

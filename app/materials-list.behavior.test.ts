@@ -32,7 +32,7 @@ async function checkThrows(name: string, fn: () => Promise<unknown>) {
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("newest migration tag is 0076_quote_option_selection", last.tag === "0076_quote_option_selection", last.tag);
+check("newest migration tag is 0077_crane_run_weekly", last.tag === "0077_crane_run_weekly", last.tag);
 const entry75 = entries.find((e) => e.tag === "0075_quote_materials")!;
 const entry74 = entries.find((e) => e.tag === "0074_portal_short_codes")!;
 check("0075 when is strictly greater than 0074", entry75.when > entry74.when);

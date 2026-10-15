@@ -142,15 +142,27 @@ describe("Crane Run home easter egg (Danny 2026-10-11)", () => {
   });
 });
 
-describe("Crane Run daily leaderboard UI (Danny 2026-10-11)", () => {
+describe("Crane Run weekly leaderboard UI (Danny 2026-10-11 daily; weekly 2026-10-14)", () => {
   test("board card renders above the game with EN+ES strings", () => {
     expect(APP).toContain("crane-run-board");
-    expect(APP).toContain("Today's Top 5");
-    expect(APP).toContain("Los 5 mejores de hoy");
+    expect(APP).toContain("This Week's Top 5");
+    expect(APP).toContain("Los 5 mejores de la semana");
     expect(APP).toContain("Show me on the leaderboard");
     expect(APP).toContain("Mostrarme en la tabla");
-    expect(APP).toContain("No scores yet today");
-    expect(APP).toContain("Aún no hay puntajes hoy");
+    expect(APP).toContain("No scores yet this week");
+    expect(APP).toContain("Aún no hay puntajes esta semana");
+  });
+
+  test("champion spotlight renders on Crane Run and in the Marketplace (0077)", () => {
+    expect(APP).toContain("crane-run-champion");
+    expect(APP).toContain("Last week's champion");
+    expect(APP).toContain("Campeón de la semana pasada");
+    expect(APP).toContain("api.craneRunGetChampion");
+    expect(APP).toContain("market-champion-card");
+    expect(APP).toContain("Featured Pro");
+    expect(APP).toContain("Profesional destacado");
+    expect(CSS).toContain(".crane-run-champion");
+    expect(CSS).toContain(".market-champion-card");
   });
 
   test("board uses the shared Switch for opt-in, wired to the opt-in action", () => {

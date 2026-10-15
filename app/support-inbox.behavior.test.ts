@@ -47,7 +47,7 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0076_quote_option_selection", last.tag === "0076_quote_option_selection", last.tag);
+check("newest migration tag is 0077_crane_run_weekly", last.tag === "0077_crane_run_weekly", last.tag);
 check("0058 when is strictly newer than 0057 (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Tables accept inserts --------------------------------------------------

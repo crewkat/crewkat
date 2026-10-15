@@ -9,6 +9,7 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { OAuth2Client } from "google-auth-library";
 import * as schema from "./schema";
+import { currentWeekStart, etDateString, lastWeekStart, weekDates } from "./craneWeek";
 import { buildDocumentLinkPdf } from "./docPdf";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
@@ -2193,6 +2194,69 @@ async function hydrateDocumentAttachment(ctx: Ctx, row: typeof schema.documentAt
   try { url = await ctx.blobs.getUrl(row.blobKey); } catch { url = null; }
   return { id: row.id, docType: row.docType, docId: row.docId, kind: row.kind, fileName: row.fileName, contentType: row.contentType, sortOrder: row.sortOrder, url, createdAt: row.createdAt.toISOString() };
 }
+
+// ---------------------------------------------------------------------------
+// Crane Run weekly leaderboard helpers (0077, Danny 2026-10-14). Scores live
+// in daily_game_scores (one best per user per ET day); a player's weekly
+// score is their best daily row inside the Mon–Sun America/New_York week.
+// ---------------------------------------------------------------------------
+type CraneScoreRow = { userId: number; displayName: string; score: number; createdAt: Date };
+type CraneBest = { userId: number; displayName: string; score: number; achievedAt: Date };
+
+/** Best score per user across the given ET dates, opted-in users only. */
+async function craneWeeklyBests(db: ReturnType<Ctx["db"]>, dates: string[]): Promise<CraneBest[]> {
+  const rows = (await db
+    .select({ userId: schema.dailyGameScores.userId, displayName: schema.dailyGameScores.displayName, score: schema.dailyGameScores.score, createdAt: schema.dailyGameScores.createdAt })
+    .from(schema.dailyGameScores)
+    .innerJoin(schema.authUsers, eq(schema.dailyGameScores.userId, schema.authUsers.id))
+    .where(and(inArray(schema.dailyGameScores.scoreDate, dates), eq(schema.authUsers.leaderboardOptIn, true)))) as CraneScoreRow[];
+  const bestByUser = new Map<number, CraneBest>();
+  for (const row of rows) {
+    const cur = bestByUser.get(row.userId);
+    if (!cur || row.score > cur.score || (row.score === cur.score && row.createdAt < cur.achievedAt)) {
+      bestByUser.set(row.userId, { userId: row.userId, displayName: row.displayName, score: row.score, achievedAt: row.createdAt });
+    }
+  }
+  // Board order: score desc, earliest achievement first, then user id so
+  // the order is fully deterministic.
+  return [...bestByUser.values()].sort((a, b) => b.score - a.score || a.achievedAt.getTime() - b.achievedAt.getTime() || a.userId - b.userId);
+}
+
+type CraneChampion = { businessName: string; score: number; weekStart: string; listingId: number | null };
+
+/**
+ * Last week's champion, snapshotted on first read of the new week: the #1
+ * opted-in player of the finished week, recorded once in
+ * weekly_game_champions (0077). Returns null when nobody opted in and
+ * scored last week. The champion's prize week is the current week.
+ */
+async function craneLastWeekChampion(db: ReturnType<Ctx["db"]>): Promise<CraneChampion | null> {
+  const weekStart = lastWeekStart();
+  let champ = (await db.select().from(schema.weeklyGameChampions).where(eq(schema.weeklyGameChampions.weekStart, weekStart)).limit(1))[0];
+  if (!champ) {
+    const bests = await craneWeeklyBests(db, weekDates(weekStart));
+    const winner = bests[0];
+    if (!winner) return null;
+    const winnerUser = (await db.select({ companyId: schema.authUsers.companyId, name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, winner.userId)).limit(1))[0];
+    const company = winnerUser ? (await db.select({ companyName: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.companyId, winnerUser.companyId)).limit(1))[0] : undefined;
+    const businessName = ((company?.companyName ?? "").trim() || winner.displayName.trim() || (winnerUser?.name ?? "").trim() || "Player").slice(0, 80);
+    await db.insert(schema.weeklyGameChampions).values({ weekStart, userId: winner.userId, businessName, score: winner.score, createdAt: new Date() }).onConflictDoNothing();
+    champ = (await db.select().from(schema.weeklyGameChampions).where(eq(schema.weeklyGameChampions.weekStart, weekStart)).limit(1))[0];
+    if (!champ) return null;
+  }
+  // Marketplace link: the champion company's newest active listing, if any.
+  let listingId: number | null = null;
+  if (champ.userId != null) {
+    const champUser = (await db.select({ companyId: schema.authUsers.companyId }).from(schema.authUsers).where(eq(schema.authUsers.id, champ.userId)).limit(1))[0];
+    if (champUser) {
+      const listing = (await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, champUser.companyId), eq(schema.marketplaceListings.moderationStatus, "active"))).orderBy(desc(schema.marketplaceListings.createdAt)).limit(1))[0];
+      listingId = listing?.id ?? null;
+    }
+  }
+  return { businessName: champ.businessName, score: champ.score, weekStart: champ.weekStart, listingId };
+}
+
+const craneChampionSchema = z.object({ businessName: z.string(), score: z.number(), weekStart: z.string(), listingId: z.number().nullable() }).nullable();
 
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
@@ -5408,10 +5472,15 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   moveBidBoardItem: defineAction({ request: z.object({ id: z.number().int().positive(), stage: bidBoardStageSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const identity = workspaceIdentity(ctx); const db = ctx.db<typeof schema>(); const existing = (await db.select().from(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)).limit(1))[0]; if (!existing || existing.userId !== identity.workspaceUserId) throw new Error("Bid not found."); await db.update(schema.bidBoardItems).set({ stage: args.stage, updatedAt: new Date() }).where(eq(schema.bidBoardItems.id, args.id)); ctx.invalidateQueries(); return { ok: true }; } }),
   deleteBidBoardItem: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const identity = workspaceIdentity(ctx); const db = ctx.db<typeof schema>(); const existing = (await db.select().from(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)).limit(1))[0]; if (!existing || existing.userId !== identity.workspaceUserId) throw new Error("Bid not found."); await db.delete(schema.bidBoardItems).where(eq(schema.bidBoardItems.id, args.id)); ctx.invalidateQueries(); return { ok: true }; } }),
   // -------------------------------------------------------------------------
-  // Crane Run daily leaderboard (0073, Danny 2026-10-11): global top-5 per
-  // UTC day, opt-in (default private). Company name when the account has
-  // one, else the user's name. Scores are client-reported (honor system),
-  // so the cap is enforced in the handler as well as the zod schema.
+  // Crane Run weekly leaderboard (0073 daily; weekly since 0077, Danny
+  // 2026-10-14): global top-5 per America/New_York calendar week (Mon–Sun),
+  // opt-in (default private). A player's weekly score is their best daily
+  // row that week. Company name when the account has one, else the user's
+  // name. Scores are client-reported (honor system), so the cap is enforced
+  // in the handler as well as the zod schema. Last week's #1 opted-in
+  // player is snapshotted as champion (weekly_game_champions) and gets
+  // this week as a free brand spotlight (Crane Run card + Marketplace
+  // "Featured Pro" card).
   // -------------------------------------------------------------------------
   craneRunSetOptIn: defineAction({
     request: z.object({ optIn: z.boolean() }),
@@ -5421,8 +5490,8 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       const db = ctx.db<typeof schema>();
       await db.update(schema.authUsers).set({ leaderboardOptIn: args.optIn, updatedAt: new Date() }).where(eq(schema.authUsers.id, identity.workspaceUserId));
       if (!args.optIn) {
-        const today = new Date().toISOString().slice(0, 10);
-        await db.delete(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), eq(schema.dailyGameScores.scoreDate, today)));
+        // Opting out removes the player from this week's board entirely.
+        await db.delete(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), inArray(schema.dailyGameScores.scoreDate, weekDates(currentWeekStart()))));
       }
       return { ok: true, optIn: args.optIn };
     },
@@ -5441,7 +5510,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       if (score <= 0) return { ok: true, stored: false, hint: "no-score" };
       const company = (await db.select({ companyName: schema.settings.companyName }).from(schema.settings).where(eq(schema.settings.companyId, user.companyId)).limit(1))[0];
       const displayName = ((company?.companyName ?? "").trim() || user.name.trim() || "Player").slice(0, 80);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = etDateString(new Date());
       const existing = (await db.select().from(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, user.id), eq(schema.dailyGameScores.scoreDate, today))).limit(1))[0];
       if (!existing) {
         await db.insert(schema.dailyGameScores).values({ userId: user.id, displayName, score, scoreDate: today, createdAt: new Date() });
@@ -5457,25 +5526,30 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       optIn: z.boolean(),
       myBest: z.number().nullable(),
       entries: z.array(z.object({ rank: z.number(), displayName: z.string(), score: z.number(), isMe: z.boolean() })),
+      champion: craneChampionSchema,
     }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>();
-      const today = new Date().toISOString().slice(0, 10);
+      const dates = weekDates(currentWeekStart());
       const user = (await db.select({ leaderboardOptIn: schema.authUsers.leaderboardOptIn }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
-      const rows = await db
-        .select({ userId: schema.dailyGameScores.userId, displayName: schema.dailyGameScores.displayName, score: schema.dailyGameScores.score })
-        .from(schema.dailyGameScores)
-        .innerJoin(schema.authUsers, eq(schema.dailyGameScores.userId, schema.authUsers.id))
-        .where(and(eq(schema.dailyGameScores.scoreDate, today), eq(schema.authUsers.leaderboardOptIn, true)))
-        .orderBy(desc(schema.dailyGameScores.score), asc(schema.dailyGameScores.createdAt))
-        .limit(5);
-      const mine = (await db.select({ score: schema.dailyGameScores.score }).from(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), eq(schema.dailyGameScores.scoreDate, today))).limit(1))[0];
+      const bests = await craneWeeklyBests(db, dates);
+      const myRows = await db.select({ score: schema.dailyGameScores.score }).from(schema.dailyGameScores).where(and(eq(schema.dailyGameScores.userId, identity.workspaceUserId), inArray(schema.dailyGameScores.scoreDate, dates)));
+      const champion = await craneLastWeekChampion(db);
       return {
         optIn: user?.leaderboardOptIn ?? false,
-        myBest: mine ? mine.score : null,
-        entries: rows.map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId })),
+        myBest: myRows.length ? Math.max(...myRows.map((r) => r.score)) : null,
+        entries: bests.slice(0, 5).map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId })),
+        champion,
       };
+    },
+  }),
+  craneRunGetChampion: defineAction({
+    request: z.object({}),
+    response: z.object({ champion: craneChampionSchema }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      return { champion: await craneLastWeekChampion(db) };
     },
   }),
 } satisfies ActionsModule;

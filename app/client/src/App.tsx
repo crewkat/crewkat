@@ -4864,6 +4864,10 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       };
     },
   });
+  // Crane Run weekly champion (0077): last week's winner gets this week as
+  // a free "Featured Pro" brand spotlight at the top of Explore.
+  const championQuery = useQuery({ queryKey: ["crane-run-champion"], queryFn: () => api.craneRunGetChampion({}) });
+  const weekChampion = championQuery.data?.champion ?? null;
   const gate = useQuery({ queryKey: ["marketplace-gate"], queryFn: () => api.marketplaceGate({}) });
   const inbox = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
   // Chunk D: saved keyword alerts + in-app notifications (polled for freshness).
@@ -5012,6 +5016,21 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <button type="button" className="market-location-tab" aria-label={text.areaFilter} onClick={() => setLocationPopupOpen(true)}><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{location ? <span>{location}{radiusMode ? ` · ${radius} ${sortText.miUnit}` : ""}</span> : null}</button>
     </nav>
     {view === "explore" && <section className="market-explore">
+      {weekChampion && (
+        <div className="market-champion-card">
+          <span className="market-champion-badge">
+            <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
+            {lang === "es" ? "Profesional destacado" : "Featured Pro"}
+          </span>
+          <strong className="market-champion-name">{weekChampion.businessName}</strong>
+          <span className="market-champion-note">{lang === "es" ? "Campeón de Crane Run de la semana pasada — reconocimiento gratuito toda esta semana" : "Last week's Crane Run champion — free spotlight all this week"}</span>
+          {weekChampion.listingId != null && (
+            <button type="button" className="market-champion-link" onClick={() => setScreen({ name: "marketplaceDetail", listingId: weekChampion.listingId! })}>
+              {lang === "es" ? "Ver publicación" : "View listing"}
+            </button>
+          )}
+        </div>
+      )}
       <div className="intent-filters" role="group" aria-label={lang === "es" ? "Filtrar por intención" : "Filter by intent"}><button className={intentFilter === "all" ? "active" : ""} onClick={() => setIntentFilter("all")}><Icon><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></Icon><span>{text.all}</span></button><button className={intentFilter === "need" ? "active need" : "need"} onClick={() => setIntentFilter(intentFilter === "need" ? "all" : "need")}><Icon><path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z"/></Icon><span>{text.wanted}</span></button><button className={intentFilter === "offer" ? "active offer" : "offer"} onClick={() => setIntentFilter(intentFilter === "offer" ? "all" : "offer")}><Icon><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="9" cy="9" r="1.6"/></Icon><span>{text.available}</span></button><span className="intent-filters-spacer" aria-hidden="true" /><button className={`sort-icon-button${sortBy !== "newest" ? " active" : ""}`} type="button" aria-label={sortText.sortBy} title={sortText.sortBy} onClick={() => setSortOpen(true)}><Icon><path d="M7 4v13M7 17l-3-3M7 17l3-3M17 20V7M17 7l-3 3M17 7l3 3"/></Icon></button></div>
       <div className="market-filter-row"><label><span className="sr-only">{lang === "es" ? "Categoría" : "Category"}</span><select value={category} onChange={(event) => { setCategory(event.target.value as MarketplaceCategory | "all"); setSavedOnly(false); }}><option value="all">{text.all}</option>{MARKETPLACE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item[lang]}</option>)}</select></label>{(category !== "all" || intentFilter !== "all" || location || search || savedOnly) && <button onClick={() => { setCategory("all"); setIntentFilter("all"); setLocation(""); setRadius(DEFAULT_RADIUS_MILES); setSearch(""); setSavedOnly(false); }}>{text.clear}</button>}</div>
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
@@ -5699,11 +5718,16 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     highScore: lang === "es" ? "Récord" : "High score",
     tapToRestart: lang === "es" ? "Toca para reintentar" : "Tap to restart",
     newBest: lang === "es" ? "¡Nuevo récord!" : "New best!",
-    // Daily leaderboard (Danny 2026-10-11): global top-5 per UTC day, opt-in.
-    boardTitle: lang === "es" ? "Los 5 mejores de hoy" : "Today's Top 5",
+    // Weekly leaderboard (Danny 2026-10-11 daily; weekly 2026-10-14):
+    // global top-5 per ET calendar week (Mon–Sun), opt-in.
+    boardTitle: lang === "es" ? "Los 5 mejores de la semana" : "This Week's Top 5",
     showMe: lang === "es" ? "Mostrarme en la tabla" : "Show me on the leaderboard",
-    emptyBoard: lang === "es" ? "Aún no hay puntajes hoy — ¡sé el primero!" : "No scores yet today — be the first!",
+    emptyBoard: lang === "es" ? "Aún no hay puntajes esta semana — ¡sé el primero!" : "No scores yet this week — be the first!",
     loadingBoard: lang === "es" ? "Cargando…" : "Loading…",
+    // Weekly champion spotlight (0077): last week's #1 gets this week as a
+    // free brand spotlight here and in the Marketplace.
+    championLabel: lang === "es" ? "Campeón de la semana pasada" : "Last week's champion",
+    championPrize: lang === "es" ? "Destacado gratis en el Marketplace toda esta semana" : "Featured free in the Marketplace all this week",
   };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -5718,6 +5742,7 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   });
   const optIn = boardQuery.data?.optIn ?? false;
   const entries = boardQuery.data?.entries ?? [];
+  const champion = boardQuery.data?.champion ?? null;
   // Submit the final score once per game, only when opted in. Local high
   // score (localStorage) keeps working regardless of opt-in.
   const submittedRef = useRef(false);
@@ -6147,6 +6172,16 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           </ol>
         )}
       </section>
+      {champion && (
+        <section className="crane-run-champion" aria-label={t.championLabel}>
+          <span className="crane-run-champion-badge">
+            <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
+            {t.championLabel}
+          </span>
+          <strong className="crane-run-champion-name">{champion.businessName}</strong>
+          <span className="crane-run-champion-prize">{t.championPrize}</span>
+        </section>
+      )}
       <div
         ref={wrapRef}
         className="crane-run-wrap"

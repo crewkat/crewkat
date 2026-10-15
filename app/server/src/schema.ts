@@ -820,7 +820,7 @@ export const authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
-  // Crane Run daily leaderboard (0073): per-user opt-in, default private.
+  // Crane Run leaderboard (0073; weekly since 0077): per-user opt-in, default private.
   // Only opted-in users appear on the public daily top-5 board.
   leaderboardOptIn: integer("leaderboard_opt_in", { mode: "boolean" }).notNull().default(false),
   // Google Sign-In subject ("sub" claim). Set when the user signs in with
@@ -1358,10 +1358,11 @@ export const promoCodeLog = sqliteTable("promo_code_log", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
-// Crane Run daily leaderboard (0073, Danny 2026-10-11): one best score per
-// user per UTC day. The board always queries "today", so it resets daily
-// with no cron. display_name is resolved at submit time (company name when
-// the account has one, else the user's name).
+// Crane Run leaderboard scores (0073; weekly since 0077, Danny 2026-10-14):
+// one best score per user per day, keyed by ET calendar date. The board
+// aggregates the current America/New_York week (Mon–Sun) from these rows,
+// so it resets weekly with no cron. display_name is resolved at submit
+// time (company name when the account has one, else the user's name).
 export const dailyGameScores = sqliteTable("daily_game_scores", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
@@ -1372,4 +1373,22 @@ export const dailyGameScores = sqliteTable("daily_game_scores", {
 }, (table) => [
   uniqueIndex("daily_game_scores_user_date_unique").on(table.userId, table.scoreDate),
   index("daily_game_scores_date_score_idx").on(table.scoreDate, table.score),
+]);
+
+// Crane Run weekly champions (0077, Danny 2026-10-14): when a week ends,
+// its #1 opted-in player is snapshotted once (lazily, on first read of the
+// new week). The champion's prize is the following week as a free brand
+// spotlight: a champion card on the Crane Run screen and a "Featured Pro"
+// card in the Marketplace. business_name is the name resolved at snapshot
+// time (company name when the account has one, else the user's name) and
+// is stored as text so the spotlight survives later renames/deletion.
+export const weeklyGameChampions = sqliteTable("weekly_game_champions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  weekStart: text("week_start").notNull(),
+  userId: integer("user_id").references(() => authUsers.id, { onDelete: "set null" }),
+  businessName: text("business_name").notNull().default(""),
+  score: integer("score").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("weekly_game_champions_week_unique").on(table.weekStart),
 ]);
