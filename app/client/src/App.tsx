@@ -2971,6 +2971,20 @@ function CrewkatApplication() {
     screenStackRef.current = nextStack;
     requestNavigationScroll({ mode: "top" });
   };
+  // Invoices restore fix (2026-10-14): the remembered last financial screen
+  // is a "left the tab mid-document" restore only. The moment a document
+  // list — the Invoices hub or the standalone Estimates list — is the
+  // current screen, the user has backed out of the document on purpose, so
+  // clear the memory (ref + sessionStorage). Without this, the stale
+  // document resurrected on the next Invoices tab tap even after the user
+  // had already backed out to the hub. Watching the top of the stack
+  // covers every path that lands on a list (back button, hardware back,
+  // in-section navigation, tab logic).
+  useEffect(() => {
+    if (screen.name !== "invoices" && screen.name !== "quotes") return;
+    lastFinancialScreenRef.current = null;
+    try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ }
+  }, [screen.name]);
   useLayoutEffect(() => runNavigationScroll(scrollIntentRef.current), [scrollNavigationKey]);
   useEffect(() => {
     if (!("scrollRestoration" in window.history)) return;
