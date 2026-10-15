@@ -4848,6 +4848,22 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .client-picker { background: transparent; border: 0; padding: 0; }
 .client-picker.selected { background: transparent; border: 0; padding: 0; }
 
+/* --- 2b. Document builders: ONE client row + sheet (Danny 2026-10-15) ---
+   The estimate/invoice form heads stacked the picker, a standalone name
+   field, and a "Client details" collapsible — three blocks for one concept.
+   Now a single summary row (invoice-summary-line language); the picker and
+   every document-level client field live in the sheet the row opens. */
+.doc-client-row { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.doc-client-row-label { flex: none; color: var(--dim); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.doc-client-row-main { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
+.doc-client-row-main strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-client-row-main small { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-client-empty { color: var(--dim); font-size: 15px; }
+.doc-client-required { margin-left: 4px; color: var(--accent); font-weight: 800; }
+.doc-client-chevron { flex: none; color: var(--accent); font-size: 26px; line-height: 1; }
+.doc-client-sheet { display: grid; gap: 14px; }
+.doc-client-sheet .compact-form { border: 0; margin: 0; padding: 0; }
+
 /* --- 4. Clients screen: slimmer search, edge-to-edge compressed cards, vivid avatars --- */
 .client-search { min-height: 44px; border-radius: 10px; padding: 0 12px; }
 .client-search input { height: 42px; font-size: 15px; }

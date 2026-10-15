@@ -6997,6 +6997,127 @@ function ClientPicker({
     </section>
   );
 }
+// ---------------------------------------------------------------------------
+// Document-builder client block (Danny, 2026-10-15): the estimate and invoice
+// form heads stacked THREE blocks for one concept — the client picker, a
+// standalone "Client name" field, and a "Client details" collapsible. They
+// are now ONE compact row (label + selected client's name/address + chevron).
+// Tapping it opens DocClientSheet, which holds the picker plus every
+// document-level client field the three blocks carried (name, phone, email,
+// type, job site address, shipping address). The sheet writes straight into
+// the builder's form state — the same clientId + snapshot fields the old
+// blocks wrote — so the save actions persist exactly what they always did,
+// and nothing writes to a client record while editing: the only save is the
+// document save, as before.
+// ---------------------------------------------------------------------------
+type DocClientFields = {
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  jobAddress: string;
+  shippingAddress: string;
+  jobType: string;
+};
+
+function DocClientRow({
+  lang,
+  clientName,
+  jobAddress,
+  clientPhone,
+  clientEmail,
+  onOpen,
+}: {
+  lang: Lang;
+  clientName: string;
+  jobAddress: string;
+  clientPhone: string;
+  clientEmail: string;
+  onOpen: () => void;
+}) {
+  const sub = [jobAddress, clientPhone, clientEmail].map((v) => v.trim()).find(Boolean) ?? "";
+  return (
+    <button type="button" className="doc-client-row" onClick={onOpen} aria-haspopup="dialog">
+      <span className="doc-client-row-label">{lang === "es" ? "Cliente" : "Client"}</span>
+      <span className="doc-client-row-main">
+        {clientName.trim() ? (
+          <>
+            <strong>{clientName}</strong>
+            {sub && <small>{sub}</small>}
+          </>
+        ) : (
+          <span className="doc-client-empty">
+            {lang === "es" ? "Sin cliente seleccionado" : "No client selected"}
+            <span className="doc-client-required" aria-hidden="true">*</span>
+          </span>
+        )}
+      </span>
+      <span className="doc-client-chevron" aria-hidden="true">›</span>
+    </button>
+  );
+}
+
+function DocClientSheet({
+  lang,
+  settings,
+  form,
+  onValueChange,
+  onPick,
+  onPatch,
+  onClose,
+}: {
+  lang: Lang;
+  settings: Settings | null;
+  form: DocClientFields;
+  onValueChange: (clientName: string) => void;
+  onPick: (client: Client) => void;
+  onPatch: (patch: Partial<DocClientFields>) => void;
+  onClose: () => void;
+}) {
+  const t = copy[lang];
+  return (
+    <BottomSheet lang={lang} title={lang === "es" ? "Cliente" : "Client"} onClose={onClose}>
+      {() => (
+        <div className="doc-client-sheet">
+          <ClientPicker lang={lang} value={form.clientName} onValueChange={onValueChange} onPick={onPick} />
+          <div className="compact-form">
+            <label>
+              <span>{t.client} *</span>
+              <input value={form.clientName} onChange={(e) => onPatch({ clientName: e.target.value })} />
+            </label>
+            <div className="field-pair">
+              <label>
+                <span>{t.phone}</span>
+                <input type="tel" value={form.clientPhone} onChange={(e) => onPatch({ clientPhone: e.target.value })} />
+              </label>
+              <label>
+                <span>{t.email}</span>
+                <input type="email" value={form.clientEmail} onChange={(e) => onPatch({ clientEmail: e.target.value })} />
+              </label>
+            </div>
+            <label>
+              <span>{t.type}</span>
+              <input value={form.jobType} onChange={(e) => onPatch({ jobType: e.target.value })} />
+            </label>
+            {settings?.addJobSiteAddress !== false && (
+              <label>
+                <span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span>
+                <input value={form.jobAddress} onChange={(e) => onPatch({ jobAddress: e.target.value })} />
+              </label>
+            )}
+            {settings?.addShippingAddress && (
+              <label>
+                <span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span>
+                <input value={form.shippingAddress} onChange={(e) => onPatch({ shippingAddress: e.target.value })} />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 function JobDateSheet({ lang, jobDate, appointmentAt, onChange, onClose, closing = false }: { lang: Lang; jobDate: string; appointmentAt: string; onChange: (value: { jobDate: string; appointmentAt: string }) => void; onClose: () => void; closing?: boolean }) {
   return <div className={`client-sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="client-sheet job-date-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Fecha y cita" : "Job date and appointment"}>
@@ -14521,6 +14642,9 @@ function QuoteBuilder({
   const optionalItemsTotal = lineItemsTotal(form.lineItems.filter((i) => i.optional));
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Danny 2026-10-15: the client picker/name/details stack is one row now;
+  // this state opens the sheet that holds all three.
+  const [clientSheetOpen, setClientSheetOpen] = useState(false);
   // Phase 1: assemblies — templates can be applied additively ("Add") or as a
   // full replacement, and the current line items can be saved as a new assembly.
   const [applyMode, setApplyMode] = useState<"append" | "replace">("append");
@@ -14682,7 +14806,7 @@ function QuoteBuilder({
     flushQuoteDraft();
     navigateAfterClose();
   };
-  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen, exitAndSave);
+  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen && !clientSheetOpen, exitAndSave);
   const preview: FinancialDocument = {
     ...form,
     lineItems: validLineItems(),
@@ -14720,64 +14844,14 @@ function QuoteBuilder({
         />
         <div className="floating-doc-body">
         {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
-        <ClientPicker
+        <DocClientRow
           lang={lang}
-          value={form.clientName}
-          onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
-          onPick={(c) =>
-            setForm({
-              ...form,
-              clientId: c.id,
-              clientName: c.name,
-              clientPhone: c.phone,
-              clientEmail: c.email,
-              jobAddress: c.address,
-            })
-          }
+          clientName={form.clientName}
+          jobAddress={form.jobAddress}
+          clientPhone={form.clientPhone}
+          clientEmail={form.clientEmail}
+          onOpen={() => setClientSheetOpen(true)}
         />
-        <label>
-          <span>{t.client} *</span>
-          <input
-            value={form.clientName}
-            onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-          />
-        </label>
-        <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
-        <label>
-          <span>{t.phone}</span>
-          <input
-            type="tel"
-            value={form.clientPhone}
-            onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t.email}</span>
-          <input
-            type="email"
-            value={form.clientEmail}
-            onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t.type}</span>
-          <input
-            value={form.jobType}
-            onChange={(e) => setForm({ ...form, jobType: e.target.value })}
-          />
-        </label>
-        {settings?.addJobSiteAddress !== false && <label>
-          <span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span>
-          <input
-            value={form.jobAddress}
-            onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}
-          />
-        </label>}
-        {settings?.addShippingAddress && <label>
-          <span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span>
-          <input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })} />
-        </label>}
-        </div></details>
         <div className="field-pair">
           <label>
             <span>{t.sentDate}</span>
@@ -15033,6 +15107,26 @@ function QuoteBuilder({
             bottom sticky pill is gone. */}
         </div>
       </form>
+      {clientSheetOpen && (
+        <DocClientSheet
+          lang={lang}
+          settings={settings}
+          form={form}
+          onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
+          onPick={(c) =>
+            setForm({
+              ...form,
+              clientId: c.id,
+              clientName: c.name,
+              clientPhone: c.phone,
+              clientEmail: c.email,
+              jobAddress: c.address,
+            })
+          }
+          onPatch={(patch) => setForm({ ...form, ...patch })}
+          onClose={() => setClientSheetOpen(false)}
+        />
+      )}
       {previewOpen && <DocumentDesignOverlay lang={lang} kind="quote" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
       {/* Build 0.6 (item 1): template picker as a floating modal. Selecting a
           template applies it and closes; the × at top-right just closes. */}
@@ -16575,6 +16669,9 @@ function InvoiceBuilder({
   const jobQuery = useQuery({ queryKey: ["job", jobId], enabled: Boolean(jobId), queryFn: () => api.getJob({ id: jobId ?? 0 }) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const [activeSheet, setActiveSheet] = useState<"details" | "discount" | "tax" | null>(null);
+  // Danny 2026-10-15: the client picker/name/details stack is one row now;
+  // this state opens the sheet that holds all three.
+  const [clientSheetOpen, setClientSheetOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<number | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -16678,7 +16775,7 @@ function InvoiceBuilder({
     flushInvoiceDraftRef.current();
     closeAfterSave(() => onBack());
   };
-  useEscapeToClose(docOpen && !activeSheet && !previewOpen && editingItem === null, exitAndSave);
+  useEscapeToClose(docOpen && !activeSheet && !previewOpen && editingItem === null && !clientSheetOpen, exitAndSave);
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
@@ -16687,15 +16784,9 @@ function InvoiceBuilder({
     <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
       <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={exitAndSave} onPreview={() => setPreviewOpen(true)} saveLabel={t.save} saving={save.isPending} />
       <div className="floating-doc-body">
-      <ClientPicker lang={lang} value={form.clientName} onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })} onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })} />
+      <DocClientRow lang={lang} clientName={form.clientName} jobAddress={form.jobAddress} clientPhone={form.clientPhone} clientEmail={form.clientEmail} onOpen={() => setClientSheetOpen(true)} />
       {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
       <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
-      <details className="action-details editor-advanced"><summary>{lang === "es" ? "Detalles del cliente" : "Client details"}</summary><div className="compact-form">
-        <div className="field-pair"><label><span>{t.phone}</span><input type="tel" value={form.clientPhone} onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}/></label><label><span>{t.email}</span><input type="email" value={form.clientEmail} onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}/></label></div>
-        <label><span>{t.type}</span><input value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })}/></label>
-        {settings?.addJobSiteAddress !== false && <label><span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span><input value={form.jobAddress} onChange={(e) => setForm({ ...form, jobAddress: e.target.value })}/></label>}
-        {settings?.addShippingAddress && <label><span>{lang === "es" ? "Dirección de envío" : "Shipping address"}</span><input value={form.shippingAddress} onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}/></label>}
-      </div></details>
       {/* Build 2.0: line items stand alone — no card-within-a-card; the
           rows extend side to side for more usable space. */}
       <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
@@ -16738,6 +16829,17 @@ function InvoiceBuilder({
           bottom sticky pill is gone. */}
       </div>
     </form>
+    {clientSheetOpen && (
+      <DocClientSheet
+        lang={lang}
+        settings={settings}
+        form={form}
+        onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
+        onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })}
+        onPatch={(patch) => setForm({ ...form, ...patch })}
+        onClose={() => setClientSheetOpen(false)}
+      />
+    )}
     {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) commitAdjustmentAndClose(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" className="sheet-save-btn" onClick={commitAdjustmentAndClose}>{t.done}</button></header>
       {activeSheet === "details" ? <div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label><label><span>{lang === "es" ? "Número de factura" : "Invoice number"}</span><input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })}/><small>{lang === "es" ? "Asignado automáticamente; puedes cambiarlo." : "Assigned automatically — you can change it."}</small></label></div> : <div className="invoice-adjustment-sheet"><AdjustmentField lang={lang} label={activeSheet === "discount" ? t.discount : t.tax} type={activeSheet === "discount" ? form.discountType : form.taxType} value={activeSheet === "discount" ? form.discountValue : form.taxValue} onType={(value) => activeSheet === "discount" ? setForm({ ...form, discountType: value }) : setForm({ ...form, taxType: value })} onValue={(value) => activeSheet === "discount" ? setForm({ ...form, discountValue: value }) : setForm({ ...form, taxValue: value })} onCollapse={commitAdjustmentAndClose}/><button type="button" className="primary-button" onClick={commitAdjustmentAndClose}>{lang === "es" ? "Agregar" : "Add"} {activeSheet === "discount" ? t.discount.toLowerCase() : t.tax.toLowerCase()}</button><button type="button" className="text-button" onClick={() => { activeSheet === "discount" ? setDiscountEnabled(false) : setTaxEnabled(false); closeSheet(); }}>{lang === "es" ? "Quitar" : "Remove"}</button></div>}
     </section></div>}
