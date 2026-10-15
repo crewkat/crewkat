@@ -6240,6 +6240,16 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   return (
     <main className="page crane-run-page">
       <PageHeader lang={lang} title={t.title} onBack={onBack} />
+      {champion && (
+        <section className="crane-run-champion" aria-label={t.championLabel}>
+          <span className="crane-run-champion-badge">
+            <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
+            {t.championLabel}
+          </span>
+          <strong className="crane-run-champion-name">{champion.businessName}</strong>
+          <span className="crane-run-champion-prize">{t.championPrize}</span>
+        </section>
+      )}
       <section className="crane-run-board" aria-label={t.boardTitle}>
         <div className="crane-run-board-head">
           <strong>{t.boardTitle}</strong>
@@ -6264,16 +6274,6 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           </ol>
         )}
       </section>
-      {champion && (
-        <section className="crane-run-champion" aria-label={t.championLabel}>
-          <span className="crane-run-champion-badge">
-            <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
-            {t.championLabel}
-          </span>
-          <strong className="crane-run-champion-name">{champion.businessName}</strong>
-          <span className="crane-run-champion-prize">{t.championPrize}</span>
-        </section>
-      )}
       <div
         ref={wrapRef}
         className="crane-run-wrap"

@@ -109,6 +109,28 @@ describe("Crane Run i18n (EN+ES)", () => {
 });
 
 describe("Crane Run styles", () => {
+  test("champion card sits at the TOP of the screen, above the board (Danny 2026-10-14)", () => {
+    const screenStart = APP.indexOf("function CraneRunScreen");
+    expect(screenStart).toBeGreaterThan(-1);
+    const championAt = APP.indexOf('className="crane-run-champion"', screenStart);
+    const boardAt = APP.indexOf('className="crane-run-board"', screenStart);
+    const wrapAt = APP.indexOf('className="crane-run-wrap"', screenStart);
+    expect(championAt).toBeGreaterThan(-1);
+    expect(boardAt).toBeGreaterThan(-1);
+    // Order on the screen: champion first, then this week's board, then the game.
+    expect(championAt).toBeLessThan(boardAt);
+    expect(boardAt).toBeLessThan(wrapAt);
+  });
+
+  test("page fills the app shell (100% chain) so the game reaches the screen bottom", () => {
+    // 100dvh under-measured Danny's webview and left a dead band under the
+    // game card; the page now takes the shell's height like every .page.
+    expect(CSS).toMatch(/\.crane-run-page \{[^}]*min-height:\s*100%/);
+    expect(CSS).not.toMatch(/\.crane-run-page \{[^}]*100dvh/);
+    // The wrap still flex-fills whatever height the column leaves it.
+    expect(CSS).toMatch(/\.crane-run-wrap \{[^}]*flex:\s*1 1 auto/);
+  });
+
   test("game wrap fills the screen + panels styled with app conventions", () => {
     expect(CSS).toContain(".crane-run-wrap");
     expect(CSS).toContain(".crane-run-panel");

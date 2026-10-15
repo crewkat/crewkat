@@ -4960,8 +4960,13 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 /* Crane Run — endless runner game (build 3.2). Full-screen game area below
    the header: the world scales to fill the canvas height while keeping at
    least MIN_VIEW_W world units visible, so reaction time stays fair. Panels
-   use the app's 8px rounding + soft shadows. */
-.crane-run-page { display: flex; flex-direction: column; min-height: 100dvh; padding-bottom: 12px; }
+   use the app's 8px rounding + soft shadows. The page fills the app shell
+   via the 100% height chain (html → #root → .app-shell), NOT 100dvh: in
+   Danny's app webview 100dvh under-measured the shell, the flex column came
+   up ~14% short, and the game card ended above a dead blank band at the
+   bottom of the screen (field report 2026-10-14). min-height (not height)
+   so a short screen still grows and scrolls instead of clipping. */
+.crane-run-page { display: flex; flex-direction: column; min-height: 100%; padding-bottom: 12px; }
 .crane-run-wrap {
   position: relative;
   margin-top: 12px;
