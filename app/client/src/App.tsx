@@ -10094,8 +10094,10 @@ function PushNudgeBanner({ lang }: { lang: Lang }) {
     </div>
   );
 }
-// What's New (Danny 2026-10-14): a slim Home strip + changelog sheet, for
-// users who like seeing the work behind the scenes. Entries are curated by
+// What's New (Danny 2026-10-14): a changelog sheet behind a quiet muted
+// text row at the very bottom of Home (demoted 2026-10-15 — it was the
+// first thing you saw under the hero; too loud for prime Home space).
+// Entries are curated by
 // hand — newest first; future releases append ONE object to the top. Keep
 // lines plain-language (no commit-speak) and bugFixes an honest count.
 const WHATS_NEW_SEEN_KEY = "crewkat-whats-new-seen";
@@ -10168,12 +10170,9 @@ function WhatsNewCard({ lang }: { lang: Lang }) {
   const fullDate = (iso: string) => new Intl.DateTimeFormat(locale, { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${iso}T12:00:00`));
   return (
     <>
-      <button type="button" className="whats-new-card" onClick={openSheet}>
-        <span className="whats-new-icon" aria-hidden="true"><Icon size={15}><path d="M12 4l1.9 5.1L19 11l-5.1 1.9L12 18l-1.9-5.1L5 11l5.1-1.9z" /><path d="M18.5 3.5v3M17 5h3" /></Icon></span>
-        <span className="whats-new-title">{lang === "es" ? "Novedades" : "What's new"}</span>
+      <button type="button" className="whats-new-row" onClick={openSheet}>
+        <span>✦ {lang === "es" ? "Novedades" : "What's new"} · {cardDate}</span>
         {unread && <span className="whats-new-dot" aria-hidden="true" />}
-        <span className="whats-new-date">{cardDate}</span>
-        <BackIcon />
       </button>
       {open && <BottomSheet lang={lang} title={lang === "es" ? "Novedades" : "What's new"} onClose={() => setOpen(false)}>
         {() => (
@@ -21015,8 +21014,6 @@ function TodayScreen({
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
       </section>
-      {/* What's New: slim changelog strip (Danny 2026-10-14). */}
-      <WhatsNewCard lang={lang} />
       {/* Build 3: "at a glance" — what needs attention right now, tappable. */}
       {(() => {
         const tomorrow = new Date(now);
@@ -21684,6 +21681,9 @@ function TodayScreen({
           </section>
         </ProShowcase>
       )}
+      {/* What's New: quiet footer row at the very bottom of Home (Danny
+          2026-10-15: demoted from under the hero — less visible). */}
+      <WhatsNewCard lang={lang} />
       {lostQuote !== null && (
         <div className="sheet-backdrop" role="presentation">
           <form

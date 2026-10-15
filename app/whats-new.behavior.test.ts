@@ -4,11 +4,15 @@
 // new? And a pop up window shows latest fixes and added features with date.
 // No need to add to many details — some basics and bug fix count."
 //
-// Pins: the slim strip renders on Home (after the Open-jobs summary card,
-// before the at-a-glance strip), the sheet lists curated entries newest
-// first with a per-entry bug-fix count (count line omitted when 0), the
-// unread dot follows "newest entry date > last seen date" in localStorage
-// and clears when the sheet opens, and every seeded line exists in EN + ES.
+// Pins: the quiet muted row renders at the VERY BOTTOM of Home content
+// (after the Jobs list and the late sections, last element of the scroll
+// flow before the overlay sheets — Danny 2026-10-15 demote: it used to sit
+// under the hero and was the first thing you saw), the row carries no card
+// chrome (no surface box, border, or icon chip), the sheet lists curated
+// entries newest first with a per-entry bug-fix count (count line omitted
+// when 0), the unread dot follows "newest entry date > last seen date" in
+// localStorage and clears when the sheet opens, and every seeded line
+// exists in EN + ES.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -72,19 +76,26 @@ describe("What's New — data model", () => {
   });
 });
 
-describe("What's New — Home card + sheet", () => {
-  test("the slim card renders on Home, below the summary card and above at-a-glance", () => {
-    const card = home.indexOf("<WhatsNewCard lang={lang} />");
-    expect(card).toBeGreaterThan(home.indexOf("home-summary-card"));
-    expect(card).toBeLessThan(home.indexOf("glance-strip"));
+describe("What's New — Home row + sheet", () => {
+  test("the row renders once, at the very bottom of Home content", () => {
+    const mounts = home.split("<WhatsNewCard lang={lang} />").length - 1;
+    expect(mounts).toBe(1);
+    const row = home.indexOf("<WhatsNewCard lang={lang} />");
+    expect(row).toBeGreaterThan(home.indexOf("home-jobs-section")); // after the Jobs list
+    expect(row).toBeGreaterThan(home.indexOf("crew-compose")); // after the late sections
+    expect(row).toBeGreaterThan(home.indexOf("glance-strip")); // no longer up top
+    expect(row).toBeLessThan(home.indexOf("{lostQuote !== null")); // last in the scroll flow, before overlays
   });
 
-  test("card is a one-line strip: sparkle icon, title, newest date, chevron", () => {
-    expect(comp).toContain('className="whats-new-card"');
-    expect(comp).toContain('className="whats-new-icon"');
+  test("trigger is a quiet text row: ✦ label + newest date, no icon chip, no chevron", () => {
+    expect(comp).toContain('className="whats-new-row"');
+    expect(comp).toContain("✦");
     expect(comp).toContain('lang === "es" ? "Novedades" : "What\'s new"');
     expect(comp).toContain("cardDate");
     expect(comp).toContain("newest.date");
+    expect(comp).not.toContain("whats-new-icon");
+    expect(comp).not.toContain("whats-new-card");
+    expect(comp).not.toContain("BackIcon");
   });
 
   test("sheet is the shared BottomSheet and lists entries newest-first", () => {
@@ -122,11 +133,20 @@ describe("What's New — unread dot", () => {
 });
 
 describe("What's New — styling", () => {
-  test("card is a slim surface strip", () => {
-    const r = rule(".whats-new-card");
-    expect(r).toContain("background: var(--surface)");
-    expect(r).toContain("border-radius: 12px");
+  test("row has no card chrome: transparent, borderless, muted small text", () => {
+    const r = rule(".whats-new-row");
+    expect(r).toContain("background: transparent");
+    expect(r).toContain("border: 0");
+    expect(r).toContain("color: var(--dim)");
+    expect(r).toContain("font-size: 12px");
     expect(r).toContain("display: flex");
+  });
+
+  test("the old loud card chrome is gone from the stylesheet", () => {
+    expect(CSS).not.toContain(".whats-new-card");
+    expect(CSS).not.toContain(".whats-new-icon");
+    expect(CSS).not.toContain(".whats-new-title");
+    expect(CSS).not.toContain(".whats-new-date");
   });
 
   test("dot is a small accent circle", () => {
