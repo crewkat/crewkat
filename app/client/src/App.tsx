@@ -9322,7 +9322,7 @@ function JobDetail({
       await copyText(caption);
       const photoFiles = await Promise.all(
         picks.map(async (p) => {
-          const response = await fetch(p.url);
+          const response = await fetch(sameOriginBlobPath(p.url));
           if (!response.ok) throw new Error("Photo unavailable");
           const blob = await response.blob();
           const extension = blob.type.includes("png")
@@ -10627,7 +10627,7 @@ function SettingsScreen({
         const compressed = Uint8Array.from(atob(result.dataBase64), (char) => char.charCodeAt(0));
         const payload = JSON.parse(strFromU8(gunzipSync(compressed))) as { blobs: Record<string, { contentType: string; dataBase64: string }> };
         for (const attachment of result.attachments) {
-          const response = await fetch(attachment.url);
+          const response = await fetch(sameOriginBlobPath(attachment.url));
           if (!response.ok) throw new Error("attachment");
           const bytes = new Uint8Array(await response.arrayBuffer());
           payload.blobs[attachment.key] = { contentType: attachment.contentType, dataBase64: bytesToBase64(bytes) };
@@ -17674,7 +17674,7 @@ function GalleryScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
     const files: Record<string, Uint8Array> = {};
     const cards: string[] = [];
     for (const [index, p] of picks.entries()) {
-      const blob = await (await fetch(p.url)).blob();
+      const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();
       const ext = blob.type.includes("png") ? "png" : "jpg";
       const filename = `images/${String(index + 1).padStart(2, "0")}-${safeName(p.job?.jobType ?? "project")}.${ext}`;
       files[filename] = new Uint8Array(await blob.arrayBuffer());
@@ -18680,7 +18680,7 @@ function ProgressUpdate({
       await new Promise<void>((resolve) => {
         img.onload = () => resolve();
         img.onerror = () => resolve();
-        img.src = p.url;
+        img.src = sameOriginBlobPath(p.url);
       });
       const x = i % 2 === 0 ? 60 : 550;
       if (i === 2) y = 580;
@@ -18913,7 +18913,7 @@ function PhotoAnnotator({
       history.current = [];
       setCanUndo(false);
     };
-    img.src = photo.url;
+    img.src = sameOriginBlobPath(photo.url);
   }, [photo]);
   const point = (e: PointerEvent<HTMLCanvasElement>) => {
     const c = canvasRef.current;
@@ -19471,7 +19471,7 @@ function ProofPacket({
       for (const p of photos) {
         space(225);
         try {
-          const blob = await (await fetch(p.url)).blob();
+          const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();
           doc.addImage(
             await normalizePhotoForPdf(blob),
             "JPEG",
@@ -19606,8 +19606,8 @@ function BeforeAfterTool({
     setBusy(true);
     try {
       const [lb, rb] = await Promise.all([
-        fetch(left.url).then((r) => r.blob()),
-        fetch(right.url).then((r) => r.blob()),
+        fetch(sameOriginBlobPath(left.url)).then((r) => r.blob()),
+        fetch(sameOriginBlobPath(right.url)).then((r) => r.blob()),
       ]);
       const [li, ri] = await Promise.all([
         createImageBitmap(lb),
@@ -26016,7 +26016,7 @@ function SlideshowManager({
       });
       recorder.start();
       for (const p of ordered) {
-        const blob = await fetch(p.url).then((r) => r.blob());
+        const blob = await fetch(sameOriginBlobPath(p.url)).then((r) => r.blob());
         const img = await createImageBitmap(blob);
         for (let frame = 0; frame < 45; frame++) {
           c.fillStyle = "#101615";
@@ -26146,7 +26146,7 @@ function SlideshowManager({
               <button
                 className="small-button"
                 onClick={async () => {
-                  const blob = await fetch(v.url).then((r) => r.blob());
+                  const blob = await fetch(sameOriginBlobPath(v.url)).then((r) => r.blob());
                   await nativeShare(blob, v.filename, v.jobLabel, v.caption);
                 }}
               >
