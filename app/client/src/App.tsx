@@ -8516,13 +8516,140 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
 }
 
 
-function WorkspacePhotosPanel({ lang, photos, completionWorkflow }: Pick<WorkspacePanelProps, "lang" | "photos" | "completionWorkflow">) {
+// Photo Proof Pack (0080): swipe-slider comparing two photos of a job.
+// The after photo fills the frame; the before photo is clipped to the
+// left of the drag handle. Pointer drag + arrow keys. View-only — the
+// slider never edits anything, so it is safe on the client portal too.
+function BeforeAfterSlider({ beforeUrl, afterUrl, lang, label }: { beforeUrl: string; afterUrl: string; lang: Lang; label?: string }) {
+  const [pos, setPos] = useState(50);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const moveTo = (clientX: number) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    setPos(Math.min(97, Math.max(3, ((clientX - rect.left) / rect.width) * 100)));
+  };
+  return (
+    <figure className="ba-pair">
+      <div
+        ref={frameRef}
+        className="ba-frame"
+        role="slider"
+        aria-label={lang === "es" ? "Comparar antes y después" : "Compare before and after"}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pos)}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") { setPos((p) => Math.max(3, p - 5)); e.preventDefault(); }
+          if (e.key === "ArrowRight") { setPos((p) => Math.min(97, p + 5)); e.preventDefault(); }
+        }}
+        onPointerDown={(e) => { draggingRef.current = true; moveTo(e.clientX); }}
+        onPointerMove={(e) => { if (draggingRef.current) moveTo(e.clientX); }}
+        onPointerUp={() => { draggingRef.current = false; }}
+        onPointerCancel={() => { draggingRef.current = false; }}
+      >
+        <img className="ba-img" src={afterUrl} alt={lang === "es" ? "Después" : "After"} draggable={false} />
+        <div className="ba-clip" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
+          <img className="ba-img" src={beforeUrl} alt={lang === "es" ? "Antes" : "Before"} draggable={false} />
+        </div>
+        <span className="ba-tag ba-tag-before">{lang === "es" ? "Antes" : "Before"}</span>
+        <span className="ba-tag ba-tag-after">{lang === "es" ? "Después" : "After"}</span>
+        <div className="ba-handle" style={{ left: `${pos}%` }} aria-hidden="true"><span className="ba-knob">⇔</span></div>
+      </div>
+      {label ? <figcaption>{label}</figcaption> : null}
+    </figure>
+  );
+}
+
+// Photo Proof Pack (0080): the job's Before/After pairs — slider cards,
+// unpair / rename, and a compact pair builder (pick a before photo, pick
+// an after photo, optional label). Rendered inside the job's existing
+// Photos surfaces; pairs point at photos and never own or edit them.
+function JobPhotoPairs({ lang, jobId, photos }: { lang: Lang; jobId: number; photos: JobData["photos"] }) {
+  const qc = useQueryClient();
+  const pairsQuery = useQuery({ queryKey: ["photo-pairs", jobId], queryFn: () => api.listPhotoPairs({ jobId }) });
+  const [creating, setCreating] = useState(false);
+  const [beforeId, setBeforeId] = useState(0);
+  const [afterId, setAfterId] = useState(0);
+  const [label, setLabel] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["photo-pairs", jobId] });
+  const create = useMutation({ mutationFn: () => api.createPhotoPair({ jobId, beforePhotoId: beforeId, afterPhotoId: afterId, label: label.trim() }), onSuccess: () => { setCreating(false); setLabel(""); invalidate(); } });
+  const unpair = useMutation({ mutationFn: (id: number) => api.deletePhotoPair({ id }), onSuccess: invalidate });
+  const rename = useMutation({ mutationFn: (id: number) => api.updatePhotoPair({ id, label: editLabel.trim() }), onSuccess: () => { setEditingId(null); invalidate(); } });
+  const pairs = pairsQuery.data?.pairs ?? [];
+  const stageWord = (s: string) => s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "after" ? (lang === "es" ? "Después" : "After") : (lang === "es" ? "Durante" : "During");
+  const photoName = (p: JobData["photos"][number]) => p.caption || `${stageWord(p.stage)} #${p.id}`;
+  const openCreate = () => {
+    setBeforeId((photos.find((p) => p.stage === "before") ?? photos[0])?.id ?? 0);
+    setAfterId((photos.find((p) => p.stage === "after") ?? photos[1] ?? photos[0])?.id ?? 0);
+    setCreating(true);
+  };
+  const picker = (value: number, set: (n: number) => void, word: string) => (
+    <label className="pair-picker">
+      <span>{word}</span>
+      <select value={value} onChange={(e) => set(Number(e.target.value))}>
+        {photos.map((p) => (<option value={p.id} key={p.id}>{photoName(p)}</option>))}
+      </select>
+      {photos.find((p) => p.id === value) ? <img src={photos.find((p) => p.id === value)!.url} alt="" /> : null}
+    </label>
+  );
+  return (
+    <div className="photo-pairs">
+      <div className="photo-pairs-head">
+        <h4>{lang === "es" ? "Antes y después" : "Before & After"}</h4>
+        {!creating && photos.length >= 2 && (<button type="button" className="small-button" onClick={openCreate}>{lang === "es" ? "Crear par" : "New pair"}</button>)}
+      </div>
+      {pairs.length === 0 && !creating && (<p className="muted">{lang === "es" ? "Aún no hay pares. Crea uno para mostrar el antes y el después con un deslizador." : "No pairs yet. Create one to show a before/after with a swipe slider."}</p>)}
+      {pairs.map((pair) => (
+        <div className="photo-pair-card" key={pair.id}>
+          <BeforeAfterSlider beforeUrl={pair.before.url} afterUrl={pair.after.url} lang={lang} label={pair.label || undefined} />
+          <div className="photo-pair-actions">
+            {editingId === pair.id ? (
+              <>
+                <input value={editLabel} maxLength={120} onChange={(e) => setEditLabel(e.target.value)} placeholder={lang === "es" ? "Etiqueta (opcional)" : "Label (optional)"} aria-label={lang === "es" ? "Etiqueta" : "Label"} />
+                <button type="button" className="small-button" disabled={rename.isPending} onClick={() => rename.mutate(pair.id)}>{lang === "es" ? "Guardar" : "Save"}</button>
+                <button type="button" className="small-button" onClick={() => setEditingId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="small-button" onClick={() => { setEditingId(pair.id); setEditLabel(pair.label); }}>{lang === "es" ? "Etiqueta" : "Label"}</button>
+                <button type="button" className="small-button danger-text" disabled={unpair.isPending} onClick={() => unpair.mutate(pair.id)}>{lang === "es" ? "Desemparejar" : "Unpair"}</button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+      {creating && (
+        <div className="pair-form">
+          <div className="comparison-pickers">
+            {picker(beforeId, setBeforeId, lang === "es" ? "Antes" : "Before")}
+            {picker(afterId, setAfterId, lang === "es" ? "Después" : "After")}
+          </div>
+          <input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} placeholder={lang === "es" ? "Etiqueta (opcional) — ej. Baño principal" : "Label (optional) — e.g. Main bathroom"} aria-label={lang === "es" ? "Etiqueta" : "Label"} />
+          {create.isError && <p className="status error">{create.error instanceof Error ? create.error.message : ""}</p>}
+          <div className="photo-pair-actions">
+            <button type="button" className="primary-button" disabled={create.isPending || !beforeId || !afterId || beforeId === afterId} onClick={() => create.mutate()}>{lang === "es" ? "Crear par" : "Create pair"}</button>
+            <button type="button" className="secondary-button" onClick={() => setCreating(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId }: Pick<WorkspacePanelProps, "lang" | "photos" | "completionWorkflow" | "jobId">) {
   const stages = ["before", "during", "after"] as const;
   const label = (s: string) =>
     s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "during" ? (lang === "es" ? "Durante" : "During") : (lang === "es" ? "Después" : "After");
   return (
     <section className="workspace-panel" aria-label={lang === "es" ? "Fotos" : "Photos"}>
       {completionWorkflow}
+      <div className="panel-card">
+        <JobPhotoPairs lang={lang} jobId={jobId} photos={photos} />
+      </div>
       {stages.map((s) => {
         const list = photos.filter((p) => p.stage === s);
         return (
@@ -9518,6 +9645,7 @@ function JobDetail({
             <div className="photo-grid">{query.data.photos.filter((p) => p.stage === stage).map((p) => <PhotoCard key={p.id} photo={p} lang={lang} jobId={jobId} onAnnotate={() => setScreen({ name: "tool", jobId, mode: "annotate", photoId: p.id })}/>)}</div>
             {query.data.photos.filter((p) => p.stage === stage).length === 0 && <div className="stage-empty"><CameraIcon /><p>{t.noPhotos}</p></div>}
           </div>
+          <JobPhotoPairs lang={lang} jobId={jobId} photos={query.data.photos} />
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Otra información del trabajo" : "Other job info"} count={[job.notes, job.jobDate, job.appointmentAt].filter(Boolean).length} tone="slate" icon={<Icon><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></Icon>}>
           <button className="job-plus-row detail-date-row" type="button" onClick={() => setActiveJobSheet("dates")}><span><b>＋</b><span><strong>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</strong><small>{formatDate(job.jobDate, lang)}{job.appointmentAt ? ` · ${new Date(job.appointmentAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></span></span><BackIcon /></button>
@@ -27793,6 +27921,13 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
             </button>
           ))}
         </div>
+        {d.photoPairs.length > 0 && (
+          <div className="portal-v2-pairs">
+            {d.photoPairs.map((pair) => (
+              <BeforeAfterSlider key={pair.id} beforeUrl={pair.before.url} afterUrl={pair.after.url} lang={lang} label={pair.label || undefined} />
+            ))}
+          </div>
+        )}
         {shownPhotos.length ? (
           <div className="portal-v2-grid">
             {shownPhotos.map((p) => (

@@ -63,6 +63,20 @@ export const photos = sqliteTable("photos", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// Photo Proof Pack (0080): a persistent Before/After pairing of two photos
+// of the same job, shown as a swipe-slider in the job and in the client
+// portal. The pair owns no blob — it points at two photo rows; deleting a
+// pair never touches the photos, and deleting a photo removes its pairs.
+export const photoPairs = sqliteTable("photo_pairs", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  beforePhotoId: integer("before_photo_id").notNull(),
+  afterPhotoId: integer("after_photo_id").notNull(),
+  label: text("label").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 export const documents = sqliteTable("documents", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
