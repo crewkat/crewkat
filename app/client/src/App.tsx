@@ -59,7 +59,7 @@ type SignedDocument = JobData["documents"][number];
 type Invoice = ApiResponse<typeof api, "listInvoices">["invoices"][number];
 type Client = ApiResponse<typeof api, "listClients">["clients"][number];
 type Settings = ApiResponse<typeof api, "getSettings">;
-type SettingsInput = Omit<Settings, "logoUrl" | "coverUrl">;
+type SettingsInput = Omit<Settings, "logoUrl" | "coverUrl" | "savedSignatureUrl">;
 type MarketplaceListing = ApiResponse<typeof api, "listMarketplaceListings">["listings"][number];
 type MarketplaceIntent = "need" | "offer";
 type MarketplaceCategory = MarketplaceListing["category"];
@@ -3083,7 +3083,7 @@ function CrewkatApplication() {
       window.localStorage.setItem("crewkat-public-lang", next);
     } catch { /* storage unavailable */ }
     if (settings.data) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
       saveSettings.mutate({ ...input, language: next });
     }
   };
@@ -3095,7 +3095,7 @@ function CrewkatApplication() {
     langSaveAttemptedRef.current = true;
     const intent = langIntentRef.current;
     if (intent && settings.data.language !== intent) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
       saveSettings.mutate({ ...input, language: intent });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3116,7 +3116,7 @@ function CrewkatApplication() {
     } catch { /* storage unavailable */ }
     if (pending !== "es" && pending !== "en") return;
     if (pending === settings.data.language) return;
-    const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
+    const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
     saveSettings.mutate({ ...input, language: pending });
     // saveSettings is a stable mutation object for this purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7474,10 +7474,12 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
     d.kind === "contract"
       ? (lang === "es" ? "Contrato" : "Contract")
       : (lang === "es" ? "Orden de cambio" : "Change order");
+  // Documents only exist once the contractor has signed, so the truthful
+  // states are contractor-signed vs fully signed (client countersigned).
   const statusLabel = (d: Doc) =>
     d.clientSignedAt
-      ? (lang === "es" ? "Firmado" : "Signed")
-      : (lang === "es" ? "Sin firmar" : "Unsigned");
+      ? (lang === "es" ? "Firmado" : "Fully signed")
+      : (lang === "es" ? "Firmado por el contratista" : "Contractor signed");
 
   const sendDoc = async (d: Doc) => {
     if (busy) return;
@@ -10004,7 +10006,7 @@ function CompanyProfileEditor({ lang, value, saving, onBack, onSave }: { lang: L
   return <main className="page company-profile-page">
     <PageHeader lang={lang} title={text.title} onBack={onBack}/>
     <p className="profile-editor-intro">{text.intro}</p>
-    <form className="job-form company-profile-form" onSubmit={(event) => { event.preventDefault(); const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = form; onSave(input); }}>
+    <form className="job-form company-profile-form" onSubmit={(event) => { event.preventDefault(); const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = form; onSave(input); }}>
       <section className="profile-visual-editor" aria-label={lang === "es" ? "Imágenes del perfil" : "Profile images"}>
         <div className="profile-cover-preview">
           {form.coverUrl ? <img src={form.coverUrl} alt={text.cover}/> : <span><Icon size={34}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></span>}
@@ -10228,6 +10230,7 @@ function SettingsScreen({
     simpleMode: true,
     logoUrl: null,
     coverUrl: null,
+    savedSignatureUrl: null,
   };
   const [form, setForm] = useState<Settings>(value ?? fallback);
   const [openSettingsSection, setOpenSettingsSection] = useState<string | null>(settingsOpenSectionCache);
@@ -10265,6 +10268,20 @@ function SettingsScreen({
         dataBase64: data.dataBase64,
       });
     },
+    onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
+  });
+  // Saved contractor signature (0079): draw once, tap-to-sign anywhere.
+  const [sigDraft, setSigDraft] = useState("");
+  const savedSignature = useMutation({
+    mutationFn: (signatureDataBase64: string) =>
+      api.saveContractorSignature({ signatureDataBase64 }),
+    onSuccess: () => {
+      setSigDraft("");
+      client.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+  const clearSignature = useMutation({
+    mutationFn: () => api.clearContractorSignature({}),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
   const report = useMutation({
@@ -10360,7 +10377,7 @@ function SettingsScreen({
         onChange={() => setJustSaved(false)}
         onSubmit={(e) => {
           e.preventDefault();
-          const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = form;
+          const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = form;
           onSave(input, () => setJustSaved(true));
         }}
       >
@@ -10418,6 +10435,43 @@ function SettingsScreen({
                   }}
                 />
               </label>
+            </fieldset>
+            <fieldset className="brand-settings">
+              <legend>{lang === "es" ? "Tu firma guardada" : "Your saved signature"}</legend>
+              {form.savedSignatureUrl ? (
+                <div className="logo-preview signature-preview">
+                  <img src={sameOriginBlobPath(form.savedSignatureUrl)} alt={lang === "es" ? "Tu firma guardada" : "Your saved signature"} />
+                </div>
+              ) : (
+                <p className="dim small">
+                  {lang === "es"
+                    ? "Aún no tienes una firma guardada. Dibuja una abajo y podrás firmar documentos con un solo toque."
+                    : "No saved signature yet. Draw one below and you can sign documents with one tap."}
+                </p>
+              )}
+              <SignaturePad
+                label={lang === "es" ? "Dibuja tu firma" : "Draw your signature"}
+                clearLabel={lang === "es" ? "Borrar" : "Clear"}
+                onChange={setSigDraft}
+              />
+              <div className="row-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={!sigDraft || savedSignature.isPending}
+                  onClick={() => savedSignature.mutate(sigDraft)}
+                >
+                  {lang === "es" ? "Guardar firma" : "Save signature"}
+                </button>
+                {form.savedSignatureUrl && (
+                  <button type="button" className="btn" disabled={clearSignature.isPending} onClick={() => clearSignature.mutate()}>
+                    {lang === "es" ? "Borrar firma" : "Clear signature"}
+                  </button>
+                )}
+              </div>
+              {(savedSignature.isError || clearSignature.isError) && (
+                <p className="status error" role="alert">{t.error}</p>
+              )}
             </fieldset>
             <label>
               <span>{t.company}</span>
@@ -14906,7 +14960,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
   }, [previewSignature]);
   const closeSheet = async () => {
     if (sheet === "business" && localSettings) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = localSettings;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = localSettings;
       await api.updateSettings(input);
       await qc.invalidateQueries({ queryKey: ["settings"] });
     }
@@ -17450,6 +17504,8 @@ type SignatureFieldKey = keyof SignatureFields;
 const SIGNATURE_FIELD_TABS: Array<{ key: SignatureFieldKey; en: string; es: string }> = [
   { key: "clientSignature", en: "Client signature", es: "Firma del cliente" },
   { key: "clientDate", en: "Signing date", es: "Fecha de firma" },
+  { key: "contractorSignature", en: "Your signature", es: "Tu firma" },
+  { key: "contractorDate", en: "Your date", es: "Tu fecha" },
 ];
 
 function SignaturePlacementEditor({
@@ -17699,6 +17755,21 @@ function DocumentSigner({
   const [viewingId, setViewingId] = useState<number | null>(null);
   // Signature placement (0078): the document whose fields are being placed.
   const [placing, setPlacing] = useState<SignedDocument | null>(null);
+  // Tap-to-sign (0079): apply the saved signature server-side in one tap.
+  const [tapSigningId, setTapSigningId] = useState<number | null>(null);
+  const tapToSign = async (documentId: number) => {
+    setViewError("");
+    setTapSigningId(documentId);
+    try {
+      await api.signDocumentWithSavedSignature({ documentId });
+      client.invalidateQueries({ queryKey: ["job", job?.id] });
+      client.invalidateQueries({ queryKey: ["documents"] });
+    } catch (e) {
+      setViewError(actionErrorMessage(e));
+    } finally {
+      setTapSigningId(null);
+    }
+  };
   useEscapeToClose(preview !== null, () => setPreview(null));
   const save = useMutation({
     mutationFn: async () => {
@@ -17857,6 +17928,18 @@ function DocumentSigner({
                 >
                   {viewingId === d.id ? (lang === "es" ? "Abriendo…" : "Opening…") : t.viewDocument}
                 </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={tapSigningId === d.id}
+                  onClick={() => void tapToSign(d.id)}
+                >
+                  {tapSigningId === d.id
+                    ? t.saving
+                    : lang === "es"
+                      ? "Firmar con mi firma"
+                      : "Sign with saved signature"}
+                </button>
                 {d.originalUrl ? (
                   <button
                     type="button"
@@ -17884,6 +17967,15 @@ function DocumentSigner({
                   {d.clientSignerName}
                 </small>
               ) : null}
+              <small className="signed-label">
+                {d.clientSignedAt
+                  ? lang === "es"
+                    ? "Firmado por ambas partes"
+                    : "Fully signed"
+                  : lang === "es"
+                    ? "Firmado por ti — falta el cliente"
+                    : "Signed by you — awaiting client"}
+              </small>
               <DocumentLinkPanel lang={lang} kind={d.kind} id={d.id} />
             </article>
           ))}

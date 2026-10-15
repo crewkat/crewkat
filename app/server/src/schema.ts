@@ -325,6 +325,9 @@ export const settings = sqliteTable("settings", {
   simpleMode: integer("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
+  // Saved contractor signature (0079): drawn once in Settings, applied
+  // via tap-to-sign. PNG blob, same storage pattern as the logo.
+  signatureBlobKey: text("signature_blob_key"),
   listingBonus: integer("listing_bonus").notNull().default(0),
   // Build 0.6 item 22: phone must be verified before listing on Marketplace.
   // TODO: wire to a real SMS provider (e.g. Twilio) — currently self-attested.
