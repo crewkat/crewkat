@@ -20,8 +20,8 @@
 //     business name = company name, falling back to the user's name;
 //     the snapshot is frozen once taken; payload is exposed by both
 //     craneRunGetChampion and craneRunGetLeaderboard; the Marketplace
-//     listing link points at the champion company's newest ACTIVE
-//     listing and is null when they have none.
+//     card's profile target is the champion's company id (v2 — the card
+//     opens their Pro Profile, not a listing).
 //
 // Run from app/:  bun crane-run-weekly.behavior.test.ts
 import { mkdtemp } from "node:fs/promises";
@@ -166,21 +166,21 @@ await insertScore(gammaId, "Gamma Lopez", 5000, lastDates[5]!, new Date(`${lastD
 const champFrozen = await actions.craneRunGetChampion.handler(ctxFor(gammaId, 2), {});
 check("snapshot is frozen once taken", champFrozen.champion?.businessName === "Alpha Builders" && champFrozen.champion?.score === 900);
 
-// --- 8. Champion Marketplace link ---------------------------------------------------------
-check("champion has no listing link before any listing exists", champFrozen.champion?.listingId === null);
-const listingRows = await db.insert(schema.marketplaceListings).values({ companyId: 1, title: "Alpha crane services", category: "equipment", intent: "offer", serviceArea: "Tampa, FL", companyName: "Alpha Builders", moderationStatus: "active", createdAt: now, updatedAt: now }).returning({ id: schema.marketplaceListings.id });
-const activeListingId = listingRows[0]!.id;
+// --- 8. Champion Marketplace profile target ---------------------------------------------------
+check("champion payload carries the champion's company id (Pro Profile target)", champFrozen.champion?.companyId === 1, String(champFrozen.champion?.companyId));
+check("champion payload no longer carries a listing link", (champFrozen.champion as any)?.listingId === undefined);
+await db.insert(schema.marketplaceListings).values({ companyId: 1, title: "Alpha crane services", category: "equipment", intent: "offer", serviceArea: "Tampa, FL", companyName: "Alpha Builders", moderationStatus: "active", createdAt: now, updatedAt: now });
 await db.insert(schema.marketplaceListings).values({ companyId: 1, title: "Removed listing", category: "equipment", intent: "offer", serviceArea: "Tampa, FL", companyName: "Alpha Builders", moderationStatus: "removed", createdAt: new Date(now.getTime() + 60000), updatedAt: now });
 const champLinked = await actions.craneRunGetChampion.handler(ctxFor(alphaId, 1), {});
-check("listing link is the champion company's newest ACTIVE listing", champLinked.champion?.listingId === activeListingId, String(champLinked.champion?.listingId));
+check("profile target stays the company id once listings exist", champLinked.champion?.companyId === 1, String(champLinked.champion?.companyId));
 
-// --- 9. Champion name fallback + graceful no-link -------------------------------------------
+// --- 9. Champion name fallback + profile target -------------------------------------------------
 await db.delete(schema.weeklyGameChampions);
 await db.delete(schema.dailyGameScores);
 await insertScore(gammaId, "Gamma Lopez", 600, lastDates[1]!, new Date(`${lastDates[1]}T12:00:00.000Z`));
 const champFallback = await actions.craneRunGetChampion.handler(ctxFor(alphaId, 1), {});
 check("empty company name falls back to the user's name", champFallback.champion?.businessName === "Gamma Lopez", champFallback.champion?.businessName);
-check("champion without a marketplace listing gets listingId null", champFallback.champion?.listingId === null);
+check("fallback champion's profile target is their own company", champFallback.champion?.companyId === 2, String(champFallback.champion?.companyId));
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) FAILED`);

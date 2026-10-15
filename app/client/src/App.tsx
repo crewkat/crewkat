@@ -343,6 +343,7 @@ type Screen =
   | { name: "marketplaceNew"; intent?: MarketplaceIntent }
   | { name: "marketplaceEdit"; listingId: number }
   | { name: "marketplaceDetail"; listingId: number }
+  | { name: "marketplaceProfile"; companyId: number | null; listingId: number | null }
   | { name: "marketplaceThread"; conversationId: number }
   | { name: "tools" }
   | { name: "craneRun" }
@@ -1163,7 +1164,7 @@ function rootTabFor(screen: Screen): RootTab | null {
   if (["jobs", "new", "detail", "proof", "tool"].includes(screen.name)) return "jobs";
   if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
   if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
-  if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail", "marketplaceThread"].includes(screen.name)) return "marketplace";
+  if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail", "marketplaceThread", "marketplaceProfile"].includes(screen.name)) return "marketplace";
   // Build 3.1.1: Tools, Settings and other pushed screens return null so the
   // tab bar keeps the last root tab highlighted underneath them.
   return null;
@@ -3458,7 +3459,10 @@ function CrewkatApplication() {
         <MarketplaceListingForm lang={lang} settings={appSettings} listingId={screen.listingId} onBack={goBack} onSaved={(listingId) => replaceScreen({ name: "marketplaceDetail", listingId })} />
       )}
       {screen.name === "marketplaceDetail" && (
-        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} onBack={goBack} onOpenThread={(conversationId) => setScreen({ name: "marketplaceThread", conversationId })} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={goBack} />
+        <MarketplaceListingDetail lang={lang} listingId={screen.listingId} onBack={goBack} onOpenThread={(conversationId) => setScreen({ name: "marketplaceThread", conversationId })} onEdit={() => setScreen({ name: "marketplaceEdit", listingId: screen.listingId })} onDeleted={goBack} onOpenProfile={() => setScreen({ name: "marketplaceProfile", companyId: null, listingId: screen.listingId })} />
+      )}
+      {screen.name === "marketplaceProfile" && (
+        <MarketplaceProProfile lang={lang} companyId={screen.companyId} listingId={screen.listingId} onBack={goBack} setScreen={setScreen} />
       )}
       {screen.name === "marketplaceThread" && (
         <MarketplaceThreadScreen lang={lang} conversationId={screen.conversationId} onBack={goBack} />
@@ -5033,17 +5037,24 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
     {view === "explore" && <section className="market-explore">
       {weekChampion && (
         <div className="market-champion-card">
-          <span className="market-champion-badge">
-            <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
-            {lang === "es" ? "Profesional destacado" : "Featured Pro"}
-          </span>
-          <strong className="market-champion-name">{weekChampion.businessName}</strong>
-          <span className="market-champion-note">{lang === "es" ? "Campeón de Crane Run de la semana pasada — reconocimiento gratuito toda esta semana" : "Last week's Crane Run champion — free spotlight all this week"}</span>
-          {weekChampion.listingId != null && (
-            <button type="button" className="market-champion-link" onClick={() => setScreen({ name: "marketplaceDetail", listingId: weekChampion.listingId! })}>
-              {lang === "es" ? "Ver publicación" : "View listing"}
+          <div className="market-champion-line">
+            <span className="market-champion-badge">
+              <Icon size={12}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
+              {lang === "es" ? "Profesional destacado" : "Featured Pro"}
+            </span>
+            <strong className="market-champion-name">{weekChampion.businessName}</strong>
+          </div>
+          <div className="market-champion-line market-champion-actions">
+            <span className="market-champion-note">{lang === "es" ? "Campeón de Crane Run de la semana pasada" : "Last week's Crane Run champion"}</span>
+            {weekChampion.companyId != null && (
+              <button type="button" className="market-champion-link" onClick={() => setScreen({ name: "marketplaceProfile", companyId: weekChampion.companyId, listingId: null })}>
+                {lang === "es" ? "Ver perfil" : "View profile"}
+              </button>
+            )}
+            <button type="button" className="market-champion-link" onClick={() => setScreen({ name: "craneRun" })}>
+              {lang === "es" ? "Jugar a Crane Run" : "Play Crane Run"}
             </button>
-          )}
+          </div>
         </div>
       )}
       <div className="intent-filters" role="group" aria-label={lang === "es" ? "Filtrar por intención" : "Filter by intent"}><button className={intentFilter === "all" ? "active" : ""} onClick={() => setIntentFilter("all")}><Icon><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></Icon><span>{text.all}</span></button><button className={intentFilter === "need" ? "active need" : "need"} onClick={() => setIntentFilter(intentFilter === "need" ? "all" : "need")}><Icon><path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z"/></Icon><span>{text.wanted}</span></button><button className={intentFilter === "offer" ? "active offer" : "offer"} onClick={() => setIntentFilter(intentFilter === "offer" ? "all" : "offer")}><Icon><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="9" cy="9" r="1.6"/></Icon><span>{text.available}</span></button><span className="intent-filters-spacer" aria-hidden="true" /><button className={`sort-icon-button${sortBy !== "newest" ? " active" : ""}`} type="button" aria-label={sortText.sortBy} title={sortText.sortBy} onClick={() => setSortOpen(true)}><Icon><path d="M7 4v13M7 17l-3-3M7 17l3-3M17 20V7M17 7l-3 3M17 7l3 3"/></Icon></button></div>
@@ -5372,7 +5383,73 @@ function ChatImageViewer({ lang, src, alt, onClose }: {
   );
 }
 
-function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void }) {
+// Pro Profile (Danny 2026-10-14): a marketplace pro's public page — their
+// company profile info (logo, cover, about, service area, socials, all from
+// Settings) over ALL of their active listings, using the same cards as
+// Explore. Reached from the Featured Pro champion card and from a listing's
+// "Listed by" area. No ratings/reviews (parked by Danny — no volume yet).
+function MarketplaceProProfile({ lang, companyId, listingId, onBack, setScreen }: {
+  lang: Lang;
+  companyId: number | null;
+  listingId: number | null;
+  onBack: () => void;
+  setScreen: (screen: Screen) => void;
+}) {
+  const query = useQuery({ queryKey: ["marketplace-profile", companyId, listingId], queryFn: () => api.getMarketplaceProProfile({ companyId, listingId }) });
+  const profile = query.data?.profile ?? null;
+  const [savedIds, setSavedIds] = useState<number[]>(savedMarketplaceIds);
+  const startConvo = useMutation({
+    mutationFn: (targetListingId: number) => api.startMarketplaceConversation({ listingId: targetListingId }),
+    onSuccess: (result) => setScreen({ name: "marketplaceThread", conversationId: result.conversationId }),
+    onError: () => {},
+  });
+  const t = lang === "es"
+    ? { notFound: "No se encontró el perfil de este profesional.", listings: "Publicaciones", noListings: "Sin publicaciones activas por ahora.", message: "Mensaje", starting: "Abriendo conversación…", startError: "No se pudo abrir la conversación. Inténtalo de nuevo.", freeEstimates: "Estimados gratis", just: "Recién publicado", promoted: "Promocionado", featured: "Destacado", save: "Guardar publicación", saved: "Guardado", website: "Sitio web", reviews: "Reseñas" }
+    : { notFound: "This pro profile could not be found.", listings: "Listings", noListings: "No active listings right now.", message: "Message", starting: "Opening conversation…", startError: "The conversation could not be opened. Try again.", freeEstimates: "Free estimates", just: "Just listed", promoted: "Promoted", featured: "Featured", save: "Save listing", saved: "Saved", website: "Website", reviews: "Reviews" };
+  const toggleSaved = (id: number) => setSavedIds((current) => {
+    const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+    window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next));
+    return next;
+  });
+  const webHref = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+  const isOwnProfile = !!profile && profile.listings.some((listing) => listing.isMine);
+  const socials = profile ? [
+    { label: t.website, url: profile.website },
+    { label: "Facebook", url: profile.facebookUrl },
+    { label: "Instagram", url: profile.instagramUrl },
+    { label: "YouTube", url: profile.youtubeUrl },
+    { label: t.reviews, url: profile.reviewUrl },
+  ].filter((item) => item.url.trim()) : [];
+  return <main className="page marketplace-profile"><PageHeader lang={lang} title={lang === "es" ? "Perfil del profesional" : "Pro profile"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !profile ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
+    <section className="pro-profile-head">
+      {profile.coverUrl && <div className="pro-profile-cover"><img src={profile.coverUrl} alt=""/></div>}
+      <div className="pro-profile-id">
+        <span className="pro-profile-logo">{profile.logoUrl ? <img src={profile.logoUrl} alt={profile.companyName}/> : <span>{profile.companyName.trim().slice(0, 2).toUpperCase() || "CO"}</span>}</span>
+        <div className="pro-profile-id-copy">
+          <h1>{profile.companyName}{profile.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</h1>
+          {profile.serviceArea && <p className="pro-profile-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></Icon>{profile.serviceArea}</p>}
+        </div>
+      </div>
+      {(profile.categories.length > 0 || profile.offersFreeEstimates) && <div className="pro-profile-chips">{profile.categories.map((category) => <span key={category} className="pro-profile-chip">{marketplaceCategoryLabel(category, lang)}</span>)}{profile.offersFreeEstimates && <span className="pro-profile-chip accent">{t.freeEstimates}</span>}</div>}
+      {profile.description && <p className="pro-profile-about">{profile.description}</p>}
+      {socials.length > 0 && <div className="pro-profile-socials">{socials.map((item) => <a key={item.label} href={webHref(item.url)} target="_blank" rel="noreferrer">{item.label}</a>)}</div>}
+      {!isOwnProfile && profile.newestListingId != null && <div className="market-contact-actions"><button className="primary-button" disabled={startConvo.isPending} onClick={() => startConvo.mutate(profile.newestListingId!)}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button></div>}
+      {startConvo.isError && <p className="status error">{t.startError}</p>}
+    </section>
+    <section className="pro-profile-listings">
+      <h2>{t.listings} · {profile.listings.length}</h2>
+      {profile.listings.length ? <div className="market-grid">{profile.listings.map((listing) => <article className="market-card" key={listing.id}>
+        <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
+          <div className="market-card-photo">{listing.photos[0] ? <img src={listing.photos[0].url} alt={listing.title}/> : <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>}<span className="card-badges"><span className={`intent-pill ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "SE BUSCA" : "WANTED") : (lang === "es" ? "DISPONIBLE" : "AVAILABLE")}</span>{listing.justListed && <b className="just-listed-pill">{t.just}</b>}{listing.promoted && <em className="market-promoted-badge">{t.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {t.featured}</em>}</span></div>
+          <div className="market-card-copy"><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
+        </button>
+        <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : t.save}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
+      </article>)}</div> : <p className="muted-note">{t.noListings}</p>}
+    </section>
+  </>}</main>;
+}
+
+function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdit, onDeleted, onOpenProfile }: { lang: Lang; listingId: number; onBack: () => void; onOpenThread: (conversationId: number) => void; onEdit: () => void; onDeleted: () => void; onOpenProfile: () => void }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["marketplace-listing", listingId], queryFn: () => api.getMarketplaceListing({ id: listingId }) });
   const [saved, setSaved] = useState(() => savedMarketplaceIds().includes(listingId));
@@ -5419,7 +5496,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-intent ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "Se busca" : "Wanted") : (lang === "es" ? "Disponible" : "Available")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div>{listing.bookable && <p className="daily-rate"><strong>{new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD" }).format(Number(listing.dailyRate || 0))}</strong> {t.perDay}</p>}<p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
     {!listing.isMine && <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { startConvo.mutate(); }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>}{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
-    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{!listing.isMine && (listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />)}</section>
+    <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{listing.companyName ? <button type="button" className="market-profile-link" onClick={onOpenProfile}>{lang === "es" ? "Ver perfil" : "View profile"}</button> : null}{!listing.isMine && (listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />)}</section>
     {!listing.isMine && <button type="button" className="market-report-link" onClick={() => { setReportOpen(true); setReportConfirm(false); setReportDone(false); setReportError(""); setReportDetails(""); }}>{t.report}</button>}
     {deleteOpenSheet.render && (
       <DeleteListingDialog

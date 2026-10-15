@@ -2259,7 +2259,7 @@ async function craneWeeklyBests(db: ReturnType<Ctx["db"]>, dates: string[]): Pro
   return [...bestByUser.values()].sort((a, b) => b.score - a.score || a.achievedAt.getTime() - b.achievedAt.getTime() || a.userId - b.userId);
 }
 
-type CraneChampion = { businessName: string; score: number; weekStart: string; listingId: number | null };
+type CraneChampion = { businessName: string; score: number; weekStart: string; companyId: number | null };
 
 /**
  * Last week's champion, snapshotted on first read of the new week: the #1
@@ -2281,19 +2281,18 @@ async function craneLastWeekChampion(db: ReturnType<Ctx["db"]>): Promise<CraneCh
     champ = (await db.select().from(schema.weeklyGameChampions).where(eq(schema.weeklyGameChampions.weekStart, weekStart)).limit(1))[0];
     if (!champ) return null;
   }
-  // Marketplace link: the champion company's newest active listing, if any.
-  let listingId: number | null = null;
+  // Marketplace profile target: the champion's company. The Featured Pro
+  // card opens their Pro Profile (info + all their listings), so the
+  // payload carries the company id, not a listing.
+  let companyId: number | null = null;
   if (champ.userId != null) {
     const champUser = (await db.select({ companyId: schema.authUsers.companyId }).from(schema.authUsers).where(eq(schema.authUsers.id, champ.userId)).limit(1))[0];
-    if (champUser) {
-      const listing = (await db.select({ id: schema.marketplaceListings.id }).from(schema.marketplaceListings).where(and(eq(schema.marketplaceListings.companyId, champUser.companyId), eq(schema.marketplaceListings.moderationStatus, "active"))).orderBy(desc(schema.marketplaceListings.createdAt)).limit(1))[0];
-      listingId = listing?.id ?? null;
-    }
+    companyId = champUser?.companyId ?? null;
   }
-  return { businessName: champ.businessName, score: champ.score, weekStart: champ.weekStart, listingId };
+  return { businessName: champ.businessName, score: champ.score, weekStart: champ.weekStart, companyId };
 }
 
-const craneChampionSchema = z.object({ businessName: z.string(), score: z.number(), weekStart: z.string(), listingId: z.number().nullable() }).nullable();
+const craneChampionSchema = z.object({ businessName: z.string(), score: z.number(), weekStart: z.string(), companyId: z.number().nullable() }).nullable();
 
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
@@ -4144,6 +4143,76 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(and(eq(schema.marketplaceUnlocks.companyId, myCompanyId), eq(schema.marketplaceUnlocks.listingId, row.id))).limit(1);
       const verifiedIds = await verifiedCompanyIdSet(db);
       return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId)), verifiedIds) };
+    },
+  }),
+  // Pro Profile (Danny 2026-10-14): a marketplace pro's public page — all of
+  // the pro's info (their company profile from Settings: logo, cover, about,
+  // service area, socials) over ALL of their active listings. Reached from
+  // the Featured Pro champion card (by company) and from a listing's
+  // "Listed by" area (by listing). No ratings/reviews — parked by Danny.
+  getMarketplaceProProfile: defineAction({
+    request: z.object({ companyId: z.number().int().positive().nullable().default(null), listingId: z.number().int().positive().nullable().default(null) }),
+    response: z.object({ profile: z.object({
+      companyId: z.number(),
+      companyName: z.string(),
+      verified: z.boolean(),
+      logoUrl: z.string().nullable(),
+      coverUrl: z.string().nullable(),
+      description: z.string(),
+      serviceArea: z.string(),
+      website: z.string(),
+      facebookUrl: z.string(),
+      instagramUrl: z.string(),
+      youtubeUrl: z.string(),
+      reviewUrl: z.string(),
+      offersFreeEstimates: z.boolean(),
+      categories: z.array(marketplaceCategorySchema),
+      listings: z.array(marketplaceListingSchema),
+      newestListingId: z.number().nullable(),
+    }).nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      await requireMarketplaceEnabled(db);
+      let companyId = args.companyId;
+      if (companyId == null && args.listingId != null) {
+        const listing = (await db.select({ companyId: schema.marketplaceListings.companyId, moderationStatus: schema.marketplaceListings.moderationStatus }).from(schema.marketplaceListings).where(eq(schema.marketplaceListings.id, args.listingId)).limit(1))[0];
+        // Same visibility rule as getMarketplaceListing: a non-active
+        // listing only resolves for its owner.
+        if (!listing || (listing.moderationStatus !== "active" && listing.companyId !== workspaceIdentity(ctx).workspaceCompanyId)) return { profile: null };
+        companyId = listing.companyId;
+      }
+      if (companyId == null) return { profile: null };
+      const profileSettings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+      const rows = (await db.select().from(schema.marketplaceListings).where(eq(schema.marketplaceListings.companyId, companyId)).orderBy(desc(schema.marketplaceListings.promoted), desc(schema.marketplaceListings.createdAt))).filter((row) => row.moderationStatus === "active");
+      if (!profileSettings && rows.length === 0) return { profile: null };
+      const companyName = (profileSettings?.companyName ?? "").trim() || rows[0]?.companyName || "";
+      const photoRows = await db.select().from(schema.marketplaceListingPhotos).orderBy(schema.marketplaceListingPhotos.sortOrder);
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const unlockedRows = await db.select({ listingId: schema.marketplaceUnlocks.listingId }).from(schema.marketplaceUnlocks).where(eq(schema.marketplaceUnlocks.companyId, myCompanyId));
+      const unlockedIds = new Set(unlockedRows.map((r) => r.listingId));
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      const listings = await Promise.all(rows.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds, verifiedIds)));
+      const categories: Array<z.infer<typeof marketplaceCategorySchema>> = [];
+      for (const row of rows) if (!categories.includes(row.category)) categories.push(row.category);
+      const newest = rows.reduce<typeof rows[number] | null>((acc, row) => (!acc || row.createdAt.getTime() > acc.createdAt.getTime() ? row : acc), null);
+      return { profile: {
+        companyId,
+        companyName,
+        verified: verifiedIds.has(companyId),
+        logoUrl: profileSettings?.logoBlobKey ? await ctx.blobs.getUrl(profileSettings.logoBlobKey) : null,
+        coverUrl: profileSettings?.coverBlobKey ? await ctx.blobs.getUrl(profileSettings.coverBlobKey) : null,
+        description: profileSettings?.profileDescription ?? "",
+        serviceArea: profileSettings?.serviceArea ?? "",
+        website: profileSettings?.website ?? "",
+        facebookUrl: profileSettings?.facebookUrl ?? "",
+        instagramUrl: profileSettings?.instagramUrl ?? "",
+        youtubeUrl: profileSettings?.youtubeUrl ?? "",
+        reviewUrl: profileSettings?.reviewUrl ?? "",
+        offersFreeEstimates: profileSettings?.offersFreeEstimates ?? false,
+        categories,
+        listings,
+        newestListingId: newest?.id ?? null,
+      } };
     },
   }),
   createMarketplaceListing: defineAction({

@@ -165,6 +165,28 @@ describe("Crane Run weekly leaderboard UI (Danny 2026-10-11 daily; weekly 2026-1
     expect(CSS).toContain(".market-champion-card");
   });
 
+  test("Marketplace champion card is a slim strip: Pro Profile + game links, no listing link (v2)", () => {
+    // Two tight lines instead of the old stacked card with its pill button.
+    expect(APP).toContain("market-champion-line");
+    expect(APP).toContain("market-champion-actions");
+    // The business action opens the champion's Pro Profile by company id.
+    expect(APP).toMatch(/marketplaceProfile", companyId: weekChampion\.companyId/);
+    expect(APP).toContain("View profile");
+    expect(APP).toContain("Ver perfil");
+    // A compact link opens the Crane Run game screen itself.
+    expect(APP).toMatch(/market-champion-actions[\s\S]{0,900}Play Crane Run/);
+    expect(APP).toContain("Jugar a Crane Run");
+    // The old listing behavior is gone entirely.
+    expect(APP).not.toContain("View listing");
+    expect(APP).not.toContain("Ver publicación");
+    expect(APP).not.toContain("weekChampion.listingId");
+    expect(APP).not.toContain("free spotlight all this week");
+    // Compressed CSS: slimmer padding, text-style links (no pill border).
+    expect(CSS).toMatch(/\.market-champion-card \{[^}]*padding:\s*7px 10px/);
+    expect(CSS).toMatch(/\.market-champion-link \{[^}]*border:\s*none/);
+    expect(CSS).not.toMatch(/\.market-champion-link \{[^}]*border-radius:\s*999px/);
+  });
+
   test("board uses the shared Switch for opt-in, wired to the opt-in action", () => {
     expect(APP).toContain("api.craneRunSetOptIn");
     expect(APP).toMatch(/crane-run-optin[\s\S]*?<Switch/);
