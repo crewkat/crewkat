@@ -1,0 +1,11 @@
+-- 0078: DocuSign-style signature placement for uploaded-PDF documents
+-- (Danny 2026-10-14). One JSON object on the document:
+-- { "clientSignature":     { page, xPct, yPct, wPct, hPct },
+--   "clientDate":          { page, xPct, yPct, wPct, hPct },
+--   "contractorSignature": { page, xPct, yPct, wPct, hPct },
+--   "contractorDate":      { page, xPct, yPct, wPct, hPct } }
+-- Coordinates are page-relative fractions from the page's top-left.
+-- The signed final PDF composites the captured signature image + date
+-- onto the original pages at these fields (bottom of last page when a
+-- field was never placed). Empty object = no fields placed.
+ALTER TABLE `documents` ADD `signature_fields_json` text NOT NULL DEFAULT '{}';

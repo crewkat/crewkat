@@ -56,7 +56,7 @@ for (let i = 1; i < entries.length; i++) {
 }
 check("journal when values are non-decreasing", nonDecreasing);
 const last = entries[entries.length - 1]!;
-check("newest migration tag is 0077_crane_run_weekly", last.tag === "0077_crane_run_weekly", last.tag);
+check("newest migration tag is 0078_signature_fields", last.tag === "0078_signature_fields", last.tag);
 
 const dir = await mkdtemp(join(tmpdir(), "crewkat-build05-"));
 const dbPath = join(dir, "app.db");

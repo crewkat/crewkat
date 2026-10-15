@@ -82,6 +82,10 @@ export const documents = sqliteTable("documents", {
   clientSignedPdfBlobKey: text("client_signed_pdf_blob_key"),
   clientSignatureHash: text("client_signature_hash").notNull().default(""),
   clientSignedUserAgent: text("client_signed_user_agent").notNull().default(""),
+  // Signature placement (0078): JSON { clientSignature?, clientDate?,
+  // contractorSignature?, contractorDate? } of { page, xPct, yPct, wPct,
+  // hPct } boxes on the uploaded original PDF.
+  signatureFieldsJson: text("signature_fields_json").notNull().default("{}"),
   signedAt: integer("signed_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

@@ -41,6 +41,7 @@ import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
+import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
@@ -14171,14 +14172,14 @@ function QuoteBuilder({
   // Arrow keys on a focused grip move the row for keyboard users.
   const lineListRef = useRef<HTMLDivElement>(null);
   const dragFromRef = useRef<number | null>(null);
-  const onGripPointerDown = (e: React.PointerEvent<HTMLSpanElement>, index: number) => {
+  const onGripPointerDown = (e: PointerEvent<HTMLSpanElement>, index: number) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
     dragFromRef.current = index;
     setDraggingIdx(index);
     buzz(8);
   };
-  const onGripPointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+  const onGripPointerMove = (e: PointerEvent<HTMLSpanElement>) => {
     const from = dragFromRef.current;
     if (from === null) return;
     const rows = lineListRef.current?.querySelectorAll<HTMLElement>("[data-b06-line]");
@@ -17440,6 +17441,230 @@ function JobToolScreen({
     </main>
   );
 }
+// Signature placement (0078): tap-to-place editor for the signature/date
+// fields on an uploaded-PDF document. Pages are the same server-rasterized
+// images the client link shows; a tap drops the selected field, dragging
+// moves it, the slider sizes it. Fields are stored page-relative so they
+// land at the same spot in the composited signed PDF.
+type SignatureFieldKey = keyof SignatureFields;
+const SIGNATURE_FIELD_TABS: Array<{ key: SignatureFieldKey; en: string; es: string }> = [
+  { key: "clientSignature", en: "Client signature", es: "Firma del cliente" },
+  { key: "clientDate", en: "Signing date", es: "Fecha de firma" },
+];
+
+function SignaturePlacementEditor({
+  lang,
+  document,
+  onClose,
+  onSaved,
+}: {
+  lang: Lang;
+  document: SignedDocument;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const t = copy[lang];
+  const [pages, setPages] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState("");
+  const [fields, setFields] = useState<SignatureFields>(() => ({ ...(document.signatureFields ?? {}) }));
+  const [active, setActive] = useState<SignatureFieldKey>("clientSignature");
+  const [drag, setDrag] = useState<{ key: SignatureFieldKey; pageIndex: number; dx: number; dy: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
+  useEscapeToClose(true, onClose);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (!document.originalUrl) throw new Error("no original");
+        const blob = await (await fetch(sameOriginBlobPath(document.originalUrl))).blob();
+        const dataUrl = await blobDataUrl(blob);
+        const result = await api.renderPdfPreview({ dataBase64: dataUrl.split(",")[1] ?? "" });
+        if (!cancelled) setPages(result.pagesBase64);
+      } catch {
+        if (!cancelled) setLoadError(lang === "es" ? "No se pudo cargar el documento." : "The document couldn't be loaded.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [document.originalUrl, lang]);
+
+  const defaultsFor = (key: SignatureFieldKey) =>
+    key === "clientDate" || key === "contractorDate" ? SIGNATURE_FIELD_DEFAULTS.date : SIGNATURE_FIELD_DEFAULTS.signature;
+  const clampField = (f: SignatureFieldPlacement): SignatureFieldPlacement => ({
+    ...f,
+    xPct: Math.min(Math.max(0, f.xPct), 1 - f.wPct),
+    yPct: Math.min(Math.max(0, f.yPct), 1 - f.hPct),
+  });
+  const pctFromEvent = (e: PointerEvent, pageIndex: number) => {
+    const el = pageRefs.current[pageIndex];
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  };
+  const placeAt = (pageIndex: number, x: number, y: number) => {
+    const size = defaultsFor(active);
+    const current = fields[active];
+    const wPct = current?.wPct ?? size.wPct;
+    const hPct = current?.hPct ?? size.hPct;
+    setFields((prev) => ({
+      ...prev,
+      [active]: clampField({ page: pageIndex + 1, xPct: x - wPct / 2, yPct: y - hPct / 2, wPct, hPct }),
+    }));
+  };
+  const onPagePointerDown = (e: PointerEvent, pageIndex: number) => {
+    if (drag) return;
+    const p = pctFromEvent(e, pageIndex);
+    if (p) placeAt(pageIndex, p.x, p.y);
+  };
+  const onBoxPointerDown = (e: PointerEvent, key: SignatureFieldKey, pageIndex: number) => {
+    e.stopPropagation();
+    setActive(key);
+    const f = fields[key];
+    const p = pctFromEvent(e, pageIndex);
+    if (f && p) {
+      setDrag({ key, pageIndex, dx: p.x - f.xPct, dy: p.y - f.yPct });
+      pageRefs.current[pageIndex]?.setPointerCapture?.(e.pointerId);
+    }
+  };
+  const onPagePointerMove = (e: PointerEvent, pageIndex: number) => {
+    if (!drag || drag.pageIndex !== pageIndex) return;
+    const p = pctFromEvent(e, pageIndex);
+    if (!p) return;
+    setFields((prev) => {
+      const f = prev[drag.key];
+      if (!f) return prev;
+      return { ...prev, [drag.key]: clampField({ ...f, page: pageIndex + 1, xPct: p.x - drag.dx, yPct: p.y - drag.dy }) };
+    });
+  };
+  const activeField = fields[active];
+  const tabLabel = (key: SignatureFieldKey) => {
+    const tab = SIGNATURE_FIELD_TABS.find((x) => x.key === key);
+    return tab ? (lang === "es" ? tab.es : tab.en) : key;
+  };
+  const save = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await api.saveDocumentSignatureFields({ documentId: document.id, fields });
+      onSaved();
+    } catch {
+      setSaveError(t.error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="pdf-modal sig-place-modal" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Colocar firma" : "Place signature"}>
+      <div className="pdf-modal-head">
+        <strong>{lang === "es" ? "Colocar firma" : "Place signature"}</strong>
+        <button type="button" onClick={onClose}>{t.close}</button>
+      </div>
+      <div className="sig-place-controls">
+        <div className="sig-place-tabs" role="tablist">
+          {SIGNATURE_FIELD_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active === tab.key}
+              className={active === tab.key ? "active" : ""}
+              onClick={() => setActive(tab.key)}
+            >
+              {lang === "es" ? tab.es : tab.en}
+              {fields[tab.key] ? " ✓" : ""}
+            </button>
+          ))}
+        </div>
+        <p className="dim small">
+          {lang === "es"
+            ? "Toca una página para colocar el campo seleccionado. Arrastra el campo para moverlo."
+            : "Tap a page to place the selected field. Drag the field to move it."}
+        </p>
+        {activeField && (
+          <div className="sig-place-size">
+            <label>
+              <span>{lang === "es" ? "Ancho del campo" : "Field width"}</span>
+              <input
+                type="range"
+                min={10}
+                max={70}
+                value={Math.round(activeField.wPct * 100)}
+                onChange={(e) => {
+                  const wPct = Number(e.target.value) / 100;
+                  setFields((prev) => {
+                    const f = prev[active];
+                    return f ? { ...prev, [active]: clampField({ ...f, wPct }) } : prev;
+                  });
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setFields((prev) => ({ ...prev, [active]: undefined }))}
+            >
+              {lang === "es" ? "Quitar campo" : "Remove field"}
+            </button>
+          </div>
+        )}
+        {saveError && <p className="status error" role="alert">{saveError}</p>}
+        <div className="row-actions">
+          <button type="button" className="primary-button" disabled={saving} onClick={() => void save()}>
+            {saving ? t.saving : t.save}
+          </button>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            {lang === "es" ? "Cancelar" : "Cancel"}
+          </button>
+        </div>
+      </div>
+      {loadError && <p className="status error" role="alert">{loadError}</p>}
+      {pages.length === 0 && !loadError && <div className="loading-block" />}
+      <div className="sig-place-pages">
+        {pages.map((page, pageIndex) => (
+          <div
+            key={pageIndex}
+            className="sig-place-page"
+            ref={(el) => {
+              pageRefs.current[pageIndex] = el;
+            }}
+            onPointerDown={(e) => onPagePointerDown(e, pageIndex)}
+            onPointerMove={(e) => onPagePointerMove(e, pageIndex)}
+            onPointerUp={() => setDrag(null)}
+            onPointerCancel={() => setDrag(null)}
+          >
+            <img src={`data:image/jpeg;base64,${page}`} alt={`${document.title} — page ${pageIndex + 1}`} draggable={false} />
+            {(Object.keys(fields) as SignatureFieldKey[])
+              .filter((key) => fields[key] && fields[key]!.page === pageIndex + 1)
+              .map((key) => {
+                const f = fields[key]!;
+                return (
+                  <div
+                    key={key}
+                    className={`sig-place-box${key === active ? " active" : ""}`}
+                    style={{
+                      left: `${f.xPct * 100}%`,
+                      top: `${f.yPct * 100}%`,
+                      width: `${f.wPct * 100}%`,
+                      height: `${f.hPct * 100}%`,
+                    }}
+                    onPointerDown={(e) => onBoxPointerDown(e, key, pageIndex)}
+                  >
+                    <span>{tabLabel(key)}</span>
+                  </div>
+                );
+              })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DocumentSigner({
   lang,
   data,
@@ -17472,6 +17697,8 @@ function DocumentSigner({
   // Build 0.3 (item 11): the "View document" build used to fail silently.
   const [viewError, setViewError] = useState("");
   const [viewingId, setViewingId] = useState<number | null>(null);
+  // Signature placement (0078): the document whose fields are being placed.
+  const [placing, setPlacing] = useState<SignedDocument | null>(null);
   useEscapeToClose(preview !== null, () => setPreview(null));
   const save = useMutation({
     mutationFn: async () => {
@@ -17630,6 +17857,15 @@ function DocumentSigner({
                 >
                   {viewingId === d.id ? (lang === "es" ? "Abriendo…" : "Opening…") : t.viewDocument}
                 </button>
+                {d.originalUrl ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setPlacing(d)}
+                  >
+                    {lang === "es" ? "Colocar firma" : "Place signature"}
+                  </button>
+                ) : null}
                 {d.signedPdfUrl ? (
                   <a
                     href={d.signedPdfUrl}
@@ -17685,6 +17921,18 @@ function DocumentSigner({
           </div>
           <PdfFrame blob={preview.blob} title={preview.title} />
         </div>
+      )}
+      {placing && (
+        <SignaturePlacementEditor
+          lang={lang}
+          document={placing}
+          onClose={() => setPlacing(null)}
+          onSaved={() => {
+            client.invalidateQueries({ queryKey: ["job", job?.id] });
+            client.invalidateQueries({ queryKey: ["documents"] });
+            setPlacing(null);
+          }}
+        />
       )}
     </>
   );
@@ -25746,6 +25994,31 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
 type ClientDoc = ApiResponse<typeof api, "resolveDocumentLink">;
 type DocumentLinkKind = "invoice" | "quote" | "contract" | "change_order";
 
+// Signature placement (0078): for an uploaded-PDF document the signed
+// final is the ORIGINAL pages with the client's signature image + signing
+// date composited at the placed fields (bottom of the last page when
+// unplaced) — no appended summary page. The base bytes come from the
+// token PDF endpoint, which serves the latest signed state, so a
+// contractor stamp already applied survives underneath.
+async function buildUploadedDocSignedPdf(
+  doc: ClientDoc,
+  token: string,
+  signatureBase64: string,
+  lang: Lang,
+): Promise<Blob> {
+  const res = await fetch(`/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`);
+  if (!res.ok) throw new Error("The document file could not be loaded.");
+  const baseBytes = new Uint8Array(await res.arrayBuffer());
+  const dateText = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+    dateStyle: "long",
+  }).format(new Date());
+  const imageBytes = Uint8Array.from(atob(signatureBase64), (char) => char.charCodeAt(0));
+  const stamped = await compositeSignatureStamps(baseBytes, doc.signatureFields ?? {}, [
+    { role: "client", imageBytes, imageFormat: "png", dateText },
+  ]);
+  return new Blob([stamped as BlobPart], { type: "application/pdf" });
+}
+
 // Signatures fix (2026-10-14): merge PDF byte streams — the base document
 // first, then the extra pages appended. Used so a signed copy contains the
 // real document pages, not just a generated summary page.
@@ -26412,7 +26685,11 @@ function ClientDocumentScreen({ token }: { token: string }) {
       const name = signerName.trim();
       if (!name) throw new Error(t.required);
       if (!signature) throw new Error(t.signatureDrawHint);
-      const pdfBlob = await buildClientSignedContractPdf(doc, signature, name, lang, token);
+      const pdfBlob = doc.hasOriginalPdf
+        ? await buildUploadedDocSignedPdf(doc, token, signature, lang).catch(() =>
+            buildClientSignedContractPdf(doc, signature, name, lang, token),
+          )
+        : await buildClientSignedContractPdf(doc, signature, name, lang, token);
       const pdfDataUrl = await blobDataUrl(pdfBlob);
       return api.submitDocumentSignature({
         token,
