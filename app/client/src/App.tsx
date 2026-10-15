@@ -7470,6 +7470,28 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
   const [confirmingDelete, setConfirmingDelete] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  // Signed docs auto-file (Phase D): the Docs entry IS the document row,
+  // so opening it shows the real signed PDF — the stored final when one
+  // exists (client-signed copy or tap-to-sign rebuild), else the uploaded
+  // original. The entry updates in place as signatures land.
+  const [pdfPreview, setPdfPreview] = useState<{ blob: Blob; title: string } | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const openPdf = async (d: Doc) => {
+    const url = d.signedPdfUrl ?? d.originalUrl;
+    if (!url) return;
+    setPdfError("");
+    setPdfBusy(true);
+    try {
+      const res = await fetch(sameOriginBlobPath(url));
+      if (!res.ok) throw new Error("fetch failed");
+      setPdfPreview({ blob: await res.blob(), title: d.title });
+    } catch {
+      setPdfError(lang === "es" ? "No se pudo abrir el PDF." : "The PDF couldn't be opened.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
   const kindLabel = (d: Doc) =>
     d.kind === "contract"
       ? (lang === "es" ? "Contrato" : "Contract")
@@ -7593,6 +7615,16 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
                 <div><dt>{lang === "es" ? "Firmado por" : "Signed by"}</dt><dd>{viewing.signerName} · {new Date(viewing.signedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</dd></div>
                 {viewing.clientSignerName && <div><dt>{lang === "es" ? "Cliente" : "Client"}</dt><dd>{viewing.clientSignerName}{viewing.clientSignedAt ? ` · ${new Date(viewing.clientSignedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}` : ""}</dd></div>}
               </dl>
+              {(viewing.signedPdfUrl || viewing.originalUrl) && (
+                <button type="button" className="primary-button" disabled={pdfBusy} onClick={() => void openPdf(viewing)}>
+                  {pdfBusy
+                    ? (lang === "es" ? "Abriendo…" : "Opening…")
+                    : viewing.signedPdfUrl
+                      ? (lang === "es" ? "Abrir PDF firmado" : "Open signed PDF")
+                      : (lang === "es" ? "Abrir PDF del documento" : "Open document PDF")}
+                </button>
+              )}
+              {pdfError && <p className="status error" role="alert">{pdfError}</p>}
               <div className="row-actions">
                 <button type="button" className="secondary-button" disabled={busy} onClick={() => void sendDoc(viewing)}>
                   {busy ? (lang === "es" ? "Enviando…" : "Sending…") : (lang === "es" ? "Enviar enlace" : "Send link")}
@@ -7621,6 +7653,15 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
             </>
           )}
         </BottomSheet>
+      )}
+      {pdfPreview && (
+        <div className="pdf-modal" role="dialog" aria-modal="true" aria-label={pdfPreview.title}>
+          <div className="pdf-modal-head">
+            <strong>{pdfPreview.title}</strong>
+            <button type="button" onClick={() => setPdfPreview(null)}>{lang === "es" ? "Cerrar" : "Close"}</button>
+          </div>
+          <PdfFrame blob={pdfPreview.blob} title={pdfPreview.title} />
+        </div>
       )}
     </section>
   );
