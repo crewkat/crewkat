@@ -17703,10 +17703,32 @@ function SignaturePlacementEditor({
       [active]: clampField({ page: pageIndex + 1, xPct: x - wPct / 2, yPct: y - hPct / 2, wPct, hPct }),
     }));
   };
+  // Placement fires on a TAP (pointer up after a near-still press), never on
+  // pointer down: the page surface must stay free for touch scrolling, or
+  // pages past the first are unreachable on a phone (Danny 2026-10-14 — his
+  // 4-page contract showed only page 1: the page had touch-action:none, so
+  // no scroll gesture could start on it, and any press re-placed the field).
+  const tapRef = useRef<{ pageIndex: number; x: number; y: number } | null>(null);
   const onPagePointerDown = (e: PointerEvent, pageIndex: number) => {
     if (drag) return;
     const p = pctFromEvent(e, pageIndex);
-    if (p) placeAt(pageIndex, p.x, p.y);
+    tapRef.current = p ? { pageIndex, x: p.x, y: p.y } : null;
+  };
+  const onPagePointerUp = (e: PointerEvent, pageIndex: number) => {
+    const tap = tapRef.current;
+    tapRef.current = null;
+    const wasDrag = drag;
+    setDrag(null);
+    if (!tap || tap.pageIndex !== pageIndex || wasDrag) return;
+    const p = pctFromEvent(e, pageIndex);
+    if (!p) return;
+    // A press that travelled was a scroll/drag, not a tap.
+    if (Math.hypot(p.x - tap.x, p.y - tap.y) > 0.03) return;
+    placeAt(pageIndex, tap.x, tap.y);
+  };
+  const onPagePointerCancel = () => {
+    tapRef.current = null;
+    setDrag(null);
   };
   const onBoxPointerDown = (e: PointerEvent, key: SignatureFieldKey, pageIndex: number) => {
     e.stopPropagation();
@@ -17770,8 +17792,8 @@ function SignaturePlacementEditor({
         </div>
         <p className="dim small">
           {lang === "es"
-            ? "Toca una página para colocar el campo seleccionado. Arrastra el campo para moverlo."
-            : "Tap a page to place the selected field. Drag the field to move it."}
+            ? "Toca una página para colocar el campo seleccionado. Arrastra el campo para moverlo. Desplázate para llegar a las demás páginas."
+            : "Tap a page to place the selected field. Drag the field to move it. Scroll to reach the later pages."}
         </p>
         {activeField && (
           <div className="sig-place-size">
@@ -17822,9 +17844,12 @@ function SignaturePlacementEditor({
             }}
             onPointerDown={(e) => onPagePointerDown(e, pageIndex)}
             onPointerMove={(e) => onPagePointerMove(e, pageIndex)}
-            onPointerUp={() => setDrag(null)}
-            onPointerCancel={() => setDrag(null)}
+            onPointerUp={(e) => onPagePointerUp(e, pageIndex)}
+            onPointerCancel={onPagePointerCancel}
           >
+            <span className="sig-place-pageno" aria-hidden="true">
+              {lang === "es" ? `Página ${pageIndex + 1} de ${pages.length}` : `Page ${pageIndex + 1} of ${pages.length}`}
+            </span>
             <img src={`data:image/jpeg;base64,${page}`} alt={`${document.title} — page ${pageIndex + 1}`} draggable={false} />
             {(Object.keys(fields) as SignatureFieldKey[])
               .filter((key) => fields[key] && fields[key]!.page === pageIndex + 1)

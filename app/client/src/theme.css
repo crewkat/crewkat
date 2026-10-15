@@ -568,7 +568,12 @@ fieldset { padding: 0; border: 0; }
 .sig-place-size label { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 650; }
 .sig-place-size input[type="range"] { width: 170px; accent-color: var(--accent, #1f5a4a); }
 .sig-place-pages { display: grid; gap: 16px; width: min(100%, 920px); margin: 0 auto; }
-.sig-place-page { position: relative; width: 100%; max-width: 760px; margin: 0 auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* pan-y, NOT none: the page surface is where a phone scroll starts — with
+   touch-action:none the modal could never scroll past page 1 (2026-10-14).
+   Placement is tap-based (pointer up, near-still) and placed boxes keep
+   touch-action:none so dragging a field never scrolls the modal. */
+.sig-place-page { position: relative; width: 100%; max-width: 760px; margin: 0 auto; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.sig-place-pageno { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 8px; border-radius: 999px; background: rgb(23 33 29 / .78); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .02em; pointer-events: none; }
 .sig-place-page img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; box-shadow: 0 5px 20px rgb(27 37 34 / .12); pointer-events: none; }
 .sig-place-box { position: absolute; border: 2px dashed #b3541e; border-radius: 4px; background: rgb(255 122 26 / .14); color: #8a3c10; display: flex; align-items: flex-start; padding: 2px 5px; cursor: grab; touch-action: none; overflow: hidden; }
 .sig-place-box.active { border-style: solid; background: rgb(255 122 26 / .24); }
