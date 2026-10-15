@@ -131,6 +131,20 @@ describe("Crane Run styles", () => {
     expect(CSS).toMatch(/\.crane-run-wrap \{[^}]*flex:\s*1 1 auto/);
   });
 
+  test("shell nav-state padding cannot carve the game column (Danny 2026-10-15, second report)", () => {
+    // .app-shell.master-nav-hidden .page reserves 96px + safe-area of bottom
+    // padding (document action-bar clearance) at specificity 0,3,0 — it beat
+    // .crane-run-page's own 12px (0,1,0), so the flex column lost ~96px+ and
+    // the game card still ended ~13% short of the bottom after the 100%
+    // height-chain fix. Scoped overrides (0,4,0) restore the page's own 12px
+    // in both nav states; the game has no bottom bar to clear.
+    expect(CSS).toMatch(/\.app-shell\.master-nav-hidden \.page\.crane-run-page[^{]*\{[^}]*padding-bottom:\s*12px/);
+    expect(CSS).toMatch(/\.app-shell\.has-bottom-nav \.page\.crane-run-page[^{]*\{[^}]*padding-bottom:\s*12px/);
+    // No max-height cap may (re)appear on the wrap or the page.
+    expect(CSS).not.toMatch(/\.crane-run-wrap \{[^}]*max-height/);
+    expect(CSS).not.toMatch(/\.crane-run-page \{[^}]*max-height/);
+  });
+
   test("game wrap fills the screen + panels styled with app conventions", () => {
     expect(CSS).toContain(".crane-run-wrap");
     expect(CSS).toContain(".crane-run-panel");

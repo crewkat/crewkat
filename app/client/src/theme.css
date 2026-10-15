@@ -4976,6 +4976,19 @@ body > .document-overlay.customize-overlay { z-index: 200; }
    bottom of the screen (field report 2026-10-14). min-height (not height)
    so a short screen still grows and scrolls instead of clipping. */
 .crane-run-page { display: flex; flex-direction: column; min-height: 100%; padding-bottom: 12px; }
+/* The cap the first pass missed (Danny's second report, 2026-10-15): the
+   shell's generic nav-state rules reserve big bottom padding on EVERY .page
+   — 96px + safe-area under .master-nav-hidden (clearance for document
+   screens' floating action bar) and 84px + safe-area under .has-bottom-nav.
+   Their specificity (0,3,0) silently beat .crane-run-page's own 12px
+   (0,1,0). Crane Run is a pushed screen, so it always renders
+   master-nav-hidden: with border-box min-height:100%, that ~96px+ was
+   carved out of the flex column and the game card ended ~13% short of the
+   screen bottom no matter how tall the wrap flexed. The game has no bottom
+   bar to clear — restore its own 12px with higher-specificity scoped
+   overrides, the same pattern as .page.marketplace-thread above. */
+.app-shell.master-nav-hidden .page.crane-run-page,
+.app-shell.has-bottom-nav .page.crane-run-page { padding-bottom: 12px; }
 .crane-run-wrap {
   position: relative;
   margin-top: 12px;
