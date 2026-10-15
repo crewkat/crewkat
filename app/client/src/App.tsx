@@ -6863,6 +6863,15 @@ function JobFields({
   onOpenDates?: () => void;
 }) {
   const t = copy[lang];
+  // 0081: when the job is linked to a client, offer their saved addresses
+  // as one-tap fills for the job address (same picker query — cached).
+  const clientsQuery = useQuery({
+    queryKey: ["clients", "picker"],
+    queryFn: () => api.listClients({ search: "" }),
+    enabled: Boolean(form.clientId),
+  });
+  const linkedClient = form.clientId ? (clientsQuery.data?.clients ?? []).find((c) => c.id === form.clientId) ?? null : null;
+  const savedAddresses = linkedClient?.addresses ?? [];
   return (
     <>
       {!hideClientFields && <>
@@ -6883,6 +6892,24 @@ function JobFields({
         <span>{t.address} *</span>
         <input value={form.jobAddress} onChange={(e) => setForm({ ...form, jobAddress: e.target.value })} aria-label={t.address} />
       </label>
+      {savedAddresses.length > 1 && (
+        <div className="doc-client-saved-addresses job-saved-addresses">
+          <span className="doc-client-saved-label">{lang === "es" ? "Direcciones guardadas" : "Saved addresses"}</span>
+          <div className="doc-client-saved-chips">
+            {savedAddresses.map((entry, index) => (
+              <button
+                type="button"
+                key={`${entry.address}-${index}`}
+                className={`doc-client-saved-chip${clientAddressKeyClient(entry.address) === clientAddressKeyClient(form.jobAddress) ? " active" : ""}`}
+                onClick={() => setForm({ ...form, jobAddress: entry.address })}
+              >
+                {entry.label ? <strong>{entry.label}</strong> : entry.primary ? <strong>{lang === "es" ? "Principal" : "Primary"}</strong> : null}
+                <span>{entry.address}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <label>
         <span>{t.type} *</span>
         <input value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })} aria-label={t.type} />
@@ -6931,7 +6958,7 @@ function ClientPicker({
   const term = value.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
   const visibleClients = (query.data?.clients ?? []).filter((client) => {
     if (!filtering || !term) return true;
-    return [client.name, client.phone, client.email, client.notes]
+    return [client.name, client.phone, client.email, client.notes, ...client.addresses.flatMap((entry) => [entry.label, entry.address])]
       .some((field) => field.toLocaleLowerCase(lang === "es" ? "es" : "en").includes(term));
   });
   const emptyText = lang === "es" ? "No hay clientes que coincidan" : "No matching clients";
@@ -7057,6 +7084,12 @@ function DocClientRow({
   );
 }
 
+// 0081: normalized comparison key for saved addresses (mirrors the
+// server's dedupe key in actions.ts).
+function clientAddressKeyClient(address: string): string {
+  return address.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function DocClientSheet({
   lang,
   settings,
@@ -7065,6 +7098,8 @@ function DocClientSheet({
   onPick,
   onPatch,
   onClose,
+  saveToClient = false,
+  onToggleSaveToClient,
 }: {
   lang: Lang;
   settings: Settings | null;
@@ -7073,8 +7108,24 @@ function DocClientSheet({
   onPick: (client: Client) => void;
   onPatch: (patch: Partial<DocClientFields>) => void;
   onClose: () => void;
+  saveToClient?: boolean;
+  onToggleSaveToClient?: (value: boolean) => void;
 }) {
   const t = copy[lang];
+  // 0081: the picked client's saved addresses (same query the picker runs,
+  // so React Query serves it from cache). Resolved from form.clientId, so
+  // it works for a fresh pick AND for a document that already links a
+  // client. The chips only fill this document's snapshot — picking one
+  // never writes the profile.
+  const clientsQuery = useQuery({
+    queryKey: ["clients", "picker"],
+    queryFn: () => api.listClients({ search: "" }),
+  });
+  const pickedClient = form.clientId ? (clientsQuery.data?.clients ?? []).find((c) => c.id === form.clientId) ?? null : null;
+  const savedAddresses = pickedClient?.addresses ?? [];
+  const jobAddressKey = clientAddressKeyClient(form.jobAddress);
+  const jobAddressAlreadySaved = jobAddressKey !== "" && savedAddresses.some((entry) => clientAddressKeyClient(entry.address) === jobAddressKey);
+  const showSaveToClient = Boolean(pickedClient && onToggleSaveToClient && form.jobAddress.trim() && !jobAddressAlreadySaved);
   return (
     <BottomSheet lang={lang} title={lang === "es" ? "Cliente" : "Client"} onClose={onClose}>
       {() => (
@@ -7100,10 +7151,36 @@ function DocClientSheet({
               <input value={form.jobType} onChange={(e) => onPatch({ jobType: e.target.value })} />
             </label>
             {settings?.addJobSiteAddress !== false && (
-              <label>
-                <span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span>
-                <input value={form.jobAddress} onChange={(e) => onPatch({ jobAddress: e.target.value })} />
-              </label>
+              <>
+                <label>
+                  <span>{lang === "es" ? "Dirección del trabajo" : "Job site address"}</span>
+                  <input value={form.jobAddress} onChange={(e) => onPatch({ jobAddress: e.target.value })} />
+                </label>
+                {savedAddresses.length > 0 && (
+                  <div className="doc-client-saved-addresses">
+                    <span className="doc-client-saved-label">{lang === "es" ? "Direcciones guardadas" : "Saved addresses"}</span>
+                    <div className="doc-client-saved-chips">
+                      {savedAddresses.map((entry, index) => (
+                        <button
+                          type="button"
+                          key={`${entry.address}-${index}`}
+                          className={`doc-client-saved-chip${clientAddressKeyClient(entry.address) === jobAddressKey ? " active" : ""}`}
+                          onClick={() => onPatch({ jobAddress: entry.address })}
+                        >
+                          {entry.label ? <strong>{entry.label}</strong> : entry.primary ? <strong>{lang === "es" ? "Principal" : "Primary"}</strong> : null}
+                          <span>{entry.address}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {showSaveToClient && (
+                  <label className="doc-client-save-address">
+                    <input type="checkbox" checked={saveToClient} onChange={(e) => onToggleSaveToClient?.(e.target.checked)} />
+                    <span>{lang === "es" ? `Guardar en las direcciones de ${pickedClient!.name}` : `Save to ${pickedClient!.name}'s addresses`}</span>
+                  </label>
+                )}
+              </>
             )}
             {settings?.addShippingAddress && (
               <label>
@@ -14645,6 +14722,10 @@ function QuoteBuilder({
   // Danny 2026-10-15: the client picker/name/details stack is one row now;
   // this state opens the sheet that holds all three.
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
+  // 0081: the sheet's "Save to {client}'s addresses" opt-in. When set, a
+  // successful document save is followed by ONE explicit appendClientAddress
+  // call — the document save itself stays doc-only.
+  const [saveAddrToClient, setSaveAddrToClient] = useState(false);
   // Phase 1: assemblies — templates can be applied additively ("Add") or as a
   // full replacement, and the current line items can be saved as a new assembly.
   const [applyMode, setApplyMode] = useState<"append" | "replace">("append");
@@ -14782,7 +14863,15 @@ function QuoteBuilder({
         subtotal: usd(totals.subtotal),
         total: usd(totals.total),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // 0081: the sheet's explicit opt-in — append this document's job-site
+      // address to the client's saved list as its own call. Best-effort:
+      // the document is already saved either way, and the append dedupes
+      // server-side, so a retry can never double it.
+      if (saveAddrToClient && form.clientId && form.jobAddress.trim()) {
+        await api.appendClientAddress({ clientId: form.clientId, address: form.jobAddress.trim(), label: "" }).catch(() => {});
+        setSaveAddrToClient(false);
+      }
       clearQuoteDraft();
       setDraftOffered(false);
       client.invalidateQueries({ queryKey: ["quotes"] });
@@ -15112,8 +15201,9 @@ function QuoteBuilder({
           lang={lang}
           settings={settings}
           form={form}
-          onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
-          onPick={(c) =>
+          onValueChange={(clientName) => { setSaveAddrToClient(false); setForm({ ...form, clientId: null, clientName }); }}
+          onPick={(c) => {
+            setSaveAddrToClient(false);
             setForm({
               ...form,
               clientId: c.id,
@@ -15121,10 +15211,12 @@ function QuoteBuilder({
               clientPhone: c.phone,
               clientEmail: c.email,
               jobAddress: c.address,
-            })
-          }
+            });
+          }}
           onPatch={(patch) => setForm({ ...form, ...patch })}
           onClose={() => setClientSheetOpen(false)}
+          saveToClient={saveAddrToClient}
+          onToggleSaveToClient={setSaveAddrToClient}
         />
       )}
       {previewOpen && <DocumentDesignOverlay lang={lang} kind="quote" document={preview} settings={settings} onClose={() => setPreviewOpen(false)} onConfirm={async (design, saveDefault) => { setForm((current) => ({ ...current, ...design })); if (saveDefault) await api.saveDocumentDesignDefault(design); setPreviewOpen(false); }} />}
@@ -16681,6 +16773,9 @@ function InvoiceBuilder({
   // Danny 2026-10-15: the client picker/name/details stack is one row now;
   // this state opens the sheet that holds all three.
   const [clientSheetOpen, setClientSheetOpen] = useState(false);
+  // 0081: the sheet's "Save to {client}'s addresses" opt-in (see the quote
+  // builder) — a successful save is followed by one explicit append call.
+  const [saveAddrToClient, setSaveAddrToClient] = useState(false);
   const [editingItem, setEditingItem] = useState<number | null>(null);
   const [sheetClosing, setSheetClosing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -16769,7 +16864,7 @@ function InvoiceBuilder({
   const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
-    onSuccess: () => { try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
+    onSuccess: async () => { /* 0081: sheet opt-in append — its own explicit call after the (doc-only) save; best-effort + deduped server-side. */ if (saveAddrToClient && form.clientId && form.jobAddress.trim()) { await api.appendClientAddress({ clientId: form.clientId, address: form.jobAddress.trim(), label: "" }).catch(() => {}); setSaveAddrToClient(false); } try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   // Build 2.0: X closes AND saves. Complete content saves normally (the
@@ -16843,10 +16938,12 @@ function InvoiceBuilder({
         lang={lang}
         settings={settings}
         form={form}
-        onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
-        onPick={(client) => setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address })}
+        onValueChange={(clientName) => { setSaveAddrToClient(false); setForm({ ...form, clientId: null, clientName }); }}
+        onPick={(client) => { setSaveAddrToClient(false); setForm({ ...form, clientId: client.id, clientName: client.name, clientPhone: client.phone, clientEmail: client.email, jobAddress: client.address }); }}
         onPatch={(patch) => setForm({ ...form, ...patch })}
         onClose={() => setClientSheetOpen(false)}
+        saveToClient={saveAddrToClient}
+        onToggleSaveToClient={setSaveAddrToClient}
       />
     )}
     {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) commitAdjustmentAndClose(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={activeSheet === "details" ? "Invoice Details" : activeSheet === "discount" ? t.discount : t.tax}><div className="sheet-handle"/><header><h2>{activeSheet === "details" ? (lang === "es" ? "Detalles de la factura" : "Invoice Details") : activeSheet === "discount" ? t.discount : t.tax}</h2><button type="button" className="sheet-save-btn" onClick={commitAdjustmentAndClose}>{t.done}</button></header>
@@ -17184,12 +17281,16 @@ function InvoicePreview({
   </main>;
 }
 
+type ClientAddressEntry = { label: string; address: string; primary: boolean };
 const blankClient = {
   id: null as number | null,
   name: "",
   phone: "",
   email: "",
   address: "",
+  // 0081: the profile's saved-address list. `address` above mirrors the
+  // primary entry (the server re-derives it on save).
+  addresses: [] as ClientAddressEntry[],
   notes: "",
   tags: [] as string[],
   referredByClientId: null as number | null,
@@ -17262,14 +17363,34 @@ function ClientForm({
     // Web Share Target prefill: a contact shared from the phone lands here once.
     const shared = consumeSharedContact();
     if (!shared) return initial;
+    const address = shared.address || initial.address;
     return {
       ...initial,
       name: shared.name || initial.name,
       phone: shared.phone || initial.phone,
       email: shared.email || initial.email,
-      address: shared.address || initial.address,
+      address,
+      addresses: address ? [{ label: "", address, primary: true }] : initial.addresses,
     };
   });
+  // 0081: saved-address list editing. The list is the source of truth in
+  // this form; `address` stays synced to the primary entry so anything
+  // still reading the single field sees the primary.
+  const addressRows: ClientAddressEntry[] = form.addresses.length > 0 ? form.addresses : [{ label: "", address: "", primary: true }];
+  const setAddresses = (next: ClientAddressEntry[]) => {
+    const primary = next.find((entry) => entry.primary) ?? next[0];
+    setForm({ ...form, addresses: next, address: primary?.address ?? "" });
+  };
+  const patchAddress = (index: number, patch: Partial<ClientAddressEntry>) => {
+    const base = addressRows.map((entry, i) => (i === index ? { ...entry, ...patch } : entry));
+    setAddresses(patch.primary ? base.map((entry, i) => ({ ...entry, primary: i === index })) : base);
+  };
+  const removeAddress = (index: number) => {
+    const next = addressRows.filter((_, i) => i !== index);
+    const first = next[0];
+    if (first && !next.some((entry) => entry.primary)) next[0] = { ...first, primary: true };
+    setAddresses(next);
+  };
   const [tagDraft, setTagDraft] = useState("");
   const clients = useQuery({
     queryKey: ["clients", ""],
@@ -17307,6 +17428,7 @@ function ClientForm({
         phone: contact.tel?.[0] ?? f.phone,
         email: contact.email?.[0] ?? f.email,
         address: address || f.address,
+        addresses: address && f.addresses.length === 0 ? [{ label: "", address, primary: true }] : f.addresses,
       }));
     } catch (error) {
       // User dismissed the picker — stay silent. Any other failure gets the note.
@@ -17344,10 +17466,46 @@ function ClientForm({
         <span className="ck-label">{t.email}</span>
         <input className="ck-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       </label>
-      <label className="ck-field">
-        <span className="ck-label">{t.address}</span>
-        <input className="ck-input" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-      </label>
+      <fieldset className="client-addresses-field">
+        <legend>{lang === "es" ? "Direcciones guardadas" : "Saved addresses"}</legend>
+        {addressRows.map((entry, index) => (
+          <div className="client-address-row" key={index}>
+            <div className="client-address-inputs">
+              <input
+                className="ck-input client-address-label"
+                value={entry.label}
+                maxLength={60}
+                placeholder={lang === "es" ? "Etiqueta (ej. Casa)" : "Label (e.g. Home)"}
+                aria-label={lang === "es" ? "Etiqueta de la dirección" : "Address label"}
+                onChange={(e) => patchAddress(index, { label: e.target.value })}
+              />
+              <input
+                className="ck-input client-address-text"
+                value={entry.address}
+                placeholder={t.address}
+                aria-label={t.address}
+                onChange={(e) => patchAddress(index, { address: e.target.value })}
+              />
+            </div>
+            <div className="client-address-actions">
+              <button
+                type="button"
+                className={`client-address-primary${entry.primary ? " active" : ""}`}
+                aria-pressed={entry.primary}
+                onClick={() => patchAddress(index, { primary: true })}
+              >
+                {entry.primary ? (lang === "es" ? "★ Principal" : "★ Primary") : (lang === "es" ? "Principal" : "Make primary")}
+              </button>
+              {(form.addresses.length > 1 || entry.address || entry.label) && (
+                <button type="button" className="client-address-remove" aria-label={`${lang === "es" ? "Quitar dirección" : "Remove address"} ${index + 1}`} onClick={() => removeAddress(index)}>×</button>
+              )}
+            </div>
+          </div>
+        ))}
+        <button type="button" className="secondary-button client-address-add" onClick={() => setAddresses([...form.addresses, { label: "", address: "", primary: form.addresses.length === 0 }])}>
+          {lang === "es" ? "+ Agregar dirección" : "+ Add address"}
+        </button>
+      </fieldset>
       <fieldset className="client-tags-field">
         <legend>{lang === "es" ? "Etiquetas" : "Tags"}</legend>
         <div className="client-tag-entry">
@@ -17550,6 +17708,7 @@ function ClientDetail({
           phone: c.phone,
           email: c.email,
           address: c.address,
+          addresses: c.addresses,
           notes: c.notes,
           tags: c.tags,
           referredByClientId: c.referredByClientId,

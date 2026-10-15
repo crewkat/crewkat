@@ -7,6 +7,9 @@ export const clients = sqliteTable("clients", {
   phone: text("phone").notNull().default(""),
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
+  // 0081: saved-address list as a JSON array of { label, address, primary }.
+  // `address` above stays the primary entry's mirror for legacy readers.
+  addressesJson: text("addresses_json").notNull().default("[]"),
   notes: text("notes").notNull().default(""),
   referredByClientId: integer("referred_by_client_id"),
   tags: text("tags").notNull().default("[]"),

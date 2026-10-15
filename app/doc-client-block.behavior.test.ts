@@ -82,7 +82,12 @@ describe("shared row + sheet components", () => {
   test("sheet never writes a client record — it only patches builder form state", () => {
     expect(SHEET).not.toContain("saveClient");
     expect(SHEET).not.toContain("updateClient");
-    expect(SHEET).not.toContain("api.");
+    // 0081: the sheet READS the client list (api.listClients) to offer the
+    // picked client's saved addresses, and the append opt-in lives in the
+    // sheet as a checkbox — but the append call itself is fired by the
+    // BUILDERS after a successful save, never from inside the sheet.
+    expect(SHEET).not.toContain("appendClientAddress");
+    expect(SHEET).toContain("api.listClients");
   });
 });
 
@@ -122,8 +127,9 @@ describe("save semantics preserved bit-for-bit", () => {
   });
 
   test("typing a name still unlinks (clientId: null) in both builders", () => {
-    expect(QUOTE).toContain("onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}");
-    expect(INVOICE).toContain("onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}");
+    // 0081: typing also resets the sheet's save-to-profile opt-in.
+    expect(QUOTE).toContain("onValueChange={(clientName) => { setSaveAddrToClient(false); setForm({ ...form, clientId: null, clientName }); }}");
+    expect(INVOICE).toContain("onValueChange={(clientName) => { setSaveAddrToClient(false); setForm({ ...form, clientId: null, clientName }); }}");
   });
 
   test("saves still send the whole form (clientId + snapshot fields ride along)", () => {
