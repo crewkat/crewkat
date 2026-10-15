@@ -4824,6 +4824,17 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .doc-items-flat > .doc-items-legend { margin: 0 14px; padding: 0; font-size: 12px; font-weight: 800; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; }
 .doc-items-flat > .b06-btn-row, .doc-items-flat > .quick-add { margin: 0 14px; }
 .doc-items-flat > .secondary-button, .doc-items-flat > .primary-button.add-item-wide { margin: 0 14px; }
+/* Full-bleed section, remaining direct children (Danny 2026-10-15: New
+   estimate overflowed sideways — Add line bled off the right edge,
+   + Discount / Subtotal sat clipped at the left). The section pulls out
+   by the body's 14px padding (margin: 0 -14px above), so EVERY direct
+   child must re-inset itself; these two never got the rule and ran the
+   section's full width from the screen edge. And .add-item-wide's global
+   width:100% resolves against the section's full-bleed width, so with
+   its 14px side margins the button ended 14px past the right edge —
+   inside the section it must size by stretch (width:auto) instead. */
+.doc-items-flat > .field-pair, .doc-items-flat > .calculation-summary { margin-inline: 14px; }
+.doc-items-flat > .primary-button.add-item-wide { width: auto; }
 .floating-doc-form .doc-items-flat .b06-line-list { display: grid; gap: 0; }
 .floating-doc-form .doc-items-flat .doc-line-card { margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; padding: 12px 14px; }
 
