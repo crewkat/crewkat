@@ -2103,6 +2103,9 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   const settings = (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
   const company = { name: settings?.companyName ?? "", phone: settings?.phone ?? "", email: settings?.email ?? "", website: settings?.website ?? "", licenseNumber: settings?.licenseNumber ?? "", logoUrl: settings?.logoBlobKey ? await ctx.blobs.getUrl(settings.logoBlobKey) : null };
   const base = { kind: link.documentKind, documentId: link.documentId, signable: false, alreadySigned: false, company, title: "", clientName: "", jobAddress: "", jobType: "", lineItems: [] as Array<{ description: string; amount: string }>, subtotal: "", total: "", dateLabel: "", dateValue: "", footnote: "", bodyText: "", description: "", amount: "", contractorSignerName: "", linkExpiresAt: link.expiresAt.toISOString(), shortCode: link.shortCode ?? null, attachedImages: [] as Array<{ fileName: string; url: string }>,
+    // Signatures fix (2026-10-14): uploaded-PDF contracts expose their real
+    // pages on the link (empty/false for everything else).
+    hasOriginalPdf: false, originalFilename: "",
     // Build 0.3 (item 8): document design defaults (overridden below for invoices/quotes).
     invoiceNumber: "", issueDate: "", dueDate: "", expiryDate: "", status: "", discountType: "percent", discountValue: "0", taxType: "percent", taxValue: "0", theme: "classic", font: "helvetica", accentColor: "#1f5a4a", showTaxLine: true, showDiscountLine: true, showPaidLine: true, showPaymentTerms: true, showFooterNotes: true, showLogo: true, showCompanyInfo: true, customizeJson: "{}",
     // Estimate options (0076): empty defaults; the quote branch fills them.
@@ -2132,7 +2135,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
   const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0" } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime() } };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -2149,8 +2152,23 @@ const DOC_PDF_CACHE_MAX = 30;
 // here." as the primary experience). No view counting here —
 // resolveDocumentLink owns that side effect, exactly as before.
 async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es"): Promise<{ pdfBase64: string; filename: string; kind: string }> {
-  const { payload } = await getDocumentLinkPayload(ctx, token);
+  const { link, payload } = await getDocumentLinkPayload(ctx, token);
   const kind = payload.kind;
+  // Signatures fix (2026-10-14): contract / change-order links serve the
+  // real document bytes — the client-signed final PDF once signed, the
+  // contractor's uploaded original before that — instead of rejecting
+  // every non-financial kind. Contracts without an upload stay web-only.
+  if (kind === "contract" || kind === "change_order") {
+    const db = ctx.db<typeof schema>();
+    const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
+    const blobKey = doc?.clientSignedPdfBlobKey ?? doc?.originalBlobKey ?? null;
+    if (!doc || !blobKey) throw new Error("This document is only available as a web page.");
+    const bytes = await ctx.blobs.get(blobKey);
+    if (!bytes || bytes.length === 0) throw new Error("This document is only available as a web page.");
+    const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+    const filename = doc.clientSignedPdfBlobKey ? `${safeTitle}-signed.pdf` : (doc.originalFilename || `${safeTitle}.pdf`);
+    return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
+  }
   if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
   const cacheKey = `${kind}:${payload.documentId}:${lang}`;
   const hit = docPdfCache.get(cacheKey);
@@ -3610,6 +3628,9 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     // Estimate options (0076): tickable option rows + selection state for the
     // client page (empty for non-quote documents).
     options: z.array(quoteOptionRowSchema).default([]), selectedOptionKeys: z.array(z.string()).default([]), acceptedOptions: acceptedOptionsSchema.nullable().default(null), optionsTotal: z.string().default("0.00"), totalWithOptions: z.string().default(""),
+    // Signatures fix (2026-10-14): uploaded-PDF contract links carry their
+    // real pages (hasOriginalPdf) so the signer sees the actual document.
+    hasOriginalPdf: z.boolean().default(false), originalFilename: z.string().default(""),
     // Build 0.3 (item 8): the actual document design, so the client link can
     // render the real PDF instead of a plain-HTML mock.
     invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]) }), async handler(ctx, args) {
@@ -3642,7 +3663,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   getDocumentLinkPdfPages: defineAction({ request: z.object({ token: z.string().min(8).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pagesBase64: z.array(z.string()).max(20), filename: z.string(), kind: z.string() }), privileged: [privileged.renderPdfPages], async handler(ctx, args): Promise<{ pagesBase64: string[]; filename: string; kind: string }> {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
-    if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
+    if (kind !== "invoice" && kind !== "quote" && kind !== "contract" && kind !== "change_order") throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
     const updatedAtMs = (payload as { updatedAtMs?: number }).updatedAtMs ?? 0;
     const hit = docPdfPagesCache.get(cacheKey);
@@ -3663,7 +3684,11 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   validateDocumentLinkPdf: defineAction({ request: z.object({ token: z.string().min(8).max(200) }), response: z.object({ ok: z.literal(true), kind: z.string() }), async handler(ctx, args): Promise<{ ok: true; kind: string }> {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
-    if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
+    if (kind !== "invoice" && kind !== "quote") {
+      // Uploaded-PDF contracts have real bytes to serve (the original, or
+      // the signed final once signed); text-only contracts stay web-only.
+      if (!((kind === "contract" || kind === "change_order") && (payload.hasOriginalPdf || payload.alreadySigned))) throw new Error("This document is only available as a web page.");
+    }
     return { ok: true as const, kind };
   } }),
   submitDocumentSignature: defineAction({ request: z.object({ token: z.string().min(8).max(200), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedPdfDataBase64: z.string().min(1).max(30_000_000), userAgent: z.string().max(500).default("") }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx,args): Promise<{ok:true;signedAt:string}> {

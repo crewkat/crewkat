@@ -76,10 +76,31 @@ export function usd(value: number) {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+// Signatures fix (2026-10-14): blob URLs are minted against the public
+// origin (CREWKAT_PUBLIC_URL — the apex, crewkat.com), but the app is only
+// ever served from www.crewkat.com (the apex 301-redirects everything to
+// www). A fetch() of the absolute apex URL from the www origin starts
+// cross-origin, the redirect carries no Access-Control-Allow-Origin, and
+// the browser rejects it — so every fetch-based PDF embed of a blob
+// (signature images, uploaded originals, logos) silently failed while
+// <img> displays of the same URLs worked fine. Blob bytes are served from
+// /blobs/<key> on the app's own origin too, so fetch the path-relative
+// form: same bytes, same origin, no CORS. Non-blob URLs pass through.
+export function sameOriginBlobPath(url: string): string {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url, "https://crewkat.invalid");
+    if (parsed.pathname.startsWith("/blobs/")) return parsed.pathname + parsed.search;
+  } catch {
+    /* keep the original URL */
+  }
+  return url;
+}
+
 export async function loadImageDataUrl(url: string | null) {
   if (!url) return null;
   try {
-    return await blobDataUrl(await (await fetch(url)).blob());
+    return await blobDataUrl(await (await fetch(sameOriginBlobPath(url))).blob());
   } catch {
     return null;
   }

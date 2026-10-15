@@ -39,7 +39,7 @@ type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
-import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
+import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
@@ -15486,7 +15486,7 @@ async function appendAttachmentsToBlob(
     for (const a of list) {
       if (!a.url) continue;
       try {
-        const res = await fetch(a.url);
+        const res = await fetch(sameOriginBlobPath(a.url));
         if (!res.ok) continue;
         const bytes = new Uint8Array(await res.arrayBuffer());
         if (bytes.length < 10) continue;
@@ -17703,7 +17703,7 @@ async function buildSignedDocumentPdf(
   let sigData = "";
   let sigFormat: "PNG" | "JPEG" = "PNG";
   try {
-    const sigBlob = await (await fetch(document.signatureUrl)).blob();
+    const sigBlob = await (await fetch(sameOriginBlobPath(document.signatureUrl))).blob();
     if (sigBlob.type.startsWith("image/")) {
       sigData = await blobDataUrl(sigBlob);
       if (sigBlob.type.includes("jpeg") || sigBlob.type.includes("jpg")) sigFormat = "JPEG";
@@ -17800,7 +17800,7 @@ async function buildSignedDocumentPdf(
   if (document.originalUrl) {
     try {
       const original = await PDFDocument.load(
-        await (await fetch(document.originalUrl)).arrayBuffer(),
+        await (await fetch(sameOriginBlobPath(document.originalUrl))).arrayBuffer(),
       );
       const signaturePdf = await PDFDocument.load(await blob.arrayBuffer());
       const pages = await original.copyPages(
@@ -25746,11 +25746,23 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
 type ClientDoc = ApiResponse<typeof api, "resolveDocumentLink">;
 type DocumentLinkKind = "invoice" | "quote" | "contract" | "change_order";
 
+// Signatures fix (2026-10-14): merge PDF byte streams — the base document
+// first, then the extra pages appended. Used so a signed copy contains the
+// real document pages, not just a generated summary page.
+async function mergePdfBytes(baseBytes: ArrayBuffer | Uint8Array, extraBytes: ArrayBuffer | Uint8Array): Promise<Uint8Array> {
+  const base = await PDFDocument.load(baseBytes);
+  const extra = await PDFDocument.load(extraBytes);
+  const pages = await base.copyPages(extra, extra.getPageIndices());
+  pages.forEach((p) => base.addPage(p));
+  return base.save();
+}
+
 async function buildClientSignedContractPdf(
   doc: ClientDoc,
   signatureBase64: string,
   signerName: string,
   lang: Lang,
+  token: string,
 ) {
   const pdf = new jsPDF({ unit: "pt", format: "letter" });
   const w = pdf.internal.pageSize.getWidth();
@@ -25866,7 +25878,24 @@ async function buildClientSignedContractPdf(
   pdf.setFontSize(8);
   pdf.setTextColor(70, 78, 76);
   pdf.text(new Date().toLocaleString(lang === "es" ? "es-US" : "en-US"), margin, y);
-  return pdf.output("blob");
+  const stubBlob = pdf.output("blob");
+  // Signatures fix (2026-10-14): when the contractor uploaded their own
+  // PDF, the signed copy must contain the real document — fetch its bytes
+  // from the token PDF endpoint (same origin) and put the signature page
+  // after the original pages. Any failure falls back to the stub alone so
+  // signing never blocks.
+  if (doc.hasOriginalPdf) {
+    try {
+      const res = await fetch(`/doc/${encodeURIComponent(token)}/pdf?lang=${lang}`);
+      if (res.ok) {
+        const merged = await mergePdfBytes(await res.arrayBuffer(), await stubBlob.arrayBuffer());
+        return new Blob([merged as BlobPart], { type: "application/pdf" });
+      }
+    } catch {
+      /* stub alone still records the signature */
+    }
+  }
+  return stubBlob;
 }
 
 // Phase 3: public "On My Way" status page. Company-agnostic, no login
@@ -26383,7 +26412,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
       const name = signerName.trim();
       if (!name) throw new Error(t.required);
       if (!signature) throw new Error(t.signatureDrawHint);
-      const pdfBlob = await buildClientSignedContractPdf(doc, signature, name, lang);
+      const pdfBlob = await buildClientSignedContractPdf(doc, signature, name, lang, token);
       const pdfDataUrl = await blobDataUrl(pdfBlob);
       return api.submitDocumentSignature({
         token,
@@ -26506,6 +26535,40 @@ function ClientDocumentScreen({ token }: { token: string }) {
     }
   };
   const printDoc = () => window.print();
+  // Signatures fix (2026-10-14): an uploaded-PDF contract renders its real
+  // pages (server-rasterized via the token) instead of only the summary
+  // stub — the signer must see the actual document before signing.
+  const isUploadedContract = !financialKind && doc.hasOriginalPdf;
+  const contractStub = (
+    <article className="quote-paper">
+      <div className="quote-paper-title-row">
+        <h2>{doc.title}</h2>
+      </div>
+      <section className="quote-paper-client">
+        <strong>
+          {t.forLabel}: {doc.clientName || "—"}
+        </strong>
+        <span>
+          {[doc.jobType, doc.jobAddress].filter((s) => s && s.trim()).join(" · ")}
+        </span>
+      </section>
+      {doc.description && (
+        <p className="client-doc-description">{doc.description}</p>
+      )}
+      {doc.bodyText && (
+        <div className="client-doc-body">{doc.bodyText}</div>
+      )}
+      {doc.amount && money(doc.amount) > 0 && (
+        <p className="client-doc-amount">
+          {lang === "es" ? "Monto" : "Amount"}: {usd(money(doc.amount))}
+        </p>
+      )}
+      <p className="dim small">
+        {doc.contractorSignerName}
+        {doc.dateValue ? ` · ${formatDate(doc.dateValue, lang)}` : ""}
+      </p>
+    </article>
+  );
   return (
     <main className="page public-page client-doc-page">
       {brandBar}
@@ -26517,7 +26580,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         )}
         <button type="button" className="client-doc-action-btn" onClick={shareDoc}><span aria-hidden="true"><Icon size={15}><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="5.5" r="2.5" /><circle cx="17" cy="18.5" r="2.5" /><path d="M8.2 10.8l6.6-4M8.2 13.2l6.6 4" /></Icon></span>{lang === "es" ? "Compartir" : "Share"}</button>
         <button type="button" className="client-doc-action-btn" onClick={printDoc}><span aria-hidden="true"><Icon size={15}><path d="M7 8V4h10v4" /><rect x="4" y="8" width="16" height="8" rx="1.5" /><path d="M7 13h10v7H7z" /></Icon></span>{lang === "es" ? "Imprimir" : "Print"}</button>
-        {financialKind && (
+        {(financialKind || isUploadedContract) && (
           <a className="client-doc-action-btn" href={serverPdfUrl} target="_blank" rel="noopener"><span aria-hidden="true"><Icon size={15}><path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M20 14v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 1.5-1.5H10" /></Icon></span>{lang === "es" ? "Abrir PDF" : "Open PDF"}</a>
         )}
       </div>
@@ -26552,35 +26615,13 @@ function ClientDocumentScreen({ token }: { token: string }) {
             </section>
           )}
         </>
+      ) : isUploadedContract ? (
+        <>
+          {contractStub}
+          <PdfPageView token={token} lang={lang} title={doc.title} />
+        </>
       ) : (
-        <article className="quote-paper">
-          <div className="quote-paper-title-row">
-            <h2>{doc.title}</h2>
-          </div>
-          <section className="quote-paper-client">
-            <strong>
-              {t.forLabel}: {doc.clientName || "—"}
-            </strong>
-            <span>
-              {[doc.jobType, doc.jobAddress].filter((s) => s && s.trim()).join(" · ")}
-            </span>
-          </section>
-          {doc.description && (
-            <p className="client-doc-description">{doc.description}</p>
-          )}
-          {doc.bodyText && (
-            <div className="client-doc-body">{doc.bodyText}</div>
-          )}
-          {doc.amount && money(doc.amount) > 0 && (
-            <p className="client-doc-amount">
-              {lang === "es" ? "Monto" : "Amount"}: {usd(money(doc.amount))}
-            </p>
-          )}
-          <p className="dim small">
-            {doc.contractorSignerName}
-            {doc.dateValue ? ` · ${formatDate(doc.dateValue, lang)}` : ""}
-          </p>
-        </article>
+        contractStub
       )}
       {doc.kind === "quote" && doc.options.length > 0 && (
         <QuoteOptionsPicker lang={lang} token={token} quoteId={doc.documentId} baseTotal={doc.total} options={doc.options} initialSelectedKeys={doc.selectedOptionKeys} accepted={doc.acceptedOptions} />
