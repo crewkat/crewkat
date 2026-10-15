@@ -10094,6 +10094,105 @@ function PushNudgeBanner({ lang }: { lang: Lang }) {
     </div>
   );
 }
+// What's New (Danny 2026-10-14): a slim Home strip + changelog sheet, for
+// users who like seeing the work behind the scenes. Entries are curated by
+// hand — newest first; future releases append ONE object to the top. Keep
+// lines plain-language (no commit-speak) and bugFixes an honest count.
+const WHATS_NEW_SEEN_KEY = "crewkat-whats-new-seen";
+type WhatsNewEntry = {
+  date: string; // ISO yyyy-mm-dd
+  features: { en: string[]; es: string[] };
+  bugFixes: number;
+};
+const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
+  {
+    date: "2026-10-15",
+    features: {
+      en: [
+        "Photo proof packs: pair before & after photos into a slider your clients can slide in their portal",
+        "What's New is here — this card, so you can see what changed",
+        "Place signatures on any page of an uploaded contract",
+        "Crane Run: last week's champion now headlines the screen",
+      ],
+      es: [
+        "Packs de prueba en fotos: combina fotos de antes y después en un control deslizante que tus clientes pueden deslizar en su portal",
+        "Novedades ya está aquí — esta tarjeta, para que veas qué cambió",
+        "Coloca firmas en cualquier página de un contrato subido",
+        "Crane Run: el campeón de la semana pasada ahora encabeza la pantalla",
+      ],
+    },
+    bugFixes: 4,
+  },
+  {
+    date: "2026-10-14",
+    features: {
+      en: [
+        "Estimate Options: clients tick optional add-ons right on the estimate, totals update live",
+        "Sign on the dotted line: place signature + date fields on your own PDFs, save your signature for one-tap signing, and signed documents file themselves to the job",
+        "Crane Run went weekly — top the board and your business gets a free Featured Pro week in the Marketplace",
+        "Pro Profiles in the Marketplace: a pro's info and all their listings in one place",
+        "A Premium page that shows its work",
+      ],
+      es: [
+        "Opciones en estimados: los clientes marcan complementos opcionales directamente en el estimado y el total se actualiza al instante",
+        "Firma en la línea punteada: coloca campos de firma y fecha en tus propios PDF, guarda tu firma para firmar con un toque, y los documentos firmados se archivan solos en el trabajo",
+        "Crane Run ahora es semanal — lidera la tabla y tu negocio obtiene una semana gratis como Profesional Destacado en el Marketplace",
+        "Perfiles Pro en el Marketplace: la información de un profesional y todos sus anuncios en un solo lugar",
+        "Una página Premium que muestra su valor",
+      ],
+    },
+    bugFixes: 5,
+  },
+];
+
+function WhatsNewCard({ lang }: { lang: Lang }) {
+  const newest = WHATS_NEW_ENTRIES[0];
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(false);
+  useEffect(() => {
+    if (!newest) return;
+    try {
+      const seen = window.localStorage.getItem(WHATS_NEW_SEEN_KEY) ?? "";
+      setUnread(newest.date > seen);
+    } catch { /* private mode: no dot */ }
+  }, [newest]);
+  if (!newest) return null;
+  const openSheet = () => {
+    buzz(8);
+    try { window.localStorage.setItem(WHATS_NEW_SEEN_KEY, newest.date); } catch { /* private mode */ }
+    setUnread(false);
+    setOpen(true);
+  };
+  const locale = lang === "es" ? "es-US" : "en-US";
+  const cardDate = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(`${newest.date}T12:00:00`));
+  const fullDate = (iso: string) => new Intl.DateTimeFormat(locale, { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${iso}T12:00:00`));
+  return (
+    <>
+      <button type="button" className="whats-new-card" onClick={openSheet}>
+        <span className="whats-new-icon" aria-hidden="true"><Icon size={15}><path d="M12 4l1.9 5.1L19 11l-5.1 1.9L12 18l-1.9-5.1L5 11l5.1-1.9z" /><path d="M18.5 3.5v3M17 5h3" /></Icon></span>
+        <span className="whats-new-title">{lang === "es" ? "Novedades" : "What's new"}</span>
+        {unread && <span className="whats-new-dot" aria-hidden="true" />}
+        <span className="whats-new-date">{cardDate}</span>
+        <BackIcon />
+      </button>
+      {open && <BottomSheet lang={lang} title={lang === "es" ? "Novedades" : "What's new"} onClose={() => setOpen(false)}>
+        {() => (
+          <div className="whats-new-list">
+            {WHATS_NEW_ENTRIES.map((entry) => (
+              <article key={entry.date} className="whats-new-entry">
+                <h3>{fullDate(entry.date)}</h3>
+                <ul>
+                  {entry.features[lang].map((line) => <li key={line}>{line}</li>)}
+                </ul>
+                {entry.bugFixes > 0 && <p className="whats-new-fixes">{lang === "es" ? `Correcciones: ${entry.bugFixes}` : `Bug fixes: ${entry.bugFixes}`}</p>}
+              </article>
+            ))}
+          </div>
+        )}
+      </BottomSheet>}
+    </>
+  );
+}
 // Chunk D: referral loop panel — invite friends, earn bonus Marketplace listings.
 function ReferralPanel({ lang }: { lang: Lang }) {
   const stats = useQuery({ queryKey: ["referral-stats"], queryFn: () => api.getReferralStats({}) });
@@ -20916,6 +21015,8 @@ function TodayScreen({
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
       </section>
+      {/* What's New: slim changelog strip (Danny 2026-10-14). */}
+      <WhatsNewCard lang={lang} />
       {/* Build 3: "at a glance" — what needs attention right now, tappable. */}
       {(() => {
         const tomorrow = new Date(now);
