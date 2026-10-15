@@ -5299,53 +5299,6 @@ function UnlockStatusPill({ lang }: { lang: Lang }) {
 }
 
 
-// Build 0.7: fullscreen swipeable photo lightbox for marketplace listings.
-// Tap any listing photo to open it; swipe/scroll horizontally to move through
-// every photo in the listing. Entrance/exit follow the 0.7 motion system
-// (transform + opacity, closing beat driven by useAnimatedDismiss); the
-// global prefers-reduced-motion guard stills it.
-function PhotoLightbox({ lang, photos, index, closing, onClose }: {
-  lang: Lang;
-  photos: Array<{ url: string; alt: string }>;
-  index: number;
-  closing: boolean;
-  onClose: () => void;
-}) {
-  const stripRef = useRef<HTMLDivElement>(null);
-  const [current, setCurrent] = useState(index);
-  useEffect(() => {
-    // Jump straight to the tapped photo (no animation) when the lightbox opens.
-    const strip = stripRef.current;
-    if (strip) strip.scrollTo({ left: index * strip.clientWidth, behavior: "instant" as ScrollBehavior });
-    setCurrent(index);
-  }, [index]);
-  const handleScroll = () => {
-    const strip = stripRef.current;
-    if (!strip || strip.clientWidth <= 0) return;
-    const next = Math.min(photos.length - 1, Math.max(0, Math.round(strip.scrollLeft / strip.clientWidth)));
-    setCurrent((prev) => (prev === next ? prev : next));
-  };
-  return (
-    <div
-      className={`lightbox-backdrop photo-lightbox${closing ? " closing" : ""}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={lang === "es" ? "Visor de fotos" : "Photo viewer"}
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-    >
-      <button type="button" className="lightbox-close" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
-      <div ref={stripRef} className="photo-lightbox-strip" onScroll={handleScroll}>
-        {photos.map((photo, i) => (
-          <div key={i} className="photo-lightbox-slide">
-            <img src={photo.url} alt={photo.alt} draggable={false} />
-          </div>
-        ))}
-      </div>
-      {photos.length > 1 && <span className="lightbox-counter">{current + 1} / {photos.length}</span>}
-    </div>
-  );
-}
-
 // Chat image viewer: tap a message photo to expand it fullscreen in a floating
 // viewer; double-tap toggles zoom (scroll to pan while zoomed); X or backdrop
 // tap closes. Follows the 0.7 motion system.
@@ -5468,7 +5421,6 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   useEscapeToClose(bookingOpen, () => setBookingOpen(false));
   useEscapeToClose(convoPickerOpen, () => setConvoPickerOpen(false));
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const lightboxSheet = useAnimatedDismiss(lightboxIndex);
   useEscapeToClose(lightboxIndex !== null, () => setLightboxIndex(null));
   const [reportConfirm, setReportConfirm] = useState(false);
   const [reportReason, setReportReason] = useState<"spam" | "explicit" | "illegal" | "scam" | "misleading" | "other">("spam");
@@ -5526,7 +5478,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
     </section></div>}
     {convoPickerOpenSheet.render && <div className={`sheet-backdrop${convoPickerOpenSheet.closing ? " closing" : ""}`} onClick={() => setConvoPickerOpen(false)}><section className="more-sheet conversation-picker-sheet" role="dialog" aria-modal="true" aria-labelledby="detail-convos-title" onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><div className="sheet-title-row"><h2 id="detail-convos-title">{t.convosTitle}</h2><button aria-label={t.close} onClick={() => setConvoPickerOpen(false)}>×</button></div>{myConvos.isLoading ? <div className="loading-block"/> : (myConvos.data ?? []).length ? <div className="convo-picker-list">{(myConvos.data ?? []).map((conversation) => <button key={conversation.id} type="button" className="convo-picker-row" onClick={() => { setConvoPickerOpen(false); onOpenThread(conversation.id); }}><span className="inbox-copy"><strong>{conversation.otherPartyName}</strong><span className="inbox-preview">{conversation.lastMessage === "Photo" && lang === "es" ? "Foto" : conversation.lastMessage}</span></span>{conversation.unreadCount > 0 && <span className="unread-badge">{conversation.unreadCount}</span>}</button>)}</div> : <p className="thread-empty">{t.convosEmpty}</p>}</section></div>}
     {bookingOpenSheet.render && <div className={`sheet-backdrop${bookingOpenSheet.closing ? " closing" : ""}`}><section className="more-sheet booking-sheet"><div className="sheet-handle"/><div className="sheet-title-row"><h2>{t.bookingTitle}</h2><button aria-label={t.close} onClick={() => setBookingOpen(false)}>×</button></div>{sentBooking ? <div className="booking-success"><Icon size={36}><path d="m5 12 4 4L19 6"/></Icon><h3>{t.bookingSent}</h3><p>{t.bookingSentBody}</p><button className="primary-button" onClick={() => setBookingOpen(false)}>{t.close}</button></div> : <form className="booking-form" onSubmit={(event) => { event.preventDefault(); requestBooking.mutate(); }}><div><label><span>{t.start}</span><input required type="date" value={booking.startDate} onChange={(event) => setBooking({ ...booking, startDate: event.target.value })}/></label><label><span>{t.end}</span><input required type="date" min={booking.startDate} value={booking.endDate} onChange={(event) => setBooking({ ...booking, endDate: event.target.value })}/></label></div><label><span>{t.note}</span><textarea rows={4} value={booking.note} onChange={(event) => setBooking({ ...booking, note: event.target.value })}/></label>{requestBooking.isError && <p className="status error">{requestBooking.error instanceof Error ? requestBooking.error.message : "Error"}</p>}<button className="primary-button" disabled={requestBooking.isPending}>{t.submit}</button></form>}</section></div>}
-    {lightboxSheet.render && listing.photos.length > 0 && <PhotoLightbox lang={lang} photos={listing.photos.map((photo, i) => ({ url: photo.url, alt: `${listing.title} ${i + 1}` }))} index={lightboxSheet.value} closing={lightboxSheet.closing} onClose={() => setLightboxIndex(null)} />}
+    {lightboxIndex !== null && listing.photos[lightboxIndex] && <ClientDocPageViewer pages={[]} urls={listing.photos.map((photo) => photo.url)} kind="photo" index={lightboxIndex} title={listing.title} lang={lang} onClose={() => setLightboxIndex(null)} onNavigate={setLightboxIndex} />}
   </>}</main>;
 }
 
@@ -26663,14 +26615,23 @@ function OnMyWayScreen({
 // transform on the page image inside an overflow-hidden stage with
 // touch-action: none, so gestures never fight the browser; scroll behind
 // the viewer is locked while it is open.
-function ClientDocPageViewer({ pages, index, title, lang, onClose, onNavigate }: {
+// 2026-10-14: generalized into the app's one pinch-zoom viewer — pass
+// `urls` + kind="photo" and the same engine serves marketplace listing
+// photos (the old scroll-snap PhotoLightbox had no pinch zoom, and its
+// useAnimatedDismiss wiring silently swallowed photo index 0, so the
+// first listing photo could not be opened at all).
+function ClientDocPageViewer({ pages, urls, kind = "page", index, title, lang, onClose, onNavigate }: {
   pages: string[];
+  urls?: string[];
+  kind?: "page" | "photo";
   index: number;
   title: string;
   lang: Lang;
   onClose: () => void;
   onNavigate: (index: number) => void;
 }) {
+  const count = urls ? urls.length : pages.length;
+  const unit = kind === "photo" ? (lang === "es" ? "Foto" : "Photo") : (lang === "es" ? "Página" : "Page");
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -26720,7 +26681,7 @@ function ClientDocPageViewer({ pages, index, title, lang, onClose, onNavigate }:
   };
   const resetView = (animate: boolean) => applyView({ scale: 1, x: 0, y: 0 }, animate);
   const goTo = (next: number) => {
-    if (next >= 0 && next < pages.length && next !== index) onNavigate(next);
+    if (next >= 0 && next < count && next !== index) onNavigate(next);
   };
   const stepZoom = (direction: 1 | -1) => {
     const stage = stageRef.current;
@@ -26889,23 +26850,23 @@ function ClientDocPageViewer({ pages, index, title, lang, onClose, onNavigate }:
       >
         <img
           ref={imgRef}
-          src={`data:image/jpeg;base64,${pages[index]}`}
-          alt={`${title} — page ${index + 1}`}
+          src={urls ? urls[index] : `data:image/jpeg;base64,${pages[index]}`}
+          alt={`${title} — ${kind === "photo" ? "photo" : "page"} ${index + 1}`}
           draggable={false}
           onDragStart={(dragEvent) => dragEvent.preventDefault()}
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transition: animating ? "transform .18s ease-out" : "none" }}
         />
       </div>
       <button type="button" className="lightbox-close" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={onClose}>×</button>
-      {pages.length > 1 && index > 0 && (
-        <button type="button" className="lightbox-nav lightbox-prev" aria-label={lang === "es" ? "Página anterior" : "Previous page"} onClick={() => goTo(index - 1)}>‹</button>
+      {count > 1 && index > 0 && (
+        <button type="button" className="lightbox-nav lightbox-prev" aria-label={lang === "es" ? `${unit} anterior` : `Previous ${unit.toLowerCase()}`} onClick={() => goTo(index - 1)}>‹</button>
       )}
-      {pages.length > 1 && index < pages.length - 1 && (
-        <button type="button" className="lightbox-nav lightbox-next" aria-label={lang === "es" ? "Página siguiente" : "Next page"} onClick={() => goTo(index + 1)}>›</button>
+      {count > 1 && index < count - 1 && (
+        <button type="button" className="lightbox-nav lightbox-next" aria-label={lang === "es" ? `${unit} siguiente` : `Next ${unit.toLowerCase()}`} onClick={() => goTo(index + 1)}>›</button>
       )}
       <div className="client-doc-zoom-bar">
         <button type="button" aria-label={lang === "es" ? "Alejar" : "Zoom out"} onClick={() => stepZoom(-1)} disabled={view.scale <= 1.001}>−</button>
-        <span>{lang === "es" ? `Página ${index + 1} de ${pages.length}` : `Page ${index + 1} of ${pages.length}`}</span>
+        <span>{lang === "es" ? `${unit} ${index + 1} de ${count}` : `${unit} ${index + 1} of ${count}`}</span>
         <button type="button" aria-label={lang === "es" ? "Acercar" : "Zoom in"} onClick={() => stepZoom(1)} disabled={view.scale >= 3.999}>+</button>
       </div>
     </div>
