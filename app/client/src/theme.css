@@ -4462,6 +4462,10 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 /* ---- Big line-item fields: full-width name, large description,
    Price | Quantity side-by-side ---- */
 .doc-line-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+/* Collapsed line cards are tap targets (the whole card opens the line-item
+   editor — see lineCardTapOpens in App.tsx), so they take the pointer. */
+.doc-line-card.collapsed { cursor: pointer; }
+.doc-line-card.collapsed:not(.b06-dragging):active { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
 .doc-line-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; }
 .doc-line-top .doc-line-index { font-size: 13px; font-weight: 800; color: var(--dim); }
 .doc-line-top .doc-line-total { font-size: 15px; font-weight: 800; }
@@ -4835,8 +4839,13 @@ body > .document-overlay.customize-overlay { z-index: 200; }
    inside the section it must size by stretch (width:auto) instead. */
 .doc-items-flat > .field-pair, .doc-items-flat > .calculation-summary { margin-inline: 14px; }
 .doc-items-flat > .primary-button.add-item-wide { width: auto; }
-.floating-doc-form .doc-items-flat .b06-line-list { display: grid; gap: 0; }
-.floating-doc-form .doc-items-flat .doc-line-card { margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; padding: 12px 14px; }
+.floating-doc-form .doc-items-flat .b06-line-list { display: grid; gap: 10px; }
+/* Danny 2026-10-15: collapsed line cards in the builders were stripped to
+   flat full-bleed rows (border: 0, transparent) and vanished into the page —
+   nothing said "tap me to edit". They are real inset cards again, in the
+   same language as the editor sheet's cards: surface fill, hairline border,
+   radius, subtle shadow. Density kept: same padding, 10px gaps. */
+.floating-doc-form .doc-items-flat .doc-line-card { margin: 0 14px; border: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: 0 1px 2px rgba(23,26,28,.05), 0 8px 20px rgba(23,26,28,.05); padding: 12px; }
 
 /* --- 1b. Marketplace post form: smaller price-choice, ZIP + Save share a row --- */
 .price-choice button { min-height: 38px; font-size: 12px; }

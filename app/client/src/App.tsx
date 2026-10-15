@@ -14937,7 +14937,7 @@ function QuoteBuilder({
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1));
             const summary = lineItemSummary(item, `${t.item} ${i + 1}`);
             return (
-            <div className={`doc-line-card collapsed${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line>
+            <div className={`doc-line-card collapsed${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(i); }}>
               <div className="doc-line-top">
                 <span
                   className="b06-grip"
@@ -15561,7 +15561,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
         const qty = item.quantity ?? 1;
         const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
         const summary = lineItemSummary(item, `${t.item} ${index + 1}`);
-        return <article className="doc-line-card collapsed" key={index}>
+        return <article className="doc-line-card collapsed" key={index} onClick={(e) => { if (!reorder && lineCardTapOpens(e.target)) setEditingItem(index); }}>
           <div className="doc-line-top">
             {reorder ? (
               <div className="reorder-buttons">
@@ -15727,6 +15727,15 @@ function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice
 // discards. Fields shown match what each editor's item supports.
 // ---------------------------------------------------------------------------
 type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours"; id?: string; optional?: boolean };
+
+// Danny 2026-10-15: a collapsed line card reads as one tappable card — a tap
+// anywhere on it opens the LineItemEditSheet — except on the card's own
+// controls (drag grip, reorder buttons, remove), which keep their own jobs.
+function lineCardTapOpens(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.closest !== "function") return true;
+  return !el.closest(".b06-grip, .b06-line-remove, .doc-line-remove, .reorder-buttons");
+}
 
 function lineItemSummary(item: { name?: string; description: string }, fallback: string): { title: string; preview: string } {
   const lines = item.description.split(/\n+/).map((s) => s.trim()).filter(Boolean);
@@ -16790,7 +16799,7 @@ function InvoiceBuilder({
       {/* Build 2.0: line items stand alone — no card-within-a-card; the
           rows extend side to side for more usable space. */}
       <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
-        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className="invoice-line-card doc-line-card collapsed" key={index}>
+        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className="invoice-line-card doc-line-card collapsed" key={index} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, Price | Quantity side-by-side. */}
           <div className="doc-line-top"><span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span><span className="doc-line-total">{usd(lineTotal)}</span>{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
