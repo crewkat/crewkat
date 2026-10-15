@@ -1976,20 +1976,46 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* Freemium plan */
 .upgrade-page { padding-bottom:calc(34px + env(safe-area-inset-bottom)); }
 .upgrade-hero { margin:8px 0 22px; padding:24px 20px; border-radius:16px; background:#17211d; color:#fff; box-shadow:0 12px 28px rgba(12,22,17,.18); }
-.premium-plan-mark { display:inline-block; padding:5px 8px; border-radius:6px; background:var(--orange); color:#1d1710; font-size:11px; font-weight:900; letter-spacing:.08em; }
+.premium-plan-mark { display:inline-block; padding:5px 8px; border-radius:6px; background:var(--accent); color:#1d1710; font-size:11px; font-weight:900; letter-spacing:.08em; }
 .upgrade-hero h1 { margin:16px 0 8px; max-width:520px; font:800 32px/1.05 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; letter-spacing:-.02em; }
 .upgrade-hero p { margin:0; max-width:620px; color:#dce6e0; line-height:1.5; }
+.upgrade-hero .usage-line { margin-top:14px; color:var(--text); }
 .upgrade-price { display:flex; align-items:baseline; gap:8px; margin-top:22px; }
 .upgrade-price strong { color:#fff; font:850 42px/1 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; }
 .upgrade-price span { color:#dce6e0; font-weight:700; }
-.upgrade-features { display:grid; gap:0; border-top:1px solid var(--border); }
-.upgrade-features > div { display:grid; grid-template-columns:28px minmax(0,1fr); align-items:center; gap:8px; min-height:54px; border-bottom:1px solid var(--border); }
-.upgrade-features span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:color-mix(in srgb, var(--green) 14%, var(--surface)); color:var(--green); font-weight:900; }
+.upgrade-section-title { margin:24px 0 10px; color:var(--dim); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+.upgrade-outcomes { display:grid; gap:10px; }
+.outcome-card { display:grid; grid-template-columns:40px minmax(0,1fr); gap:12px; align-items:start; padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
+.outcome-card h3 { margin:2px 0 3px; font-size:15px; line-height:1.25; }
+.outcome-card p { margin:0; color:var(--dim); font-size:13px; line-height:1.45; }
+.upgrade-compare { border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden; }
+.upgrade-compare-head, .upgrade-compare-row { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,.85fr) minmax(0,1fr); gap:8px; align-items:center; padding:10px 14px; }
+.upgrade-compare-head { background:var(--surface-2); color:var(--dim); font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.06em; }
+.upgrade-compare-row { border-top:1px solid var(--border); font-size:13.5px; }
+.upgrade-compare-row > span:first-child { font-weight:700; }
+.upgrade-compare-row .is-free { color:var(--dim); }
+.upgrade-compare-row .is-premium { font-weight:800; }
+.founder-band { display:grid; grid-template-columns:56px minmax(0,1fr); gap:14px; align-items:center; margin-top:24px; padding:16px 14px; border-radius:8px; background:#17211d; color:#fff; box-shadow:0 12px 28px rgba(12,22,17,.18); }
+.founder-band img { width:56px; height:56px; border-radius:50%; object-fit:cover; background:var(--surface); }
+.founder-band strong { display:block; font-size:14.5px; line-height:1.4; }
+.founder-band span { display:block; margin-top:4px; color:#dce6e0; font-size:12.5px; line-height:1.4; }
+.upgrade-faq { border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden; }
+.upgrade-faq > div { padding:12px 14px; }
+.upgrade-faq > div + div { border-top:1px solid var(--border); }
+.upgrade-faq strong { display:block; margin-bottom:3px; font-size:14px; }
+.upgrade-faq p { margin:0; color:var(--dim); font-size:13px; line-height:1.45; }
+.upgrade-page.has-sticky-bar { padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
+.upgrade-sticky-bar { position:fixed; inset:auto 14px calc(10px + env(safe-area-inset-bottom)) 14px; z-index:70; display:flex; align-items:center; gap:12px; padding:10px 12px 10px 16px; border:1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius:16px; background:var(--surface); box-shadow:0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
+.upgrade-sticky-bar .sticky-plan { display:grid; min-width:0; }
+.upgrade-sticky-bar .sticky-plan strong { font-size:15px; white-space:nowrap; }
+.upgrade-sticky-bar .sticky-plan span { color:var(--dim); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.upgrade-sticky-bar .primary-button { flex:1; min-height:48px; }
+@media (min-width:760px) { .upgrade-sticky-bar { inset-inline:auto; left:50%; transform:translateX(-50%); width:min(732px, calc(100% - 28px)); } }
 .upgrade-button { width:100%; margin-top:24px; min-height:54px; }
 .billing-setup-note, .active-plan-note { display:grid; gap:4px; margin-top:20px; padding:15px; border-radius:12px; background:var(--surface-2); }
 .billing-setup-note p, .active-plan-note span { margin:0; color:var(--dim); line-height:1.45; }
 .upgrade-fine-print { margin:14px 2px 0; color:var(--dim); font-size:12px; line-height:1.45; text-align:center; }
-@media (min-width:760px) { .upgrade-page { max-width:760px; margin-inline:auto; } .upgrade-hero { padding:32px; } .upgrade-features { grid-template-columns:1fr 1fr; column-gap:28px; } }
+@media (min-width:760px) { .upgrade-page { max-width:760px; margin-inline:auto; } .upgrade-hero { padding:32px; } }
 
 .auto-backup-card { display:grid; gap:8px; margin-bottom:12px; padding:13px 14px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); }
 .auto-backup-card > strong { font-size:15px; }
@@ -3009,6 +3035,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .plan-option-price strong { font-size: 1.5rem; letter-spacing: -.02em; }
 .plan-option-price small { color: var(--muted); font-size: .82rem; }
 .plan-option-permonth { color: var(--muted); font-size: .72rem; margin-top: -2px; }
+.plan-option-perday { color: var(--accent); font-size: .72rem; font-weight: 800; margin-top: -2px; }
 .plan-option-note { color: var(--muted); font-size: .78rem; }
 .plan-option-badge {
   position: absolute; top: -11px; left: 10px; background: var(--accent); color: #fff;

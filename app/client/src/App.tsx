@@ -6481,10 +6481,43 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const playPriceLabel = playDetails?.price
     ? `${playDetails.price.currency === "USD" ? "$" : `${playDetails.price.currency} `}${Number(playDetails.price.value).toFixed(2).replace(/\.00$/, "")}`
     : "$19";
-  const features = lang === "es"
-    ? ["Trabajos y facturas ilimitados", "Órdenes de compra y proveedores", "Equipo, mantenimiento y seguridad", "Nómina, puntaje de prospectos y automatizaciones", "Informes avanzados", "Todas las próximas herramientas Pro"]
-    : ["Unlimited jobs and invoices", "Purchase orders and suppliers", "Equipment, upkeep, and safety", "Payroll, lead scoring, and automations", "Advanced reports", "Every upcoming Pro tool"];
-  return <main className="page upgrade-page">
+  const outcomes: Array<{ title: string; body: string; icon: ReactNode }> = lang === "es"
+    ? [
+        { title: "Consigue el trabajo", body: "El puntaje de prospectos destaca a tus clientes más listos para contratar, y las automatizaciones mantienen los seguimientos para que ningún prospecto se enfríe.", icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon> },
+        { title: "Lleva cada trabajo", body: "Trabajos ilimitados, órdenes de compra y proveedores, equipo, mantenimiento y seguridad, nómina y herramientas de equipo, e informes avanzados.", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
+        { title: "Cobra sin perseguir", body: "Facturas y estimados ilimitados, recordatorios de pago y seguimientos automáticos, y todas las herramientas Pro desbloqueadas.", icon: <Icon><path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" /></Icon> },
+      ]
+    : [
+        { title: "Get the work", body: "Lead scoring surfaces your hottest prospects, and automations keep follow-ups going so no lead goes cold.", icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon> },
+        { title: "Run every job", body: "Unlimited jobs, purchase orders and suppliers, equipment, upkeep and safety tracking, payroll and crew tools, and advanced reports.", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
+        { title: "Get paid without the chase", body: "Unlimited invoices and estimates, payment reminders and follow-ups on autopilot, and every Pro tool unlocked.", icon: <Icon><path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" /></Icon> },
+      ];
+  const compareRows: Array<{ label: string; free: string; premium: string }> = lang === "es"
+    ? [
+        { label: "Trabajos activos", free: "3", premium: "Ilimitados" },
+        { label: "Facturas al mes", free: "5", premium: "Ilimitadas" },
+        { label: "Publicaciones en el mercado", free: "3", premium: "Ilimitadas" },
+        { label: "Herramientas Pro", free: "Bloqueadas", premium: "Todas desbloqueadas" },
+      ]
+    : [
+        { label: "Active jobs", free: "3", premium: "Unlimited" },
+        { label: "Invoices per month", free: "5", premium: "Unlimited" },
+        { label: "Marketplace listings", free: "3", premium: "Unlimited" },
+        { label: "Pro tools", free: "Locked", premium: "All unlocked" },
+      ];
+  const faqs: Array<{ q: string; a: string }> = lang === "es"
+    ? [
+        { q: "¿Qué pasa con mis trabajos y facturas si cancelo?", a: "Nada se borra. Tus trabajos y facturas quedan en tu cuenta; solo vuelves a los límites del plan Gratis para el trabajo nuevo." },
+        { q: "¿Puedo cambiar entre mensual y anual?", a: "Sí, cuando quieras. Cambia de plan desde esta misma pantalla." },
+        { q: "¿Hay contrato?", a: "No. Sin contrato ni permanencia: cancela cuando quieras y Premium sigue activo hasta el final del período pagado." },
+      ]
+    : [
+        { q: "What happens to my jobs and invoices if I cancel?", a: "Nothing is deleted. Your jobs and invoices stay in your account — you just return to the Free limits for new work." },
+        { q: "Can I switch between monthly and annual?", a: "Yes, anytime. Switch plans right from this screen." },
+        { q: "Is there a contract?", a: "No contract, no lock-in. Cancel anytime and Premium stays active through the end of the period you've paid for." },
+      ];
+  const showStickyBar = !isPremium && (!playOffered || playConfig?.configured === true);
+  return <main className={`page upgrade-page${showStickyBar ? " has-sticky-bar" : ""}`}>
     <PageHeader lang={lang} title={lang === "es" ? "Crewkat Premium" : "Crewkat Premium"} onBack={onBack} />
     <section className="upgrade-hero">
       <span className="premium-plan-mark">PREMIUM</span>
@@ -6506,6 +6539,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           <button type="button" role="radio" aria-checked={plan === "monthly"} className={`plan-option${plan === "monthly" ? " selected" : ""}`} onClick={() => setPlan("monthly")}>
             <span className="plan-option-name">{lang === "es" ? "Mensual" : "Monthly"}</span>
             <span className="plan-option-price"><strong>$19</strong><small>{lang === "es" ? "/mes" : "/mo"}</small></span>
+            <span className="plan-option-perday">{lang === "es" ? "Unos 63¢ al día" : "About 63¢ a day"}</span>
             <span className="plan-option-note">{lang === "es" ? "Cancela cuando quieras" : "Cancel anytime"}</span>
           </button>
           <button type="button" role="radio" aria-checked={plan === "annual"} className={`plan-option${plan === "annual" ? " selected" : ""}`} onClick={() => setPlan("annual")} disabled={!foundingQuery.data?.annualConfigured}>
@@ -6513,6 +6547,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             <span className="plan-option-name">{lang === "es" ? "Anual" : "Annual"}</span>
             <span className="plan-option-price"><strong>{foundingQuery.data?.annualConfigured ? <><span>$189</span><small>{lang === "es" ? "/año" : "/yr"}</small></> : lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
             {foundingQuery.data?.annualConfigured && <span className="plan-option-permonth">{lang === "es" ? "$15.75/mes, facturado anualmente" : "$15.75/mo billed yearly"}</span>}
+            {foundingQuery.data?.annualConfigured && <span className="plan-option-perday">{lang === "es" ? "Unos 52¢ al día" : "About 52¢ a day"}</span>}
             <span className="plan-option-note">{foundingQuery.data?.annualConfigured ? (lang === "es" ? "Cancela cuando quieras" : "Cancel anytime") : lang === "es" ? "Precio anual por anunciar" : "Annual pricing to be announced"}</span>
           </button>
         </div>
@@ -6536,7 +6571,29 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       )}
       {!isPremium && playOffered && !playConfig && <div className="loading-block" aria-label={lang === "es" ? "Cargando" : "Loading"} />}
     </section>
-    <section className="upgrade-features" aria-label={lang === "es" ? "Funciones Premium" : "Premium features"}>{features.map((feature) => <div key={feature}><span aria-hidden="true">✓</span><strong>{feature}</strong></div>)}</section>
+    <h2 className="upgrade-section-title">{lang === "es" ? "Lo que Premium hace por ti" : "What Premium does for you"}</h2>
+    <section className="upgrade-outcomes" aria-label={lang === "es" ? "Beneficios Premium" : "Premium benefits"}>
+      {outcomes.map((outcome) => (
+        <div className="outcome-card" key={outcome.title}>
+          <span className="tool-tile-icon">{outcome.icon}</span>
+          <div><h3>{outcome.title}</h3><p>{outcome.body}</p></div>
+        </div>
+      ))}
+    </section>
+    <h2 className="upgrade-section-title">{lang === "es" ? "Gratis vs Premium" : "Free vs Premium"}</h2>
+    <section className="upgrade-compare" aria-label={lang === "es" ? "Comparación de planes" : "Plan comparison"}>
+      <div className="upgrade-compare-head" aria-hidden="true"><span></span><span>{lang === "es" ? "Gratis" : "Free"}</span><span>Premium</span></div>
+      {compareRows.map((row) => (
+        <div className="upgrade-compare-row" key={row.label}><span>{row.label}</span><span className="is-free">{row.free}</span><span className="is-premium">{row.premium}</span></div>
+      ))}
+    </section>
+    <section className="founder-band" aria-label={lang === "es" ? "Hecho por un contratista" : "Built by a contractor"}>
+      <img src={crewkatLogo} alt="" aria-hidden="true" />
+      <div>
+        <strong>{lang === "es" ? "Creado por un contratista general de Florida que trabaja sus propios trabajos en Crewkat todos los días." : "Built by a working Florida GC who runs his own jobs on Crewkat every day."}</strong>
+        <span>{lang === "es" ? "Stallions Construction Company LLC · Trinity, Florida" : "Stallions Construction Company LLC · Trinity, Florida"}</span>
+      </div>
+    </section>
     {checkout.isError && <p className="status error">{actionErrorMessage(checkout.error)}</p>}
     {checkout.data && !checkout.data.configured && <div className="billing-setup-note" role="status"><strong>{lang === "es" ? "La facturación aún no está conectada" : "Billing isn’t connected yet"}</strong><p>{lang === "es" ? "El propietario debe terminar la configuración segura de Stripe antes de aceptar suscripciones." : "The owner needs to finish the secure Stripe setup before subscriptions can be accepted."}</p></div>}
     {!isPremium && !playOffered && foundingQuery.data?.configured && foundingQuery.data.available && (
@@ -6557,7 +6614,26 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       </>
     )}
     {isPremium && <div className="active-plan-note" role="status"><strong>{lang === "es" ? "Premium activo" : "Premium active"}</strong><span>{subscription.data?.provider === "play" ? (lang === "es" ? "Facturado por Google Play · adminístralo en la app Play Store." : "Billed through Google Play · manage it in the Play Store app.") : subscription.data?.status === "founder" ? (lang === "es" ? "Plan fundador" : "Founder plan") : subscription.data?.cancelAtPeriodEnd ? (lang === "es" ? "Activo hasta el final del período" : "Active through the end of the billing period") : (lang === "es" ? "Todas las herramientas Pro están desbloqueadas" : "All Pro tools are unlocked")}</span></div>}
+    <h2 className="upgrade-section-title">{lang === "es" ? "Preguntas" : "Questions"}</h2>
+    <section className="upgrade-faq" aria-label={lang === "es" ? "Preguntas frecuentes" : "Frequently asked questions"}>
+      {faqs.map((faq) => (
+        <div key={faq.q}><strong>{faq.q}</strong><p>{faq.a}</p></div>
+      ))}
+    </section>
     <p className="upgrade-fine-print">{playOffered && !isPremium ? (lang === "es" ? "Pago mensual a través de Google Play. Cancela cuando quieras en la app Play Store; Premium permanece activo hasta el final del período pagado." : "Monthly billing through Google Play. Cancel anytime in the Play Store app; Premium remains active through the paid billing period.") : (lang === "es" ? "Pago mensual o anual. Cancela cuando quieras; Premium permanece activo hasta el final del período pagado." : "Monthly or annual billing. Cancel anytime; Premium remains active through the paid billing period.")}</p>
+    {showStickyBar && (
+      <div className="upgrade-sticky-bar">
+        <div className="sticky-plan">
+          <strong>{playOffered ? `${playPriceLabel}${lang === "es" ? "/mes" : "/mo"}` : plan === "annual" ? (lang === "es" ? "$189/año" : "$189/yr") : (lang === "es" ? "$19/mes" : "$19/mo")}</strong>
+          <span>{playOffered ? (lang === "es" ? "Facturado por Google Play" : "Billed through Google Play") : plan === "annual" ? (lang === "es" ? "$15.75/mes · Cancela cuando quieras" : "$15.75/mo · Cancel anytime") : (lang === "es" ? "Cancela cuando quieras" : "Cancel anytime")}</span>
+        </div>
+        {playOffered ? (
+          <button className="primary-button" type="button" disabled={playBusy} onClick={() => void buyWithPlay()}>{playBusy ? (lang === "es" ? "Abriendo Google Play…" : "Opening Google Play…") : (lang === "es" ? "Suscribirse" : "Subscribe")}</button>
+        ) : (
+          <button className="primary-button" type="button" disabled={checkout.isPending} onClick={() => void startCheckout()}>{checkout.isPending ? (lang === "es" ? "Abriendo Stripe…" : "Opening Stripe…") : (lang === "es" ? "Mejorar a Premium" : "Upgrade to Premium")}</button>
+        )}
+      </div>
+    )}
   </main>;
 }
 
