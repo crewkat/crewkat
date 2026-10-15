@@ -1304,17 +1304,27 @@ function PageHeader({
     </header>
   );
 }
-// Build 3.1.1: Tools (grid) + Settings (gear) shortcuts on the main-tab
-// headers — Invoice Fly pattern. One tap, always visible, labeled for AT.
+// Build 3.1.1: Tools (grid) shortcut on the main-tab headers — Invoice Fly
+// pattern. One tap, always visible, labeled for AT.
+// Danny 2026-10-15: the Settings GEAR that also lived here is gone — on
+// Home it sat right next to the avatar and both opened Settings. The
+// avatar (SettingsAvatarButton) is now the single Settings entry point
+// on every main-tab header.
 function MainTabHeaderActions({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
-  return (<>
+  return (
     <button type="button" className="icon-button" onClick={() => { buzz(8); setScreen({ name: "tools" }); }} aria-label={lang === "es" ? "Herramientas" : "Tools"}>
       <Icon><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></Icon>
     </button>
-    <button type="button" className="icon-button" onClick={() => { buzz(8); setScreen({ name: "settings" }); }} aria-label={lang === "es" ? "Configuración" : "Settings"}>
-      <GearIcon />
-    </button>
-  </>);
+  );
+}
+// The user's initial in a dark circle — the one Settings entry point on
+// main-tab headers. Home renders its own inline copies (same class, same
+// target); Jobs / Clients / Invoices / Marketplace had only the gear, so
+// they render this next to MainTabHeaderActions instead.
+function SettingsAvatarButton({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const auth = useContext(AuthContext);
+  const userInitial = (auth?.user.name.trim().charAt(0) || "C").toUpperCase();
+  return <button className="home-avatar" type="button" onClick={() => setScreen({ name: "settings" })} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}>{userInitial}</button>;
 }
 // Build 1.2 (part A): floating document forms (new estimate, new invoice,
 // edit-existing-document) share one header — X (left) | title (center) |
@@ -5025,6 +5035,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
         {unreadMarketplaceCount > 0 && <b className="header-unread-badge">{Math.min(unreadMarketplaceCount, 99)}</b>}
       </button>
       <MainTabHeaderActions lang={lang} setScreen={setScreen} />
+      <SettingsAvatarButton lang={lang} setScreen={setScreen} />
     </>} />
     {view === "explore" && <label className="market-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></Icon><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} aria-label={text.search}/>{search && <button type="button" onClick={() => setSearch("")} aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"}>×</button>}</label>}
     <nav className="market-tabs" aria-label={lang === "es" ? "Vistas del mercado" : "Marketplace views"}>
@@ -6726,7 +6737,7 @@ function JobsScreen({
               {lang === "en" ? "ES" : "EN"}
             </button>
             <MainTabHeaderActions lang={lang} setScreen={setScreen} />
-
+            <SettingsAvatarButton lang={lang} setScreen={setScreen} />
           </>
         }
       />
@@ -16380,7 +16391,7 @@ function InvoicesScreen({
   }, [docCards]);
   return (
     <main className="page">
-      <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
+      <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<><MainTabHeaderActions lang={lang} setScreen={setScreen} /><SettingsAvatarButton lang={lang} setScreen={setScreen} /></>} />
       {tab === "invoices"
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
@@ -17334,7 +17345,7 @@ function ClientsScreen({
   };
   return (
     <main className="page clients-page">
-      <PageHeader lang={lang} title={t.clients} onBack={onBack} actions={<MainTabHeaderActions lang={lang} setScreen={setScreen} />} />
+      <PageHeader lang={lang} title={t.clients} onBack={onBack} actions={<><MainTabHeaderActions lang={lang} setScreen={setScreen} /><SettingsAvatarButton lang={lang} setScreen={setScreen} /></>} />
       <OfflineCacheNote lang={lang} action="listClients" isLoading={query.isLoading} />
       <div className="clients-toolbar">
         <label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchClients} aria-label={t.searchClients} /></label>
