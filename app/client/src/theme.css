@@ -330,13 +330,13 @@ fieldset { padding: 0; border: 0; }
 .accordion-chevron { display:grid; place-items:center; color:var(--dim); transition:transform .16s ease; }
 .accordion-chevron svg { width:18px; transform:rotate(-90deg); }
 .accordion-section.open .accordion-chevron { transform:rotate(180deg); }
-.accordion-panel { padding:0 12px 12px; border-top:1px solid var(--border); background:color-mix(in srgb,var(--bg) 40%,var(--surface)); }
+.accordion-panel { padding:14px 16px 16px; border-top:1px solid var(--border); background:color-mix(in srgb,var(--bg) 40%,var(--surface)); }
 .accordion-panel .photo-workspace { padding-top:0; border-top:0; }
 .accordion-panel .social-notice { margin:10px 0 0; }
-.accordion-actions { padding-top:14px; }
+.accordion-actions { padding-top:0; }
 .accordion-actions button { width:100%; min-height:48px; display:flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:9px; background:var(--green); color:#fff; font-weight:800; cursor:pointer; }
 .accordion-actions button:disabled { opacity:.65; cursor:wait; }
-.accordion-panel .tool-grid { margin-top:14px; }
+.accordion-panel .tool-grid { margin-top:0; }
 .tool-grid { display:grid; gap:1px; margin-top:14px; overflow:hidden; border:1px solid var(--border); border-radius:10px; background:var(--border); }
 .tool-grid button { min-height:50px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; border:0; background:var(--surface); font-weight:750; cursor:pointer; }
 .tool-grid button svg { transform:rotate(180deg); color:var(--dim); }
@@ -2426,6 +2426,29 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .related-estimates svg { width: 16px; transform: rotate(180deg); }
 .job-notes-editor { margin-top: 14px; }
 .detail-date-row { margin-bottom: 14px; }
+
+/* Job sections design pass (Danny 2026-10-15): one spacing system for all
+   eight job-detail accordion sections. The .accordion-panel padding above
+   gives every body 14px of air under its title bar; the rules below put
+   list items on inset tappable rows, empty states in a dashed placeholder
+   box, and the heading label / add / record actions on one baseline —
+   at Home/Jobs density, not desktop air. */
+.job-accordion .job-section-heading p { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.job-accordion .job-round-add { width: 40px; height: 40px; }
+.job-accordion .job-linked-list article { border-radius: 12px; }
+.accordion-panel .job-section-empty { margin: 0; padding: 16px 12px; border: 1.5px dashed var(--border); border-radius: 12px; background: transparent; text-align: center; }
+.job-accordion .job-value-row { margin-bottom: 0; }
+.job-accordion .related-estimates { margin-top: 14px; gap: 8px; }
+.job-accordion .related-estimates > strong { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.job-accordion .related-estimates button { align-items: center; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.accordion-panel .tool-grid { gap: 8px; overflow: visible; border: 0; border-radius: 0; background: transparent; }
+.accordion-panel .tool-grid button { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.accordion-panel .stage-empty { min-height: 132px; padding: 16px 12px; border: 1.5px dashed var(--border); border-radius: 12px; }
+.accordion-panel .photo-pairs { margin-top: 16px; }
+.accordion-panel .operations-panel { padding: 0; gap: 14px; }
+.accordion-panel .operation-list { gap: 8px; border-top: 0; }
+.accordion-panel .operation-list article { padding: 11px 12px; border: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.accordion-panel .job-notes-editor { margin-top: 0; }
 
 .job-action-sheet { max-height: min(78vh, 720px); overflow-y: auto; }
 .job-action-sheet .client-search { margin: 0 0 12px; }
