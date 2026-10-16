@@ -2978,6 +2978,18 @@ button { -webkit-tap-highlight-color: transparent; }
 .client-history-sub { margin: 14px 2px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
 .client-history-sub:first-of-type { margin-top: 4px; }
 
+/* Client summary buttons scroll to the matching history group (Danny
+   2026-10-15): scroll-margin clears the sticky header, and the group
+   flashes once so the landing spot reads as the tapped target. Group
+   spacing matches the old sub-heading rhythm (10px group + 4px heading). */
+.client-history-group { scroll-margin-top: 72px; border-radius: 14px; }
+.client-history-group + .client-history-group { margin-top: 10px; }
+.client-history-group.is-flash { animation: client-history-flash 1.8s ease-out; }
+@keyframes client-history-flash {
+  0%, 35% { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+  100% { background: transparent; }
+}
+
 /* Build 3: highlight the suggested quick-create action. */
 .quick-create-grid button.suggested { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 

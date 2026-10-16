@@ -17698,8 +17698,24 @@ function ClientDetail({
     },
   });
   const c = query.data?.client;
-  const firstJob = query.data?.jobs.at(0);
   const clientInvoices = (invoices.data?.invoices ?? []).filter((invoice) => invoice.clientId === clientId);
+  // Summary buttons (Jobs / Invoices / Estimates) jump to the matching
+  // history group further down this screen instead of opening the FIRST
+  // record — Danny 2026-10-15: "Estimates (3)" opened one estimate and
+  // never showed all three. The tapped group flashes briefly so the
+  // landing spot reads as the target.
+  const historyJobsRef = useRef<HTMLDivElement>(null);
+  const historyInvoicesRef = useRef<HTMLDivElement>(null);
+  const historyQuotesRef = useRef<HTMLDivElement>(null);
+  const [flashGroup, setFlashGroup] = useState<"jobs" | "invoices" | "quotes" | null>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
+  const scrollToHistoryGroup = (group: "jobs" | "invoices" | "quotes", ref: { current: HTMLDivElement | null }) => {
+    setFlashGroup(group);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashGroup(null), 1800);
+    const reduceMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    ref.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  };
   if (!c)
     return (
       <main className="page">
@@ -17711,7 +17727,7 @@ function ClientDetail({
     <main className="page form-page">
       <PageHeader lang={lang} title={c.name} onBack={onBack} />
       <section className="client-money"><article><span>{lang === "es" ? "Facturado" : "Invoiced"}</span><strong>{usd(c.totalInvoiced)}</strong></article><article><span>{lang === "es" ? "Pagado" : "Paid"}</span><strong>{c.paymentPercent}%</strong></article></section>
-      <nav className="client-links" aria-label={lang === "es" ? "Registros del cliente" : "Client records"}><button onClick={() => firstJob ? setScreen({ name: "detail", jobId: firstJob.id }) : setScreen({ name: "jobs" })}>{t.jobs} ({query.data?.jobs.length ?? 0})</button><button onClick={() => clientInvoices[0] ? setScreen({ name: "invoicePreview", invoiceId: clientInvoices[0].id }) : setScreen({ name: "invoices" })}>{t.invoices} ({clientInvoices.length})</button><button onClick={() => query.data?.quotes[0] ? setScreen({ name: "quotePreview", quoteId: query.data.quotes[0].id }) : setScreen({ name: "quoteNew", clientId })}>{lang === "es" ? "Presupuestos" : "Estimates"} ({query.data?.quotes.length ?? 0})</button></nav>
+      <nav className="client-links" aria-label={lang === "es" ? "Registros del cliente" : "Client records"}><button onClick={() => (query.data?.jobs.length ?? 0) > 0 ? scrollToHistoryGroup("jobs", historyJobsRef) : setScreen({ name: "jobs" })}>{t.jobs} ({query.data?.jobs.length ?? 0})</button><button onClick={() => clientInvoices.length > 0 ? scrollToHistoryGroup("invoices", historyInvoicesRef) : setScreen({ name: "invoices" })}>{t.invoices} ({clientInvoices.length})</button><button onClick={() => (query.data?.quotes.length ?? 0) > 0 ? scrollToHistoryGroup("quotes", historyQuotesRef) : setScreen({ name: "quoteNew", clientId })}>{lang === "es" ? "Presupuestos" : "Estimates"} ({query.data?.quotes.length ?? 0})</button></nav>
       <ClientForm
         lang={lang}
         initial={{
@@ -17736,40 +17752,52 @@ function ClientDetail({
       <section className="client-history">
         <h2>{t.clientHistory}</h2>
         {/* Build 3: deep links grouped by record type. */}
-        {(query.data?.jobs.length ?? 0) > 0 && <h3 className="client-history-sub">{t.jobs} ({query.data?.jobs.length})</h3>}
-        {query.data?.jobs.map((j) => (
-          <button
-            key={`j-${j.id}`}
-            onClick={() => setScreen({ name: "detail", jobId: j.id })}
-          >
-            <span>
-              <strong>{j.jobType}</strong>
-              <small>
-                {formatDate(j.jobDate, lang)} · {j.jobAddress}
-              </small>
-            </span>
-            <BackIcon />
-          </button>
-        ))}
-        {(query.data?.quotes.length ?? 0) > 0 && <h3 className="client-history-sub">{lang === "es" ? "Estimados" : "Estimates"} ({query.data?.quotes.length})</h3>}
-        {query.data?.quotes.map((q) => (
-          <button
-            key={`q-${q.id}`}
-            onClick={() => setScreen({ name: "quotePreview", quoteId: q.id })}
-          >
-            <span>
-              <strong>
-                {lang === "es" ? "Estimados" : "Estimates"} #{q.id} · {usd(money(q.total))}
-              </strong>
-              <small>{q.jobType || q.jobAddress}</small>
-            </span>
-            <BackIcon />
-          </button>
-        ))}
-        {clientInvoices.length > 0 && <h3 className="client-history-sub">{t.invoices} ({clientInvoices.length})</h3>}
-        {clientInvoices.map((invoice) => (
-          <button key={`i-${invoice.id}`} onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{t.invoices} #{invoice.id} · {usd(money(invoice.totalWithLateFee))}</strong><small>{lang === "es" ? "Saldo" : "Balance"}: {usd(Number(invoice.balanceRemaining))}</small></span><BackIcon /></button>
-        ))}
+        {(query.data?.jobs.length ?? 0) > 0 && (
+          <div ref={historyJobsRef} className={`client-history-group${flashGroup === "jobs" ? " is-flash" : ""}`}>
+            <h3 className="client-history-sub">{t.jobs} ({query.data?.jobs.length})</h3>
+            {query.data?.jobs.map((j) => (
+              <button
+                key={`j-${j.id}`}
+                onClick={() => setScreen({ name: "detail", jobId: j.id })}
+              >
+                <span>
+                  <strong>{j.jobType}</strong>
+                  <small>
+                    {formatDate(j.jobDate, lang)} · {j.jobAddress}
+                  </small>
+                </span>
+                <BackIcon />
+              </button>
+            ))}
+          </div>
+        )}
+        {(query.data?.quotes.length ?? 0) > 0 && (
+          <div ref={historyQuotesRef} className={`client-history-group${flashGroup === "quotes" ? " is-flash" : ""}`}>
+            <h3 className="client-history-sub">{lang === "es" ? "Estimados" : "Estimates"} ({query.data?.quotes.length})</h3>
+            {query.data?.quotes.map((q) => (
+              <button
+                key={`q-${q.id}`}
+                onClick={() => setScreen({ name: "quotePreview", quoteId: q.id })}
+              >
+                <span>
+                  <strong>
+                    {lang === "es" ? "Estimados" : "Estimates"} #{q.id} · {usd(money(q.total))}
+                  </strong>
+                  <small>{q.jobType || q.jobAddress}</small>
+                </span>
+                <BackIcon />
+              </button>
+            ))}
+          </div>
+        )}
+        {clientInvoices.length > 0 && (
+          <div ref={historyInvoicesRef} className={`client-history-group${flashGroup === "invoices" ? " is-flash" : ""}`}>
+            <h3 className="client-history-sub">{t.invoices} ({clientInvoices.length})</h3>
+            {clientInvoices.map((invoice) => (
+              <button key={`i-${invoice.id}`} onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{t.invoices} #{invoice.id} · {usd(money(invoice.totalWithLateFee))}</strong><small>{lang === "es" ? "Saldo" : "Balance"}: {usd(Number(invoice.balanceRemaining))}</small></span><BackIcon /></button>
+            ))}
+          </div>
+        )}
         {(query.data?.jobs.length ?? 0) === 0 && (query.data?.quotes.length ?? 0) === 0 && clientInvoices.length === 0 && (
           <p className="privacy-note">{lang === "es" ? "Aún no hay trabajos, estimados ni facturas para este cliente." : "No jobs, estimates, or invoices for this client yet."}</p>
         )}
