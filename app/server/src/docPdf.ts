@@ -59,7 +59,18 @@ export interface DocumentLinkPdfPayload {
     discount?: string;
     unit?: string;
     optional?: boolean;
+    id?: string;
   }>;
+  // Estimate options (0076): the link payload already carries the accepted
+  // snapshot (quoteOptionsPayload) — forward it so the server-rendered PDF
+  // shows the same ACCEPTED OPTIONS section as the in-app PDF.
+  acceptedOptions?: {
+    items: Array<{ key: string; name: string; description: string; amount: string; quantity: number; discount: string; unit: string }>;
+    optionsTotal: string;
+    totalWithOptions: string;
+    acceptedAt: string;
+  } | null;
+  selectedOptionKeys?: string[];
   subtotal: string;
   total: string;
   footnote: string;
@@ -133,7 +144,11 @@ export async function buildDocumentLinkPdf(
       discount: li.discount ?? "0",
       unit: (li.unit === "days" || li.unit === "hours" ? li.unit : "none") as "none" | "days" | "hours",
       optional: li.optional === true,
+      id: li.id,
     })),
+    optionSelection: payload.acceptedOptions
+      ? { selectedKeys: payload.selectedOptionKeys ?? [], accepted: payload.acceptedOptions }
+      : undefined,
     invoiceNumber: payload.invoiceNumber || undefined,
     subtotal: payload.subtotal,
     discountType: payload.discountType === "fixed" ? "fixed" : "percent",
@@ -210,7 +225,7 @@ export async function buildDocumentLinkPdf(
           }
         }
         const perPage = docRow.imagesPerPage === 2 ? 2 : docRow.imagesPerPage === 4 ? 4 : 1;
-        const merged = await appendAttachmentsToPdf(bytes, atts, perPage as 1 | 2 | 4);
+        const merged = await appendAttachmentsToPdf(bytes, atts, perPage as 1 | 2 | 4, { lang });
         return { bytes: merged, filename };
       }
     }

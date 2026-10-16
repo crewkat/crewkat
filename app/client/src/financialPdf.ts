@@ -191,6 +191,19 @@ export type FinancialDocument = {
   status?: InvoiceStatus;
   depositType?: "none" | "percent" | "fixed";
   depositValue?: string;
+  // Estimate options (0076): the client's selection state, when the caller
+  // has it (in-app quote objects and the document-link payload both carry
+  // it). The accepted snapshot drives the ACCEPTED OPTIONS section of the
+  // PDF; absent/null renders the plain OPTIONS section.
+  optionSelection?: {
+    selectedKeys: string[];
+    accepted: {
+      items: Array<{ key: string; name: string; description: string; amount: string; quantity: number; discount: string; unit: string }>;
+      optionsTotal: string;
+      totalWithOptions: string;
+      acceptedAt: string;
+    } | null;
+  } | null;
 };
 
 // Phase 2 (PDF polish): line-item descriptions use **bold** lead-ins (e.g.
@@ -360,18 +373,24 @@ export async function buildFinancialPdf(
       else doc.rect(x + (bw * i) / steps, y, bw / steps + 0.75, bh, "F");
     }
   };
-  const bandH = theme === "bold" ? 72 : 56;
+  // Document template rebuild (Danny 2026-10-15 — Invoice Fly reference,
+  // "can we beat it?"): ONE skeleton for all four themes. Full-width header
+  // zone with the logo left and the FULL company stack right-aligned (name,
+  // phone · license · website, address, email); an oversized title block
+  // with the date under it; then the meta row. Each theme keeps its
+  // identity as skin: bold/classic get a filled header band and a centered
+  // title, modern/minimal render the same layout on white with a hairline
+  // under the header zone (modern keeps its left accent rail).
+  const headerH = theme === "bold" ? 76 : 66;
   const inBand = theme === "bold" || theme === "classic";
+  const centeredTitle = inBand;
   if (theme === "bold") {
-    fillBand(0, 0, w, bandH, [r, g, b]);
-    doc.setTextColor(255, 255, 255);
+    fillBand(0, 0, w, headerH, [r, g, b]);
   } else if (theme === "modern") {
     fillBand(0, 0, 12, 792, [r, g, b], true);
-    doc.setTextColor(r, g, b);
   } else if (theme === "classic") {
-    fillBand(0, 0, w, bandH, [23, 26, 28]);
-    doc.setTextColor(255, 255, 255);
-  } else doc.setTextColor(r, g, b);
+    fillBand(0, 0, w, headerH, [23, 26, 28]);
+  }
   if (logo) {
     try {
       // Aspect-preserved draw (Danny 2026-10-12): the preset box is ~1.6:1,
@@ -384,7 +403,7 @@ export async function buildFinancialPdf(
       // fall back to the old fixed box.
       const boxW = { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize];
       const boxH = { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize];
-      const boxY = inBand ? 12 : 18;
+      const boxY = (headerH - boxH) / 2;
       let drawW = boxW;
       let drawH = boxH;
       try {
@@ -396,6 +415,11 @@ export async function buildFinancialPdf(
         }
       } catch {
         /* intrinsic size unavailable — fixed box */
+      }
+      if (theme === "bold") {
+        // Bold identity: the logo sits in a white tile on the accent band.
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(margin - 5, boxY - 5, boxW + 10, boxH + 10, 4, 4, "F");
       }
       doc.addImage(
         logo,
@@ -411,97 +435,113 @@ export async function buildFinancialPdf(
       /* text branding stays */
     }
   }
-  doc.setFont(font, "bold");
-  if (document.showCompanyInfo && inBand) {
-    doc.setFontSize(F(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9));
-    if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", w - margin, 22, { align: "right" });
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(7));
-    doc.setTextColor(...bandDimInk);
+  if (document.showCompanyInfo) {
+    // Company stack, right-aligned on every theme: name (bold), then
+    // phone · license · website, address, and email as small detail lines.
+    const stackLines: Array<{ text: string; name?: boolean }> = [];
+    if (custom.showBusinessName) {
+      const nameText = custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "";
+      if (nameText) stackLines.push({ text: nameText, name: true });
+    }
     const infoBits = [settings?.phone, custom.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean);
-    if (infoBits.length) doc.text(infoBits.join("  ·  "), w - margin, 33, { align: "right" });
-    if (settings?.address) doc.text(settings.address, w - margin, 43, { align: "right" });
-  } else if (document.showCompanyInfo) {
-    doc.setFontSize(F(11));
-    doc.setTextColor(...ink);
-    if (custom.showBusinessName) doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", logo ? margin + 50 : margin, 30);
+    if (infoBits.length) stackLines.push({ text: infoBits.join("  ·  ") });
+    if (settings?.address) stackLines.push({ text: settings.address });
+    if (settings?.email) stackLines.push({ text: settings.email });
+    const stackStep = 11;
+    let stackY = headerH / 2 - ((stackLines.length - 1) * stackStep) / 2 + 3;
+    for (const line of stackLines) {
+      if (line.name) {
+        doc.setFont(font, "bold");
+        doc.setFontSize(F(theme === "bold" ? 12 : 11));
+        if (inBand) doc.setTextColor(255, 255, 255);
+        else doc.setTextColor(...ink);
+      } else {
+        doc.setFont(font, "normal");
+        doc.setFontSize(F(7.5));
+        if (inBand) doc.setTextColor(...bandDimInk);
+        else doc.setTextColor(...dimInk);
+      }
+      doc.text(line.text, w - margin, stackY, { align: "right" });
+      stackY += stackStep;
+    }
   }
-  const titleY = theme === "bold" ? 58 : inBand ? bandH + 26 : 82;
+  if (!inBand) {
+    doc.setDrawColor(theme === "modern" ? 205 : 226, theme === "modern" ? 212 : 230, theme === "modern" ? 209 : 228);
+    doc.setLineWidth(0.75);
+    doc.line(margin, headerH, w - margin, headerH);
+  }
+  const titleY = headerH + 40;
   doc.setFont(font, "bold");
-  doc.setFontSize(F(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20));
-  if (theme === "bold") doc.setTextColor(255, 255, 255);
-  else doc.setTextColor(...ink);
-  doc.text(docTitle, margin, titleY);
-  // Phase 2: short accent rule under the document title (white inside the
-  // bold theme's accent band, template accent everywhere else).
-  if (custom.colorMode === "gradient" && theme !== "bold") {
-    // The accent rule is Minimal's main accent element (it has no band) and
-    // a secondary one on classic/modern — gradient it like the bands.
-    fillBand(margin, titleY + 9 - 1.25, 46, 2.5, [r, g, b]);
+  doc.setFontSize(F(theme === "bold" ? 30 : theme === "modern" ? 26 : 24));
+  doc.setTextColor(...ink);
+  if (centeredTitle) doc.text(docTitle, w / 2, titleY, { align: "center" });
+  else doc.text(docTitle, margin, titleY);
+  const titleDate = document.issueDate ? formatDocumentDate(document.issueDate, custom.dateFormat, lang).toUpperCase() : "";
+  const dateY = titleY + 17;
+  if (titleDate) {
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...dimInk);
+    if (centeredTitle) doc.text(titleDate, w / 2, dateY, { align: "center", charSpace: 1 });
+    else doc.text(titleDate, margin, dateY, { charSpace: 1 });
+  }
+  const ruleY = (titleDate ? dateY : titleY) + 11;
+  if (custom.colorMode === "gradient") {
+    fillBand(centeredTitle ? w / 2 - 24 : margin, ruleY - 1.25, 48, 2.5, [r, g, b]);
   } else {
     doc.setLineWidth(2.5);
-    if (theme === "bold") doc.setDrawColor(255, 255, 255);
-    else doc.setDrawColor(r, g, b);
-    doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+    doc.setDrawColor(r, g, b);
+    if (centeredTitle) doc.line(w / 2 - 24, ruleY, w / 2 + 24, ruleY);
+    else doc.line(margin, ruleY, margin + 48, ruleY);
   }
-  doc.setFont(font, "normal");
-  doc.setFontSize(F(8));
-  if (theme === "bold") doc.setTextColor(255, 255, 255);
-  else doc.setTextColor(...dimInk);
-  if (docNumber) doc.text(docNumber, w - margin, titleY, { align: "right" });
-  const infoY = titleY + 24;
+  const infoY = ruleY + 25;
   const clientPad = theme === "modern" ? 12 : 0;
-  if (theme === "modern") {
-    doc.setFillColor(241, 244, 243);
-    doc.roundedRect(margin, infoY - 12, w - margin * 2, 68, 6, 6, "F");
-  }
   const clientX = margin + clientPad;
   const rightX = w - margin - clientPad;
-  doc.setTextColor(...ink);
-  doc.setFont(font, "bold");
-  doc.setFontSize(F(9));
-  doc.text(`${labels.billTo}: ${document.clientName}`, clientX, infoY);
-  doc.setFont(font, "normal");
-  doc.setFontSize(F(8));
-  doc.setTextColor(...dimInk);
   const clientSub = [document.jobType, document.jobAddress, document.shippingAddress]
     .filter((s) => s && s.trim())
     .join("  ·  ");
   const clientLines = clientSub
     ? ((doc.splitTextToSize(clientSub, (w - margin * 2) * 0.58) as string[]).slice(0, 3))
     : [];
-  if (clientLines.length) doc.text(clientLines, clientX, infoY + 13);
-  let ry = infoY;
-  doc.setFont(font, "bold");
-  doc.setFontSize(F(8));
-  doc.setTextColor(...ink);
-  if (docNumber) {
-    doc.text(
-      `${labels.number}: ${docNumber}`,
-      rightX,
-      ry,
-      { align: "right" },
-    );
-    ry += metaStep;
-  }
-  if (document.issueDate) {
-    doc.setFont(font, "normal");
-    doc.text(`${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
-      align: "right",
-    });
-    ry += metaStep;
-  }
-  // Phase 2: the due date lives in the header meta block (it used to print
-  // alone under the totals). Estimates show their expiry date here.
+  // Meta rows (right column): Number / Date / Due, label + value.
+  // The due date lives in the header meta block (it used to print alone
+  // under the totals). Estimates show their expiry date here.
   const metaDueDate = kind === "invoice" ? document.dueDate : document.expiryDate;
-  if (custom.showDueDate && metaDueDate) {
+  const metaTexts: Array<{ text: string; strong?: boolean }> = [];
+  if (docNumber) metaTexts.push({ text: `${labels.number}: ${docNumber}`, strong: true });
+  if (document.issueDate) metaTexts.push({ text: `${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}` });
+  if (custom.showDueDate && metaDueDate) metaTexts.push({ text: `${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}` });
+  const clientBlockH = 27 + clientLines.length * 10 * FONT_SCALE;
+  const rightBlockH = metaTexts.length ? (metaTexts.length - 1) * metaStep + 4 : 0;
+  if (theme === "modern") {
+    doc.setFillColor(241, 244, 243);
+    doc.roundedRect(margin, infoY - 12, w - margin * 2, Math.max(clientBlockH, rightBlockH) + 24, 6, 6, "F");
+  }
+  // Bill-to / FOR block: small label line, bold client name, detail lines.
+  doc.setFont(font, "bold");
+  doc.setFontSize(F(7.5));
+  doc.setTextColor(...dimInk);
+  doc.text(labels.billTo, clientX, infoY);
+  doc.setFont(font, "bold");
+  doc.setFontSize(F(11));
+  doc.setTextColor(...ink);
+  doc.text(document.clientName || "—", clientX, infoY + 14);
+  if (clientLines.length) {
     doc.setFont(font, "normal");
-    doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
-      align: "right",
-    });
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
+    doc.text(clientLines, clientX, infoY + 27);
+  }
+  let ry = infoY;
+  for (const row of metaTexts) {
+    doc.setFont(font, row.strong ? "bold" : "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...ink);
+    doc.text(row.text, rightX, ry, { align: "right" });
     ry += metaStep;
   }
-  let y = Math.max(infoY + 13 + clientLines.length * 10 * FONT_SCALE + 14, ry + 10);
+  let y = Math.max(infoY + clientBlockH + 10, ry + 6);
   // Build 0.6 (item 13): paginate long documents. Content must stay above the
   // footer zone (thank-you ~748, footer hairline 758): without page breaks
   // the line items ran off the bottom of the page and the footer printed on
@@ -521,6 +561,14 @@ export async function buildFinancialPdf(
       }
       if (theme === "bold" || theme === "classic") doc.setTextColor(255, 255, 255);
       else doc.setTextColor(...ink);
+    }
+    if (theme === "minimal") {
+      // Minimal has no header band — a firm ink rule under the header row
+      // is its band, in the same design language.
+      doc.setDrawColor(...ink);
+      doc.setLineWidth(1.4);
+      doc.line(margin, y + 7, w - margin, y + 7);
+      doc.setTextColor(...ink);
     }
     doc.setFont(font, "bold");
     doc.setFontSize(F(9));
@@ -646,11 +694,23 @@ export async function buildFinancialPdf(
     document.taxType,
     document.taxValue,
   );
+  // Deposit (0064): computed once. When the totals panel renders, the
+  // deposit becomes a "Deposit due at signing" row INSIDE the panel;
+  // otherwise it falls back to the standalone lines after the options
+  // section (the historical placement). The math is unchanged.
+  const depType = document.depositType === "percent" || document.depositType === "fixed" ? document.depositType : "none";
+  const depVal = Number(document.depositValue ?? "0");
+  const depTotalNum = money(kind === "invoice" ? String(document.totalWithLateFee ?? document.total) : String(totals.total));
+  const depAmount = depType === "percent" && depVal > 0 ? (depTotalNum * depVal) / 100 : depType === "fixed" && depVal > 0 ? depVal : 0;
+  const depDetail = depType === "percent" && depVal > 0 ? ` (${depVal}%)` : "";
+  const depInPanel = custom.showSummaryInfo && depAmount > 0;
   if (custom.showSummaryInfo) {
     // Phase 2: the totals live in a boxed summary panel — label left, amount
-    // right, divider, then the emphasized Total. The classic theme keeps its
-    // dark total band, inset 6pt inside the 262pt panel so the band keeps
-    // its exact legacy 250pt width. Invoices also get a Balance due row that
+    // right, divider, then the emphasized Total — now a solid band on every
+    // theme (dark on classic/minimal, accent on bold/modern). The classic
+    // theme keeps its dark total band inset 6pt inside the 262pt panel so
+    // the band keeps its exact legacy 250pt width; minimal's band spans
+    // the full panel width. Invoices also get a Balance due row that
     // accounts for payments already made.
     const panelW = 262;
     const panelX = w - margin - panelW;
@@ -675,7 +735,7 @@ export async function buildFinancialPdf(
     if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && paidToDate > 0) rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
     if (lateFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
     const totalRowH = custom.showAmount ? 24 : 0;
-    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + 8;
+    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + (depInPanel ? 35 : 0) + 8;
     ensureSpace(panelH + 6);
     doc.setFillColor(249, 251, 250);
     doc.setDrawColor(219, 223, 221);
@@ -696,20 +756,18 @@ export async function buildFinancialPdf(
       doc.line(panelX + 12, by - 9, panelX + panelW - 12, by - 9);
       by += 6;
     }
-    if (custom.showAmount && theme === "classic") {
-      fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
+    if (custom.showAmount) {
+      // Template rebuild: the TOTAL is a solid band on EVERY theme — dark
+      // on classic/minimal, the accent on bold/modern. Classic keeps its
+      // exact legacy 250pt inset band; minimal's band spans the panel.
+      if (theme === "minimal") fillBand(panelX, by - 12, panelW, 22, [24, 32, 30]);
+      else if (theme === "classic") fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
+      else fillBand(panelX + 6, by - 12, 250, 22, [r, g, b]);
       doc.setTextColor(255, 255, 255);
       doc.setFont(font, "bold");
       doc.setFontSize(F(13));
-      doc.text(`${totalLabel}:`, panelX + 16, by + 3);
-      doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
-      by += 24;
-    } else if (custom.showAmount) {
-      doc.setFont(font, "bold");
-      doc.setFontSize(F(12.5));
-      doc.setTextColor(r, g, b);
-      doc.text(`${totalLabel}:`, panelX + 12, by + 3);
-      doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
+      doc.text(`${totalLabel}:`, theme === "minimal" ? panelX + 10 : panelX + 16, by + 3);
+      doc.text(totalValue, theme === "minimal" ? panelX + panelW - 10 : panelX + panelW - 14, by + 3, { align: "right" });
       by += 24;
     }
     if (showBalance) {
@@ -721,78 +779,143 @@ export async function buildFinancialPdf(
       doc.text(usd(balanceDue), panelX + panelW - 12, by + 4, { align: "right" });
       by += 19;
     }
-    y += panelH;
-  }
-  // Estimate options (0076): a distinct section under the base totals. Each
-  // option prints with its price; the note states plainly that options are
-  // not part of the estimate total unless the client selects them (on the
-  // client page, where tick-boxes drive the live total).
-  const optionItems = kind === "quote" ? document.lineItems.filter((item) => item.optional) : [];
-  if (optionItems.length) {
-    const optionsSum = lineItemsTotal(optionItems);
-    y += 16;
-    ensureSpace(46);
-    doc.setFont(font, "bold");
-    doc.setFontSize(F(10.5));
-    doc.setTextColor(r, g, b);
-    doc.text(lang === "es" ? "OPCIONES" : "OPTIONS", margin, y);
-    y += 12 * FONT_SCALE;
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(8));
-    doc.setTextColor(...dimInk);
-    const optionsNote = lang === "es"
-      ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen."
-      : "Optional add-ons — not included in the estimate total unless selected.";
-    const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2) as string[];
-    doc.text(optionsNoteLines, margin, y);
-    y += optionsNoteLines.length * noteStep + 6;
-    doc.setTextColor(...ink);
-    for (const item of optionItems) {
-      const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
-      const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
-      doc.setFontSize(F(9));
-      const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
-      const rowH = Math.max(20, richLines.length * descStep + 6);
-      ensureSpace(rowH);
-      doc.setTextColor(...ink);
-      doc.setFontSize(F(9));
-      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
-      if (custom.showAmount) {
-        doc.setFont(font, "normal");
-        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
-      }
+    if (depInPanel) {
       doc.setDrawColor(224, 227, 226);
       doc.setLineWidth(0.5);
-      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
-      y += rowH;
+      doc.line(panelX + 12, by + 1, panelX + panelW - 12, by + 1);
+      by += 14;
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(r, g, b);
+      doc.text(`${lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}${depDetail}:`, panelX + 12, by);
+      doc.text(usd(depAmount), panelX + panelW - 12, by, { align: "right" });
+      by += 14;
+      doc.setFont(font, "normal");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(...ink);
+      doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}:`, panelX + 12, by);
+      doc.text(usd(Math.max(0, depTotalNum - depAmount)), panelX + panelW - 12, by, { align: "right" });
+      by += 6;
     }
-    ensureSpace(30);
-    doc.setFont(font, "bold");
-    doc.setFontSize(F(9.5));
-    doc.setTextColor(...ink);
-    doc.text(`${lang === "es" ? "Total de opciones" : "Options total"}:`, margin + 8, y + 4);
-    doc.text(usd(optionsSum), w - margin - 8, y + 4, { align: "right" });
-    y += 15 * FONT_SCALE;
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(8.5));
-    doc.setTextColor(...dimInk);
-    doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
-    y += 8;
+    y += panelH;
   }
-  // Deposit request line (estimates): "Deposit due (50%): $3,250.00" + balance.
-  const depType = document.depositType === "percent" || document.depositType === "fixed" ? document.depositType : "none";
-  const depVal = Number(document.depositValue ?? "0");
-  if (depType !== "none" && depVal > 0) {
-    const totalNum = money(kind === "invoice" ? String(document.totalWithLateFee ?? document.total) : String(totals.total));
-    const depAmount = depType === "percent" ? (totalNum * depVal) / 100 : depVal;
-    const depLabel = lang === "es" ? "Anticipo requerido" : "Deposit due";
-    const depDetail = depType === "percent" ? ` (${depVal}%)` : "";
+  // Estimate options (0076): structured sections under the base totals,
+  // each with a banded subhead in the items-table language and its OWN
+  // subtotal — never prices buried in parentheses. When the client has
+  // accepted options (the snapshot frozen at acceptance), they render
+  // first as ACCEPTED OPTIONS with the accepted totals; optionals the
+  // client did not pick stay under OPTIONS with the not-included note,
+  // which states plainly that options are not part of the estimate total
+  // unless the client selects them (on the client page, where tick-boxes
+  // drive the live total).
+  const optionItems = kind === "quote" ? document.lineItems.filter((item) => item.optional) : [];
+  const acceptedSnap = kind === "quote" ? document.optionSelection?.accepted ?? null : null;
+  if (optionItems.length || acceptedSnap) {
+    const acceptedKeys = new Set((acceptedSnap?.items ?? []).map((item) => item.key));
+    const remainingOptions = optionItems.filter((item) => !acceptedKeys.has(item.id ?? ""));
+    const drawOptionsBand = (text: string) => {
+      ensureSpace(48);
+      if (theme === "classic") {
+        fillBand(margin, y - 13, w - margin * 2, 20, [23, 26, 28]);
+        doc.setTextColor(255, 255, 255);
+      } else if (theme === "bold") {
+        fillBand(margin, y - 13, w - margin * 2, 20, [r, g, b]);
+        doc.setTextColor(255, 255, 255);
+      } else if (theme === "modern") {
+        doc.setFillColor(238, 241, 240);
+        doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+        doc.setTextColor(...ink);
+      } else {
+        doc.setDrawColor(...ink);
+        doc.setLineWidth(1.4);
+        doc.line(margin, y + 7, w - margin, y + 7);
+        doc.setTextColor(...ink);
+      }
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10.5));
+      doc.text(text, margin + 8, y);
+      doc.setTextColor(...ink);
+      y += 24;
+    };
+    const drawOptionRows = (items: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string }>) => {
+      for (const item of items) {
+        const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
+        const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+        doc.setFontSize(F(9));
+        const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
+        const rowH = Math.max(20, richLines.length * descStep + 6);
+        ensureSpace(rowH);
+        doc.setTextColor(...ink);
+        doc.setFontSize(F(9));
+        richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+        if (custom.showAmount) {
+          doc.setFont(font, "normal");
+          doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+        }
+        doc.setDrawColor(224, 227, 226);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+        y += rowH;
+      }
+    };
+    const drawOptionsSubtotal = (label: string, value: number) => {
+      ensureSpace(30);
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(...ink);
+      doc.text(`${label}:`, margin + 8, y + 4);
+      doc.text(usd(value), w - margin - 8, y + 4, { align: "right" });
+      y += 15 * FONT_SCALE;
+    };
+    y += 16;
+    if (acceptedSnap) {
+      drawOptionsBand(lang === "es" ? "OPCIONES ACEPTADAS" : "ACCEPTED OPTIONS");
+      drawOptionRows(acceptedSnap.items);
+      drawOptionsSubtotal(lang === "es" ? "Total de opciones" : "Options total", money(acceptedSnap.optionsTotal));
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10));
+      doc.setTextColor(r, g, b);
+      doc.text(`${lang === "es" ? "Total con opciones aceptadas" : "Total with accepted options"}: ${usd(money(acceptedSnap.totalWithOptions))}`, margin + 8, y + 4);
+      doc.setTextColor(...ink);
+      y += 16;
+    }
+    if (remainingOptions.length) {
+      if (acceptedSnap) y += 8;
+      drawOptionsBand(lang === "es" ? "OPCIONES" : "OPTIONS");
+      doc.setFont(font, "normal");
+      doc.setFontSize(F(8));
+      doc.setTextColor(...dimInk);
+      const optionsNote = lang === "es"
+        ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen."
+        : "Optional add-ons — not included in the estimate total unless selected.";
+      const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2) as string[];
+      doc.text(optionsNoteLines, margin + 8, y);
+      y += optionsNoteLines.length * noteStep + 6;
+      doc.setTextColor(...ink);
+      drawOptionRows(remainingOptions);
+      const optionsSum = lineItemsTotal(remainingOptions);
+      drawOptionsSubtotal(
+        acceptedSnap ? (lang === "es" ? "Total de opciones disponibles" : "Available options total") : (lang === "es" ? "Total de opciones" : "Options total"),
+        optionsSum,
+      );
+      if (!acceptedSnap) {
+        doc.setFont(font, "normal");
+        doc.setFontSize(F(8.5));
+        doc.setTextColor(...dimInk);
+        doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
+        y += 8;
+      }
+    }
+  }
+  // Deposit request line when the totals panel is hidden: the same
+  // "Deposit due at signing" wording as the in-panel row + balance.
+  if (depAmount > 0 && !depInPanel) {
     y += 16 * FONT_SCALE;
     doc.setFont(font, "normal");
     doc.setFontSize(F(10));
     doc.setTextColor(...dimInk);
-    doc.text(`${depLabel}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
-    const balance = Math.max(0, totalNum - depAmount);
+    doc.text(`${lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
+    const balance = Math.max(0, depTotalNum - depAmount);
     y += 14 * FONT_SCALE;
     doc.setFont(font, "bold");
     doc.setFontSize(F(10));

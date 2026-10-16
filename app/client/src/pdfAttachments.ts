@@ -1,7 +1,7 @@
 // Build 0.6: append document attachments (images + PDFs) to a generated
 // document PDF. Shared by the server (docPdf.ts, for shared links) and the
 // client (in-app preview), so both show the same appended pages.
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 export interface AttachmentForPdf {
   kind: "image" | "pdf";
@@ -30,12 +30,21 @@ export async function appendAttachmentsToPdf(
   mainPdfBytes: Uint8Array,
   attachments: AttachmentForPdf[],
   imagesPerPage: 1 | 2 | 4,
+  options?: { lang?: "en" | "es" },
 ): Promise<Uint8Array> {
   const images = attachments.filter((a) => a.kind === "image" && (a.contentType === "image/jpeg" || a.contentType === "image/png"));
   const pdfs = attachments.filter((a) => a.kind === "pdf");
   if (images.length === 0 && pdfs.length === 0) return mainPdfBytes;
 
   const out = await PDFDocument.load(mainPdfBytes, { ignoreEncryption: true });
+
+  // Template rebuild (Danny 2026-10-15): image pages carry the document's
+  // design language — a dark banded "Project photos" header — instead of
+  // bare photos floating on a blank page, so the whole PDF reads as one
+  // designed piece. The photo grid starts below the band.
+  const headerH = 46;
+  const areaTop = PAGE_H - headerH - 18;
+  const headerFont = images.length ? await out.embedFont(StandardFonts.HelveticaBold) : null;
 
   // Image pages: 2 = stacked rows, 4 = 2x2 grid. Phase 2: a lone photo no
   // longer blows up to nearly the full page — the 1-per-page cell is capped
@@ -46,8 +55,18 @@ export async function appendAttachmentsToPdf(
   for (let i = 0; i < images.length; i += perPage) {
     const group = images.slice(i, i + perPage);
     const page = out.addPage([PAGE_W, PAGE_H]);
+    if (headerFont) {
+      page.drawRectangle({ x: 0, y: PAGE_H - headerH, width: PAGE_W, height: headerH, color: rgb(0.09, 0.102, 0.11) });
+      page.drawText(options?.lang === "es" ? "Fotos del proyecto" : "Project photos", {
+        x: MARGIN,
+        y: PAGE_H - 30,
+        size: 13,
+        font: headerFont,
+        color: rgb(1, 1, 1),
+      });
+    }
     const cellW0 = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
-    const cellH0 = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellH0 = (areaTop - MARGIN - (rows - 1) * 12) / rows;
     const cellW = perPage === 1 ? Math.min(cellW0, 468) : cellW0;
     const cellH = perPage === 1 ? Math.min(cellH0, 528) : cellH0;
     for (let g = 0; g < group.length; g++) {
@@ -65,7 +84,7 @@ export async function appendAttachmentsToPdf(
       const col = g % cols;
       const row = Math.floor(g / cols);
       const x = MARGIN + col * (cellW0 + 12) + (cellW0 - cellW) / 2 + (cellW - w) / 2;
-      const topY = PAGE_H - MARGIN - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
+      const topY = areaTop - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
       const y = topY - cellH + (cellH - h) / 2;
       page.drawImage(embedded, { x, y, width: w, height: h });
     }

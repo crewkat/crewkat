@@ -278,7 +278,11 @@ describe("multi-line description line geometry (INV-0011 overprint regression)",
 
   // First text run of each description line: "x y Td" + "(text) Tj" in the
   // content stream. Description lines start at x=50 (margin 42 + 8 indent);
-  // the items region sits between the table header (y≈637) and the totals.
+  // the items region sits between the table header and the totals. The
+  // 2026-10-15 template rebuild's taller title block moved the table
+  // header row itself into this window (it draws at the same x=50), so the
+  // header label run is excluded by text — what this helper measures is
+  // the description flow only.
   function descriptionLines(raw: string): Array<{ y: number; text: string }> {
     const out: Array<{ y: number; text: string }> = [];
     const re = /([\d.]+) ([\d.]+) Td\n\(([^()]*)\) Tj/g;
@@ -286,7 +290,7 @@ describe("multi-line description line geometry (INV-0011 overprint regression)",
     while ((m = re.exec(raw))) {
       const x = Number(m[1]);
       const y = Number(m[2]);
-      if (x === 50 && y > 250 && y < 630) out.push({ y, text: m[3]! });
+      if (x === 50 && y > 250 && y < 630 && m[3] !== "Description") out.push({ y, text: m[3]! });
     }
     return out;
   }
@@ -391,10 +395,15 @@ describe("taller-than-a-page line items split across pages (INV-0011)", () => {
     // Nothing is drawn off-page and lost: every section survives somewhere.
     const found = new Set([...raw.matchAll(/(\d+)\. Section \d+:/g)].map((m) => m[1]));
     expect(found.size).toBe(24);
-    // The closing section and the totals panel land together on page 3;
-    // the notes panel then breaks to page 4 (existing ensureSpace flow).
+    // The closing section lands on page 3. The 2026-10-15 template
+    // rebuild's taller first page (header band + title block + meta row)
+    // starts the flow lower, so the closing section ends lower on page 3
+    // and the keep-together totals panel no longer fits beneath it: the
+    // panel and the notes panel land intact on page 4 (existing
+    // ensureSpace flow — the panel never splits). Page count is unchanged.
     expect(pages[2]).toContain("24. Section 24:");
-    expect(pages[2]).toContain("Balance due");
+    expect(pages[3]).toContain("Balance due");
+    expect(pages[3]).toContain("Workmanship guaranteed");
   });
 
   test("quote: a tall second row (zebra chunk) also starts on page 1", async () => {

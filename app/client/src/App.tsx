@@ -15306,6 +15306,19 @@ function QuotePaper({
   const dueValue = kind === "quote" ? quote.expiryDate : quote.dueDate;
   const paid = money(quote.paidToDate ?? "0");
   const balance = Math.max(0, money(quote.totalWithLateFee ?? quote.total) - paid);
+  const depTotalNum = money(kind === "invoice" ? String(quote.totalWithLateFee ?? quote.total) : String(totals.total));
+  const depAmount = quote.depositType === "percent" && Number(quote.depositValue ?? 0) > 0
+    ? (depTotalNum * Number(quote.depositValue)) / 100
+    : quote.depositType === "fixed" && Number(quote.depositValue ?? 0) > 0
+      ? Number(quote.depositValue)
+      : 0;
+  const depDetail = quote.depositType === "percent" && depAmount > 0 ? ` (${quote.depositValue}%)` : "";
+  const depositRows = depAmount > 0 ? (
+    <>
+      <span className="deposit-due">{lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}{depDetail}<strong>{usd(depAmount)}</strong></span>
+      <span>{lang === "es" ? "Saldo restante" : "Remaining balance"}<strong>{usd(Math.max(0, depTotalNum - depAmount))}</strong></span>
+    </>
+  ) : null;
   const logoSize = { huge: 74, big: 58, medium: 42, small: 30 }[c.logoSize];
   return (
     <article
@@ -15315,22 +15328,29 @@ function QuotePaper({
       <header className="quote-paper-band">
         <div className="quote-paper-brand">
           {quote.showLogo && settings?.logoUrl && <span className={`paper-logo ${c.removeLogoBackground ? "transparent" : ""}`}><img src={settings.logoUrl} alt={lang === "es" ? "Logo de la empresa" : "Company logo"} /></span>}
-          {quote.showCompanyInfo && <div>
-            {c.showBusinessName && <strong>{c.showShortBusinessName ? shortName : companyName}</strong>}
-            <small>{[settings?.phone, c.showLicenseNumber ? settings?.licenseNumber : ""].filter(Boolean).join(" · ")}</small>
-          </div>}
         </div>
-        {quote.showCompanyInfo && settings?.website && <span className="quote-paper-web">{settings.website}</span>}
+        {quote.showCompanyInfo && <div className="quote-paper-stack">
+          {c.showBusinessName && <strong>{c.showShortBusinessName ? shortName : companyName}</strong>}
+          <small>{[settings?.phone, c.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean).join(" · ")}</small>
+          {settings?.address && <small>{settings.address}</small>}
+          {settings?.email && <small>{settings.email}</small>}
+        </div>}
       </header>
-      <div className="quote-paper-title-row">
+      <div className="quote-paper-title-block">
         <h2>{title}</h2>
-        {quote.id ? <span className="quote-paper-number">{labels.number}: {kind === "invoice" && quote.invoiceNumber ? quote.invoiceNumber : `${kind === "quote" ? "EST" : "INV"}${String(quote.id).padStart(4, "0")}`}</span> : null}
+        {quote.issueDate && <span className="quote-paper-title-date">{formatDocumentDate(quote.issueDate, c.dateFormat, lang)}</span>}
       </div>
-      <section className="quote-paper-client">
-        <strong>{labels.billTo}: {quote.clientName || "—"}</strong>
-        <span>{[quote.jobType, quote.jobAddress, quote.shippingAddress].filter((s) => s && s.trim()).join(" · ") || (lang === "es" ? "Dirección" : "Address")}</span>
-        {kind === "invoice" && quote.issueDate && <small>{labels.date}: {formatDocumentDate(quote.issueDate, c.dateFormat, lang)}</small>}
-        {c.showDueDate && dueValue && <small>{labels.dueDate}: {formatDocumentDate(dueValue, c.dateFormat, lang)}</small>}
+      <section className="quote-paper-meta">
+        <div className="quote-paper-for">
+          <span className="meta-label">{labels.billTo}</span>
+          <strong>{quote.clientName || "—"}</strong>
+          <span>{[quote.jobType, quote.jobAddress, quote.shippingAddress].filter((s) => s && s.trim()).join(" · ") || (lang === "es" ? "Dirección" : "Address")}</span>
+        </div>
+        <div className="quote-paper-nums">
+          {quote.id ? <span><em>{labels.number}</em>{kind === "invoice" && quote.invoiceNumber ? quote.invoiceNumber : `${kind === "quote" ? "EST" : "INV"}${String(quote.id).padStart(4, "0")}`}</span> : null}
+          {quote.issueDate && <span><em>{labels.date}</em>{formatDocumentDate(quote.issueDate, c.dateFormat, lang)}</span>}
+          {c.showDueDate && dueValue && <span><em>{labels.dueDate}</em>{formatDocumentDate(dueValue, c.dateFormat, lang)}</span>}
+        </div>
       </section>
       {kind === "invoice" && c.showPaidStamp && quote.status === "paid" && <div className="paid-stamp">{labels.paid.toUpperCase()}</div>}
       <div className={`quote-paper-lines ${c.showQuantityUnitPrice ? "with-quantity" : ""} ${c.showAmount ? "" : "hide-amount"}`}>
@@ -15349,18 +15369,31 @@ function QuotePaper({
         {kind === "invoice" && c.showPaidSummary && quote.showPaidLine && paid > 0 && <span>{labels.paid}<strong>-{usd(paid)}</strong></span>}
         {c.showAmount && <span className="grand-total">{labels.total}<strong>{usd(kind === "invoice" ? money(quote.totalWithLateFee ?? quote.total) : totals.total)}</strong></span>}
         {kind === "invoice" && c.showBalanceDue && <span className="balance-due">{labels.balanceDue}<strong>{usd(balance)}</strong></span>}
+        {depositRows}
       </div>}
-      {kind === "quote" && quote.lineItems.some((i) => i.optional) && (
+      {kind === "quote" && quote.optionSelection?.accepted && (
         <div className="quote-paper-options">
-          <h3>{lang === "es" ? "Opciones" : "Options"}</h3>
-          <p>{lang === "es" ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons — not included in the estimate total unless selected."}</p>
-          {quote.lineItems.filter((i) => i.optional && (i.description || i.name)).map((item, i) => {
+          <h3>{lang === "es" ? "Opciones aceptadas" : "Accepted options"}</h3>
+          {quote.optionSelection.accepted.items.map((item, i) => {
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
             return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
           })}
-          <div className="quote-line options-sum"><span>{lang === "es" ? "Total de opciones" : "Options total"}</span><strong>{usd(lineItemsTotal(quote.lineItems.filter((i) => i.optional)))}</strong></div>
+          <div className="quote-line options-sum"><span>{lang === "es" ? "Total de opciones" : "Options total"}</span><strong>{usd(money(quote.optionSelection.accepted.optionsTotal))}</strong></div>
+          <div className="quote-line options-grand"><span>{lang === "es" ? "Total con opciones aceptadas" : "Total with accepted options"}</span><strong>{usd(money(quote.optionSelection.accepted.totalWithOptions))}</strong></div>
         </div>
       )}
+      {kind === "quote" && quote.lineItems.some((i) => i.optional && !(quote.optionSelection?.accepted?.items.some((a) => a.key === i.id))) && (
+        <div className="quote-paper-options">
+          <h3>{lang === "es" ? "Opciones" : "Options"}</h3>
+          <p>{lang === "es" ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons — not included in the estimate total unless selected."}</p>
+          {quote.lineItems.filter((i) => i.optional && (i.description || i.name) && !(quote.optionSelection?.accepted?.items.some((a) => a.key === i.id))).map((item, i) => {
+            const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+            return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+          })}
+          <div className="quote-line options-sum"><span>{quote.optionSelection?.accepted ? (lang === "es" ? "Total de opciones disponibles" : "Available options total") : (lang === "es" ? "Total de opciones" : "Options total")}</span><strong>{usd(lineItemsTotal(quote.lineItems.filter((i) => i.optional && !(quote.optionSelection?.accepted?.items.some((a) => a.key === i.id)))))}</strong></div>
+        </div>
+      )}
+      {!c.showSummaryInfo && depositRows && <div className="document-totals quote-paper-deposit">{depositRows}</div>}
       {quote.showFooterNotes && quote.footnote && <p className="quote-payment"><strong>{lang === "es" ? "Notas" : "Notes"}</strong>{quote.footnote}</p>}
       {quote.showPaymentTerms && settings?.paymentInstructions && <p className="quote-payment"><strong>{lang === "es" ? "Instrucciones de pago" : "Payment instructions"}</strong>{settings.paymentInstructions}</p>}
       {c.termsConditions && <p className="quote-payment"><strong>{lang === "es" ? "Términos y condiciones" : "Terms and conditions"}</strong>{c.termsConditions}</p>}
@@ -16056,6 +16089,7 @@ import type { AttachmentForPdf } from "./pdfAttachments";
 async function appendAttachmentsToBlob(
   base: Blob,
   data: { attachments: Array<{ kind: string; contentType: string; url: string | null }>; imagesPerPage: number } | null | undefined,
+  lang: Lang = "en",
 ): Promise<Blob> {
   try {
     const list = data?.attachments ?? [];
@@ -16076,7 +16110,7 @@ async function appendAttachmentsToBlob(
     if (atts.length === 0) return base;
     const { appendAttachmentsToPdf } = await import("./pdfAttachments");
     const perPage = data?.imagesPerPage === 2 ? 2 : data?.imagesPerPage === 4 ? 4 : 1;
-    const merged = await appendAttachmentsToPdf(new Uint8Array(await base.arrayBuffer()), atts, perPage);
+    const merged = await appendAttachmentsToPdf(new Uint8Array(await base.arrayBuffer()), atts, perPage, { lang });
     return new Blob([merged as unknown as BlobPart], { type: "application/pdf" });
   } catch {
     return base;
@@ -16389,7 +16423,7 @@ function QuotePreview({
   useEscapeToClose(sendSheetOpen, () => setSendSheetOpen(false));
   const attachmentsQuery = useQuery({ queryKey: ["document-attachments", "quote", quoteId], queryFn: () => api.listDocumentAttachments({ docType: "quote", docId: quoteId }) });
   // Build 0.6: the preview PDF includes appended attachment pages.
-  useEffect(() => { if (!quote) return; let cancelled = false; void (async () => { const base = await buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }); const final = await appendAttachmentsToBlob(base, attachmentsQuery.data); if (!cancelled) setBlob(final); })(); return () => { cancelled = true; }; }, [quote, settings, lang, attachmentsQuery.data]);
+  useEffect(() => { if (!quote) return; let cancelled = false; void (async () => { const base = await buildQuotePdf(quote, settings, lang, { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions }); const final = await appendAttachmentsToBlob(base, attachmentsQuery.data, lang); if (!cancelled) setBlob(final); })(); return () => { cancelled = true; }; }, [quote, settings, lang, attachmentsQuery.data]);
   const [duplicateError, setDuplicateError] = useState("");
   const duplicate = useMutation({mutationFn:()=>api.duplicateQuote({id:quoteId}),onMutate:()=>setDuplicateError(""),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["quotes"]});setMoreOpen(false);onOpenQuote(r.id);},onError:(e)=>handleLimitError(e,()=>setDuplicateError(actionErrorMessage(e)))});
   const convert = useMutation({mutationFn:()=>api.convertQuoteToInvoice({quoteId:quoteId,today:localToday()}),onSuccess:async(r)=>{await qc.invalidateQueries({queryKey:["invoices"]});await qc.invalidateQueries({queryKey:["quotes"]});onOpenInvoice(r.invoiceId);},onError:(e)=>handleLimitError(e,()=>{})});
@@ -17177,7 +17211,7 @@ function InvoicePreview({
   const [recurringEnd,setRecurringEnd]=useState("");
   const invAttachmentsQuery = useQuery({ queryKey: ["document-attachments", "invoice", invoiceId], queryFn: () => api.listDocumentAttachments({ docType: "invoice", docId: invoiceId }) });
   // Build 0.6: the preview PDF includes appended attachment pages.
-  useEffect(()=>{if(!invoice)return;let cancelled=false;void(async()=>{const base=await buildInvoicePdf(invoice,settings,lang,{discount:t.discount,tax:t.tax,paymentInstructions:t.paymentInstructions});const final=await appendAttachmentsToBlob(base,invAttachmentsQuery.data);if(!cancelled)setBlob(final);})();setFrequency(invoice.recurringFrequency);setNextDue(invoice.nextDueDate);setRecurringEnd(invoice.recurringEndDate);return()=>{cancelled=true;};},[invoice,settings,lang,invAttachmentsQuery.data]);
+  useEffect(()=>{if(!invoice)return;let cancelled=false;void(async()=>{const base=await buildInvoicePdf(invoice,settings,lang,{discount:t.discount,tax:t.tax,paymentInstructions:t.paymentInstructions});const final=await appendAttachmentsToBlob(base,invAttachmentsQuery.data,lang);if(!cancelled)setBlob(final);})();setFrequency(invoice.recurringFrequency);setNextDue(invoice.nextDueDate);setRecurringEnd(invoice.recurringEndDate);return()=>{cancelled=true;};},[invoice,settings,lang,invAttachmentsQuery.data]);
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["invoices"]});};
   const [duplicateError,setDuplicateError]=useState("");
   const duplicate=useMutation({mutationFn:()=>api.duplicateInvoice({id:invoiceId}),onMutate:()=>setDuplicateError(""),onSuccess:async(r)=>{await refresh();setMoreOpen(false);onOpenInvoice(r.id);},onError:(e)=>handleLimitError(e,()=>setDuplicateError(actionErrorMessage(e)))});

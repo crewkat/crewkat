@@ -516,15 +516,28 @@ fieldset { padding: 0; border: 0; }
 .quote-paper-band { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 -26px; padding: 12px 26px; background: #171a1c; color: #fff; }
 .quote-paper-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .quote-paper-band img { width: 42px; height: 30px; object-fit: contain; }
-.quote-paper-brand div { display: grid; gap: 2px; }
-.quote-paper-brand strong { font-size: 12px; }
-.quote-paper-brand small, .quote-paper-web { color: #c8cfcd; font-size: 8px; }
+.quote-paper-stack { margin-left: auto; display: grid; gap: 1px; text-align: right; }
+.quote-paper-stack strong { font-size: 12px; }
+.quote-paper-stack small { color: #c8cfcd; font-size: 8px; }
+.quote-paper-title-block { padding: 18px 0 2px; text-align: center; }
+.quote-paper-title-block::after { content: ""; display: block; width: 48px; height: 2.5px; margin: 9px auto 0; background: var(--quote-accent); }
+.quote-paper.theme-modern .quote-paper-title-block, .quote-paper.theme-minimal .quote-paper-title-block { text-align: left; }
+.quote-paper.theme-modern .quote-paper-title-block::after, .quote-paper.theme-minimal .quote-paper-title-block::after { margin-left: 0; }
+.quote-paper h2 { margin: 0; color: #18201e; font: 800 27px/1 "IBM Plex Sans Condensed",sans-serif; letter-spacing: .02em; }
+.quote-paper-title-date { display: block; margin-top: 4px; color: #5d6866; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
+.quote-paper-meta { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0 4px; }
+.quote-paper-for { display: grid; gap: 2px; }
+.quote-paper-for .meta-label { color: #5d6866; font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.quote-paper-for strong { font-size: 13px; }
+.quote-paper-for > span:last-child { color: #5d6866; font-size: 10px; }
+.quote-paper-nums { display: grid; gap: 2px; text-align: right; font-size: 10px; align-content: start; }
+/* Legacy paper rows — still used by the public contract stub (non-financial documents). */
 .quote-paper-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 18px 0 2px; }
-.quote-paper h2 { margin: 0; color: #18201e; font: 800 21px/1 "IBM Plex Sans Condensed",sans-serif; letter-spacing: .02em; }
 .quote-paper-number { color: #5d6866; font-size: 10px; font-weight: 700; }
 .quote-paper-client { display: grid; gap: 2px; padding: 12px 0; }
 .quote-paper-client strong { font-size: 13px; }
 .quote-paper-client span, .quote-paper-client small { color: #5d6866; font-size: 10px; }
+.quote-paper-nums em { font-style: normal; color: #5d6866; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
 .quote-paper-lines { display: grid; }
 .quote-line { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; padding: 8px; border-bottom: 1px solid #dfe4e2; font-size: 11px; }
 .quote-line.heading { background: #171a1c; color: #fff; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
@@ -539,23 +552,22 @@ fieldset { padding: 0; border: 0; }
 .quote-paper footer strong { color: var(--quote-accent); font-size: 15px; }
 .quote-paper.theme-modern { border-left: 10px solid var(--quote-accent); }
 .quote-paper.theme-modern .quote-paper-band { margin: 0; padding: 12px 0; background: transparent; color: #18201e; border-bottom: 1px solid #dfe4e2; }
-.quote-paper.theme-modern .quote-paper-brand small, .quote-paper.theme-modern .quote-paper-web { color: #5d6866; }
-.quote-paper.theme-modern .quote-paper-client { margin-top: 10px; padding: 12px; border-radius: 6px; background: #f1f4f3; }
+.quote-paper.theme-modern .quote-paper-stack small { color: #5d6866; }
+.quote-paper.theme-modern .quote-paper-meta { margin-top: 10px; padding: 12px; border-radius: 6px; background: #f1f4f3; }
 .quote-paper.theme-modern .quote-line.heading { background: #eef1f0; color: #4f5c59; }
-.quote-paper.theme-modern .document-totals .grand-total { background: #eef1f0; color: #18201e; }
-.quote-paper.theme-modern .document-totals .grand-total strong { color: var(--quote-accent); }
+.quote-paper.theme-modern .document-totals .grand-total { background: var(--quote-accent); color: #fff; }
+.quote-paper.theme-modern .document-totals .grand-total strong { color: #fff; }
 .quote-paper.theme-bold { padding: 0 26px 26px; }
 .quote-paper.theme-bold .quote-paper-band { margin: 0 -26px; padding: 12px 26px; background: var(--quote-accent); color: white; }
-.quote-paper.theme-bold .quote-paper-brand small, .quote-paper.theme-bold .quote-paper-web { color: rgba(255,255,255,.82); }
-.quote-paper.theme-bold h2 { color: var(--quote-accent); }
+.quote-paper.theme-bold .quote-paper-stack small { color: rgba(255,255,255,.82); }
 .quote-paper.theme-bold .quote-line.heading { background: var(--quote-accent); color: white; }
 .quote-paper.theme-bold .document-totals .grand-total { background: var(--quote-accent); }
 .quote-paper.theme-minimal { padding: 34px; box-shadow: 0 5px 18px rgba(0,0,0,.08); }
 .quote-paper.theme-minimal .quote-paper-band { margin: 0; padding: 0 0 12px; background: transparent; color: #18201e; border-bottom: 1px solid #dfe4e2; }
-.quote-paper.theme-minimal .quote-paper-brand small, .quote-paper.theme-minimal .quote-paper-web { color: #5d6866; }
+.quote-paper.theme-minimal .quote-paper-stack small { color: #5d6866; }
 .quote-paper.theme-minimal .quote-line.heading { background: transparent; color: #4f5c59; border-bottom: 2px solid #18201e; }
-.quote-paper.theme-minimal .document-totals .grand-total { background: transparent; color: #18201e; margin: 6px 0 0; padding: 8px 0 0; border-radius: 0; border-top: 2px solid #18201e; }
-.quote-paper.theme-minimal .document-totals .grand-total strong { color: #18201e; }
+.quote-paper.theme-minimal .document-totals .grand-total { background: #18201e; color: #fff; }
+.quote-paper.theme-minimal .document-totals .grand-total strong { color: #fff; }
 .packet-brand { display: flex; align-items: flex-start; gap: 10px; }
 .packet-brand img { width: 60px; height: 42px; object-fit: contain; }
 .packet-header { border-bottom-color: var(--quote-accent,#1f5a4a); }
@@ -5485,10 +5497,16 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .line-item-optional-row strong { display: block; font-size: .95rem; }
 .line-item-optional-row small { display: block; color: var(--dim); font-size: .8rem; line-height: 1.35; margin-top: 2px; }
 .calculation-summary .options-total-row { color: var(--accent); }
-.quote-paper-options { margin-top: 14px; border-top: 2px solid var(--quote-accent, #1f5a4a); padding-top: 8px; }
-.quote-paper-options h3 { margin: 0 0 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--quote-accent, #1f5a4a); }
+.quote-paper-options { margin-top: 16px; }
+.quote-paper-options h3 { margin: 0 -8px 8px; padding: 7px 8px; background: #171a1c; color: #fff; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.quote-paper.theme-bold .quote-paper-options h3 { background: var(--quote-accent); }
+.quote-paper.theme-modern .quote-paper-options h3 { background: #eef1f0; color: #4f5c59; }
+.quote-paper.theme-minimal .quote-paper-options h3 { background: transparent; color: #18201e; border-bottom: 2px solid #18201e; margin: 0 0 8px; padding: 7px 0; }
 .quote-paper-options p { margin: 0 0 6px; color: #5c6663; font-size: 11px; }
 .quote-paper-options .options-sum { font-weight: 700; border-top: 1px solid #dfe4e2; padding-top: 5px; margin-top: 4px; }
+.quote-paper-options .options-grand { font-weight: 800; color: var(--quote-accent, #1f5a4a); padding-top: 5px; }
+.document-totals .deposit-due { color: var(--quote-accent, #1f5a4a); font-weight: 700; }
+.quote-paper-deposit { margin-top: 14px; }
 .quote-options-summary { margin-top: 14px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--surface); }
 .quote-options-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .quote-options-head h3 { margin: 0; font-size: .95rem; }
