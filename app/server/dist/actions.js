@@ -77542,10 +77542,18 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Invoice not found.");
     await assertInvoiceLimit(ctx, db);
     const now = new Date;
-    const made = await db.insert(invoices).values({ ...row, id: undefined, quoteId: null, status: "draft", issueDate: now.toISOString().slice(0, 10), dueDate: "", recurringFrequency: "none", nextDueDate: "", seriesId: null, parentInvoiceId: row.id, recurringEndDate: "", recurringCancelled: false, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const invoiceNumber = await nextInvoiceNumber(db);
+    const made = await db.insert(invoices).values({ ...row, id: undefined, invoiceNumber, quoteId: null, status: "draft", issueDate: now.toISOString().slice(0, 10), dueDate: "", recurringFrequency: "none", nextDueDate: "", seriesId: null, parentInvoiceId: row.id, recurringEndDate: "", recurringCancelled: false, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const next = made[0];
     if (!next)
       throw new Error("Could not duplicate invoice.");
+    try {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const srcAtts = await db.select().from(documentAttachments).where(and(eq(documentAttachments.docType, "invoice"), eq(documentAttachments.docId, row.id), eq(documentAttachments.companyId, companyId))).orderBy(documentAttachments.sortOrder, documentAttachments.id);
+      for (const a of srcAtts) {
+        await db.insert(documentAttachments).values({ companyId, docType: "invoice", docId: next.id, kind: a.kind, blobKey: a.blobKey, fileName: a.fileName, contentType: a.contentType, sortOrder: a.sortOrder, createdAt: now });
+      }
+    } catch {}
     ctx.invalidateQueries();
     return { id: next.id };
   } }),
