@@ -40466,6 +40466,7 @@ __export(exports_schema, {
   onboardingChecklist: () => onboardingChecklist,
   paymentMilestones: () => paymentMilestones,
   payments: () => payments,
+  photoPairs: () => photoPairs,
   photos: () => photos,
   platformPolicyVersions: () => platformPolicyVersions,
   platformSettings: () => platformSettings,
@@ -40507,7 +40508,8 @@ __export(exports_schema, {
   userNotifications: () => userNotifications,
   userReports: () => userReports,
   voiceNotes: () => voiceNotes,
-  warranties: () => warranties
+  warranties: () => warranties,
+  weeklyGameChampions: () => weeklyGameChampions
 });
 
 // ../node_modules/drizzle-orm/sqlite-core/foreign-keys.js
@@ -41097,6 +41099,7 @@ var clients = sqliteTable("clients", {
   phone: text("phone").notNull().default(""),
   email: text("email").notNull().default(""),
   address: text("address").notNull().default(""),
+  addressesJson: text("addresses_json").notNull().default("[]"),
   notes: text("notes").notNull().default(""),
   referredByClientId: integer2("referred_by_client_id"),
   tags: text("tags").notNull().default("[]"),
@@ -41148,6 +41151,15 @@ var photos = sqliteTable("photos", {
   capturedAt: integer2("captured_at", { mode: "timestamp_ms" }),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var photoPairs = sqliteTable("photo_pairs", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  beforePhotoId: integer2("before_photo_id").notNull(),
+  afterPhotoId: integer2("after_photo_id").notNull(),
+  label: text("label").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
 var documents = sqliteTable("documents", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -41167,6 +41179,7 @@ var documents = sqliteTable("documents", {
   clientSignedPdfBlobKey: text("client_signed_pdf_blob_key"),
   clientSignatureHash: text("client_signature_hash").notNull().default(""),
   clientSignedUserAgent: text("client_signed_user_agent").notNull().default(""),
+  signatureFieldsJson: text("signature_fields_json").notNull().default("{}"),
   signedAt: integer2("signed_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -41182,6 +41195,7 @@ var quotes = sqliteTable("quotes", {
   jobType: text("job_type").notNull().default(""),
   lineItemsJson: text("line_items_json").notNull(),
   materialsJson: text("materials_json").notNull().default("[]"),
+  optionSelectionJson: text("option_selection_json").notNull().default("{}"),
   subtotal: text("subtotal").notNull().default("0"),
   discountType: text("discount_type", { enum: ["percent", "fixed"] }).notNull().default("percent"),
   discountValue: text("discount_value").notNull().default("0"),
@@ -41380,6 +41394,7 @@ var settings = sqliteTable("settings", {
   simpleMode: integer2("simple_mode", { mode: "boolean" }).notNull().default(true),
   logoBlobKey: text("logo_blob_key"),
   coverBlobKey: text("cover_blob_key"),
+  signatureBlobKey: text("signature_blob_key"),
   listingBonus: integer2("listing_bonus").notNull().default(0),
   marketplacePhoneVerified: integer2("marketplace_phone_verified", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
@@ -42406,6 +42421,69 @@ var dailyGameScores = sqliteTable("daily_game_scores", {
   uniqueIndex("daily_game_scores_user_date_unique").on(table.userId, table.scoreDate),
   index("daily_game_scores_date_score_idx").on(table.scoreDate, table.score)
 ]);
+var weeklyGameChampions = sqliteTable("weekly_game_champions", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  weekStart: text("week_start").notNull(),
+  userId: integer2("user_id").references(() => authUsers.id, { onDelete: "set null" }),
+  businessName: text("business_name").notNull().default(""),
+  score: integer2("score").notNull().default(0),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("weekly_game_champions_week_unique").on(table.weekStart)
+]);
+
+// src/craneWeek.ts
+var CRANE_TZ = "America/New_York";
+var etParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: CRANE_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+function etDateString(instant) {
+  let y = "";
+  let m = "";
+  let d = "";
+  for (const part of etParts.formatToParts(instant)) {
+    if (part.type === "year")
+      y = part.value;
+    else if (part.type === "month")
+      m = part.value;
+    else if (part.type === "day")
+      d = part.value;
+  }
+  return `${y}-${m}-${d}`;
+}
+function parseDate(dateStr) {
+  const [y, m, d] = dateStr.split("-").map((n) => Number(n));
+  return { y, m, d };
+}
+function formatUTCDate(ms) {
+  const dt = new Date(ms);
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(dt.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function addDays(dateStr, n) {
+  const { y, m, d } = parseDate(dateStr);
+  return formatUTCDate(Date.UTC(y, m - 1, d) + n * 86400000);
+}
+function weekStartOf(dateStr) {
+  const { y, m, d } = parseDate(dateStr);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const sinceMonday = (dow + 6) % 7;
+  return addDays(dateStr, -sinceMonday);
+}
+function weekDates(weekStart) {
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+}
+function currentWeekStart(now = new Date) {
+  return weekStartOf(etDateString(now));
+}
+function lastWeekStart(now = new Date) {
+  return addDays(currentWeekStart(now), -7);
+}
 
 // ../node_modules/jspdf/dist/jspdf.es.min.js
 var import_typeof = __toESM(require_typeof());
@@ -55593,8 +55671,11 @@ function money(value) {
   const parsed = Number(value.replace(/[^0-9.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
+function lineItemsTotal(items) {
+  return items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
+}
 function financialTotals(items, discountType, discountValue, taxType, taxValue) {
-  const subtotal = items.reduce((sum, item) => sum + Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0")), 0);
+  const subtotal = lineItemsTotal(items.filter((item) => !item.optional));
   const discountRaw = Math.max(0, money(discountValue));
   const discount = Math.min(subtotal, discountType === "percent" ? subtotal * discountRaw / 100 : discountRaw);
   const taxable = Math.max(0, subtotal - discount);
@@ -55605,11 +55686,21 @@ function financialTotals(items, discountType, discountValue, taxType, taxValue) 
 function usd(value) {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
+function sameOriginBlobPath(url) {
+  if (!url)
+    return url;
+  try {
+    const parsed = new URL(url, "https://crewkat.invalid");
+    if (parsed.pathname.startsWith("/blobs/"))
+      return parsed.pathname + parsed.search;
+  } catch {}
+  return url;
+}
 async function loadImageDataUrl(url) {
   if (!url)
     return null;
   try {
-    return await blobDataUrl(await (await fetch(url)).blob());
+    return await blobDataUrl(await (await fetch(sameOriginBlobPath(url))).blob());
   } catch {
     return null;
   }
@@ -55968,8 +56059,9 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   doc.setTextColor(...ink);
   doc.setFont(font, "normal");
   doc.setFontSize(F(9));
+  const baseLineItems = document2.lineItems.filter((item) => !item.optional);
   let rowIndex = 0;
-  for (const item of document2.lineItems) {
+  for (const item of baseLineItems) {
     const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
@@ -56111,6 +56203,56 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       by += 19;
     }
     y += panelH;
+  }
+  const optionItems = kind === "quote" ? document2.lineItems.filter((item) => item.optional) : [];
+  if (optionItems.length) {
+    const optionsSum = lineItemsTotal(optionItems);
+    y += 16;
+    ensureSpace(46);
+    doc.setFont(font, "bold");
+    doc.setFontSize(F(10.5));
+    doc.setTextColor(r, g, b);
+    doc.text(lang === "es" ? "OPCIONES" : "OPTIONS", margin, y);
+    y += 12 * FONT_SCALE;
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
+    const optionsNote = lang === "es" ? "Complementos opcionales \u2014 no est\xE1n incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons \u2014 not included in the estimate total unless selected.";
+    const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2);
+    doc.text(optionsNoteLines, margin, y);
+    y += optionsNoteLines.length * noteStep + 6;
+    doc.setTextColor(...ink);
+    for (const item of optionItems) {
+      const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
+      const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+      doc.setFontSize(F(9));
+      const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
+      const rowH = Math.max(20, richLines.length * descStep + 6);
+      ensureSpace(rowH);
+      doc.setTextColor(...ink);
+      doc.setFontSize(F(9));
+      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+      if (custom.showAmount) {
+        doc.setFont(font, "normal");
+        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+      }
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+      y += rowH;
+    }
+    ensureSpace(30);
+    doc.setFont(font, "bold");
+    doc.setFontSize(F(9.5));
+    doc.setTextColor(...ink);
+    doc.text(`${lang === "es" ? "Total de opciones" : "Options total"}:`, margin + 8, y + 4);
+    doc.text(usd(optionsSum), w - margin - 8, y + 4, { align: "right" });
+    y += 15 * FONT_SCALE;
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...dimInk);
+    doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
+    y += 8;
   }
   const depType = document2.depositType === "percent" || document2.depositType === "fixed" ? document2.depositType : "none";
   const depVal = Number(document2.depositValue ?? "0");
@@ -56458,7 +56600,7 @@ var breakTextIntoLines = function(text, wordBreaks, maxWidth, computeWidthOfText
   return lines;
 };
 var dateRegex = /^D:(\d\d\d\d)(\d\d)?(\d\d)?(\d\d)?(\d\d)?(\d\d)?([+\-Z])?(\d\d)?'?(\d\d)?'?$/;
-var parseDate = function(dateStr) {
+var parseDate2 = function(dateStr) {
   var match = dateStr.match(dateRegex);
   if (!match)
     return;
@@ -59706,7 +59848,7 @@ var PDFHexString = function(_super) {
   };
   PDFHexString.prototype.decodeDate = function() {
     var text = this.decodeText();
-    var date = parseDate(text);
+    var date = parseDate2(text);
     if (!date)
       throw new InvalidPDFDateStringError(text);
     return date;
@@ -59989,7 +60131,7 @@ var PDFString = function(_super) {
   };
   PDFString.prototype.decodeDate = function() {
     var text = this.decodeText();
-    var date = parseDate(text);
+    var date = parseDate2(text);
     if (!date)
       throw new InvalidPDFDateStringError(text);
     return date;
@@ -71354,7 +71496,8 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
       amount: li.amount,
       quantity: li.quantity ?? 1,
       discount: li.discount ?? "0",
-      unit: li.unit === "days" || li.unit === "hours" ? li.unit : "none"
+      unit: li.unit === "days" || li.unit === "hours" ? li.unit : "none",
+      optional: li.optional === true
     })),
     invoiceNumber: payload.invoiceNumber || undefined,
     subtotal: payload.subtotal,
@@ -73744,6 +73887,133 @@ ${section.paragraphs.join(`
 
 `);
 
+// ../client/src/signatureComposite.ts
+var PLACEMENT_KEYS = ["clientSignature", "clientDate", "contractorSignature", "contractorDate"];
+function cleanPlacement(value) {
+  if (!value || typeof value !== "object")
+    return;
+  const v = value;
+  const num = (x) => typeof x === "number" && Number.isFinite(x) ? x : NaN;
+  const page = num(v.page);
+  const xPct = num(v.xPct);
+  const yPct = num(v.yPct);
+  const wPct = num(v.wPct);
+  const hPct = num(v.hPct);
+  if (!Number.isInteger(page) || page < 1)
+    return;
+  if ([xPct, yPct, wPct, hPct].some((n) => Number.isNaN(n)))
+    return;
+  if (xPct < 0 || yPct < 0 || wPct <= 0 || hPct <= 0 || xPct + wPct > 1.02 || yPct + hPct > 1.02)
+    return;
+  return { page, xPct, yPct, wPct, hPct };
+}
+function parseSignatureFields(json) {
+  if (!json)
+    return {};
+  try {
+    const raw = JSON.parse(json);
+    const out = {};
+    for (const key of PLACEMENT_KEYS) {
+      const placement = cleanPlacement(raw[key]);
+      if (placement)
+        out[key] = placement;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function serializeSignatureFields(fields) {
+  const out = {};
+  for (const key of PLACEMENT_KEYS) {
+    const placement = fields[key] ? cleanPlacement(fields[key]) : undefined;
+    if (placement)
+      out[key] = placement;
+  }
+  return JSON.stringify(out);
+}
+var SIGNATURE_FIELD_DEFAULTS = {
+  signature: { wPct: 0.3, hPct: 0.075 },
+  date: { wPct: 0.22, hPct: 0.05 }
+};
+function defaultSignatureField(pageCount, role) {
+  return {
+    page: Math.max(1, pageCount),
+    xPct: role === "client" ? 0.07 : 0.56,
+    yPct: 0.85,
+    wPct: SIGNATURE_FIELD_DEFAULTS.signature.wPct,
+    hPct: SIGNATURE_FIELD_DEFAULTS.signature.hPct
+  };
+}
+function defaultDateField(signatureField) {
+  return {
+    page: signatureField.page,
+    xPct: signatureField.xPct,
+    yPct: Math.min(0.95, signatureField.yPct + signatureField.hPct + 0.012),
+    wPct: SIGNATURE_FIELD_DEFAULTS.date.wPct,
+    hPct: SIGNATURE_FIELD_DEFAULTS.date.hPct
+  };
+}
+function resolveDateField(fields, role, pageCount) {
+  const placed = role === "client" ? fields.clientDate : fields.contractorDate;
+  if (placed)
+    return { ...placed, page: Math.min(placed.page, Math.max(1, pageCount)) };
+  const signature = resolveSignatureField(fields, role, pageCount);
+  return defaultDateField(signature);
+}
+function resolveSignatureField(fields, role, pageCount) {
+  const placed = role === "client" ? fields.clientSignature : fields.contractorSignature;
+  if (placed)
+    return { ...placed, page: Math.min(placed.page, Math.max(1, pageCount)) };
+  return defaultSignatureField(pageCount, role);
+}
+var clamp01 = (n) => Math.min(1, Math.max(0, n));
+async function compositeSignatureStamps(originalBytes, fields, stamps) {
+  const pdf = await PDFDocument_default.load(originalBytes);
+  const pageCount = pdf.getPageCount();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  for (const stamp of stamps) {
+    const field = resolveSignatureField(fields, stamp.role, pageCount);
+    const page = pdf.getPage(field.page - 1);
+    const { width: pageW, height: pageH } = page.getSize();
+    const boxX = clamp01(field.xPct) * pageW;
+    const boxW = clamp01(field.wPct) * pageW;
+    const boxH = clamp01(field.hPct) * pageH;
+    const boxTopY = pageH - clamp01(field.yPct) * pageH;
+    if (stamp.imageBytes && stamp.imageBytes.length > 0) {
+      const image = stamp.imageFormat === "jpg" ? await pdf.embedJpg(stamp.imageBytes) : await pdf.embedPng(stamp.imageBytes);
+      const scale = Math.min(boxW / image.width, boxH / image.height);
+      const drawW = image.width * scale;
+      const drawH = image.height * scale;
+      page.drawImage(image, {
+        x: boxX + (boxW - drawW) / 2,
+        y: boxTopY - boxH + (boxH - drawH) / 2,
+        width: drawW,
+        height: drawH
+      });
+    }
+    if (stamp.dateText) {
+      const dateField = resolveDateField(fields, stamp.role, pageCount);
+      const datePage = pdf.getPage(dateField.page - 1);
+      const size = datePage.getSize();
+      const dW = clamp01(dateField.wPct) * size.width;
+      const dH = clamp01(dateField.hPct) * size.height;
+      const dX = clamp01(dateField.xPct) * size.width;
+      const dTopY = size.height - clamp01(dateField.yPct) * size.height;
+      const fontSize = Math.max(6, Math.min(14, dH * 0.55));
+      datePage.drawText(stamp.dateText, {
+        x: dX,
+        y: dTopY - dH + (dH - fontSize) / 2,
+        size: fontSize,
+        font,
+        color: rgb2(0.09, 0.13, 0.12),
+        maxWidth: dW
+      });
+    }
+  }
+  return pdf.save();
+}
+
 // src/actions.ts
 var stageSchema = _enum(["before", "during", "after"]);
 var languageSchema = _enum(["en", "es"]);
@@ -73753,7 +74023,8 @@ var adjustmentTypeSchema = _enum(["percent", "fixed"]);
 var depositTypeSchema = _enum(["none", "percent", "fixed"]);
 var invoiceStatusSchema = _enum(["draft", "sent", "paid", "overdue"]);
 var documentKindSchema = _enum(["invoice", "quote", "contract", "change_order"]);
-var clientSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), notes: string2(), tags: array(string2()), referredByClientId: number2().nullable(), referredByName: string2().nullable(), referralCount: number2(), jobCount: number2(), quoteCount: number2(), totalInvoiced: number2(), totalPaid: number2(), balanceDue: number2(), invoiceCount: number2(), paymentPercent: number2(), createdAt: string2(), updatedAt: string2() });
+var clientAddressSchema = object({ label: string2(), address: string2(), primary: boolean2() });
+var clientSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), addresses: array(clientAddressSchema), notes: string2(), tags: array(string2()), referredByClientId: number2().nullable(), referredByName: string2().nullable(), referralCount: number2(), jobCount: number2(), quoteCount: number2(), totalInvoiced: number2(), totalPaid: number2(), balanceDue: number2(), invoiceCount: number2(), paymentPercent: number2(), createdAt: string2(), updatedAt: string2() });
 var jobSchema = object({
   id: number2(),
   clientId: number2().nullable(),
@@ -73792,6 +74063,19 @@ var photoSchema = object({
   capturedAt: string2(),
   createdAt: string2()
 });
+var signaturePlacementSchema = object({
+  page: number2().int().min(1).max(500),
+  xPct: number2().min(0).max(1),
+  yPct: number2().min(0).max(1),
+  wPct: number2().gt(0).max(1),
+  hPct: number2().gt(0).max(1)
+});
+var signatureFieldsSchema = object({
+  clientSignature: signaturePlacementSchema.optional(),
+  clientDate: signaturePlacementSchema.optional(),
+  contractorSignature: signaturePlacementSchema.optional(),
+  contractorDate: signaturePlacementSchema.optional()
+});
 var documentSchema = object({
   id: number2(),
   jobId: number2(),
@@ -73808,12 +74092,13 @@ var documentSchema = object({
   clientSignerName: string2(),
   clientSignedAt: string2().nullable(),
   clientSignatureHash: string2(),
-  signedPdfUrl: string2().nullable()
+  signedPdfUrl: string2().nullable(),
+  signatureFields: signatureFieldsSchema
 });
 var punchItemSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2() });
 var punchSignoffSchema = object({ id: number2(), jobId: number2(), customerName: string2(), customerSignatureUrl: string2(), contractorName: string2(), contractorSignatureUrl: string2(), signedAt: string2() });
 var progressSchema = object({ id: number2(), jobId: number2(), dayNumber: number2(), note: string2(), photoIds: array(number2()), status: _enum(["draft", "sent"]), createdAt: string2(), updatedAt: string2() });
-var quoteItemSchema = object({ description: string2().trim().min(1).max(5000), amount: string2().trim().max(80) });
+var quoteItemSchema = object({ description: string2().trim().min(1).max(5000), amount: string2().trim().max(80), name: string2().trim().max(160).optional(), quantity: number2().min(0).max(1e5).optional(), discount: string2().trim().max(80).optional(), unit: _enum(["none", "days", "hours"]).optional(), id: string2().trim().max(80).optional(), optional: boolean2().optional() });
 var materialItemSchema = object({ name: string2().trim().min(1).max(300), qty: string2().trim().max(40), unit: string2().trim().max(40), checked: boolean2() });
 var invoiceItemSchema = quoteItemSchema.extend({
   name: string2().trim().max(160).default(""),
@@ -73830,8 +74115,10 @@ var customizeJsonSchema = string2().max(5000000).refine((value) => {
     return false;
   }
 }, "Invalid document customization.");
+var acceptedOptionsSchema = object({ items: array(object({ key: string2(), name: string2(), description: string2(), amount: string2(), quantity: number2(), discount: string2(), unit: string2() })), optionsTotal: string2(), totalWithOptions: string2(), acceptedAt: string2() });
+var quoteOptionRowSchema = object({ key: string2(), name: string2(), description: string2(), amount: string2(), quantity: number2(), lineTotal: string2() });
 var financialFieldsSchema = object({ subtotal: string2(), discountType: adjustmentTypeSchema, discountValue: string2(), taxType: adjustmentTypeSchema, taxValue: string2(), total: string2(), footnote: string2(), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape);
-var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), materials: array(materialItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
+var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), optionSelection: object({ selectedKeys: array(string2()), accepted: acceptedOptionsSchema.nullable() }), materials: array(materialItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var paymentSchema = object({ id: number2(), invoiceId: number2(), amount: string2(), paymentDate: string2(), method: string2(), note: string2(), createdAt: string2() });
 var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var timeEntrySchema = object({ id: number2(), jobId: number2(), crewMember: string2(), startedAt: string2(), endedAt: string2().nullable(), note: string2(), durationSeconds: number2() });
@@ -73840,8 +74127,9 @@ var crewTaskSchema = object({ id: number2(), jobId: number2(), text: string2(), 
 var voiceNoteSchema = object({ id: number2(), jobId: number2(), title: string2(), url: string2(), durationSeconds: number2(), createdAt: string2() });
 var certificateSchema = object({ id: number2(), jobId: number2(), completionDate: string2(), warrantyTerms: string2(), createdAt: string2(), updatedAt: string2() });
 var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), themeMode: _enum(["light", "dark", "system"]), uiAccent: _enum(["orange", "blue", "green", "purple", "red"]), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), reviewRequestsEnabled: boolean2().default(true), reviewRequestDelayDays: number2().int().min(0).max(30).default(3), weeklyProgressEnabled: boolean2().default(true), simpleMode: boolean2() });
-var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable() });
-var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
+var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable(), savedSignatureUrl: string2().nullable() });
+var clientAddressInputSchema = object({ label: string2().trim().max(60).default(""), address: string2().trim().max(240).default(""), primary: boolean2().default(false) });
+var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), addresses: array(clientAddressInputSchema).max(20).default([]), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
 function normalizeClientTags(tags) {
   if (!Array.isArray(tags))
     return [];
@@ -73874,6 +74162,55 @@ function parseClientTags(raw) {
     return [];
   }
 }
+function clientAddressKey(address) {
+  return address.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function normalizeClientAddresses(list) {
+  if (!Array.isArray(list))
+    return [];
+  const seen = new Set;
+  const out = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object")
+      continue;
+    const entry = raw;
+    const address = typeof entry.address === "string" ? entry.address.trim().slice(0, 240) : "";
+    if (!address)
+      continue;
+    const key = clientAddressKey(address);
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    out.push({ label: typeof entry.label === "string" ? entry.label.trim().slice(0, 60) : "", address, primary: entry.primary === true });
+    if (out.length >= 20)
+      break;
+  }
+  if (out.length > 0) {
+    const primaryIndex = out.findIndex((entry) => entry.primary);
+    out.forEach((entry, index) => {
+      entry.primary = index === (primaryIndex >= 0 ? primaryIndex : 0);
+    });
+  }
+  return out;
+}
+function parseClientAddresses(raw, legacyAddress) {
+  let parsed = null;
+  if (typeof raw === "string" && raw) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = null;
+    }
+  }
+  const list = normalizeClientAddresses(parsed);
+  if (list.length > 0)
+    return list;
+  const legacy = (legacyAddress ?? "").trim();
+  return legacy ? [{ label: "", address: legacy, primary: true }] : [];
+}
+function clientAddressesOf(row) {
+  return parseClientAddresses(row.addressesJson ?? "[]", row.address);
+}
 function clientBalanceDue(totalInvoiced, totalPaid) {
   return Math.max(0, Math.round((totalInvoiced - totalPaid) * 100) / 100);
 }
@@ -73885,6 +74222,8 @@ var mileageSchema = object({ id: number2(), tripDate: string2(), fromLocation: s
 var expenseSchema = object({ id: number2(), expenseDate: string2(), vendor: string2(), amount: string2(), category: string2(), jobId: number2().nullable(), jobName: string2().nullable(), supplierId: number2().nullable(), note: string2(), createdAt: string2() });
 var subcontractorSchema = object({ id: number2(), jobId: number2(), name: string2(), trade: string2(), phone: string2(), agreedAmount: string2(), paidToDate: string2(), balance: number2(), createdAt: string2() });
 var shareImageSchema = object({ id: number2(), jobId: number2(), beforePhotoId: number2(), afterPhotoId: number2(), branded: boolean2(), filename: string2(), url: string2(), createdAt: string2() });
+var photoPairPhotoSchema = object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() });
+var photoPairSchema = object({ id: number2(), jobId: number2(), label: string2(), before: photoPairPhotoSchema, after: photoPairPhotoSchema, createdAt: string2() });
 var leadSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), serviceType: string2(), preferredContactTime: string2(), source: string2(), notes: string2(), stage: leadStageSchema, projectSize: _enum(["small", "medium", "large"]), engagement: _enum(["slow", "normal", "fast"]), score: number2(), clientId: number2().nullable(), quoteId: number2().nullable(), createdAt: string2() });
 var selectionSchema = object({ id: number2(), jobId: number2(), category: string2(), item: string2(), vendor: string2(), photoUrl: string2().nullable(), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2(), estimatedCost: string2(), actualCost: string2(), createdAt: string2() });
 var dailyLogSchema = object({ id: number2(), jobId: number2(), logDate: string2(), crew: string2(), hours: string2(), photoIds: array(number2()), notes: string2(), blockers: string2(), clientSummary: string2(), sharedWithClient: boolean2(), createdAt: string2() });
@@ -73940,7 +74279,8 @@ function normalizeLineItems(items) {
     amount: normalizeMoney(item.amount, "0.00"),
     quantity: Number.isFinite(item.quantity) ? Math.max(0, item.quantity ?? 1) : 1,
     discount: normalizeMoney(item.discount ?? "0", "0.00"),
-    unit: item.unit ?? "none"
+    unit: item.unit ?? "none",
+    ...item.optional ? { optional: true, id: item.id?.trim() ? item.id.trim() : globalThis.crypto.randomUUID() } : item.id?.trim() ? { id: item.id.trim() } : {}
   }));
 }
 async function upsertClient(ctx, input) {
@@ -73949,11 +74289,18 @@ async function upsertClient(ctx, input) {
   const phone = normalizedPhone(input.phone);
   const match = rows.find((c) => input.clientId ? c.id === input.clientId : phone && normalizedPhone(c.phone) === phone || c.name.trim().toLowerCase() === input.name.trim().toLowerCase());
   const now = new Date;
+  const syncPrimary = (row, address) => {
+    const current = clientAddressesOf(row);
+    const key = clientAddressKey(address);
+    const existing = current.find((entry) => clientAddressKey(entry.address) === key);
+    const next = existing ? current.map((entry) => ({ ...entry, primary: entry === existing })) : current.length > 0 ? current.map((entry) => entry.primary ? { ...entry, address } : entry) : [{ label: "", address, primary: true }];
+    return JSON.stringify(next);
+  };
   if (match) {
-    await db.update(clients).set({ name: input.name, phone: input.phone, email: input.email, address: input.address, updatedAt: now }).where(eq(clients.id, match.id));
+    await db.update(clients).set({ name: input.name, phone: input.phone, email: input.email, address: input.address, ...input.address.trim() ? { addressesJson: syncPrimary(match, input.address.trim()) } : {}, updatedAt: now }).where(eq(clients.id, match.id));
     return match.id;
   }
-  const made = await db.insert(clients).values({ name: input.name, phone: input.phone, email: input.email, address: input.address, notes: "", createdAt: now, updatedAt: now }).returning({ id: clients.id });
+  const made = await db.insert(clients).values({ name: input.name, phone: input.phone, email: input.email, address: input.address, addressesJson: input.address.trim() ? JSON.stringify([{ label: "", address: input.address.trim(), primary: true }]) : "[]", notes: "", createdAt: now, updatedAt: now }).returning({ id: clients.id });
   return made[0]?.id ?? null;
 }
 async function hashPortalToken(token) {
@@ -74167,8 +74514,67 @@ function parseMaterials(json) {
     return [];
   }
 }
+function parseStoredQuoteLines(json) {
+  try {
+    const raw = JSON.parse(json);
+    if (!Array.isArray(raw))
+      return [];
+    return normalizeLineItems(raw);
+  } catch {
+    return [];
+  }
+}
+function optionalQuoteLines(q) {
+  return parseStoredQuoteLines(q.lineItemsJson).filter((line) => line.optional === true && typeof line.id === "string" && line.id.length > 0);
+}
+function quoteLineTotal(line) {
+  return Math.max(0, safeMoney(line.amount) * (line.quantity ?? 1) - safeMoney(line.discount ?? "0"));
+}
+function parseOptionSelection(json) {
+  try {
+    const raw = JSON.parse(json ?? "{}");
+    const selected = Array.isArray(raw?.selected) ? raw.selected.filter((k) => typeof k === "string" && k.length > 0).slice(0, 100) : [];
+    const acc = raw?.accepted;
+    const accepted = acc && Array.isArray(acc.items) && typeof acc.optionsTotal === "string" && typeof acc.totalWithOptions === "string" && typeof acc.acceptedAt === "string" ? { items: acc.items, optionsTotal: acc.optionsTotal, totalWithOptions: acc.totalWithOptions, acceptedAt: acc.acceptedAt } : null;
+    return { selected, accepted };
+  } catch {
+    return { selected: [], accepted: null };
+  }
+}
+function serializeOptionSelection(state) {
+  return JSON.stringify({ selected: state.selected, accepted: state.accepted });
+}
+function quoteOptionsPayload(q) {
+  const state = parseOptionSelection(q.optionSelectionJson);
+  const options = optionalQuoteLines(q).map((line) => ({ key: line.id, name: line.name, description: line.description, amount: line.amount, quantity: line.quantity, lineTotal: quoteLineTotal(line).toFixed(2) }));
+  const selectedKeys = state.selected.filter((key) => options.some((o) => o.key === key));
+  const optionsTotal = options.filter((o) => selectedKeys.includes(o.key)).reduce((sum, o) => sum + Number(o.lineTotal), 0);
+  return {
+    options,
+    selectedOptionKeys: selectedKeys,
+    acceptedOptions: state.accepted,
+    optionsTotal: optionsTotal.toFixed(2),
+    totalWithOptions: (safeMoney(q.total) + optionsTotal).toFixed(2)
+  };
+}
+function buildAcceptedOptionsSnapshot(q) {
+  const state = parseOptionSelection(q.optionSelectionJson);
+  const picked = optionalQuoteLines(q).filter((line) => state.selected.includes(line.id));
+  if (!picked.length)
+    return null;
+  const optionsTotal = picked.reduce((sum, line) => sum + quoteLineTotal(line), 0);
+  return {
+    items: picked.map((line) => ({ key: line.id, name: line.name, description: line.description, amount: line.amount, quantity: line.quantity, discount: line.discount, unit: line.unit })),
+    optionsTotal: optionsTotal.toFixed(2),
+    totalWithOptions: (safeMoney(q.total) + optionsTotal).toFixed(2),
+    acceptedAt: new Date().toISOString()
+  };
+}
 function quoteShape(q) {
-  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
+  return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), optionSelection: (() => {
+    const s = parseOptionSelection(q.optionSelectionJson);
+    return { selectedKeys: s.selected, accepted: s.accepted };
+  })(), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
 }
 function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, graceDays: 0 }) {
   const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -74256,6 +74662,7 @@ var BACKUP_TABLES = [
   "clients",
   "jobs",
   "photos",
+  "photo_pairs",
   "documents",
   "quotes",
   "invoices",
@@ -75686,6 +76093,9 @@ async function getDocumentLinkPayload(ctx, token) {
     linkExpiresAt: link.expiresAt.toISOString(),
     shortCode: link.shortCode ?? null,
     attachedImages: [],
+    hasOriginalPdf: false,
+    originalFilename: "",
+    signatureFields: {},
     invoiceNumber: "",
     issueDate: "",
     dueDate: "",
@@ -75705,7 +76115,12 @@ async function getDocumentLinkPayload(ctx, token) {
     showFooterNotes: true,
     showLogo: true,
     showCompanyInfo: true,
-    customizeJson: "{}"
+    customizeJson: "{}",
+    options: [],
+    selectedOptionKeys: [],
+    acceptedOptions: null,
+    optionsTotal: "0.00",
+    totalWithOptions: ""
   };
   const designOf = (row) => ({ discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson });
   if (link.documentKind === "invoice") {
@@ -75723,19 +76138,40 @@ async function getDocumentLinkPayload(ctx, token) {
     if (!row)
       throw new Error("This document is no longer available.");
     const attachedImages = await publicAttachmentImages(ctx, db, "quote", link.documentId, link.companyId);
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
   }
   const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind)
     throw new Error("This document is no longer available.");
   const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0" } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), signatureFields: (() => {
+    const all = parseSignatureFields(doc.signatureFieldsJson);
+    const pub = {};
+    if (all.clientSignature)
+      pub.clientSignature = all.clientSignature;
+    if (all.clientDate)
+      pub.clientDate = all.clientDate;
+    return pub;
+  })() } };
 }
 var docPdfCache = new Map;
 var DOC_PDF_CACHE_MAX = 30;
 async function documentLinkPdfBase64(ctx, token, lang) {
-  const { payload } = await getDocumentLinkPayload(ctx, token);
+  const { link, payload } = await getDocumentLinkPayload(ctx, token);
   const kind = payload.kind;
+  if (kind === "contract" || kind === "change_order") {
+    const db = ctx.db();
+    const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
+    const blobKey = doc?.clientSignedPdfBlobKey ?? doc?.originalBlobKey ?? null;
+    if (!doc || !blobKey)
+      throw new Error("This document is only available as a web page.");
+    const bytes = await ctx.blobs.get(blobKey);
+    if (!bytes || bytes.length === 0)
+      throw new Error("This document is only available as a web page.");
+    const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+    const filename = doc.clientSignedPdfBlobKey ? `${safeTitle}-signed.pdf` : doc.originalFilename || `${safeTitle}.pdf`;
+    return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
+  }
   if (kind !== "invoice" && kind !== "quote")
     throw new Error("This document is only available as a web page.");
   const cacheKey = `${kind}:${payload.documentId}:${lang}`;
@@ -75779,6 +76215,41 @@ async function hydrateDocumentAttachment(ctx, row) {
   }
   return { id: row.id, docType: row.docType, docId: row.docId, kind: row.kind, fileName: row.fileName, contentType: row.contentType, sortOrder: row.sortOrder, url, createdAt: row.createdAt.toISOString() };
 }
+async function craneWeeklyBests(db, dates) {
+  const rows = await db.select({ userId: dailyGameScores.userId, displayName: dailyGameScores.displayName, score: dailyGameScores.score, createdAt: dailyGameScores.createdAt }).from(dailyGameScores).innerJoin(authUsers, eq(dailyGameScores.userId, authUsers.id)).where(and(inArray(dailyGameScores.scoreDate, dates), eq(authUsers.leaderboardOptIn, true)));
+  const bestByUser = new Map;
+  for (const row of rows) {
+    const cur = bestByUser.get(row.userId);
+    if (!cur || row.score > cur.score || row.score === cur.score && row.createdAt < cur.achievedAt) {
+      bestByUser.set(row.userId, { userId: row.userId, displayName: row.displayName, score: row.score, achievedAt: row.createdAt });
+    }
+  }
+  return [...bestByUser.values()].sort((a, b) => b.score - a.score || a.achievedAt.getTime() - b.achievedAt.getTime() || a.userId - b.userId);
+}
+async function craneLastWeekChampion(db) {
+  const weekStart = lastWeekStart();
+  let champ = (await db.select().from(weeklyGameChampions).where(eq(weeklyGameChampions.weekStart, weekStart)).limit(1))[0];
+  if (!champ) {
+    const bests = await craneWeeklyBests(db, weekDates(weekStart));
+    const winner = bests[0];
+    if (!winner)
+      return null;
+    const winnerUser = (await db.select({ companyId: authUsers.companyId, name: authUsers.name }).from(authUsers).where(eq(authUsers.id, winner.userId)).limit(1))[0];
+    const company = winnerUser ? (await db.select({ companyName: settings.companyName }).from(settings).where(eq(settings.companyId, winnerUser.companyId)).limit(1))[0] : undefined;
+    const businessName = ((company?.companyName ?? "").trim() || winner.displayName.trim() || (winnerUser?.name ?? "").trim() || "Player").slice(0, 80);
+    await db.insert(weeklyGameChampions).values({ weekStart, userId: winner.userId, businessName, score: winner.score, createdAt: new Date }).onConflictDoNothing();
+    champ = (await db.select().from(weeklyGameChampions).where(eq(weeklyGameChampions.weekStart, weekStart)).limit(1))[0];
+    if (!champ)
+      return null;
+  }
+  let companyId = null;
+  if (champ.userId != null) {
+    const champUser = (await db.select({ companyId: authUsers.companyId }).from(authUsers).where(eq(authUsers.id, champ.userId)).limit(1))[0];
+    companyId = champUser?.companyId ?? null;
+  }
+  return { businessName: champ.businessName, score: champ.score, weekStart: champ.weekStart, companyId };
+}
+var craneChampionSchema = object({ businessName: string2(), score: number2(), weekStart: string2(), companyId: number2().nullable() }).nullable();
 var BaseActions = {
   ...playBillingActions,
   ...platformAdminActions,
@@ -76099,9 +76570,19 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
           }
         }
         if (row.replacedBy) {
+          const reqIpHash = meta.ipHash ?? "";
+          const reqUserAgent = (meta.userAgent ?? "").slice(0, 300);
+          let successorRow = (await db.select().from(authSessions).where(eq(authSessions.tokenHash, row.replacedBy)).limit(1))[0];
+          if (!successorRow && row.familyId) {
+            successorRow = (await db.select().from(authSessions).where(and(eq(authSessions.familyId, row.familyId), eq(authSessions.tokenType, "refresh"), isNull(authSessions.revokedAt))).orderBy(desc(authSessions.createdAt)).limit(1))[0];
+          }
+          if (successorRow && reqIpHash && reqUserAgent && successorRow.ipHash && successorRow.userAgent && successorRow.ipHash === reqIpHash && successorRow.userAgent === reqUserAgent) {
+            throw new Error("Sign in to continue.");
+          }
+          const familyStillActive = row.familyId ? (await db.select({ id: authSessions.id }).from(authSessions).where(and(eq(authSessions.familyId, row.familyId), isNull(authSessions.revokedAt))).limit(1)).length > 0 : (await db.select({ id: authSessions.id }).from(authSessions).where(and(eq(authSessions.userId, row.userId), eq(authSessions.tokenType, "legacy"), isNull(authSessions.revokedAt))).limit(1)).length > 0;
           await revokeSessionFamily(db, row.familyId, row.userId);
           const user = (await db.select({ id: authUsers.id, email: authUsers.email, name: authUsers.name }).from(authUsers).where(eq(authUsers.id, row.userId)).limit(1))[0];
-          if (user?.email) {
+          if (familyStillActive && user?.email) {
             const when = new Date(now).toISOString();
             try {
               await ctx.executePrivileged(privileged.sendSecurityAlert, {
@@ -76424,12 +76905,12 @@ If that was you, just sign in again. If not, we recommend changing your password
     const invoices2 = await db.select({ id: invoices.id, clientId: invoices.clientId, total: invoices.total }).from(invoices);
     const payments2 = await db.select({ invoiceId: payments.invoiceId, amount: payments.amount }).from(payments);
     const term = args.search.trim().toLowerCase();
-    return { clients: rows.filter((c) => !term || [c.name, c.phone, c.email, c.address, parseClientTags(c.tags).join(" ")].some((v) => v.toLowerCase().includes(term))).map((c) => {
+    return { clients: rows.filter((c) => !term || [c.name, c.phone, c.email, c.address, ...clientAddressesOf(c).flatMap((entry) => [entry.label, entry.address]), parseClientTags(c.tags).join(" ")].some((v) => v.toLowerCase().includes(term))).map((c) => {
       const clientInvoices = invoices2.filter((invoice) => invoice.clientId === c.id);
       const invoiceIds = new Set(clientInvoices.map((invoice) => invoice.id));
       const totalInvoiced = clientInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
       const totalPaid = payments2.filter((payment) => invoiceIds.has(payment.invoiceId)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-      return { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.filter((j) => j.clientId === c.id).length, quoteCount: quotes2.filter((q) => q.clientId === c.id).length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: clientInvoices.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
+      return { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, addresses: clientAddressesOf(c), notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.filter((j) => j.clientId === c.id).length, quoteCount: quotes2.filter((q) => q.clientId === c.id).length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: clientInvoices.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
     }) };
   } }),
   getClient: defineAction({ request: object({ id: number2().int().positive() }), response: object({ client: clientSchema.nullable(), jobs: array(jobSchema), quotes: array(quoteSchema) }), async handler(ctx, args) {
@@ -76446,7 +76927,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const payments2 = await db.select({ invoiceId: payments.invoiceId, amount: payments.amount }).from(payments);
     const totalInvoiced = invoices2.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
     const totalPaid = payments2.filter((payment) => invoiceIds.has(payment.invoiceId)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    return { client: { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.length, quoteCount: quotes2.length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: invoices2.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() }, jobs: jobs2.map((j) => {
+    return { client: { id: c.id, name: c.name, phone: c.phone, email: c.email, address: c.address, addresses: clientAddressesOf(c), notes: c.notes, tags: parseClientTags(c.tags), referredByClientId: c.referredByClientId, referredByName: rows.find((r) => r.id === c.referredByClientId)?.name ?? null, referralCount: rows.filter((r) => r.referredByClientId === c.id).length, jobCount: jobs2.length, quoteCount: quotes2.length, totalInvoiced, totalPaid, balanceDue: clientBalanceDue(totalInvoiced, totalPaid), invoiceCount: invoices2.length, paymentPercent: totalInvoiced > 0 ? Math.min(100, Math.round(totalPaid / totalInvoiced * 100)) : 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() }, jobs: jobs2.map((j) => {
       const jobPhotos = photos2.filter((p) => p.jobId === j.id);
       return jobShape(j, jobPhotos.length, jobPhotos.map((p) => p.stage));
     }), quotes: quotes2.map(quoteShape) };
@@ -76455,17 +76936,36 @@ If that was you, just sign in again. If not, we recommend changing your password
     const db = ctx.db();
     const now = new Date;
     const tags = JSON.stringify(normalizeClientTags(args.tags));
+    let addresses = normalizeClientAddresses(args.addresses);
+    if (addresses.length === 0 && args.address.trim())
+      addresses = [{ label: "", address: args.address.trim(), primary: true }];
+    const primaryAddress = addresses.find((entry) => entry.primary)?.address ?? args.address;
+    const addressesJson = JSON.stringify(addresses);
     if (args.id) {
-      await db.update(clients).set({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, tags, referredByClientId: args.referredByClientId, updatedAt: now }).where(eq(clients.id, args.id));
+      await db.update(clients).set({ name: args.name, phone: args.phone, email: args.email, address: primaryAddress, addressesJson, notes: args.notes, tags, referredByClientId: args.referredByClientId, updatedAt: now }).where(eq(clients.id, args.id));
       ctx.invalidateQueries();
       return { id: args.id };
     }
-    const rows = await db.insert(clients).values({ name: args.name, phone: args.phone, email: args.email, address: args.address, notes: args.notes, tags, referredByClientId: args.referredByClientId, createdAt: now, updatedAt: now }).returning({ id: clients.id });
+    const rows = await db.insert(clients).values({ name: args.name, phone: args.phone, email: args.email, address: primaryAddress, addressesJson, notes: args.notes, tags, referredByClientId: args.referredByClientId, createdAt: now, updatedAt: now }).returning({ id: clients.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save client.");
     ctx.invalidateQueries();
     return { id: made.id };
+  } }),
+  appendClientAddress: defineAction({ request: object({ clientId: number2().int().positive(), address: string2().trim().min(1).max(240), label: string2().trim().max(60).default("") }), response: object({ ok: literal(true), addresses: array(clientAddressSchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const rows = await db.select().from(clients).where(eq(clients.id, args.clientId)).limit(1);
+    const client = rows[0];
+    if (!client)
+      throw new Error("Client not found.");
+    const current = clientAddressesOf(client);
+    const key = clientAddressKey(args.address);
+    const next = current.some((entry) => clientAddressKey(entry.address) === key) ? current : normalizeClientAddresses([...current, { label: args.label, address: args.address, primary: current.length === 0 }]);
+    const primaryAddress = next.find((entry) => entry.primary)?.address ?? client.address;
+    await db.update(clients).set({ addressesJson: JSON.stringify(next), address: primaryAddress, updatedAt: new Date }).where(eq(clients.id, client.id));
+    ctx.invalidateQueries();
+    return { ok: true, addresses: next };
   } }),
   deleteClient: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().delete(clients).where(eq(clients.id, args.id));
@@ -76504,7 +77004,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       db.select().from(completionCertificates).where(eq(completionCertificates.jobId, args.id)).orderBy(desc(completionCertificates.createdAt)).limit(1)
     ]);
     const hydratedPhotos = await Promise.all(photoRows.map(async (p) => ({ id: p.id, jobId: p.jobId, stage: p.stage, caption: p.caption, filename: p.filename, contentType: p.contentType, url: await ctx.blobs.getUrl(p.blobKey), galleryPick: p.galleryPick, excludeFromSocial: p.excludeFromSocial, annotatedFromId: p.annotatedFromId, capturedAt: (p.capturedAt ?? p.createdAt).toISOString(), createdAt: p.createdAt.toISOString() })));
-    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null })));
+    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson) })));
     const signoff = signoffRows[0];
     const receiptData = await Promise.all(receiptRows.map(async (p) => ({ id: p.id, jobId: p.jobId, vendor: p.vendor, amount: p.amount, purchaseDate: p.purchaseDate, note: p.note, filename: p.filename, url: await ctx.blobs.getUrl(p.blobKey), createdAt: p.createdAt.toISOString() })));
     const voiceData = await Promise.all(voiceRows.map(async (p) => ({ id: p.id, jobId: p.jobId, title: p.title, url: await ctx.blobs.getUrl(p.blobKey), durationSeconds: p.durationSeconds, createdAt: p.createdAt.toISOString() })));
@@ -76568,7 +77068,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   listDocuments: defineAction({ request: object({}), response: object({ documents: array(documentSchema) }), async handler(ctx) {
     const rows = await ctx.db().select().from(documents).orderBy(desc(documents.signedAt));
-    const documents2 = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null })));
+    const documents2 = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson) })));
     return { documents: documents2 };
   } }),
   linkDocumentToJob: defineAction({ request: object({ documentId: number2().int().positive(), jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
@@ -76610,6 +77110,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const row = rows[0];
     if (row) {
       await db.delete(photos).where(eq(photos.id, args.id));
+      await db.delete(photoPairs).where(or(eq(photoPairs.beforePhotoId, args.id), eq(photoPairs.afterPhotoId, args.id)));
       await ctx.blobs.delete(row.blobKey);
     }
     ctx.invalidateQueries();
@@ -76630,6 +77131,65 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Could not save document.");
     ctx.invalidateQueries();
     return { id: made.id };
+  } }),
+  saveDocumentSignatureFields: defineAction({ request: object({ documentId: number2().int().positive(), fields: signatureFieldsSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
+    if (!doc)
+      throw new Error("Document not found.");
+    if (!doc.originalBlobKey)
+      throw new Error("Signature fields need an uploaded PDF document.");
+    await db.update(documents).set({ signatureFieldsJson: serializeSignatureFields(args.fields) }).where(eq(documents.id, doc.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  signDocumentWithSavedSignature: defineAction({ request: object({ documentId: number2().int().positive() }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const pdb = platformDb(ctx);
+    const settingsRow = (await pdb.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
+    if (!settingsRow?.signatureBlobKey)
+      throw new Error("Save your signature in Settings first, then tap to sign.");
+    const saved = await ctx.blobs.get(settingsRow.signatureBlobKey);
+    if (!saved)
+      throw new Error("Your saved signature could not be loaded. Draw it again in Settings.");
+    const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
+    if (!doc)
+      throw new Error("Document not found.");
+    const signedAt = new Date;
+    const savedBytes = Buffer.from(saved);
+    const key = `signatures/${doc.jobId}/${crypto.randomUUID()}.png`;
+    await ctx.blobs.put(key, savedBytes, { contentType: "image/png" });
+    const patch = { signatureBlobKey: key, signedAt };
+    if (doc.originalBlobKey) {
+      const original = await ctx.blobs.get(doc.originalBlobKey);
+      if (original) {
+        const locale = settingsRow.language === "es" ? "es-US" : "en-US";
+        const fmt = (d) => new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(d);
+        const stamps = [{ role: "contractor", imageBytes: new Uint8Array(savedBytes), imageFormat: "png", dateText: fmt(signedAt) }];
+        if (doc.clientSignatureBlobKey && doc.clientSignedAt) {
+          const clientBytes = await ctx.blobs.get(doc.clientSignatureBlobKey);
+          if (clientBytes)
+            stamps.push({ role: "client", imageBytes: new Uint8Array(clientBytes), imageFormat: "png", dateText: fmt(doc.clientSignedAt) });
+        }
+        const finalBytes = await compositeSignatureStamps(new Uint8Array(original), parseSignatureFields(doc.signatureFieldsJson), stamps);
+        const finalKey = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
+        await ctx.blobs.put(finalKey, Buffer.from(finalBytes), { contentType: "application/pdf" });
+        patch.clientSignedPdfBlobKey = finalKey;
+        if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== finalKey) {
+          try {
+            await ctx.blobs.delete(doc.clientSignedPdfBlobKey);
+          } catch {}
+        }
+      }
+    }
+    await db.update(documents).set(patch).where(eq(documents.id, doc.id));
+    if (doc.signatureBlobKey && doc.signatureBlobKey !== key) {
+      try {
+        await ctx.blobs.delete(doc.signatureBlobKey);
+      } catch {}
+    }
+    ctx.invalidateQueries();
+    return { ok: true, signedAt: signedAt.toISOString() };
   } }),
   addPunchItem: defineAction({ request: object({ jobId: number2().int().positive(), text: string2().trim().min(1).max(500) }), response: object({ id: number2() }), async handler(ctx, args) {
     const rows = await ctx.db().insert(punchItems).values(args).returning({ id: punchItems.id });
@@ -76699,7 +77259,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   saveQuote: defineAction({ request: object({ clientId: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240), shippingAddress: string2().trim().max(240).default(""), jobType: string2().trim().max(120), lineItems: array(quoteItemSchema).min(1).max(50), subtotal: string2().max(80), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), total: string2().max(80), footnote: string2().max(3000), expiryDate: string2().max(10), sentAt: string2().max(10), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema, depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0"), materials: array(materialItemSchema).max(200).default([]) }).extend(documentVisibilitySchema.shape), response: object({ id: number2() }), async handler(ctx, args) {
     const now = new Date;
-    const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress });
+    const clientId = args.clientId;
     const depositValue = normalizeMoney(args.depositValue, "0.00");
     if (args.depositType === "percent" && (Number(depositValue) < 0 || Number(depositValue) > 100))
       throw new Error("Deposit percent must be 0-100.");
@@ -76759,7 +77319,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const now = new Date;
     const db = ctx.db();
     await assertInvoiceLimit(ctx, db);
-    const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress });
+    const clientId = args.clientId;
     const nextNumber = await nextInvoiceNumber(db);
     const rows = await db.insert(invoices).values({ ...args, companyId: workspaceIdentity(ctx).workspaceCompanyId, invoiceNumber: args.invoiceNumber || nextNumber, clientId, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
@@ -76789,6 +77349,17 @@ If that was you, just sign in again. If not, we recommend changing your password
       await db.update(quotes).set({ convertedToInvoiceId: prior.id, updatedAt: now }).where(eq(quotes.id, q.id));
       return { invoiceId: prior.id };
     }
+    const optionState = parseOptionSelection(q.optionSelectionJson);
+    const acceptedSnapshot = optionState.accepted ?? (optionState.selected.length ? buildAcceptedOptionsSnapshot(q) : null);
+    const hasOptionalLines = parseStoredQuoteLines(q.lineItemsJson).some((line) => line.optional);
+    const baseLines = parseStoredQuoteLines(q.lineItemsJson).filter((line) => !line.optional).map((line) => ({ name: line.name, description: line.description, amount: line.amount, quantity: line.quantity, discount: line.discount, unit: line.unit }));
+    const acceptedLines = (acceptedSnapshot?.items ?? []).map((item) => ({ name: item.name, description: item.description, amount: item.amount, quantity: item.quantity, discount: item.discount, unit: item.unit }));
+    const invoiceLineItemsJson = !hasOptionalLines && !acceptedSnapshot ? q.lineItemsJson : JSON.stringify([...baseLines, ...acceptedLines]);
+    const optionsSum = acceptedSnapshot ? safeMoney(acceptedSnapshot.optionsTotal) : 0;
+    const invoiceSubtotal = !hasOptionalLines && !acceptedSnapshot ? q.subtotal : (safeMoney(q.subtotal) + optionsSum).toFixed(2);
+    const invoiceTotal = !hasOptionalLines && !acceptedSnapshot ? q.total : (safeMoney(q.total) + optionsSum).toFixed(2);
+    if (acceptedSnapshot && !optionState.accepted)
+      await db.update(quotes).set({ optionSelectionJson: serializeOptionSelection({ selected: optionState.selected, accepted: acceptedSnapshot }), updatedAt: now }).where(eq(quotes.id, q.id));
     const invoiceNumber = await nextInvoiceNumber(db);
     const invoiceCustomizeJson = (() => {
       try {
@@ -76802,7 +77373,7 @@ If that was you, just sign in again. If not, we recommend changing your password
         return q.customizeJson;
       }
     })();
-    const madeRows = await db.insert(invoices).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: q.lineItemsJson, subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, invoiceNumber, issueDate: clientToday(args), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: invoiceCustomizeJson, imagesPerPage: q.imagesPerPage, depositType: q.depositType, depositValue: q.depositValue, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const madeRows = await db.insert(invoices).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, quoteId: q.id, jobId: q.jobId, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItemsJson: invoiceLineItemsJson, subtotal: invoiceSubtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: invoiceTotal, footnote: q.footnote, invoiceNumber, issueDate: clientToday(args), dueDate: "", status: "draft", theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: invoiceCustomizeJson, imagesPerPage: q.imagesPerPage, depositType: q.depositType, depositValue: q.depositValue, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -76936,7 +77507,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     if (!row)
       throw new Error("Estimate not found.");
     const now = new Date;
-    const made = await db.insert(quotes).values({ ...row, id: undefined, jobId: null, seriesId: null, parentQuoteId: row.id, versionNumber: 1, superseded: false, accepted: false, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", createdAt: now, updatedAt: now }).returning({ id: quotes.id });
+    const made = await db.insert(quotes).values({ ...row, id: undefined, jobId: null, seriesId: null, parentQuoteId: row.id, versionNumber: 1, superseded: false, accepted: false, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", optionSelectionJson: "{}", createdAt: now, updatedAt: now }).returning({ id: quotes.id });
     const next = made[0];
     if (!next)
       throw new Error("Could not duplicate estimate.");
@@ -77709,7 +78280,14 @@ If that was you, just sign in again. If not, we recommend changing your password
     return { ok: true };
   } }),
   updateQuoteAutomationStatus: defineAction({ request: object({ id: number2().int().positive(), status: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable().default(null), lostNote: string2().trim().max(1000).default("") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    await ctx.db().update(quotes).set({ automationStatus: args.status, lostReason: args.status === "lost" ? args.lostReason : null, lostNote: args.status === "lost" ? args.lostNote : "", updatedAt: new Date }).where(eq(quotes.id, args.id));
+    const db = ctx.db();
+    const quote = (await db.select().from(quotes).where(eq(quotes.id, args.id)).limit(1))[0];
+    await db.update(quotes).set({ automationStatus: args.status, lostReason: args.status === "lost" ? args.lostReason : null, lostNote: args.status === "lost" ? args.lostNote : "", updatedAt: new Date }).where(eq(quotes.id, args.id));
+    if (quote) {
+      const state = parseOptionSelection(quote.optionSelectionJson);
+      const nextAccepted = args.status === "won" ? buildAcceptedOptionsSnapshot(quote) : null;
+      await db.update(quotes).set({ optionSelectionJson: serializeOptionSelection({ selected: state.selected, accepted: nextAccepted }) }).where(eq(quotes.id, args.id));
+    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -77891,6 +78469,44 @@ If that was you, just sign in again. If not, we recommend changing your password
   listShareImages: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ images: array(shareImageSchema) }), async handler(ctx, args) {
     const rows = await ctx.db().select().from(shareImages).where(eq(shareImages.jobId, args.jobId)).orderBy(desc(shareImages.createdAt));
     return { images: await Promise.all(rows.map(async (row) => ({ id: row.id, jobId: row.jobId, beforePhotoId: row.beforePhotoId, afterPhotoId: row.afterPhotoId, branded: row.branded, filename: row.filename, url: await ctx.blobs.getUrl(row.blobKey), createdAt: row.createdAt.toISOString() }))) };
+  } }),
+  createPhotoPair: defineAction({ request: object({ jobId: number2().int().positive(), beforePhotoId: number2().int().positive(), afterPhotoId: number2().int().positive(), label: string2().trim().max(120).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    if (args.beforePhotoId === args.afterPhotoId)
+      throw new Error("Pick two different photos for a Before/After pair.");
+    const found = await db.select({ id: photos.id }).from(photos).where(and(eq(photos.jobId, args.jobId), inArray(photos.id, [args.beforePhotoId, args.afterPhotoId])));
+    if (found.length !== 2)
+      throw new Error("Both photos must belong to this job.");
+    const made = await db.insert(photoPairs).values({ jobId: args.jobId, beforePhotoId: args.beforePhotoId, afterPhotoId: args.afterPhotoId, label: args.label }).returning({ id: photoPairs.id });
+    if (!made[0])
+      throw new Error("The pair could not be saved.");
+    await db.update(jobs).set({ updatedAt: new Date }).where(eq(jobs.id, args.jobId));
+    ctx.invalidateQueries();
+    return { id: made[0].id };
+  } }),
+  listPhotoPairs: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ pairs: array(photoPairSchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const [pairRows, jobPhotos] = await Promise.all([db.select().from(photoPairs).where(eq(photoPairs.jobId, args.jobId)).orderBy(asc(photoPairs.createdAt)), db.select().from(photos).where(eq(photos.jobId, args.jobId))]);
+    const byId = new Map(jobPhotos.map((p) => [p.id, p]));
+    const pairs = [];
+    for (const row of pairRows) {
+      const b = byId.get(row.beforePhotoId);
+      const a = byId.get(row.afterPhotoId);
+      if (!b || !a)
+        continue;
+      pairs.push({ id: row.id, jobId: row.jobId, label: row.label, before: { id: b.id, stage: b.stage, caption: b.caption, url: await ctx.blobs.getUrl(b.blobKey) }, after: { id: a.id, stage: a.stage, caption: a.caption, url: await ctx.blobs.getUrl(a.blobKey) }, createdAt: row.createdAt.toISOString() });
+    }
+    return { pairs };
+  } }),
+  updatePhotoPair: defineAction({ request: object({ id: number2().int().positive(), label: string2().trim().max(120) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    await ctx.db().update(photoPairs).set({ label: args.label }).where(eq(photoPairs.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  deletePhotoPair: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    await ctx.db().delete(photoPairs).where(eq(photoPairs.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
   } }),
   getWeatherOutlook: defineAction({ request: object({ appointmentId: number2().int().positive() }), response: object({ available: boolean2(), location: string2(), date: string2(), summary: string2(), precipitationChance: number2().nullable(), high: number2().nullable(), low: number2().nullable(), unit: string2(), rainLikely: boolean2(), asOf: string2(), source: string2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -78339,7 +78955,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { token, shortCode, route: `p/${encodeURIComponent(shortCode)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
-  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })) })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
+  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), photoPairs: array(object({ id: number2(), label: string2(), before: object({ url: string2(), caption: string2() }), after: object({ url: string2(), caption: string2() }) })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })), options: array(quoteOptionRowSchema), selectedOptionKeys: array(string2()), acceptedOptions: acceptedOptionsSchema.nullable(), optionsTotal: string2(), totalWithOptions: string2() })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
@@ -78347,9 +78963,23 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Job not found.");
     const portalSettings = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
     const portalCompany = { name: portalSettings?.companyName ?? "", phone: portalSettings?.phone ?? "", logoUrl: portalSettings?.logoBlobKey ? await ctx.blobs.getUrl(portalSettings.logoBlobKey) : null };
-    const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments)]);
+    const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2, photoPairRows] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments), db.select().from(photoPairs).where(eq(photoPairs.jobId, job.id)).orderBy(asc(photoPairs.createdAt))]);
     const today = new Date().toISOString();
-    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => ({ id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).map((i) => ({ description: i.description, amount: i.amount })) })), invoices: invoices2.map((inv) => {
+    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), photoPairs: await (async () => {
+      const byId = new Map(photos2.map((p) => [p.id, p]));
+      const out = [];
+      for (const row of photoPairRows) {
+        const b = byId.get(row.beforePhotoId);
+        const a = byId.get(row.afterPhotoId);
+        if (!b || !a || b.excludeFromSocial || a.excludeFromSocial)
+          continue;
+        out.push({ id: row.id, label: row.label, before: { url: await ctx.blobs.getUrl(b.blobKey), caption: b.caption }, after: { url: await ctx.blobs.getUrl(a.blobKey), caption: a.caption } });
+      }
+      return out;
+    })(), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => {
+      const payload = quoteOptionsPayload(q);
+      return { id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).filter((i) => !i.optional).map((i) => ({ description: i.description, amount: i.amount })), options: payload.options, selectedOptionKeys: payload.selectedOptionKeys, acceptedOptions: payload.acceptedOptions, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions };
+    }), invoices: invoices2.map((inv) => {
       const paid = payments2.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
       return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2) };
@@ -78366,6 +78996,44 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  saveQuoteOptionSelection: defineAction({
+    request: object({ token: string2().min(8).max(200), quoteId: number2().int().positive(), selectedKeys: array(string2().trim().min(1).max(80)).max(100) }),
+    response: object({ ok: literal(true), selectedOptionKeys: array(string2()), optionsTotal: string2(), totalWithOptions: string2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      let quote;
+      let portalAccessId = null;
+      try {
+        const link = await resolveDocumentLinkToken(ctx, args.token);
+        if (link.documentKind === "quote" && link.documentId === args.quoteId) {
+          quote = (await db.select().from(quotes).where(eq(quotes.id, args.quoteId)).limit(1))[0];
+        }
+      } catch {}
+      if (!quote) {
+        const access = await requirePortalAccess(ctx, args.token, { logView: false });
+        const row = (await db.select().from(quotes).where(eq(quotes.id, args.quoteId)).limit(1))[0];
+        if (!row || row.jobId !== access.jobId)
+          throw new Error("Estimate not found.");
+        quote = row;
+        portalAccessId = access.id;
+      }
+      const storedLines = parseStoredQuoteLines(quote.lineItemsJson);
+      const healedJson = JSON.stringify(storedLines);
+      if (healedJson !== quote.lineItemsJson && storedLines.some((line) => line.optional)) {
+        await db.update(quotes).set({ lineItemsJson: healedJson }).where(eq(quotes.id, quote.id));
+        quote = { ...quote, lineItemsJson: healedJson };
+      }
+      const validKeys = new Set(optionalQuoteLines(quote).map((line) => line.id));
+      const selected = [...new Set(args.selectedKeys)].filter((key) => validKeys.has(key));
+      const state = parseOptionSelection(quote.optionSelectionJson);
+      await db.update(quotes).set({ optionSelectionJson: serializeOptionSelection({ selected, accepted: state.accepted }), updatedAt: new Date }).where(eq(quotes.id, quote.id));
+      if (portalAccessId !== null)
+        await logPortalEvent(ctx, portalAccessId, "approve_selection");
+      const payload = quoteOptionsPayload({ lineItemsJson: quote.lineItemsJson, total: quote.total, optionSelectionJson: serializeOptionSelection({ selected, accepted: state.accepted }) });
+      ctx.invalidateQueries();
+      return { ok: true, selectedOptionKeys: payload.selectedOptionKeys, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions };
+    }
+  }),
   portalSignChangeOrder: defineAction({ request: object({ token: string2().min(8).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: false });
@@ -78428,7 +79096,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     clientName: string2(),
     jobAddress: string2(),
     jobType: string2(),
-    lineItems: array(object({ description: string2(), amount: string2(), name: string2().optional(), quantity: number2().optional(), discount: string2().optional(), unit: string2().optional() })),
+    lineItems: array(object({ description: string2(), amount: string2(), name: string2().optional(), quantity: number2().optional(), discount: string2().optional(), unit: string2().optional(), id: string2().optional(), optional: boolean2().optional() })),
     subtotal: string2(),
     total: string2(),
     dateLabel: string2(),
@@ -78440,6 +79108,14 @@ If that was you, just sign in again. If not, we recommend changing your password
     contractorSignerName: string2(),
     linkExpiresAt: string2(),
     shortCode: string2().nullable(),
+    options: array(quoteOptionRowSchema).default([]),
+    selectedOptionKeys: array(string2()).default([]),
+    acceptedOptions: acceptedOptionsSchema.nullable().default(null),
+    optionsTotal: string2().default("0.00"),
+    totalWithOptions: string2().default(""),
+    hasOriginalPdf: boolean2().default(false),
+    originalFilename: string2().default(""),
+    signatureFields: signatureFieldsSchema.default({}),
     invoiceNumber: string2(),
     issueDate: string2(),
     dueDate: string2(),
@@ -78482,7 +79158,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   getDocumentLinkPdfPages: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pagesBase64: array(string2()).max(20), filename: string2(), kind: string2() }), privileged: [privileged.renderPdfPages], async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
-    if (kind !== "invoice" && kind !== "quote")
+    if (kind !== "invoice" && kind !== "quote" && kind !== "contract" && kind !== "change_order")
       throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
     const updatedAtMs = payload.updatedAtMs ?? 0;
@@ -78503,8 +79179,10 @@ If that was you, just sign in again. If not, we recommend changing your password
   validateDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ ok: literal(true), kind: string2() }), async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
-    if (kind !== "invoice" && kind !== "quote")
-      throw new Error("This document is only available as a web page.");
+    if (kind !== "invoice" && kind !== "quote") {
+      if (!((kind === "contract" || kind === "change_order") && (payload.hasOriginalPdf || payload.alreadySigned)))
+        throw new Error("This document is only available as a web page.");
+    }
     return { ok: true, kind };
   } }),
   submitDocumentSignature: defineAction({ request: object({ token: string2().min(8).max(200), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000), signedPdfDataBase64: string2().min(1).max(30000000), userAgent: string2().max(500).default("") }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
@@ -78669,7 +79347,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
       for (const version of versions) {
         if (version.accepted)
-          await db.update(quotes).set({ accepted: false, automationStatus: "awaiting", lostReason: null, lostNote: "", updatedAt: new Date }).where(eq(quotes.id, version.id));
+          await db.update(quotes).set({ accepted: false, automationStatus: "awaiting", lostReason: null, lostNote: "", optionSelectionJson: serializeOptionSelection({ selected: parseOptionSelection(version.optionSelectionJson).selected, accepted: null }), updatedAt: new Date }).where(eq(quotes.id, version.id));
       }
       ctx.invalidateQueries();
       return { ok: true };
@@ -78787,7 +79465,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
     const versionNumber = Math.max(...versions.map((q) => q.versionNumber), 0) + 1;
     const now = new Date;
-    const rows = await db.insert(quotes).values({ clientId: source.clientId, clientName: source.clientName, clientPhone: source.clientPhone, clientEmail: source.clientEmail, jobAddress: source.jobAddress, jobType: source.jobType, lineItemsJson: source.lineItemsJson, materialsJson: source.materialsJson, subtotal: source.subtotal, discountType: source.discountType, discountValue: source.discountValue, taxType: source.taxType, taxValue: source.taxValue, total: source.total, footnote: source.footnote, expiryDate: source.expiryDate, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", theme: source.theme, font: source.font, accentColor: source.accentColor, showTaxLine: source.showTaxLine, showDiscountLine: source.showDiscountLine, showPaidLine: source.showPaidLine, showPaymentTerms: source.showPaymentTerms, showFooterNotes: source.showFooterNotes, showLogo: source.showLogo, showCompanyInfo: source.showCompanyInfo, jobId: source.jobId, seriesId, parentQuoteId: source.id, versionNumber, superseded: false, accepted: false, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
+    const rows = await db.insert(quotes).values({ clientId: source.clientId, clientName: source.clientName, clientPhone: source.clientPhone, clientEmail: source.clientEmail, jobAddress: source.jobAddress, jobType: source.jobType, lineItemsJson: source.lineItemsJson, materialsJson: source.materialsJson, optionSelectionJson: serializeOptionSelection({ selected: parseOptionSelection(source.optionSelectionJson).selected, accepted: null }), subtotal: source.subtotal, discountType: source.discountType, discountValue: source.discountValue, taxType: source.taxType, taxValue: source.taxValue, total: source.total, footnote: source.footnote, expiryDate: source.expiryDate, sentAt: "", automationStatus: "awaiting", lostReason: null, lostNote: "", theme: source.theme, font: source.font, accentColor: source.accentColor, showTaxLine: source.showTaxLine, showDiscountLine: source.showDiscountLine, showPaidLine: source.showPaidLine, showPaymentTerms: source.showPaymentTerms, showFooterNotes: source.showFooterNotes, showLogo: source.showLogo, showCompanyInfo: source.showCompanyInfo, jobId: source.jobId, seriesId, parentQuoteId: source.id, versionNumber, superseded: false, accepted: false, createdAt: now, updatedAt: now }).returning({ id: quotes.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not create quote version.");
@@ -78814,8 +79492,12 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Quote not found.");
     const seriesId = quote.seriesId ?? quote.id;
     const versions = (await db.select().from(quotes)).filter((q) => (q.seriesId ?? q.id) === seriesId);
-    for (const version of versions)
-      await db.update(quotes).set({ accepted: version.id === quote.id, superseded: version.id !== quote.id, updatedAt: new Date }).where(eq(quotes.id, version.id));
+    for (const version of versions) {
+      const isAccepted = version.id === quote.id;
+      const versionState = parseOptionSelection(version.optionSelectionJson);
+      const nextSelection = isAccepted ? serializeOptionSelection({ selected: versionState.selected, accepted: buildAcceptedOptionsSnapshot(version) }) : serializeOptionSelection({ selected: versionState.selected, accepted: null });
+      await db.update(quotes).set({ accepted: isAccepted, superseded: !isAccepted, optionSelectionJson: nextSelection, updatedAt: new Date }).where(eq(quotes.id, version.id));
+    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -79293,6 +79975,74 @@ If that was you, just sign in again. If not, we recommend changing your password
       const unlockedRows = await db.select({ listingId: marketplaceUnlocks.listingId }).from(marketplaceUnlocks).where(and(eq(marketplaceUnlocks.companyId, myCompanyId), eq(marketplaceUnlocks.listingId, row.id))).limit(1);
       const verifiedIds = await verifiedCompanyIdSet(db);
       return { listing: await marketplaceListingShape(ctx, row, photoRows, new Set(unlockedRows.map((r) => r.listingId)), verifiedIds) };
+    }
+  }),
+  getMarketplaceProProfile: defineAction({
+    request: object({ companyId: number2().int().positive().nullable().default(null), listingId: number2().int().positive().nullable().default(null) }),
+    response: object({ profile: object({
+      companyId: number2(),
+      companyName: string2(),
+      verified: boolean2(),
+      logoUrl: string2().nullable(),
+      coverUrl: string2().nullable(),
+      description: string2(),
+      serviceArea: string2(),
+      website: string2(),
+      facebookUrl: string2(),
+      instagramUrl: string2(),
+      youtubeUrl: string2(),
+      reviewUrl: string2(),
+      offersFreeEstimates: boolean2(),
+      categories: array(marketplaceCategorySchema),
+      listings: array(marketplaceListingSchema),
+      newestListingId: number2().nullable()
+    }).nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      await requireMarketplaceEnabled(db);
+      let companyId = args.companyId;
+      if (companyId == null && args.listingId != null) {
+        const listing = (await db.select({ companyId: marketplaceListings.companyId, moderationStatus: marketplaceListings.moderationStatus }).from(marketplaceListings).where(eq(marketplaceListings.id, args.listingId)).limit(1))[0];
+        if (!listing || listing.moderationStatus !== "active" && listing.companyId !== workspaceIdentity(ctx).workspaceCompanyId)
+          return { profile: null };
+        companyId = listing.companyId;
+      }
+      if (companyId == null)
+        return { profile: null };
+      const profileSettings = (await db.select().from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+      const rows = (await db.select().from(marketplaceListings).where(eq(marketplaceListings.companyId, companyId)).orderBy(desc(marketplaceListings.promoted), desc(marketplaceListings.createdAt))).filter((row) => row.moderationStatus === "active");
+      if (!profileSettings && rows.length === 0)
+        return { profile: null };
+      const companyName = (profileSettings?.companyName ?? "").trim() || rows[0]?.companyName || "";
+      const photoRows = await db.select().from(marketplaceListingPhotos).orderBy(marketplaceListingPhotos.sortOrder);
+      const myCompanyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const unlockedRows = await db.select({ listingId: marketplaceUnlocks.listingId }).from(marketplaceUnlocks).where(eq(marketplaceUnlocks.companyId, myCompanyId));
+      const unlockedIds = new Set(unlockedRows.map((r) => r.listingId));
+      const verifiedIds = await verifiedCompanyIdSet(db);
+      const listings = await Promise.all(rows.map((row) => marketplaceListingShape(ctx, row, photoRows, unlockedIds, verifiedIds)));
+      const categories = [];
+      for (const row of rows)
+        if (!categories.includes(row.category))
+          categories.push(row.category);
+      const newest = rows.reduce((acc, row) => !acc || row.createdAt.getTime() > acc.createdAt.getTime() ? row : acc, null);
+      return { profile: {
+        companyId,
+        companyName,
+        verified: verifiedIds.has(companyId),
+        logoUrl: profileSettings?.logoBlobKey ? await ctx.blobs.getUrl(profileSettings.logoBlobKey) : null,
+        coverUrl: profileSettings?.coverBlobKey ? await ctx.blobs.getUrl(profileSettings.coverBlobKey) : null,
+        description: profileSettings?.profileDescription ?? "",
+        serviceArea: profileSettings?.serviceArea ?? "",
+        website: profileSettings?.website ?? "",
+        facebookUrl: profileSettings?.facebookUrl ?? "",
+        instagramUrl: profileSettings?.instagramUrl ?? "",
+        youtubeUrl: profileSettings?.youtubeUrl ?? "",
+        reviewUrl: profileSettings?.reviewUrl ?? "",
+        offersFreeEstimates: profileSettings?.offersFreeEstimates ?? false,
+        categories,
+        listings,
+        newestListingId: newest?.id ?? null
+      } };
     }
   }),
   createMarketplaceListing: defineAction({
@@ -80704,8 +81454,8 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const row = rows[0];
     if (!row)
-      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
-    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
+      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null, savedSignatureUrl: null };
+    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null, savedSignatureUrl: row.signatureBlobKey ? await ctx.blobs.getUrl(row.signatureBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = platformDb(ctx);
@@ -80740,6 +81490,32 @@ If that was you, just sign in again. If not, we recommend changing your password
       await db.insert(settings).values({ companyName: "", logoBlobKey: key, updatedAt: new Date });
     if (old?.logoBlobKey)
       await ctx.blobs.delete(old.logoBlobKey);
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  saveContractorSignature: defineAction({ request: object({ signatureDataBase64: string2().min(100).max(4000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = platformDb(ctx);
+    const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
+    const old = rows[0];
+    const key = `branding/signatures/${crypto.randomUUID()}.png`;
+    await ctx.blobs.put(key, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
+    if (old)
+      await db.update(settings).set({ signatureBlobKey: key, updatedAt: new Date }).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId));
+    else
+      await db.insert(settings).values({ companyName: "", signatureBlobKey: key, updatedAt: new Date });
+    if (old?.signatureBlobKey)
+      await ctx.blobs.delete(old.signatureBlobKey);
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  clearContractorSignature: defineAction({ request: object({}), response: object({ ok: literal(true) }), async handler(ctx) {
+    const db = platformDb(ctx);
+    const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
+    const old = rows[0];
+    if (old?.signatureBlobKey) {
+      await db.update(settings).set({ signatureBlobKey: null, updatedAt: new Date }).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId));
+      await ctx.blobs.delete(old.signatureBlobKey);
+    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -80925,8 +81701,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const db = ctx.db();
       await db.update(authUsers).set({ leaderboardOptIn: args.optIn, updatedAt: new Date }).where(eq(authUsers.id, identity.workspaceUserId));
       if (!args.optIn) {
-        const today = new Date().toISOString().slice(0, 10);
-        await db.delete(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), eq(dailyGameScores.scoreDate, today)));
+        await db.delete(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), inArray(dailyGameScores.scoreDate, weekDates(currentWeekStart()))));
       }
       return { ok: true, optIn: args.optIn };
     }
@@ -80949,7 +81724,7 @@ If that was you, just sign in again. If not, we recommend changing your password
         return { ok: true, stored: false, hint: "no-score" };
       const company = (await db.select({ companyName: settings.companyName }).from(settings).where(eq(settings.companyId, user.companyId)).limit(1))[0];
       const displayName = ((company?.companyName ?? "").trim() || user.name.trim() || "Player").slice(0, 80);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = etDateString(new Date);
       const existing = (await db.select().from(dailyGameScores).where(and(eq(dailyGameScores.userId, user.id), eq(dailyGameScores.scoreDate, today))).limit(1))[0];
       if (!existing) {
         await db.insert(dailyGameScores).values({ userId: user.id, displayName, score, scoreDate: today, createdAt: new Date });
@@ -80964,20 +81739,31 @@ If that was you, just sign in again. If not, we recommend changing your password
     response: object({
       optIn: boolean2(),
       myBest: number2().nullable(),
-      entries: array(object({ rank: number2(), displayName: string2(), score: number2(), isMe: boolean2() }))
+      entries: array(object({ rank: number2(), displayName: string2(), score: number2(), isMe: boolean2() })),
+      champion: craneChampionSchema
     }),
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
-      const today = new Date().toISOString().slice(0, 10);
+      const dates = weekDates(currentWeekStart());
       const user = (await db.select({ leaderboardOptIn: authUsers.leaderboardOptIn }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
-      const rows = await db.select({ userId: dailyGameScores.userId, displayName: dailyGameScores.displayName, score: dailyGameScores.score }).from(dailyGameScores).innerJoin(authUsers, eq(dailyGameScores.userId, authUsers.id)).where(and(eq(dailyGameScores.scoreDate, today), eq(authUsers.leaderboardOptIn, true))).orderBy(desc(dailyGameScores.score), asc(dailyGameScores.createdAt)).limit(5);
-      const mine = (await db.select({ score: dailyGameScores.score }).from(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), eq(dailyGameScores.scoreDate, today))).limit(1))[0];
+      const bests = await craneWeeklyBests(db, dates);
+      const myRows = await db.select({ score: dailyGameScores.score }).from(dailyGameScores).where(and(eq(dailyGameScores.userId, identity.workspaceUserId), inArray(dailyGameScores.scoreDate, dates)));
+      const champion = await craneLastWeekChampion(db);
       return {
         optIn: user?.leaderboardOptIn ?? false,
-        myBest: mine ? mine.score : null,
-        entries: rows.map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId }))
+        myBest: myRows.length ? Math.max(...myRows.map((r) => r.score)) : null,
+        entries: bests.slice(0, 5).map((r, i) => ({ rank: i + 1, displayName: r.displayName, score: r.score, isMe: r.userId === identity.workspaceUserId })),
+        champion
       };
+    }
+  }),
+  craneRunGetChampion: defineAction({
+    request: object({}),
+    response: object({ champion: craneChampionSchema }),
+    async handler(ctx) {
+      const db = ctx.db();
+      return { champion: await craneLastWeekChampion(db) };
     }
   })
 };
@@ -80998,6 +81784,7 @@ var PUBLIC_ACTIONS = new Set([
   "getPortalData",
   "portalUpdateSelection",
   "portalSignChangeOrder",
+  "saveQuoteOptionSelection",
   "resolveDocumentLink",
   "getDocumentLinkPdf",
   "getDocumentLinkPdfPages",

@@ -2688,10 +2688,37 @@ export const BaseActions = {
           }
         }
         if (row.replacedBy) {
-          // Reuse of a rotated token outside the grace window: token theft.
+          // Reuse of a rotated token outside the grace window. First rule out
+          // a stale-context race on the SAME device: when this request's
+          // ipHash + userAgent both match the successor token's stored
+          // signals, the old cookie was almost certainly replayed by the
+          // owner's own second tab/app context — reject it quietly, with no
+          // family revocation and no alert email. A copied token replayed
+          // from a different network/browser (the real theft case) has
+          // different signals and still falls through to the theft path.
+          const reqIpHash = meta.ipHash ?? "";
+          const reqUserAgent = (meta.userAgent ?? "").slice(0, 300);
+          let successorRow = (await db.select().from(schema.authSessions).where(eq(schema.authSessions.tokenHash, row.replacedBy)).limit(1))[0];
+          if (!successorRow && row.familyId) {
+            // Successor row is gone: fall back to the family's newest
+            // still-active refresh row for the signal comparison.
+            successorRow = (await db.select().from(schema.authSessions).where(and(eq(schema.authSessions.familyId, row.familyId), eq(schema.authSessions.tokenType, "refresh"), isNull(schema.authSessions.revokedAt))).orderBy(desc(schema.authSessions.createdAt)).limit(1))[0];
+          }
+          if (successorRow && reqIpHash && reqUserAgent && successorRow.ipHash && successorRow.userAgent && successorRow.ipHash === reqIpHash && successorRow.userAgent === reqUserAgent) {
+            throw new Error("Sign in to continue.");
+          }
+          // Token theft: revoke the whole family. The alert email is
+          // deduped: it is sent only when this call actually transitions the
+          // family from active to revoked (at least one family row was still
+          // unrevoked just before). A replay against an already-dead family
+          // still throws the security error, but never re-emails — one
+          // theft event produces exactly one alert.
+          const familyStillActive = row.familyId
+            ? (await db.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(eq(schema.authSessions.familyId, row.familyId), isNull(schema.authSessions.revokedAt))).limit(1)).length > 0
+            : (await db.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(eq(schema.authSessions.userId, row.userId), eq(schema.authSessions.tokenType, "legacy"), isNull(schema.authSessions.revokedAt))).limit(1)).length > 0;
           await revokeSessionFamily(db, row.familyId, row.userId);
           const user = (await db.select({ id: schema.authUsers.id, email: schema.authUsers.email, name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
-          if (user?.email) {
+          if (familyStillActive && user?.email) {
             const when = new Date(now).toISOString();
             try {
               await ctx.executePrivileged(privileged.sendSecurityAlert, {

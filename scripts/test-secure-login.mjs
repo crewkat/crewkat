@@ -12,6 +12,9 @@ const check = (name, ok, detail = "") => {
 const env = await createTestEnv();
 const { Actions, libsql, sentEmails, withMeta } = env;
 const DEV = { isProdCookie: false, userAgent: "test-agent", ipHash: "iph-1" };
+// A different device/network than DEV: different userAgent AND ipHash.
+const OTHER = { isProdCookie: false, userAgent: "other-agent", ipHash: "iph-other" };
+const securityAlerts = () => sentEmails.filter((e) => e.kind === "security").length;
 const sha = async (t) =>
   Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t))).toString("hex");
 const sessionRows = async (userId) =>
@@ -84,14 +87,14 @@ try {
   check("grace: replay within 120s succeeds", typeof r3.sessionToken === "string");
   check("grace: no theft alert sent", !sentEmails.some((e) => e.kind === "security"));
 
-  // --- 7. theft: replay rotated token after grace ------------------------------
+  // --- 7. theft: replay rotated token after grace, from a DIFFERENT device ---
   await libsql.execute({
     sql: "UPDATE auth_sessions SET revoked_at = ? WHERE id = ?",
     args: [Date.now() - 130_000, oldRow.id],
   });
   let theftError = "";
   try {
-    await Actions.refreshSession.handler(withMeta({ ...DEV, refreshToken }), {});
+    await Actions.refreshSession.handler(withMeta({ ...OTHER, refreshToken }), {});
   } catch (e) {
     theftError = e.message;
   }
@@ -100,6 +103,47 @@ try {
   check("theft: entire family revoked", rows.every((r) => r.revoked_at));
   const alert = sentEmails.find((e) => e.kind === "security");
   check("theft: security alert email attempted", !!alert && alert.to === "owner@test.com", alert?.subject ?? "none");
+  check("theft: exactly one security alert sent", securityAlerts() === 1, `${securityAlerts()} alerts`);
+
+  // --- 7a. dedupe: replaying the same stolen token again never re-alerts -------
+  let theftError2 = "";
+  try {
+    await Actions.refreshSession.handler(withMeta({ ...OTHER, refreshToken }), {});
+  } catch (e) {
+    theftError2 = e.message;
+  }
+  check("dedupe: second replay still throws security error", /unusual sign-in activity/i.test(theftError2), theftError2);
+  check("dedupe: no second security alert sent", securityAlerts() === 1, `${securityAlerts()} alerts`);
+
+  // --- 7b. same-device tolerance: stale replay from the successor's device -----
+  const SAME = { isProdCookie: false, userAgent: "owner-phone", ipHash: "iph-same" };
+  const loginS = await Actions.login.handler(withMeta(SAME), { email: "owner@test.com", password: "correct-horse-123" });
+  const tokenS = extractCookieToken(loginS.setCookies[0]);
+  check("tolerance: fresh login issues a refresh token", tokenS.length >= 32);
+  await libsql.execute({
+    sql: "UPDATE auth_sessions SET created_at = ? WHERE token_hash = ?",
+    args: [Date.now() - 61 * 60_000, await sha(tokenS)],
+  });
+  const rotS = await Actions.refreshSession.handler(withMeta({ ...SAME, refreshToken: tokenS }), {});
+  const tokenS2 = extractCookieToken(rotS.setCookies[0]);
+  check("tolerance: rotation issues a successor token", !!tokenS2 && tokenS2 !== tokenS);
+  await libsql.execute({
+    sql: "UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ?",
+    args: [Date.now() - 130_000, await sha(tokenS)],
+  });
+  const alertsBeforeTolerance = securityAlerts();
+  let toleranceError = "";
+  try {
+    await Actions.refreshSession.handler(withMeta({ ...SAME, refreshToken: tokenS }), {});
+  } catch (e) {
+    toleranceError = e.message;
+  }
+  check("tolerance: same-device replay is a plain sign-in rejection", /sign in to continue/i.test(toleranceError) && !/unusual sign-in activity/i.test(toleranceError), toleranceError);
+  check("tolerance: no security alert sent", securityAlerts() === alertsBeforeTolerance, `${securityAlerts()} alerts`);
+  const succState = (await libsql.execute({ sql: "SELECT revoked_at FROM auth_sessions WHERE token_hash = ?", args: [await sha(tokenS2)] })).rows[0];
+  check("tolerance: successor session NOT revoked", !!succState && !succState.revoked_at);
+  const rS = await Actions.refreshSession.handler(withMeta({ ...SAME, refreshToken: tokenS2 }), {});
+  check("tolerance: current token still refreshes afterwards", typeof rS.sessionToken === "string");
 
   // --- 8. legacy dual-mode: old 30-day body token still works ------------------
   const legacyToken = "legacylegacylegacylegacylegacylegacylegacy01";
