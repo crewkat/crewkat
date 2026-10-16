@@ -6725,9 +6725,6 @@ function JobsScreen({
   const t = copy[lang];
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "completed" | "all">("active");
-  const auth = useContext(AuthContext);
-  const isPremium = auth?.user.tier === "premium";
-  const [pipelineGate, setPipelineGate] = useState(false);
   const jobs = useQuery({
     queryKey: ["jobs", search],
     queryFn: () => api.listJobs({ search }),
@@ -6773,23 +6770,15 @@ function JobsScreen({
           {t.newJob}
         </button>
       </section>
+      {/* Pipeline entry removed from the Jobs switcher (Danny 2026-10-15):
+          the field app is the execution end of lead info, not a CRM — a
+          manual pipeline board doesn't belong here. The Operations leads
+          tab itself is untouched and stays reachable via Tools (Lead
+          scoring) and Home field intel. */}
       <nav className="section-switcher" aria-label={lang === "es" ? "Vistas de trabajos" : "Job views"}>
         <button className="active" aria-current="page">{lang === "es" ? "Trabajos" : "Jobs"}</button>
-        {isPremium ? (
-          <button onClick={() => setScreen({ name: "operations", tab: "leads" })}>{lang === "es" ? "Embudo" : "Pipeline"}</button>
-        ) : (
-          <button onClick={() => setPipelineGate(true)}>{lang === "es" ? "Embudo" : "Pipeline"} <span className="pro-badge is-locked">PRO</span></button>
-        )}
         <button onClick={() => setScreen({ name: "operations", tab: "calendar" })}>{lang === "es" ? "Calendario" : "Schedule"}</button>
       </nav>
-      {pipelineGate && !isPremium && (
-        <UpgradeGateSheet
-          lang={lang}
-          tool={{ title: lang === "es" ? "Embudo" : "Pipeline", description: "", icon: null, pro: true }}
-          onClose={() => setPipelineGate(false)}
-          onUpgrade={() => { setPipelineGate(false); setScreen({ name: "upgrade" }); }}
-        />
-      )}
       <label className="status-filter"><span>{lang === "es" ? "Estado" : "Status"}</span><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}><option value="active">{lang === "es" ? "Activos" : "Active"}</option><option value="completed">{lang === "es" ? "Completados" : "Completed"}</option><option value="all">{lang === "es" ? "Todos" : "All"}</option></select></label>
       <section className="job-list">
         {jobs.isPending && (

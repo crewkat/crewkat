@@ -2,6 +2,9 @@
 // PRO badge for free users; tapping opens the upgrade sheet. Premium users
 // see no gate. Financials intentionally NOT gated (separate consolidation).
 // Plus: client/operations spacing fix, client edit as modal.
+// Update (Danny 2026-10-15): Surface 2 — the Pipeline entry in the Jobs page
+// switcher — was REMOVED entirely (the field app is not a CRM). The
+// Operations leads tab itself is untouched; see the Surface 2 block below.
 // Run from app/:  bun pro-showcase-gating.behavior.test.ts
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -42,14 +45,25 @@ describe("Surface 1: Client portal Pro gate", () => {
   });
 });
 
-describe("Surface 2: Pipeline Pro gate", () => {
-  test("Pipeline button shows PRO badge for free users", () => {
-    expect(APP).toMatch(/\{lang === "es" \? "Embudo" : "Pipeline"\} <span className="pro-badge is-locked">PRO<\/span>/);
+describe("Surface 2: Pipeline entry removed from the Jobs switcher (Danny 2026-10-15)", () => {
+  const JOBS = APP.slice(APP.indexOf("function JobsScreen("), APP.indexOf("function JobFields("));
+  const NAV = JOBS.slice(JOBS.indexOf('className="section-switcher"'), JOBS.indexOf("</nav>"));
+
+  test("Jobs switcher is Jobs + Schedule only — no Pipeline button in either language", () => {
+    expect(NAV).toContain('{ name: "operations", tab: "calendar" }');
+    expect(NAV).not.toContain("Pipeline");
+    expect(NAV).not.toContain("Embudo");
+    expect(NAV).not.toContain("pro-badge");
   });
 
-  test("free tap opens upgrade sheet, premium navigates", () => {
-    expect(APP).toContain("setPipelineGate(true)");
-    expect(APP).toMatch(/pipelineGate && !isPremium && \(\s*<UpgradeGateSheet/);
+  test("pipeline gate state and its upgrade sheet are gone", () => {
+    expect(JOBS).not.toContain("pipelineGate");
+    expect(APP).not.toContain("pipelineGate");
+    expect(APP).not.toContain("setPipelineGate");
+  });
+
+  test("the leads tab itself survives — still reachable via Tools (Lead scoring)", () => {
+    expect(APP).toContain('screen: { name: "operations", tab: "leads" }');
   });
 });
 

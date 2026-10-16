@@ -5422,7 +5422,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .jobs-search-clear { flex: none; width: 26px; height: 26px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--dim); font-size: 17px; line-height: 1; cursor: pointer; }
 .jobs-page .jobs-new-btn { flex: none; width: auto; min-height: 44px; padding: 0 15px; border-radius: 12px; font-size: 14px; }
 .jobs-page .jobs-new-btn svg { width: 16px; }
-.jobs-page .section-switcher { margin: 2px 0 10px; }
+.jobs-page .section-switcher { margin: 2px 0 10px; grid-template-columns: repeat(2, 1fr); }
 .jobs-page .section-switcher button { min-height: 38px; font-size: 12.5px; }
 .jobs-page .status-filter { margin: 0 0 10px; font-size: 12px; }
 .jobs-page .status-filter select { min-height: 38px; border-radius: 10px; }
