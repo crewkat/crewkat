@@ -98,7 +98,10 @@ check(
 );
 check(
   "documentation PDF fetches photos same-origin",
-  appSrc.includes("const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();\n          doc.addImage("),
+  // Wiring updated 2026-10-15 (proof-packet aspect fix): the fetch now
+  // feeds normalizePhotoForPdf + fitPhotoBox before doc.addImage — the
+  // invariant (photo bytes fetched same-origin into the PDF) is unchanged.
+  appSrc.includes("const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();\n          const norm = await normalizePhotoForPdf(blob);"),
 );
 check(
   "slideshow maker fetches photos same-origin",

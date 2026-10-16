@@ -42,6 +42,7 @@ import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonat
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
+import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
@@ -19992,7 +19993,9 @@ function DepositRequest({
 // bytes or a wrong format guess, and the image silently goes missing from
 // the packet. Downscaling to a bounded JPEG always embeds.
 // ---------------------------------------------------------------------------
-async function normalizePhotoForPdf(blob: Blob): Promise<string> {
+async function normalizePhotoForPdf(
+  blob: Blob,
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const bitmap = await createImageBitmap(blob);
   const maxSide = 1200;
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -20008,7 +20011,9 @@ async function normalizePhotoForPdf(blob: Blob): Promise<string> {
   }
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
-  return canvas.toDataURL("image/jpeg", 0.85);
+  // The downscale preserves the natural ratio, so these dimensions carry
+  // the photo's true aspect for fitPhotoBox at draw time.
+  return { dataUrl: canvas.toDataURL("image/jpeg", 0.85), width: w, height: h };
 }
 function ProofPacket({
   lang,
@@ -20145,21 +20150,47 @@ function ProofPacket({
       doc.text(`${t[stage]} (${photos.length})`, margin, y);
       y += 16;
       for (const p of photos) {
-        space(225);
+        // Load + measure first: pagination below needs the height this
+        // photo will actually occupy at its TRUE aspect ratio (the old
+        // code stretched every photo into a fixed 175pt slot — squished).
+        let img: {
+          dataUrl: string;
+          width: number;
+          height: number;
+          offsetX: number;
+        } | null = null;
         try {
           const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();
-          doc.addImage(
-            await normalizePhotoForPdf(blob),
-            "JPEG",
-            margin,
-            y,
+          const norm = await normalizePhotoForPdf(blob);
+          const fit = fitPhotoBox(
+            norm.width,
+            norm.height,
             w - margin * 2,
-            175,
-            undefined,
-            "MEDIUM",
+            PROOF_PHOTO_MAX_HEIGHT,
           );
-          y += 186;
+          img = { dataUrl: norm.dataUrl, ...fit };
         } catch {
+          img = null;
+        }
+        // Photo + its caption line stay together on one page.
+        space((img ? img.height + 11 : 30) + 24);
+        if (img) {
+          try {
+            doc.addImage(
+              img.dataUrl,
+              "JPEG",
+              margin + img.offsetX,
+              y,
+              img.width,
+              img.height,
+              undefined,
+              "MEDIUM",
+            );
+            y += img.height + 11;
+          } catch {
+            y += 30;
+          }
+        } else {
           y += 30;
         }
         doc.setTextColor(54, 66, 63);
