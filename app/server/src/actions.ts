@@ -3091,6 +3091,53 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // the document; the client sign flow composites the captured signature
   // at the client fields, tap-to-sign at the contractor fields. Saving an
   // empty object clears all fields (stamps fall back to the last page).
+  // Edit an existing signed document (contracts / change orders). Only the
+  // editable content fields move — signerName, signatures, client signature
+  // state and placement-independent attestation data are never touched here.
+  // Replacing the uploaded PDF stores a new blob, clears the saved signature
+  // placement (boxes were placed on the OLD file's pages) and deletes the
+  // replaced blob best-effort, mirroring signDocumentWithSavedSignature.
+  updateDocument: defineAction({
+    request: z.object({
+      id: z.number().int().positive(),
+      title: z.string().trim().min(1).max(200).optional(),
+      bodyText: z.string().max(120000).optional(),
+      description: z.string().max(4000).optional(),
+      amount: z.string().max(80).optional(),
+      originalFilename: z.string().max(240).optional(),
+      originalDataBase64: z.string().max(32_000_000).optional(),
+    }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const existing = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.id)).limit(1))[0];
+      if (!existing) throw new Error("Document not found. Save it again.");
+      const patch: Partial<typeof schema.documents.$inferInsert> = {};
+      if (args.title !== undefined) patch.title = args.title;
+      if (args.bodyText !== undefined) patch.bodyText = args.bodyText;
+      if (args.description !== undefined) patch.description = args.description;
+      if (args.amount !== undefined) patch.amount = normalizeMoney(args.amount);
+      let replacedBlobKey: string | null = null;
+      if (args.originalDataBase64) {
+        const key = `documents/${existing.jobId}/${crypto.randomUUID()}.pdf`;
+        await ctx.blobs.put(key, Buffer.from(args.originalDataBase64, "base64"), { contentType: "application/pdf" });
+        replacedBlobKey = existing.originalBlobKey;
+        patch.originalBlobKey = key;
+        patch.originalFilename = args.originalFilename || existing.originalFilename;
+        patch.signatureFieldsJson = "{}";
+      } else if (args.originalFilename !== undefined) {
+        patch.originalFilename = args.originalFilename;
+      }
+      if (Object.keys(patch).length) {
+        await db.update(schema.documents).set(patch).where(eq(schema.documents.id, args.id));
+        if (replacedBlobKey) {
+          try { await ctx.blobs.delete(replacedBlobKey); } catch { /* best-effort: the row no longer references it */ }
+        }
+      }
+      ctx.invalidateQueries?.();
+      return { ok: true as const };
+    },
+  }),
   saveDocumentSignatureFields: defineAction({ request: z.object({ documentId: z.number().int().positive(), fields: signatureFieldsSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("Signature fields need an uploaded PDF document."); await db.update(schema.documents).set({ signatureFieldsJson: serializeSignatureFields(args.fields as SignatureFields) }).where(eq(schema.documents.id, doc.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   // Tap-to-sign (0079): apply the contractor's SAVED signature to a
   // document in one tap — a copy of the saved PNG becomes the document's
@@ -3777,7 +3824,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   createDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ token: z.string(), shortCode: z.string(), hint: z.string(), expiresAt: z.string() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); if(!await documentLinkTargetExists(ctx,args.kind,args.id)) throw new Error("Document not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashLinkToken(token); const shortCode=await uniqueDocumentShortCode(ctx); const now=new Date(); const expiresAt=new Date(now.getTime()+30*86400000); /* Build 0.5 (item 2): links are no longer revoked on re-share — previously shared links stay valid until explicitly revoked, so a link sent to a client can't silently die. */ await db.insert(schema.documentLinks).values({documentKind:args.kind,documentId:args.id,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:now}); ctx.invalidateQueries(); return{token,shortCode,hint:token.slice(-6),expiresAt:expiresAt.toISOString()}; } }),
   getDocumentLinkInfo: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const link=await getActiveDocumentLinkRow(ctx,args.kind,args.id); if(!link) return{link:null}; return{link:{hint:link.tokenHint,shortCode:link.shortCode,expiresAt:link.expiresAt.toISOString(),expired:link.expiresAt.getTime()<Date.now(),viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   revokeDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { await ctx.db<typeof schema>().update(schema.documentLinks).set({revokedAt:new Date()}).where(and(eq(schema.documentLinks.documentKind,args.kind),eq(schema.documentLinks.documentId,args.id),isNull(schema.documentLinks.revokedAt))); ctx.invalidateQueries(); return{ok:true}; } }),
-  deleteDocument: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { const db=ctx.db<typeof schema>(); const doc=(await db.select({id:schema.documents.id,kind:schema.documents.kind}).from(schema.documents).where(eq(schema.documents.id,args.id)).limit(1))[0]; if(!doc) throw new Error("Document not found."); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind,doc.kind),eq(schema.documentLinks.documentId,args.id))); await db.delete(schema.documents).where(eq(schema.documents.id,args.id)); ctx.invalidateQueries(); return{ok:true}; } }),
+  deleteDocument: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { const db=ctx.db<typeof schema>(); const doc=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.id)).limit(1))[0]; if(!doc) throw new Error("Document not found."); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind,doc.kind),eq(schema.documentLinks.documentId,args.id))); await db.delete(schema.documents).where(eq(schema.documents.id,args.id)); for(const key of [doc.originalBlobKey,doc.signatureBlobKey,doc.clientSignatureBlobKey,doc.clientSignedPdfBlobKey]){ if(key){ try{ await ctx.blobs.delete(key); }catch{ /* best-effort blob cleanup, like the sibling deletes */ } } } ctx.invalidateQueries(); return{ok:true}; } }),
   resolveDocumentLink: defineAction({ request: z.object({ token: z.string().min(8).max(200), userAgent: z.string().max(500).default("") }), response: z.object({ kind: documentKindSchema, documentId: z.number(), signable: z.boolean(), alreadySigned: z.boolean(), company: z.object({ name: z.string(), phone: z.string(), email: z.string(), website: z.string(), licenseNumber: z.string(), logoUrl: z.string().nullable() }), title: z.string(), clientName: z.string(), jobAddress: z.string(), jobType: z.string(), lineItems: z.array(z.object({ description: z.string(), amount: z.string(), name: z.string().optional(), quantity: z.number().optional(), discount: z.string().optional(), unit: z.string().optional(), id: z.string().optional(), optional: z.boolean().optional() })), subtotal: z.string(), total: z.string(), dateLabel: z.string(), dateValue: z.string(), footnote: z.string(), bodyText: z.string(), description: z.string(), amount: z.string(), contractorSignerName: z.string(), linkExpiresAt: z.string(), shortCode: z.string().nullable(),
     // Estimate options (0076): tickable option rows + selection state for the
     // client page (empty for non-quote documents).

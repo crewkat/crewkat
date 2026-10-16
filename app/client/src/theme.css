@@ -5379,6 +5379,8 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .doc-view-facts > div { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
 .doc-view-facts dt { font-size:.75rem; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
 .doc-view-facts dd { margin:0; font-size:.9rem; }
+.doc-detail-pages .pdf-pages img { cursor:pointer; }
+.document-detail-page .saved-section .doc-link-panel { margin-top:12px; }
 .danger-button { background:var(--danger,#c0392b); border-color:var(--danger,#c0392b); color:#fff; }
 .fin-unified{display:grid;gap:18px;padding:6px 0 26px}
 .fin-hero{margin:0;padding:20px;border-radius:12px;background:var(--green);color:#fff}

@@ -77132,6 +77132,54 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
+  updateDocument: defineAction({
+    request: object({
+      id: number2().int().positive(),
+      title: string2().trim().min(1).max(200).optional(),
+      bodyText: string2().max(120000).optional(),
+      description: string2().max(4000).optional(),
+      amount: string2().max(80).optional(),
+      originalFilename: string2().max(240).optional(),
+      originalDataBase64: string2().max(32000000).optional()
+    }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const existing = (await db.select().from(documents).where(eq(documents.id, args.id)).limit(1))[0];
+      if (!existing)
+        throw new Error("Document not found. Save it again.");
+      const patch = {};
+      if (args.title !== undefined)
+        patch.title = args.title;
+      if (args.bodyText !== undefined)
+        patch.bodyText = args.bodyText;
+      if (args.description !== undefined)
+        patch.description = args.description;
+      if (args.amount !== undefined)
+        patch.amount = normalizeMoney(args.amount);
+      let replacedBlobKey = null;
+      if (args.originalDataBase64) {
+        const key = `documents/${existing.jobId}/${crypto.randomUUID()}.pdf`;
+        await ctx.blobs.put(key, Buffer.from(args.originalDataBase64, "base64"), { contentType: "application/pdf" });
+        replacedBlobKey = existing.originalBlobKey;
+        patch.originalBlobKey = key;
+        patch.originalFilename = args.originalFilename || existing.originalFilename;
+        patch.signatureFieldsJson = "{}";
+      } else if (args.originalFilename !== undefined) {
+        patch.originalFilename = args.originalFilename;
+      }
+      if (Object.keys(patch).length) {
+        await db.update(documents).set(patch).where(eq(documents.id, args.id));
+        if (replacedBlobKey) {
+          try {
+            await ctx.blobs.delete(replacedBlobKey);
+          } catch {}
+        }
+      }
+      ctx.invalidateQueries?.();
+      return { ok: true };
+    }
+  }),
   saveDocumentSignatureFields: defineAction({ request: object({ documentId: number2().int().positive(), fields: signatureFieldsSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
@@ -79078,11 +79126,18 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   deleteDocument: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
-    const doc = (await db.select({ id: documents.id, kind: documents.kind }).from(documents).where(eq(documents.id, args.id)).limit(1))[0];
+    const doc = (await db.select().from(documents).where(eq(documents.id, args.id)).limit(1))[0];
     if (!doc)
       throw new Error("Document not found.");
     await db.delete(documentLinks).where(and(eq(documentLinks.documentKind, doc.kind), eq(documentLinks.documentId, args.id)));
     await db.delete(documents).where(eq(documents.id, args.id));
+    for (const key of [doc.originalBlobKey, doc.signatureBlobKey, doc.clientSignatureBlobKey, doc.clientSignedPdfBlobKey]) {
+      if (key) {
+        try {
+          await ctx.blobs.delete(key);
+        } catch {}
+      }
+    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),

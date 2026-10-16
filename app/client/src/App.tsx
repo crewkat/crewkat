@@ -382,7 +382,8 @@ type Screen =
   | { name: "admin" }
   | { name: "platformAdmin"; tab?: PlatformAdminTab; refundEmail?: string }
   | { name: "platformAdminUser"; userId: number }
-  | { name: "tool"; jobId: number; mode: ToolMode; photoId?: number };
+  | { name: "tool"; jobId: number; mode: ToolMode; photoId?: number }
+  | { name: "document"; jobId: number; documentId: number };
 
 const copy = {
   en: {
@@ -1161,7 +1162,7 @@ const CheckIcon = () => (
 type RootTab = "today" | "jobs" | "clients" | "invoices" | "marketplace";
 function rootTabFor(screen: Screen): RootTab | null {
   if (screen.name === "today") return "today";
-  if (["jobs", "new", "detail", "proof", "tool"].includes(screen.name)) return "jobs";
+  if (["jobs", "new", "detail", "proof", "tool", "document"].includes(screen.name)) return "jobs";
   if (["clients", "clientNew", "client"].includes(screen.name)) return "clients";
   if (["invoices", "invoiceNew", "invoicePreview", "quotes", "quoteNew", "quotePreview"].includes(screen.name)) return "invoices";
   if (["marketplace", "marketplaceNew", "marketplaceEdit", "marketplaceDetail", "marketplaceThread", "marketplaceProfile"].includes(screen.name)) return "marketplace";
@@ -3520,6 +3521,16 @@ function CrewkatApplication() {
           photoId={screen.photoId}
           settings={appSettings}
           onBack={goBack}
+        />
+      )}
+      {screen.name === "document" && (
+        <DocumentDetailScreen
+          lang={lang}
+          jobId={screen.jobId}
+          documentId={screen.documentId}
+          settings={appSettings}
+          onBack={goBack}
+          setScreen={setScreen}
         />
       )}
       {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={activeRootTab} onSelect={openRoot} />}
@@ -9795,7 +9806,7 @@ function JobDetail({
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
-          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: doc.kind === "contract" ? "contract" : "change" })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
+          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} tone="green" icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
           <div className="job-value-row"><p>{job.paymentNotes || (lang === "es" ? "Sin notas de pago" : "No payment notes")}</p><button type="button" className="small-button" onClick={() => setActiveJobSheet("payment")}>{job.paymentNotes ? t.edit : (lang === "es" ? "Agregar" : "Add")}</button></div>
@@ -18346,7 +18357,6 @@ function SignaturePlacementEditor({
 function DocumentSigner({
   lang,
   data,
-  settings,
   kind,
 }: {
   lang: Lang;
@@ -18367,32 +18377,6 @@ function DocumentSigner({
   const [signature, setSignature] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
-  const [preview, setPreview] = useState<{
-    blob: Blob;
-    filename: string;
-    title: string;
-  } | null>(null);
-  // Build 0.3 (item 11): the "View document" build used to fail silently.
-  const [viewError, setViewError] = useState("");
-  const [viewingId, setViewingId] = useState<number | null>(null);
-  // Signature placement (0078): the document whose fields are being placed.
-  const [placing, setPlacing] = useState<SignedDocument | null>(null);
-  // Tap-to-sign (0079): apply the saved signature server-side in one tap.
-  const [tapSigningId, setTapSigningId] = useState<number | null>(null);
-  const tapToSign = async (documentId: number) => {
-    setViewError("");
-    setTapSigningId(documentId);
-    try {
-      await api.signDocumentWithSavedSignature({ documentId });
-      client.invalidateQueries({ queryKey: ["job", job?.id] });
-      client.invalidateQueries({ queryKey: ["documents"] });
-    } catch (e) {
-      setViewError(actionErrorMessage(e));
-    } finally {
-      setTapSigningId(null);
-    }
-  };
-  useEscapeToClose(preview !== null, () => setPreview(null));
   const save = useMutation({
     mutationFn: async () => {
       let originalDataBase64 = "";
@@ -18422,7 +18406,6 @@ function DocumentSigner({
     onError: () => setError(t.error),
   });
   if (!job) return null;
-  const docs = data.documents.filter((d) => d.kind === kind);
   return (
     <>
       <section className="legal-note">
@@ -18507,147 +18490,6 @@ function DocumentSigner({
           {save.isPending ? t.saving : t.signSave}
         </button>
       </form>
-      {docs.length > 0 && (
-        <section className="saved-section">
-          <h2>{t.signedDocuments}</h2>
-          {docs.map((d) => (
-            <article key={d.id}>
-              <div>
-                <strong>{d.title}</strong>
-                <small>
-                  {d.signerName} ·{" "}
-                  {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
-                    dateStyle: "medium",
-                  }).format(new Date(d.signedAt))}
-                </small>
-              </div>
-              <div className="row-actions">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={viewingId === d.id}
-                  onClick={async () => {
-                    setViewingId(d.id);
-                    setViewError("");
-                    try {
-                      const blob = await buildSignedDocumentPdf(
-                        d,
-                        job,
-                        settings,
-                        lang,
-                      );
-                      setPreview({
-                        blob,
-                        filename: `${safeName(job.clientName)}-${safeName(d.title)}-signed.pdf`,
-                        title: d.title,
-                      });
-                    } catch (e) {
-                      setViewError(actionErrorMessage(e));
-                    } finally {
-                      setViewingId(null);
-                    }
-                  }}
-                >
-                  {viewingId === d.id ? (lang === "es" ? "Abriendo…" : "Opening…") : t.viewDocument}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={tapSigningId === d.id}
-                  onClick={() => void tapToSign(d.id)}
-                >
-                  {tapSigningId === d.id
-                    ? t.saving
-                    : lang === "es"
-                      ? "Firmar con mi firma"
-                      : "Sign with saved signature"}
-                </button>
-                {d.originalUrl ? (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setPlacing(d)}
-                  >
-                    {lang === "es" ? "Colocar firma" : "Place signature"}
-                  </button>
-                ) : null}
-                {d.signedPdfUrl ? (
-                  <a
-                    href={d.signedPdfUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn"
-                  >
-                    {lang === "es" ? "Ver copia firmada" : "View signed copy"}
-                  </a>
-                ) : null}
-              </div>
-              {d.clientSignedAt ? (
-                <small className="signed-label">
-                  <CheckIcon />
-                  {lang === "es" ? "Cliente firmó" : "Client signed"}:{" "}
-                  {d.clientSignerName}
-                </small>
-              ) : null}
-              <small className="signed-label">
-                {d.clientSignedAt
-                  ? lang === "es"
-                    ? "Firmado por ambas partes"
-                    : "Fully signed"
-                  : lang === "es"
-                    ? "Firmado por ti — falta el cliente"
-                    : "Signed by you — awaiting client"}
-              </small>
-              <DocumentLinkPanel lang={lang} kind={d.kind} id={d.id} />
-            </article>
-          ))}
-          {viewError && <p className="status error" role="alert">{viewError}</p>}
-        </section>
-      )}
-      {preview && (
-        <div
-          className="pdf-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={preview.title}
-        >
-          <div className="pdf-modal-head">
-            <strong>{preview.title}</strong>
-            <button onClick={() => setPreview(null)}>{t.close}</button>
-          </div>
-          <div className="packet-actions">
-            <button
-              className="primary-button"
-              onClick={() =>
-                nativeShare(preview.blob, preview.filename, preview.title)
-              }
-            >
-              <ShareIcon />
-              {t.sharePdf}
-            </button>
-            <button
-              className="secondary-button"
-              onClick={() => downloadBlob(preview.blob, preview.filename)}
-            >
-              <FileIcon />
-              {t.downloadPdf}
-            </button>
-          </div>
-          <PdfFrame blob={preview.blob} title={preview.title} />
-        </div>
-      )}
-      {placing && (
-        <SignaturePlacementEditor
-          lang={lang}
-          document={placing}
-          onClose={() => setPlacing(null)}
-          onSaved={() => {
-            client.invalidateQueries({ queryKey: ["job", job?.id] });
-            client.invalidateQueries({ queryKey: ["documents"] });
-            setPlacing(null);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -18776,6 +18618,570 @@ async function buildSignedDocumentPdf(
     }
   }
   return blob;
+}
+
+// Document detail (2026-10-15): tapping a contract / change order in a job
+// opens THIS screen — the document itself, its kind + signature state, its
+// linked-job context, and every action the signer screen's saved list used
+// to carry (view the signed document, tap-to-sign, place signature, send
+// link, view signed copy) plus Edit and Delete. The signer screen itself is
+// create-only: it no longer renders the saved-documents list.
+function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
+  const originalUrl = doc.originalUrl;
+  const [pages, setPages] = useState<string[]>([]);
+  const [failed, setFailed] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  useEffect(() => {
+    if (!originalUrl) return;
+    let cancelled = false;
+    setPages([]);
+    setFailed(false);
+    void (async () => {
+      try {
+        const res = await fetch(sameOriginBlobPath(originalUrl));
+        if (!res.ok) throw new Error("original fetch failed");
+        const blob = await res.blob();
+        const dataUrl = await blobDataUrl(blob);
+        const result = await api.renderPdfPreview({
+          dataBase64: dataUrl.split(",")[1] ?? "",
+        });
+        if (!cancelled) setPages(result.pagesBase64);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [originalUrl]);
+  if (!originalUrl) return null;
+  if (failed) {
+    return (
+      <p className="status error" role="alert">
+        {lang === "es"
+          ? "No se pudo mostrar el PDF aquí."
+          : "The PDF couldn't be shown here."}
+      </p>
+    );
+  }
+  return (
+    <div className="doc-detail-pages">
+      {pages.length === 0 ? (
+        <div className="loading-block" />
+      ) : (
+        <>
+          <div className="pdf-pages" aria-label={doc.title}>
+            {pages.map((page, index) => (
+              <img
+                key={`${doc.id}-${index}`}
+                src={`data:image/jpeg;base64,${page}`}
+                alt={`${doc.title} — page ${index + 1}`}
+                onClick={() => setViewerIndex(index)}
+              />
+            ))}
+          </div>
+          <p className="client-doc-zoom-hint">
+            {lang === "es" ? "Toca una página para ampliarla" : "Tap a page to enlarge it"}
+          </p>
+        </>
+      )}
+      {viewerIndex !== null && pages[viewerIndex] && (
+        <ClientDocPageViewer
+          pages={pages}
+          index={viewerIndex}
+          title={doc.title}
+          lang={lang}
+          onClose={() => setViewerIndex(null)}
+          onNavigate={setViewerIndex}
+        />
+      )}
+    </div>
+  );
+}
+
+function DocumentEditForm({
+  lang,
+  doc,
+  onSaved,
+  onCancel,
+}: {
+  lang: Lang;
+  doc: SignedDocument;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const t = copy[lang];
+  const [title, setTitle] = useState(doc.title);
+  const [bodyText, setBodyText] = useState(doc.bodyText);
+  const [description, setDescription] = useState(doc.description);
+  const [amount, setAmount] = useState(doc.amount);
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: async () => {
+      const args: Parameters<typeof api.updateDocument>[0] = {
+        id: doc.id,
+        title: title.trim(),
+      };
+      if (doc.kind === "contract") args.bodyText = bodyText;
+      if (doc.kind === "change_order") {
+        args.description = description;
+        args.amount = amount;
+      }
+      if (file) {
+        args.originalDataBase64 = (await fileToBase64(file)).dataBase64;
+        args.originalFilename = file.name;
+      }
+      return api.updateDocument(args);
+    },
+    onSuccess: onSaved,
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  return (
+    <form
+      className="tool-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!title.trim()) {
+          setError(t.required);
+          return;
+        }
+        save.mutate();
+      }}
+    >
+      <label>
+        <span>{t.title}</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      {doc.kind === "contract" ? (
+        <>
+          <label className="file-drop">
+            <span>{lang === "es" ? "Reemplazar PDF" : "Replace PDF"}</span>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <small>
+              {file?.name ??
+                doc.originalFilename ??
+                (lang === "es" ? "Sin PDF cargado" : "No PDF uploaded")}
+            </small>
+          </label>
+          {doc.originalUrl && (
+            <small className="signed-label">
+              {lang === "es"
+                ? "Reemplazar el PDF borra la colocación de firmas guardada."
+                : "Replacing the PDF clears the saved signature placement."}
+            </small>
+          )}
+          <label>
+            <span>{t.pasteText}</span>
+            <textarea
+              rows={8}
+              value={bodyText}
+              onChange={(e) => setBodyText(e.target.value)}
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          <label>
+            <span>{t.changeDescription}</span>
+            <textarea
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>{t.amount}</span>
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </label>
+        </>
+      )}
+      {error && (
+        <p className="status error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="row-actions">
+        <button type="submit" className="primary-button" disabled={save.isPending}>
+          {save.isPending ? t.saving : t.save}
+        </button>
+        <button type="button" className="btn" onClick={onCancel}>
+          {lang === "es" ? "Cancelar" : "Cancel"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DocumentDetailScreen({
+  lang,
+  jobId,
+  documentId,
+  settings,
+  onBack,
+  setScreen,
+}: {
+  lang: Lang;
+  jobId: number;
+  documentId: number;
+  settings: Settings | null;
+  onBack: () => void;
+  setScreen: (s: Screen) => void;
+}) {
+  const t = copy[lang];
+  const client = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["job", jobId],
+    queryFn: () => api.getJob({ id: jobId }),
+  });
+  const job = data?.job;
+  const doc = data?.documents.find((d) => d.id === documentId);
+  const [preview, setPreview] = useState<{
+    blob: Blob;
+    filename: string;
+    title: string;
+  } | null>(null);
+  const [viewError, setViewError] = useState("");
+  const [viewing, setViewing] = useState(false);
+  const [placing, setPlacing] = useState<SignedDocument | null>(null);
+  const [tapSigning, setTapSigning] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEscapeToClose(preview !== null, () => setPreview(null));
+  const invalidate = () => {
+    client.invalidateQueries({ queryKey: ["job", jobId] });
+    client.invalidateQueries({ queryKey: ["documents"] });
+  };
+  const tapToSign = async () => {
+    setViewError("");
+    setTapSigning(true);
+    try {
+      await api.signDocumentWithSavedSignature({ documentId });
+      invalidate();
+    } catch (e) {
+      setViewError(actionErrorMessage(e));
+    } finally {
+      setTapSigning(false);
+    }
+  };
+  const deleteDocument = useMutation({
+    mutationFn: () => api.deleteDocument({ id: documentId }),
+    onSuccess: () => {
+      invalidate();
+      onBack();
+    },
+    onError: (e) => setViewError(actionErrorMessage(e)),
+  });
+  const headerTitle = doc
+    ? doc.title
+    : lang === "es"
+      ? "Documento"
+      : "Document";
+  if (!data) {
+    return (
+      <section className="page">
+        <PageHeader lang={lang} title={headerTitle} onBack={onBack} />
+        <p className="empty">{lang === "es" ? "Cargando…" : "Loading…"}</p>
+      </section>
+    );
+  }
+  if (!doc || !job) {
+    return (
+      <section className="page">
+        <PageHeader lang={lang} title={headerTitle} onBack={onBack} />
+        <p className="empty">
+          {lang === "es"
+            ? "Este documento ya no existe."
+            : "This document no longer exists."}
+        </p>
+        <button type="button" className="secondary-button" onClick={onBack}>
+          {t.back}
+        </button>
+      </section>
+    );
+  }
+  const kindLabel =
+    doc.kind === "contract"
+      ? lang === "es"
+        ? "Contrato"
+        : "Contract"
+      : lang === "es"
+        ? "Orden de cambio"
+        : "Change order";
+  return (
+    <section className="page document-detail-page">
+      <PageHeader lang={lang} title={doc.title} onBack={onBack} />
+      <section className="saved-section">
+        <span className="doc-view-meta">
+          {kindLabel} · {job.jobType || job.clientName}
+        </span>
+        <dl className="doc-view-facts">
+          <div>
+            <dt>{lang === "es" ? "Trabajo" : "Job"}</dt>
+            <dd>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setScreen({ name: "detail", jobId })}
+              >
+                {job.clientName}
+                {job.jobAddress ? ` · ${job.jobAddress}` : ""}
+              </button>
+            </dd>
+          </div>
+          <div>
+            <dt>{lang === "es" ? "Firmado por" : "Signed by"}</dt>
+            <dd>
+              {doc.signerName} · {formatDate(doc.signedAt, lang)}
+            </dd>
+          </div>
+          {doc.clientSignedAt && (
+            <div>
+              <dt>{lang === "es" ? "Cliente" : "Client"}</dt>
+              <dd>
+                {doc.clientSignerName} · {formatDate(doc.clientSignedAt, lang)}
+              </dd>
+            </div>
+          )}
+          {doc.kind === "change_order" && doc.amount && (
+            <div>
+              <dt>{t.amount}</dt>
+              <dd>{usd(money(doc.amount))}</dd>
+            </div>
+          )}
+          {doc.originalFilename && (
+            <div>
+              <dt>{lang === "es" ? "Archivo" : "File"}</dt>
+              <dd>{doc.originalFilename}</dd>
+            </div>
+          )}
+        </dl>
+        {doc.clientSignedAt ? (
+          <small className="signed-label">
+            <CheckIcon />
+            {lang === "es" ? "Cliente firmó" : "Client signed"}:{" "}
+            {doc.clientSignerName}
+          </small>
+        ) : null}
+        <small className="signed-label">
+          {doc.clientSignedAt
+            ? lang === "es"
+              ? "Firmado por ambas partes"
+              : "Fully signed"
+            : lang === "es"
+              ? "Firmado por ti — falta el cliente"
+              : "Signed by you — awaiting client"}
+        </small>
+      </section>
+      {editing ? (
+        <section className="saved-section">
+          <h2>{lang === "es" ? "Editar documento" : "Edit document"}</h2>
+          <DocumentEditForm
+            lang={lang}
+            doc={doc}
+            onSaved={() => {
+              invalidate();
+              setEditing(false);
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        </section>
+      ) : (
+        <>
+          {doc.kind === "change_order" && doc.description && (
+            <section className="saved-section">
+              <h2>{t.changeDescription}</h2>
+              <div className="doc-view-body">
+                <p>{doc.description}</p>
+              </div>
+            </section>
+          )}
+          {doc.bodyText && (
+            <section className="saved-section">
+              <div className="doc-view-body">
+                <p>{doc.bodyText}</p>
+              </div>
+            </section>
+          )}
+          {doc.originalUrl && (
+            <section className="saved-section">
+              <DocumentPdfPages doc={doc} lang={lang} />
+            </section>
+          )}
+          <section className="saved-section">
+            <div className="row-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={viewing}
+                onClick={async () => {
+                  setViewing(true);
+                  setViewError("");
+                  try {
+                    const blob = await buildSignedDocumentPdf(
+                      doc,
+                      job,
+                      settings,
+                      lang,
+                    );
+                    setPreview({
+                      blob,
+                      filename: `${safeName(job.clientName)}-${safeName(doc.title)}-signed.pdf`,
+                      title: doc.title,
+                    });
+                  } catch (e) {
+                    setViewError(actionErrorMessage(e));
+                  } finally {
+                    setViewing(false);
+                  }
+                }}
+              >
+                {viewing
+                  ? lang === "es"
+                    ? "Abriendo…"
+                    : "Opening…"
+                  : t.viewDocument}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={tapSigning}
+                onClick={() => void tapToSign()}
+              >
+                {tapSigning
+                  ? t.saving
+                  : lang === "es"
+                    ? "Firmar con mi firma"
+                    : "Sign with saved signature"}
+              </button>
+              {doc.originalUrl ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setPlacing(doc)}
+                >
+                  {lang === "es" ? "Colocar firma" : "Place signature"}
+                </button>
+              ) : null}
+              {doc.signedPdfUrl ? (
+                <a
+                  href={doc.signedPdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn"
+                >
+                  {lang === "es" ? "Ver copia firmada" : "View signed copy"}
+                </a>
+              ) : null}
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setEditing(true)}
+              >
+                {lang === "es" ? "Editar" : "Edit"}
+              </button>
+              <button
+                type="button"
+                className="btn danger-text"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                {lang === "es" ? "Eliminar" : "Delete"}
+              </button>
+            </div>
+            {viewError && (
+              <p className="status error" role="alert">
+                {viewError}
+              </p>
+            )}
+            <DocumentLinkPanel lang={lang} kind={doc.kind} id={doc.id} />
+          </section>
+        </>
+      )}
+      {preview && (
+        <div
+          className="pdf-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={preview.title}
+        >
+          <div className="pdf-modal-head">
+            <strong>{preview.title}</strong>
+            <button onClick={() => setPreview(null)}>{t.close}</button>
+          </div>
+          <div className="packet-actions">
+            <button
+              className="primary-button"
+              onClick={() =>
+                nativeShare(preview.blob, preview.filename, preview.title)
+              }
+            >
+              <ShareIcon />
+              {t.sharePdf}
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => downloadBlob(preview.blob, preview.filename)}
+            >
+              <FileIcon />
+              {t.downloadPdf}
+            </button>
+          </div>
+          <PdfFrame blob={preview.blob} title={preview.title} />
+        </div>
+      )}
+      {placing && (
+        <SignaturePlacementEditor
+          lang={lang}
+          document={placing}
+          onClose={() => setPlacing(null)}
+          onSaved={() => {
+            invalidate();
+            setPlacing(null);
+          }}
+        />
+      )}
+      {confirmingDelete && (
+        <BottomSheet
+          lang={lang}
+          title={lang === "es" ? "¿Eliminar documento?" : "Delete document?"}
+          onClose={() => setConfirmingDelete(false)}
+        >
+          {(close) => (
+            <>
+              <p className="sheet-note">
+                {`"${doc.title}" ${
+                  lang === "es"
+                    ? "y sus enlaces para compartir se eliminarán. Esto no se puede deshacer."
+                    : "and its share links will be deleted. This can't be undone."
+                }`}
+              </p>
+              <div className="sheet-actions">
+                <button type="button" className="secondary-button" onClick={close}>
+                  {lang === "es" ? "Cancelar" : "Cancel"}
+                </button>
+                <button
+                  type="button"
+                  className="primary-button danger-button"
+                  disabled={deleteDocument.isPending}
+                  onClick={() => deleteDocument.mutate()}
+                >
+                  {lang === "es" ? "Eliminar" : "Delete"}
+                </button>
+              </div>
+            </>
+          )}
+        </BottomSheet>
+      )}
+    </section>
+  );
 }
 function PunchList({ lang, data }: { lang: Lang; data: JobData }) {
   const t = copy[lang];
