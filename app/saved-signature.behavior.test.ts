@@ -247,6 +247,8 @@ check("clearing removes the saved signature", settingsCleared.savedSignatureUrl 
 const appSrc = await readFile("client/src/App.tsx", "utf8");
 check("Settings offers draw/save/clear for the saved signature", appSrc.includes("api.saveContractorSignature") && appSrc.includes("api.clearContractorSignature"));
 check("documents offer tap-to-sign", appSrc.includes("api.signDocumentWithSavedSignature"));
+check("the no-saved-signature notice links to Settings (Danny 2026-10-17)",
+  appSrc.includes('message.includes("Save your signature in Settings")') && appSrc.includes('className="status error status-link"') && appSrc.includes('setScreen({ name: "settings" })'));
 check("placement editor offers contractor fields", appSrc.includes('"contractorSignature"') || appSrc.includes('key: "contractorSignature"'));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);

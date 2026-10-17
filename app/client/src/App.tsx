@@ -19225,6 +19225,9 @@ function DocumentDetailScreen({
   const [viewing, setViewing] = useState(false);
   const [placing, setPlacing] = useState<SignedDocument | null>(null);
   const [tapSigning, setTapSigning] = useState(false);
+  // When tap-to-sign fails for lack of a saved signature, the notice
+  // becomes a link straight to Settings (Danny 2026-10-17).
+  const [needsSavedSignature, setNeedsSavedSignature] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEscapeToClose(preview !== null, () => setPreview(null));
@@ -19234,12 +19237,15 @@ function DocumentDetailScreen({
   };
   const tapToSign = async () => {
     setViewError("");
+    setNeedsSavedSignature(false);
     setTapSigning(true);
     try {
       await api.signDocumentWithSavedSignature({ documentId });
       invalidate();
     } catch (e) {
-      setViewError(actionErrorMessage(e));
+      const message = actionErrorMessage(e);
+      setViewError(message);
+      if (message.includes("Save your signature in Settings")) setNeedsSavedSignature(true);
     } finally {
       setTapSigning(false);
     }
@@ -19492,11 +19498,19 @@ function DocumentDetailScreen({
                 {lang === "es" ? "Eliminar" : "Delete"}
               </button>
             </div>
-            {viewError && (
+            {viewError && needsSavedSignature ? (
+              <button
+                type="button"
+                className="status error status-link"
+                onClick={() => setScreen({ name: "settings" })}
+              >
+                {viewError} {lang === "es" ? "Ir a Configuración →" : "Go to Settings →"}
+              </button>
+            ) : viewError ? (
               <p className="status error" role="alert">
                 {viewError}
               </p>
-            )}
+            ) : null}
             <DocumentLinkPanel lang={lang} kind={doc.kind} id={doc.id} />
           </section>
         </>

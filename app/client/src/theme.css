@@ -177,6 +177,9 @@ fieldset { padding: 0; border: 0; }
 /* Build 1.0: all form Save buttons share the compact bottom-right corner pattern. */
 .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; }
 .status.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
+/* Tappable status notice (2026-10-17): the no-saved-signature error on a
+   document links straight to Settings. */
+.status-link { display: block; width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; text-decoration: underline; }
 .social-notice { margin: -8px 0 22px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-weight: 700; line-height: 1.45; }
 .skeleton-list { display: grid; gap: 1px; }
 .skeleton-list div, .loading-block { height: 92px; background: linear-gradient(90deg, var(--bg), var(--surface-2), var(--bg)); background-size: 200% 100%; animation: shine 1.4s infinite linear; }
