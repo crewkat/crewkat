@@ -20,7 +20,7 @@ import { platformAdminPhase2Actions } from "./platform-admin-phase2";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
-import { compositeFillFields, compositeSignatureStamps, parseFillFields, parseFillValues, parseSignatureFields, serializeFillFields, serializeSignatureFields, type FillField, type FillValues, type SignatureFields } from "../../client/src/signatureComposite";
+import { compositeFillFields, compositeSignatureStamps, parseFillFields, parseFillValues, parseSignatureFields, serializeFillFields, serializeSignatureFields, type FillField, type FillValues, type SignatureFields, type SignatureStamp } from "../../client/src/signatureComposite";
 
 const stageSchema = z.enum(["before", "during", "after"]);
 const languageSchema = z.enum(["en", "es"]);
@@ -2265,7 +2265,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
   const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: doc.clientSignedPdfBlobKey ?? "", signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -2285,9 +2285,13 @@ async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es")
   const { link, payload } = await getDocumentLinkPayload(ctx, token);
   const kind = payload.kind;
   // Signatures fix (2026-10-14): contract / change-order links serve the
-  // real document bytes — the client-signed final PDF once signed, the
-  // contractor's uploaded original before that — instead of rejecting
-  // every non-financial kind. Contracts without an upload stay web-only.
+  // real document bytes instead of rejecting every non-financial kind.
+  // Canonical PDF (2026-10-17): the stored final under
+  // client_signed_pdf_blob_key IS the document's current state — the
+  // original pages with the contractor's stamp composited (and the
+  // client's too once signed) — so it is preferred in every state; the
+  // raw original is only the fallback for legacy rows that predate the
+  // stored canonical. Contracts without an upload stay web-only.
   if (kind === "contract" || kind === "change_order") {
     const db = ctx.db<typeof schema>();
     const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
@@ -2296,7 +2300,7 @@ async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es")
     const bytes = await ctx.blobs.get(blobKey);
     if (!bytes || bytes.length === 0) throw new Error("This document is only available as a web page.");
     const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
-    const filename = doc.clientSignedPdfBlobKey ? `${safeTitle}-signed.pdf` : (doc.originalFilename || `${safeTitle}.pdf`);
+    const filename = doc.clientSignedAt ? `${safeTitle}-signed.pdf` : (doc.originalFilename || `${safeTitle}.pdf`);
     return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
   }
   if (kind !== "invoice" && kind !== "quote") throw new Error("This document is only available as a web page.");
@@ -2338,6 +2342,110 @@ async function loadClientSignedPdf(ctx: Ctx, token: string): Promise<{ link: Awa
   return { link, doc, bytes: Buffer.from(bytes), filename: signedPdfFilename(doc.title) };
 }
 
+// ---------------------------------------------------------------------------
+// ONE canonical PDF per document (Danny 2026-10-17). Before this build the
+// app kept TWO different files for one signed contract: the client-facing
+// signed PDF (original pages with every stamp composited) and an
+// owner-facing PDF the app fabricated at view time from the raw original
+// plus an appended signature-record page — so the owner's own View /
+// Share / Download copy never showed the client's signature ("3 pages,
+// client signature doesn't show").
+//
+// The canonical model: a document's current state has exactly ONE PDF —
+// the original pages with the present stamps composited on (the
+// contractor's always; the client's too once they have signed) and, once
+// the client has signed, the fill-in values drawn in. The contractor's
+// creation-time signature is a STAMP on the last page like the client's;
+// there is no appended record page anywhere. The canonical bytes live
+// under client_signed_pdf_blob_key — the stored-final key the public
+// link, the detail Signed copy and the job Docs entry already prefer —
+// and are refreshed on every write that can change them (creation,
+// placement / fill-field saves, PDF replacement, drawn re-sign, portal
+// countersign). getDocumentPdf serves them to the owner and composes
+// them on read for legacy documents that predate the stored canonical.
+type DocumentRow = typeof schema.documents.$inferSelect;
+
+async function documentDateLocale(ctx: Ctx, companyId: number): Promise<string> {
+  try {
+    const pdb = platformDb(ctx);
+    const row = (await pdb.select({ language: schema.settings.language }).from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+    return row?.language === "es" ? "es-US" : "en-US";
+  } catch {
+    return "en-US";
+  }
+}
+
+/**
+ * Compose the canonical PDF bytes for a document row's current state.
+ * Returns null when there is no uploaded original to compose from
+ * (text-only documents have no canonical PDF — their generated page is
+ * the document). Overrides let a write path compose with the signature
+ * it just captured, before the row update lands.
+ *
+ * Fill values join the canonical file only once the client has signed:
+ * before that, the stored PDF doubles as the public sign page's base,
+ * and submitDocumentSignature draws the values in exactly once (the
+ * behavior the fill-fields build shipped with).
+ */
+async function composeCanonicalDocumentPdf(
+  ctx: Ctx,
+  doc: DocumentRow,
+  opts?: {
+    contractorImageBytes?: Uint8Array;
+    contractorSignedAt?: Date;
+    clientImageBytes?: Uint8Array;
+    clientSignedAt?: Date | null;
+    fillValues?: FillValues;
+    locale?: string;
+  },
+): Promise<Uint8Array | null> {
+  if (!doc.originalBlobKey) return null;
+  const original = await ctx.blobs.get(doc.originalBlobKey);
+  if (!original) return null;
+  const locale = opts?.locale ?? "en-US";
+  const fmt = (d: Date) => new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(d);
+  const stamps: SignatureStamp[] = [];
+  const contractorBytes = opts?.contractorImageBytes ?? (await ctx.blobs.get(doc.signatureBlobKey).catch(() => null));
+  if (contractorBytes && contractorBytes.length > 0) {
+    stamps.push({ role: "contractor", imageBytes: new Uint8Array(contractorBytes), imageFormat: "png", dateText: fmt(opts?.contractorSignedAt ?? doc.signedAt) });
+  }
+  const clientSignedAt = opts?.clientSignedAt !== undefined ? opts.clientSignedAt : doc.clientSignedAt;
+  if (clientSignedAt) {
+    const clientBytes = opts?.clientImageBytes ?? (doc.clientSignatureBlobKey ? await ctx.blobs.get(doc.clientSignatureBlobKey).catch(() => null) : null);
+    if (clientBytes && clientBytes.length > 0) {
+      stamps.push({ role: "client", imageBytes: new Uint8Array(clientBytes), imageFormat: "png", dateText: fmt(clientSignedAt) });
+    }
+  }
+  let bytes: Uint8Array = new Uint8Array(original);
+  if (stamps.length) bytes = await compositeSignatureStamps(bytes, parseSignatureFields(doc.signatureFieldsJson), stamps);
+  if (clientSignedAt) {
+    const fillFields = parseFillFields(doc.fillFieldsJson);
+    if (fillFields.length) bytes = await compositeFillFields(bytes, fillFields, opts?.fillValues ?? parseFillValues(doc.fillValuesJson));
+  }
+  return bytes;
+}
+
+/**
+ * Recompose the canonical PDF for a document and store it under a fresh
+ * client_signed_pdf_blob_key (the previous canonical blob is deleted
+ * best-effort). Best-effort by design: a composition failure must never
+ * fail the write that triggered it — the previous canonical (or the raw
+ * original) keeps serving until the next successful refresh.
+ */
+async function refreshDocumentCanonicalPdf(ctx: Ctx, doc: DocumentRow, opts?: Parameters<typeof composeCanonicalDocumentPdf>[2]): Promise<void> {
+  try {
+    const bytes = await composeCanonicalDocumentPdf(ctx, doc, opts);
+    if (!bytes) return;
+    const key = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
+    await ctx.blobs.put(key, Buffer.from(bytes), { contentType: "application/pdf" });
+    const db = ctx.db<typeof schema>();
+    await db.update(schema.documents).set({ clientSignedPdfBlobKey: key }).where(eq(schema.documents.id, doc.id));
+    if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== key) {
+      try { await ctx.blobs.delete(doc.clientSignedPdfBlobKey); } catch { /* superseded canonical cleanup is best-effort */ }
+    }
+  } catch { /* canonical refresh is best-effort; see above */ }
+}
+
 // "Email me a copy" is the one public document-link action that can be
 // abused as a mail relay, so it gets its own small limiter on the shared
 // rate_limit_events table (same pattern as checkPortalRateLimit): a
@@ -2365,7 +2473,7 @@ async function checkDocLinkEmailRateLimit(ctx: Ctx, token: string): Promise<void
 }
 
 // Rasterized pages are heavier than the PDF bytes — keep this cache small.
-const docPdfPagesCache = new Map<string, { pagesBase64: string[]; filename: string; updatedAtMs: number }>();
+const docPdfPagesCache = new Map<string, { pagesBase64: string[]; filename: string; updatedAtMs: number; pdfVersion?: string }>();
 const DOC_PDF_PAGES_CACHE_MAX = 8;
 
 // Build 0.6: document attachments (images + PDFs) on estimates/quotes and
@@ -3161,6 +3269,15 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   updateJobInfo: defineAction({ request: z.object({ jobId: z.number().int().positive(), notes: z.string().trim().max(3000), jobDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: z.string().max(40), depositAmount: z.string().trim().max(80), paymentNotes: z.string().trim().max(1000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const { jobId, ...values } = args; await ctx.db<typeof schema>().update(schema.jobs).set({ ...values, depositAmount: normalizeMoney(args.depositAmount), updatedAt: new Date() }).where(eq(schema.jobs.id, jobId)); ctx.invalidateQueries(); return { ok: true }; }}),
   linkInvoiceToJob: defineAction({ request: z.object({ invoiceId: z.number().int().positive(), jobId: z.number().int().positive().nullable() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1))[0]; if (!invoice) throw new Error("Invoice not found."); if (args.jobId === null) { await db.update(schema.invoices).set({ jobId: null, updatedAt: new Date() }).where(eq(schema.invoices.id, args.invoiceId)); } else { const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0]; if (!job) throw new Error("Job not found."); await db.update(schema.invoices).set({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, updatedAt: new Date() }).where(eq(schema.invoices.id, args.invoiceId)); } ctx.invalidateQueries(); return { ok: true }; }}),
   listDocuments: defineAction({ request: z.object({}), response: z.object({ documents: z.array(documentSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.documents).orderBy(desc(schema.documents.signedAt)); const documents = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson) }))); return { documents }; }}),
+  // ONE canonical PDF (Danny 2026-10-17): the owner's document-PDF read
+  // (detail View / Share / Download, job Docs). Serves the stored
+  // canonical — the same bytes the client link serves — never a
+  // view-time fabrication. Legacy documents created before the stored
+  // canonical existed are composed on read from their stored blobs and
+  // backfilled, so their next read is the same stored file; if no
+  // canonical can be composed, the raw original is served rather than
+  // failing the view.
+  getDocumentPdf: defineAction({ request: z.object({ documentId: z.number().int().positive() }), response: z.object({ pdfBase64: z.string(), filename: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("This document has no uploaded PDF."); const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document"; const filename = doc.clientSignedAt ? `${safeTitle}-signed.pdf` : (doc.originalFilename || `${safeTitle}.pdf`); if (doc.clientSignedPdfBlobKey) { const stored = await ctx.blobs.get(doc.clientSignedPdfBlobKey); if (stored && stored.length > 0) return { pdfBase64: Buffer.from(stored).toString("base64"), filename }; } await refreshDocumentCanonicalPdf(ctx, doc, { locale: await documentDateLocale(ctx, doc.companyId) }); const refreshed = (await db.select().from(schema.documents).where(eq(schema.documents.id, doc.id)).limit(1))[0]; if (refreshed?.clientSignedPdfBlobKey) { const bytes = await ctx.blobs.get(refreshed.clientSignedPdfBlobKey); if (bytes && bytes.length > 0) return { pdfBase64: Buffer.from(bytes).toString("base64"), filename }; } const original = await ctx.blobs.get(doc.originalBlobKey); if (!original || original.length === 0) throw new Error("The document file could not be loaded."); return { pdfBase64: Buffer.from(original).toString("base64"), filename }; }}),
   linkDocumentToJob: defineAction({ request: z.object({ documentId: z.number().int().positive(), jobId: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const job = (await db.select({ id: schema.jobs.id }).from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0]; if (!job) throw new Error("Job not found."); await db.update(schema.documents).set({ jobId: args.jobId }).where(eq(schema.documents.id, args.documentId)); ctx.invalidateQueries(); return { ok: true }; }}),
 
   addPhoto: defineAction({ request: z.object({ jobId: z.number().int().positive(), stage: stageSchema, caption: z.string().trim().max(500).default(""), filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]), capturedAt: z.string().datetime(), dataBase64: z.string().min(1).max(30_000_000), annotatedFromId: z.number().int().positive().nullable().default(null) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const key = `jobs/${args.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType }); const rows = await db.insert(schema.photos).values({ jobId: args.jobId, stage: args.stage, caption: args.caption, blobKey: key, filename: args.filename, contentType: args.contentType, capturedAt: new Date(args.capturedAt), annotatedFromId: args.annotatedFromId }).returning({ id: schema.photos.id }); const made = rows[0]; if (!made) { await ctx.blobs.delete(key); throw new Error("The photo could not be saved."); } await db.update(schema.jobs).set({ updatedAt: new Date() }).where(eq(schema.jobs.id, args.jobId)); ctx.invalidateQueries(); return { id: made.id }; }}),
@@ -3169,7 +3286,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   togglePhotoSocial: defineAction({ request: z.object({ id: z.number().int().positive(), excludeFromSocial: z.boolean() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().update(schema.photos).set({ excludeFromSocial: args.excludeFromSocial }).where(eq(schema.photos.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
   deletePhoto: defineAction({ request: z.object({ id: z.number().int().positive(), jobId: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const rows = await db.select({ blobKey: schema.photos.blobKey }).from(schema.photos).where(and(eq(schema.photos.id, args.id), eq(schema.photos.jobId, args.jobId))).limit(1); const row = rows[0]; if (row) { await db.delete(schema.photos).where(eq(schema.photos.id, args.id)); await db.delete(schema.photoPairs).where(or(eq(schema.photoPairs.beforePhotoId, args.id), eq(schema.photoPairs.afterPhotoId, args.id))); await ctx.blobs.delete(row.blobKey); } ctx.invalidateQueries(); return { ok: true }; }}),
 
-  saveDocument: defineAction({ request: z.object({ jobId: z.number().int().positive(), kind: z.enum(["contract", "change_order"]), title: z.string().trim().min(1).max(200), bodyText: z.string().max(100_000).default(""), originalFilename: z.string().max(240).default(""), originalDataBase64: z.string().max(30_000_000).default(""), description: z.string().max(3000).default(""), amount: z.string().max(80).default(""), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedAt: z.string().datetime() }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); let originalBlobKey: string | null = null; if (args.originalDataBase64) { originalBlobKey = `documents/${args.jobId}/${crypto.randomUUID()}.pdf`; await ctx.blobs.put(originalBlobKey, Buffer.from(args.originalDataBase64, "base64"), { contentType: "application/pdf" }); } const signatureBlobKey = `signatures/${args.jobId}/${crypto.randomUUID()}.png`; await ctx.blobs.put(signatureBlobKey, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" }); const rows = await db.insert(schema.documents).values({ jobId: args.jobId, kind: args.kind, title: args.title, bodyText: args.bodyText, originalBlobKey, originalFilename: args.originalFilename, description: args.description, amount: normalizeMoney(args.amount), signerName: args.signerName, signatureBlobKey, signedAt: new Date(args.signedAt), createdAt: new Date() }).returning({ id: schema.documents.id }); const made = rows[0]; if (!made) throw new Error("Could not save document."); ctx.invalidateQueries(); return { id: made.id }; }}),
+  saveDocument: defineAction({ request: z.object({ jobId: z.number().int().positive(), kind: z.enum(["contract", "change_order"]), title: z.string().trim().min(1).max(200), bodyText: z.string().max(100_000).default(""), originalFilename: z.string().max(240).default(""), originalDataBase64: z.string().max(30_000_000).default(""), description: z.string().max(3000).default(""), amount: z.string().max(80).default(""), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedAt: z.string().datetime() }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); let originalBlobKey: string | null = null; if (args.originalDataBase64) { originalBlobKey = `documents/${args.jobId}/${crypto.randomUUID()}.pdf`; await ctx.blobs.put(originalBlobKey, Buffer.from(args.originalDataBase64, "base64"), { contentType: "application/pdf" }); } const signatureBlobKey = `signatures/${args.jobId}/${crypto.randomUUID()}.png`; await ctx.blobs.put(signatureBlobKey, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" }); const rows = await db.insert(schema.documents).values({ jobId: args.jobId, kind: args.kind, title: args.title, bodyText: args.bodyText, originalBlobKey, originalFilename: args.originalFilename, description: args.description, amount: normalizeMoney(args.amount), signerName: args.signerName, signatureBlobKey, signedAt: new Date(args.signedAt), createdAt: new Date() }).returning({ id: schema.documents.id }); const made = rows[0]; if (!made) throw new Error("Could not save document."); if (originalBlobKey) { const created = (await db.select().from(schema.documents).where(eq(schema.documents.id, made.id)).limit(1))[0]; if (created) await refreshDocumentCanonicalPdf(ctx, created, { locale: await documentDateLocale(ctx, created.companyId) }); } ctx.invalidateQueries(); return { id: made.id }; }}),
   // Signature placement (0078): the contractor places the signature/date
   // fields on an uploaded-PDF document (DocuSign-style). Stored as JSON on
   // the document; the client sign flow composites the captured signature
@@ -3222,15 +3339,19 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           try { await ctx.blobs.delete(replacedBlobKey); } catch { /* best-effort: the row no longer references it */ }
         }
       }
+      if (replacedBlobKey) {
+        const nextDoc = { ...existing, ...patch } as typeof existing;
+        await refreshDocumentCanonicalPdf(ctx, nextDoc, { locale: await documentDateLocale(ctx, nextDoc.companyId) });
+      }
       ctx.invalidateQueries?.();
       return { ok: true as const };
     },
   }),
-  saveDocumentSignatureFields: defineAction({ request: z.object({ documentId: z.number().int().positive(), fields: signatureFieldsSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("Signature fields need an uploaded PDF document."); await db.update(schema.documents).set({ signatureFieldsJson: serializeSignatureFields(args.fields as SignatureFields) }).where(eq(schema.documents.id, doc.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+  saveDocumentSignatureFields: defineAction({ request: z.object({ documentId: z.number().int().positive(), fields: signatureFieldsSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("Signature fields need an uploaded PDF document."); const fieldsJson = serializeSignatureFields(args.fields as SignatureFields); await db.update(schema.documents).set({ signatureFieldsJson: fieldsJson }).where(eq(schema.documents.id, doc.id)); await refreshDocumentCanonicalPdf(ctx, { ...doc, signatureFieldsJson: fieldsJson }, { locale: await documentDateLocale(ctx, doc.companyId) }); ctx.invalidateQueries(); return { ok: true }; }}),
   // Fill-in fields (0082): persist the sender-placed text / initials /
   // checkbox definitions on an uploaded-PDF document. Mirrors
   // saveDocumentSignatureFields; stored values are NOT touched here.
-  saveDocumentFillFields: defineAction({ request: z.object({ documentId: z.number().int().positive(), fields: fillFieldsSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("Fill-in fields need an uploaded PDF document."); await db.update(schema.documents).set({ fillFieldsJson: serializeFillFields(args.fields as FillField[]) }).where(eq(schema.documents.id, doc.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+  saveDocumentFillFields: defineAction({ request: z.object({ documentId: z.number().int().positive(), fields: fillFieldsSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) throw new Error("Fill-in fields need an uploaded PDF document."); const fieldsJson = serializeFillFields(args.fields as FillField[]); await db.update(schema.documents).set({ fillFieldsJson: fieldsJson }).where(eq(schema.documents.id, doc.id)); await refreshDocumentCanonicalPdf(ctx, { ...doc, fillFieldsJson: fieldsJson }, { locale: await documentDateLocale(ctx, doc.companyId) }); ctx.invalidateQueries(); return { ok: true }; }}),
   // Draw-to-sign (Danny 2026-10-17, replaces 0079 tap-to-sign): the
   // contractor draws a FRESH signature for every signing — no signature
   // is stored on the account, so a hijacked account cannot sign in the
@@ -3241,7 +3362,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // stamp composited (contractor now; the client's too when they
   // signed first), so the stored final stays truthful in either
   // signing order.
-  signDocumentWithDrawnSignature: defineAction({ request: z.object({ documentId: z.number().int().positive(), signatureDataBase64: z.string().min(1).max(5_000_000), signerName: z.string().trim().min(1).max(160).optional() }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx, args): Promise<{ ok: true; signedAt: string }> { const db = ctx.db<typeof schema>(); const drawnBytes = Buffer.from(args.signatureDataBase64, "base64"); if (drawnBytes.length === 0) throw new Error("Draw your signature to sign."); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); const pdb = platformDb(ctx); const settingsRow = (await pdb.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0]; const signedAt = new Date(); const key = `signatures/${doc.jobId}/${crypto.randomUUID()}.png`; await ctx.blobs.put(key, drawnBytes, { contentType: "image/png" }); const patch: { signatureBlobKey: string; signedAt: Date; signerName?: string; clientSignedPdfBlobKey?: string } = { signatureBlobKey: key, signedAt }; if (args.signerName) patch.signerName = args.signerName; if (doc.originalBlobKey) { const original = await ctx.blobs.get(doc.originalBlobKey); if (original) { const locale = settingsRow?.language === "es" ? "es-US" : "en-US"; const fmt = (d: Date) => new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(d); const stamps: Array<{ role: "client" | "contractor"; imageBytes: Uint8Array; imageFormat: "png" | "jpg"; dateText: string }> = [{ role: "contractor", imageBytes: new Uint8Array(drawnBytes), imageFormat: "png", dateText: fmt(signedAt) }]; if (doc.clientSignatureBlobKey && doc.clientSignedAt) { const clientBytes = await ctx.blobs.get(doc.clientSignatureBlobKey); if (clientBytes) stamps.push({ role: "client", imageBytes: new Uint8Array(clientBytes), imageFormat: "png", dateText: fmt(doc.clientSignedAt) }); } const stampedBytes = await compositeSignatureStamps(new Uint8Array(original), parseSignatureFields(doc.signatureFieldsJson), stamps); const fillFields = parseFillFields(doc.fillFieldsJson); const finalBytes = fillFields.length ? await compositeFillFields(stampedBytes, fillFields, parseFillValues(doc.fillValuesJson)) : stampedBytes; const finalKey = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`; await ctx.blobs.put(finalKey, Buffer.from(finalBytes), { contentType: "application/pdf" }); patch.clientSignedPdfBlobKey = finalKey; if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== finalKey) { try { await ctx.blobs.delete(doc.clientSignedPdfBlobKey); } catch { /* old final cleanup is best-effort */ } } } } await db.update(schema.documents).set(patch).where(eq(schema.documents.id, doc.id)); if (doc.signatureBlobKey && doc.signatureBlobKey !== key) { try { await ctx.blobs.delete(doc.signatureBlobKey); } catch { /* old signature cleanup is best-effort */ } } ctx.invalidateQueries(); return { ok: true, signedAt: signedAt.toISOString() }; }}),
+  signDocumentWithDrawnSignature: defineAction({ request: z.object({ documentId: z.number().int().positive(), signatureDataBase64: z.string().min(1).max(5_000_000), signerName: z.string().trim().min(1).max(160).optional() }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx, args): Promise<{ ok: true; signedAt: string }> { const db = ctx.db<typeof schema>(); const drawnBytes = Buffer.from(args.signatureDataBase64, "base64"); if (drawnBytes.length === 0) throw new Error("Draw your signature to sign."); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); const pdb = platformDb(ctx); const settingsRow = (await pdb.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0]; const signedAt = new Date(); const key = `signatures/${doc.jobId}/${crypto.randomUUID()}.png`; await ctx.blobs.put(key, drawnBytes, { contentType: "image/png" }); const patch: { signatureBlobKey: string; signedAt: Date; signerName?: string; clientSignedPdfBlobKey?: string } = { signatureBlobKey: key, signedAt }; if (args.signerName) patch.signerName = args.signerName; if (doc.originalBlobKey) { const locale = settingsRow?.language === "es" ? "es-US" : "en-US"; const canonical = await composeCanonicalDocumentPdf(ctx, doc, { contractorImageBytes: new Uint8Array(drawnBytes), contractorSignedAt: signedAt, locale }); if (canonical) { const finalKey = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`; await ctx.blobs.put(finalKey, Buffer.from(canonical), { contentType: "application/pdf" }); patch.clientSignedPdfBlobKey = finalKey; if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== finalKey) { try { await ctx.blobs.delete(doc.clientSignedPdfBlobKey); } catch { /* old final cleanup is best-effort */ } } } } await db.update(schema.documents).set(patch).where(eq(schema.documents.id, doc.id)); if (doc.signatureBlobKey && doc.signatureBlobKey !== key) { try { await ctx.blobs.delete(doc.signatureBlobKey); } catch { /* old signature cleanup is best-effort */ } } ctx.invalidateQueries(); return { ok: true, signedAt: signedAt.toISOString() }; }}),
 
   addPunchItem: defineAction({ request: z.object({ jobId: z.number().int().positive(), text: z.string().trim().min(1).max(500) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const rows = await ctx.db<typeof schema>().insert(schema.punchItems).values(args).returning({ id: schema.punchItems.id }); const made = rows[0]; if (!made) throw new Error("Could not save item."); ctx.invalidateQueries(); return { id: made.id }; }}),
   togglePunchItem: defineAction({ request: z.object({ id: z.number().int().positive(), completed: z.boolean() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().update(schema.punchItems).set({ completed: args.completed }).where(eq(schema.punchItems.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
@@ -3915,7 +4036,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       return { ok: true as const, selectedOptionKeys: payload.selectedOptionKeys, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions };
     },
   }),
-  portalSignChangeOrder: defineAction({request:z.object({token:z.string().min(8).max(200),documentId:z.number().int().positive(),signerName:z.string().trim().min(1).max(160),signatureDataBase64:z.string().min(1).max(5_000_000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:false});const document=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.documentId)).limit(1))[0];if(!document||document.jobId!==access.jobId||document.kind!=="change_order")throw new Error("Change order not found.");if(document.clientSignedAt)return{ok:true};const key=`client-signatures/${access.jobId}/${crypto.randomUUID()}.png`;await ctx.blobs.put(key,Buffer.from(args.signatureDataBase64,"base64"),{contentType:"image/png"});await db.update(schema.documents).set({clientSignerName:args.signerName,clientSignatureBlobKey:key,clientSignedAt:new Date()}).where(eq(schema.documents.id,document.id));await logPortalEvent(ctx,access.id,"sign");const jobCompany=(await db.select({companyId:schema.jobs.companyId}).from(schema.jobs).where(eq(schema.jobs.id,document.jobId)).limit(1))[0];if(jobCompany)await notifyCompanyEvent(ctx,jobCompany.companyId,"notifyDocSigned","document-signed",`Client signed "${document.title}"`,"Un cliente firmó tu documento",`doc-signed:${document.id}`);ctx.invalidateQueries();return{ok:true};} }),
+  portalSignChangeOrder: defineAction({request:z.object({token:z.string().min(8).max(200),documentId:z.number().int().positive(),signerName:z.string().trim().min(1).max(160),signatureDataBase64:z.string().min(1).max(5_000_000)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:false});const document=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.documentId)).limit(1))[0];if(!document||document.jobId!==access.jobId||document.kind!=="change_order")throw new Error("Change order not found.");if(document.clientSignedAt)return{ok:true};const key=`client-signatures/${access.jobId}/${crypto.randomUUID()}.png`;await ctx.blobs.put(key,Buffer.from(args.signatureDataBase64,"base64"),{contentType:"image/png"});const portalSignedAt=new Date();await db.update(schema.documents).set({clientSignerName:args.signerName,clientSignatureBlobKey:key,clientSignedAt:portalSignedAt}).where(eq(schema.documents.id,document.id));if(document.originalBlobKey){await refreshDocumentCanonicalPdf(ctx,{...document,clientSignerName:args.signerName,clientSignatureBlobKey:key,clientSignedAt:portalSignedAt},{clientImageBytes:new Uint8Array(Buffer.from(args.signatureDataBase64,"base64")),clientSignedAt:portalSignedAt,locale:await documentDateLocale(ctx,document.companyId)});}await logPortalEvent(ctx,access.id,"sign");const jobCompany=(await db.select({companyId:schema.jobs.companyId}).from(schema.jobs).where(eq(schema.jobs.id,document.jobId)).limit(1))[0];if(jobCompany)await notifyCompanyEvent(ctx,jobCompany.companyId,"notifyDocSigned","document-signed",`Client signed "${document.title}"`,"Un cliente firmó tu documento",`doc-signed:${document.id}`);ctx.invalidateQueries();return{ok:true};} }),
   createDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ token: z.string(), shortCode: z.string(), hint: z.string(), expiresAt: z.string() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); if(!await documentLinkTargetExists(ctx,args.kind,args.id)) throw new Error("Document not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashLinkToken(token); const shortCode=await uniqueDocumentShortCode(ctx); const now=new Date(); const expiresAt=new Date(now.getTime()+30*86400000); /* Build 0.5 (item 2): links are no longer revoked on re-share — previously shared links stay valid until explicitly revoked, so a link sent to a client can't silently die. */ await db.insert(schema.documentLinks).values({documentKind:args.kind,documentId:args.id,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:now}); ctx.invalidateQueries(); return{token,shortCode,hint:token.slice(-6),expiresAt:expiresAt.toISOString()}; } }),
   getDocumentLinkInfo: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const link=await getActiveDocumentLinkRow(ctx,args.kind,args.id); if(!link) return{link:null}; return{link:{hint:link.tokenHint,shortCode:link.shortCode,expiresAt:link.expiresAt.toISOString(),expired:link.expiresAt.getTime()<Date.now(),viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   revokeDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { await ctx.db<typeof schema>().update(schema.documentLinks).set({revokedAt:new Date()}).where(and(eq(schema.documentLinks.documentKind,args.kind),eq(schema.documentLinks.documentId,args.id),isNull(schema.documentLinks.revokedAt))); ctx.invalidateQueries(); return{ok:true}; } }),
@@ -4010,8 +4131,12 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     if (kind !== "invoice" && kind !== "quote" && kind !== "contract" && kind !== "change_order") throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
     const updatedAtMs = (payload as { updatedAtMs?: number }).updatedAtMs ?? 0;
+    // Canonical PDF (2026-10-17): a document's bytes can change WITHOUT
+    // its updatedAtMs moving (a placement save refreshes the stored
+    // canonical), so document hits also compare the canonical blob key.
+    const pdfVersion = (payload as { pdfVersion?: string }).pdfVersion ?? "";
     const hit = docPdfPagesCache.get(cacheKey);
-    if (hit && hit.updatedAtMs === updatedAtMs) {
+    if (hit && hit.updatedAtMs === updatedAtMs && (hit.pdfVersion ?? "") === pdfVersion) {
       return { pagesBase64: hit.pagesBase64, filename: hit.filename, kind };
     }
     const { pdfBase64, filename } = await documentLinkPdfBase64(ctx, args.token, args.lang);
@@ -4020,7 +4145,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       const oldest = docPdfPagesCache.keys().next().value;
       if (oldest) docPdfPagesCache.delete(oldest);
     }
-    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs });
+    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs, pdfVersion });
     return { pagesBase64, filename, kind };
   } }),
   // Lightweight side-effect-free probe for the /doc/:token/pdf endpoint's

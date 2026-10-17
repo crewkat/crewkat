@@ -123,8 +123,10 @@ const pagesStart = appSrc.indexOf("function DocumentPdfPages");
 const PAGES = appSrc.slice(pagesStart, appSrc.indexOf("function DocumentEditForm", pagesStart));
 check("PDF pages render through renderPdfPreview and open the zoom viewer",
   PAGES.includes("api.renderPdfPreview") && PAGES.includes("<ClientDocPageViewer") && PAGES.includes("sameOriginBlobPath(originalUrl)"));
-check("detail keeps View document (signed PDF builder + preview modal)",
-  DETAIL.includes("buildSignedDocumentPdf") && DETAIL.includes("<PdfFrame"));
+check("detail keeps View document (canonical PDF builder + preview modal)",
+  DETAIL.includes("buildCanonicalDocumentPdf") && DETAIL.includes("<PdfFrame"));
+check("canonical builder serves the stored canonical via getDocumentPdf (no fabricated record page)",
+  appSrc.includes("api.getDocumentPdf({ documentId: document.id })") && appSrc.includes("buildCanonicalDocumentPdf"));
 check("detail keeps draw-to-sign, placement, signed copy and the send-link panel",
   DETAIL.includes("api.signDocumentWithDrawnSignature") && DETAIL.includes("DocumentSignSheet")
   && DETAIL.includes("<SignaturePlacementEditor")

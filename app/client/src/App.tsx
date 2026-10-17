@@ -7814,9 +7814,22 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
     setPdfError("");
     setPdfBusy(true);
     try {
-      const res = await fetch(sameOriginBlobPath(url));
-      if (!res.ok) throw new Error("fetch failed");
-      setPdfPreview({ blob: await res.blob(), title: d.title });
+      // ONE canonical PDF (2026-10-17): the server action serves the
+      // stored canonical file; the direct URL fetch stays as fallback.
+      let blob: Blob | null = null;
+      if (d.originalUrl) {
+        try {
+          const res = await api.getDocumentPdf({ documentId: d.id });
+          const bytes = Uint8Array.from(atob(res.pdfBase64), (char) => char.charCodeAt(0));
+          blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+        } catch { blob = null; }
+      }
+      if (!blob) {
+        const res = await fetch(sameOriginBlobPath(url));
+        if (!res.ok) throw new Error("fetch failed");
+        blob = await res.blob();
+      }
+      setPdfPreview({ blob, title: d.title });
     } catch {
       setPdfError(lang === "es" ? "No se pudo abrir el PDF." : "The PDF couldn't be opened.");
     } finally {
@@ -19632,6 +19645,40 @@ function DocumentSignSheet({
   );
 }
 
+// ONE canonical PDF (Danny 2026-10-17): the owner's View / Share /
+// Download serves the document's canonical PDF — the original pages with
+// every present stamp composited, the SAME file the client link serves —
+// never the old view-time fabrication (the raw original plus an appended
+// signature-record page), which hid the client's signature from the
+// owner's own copy. The server action returns the stored canonical,
+// composing + backfilling it for legacy documents; the stored-file URL
+// fetch is the fallback. The generated builder below remains only for
+// text-only documents, whose generated page IS the document.
+async function buildCanonicalDocumentPdf(
+  document: SignedDocument,
+  job: Job,
+  settings: Settings | null,
+  lang: Lang,
+): Promise<Blob> {
+  if (document.originalUrl) {
+    try {
+      const res = await api.getDocumentPdf({ documentId: document.id });
+      const bytes = Uint8Array.from(atob(res.pdfBase64), (char) => char.charCodeAt(0));
+      return new Blob([bytes as BlobPart], { type: "application/pdf" });
+    } catch { /* fall through to the stored-file fetch */ }
+    const url = document.signedPdfUrl ?? document.originalUrl;
+    const res = await fetch(sameOriginBlobPath(url));
+    if (!res.ok) throw new Error("The document file could not be loaded.");
+    return res.blob();
+  }
+  if (document.clientSignedAt && document.signedPdfUrl) {
+    const res = await fetch(sameOriginBlobPath(document.signedPdfUrl));
+    if (!res.ok) throw new Error("The document file could not be loaded.");
+    return res.blob();
+  }
+  return buildSignedDocumentPdf(document, job, settings, lang);
+}
+
 function DocumentDetailScreen({
   lang,
   jobId,
@@ -19759,7 +19806,7 @@ function DocumentDetailScreen({
                 setViewing(true);
                 setViewError("");
                 try {
-                  const blob = await buildSignedDocumentPdf(
+                  const blob = await buildCanonicalDocumentPdf(
                     doc,
                     job,
                     settings,

@@ -23,7 +23,7 @@
 //     and its unavailable fallback survive (regression).
 //  3. Uploaded contract end-to-end at the action layer: saveDocument with
 //     an original PDF -> link payload hasOriginalPdf -> getDocumentLinkPdf
-//     returns the exact original bytes -> getDocumentLinkPdfPages returns
+//     returns the canonical bytes -> getDocumentLinkPdfPages returns
 //     real rasterized pages -> submitDocumentSignature -> the link then
 //     serves the signed bytes and reports alreadySigned.
 //  4. Text-only contract: no original -> link PDF actions stay web-only.
@@ -36,7 +36,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq } from "drizzle-orm";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFName, PDFDict } from "pdf-lib";
 import { BaseActions } from "./server/src/actions.ts";
 import * as schema from "./server/src/schema.ts";
 import { privilegedHandlers } from "./server/src/privileged.ts";
@@ -50,6 +50,20 @@ function check(name: string, cond: boolean, detail = "") {
     failures++;
     console.error(`FAIL ${name}${detail ? ` — ${detail}` : ""}`);
   }
+}
+async function pageImageCount(pdfBytes: Uint8Array, pageIndex: number): Promise<number> {
+  try {
+    const pdf = await PDFDocument.load(pdfBytes);
+    const resources = pdf.getPage(pageIndex).node.Resources();
+    const xobjects = resources?.lookup(PDFName.of("XObject"), PDFDict);
+    if (!xobjects) return 0;
+    let n = 0;
+    for (const [, ref] of xobjects.entries()) {
+      const obj = pdf.context.lookup(ref) as any;
+      if (obj?.dict?.get(PDFName.of("Subtype"))?.toString() === "/Image") n++;
+    }
+    return n;
+  } catch { return 0; }
 }
 const throwsAsync = async (name: string, fn: () => Promise<unknown>) => {
   try {
@@ -143,7 +157,10 @@ check("link payload flags the uploaded PDF", payload.hasOriginalPdf === true && 
 check("link payload is signable and unsigned", payload.signable === true && payload.alreadySigned === false);
 
 const pdfBefore = await A.getDocumentLinkPdf.handler(ctx, { token: link.token, lang: "en" });
-check("link PDF before signing returns the exact original bytes", Buffer.from(pdfBefore.pdfBase64, "base64").equals(Buffer.from(originalBytes)));
+const pdfBeforeBytes = Buffer.from(pdfBefore.pdfBase64, "base64");
+check("link PDF before signing serves the canonical, not the raw original", !pdfBeforeBytes.equals(Buffer.from(originalBytes)));
+check("canonical before signing keeps the original page count", (await PDFDocument.load(pdfBeforeBytes)).getPageCount() === 2);
+check("canonical before signing carries the contractor stamp on the last page", (await pageImageCount(pdfBeforeBytes, 1)) === 1);
 check("link PDF filename is the uploaded filename", pdfBefore.filename === "concrete-pad-contract.pdf", pdfBefore.filename);
 
 const pages = await A.getDocumentLinkPdfPages.handler(ctx, { token: link.token, lang: "en" });
@@ -193,6 +210,65 @@ const textPayload = await A.resolveDocumentLink.handler(ctx, { token: textLink.t
 check("text-only contract has no original flag", textPayload.hasOriginalPdf === false);
 await throwsAsync("text-only contract PDF stays web-only", () => A.getDocumentLinkPdf.handler(ctx, { token: textLink.token, lang: "en" }));
 await throwsAsync("text-only contract probe stays web-only", () => A.validateDocumentLinkPdf.handler(ctx, { token: textLink.token }));
+
+// --- 7. ONE canonical PDF: the owner read (Danny 2026-10-17) -------------------
+// The defect: the owner's in-app View / Share / Download served a
+// DIFFERENT file (raw original + appended signature-record page), so a
+// 2-page signed contract showed the owner 3 pages with no client
+// signature. The owner read is getDocumentPdf; it must serve the same
+// canonical bytes as the link, in every state.
+const { compositeSignatureStamps } = await import("./client/src/signatureComposite.ts");
+const canonSaved = await A.saveDocument.handler(ctx, {
+  jobId, kind: "contract", title: "Canonical pad contract", bodyText: "",
+  originalFilename: "canonical.pdf", originalDataBase64: originalBase64,
+  description: "", amount: "", signerName: "Denny",
+  signatureDataBase64: pngBase64, signedAt: now.toISOString(),
+});
+const canonRow = (await db.select().from(schema.documents).where(eq(schema.documents.id, canonSaved.id)))[0]!;
+check("creation stores the canonical PDF", !!canonRow.clientSignedPdfBlobKey && blobStore.has(canonRow.clientSignedPdfBlobKey!));
+const ownerBefore = await A.getDocumentPdf.handler(ctx, { documentId: canonSaved.id });
+const ownerBeforeBytes = Buffer.from(ownerBefore.pdfBase64, "base64");
+check("owner read before signing: original page count, no appended page", (await PDFDocument.load(ownerBeforeBytes)).getPageCount() === 2);
+check("owner read before signing: contractor stamp composited", (await pageImageCount(ownerBeforeBytes, 1)) === 1);
+check("owner read filename is the uploaded filename before signing", ownerBefore.filename === "canonical.pdf", ownerBefore.filename);
+
+// The client signs the way the real sign page does: stamps composited
+// onto the canonical base the link serves, then submitted.
+const canonLink = await A.createDocumentLink.handler(ctx, { kind: "contract", id: canonSaved.id });
+const canonBase = await A.getDocumentLinkPdf.handler(ctx, { token: canonLink.token, lang: "en" });
+check("owner read and link serve identical bytes before signing", Buffer.from(canonBase.pdfBase64, "base64").equals(ownerBeforeBytes));
+const canonClientFinal = await compositeSignatureStamps(Buffer.from(canonBase.pdfBase64, "base64"), {}, [
+  { role: "client", imageBytes: Buffer.from(pngBase64, "base64"), imageFormat: "png", dateText: "October 17, 2026" },
+]);
+await A.submitDocumentSignature.handler(ctx, {
+  token: canonLink.token, signerName: "Denny Client", signatureDataBase64: pngBase64,
+  signedPdfDataBase64: Buffer.from(canonClientFinal).toString("base64"), userAgent: "test", consented: true,
+});
+const ownerAfter = await A.getDocumentPdf.handler(ctx, { documentId: canonSaved.id });
+const ownerAfterBytes = Buffer.from(ownerAfter.pdfBase64, "base64");
+check("owner read after signing: SAME page count as the original (no appended page)", (await PDFDocument.load(ownerAfterBytes)).getPageCount() === 2, String((await PDFDocument.load(ownerAfterBytes)).getPageCount()));
+check("owner read after signing: BOTH stamps present (contractor + client)", (await pageImageCount(ownerAfterBytes, 1)) === 2);
+check("owner read filename is the signed name after signing", ownerAfter.filename === "Canonical_pad_contract-signed.pdf", ownerAfter.filename);
+const linkAfter = await A.getDocumentLinkPdf.handler(ctx, { token: canonLink.token, lang: "en" });
+check("owner read and link serve the SAME canonical bytes after signing", Buffer.from(linkAfter.pdfBase64, "base64").equals(ownerAfterBytes));
+
+// Legacy rows (created before the stored canonical existed) compose on
+// read from their stored blobs and backfill the key — no migration.
+const legacySaved = await A.saveDocument.handler(ctx, {
+  jobId, kind: "contract", title: "Legacy pad contract", bodyText: "",
+  originalFilename: "legacy.pdf", originalDataBase64: originalBase64,
+  description: "", amount: "", signerName: "Denny",
+  signatureDataBase64: pngBase64, signedAt: now.toISOString(),
+});
+const legacyRow = (await db.select().from(schema.documents).where(eq(schema.documents.id, legacySaved.id)))[0]!;
+blobStore.delete(legacyRow.clientSignedPdfBlobKey!);
+await db.update(schema.documents).set({ clientSignedPdfBlobKey: null }).where(eq(schema.documents.id, legacySaved.id));
+const legacyRead = await A.getDocumentPdf.handler(ctx, { documentId: legacySaved.id });
+const legacyBytes = Buffer.from(legacyRead.pdfBase64, "base64");
+check("legacy document composes on read (original pages + contractor stamp)", (await PDFDocument.load(legacyBytes)).getPageCount() === 2 && (await pageImageCount(legacyBytes, 1)) === 1);
+const legacyAfter = (await db.select().from(schema.documents).where(eq(schema.documents.id, legacySaved.id)))[0]!;
+check("legacy read backfills the canonical key", !!legacyAfter.clientSignedPdfBlobKey && blobStore.has(legacyAfter.clientSignedPdfBlobKey!));
+await throwsAsync("owner read rejects a text-only document", () => A.getDocumentPdf.handler(ctx, { documentId: textSaved.id }));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

@@ -147,6 +147,15 @@ const defaultOut = await compositeSignatureStamps(twoPage, {}, [
 check("default composite keeps the original page count", (await PDFDocument.load(defaultOut)).getPageCount() === 2);
 check("default composite stamps the LAST page", await pageHasImage(defaultOut, 1) && !(await pageHasImage(defaultOut, 0)));
 
+// White backing (canonical PDF, Danny 2026-10-17): a DEFAULT-position
+// stamp gets a clean white backing (a white-filled rectangle in the page
+// content) so it never prints over document text on dense pages whose
+// content runs to the bottom edge. A PLACED stamp is drawn exactly as
+// placed — no backing — and a date that defaults to under a PLACED
+// signature is shielded the same way.
+check("default-position stamps draw a white backing", pdfText(defaultOut).includes("1 1 1 rg"));
+check("placed stamps draw NO white backing", !pdfText(placedOut).includes("1 1 1 rg"));
+
 const bothOut = await compositeSignatureStamps(twoPage, {
   clientSignature: { page: 2, xPct: 0.08, yPct: 0.82, wPct: 0.3, hPct: 0.075 },
   contractorSignature: { page: 2, xPct: 0.55, yPct: 0.82, wPct: 0.3, hPct: 0.075 },
@@ -156,6 +165,7 @@ const bothOut = await compositeSignatureStamps(twoPage, {
 ]);
 check("both-role composite keeps the page count and stamps page 2", (await PDFDocument.load(bothOut)).getPageCount() === 2 && (await pageHasImage(bothOut, 1)));
 check("both date stamps are present", pdfText(bothOut).includes("October 15, 2026"));
+check("placed signatures shield their default dates from backing too", !pdfText(bothOut).includes("1 1 1 rg"));
 
 // --- 4. Action layer ---------------------------------------------------------------------
 const blobStore = new Map<string, Buffer>();

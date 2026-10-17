@@ -139,6 +139,13 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  * A stamp draws its signature image (aspect preserved, fitted inside the
  * box) and/or its date text. Pages referenced past the end clamp to the
  * last page. Throws only when the source is not a loadable PDF.
+ *
+ * White backing (canonical PDF, Danny 2026-10-17): a stamp that lands at
+ * a DEFAULT position — the signer has no placed field — gets a clean
+ * white backing behind it, because dense source PDFs run content right
+ * to the bottom edge and the stamp must never print over document text.
+ * A stamp at a PLACED field is drawn exactly as placed, with no backing:
+ * the sender chose that spot on purpose.
  */
 export async function compositeSignatureStamps(
   originalBytes: Uint8Array | ArrayBuffer,
@@ -148,7 +155,30 @@ export async function compositeSignatureStamps(
   const pdf = await PDFDocument.load(originalBytes);
   const pageCount = pdf.getPageCount();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
+  // White backing behind a box (box given in top-left-origin points):
+  // the box plus a small pad, clamped to the page.
+  const drawBacking = (
+    target: ReturnType<typeof pdf.getPage>,
+    x: number,
+    topY: number,
+    w: number,
+    h: number,
+    pad: number,
+  ) => {
+    const { width: pw, height: ph } = target.getSize();
+    const rx = Math.max(0, x - pad);
+    const ry = Math.max(0, topY - h - pad);
+    target.drawRectangle({
+      x: rx,
+      y: ry,
+      width: Math.min(pw, x + w + pad) - rx,
+      height: Math.min(ph, topY + pad) - ry,
+      color: rgb(1, 1, 1),
+    });
+  };
   for (const stamp of stamps) {
+    const signaturePlaced = !!(stamp.role === "client" ? fields.clientSignature : fields.contractorSignature);
+    const datePlaced = !!(stamp.role === "client" ? fields.clientDate : fields.contractorDate);
     const field = resolveSignatureField(fields, stamp.role, pageCount);
     const page = pdf.getPage(field.page - 1);
     const { width: pageW, height: pageH } = page.getSize();
@@ -158,6 +188,7 @@ export async function compositeSignatureStamps(
     // pdf-lib's origin is bottom-left; placements are measured from the top.
     const boxTopY = pageH - clamp01(field.yPct) * pageH;
     if (stamp.imageBytes && stamp.imageBytes.length > 0) {
+      if (!signaturePlaced) drawBacking(page, boxX, boxTopY, boxW, boxH, 6);
       const image = stamp.imageFormat === "jpg"
         ? await pdf.embedJpg(stamp.imageBytes)
         : await pdf.embedPng(stamp.imageBytes);
@@ -188,6 +219,11 @@ export async function compositeSignatureStamps(
       let fontSize = Math.max(6, Math.min(14, dH * 0.55));
       const maxDateWidth = Math.max(1, dW - 2);
       while (fontSize > 6 && font.widthOfTextAtSize(stamp.dateText, fontSize) > maxDateWidth) fontSize -= 0.5;
+      // The date joins the signature's backing only when the role has NO
+      // placed field at all: a placed date is deliberate, and a date that
+      // defaults to directly under a PLACED signature sits in the spot the
+      // sender picked for the pair.
+      if (!datePlaced && !signaturePlaced) drawBacking(datePage, dX, dTopY, dW, dH, 4);
       datePage.drawText(stamp.dateText, {
         x: dX,
         y: dTopY - dH + (dH - fontSize) / 2,

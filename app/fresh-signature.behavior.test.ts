@@ -220,6 +220,18 @@ const servedABytes = Buffer.from(servedA.pdfBase64, "base64");
 check("contractor-first flow: final still has the original page count", (await PDFDocument.load(servedABytes)).getPageCount() === 2);
 check("contractor-first flow: both stamps present in the final", (await pageImageCount(servedABytes, 1)) === 2 && pdfText(servedABytes).includes(todayLong) && pdfText(servedABytes).includes("October 20, 2026"));
 
+// --- 4b. Creation stores the canonical PDF (Danny 2026-10-17) ----------------------
+// Sign & save no longer leaves the signature to an appended record page:
+// the stored canonical is the original pages with the contractor's
+// signature composited as a stamp (default position until placed).
+const docC = await saveUploadedDoc("Creation-canonical pad contract");
+const rowC = (await db.select().from(schema.documents)).find((d) => d.id === docC)!;
+check("creation stores a canonical PDF", !!rowC.clientSignedPdfBlobKey && blobStore.has(rowC.clientSignedPdfBlobKey!));
+const canonicalC = blobStore.get(rowC.clientSignedPdfBlobKey!)!;
+check("creation canonical keeps the original page count (no appended page)", (await PDFDocument.load(canonicalC)).getPageCount() === 2);
+check("creation canonical carries the contractor stamp on the last page", (await pageImageCount(canonicalC, 1)) === 1);
+check("creation canonical differs from the raw original", !Buffer.from(canonicalC).equals(Buffer.from(twoPage)));
+
 // --- 5. Client-first, contractor second ----------------------------------------------
 const docB = await saveUploadedDoc("Client-first pad contract");
 await A.saveDocumentSignatureFields.handler(ctx, {
@@ -254,6 +266,7 @@ const actionsSrc = await readFile("server/src/actions.ts", "utf8");
 const publicBlock = actionsSrc.slice(actionsSrc.indexOf("const PUBLIC_ACTIONS"), actionsSrc.indexOf("]);", actionsSrc.indexOf("const PUBLIC_ACTIONS")));
 check("client signing stays public", publicBlock.includes('"submitDocumentSignature"'));
 check("draw-to-sign is NOT public", !publicBlock.includes("signDocumentWithDrawnSignature"));
+check("owner canonical-PDF read is NOT public", !publicBlock.includes('"getDocumentPdf"'));
 check("saved-signature actions are gone from the server source",
   !actionsSrc.includes("signDocumentWithSavedSignature") && !actionsSrc.includes("saveContractorSignature") && !actionsSrc.includes("clearContractorSignature") && !actionsSrc.includes("savedSignatureUrl"));
 check("placement saving is NOT public", !publicBlock.includes("saveDocumentSignatureFields"));
