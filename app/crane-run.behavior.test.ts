@@ -257,3 +257,66 @@ describe("Crane Run weekly leaderboard UI (Danny 2026-10-11 daily; weekly 2026-1
     expect(CSS).toMatch(/\.crane-run-board-list li\s*\{[\s\S]*?padding:\s*3px 6px/);
   });
 });
+
+describe("Crane Run entrance choreography (Danny 2026-10-17)", () => {
+  test("blocks rise + fade in a staged cascade scoped to the crane page", () => {
+    // Deliberate game-screen entrance: 16px rise, fade, ~380ms per block.
+    expect(CSS).toMatch(/@keyframes crane-enter\s*\{[^}]*opacity:\s*0/);
+    expect(CSS).toMatch(/@keyframes crane-enter\s*\{[^}]*translateY\(16px\)/);
+    expect(CSS).toMatch(/\.crane-run-page > \*\s*\{\s*animation:\s*crane-enter \.38s var\(--ease-out\) both/);
+    // Staggered ~70ms apart, header first, game wrap last (total < 0.6s).
+    expect(CSS).toMatch(/\.crane-run-page > \*:nth-child\(1\)\s*\{\s*animation-delay:\s*0ms/);
+    expect(CSS).toMatch(/\.crane-run-page > \*:nth-child\(2\)\s*\{\s*animation-delay:\s*70ms/);
+    expect(CSS).toMatch(/\.crane-run-page > \*:nth-child\(3\)\s*\{\s*animation-delay:\s*140ms/);
+    expect(CSS).toMatch(/\.crane-run-page > \*:nth-child\(4\)\s*\{\s*animation-delay:\s*210ms/);
+    // The cascade is transform/opacity choreography only — the shared
+    // .page page-in rule is not Crane Run's to change.
+    expect(CSS).toContain(".page { animation: page-in .18s ease-out; }");
+  });
+
+  test("reduced motion kills the cascade", () => {
+    expect(CSS).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.crane-run-page > \*\s*\{\s*animation:\s*none/);
+  });
+
+  test("loading reserves the champion slot at the real card's metrics", () => {
+    // While the board loads, a skeleton section holds the champion
+    // card's place (same box, same three line classes) ahead of the
+    // real card in the same ternary — the wrap below never moves when
+    // the data lands.
+    const loadingAt = APP.indexOf("crane-run-champion-skel");
+    const realAt = APP.indexOf('className="crane-run-champion"');
+    expect(loadingAt).toBeGreaterThan(-1);
+    expect(realAt).toBeGreaterThan(loadingAt);
+    expect(APP).toMatch(/boardQuery\.isLoading \? \([\s\S]{0,700}crane-run-champion-skel/);
+    expect(APP).toMatch(/crane-run-champion-skel[\s\S]{0,600}crane-run-champion-badge/);
+    expect(APP).toMatch(/crane-run-champion-skel[\s\S]{0,600}crane-run-champion-name/);
+    expect(APP).toMatch(/crane-run-champion-skel[\s\S]{0,600}crane-run-champion-prize/);
+    // Skeleton card duplicates the champion box (padding/radius/shadow).
+    expect(CSS).toMatch(/\.crane-run-champion-skel\s*\{[^}]*padding:\s*8px 10px/);
+    expect(CSS).toMatch(/\.crane-run-champion-skel\s*\{[^}]*border-radius:\s*8px/);
+  });
+
+  test("loading reserves the board list at full five-row height", () => {
+    // Five skeleton rows built from the real list classes, inside the
+    // board card's loading branch; the "Loading…" note overlays them
+    // (absolute) so it adds no height of its own.
+    expect(APP).toMatch(/boardQuery\.isLoading \? \([\s\S]{0,700}crane-run-board-skel/);
+    expect(APP).toMatch(/crane-run-board-skel[\s\S]{0,300}crane-run-board-list/);
+    expect(APP).toContain("[64, 52, 58, 44, 50].map");
+    expect(APP).toMatch(/crane-run-board-skel-note">\{t\.loadingBoard\}/);
+    expect(CSS).toMatch(/\.crane-run-board-skel\s*\{\s*position:\s*relative/);
+    expect(CSS).toMatch(/\.crane-run-board-skel-note\s*\{[^}]*position:\s*absolute/);
+    // Shimmer bars ride the app's shared shine sweep.
+    expect(CSS).toMatch(/\.crane-run-skel-bar\s*\{[^}]*animation:\s*shine 1\.4s infinite linear/);
+    expect(CSS).toMatch(/\.crane-run-skel-bar\s*\{[^}]*display:\s*inline-block/);
+  });
+
+  test("loaded champion + board markup is unchanged", () => {
+    expect(APP).toContain("champion.businessName");
+    expect(APP).toContain("entries.map");
+    expect(APP).toContain("crane-run-board-empty");
+    expect(APP).toContain('className="crane-run-champion"');
+    expect(APP).toContain('className="crane-run-board"');
+    expect(APP).toContain('className="crane-run-wrap"');
+  });
+});

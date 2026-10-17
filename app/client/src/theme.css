@@ -5163,6 +5163,27 @@ body > .document-overlay.customize-overlay { z-index: 200; }
    overrides, the same pattern as .page.marketplace-thread above. */
 .app-shell.master-nav-hidden .page.crane-run-page,
 .app-shell.has-bottom-nav .page.crane-run-page { padding-bottom: 12px; }
+/* Entrance choreography (Danny 2026-10-17): the screen used to paint,
+   then settle in stages as the leaderboard landed a beat later — the
+   champion card and Top 5 popped in and the game area resized under
+   them, which read as a glitch. Now the blocks ARRIVE as a game screen:
+   header, champion, board, and game rise + fade in a staged cascade,
+   ~70ms apart, transform/opacity only (zero layout impact), and the
+   loading skeletons further down reserve the data's space so nothing
+   shifts when it lands. Scoped to this page — the shared .page page-in
+   underneath stays untouched. */
+@keyframes crane-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+.crane-run-page > * { animation: crane-enter .38s var(--ease-out) both; }
+.crane-run-page > *:nth-child(1) { animation-delay: 0ms; }
+.crane-run-page > *:nth-child(2) { animation-delay: 70ms; }
+.crane-run-page > *:nth-child(3) { animation-delay: 140ms; }
+.crane-run-page > *:nth-child(4) { animation-delay: 210ms; }
+@media (prefers-reduced-motion: reduce) {
+  .crane-run-page > * { animation: none; }
+}
 .crane-run-wrap {
   position: relative;
   margin-top: 12px;
@@ -5328,6 +5349,50 @@ body > .document-overlay.customize-overlay { z-index: 200; }
   white-space: nowrap;
 }
 .crane-run-champion-prize { font-size: 11.5px; color: var(--muted, #667); }
+/* Loading skeletons for the champion slot + board list (Danny
+   2026-10-17): they stand in at the loaded cards' exact metrics from
+   the first frame, so the flex-1 game wrap under them sizes ONCE at its
+   final dimensions and the canvas never redraws at a new size when the
+   leaderboard lands. The champion skeleton duplicates the champion
+   card's box (hairline border instead of the accent — it's a
+   placeholder); its three lines reuse the real line classes, and the
+   shimmer bars are inline-blocks riding each line's strut, so every
+   skeleton line keeps the exact line box of the text it stands in for. */
+.crane-run-champion-skel {
+  margin-top: 8px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  padding: 8px 10px;
+}
+.crane-run-skel-bar {
+  display: inline-block;
+  height: 9px;
+  border-radius: 3px;
+  vertical-align: middle;
+  background: linear-gradient(90deg, var(--bg), var(--surface-2), var(--bg));
+  background-size: 200% 100%;
+  animation: shine 1.4s infinite linear;
+}
+/* Board skeleton: the rows are real .crane-run-board-list rows with
+   bars in place of text (same height by construction); the "Loading…"
+   note floats centered over them, adding no height of its own. */
+.crane-run-board-skel { position: relative; }
+.crane-run-board-skel-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #667);
+}
 
 /* Client Portal v2: premium branded client experience. Flat cards, hairline
    borders, 8px radius, orange accent. */

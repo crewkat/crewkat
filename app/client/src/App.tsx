@@ -6297,7 +6297,25 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   return (
     <main className="page crane-run-page">
       <PageHeader lang={lang} title={t.title} onBack={onBack} />
-      {champion && (
+      {boardQuery.isLoading ? (
+        // Reserved champion slot while the board loads (Danny 2026-10-17):
+        // same card box + line metrics as the real champion card (shimmer
+        // bars ride each line's strut), so when the data lands the game
+        // below never moves. If there turns out to be no champion, the
+        // slot unmounts during the entrance cascade — a fade, not a late
+        // jump. The entrance used to settle in stages and read as a glitch.
+        <section className="crane-run-champion-skel" aria-hidden="true">
+          <span className="crane-run-champion-badge">
+            <span className="crane-run-skel-bar" style={{ width: 118 }} />
+          </span>
+          <strong className="crane-run-champion-name">
+            <span className="crane-run-skel-bar" style={{ width: "46%" }} />
+          </strong>
+          <span className="crane-run-champion-prize">
+            <span className="crane-run-skel-bar" style={{ width: "64%" }} />
+          </span>
+        </section>
+      ) : champion ? (
         <section className="crane-run-champion" aria-label={t.championLabel}>
           <span className="crane-run-champion-badge">
             <Icon size={13}><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4c0 3 1.3 4.5 3.2 4.7M17 5h3c0 3-1.3 4.5-3.2 4.7" /></Icon>
@@ -6306,7 +6324,7 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           <strong className="crane-run-champion-name">{champion.businessName}</strong>
           <span className="crane-run-champion-prize">{t.championPrize}</span>
         </section>
-      )}
+      ) : null}
       <section className="crane-run-board" aria-label={t.boardTitle}>
         <div className="crane-run-board-head">
           <strong>{t.boardTitle}</strong>
@@ -6316,7 +6334,29 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           </label>
         </div>
         {boardQuery.isLoading ? (
-          <p className="crane-run-board-empty">{t.loadingBoard}</p>
+          // Reserved board skeleton (Danny 2026-10-17): five rows built
+          // from the real list's classes + metrics, so the list area is
+          // full height from the first frame and the game wrap under it
+          // never resizes when the scores land. The loading note floats
+          // over the rows (absolute) — it adds no height of its own.
+          <div className="crane-run-board-skel">
+            <ol className="crane-run-board-list" aria-hidden="true">
+              {[64, 52, 58, 44, 50].map((w, i) => (
+                <li key={i}>
+                  <span className="crane-run-rank">
+                    <span className="crane-run-skel-bar" style={{ width: 10 }} />
+                  </span>
+                  <span className="crane-run-name">
+                    <span className="crane-run-skel-bar" style={{ width: `${w}%` }} />
+                  </span>
+                  <span className="crane-run-pts">
+                    <span className="crane-run-skel-bar" style={{ width: 24 }} />
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="crane-run-board-skel-note">{t.loadingBoard}</p>
+          </div>
         ) : entries.length === 0 ? (
           <p className="crane-run-board-empty">{t.emptyBoard}</p>
         ) : (
