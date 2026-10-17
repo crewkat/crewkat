@@ -511,6 +511,11 @@ const copy = {
     signature: "Signature",
     clear: "Clear",
     signSave: "Sign & save",
+    signerNeedTitle: "Give the document a title first.",
+    signerNeedFile: "Add your PDF or paste the contract text first.",
+    signerNeedDescription: "Describe the extra work first.",
+    signerNeedSigner: "Add the printed signer name first.",
+    signerNeedSignature: "Draw your signature first.",
     signed: "Signed",
     download: "Download PDF",
     sharePdf: "Share PDF",
@@ -850,6 +855,11 @@ const copy = {
     signature: "Firma",
     clear: "Borrar",
     signSave: "Firmar y guardar",
+    signerNeedTitle: "Primero ponle un título al documento.",
+    signerNeedFile: "Primero agrega tu PDF o pega el texto del contrato.",
+    signerNeedDescription: "Primero describe el trabajo extra.",
+    signerNeedSigner: "Primero agrega el nombre de quien firma.",
+    signerNeedSignature: "Primero dibuja tu firma.",
     signed: "Firmado",
     download: "Descargar PDF",
     sharePdf: "Compartir PDF",
@@ -3582,6 +3592,7 @@ function CrewkatApplication() {
           photoId={screen.photoId}
           settings={appSettings}
           onBack={goBack}
+          onOpenDocument={(createdId) => replaceScreen({ name: "document", jobId: screen.jobId, documentId: createdId })}
         />
       )}
       {screen.name === "document" && (
@@ -18120,6 +18131,7 @@ function JobToolScreen({
   photoId,
   settings,
   onBack,
+  onOpenDocument,
 }: {
   lang: Lang;
   jobId: number;
@@ -18127,6 +18139,7 @@ function JobToolScreen({
   photoId?: number;
   settings: Settings | null;
   onBack: () => void;
+  onOpenDocument?: (createdId: number) => void;
 }) {
   const t = copy[lang];
   const query = useQuery({
@@ -18165,6 +18178,7 @@ function JobToolScreen({
           data={query.data}
           settings={settings}
           kind="contract"
+          onSaved={onOpenDocument}
         />
       )}
       {mode === "change" && (
@@ -18173,6 +18187,7 @@ function JobToolScreen({
           data={query.data}
           settings={settings}
           kind="change_order"
+          onSaved={onOpenDocument}
         />
       )}
       {mode === "punch" && <PunchList lang={lang} data={query.data} />}{" "}
@@ -18811,11 +18826,13 @@ function DocumentSigner({
   lang,
   data,
   kind,
+  onSaved,
 }: {
   lang: Lang;
   data: JobData;
   settings: Settings | null;
   kind: "contract" | "change_order";
+  onSaved?: (createdId: number) => void;
 }) {
   const t = copy[lang];
   const job = data.job;
@@ -18830,6 +18847,40 @@ function DocumentSigner({
   const [signature, setSignature] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  // Save-flow fix (Danny 2026-10-17): a refused save must name the missing
+  // field, scroll it into view and ring it. The old generic error rendered
+  // at the very bottom of the form — below the fold from the sticky submit
+  // bar — so a refused save looked like nothing happened at all.
+  const [missing, setMissing] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const fileFieldRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const signerRef = useRef<HTMLInputElement>(null);
+  const signatureRef = useRef<HTMLDivElement>(null);
+  const missingRefFor = (field: string) =>
+    field === "title"
+      ? titleRef.current
+      : field === "file"
+        ? fileFieldRef.current
+        : field === "description"
+          ? descriptionRef.current
+          : field === "signer"
+            ? signerRef.current
+            : signatureRef.current;
+  const flagMissing = (field: string, message: string) => {
+    setMissing(field);
+    setError(message);
+    const el = missingRefFor(field);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      el.focus({ preventScroll: true });
+    }
+  };
+  const clearMissing = (field: string) => {
+    if (missing !== field) return;
+    setMissing("");
+    setError("");
+  };
   // Design overhaul (Danny 2026-10-17): the paste-text box starts collapsed
   // (a slim row, not a screen-tall void) and the picked PDF shows as a slim
   // chip with its page count when pdf-lib can read it.
@@ -18877,15 +18928,28 @@ function DocumentSigner({
         signedAt: new Date().toISOString(),
       });
     },
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["job", job?.id] });
+    // Step 1 of the stepper ends by OPENING the created document — step 2
+    // (Place fields) lives on its detail screen. The old onSuccess only
+    // blanked the form in place, so a saved document looked like a failed
+    // save and a retry created a duplicate. The job query is awaited first
+    // so the detail screen mounts with the new document already in the job
+    // payload instead of flashing its no-longer-exists state.
+    onSuccess: async (result) => {
+      await client.invalidateQueries({ queryKey: ["job", job?.id] });
+      if (onSaved) {
+        onSaved(result.id);
+        return;
+      }
       setSignature("");
       setBodyText("");
       setDescription("");
       setAmount("");
       setFile(null);
     },
-    onError: () => setError(t.error),
+    onError: () => {
+      setMissing("");
+      setError(t.error);
+    },
   });
   if (!job) return null;
   return (
@@ -18919,26 +18983,38 @@ function DocumentSigner({
         className="tool-form signer-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (
-            !title.trim() ||
-            !signerName.trim() ||
-            !signature ||
-            (kind === "contract" && !file && !bodyText.trim()) ||
-            (kind === "change_order" && !description.trim())
-          ) {
-            setError(t.required);
-            return;
-          }
+          // First missing field wins, in form order, each with its own
+          // short specific message.
+          if (!title.trim()) return flagMissing("title", t.signerNeedTitle);
+          if (kind === "contract" && !file && !bodyText.trim())
+            return flagMissing("file", t.signerNeedFile);
+          if (kind === "change_order" && !description.trim())
+            return flagMissing("description", t.signerNeedDescription);
+          if (!signerName.trim()) return flagMissing("signer", t.signerNeedSigner);
+          if (!signature) return flagMissing("signature", t.signerNeedSignature);
+          setMissing("");
+          setError("");
           save.mutate();
         }}
       >
-        <label>
+        <label className={missing === "title" ? "field-missing" : undefined}>
           <span>{t.title}</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input
+            ref={titleRef}
+            aria-invalid={missing === "title" || undefined}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              clearMissing("title");
+            }}
+          />
         </label>
         {kind === "contract" ? (
           <>
-            <div className="signer-file-field">
+            <div
+              className={`signer-file-field${missing === "file" ? " field-missing" : ""}`}
+              ref={fileFieldRef}
+            >
               <span className="signer-field-label">{t.docFileLabel}</span>
               <input
                 ref={fileInputRef}
@@ -18946,7 +19022,10 @@ function DocumentSigner({
                 className="signer-file-input"
                 type="file"
                 accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  clearMissing("file");
+                }}
               />
               {file ? (
                 <div className="signer-file-row">
@@ -19009,7 +19088,10 @@ function DocumentSigner({
                   <textarea
                     rows={6}
                     value={bodyText}
-                    onChange={(e) => setBodyText(e.target.value)}
+                    onChange={(e) => {
+                      setBodyText(e.target.value);
+                      clearMissing("file");
+                    }}
                   />
                 </label>
               )}
@@ -19017,12 +19099,17 @@ function DocumentSigner({
           </>
         ) : (
           <>
-            <label>
+            <label className={missing === "description" ? "field-missing" : undefined}>
               <span>{t.changeDescription}</span>
               <textarea
+                ref={descriptionRef}
+                aria-invalid={missing === "description" || undefined}
                 rows={4}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearMissing("description");
+                }}
               />
             </label>
             <label>
@@ -19035,18 +19122,31 @@ function DocumentSigner({
             </label>
           </>
         )}
-        <label>
+        <label className={missing === "signer" ? "field-missing" : undefined}>
           <span>{t.signer}</span>
           <input
+            ref={signerRef}
+            aria-invalid={missing === "signer" || undefined}
             value={signerName}
-            onChange={(e) => setSignerName(e.target.value)}
+            onChange={(e) => {
+              setSignerName(e.target.value);
+              clearMissing("signer");
+            }}
           />
         </label>
-        <SignaturePad
-          label={t.signature}
-          clearLabel={t.clear}
-          onChange={setSignature}
-        />
+        <div
+          ref={signatureRef}
+          className={missing === "signature" ? "field-missing" : undefined}
+        >
+          <SignaturePad
+            label={t.signature}
+            clearLabel={t.clear}
+            onChange={(data) => {
+              setSignature(data);
+              if (data) clearMissing("signature");
+            }}
+          />
+        </div>
         <p className="signer-note">
           <Icon size={15}>
             <circle cx="12" cy="12" r="9" />
@@ -19054,8 +19154,12 @@ function DocumentSigner({
           </Icon>
           <span>{t.signerNextNote}</span>
         </p>
-        {error && <p className="status error">{error}</p>}
         <div className="signer-submit-bar">
+          {error && (
+            <p className="status error signer-submit-error" role="alert">
+              {error}
+            </p>
+          )}
           <button className="primary-button signer-submit-btn" disabled={save.isPending}>
             <Icon size={17}>
               <path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />

@@ -5651,6 +5651,10 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .signer-note svg { flex: none; margin-top: 1px; }
 .signer-submit-bar { position: sticky; bottom: 0; z-index: 5; margin-inline: -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgb(0 0 0 / .05); }
 .signer-submit-btn { width: 100%; }
+.signer-submit-error { margin: 0 0 8px; padding: 8px 10px; font-size: 13px; }
+.signer-form .field-missing input, .signer-form .field-missing textarea { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
+.signer-form .field-missing .signer-file-row, .signer-form .field-missing .signer-paste-row { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
+.signer-form .field-missing .signature-field canvas { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
 
 /* ---- Placement editor ---- */
 .pdf-modal.sig-place-modal { padding: 0; }

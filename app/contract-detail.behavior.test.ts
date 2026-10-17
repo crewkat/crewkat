@@ -80,6 +80,36 @@ check("create entrances still route to the signer form",
   appSrc.includes('setScreen({ name: "tool", jobId, mode: "contract" })')
   && appSrc.includes('setScreen({ name: "tool", jobId, mode: "change" })'));
 
+// --- Save-flow fix (Danny 2026-10-17): the signer form dead-ended after
+// Sign & save (blanked form, no navigation -> duplicate documents on
+// retry), and submit validation failed invisibly (error at the bottom of
+// the form, below the fold from the sticky submit bar).
+const themeSrc = await readFile("client/src/theme.css", "utf8");
+check("saveDocument returns the created id (the navigation target)",
+  actionsSrc.includes("return { id: made.id }"));
+check("signer save success awaits the job refetch, then opens the created document",
+  SIGNER.includes("onSuccess: async (result)") && SIGNER.includes("await client.invalidateQueries")
+  && SIGNER.includes("onSaved(result.id)"));
+check("tool screen threads the open-document callback to both signer variants",
+  (appSrc.match(/onSaved=\{onOpenDocument\}/g) ?? []).length === 2);
+check("app root lands a saved document on its detail via replace, never push",
+  appSrc.includes('onOpenDocument={(createdId) => replaceScreen({ name: "document", jobId: screen.jobId, documentId: createdId })}'));
+const submitBarSlice = SIGNER.slice(SIGNER.indexOf('className="signer-submit-bar"'));
+check("validation error renders inside the sticky submit bar",
+  submitBarSlice.includes('className="status error signer-submit-error"'));
+check("the old below-the-fold error render is gone",
+  !SIGNER.includes('{error && <p className="status error">{error}</p>}'));
+check("missing-field feedback hooks exist (ring class + aria-invalid + scroll/focus)",
+  SIGNER.includes("field-missing") && SIGNER.includes("aria-invalid")
+  && SIGNER.includes("scrollIntoView") && SIGNER.includes("flagMissing("));
+check("each missing field gets its own short message (EN + ES)",
+  appSrc.includes("Add your PDF or paste the contract text first.")
+  && appSrc.includes("Primero agrega tu PDF o pega el texto del contrato.")
+  && appSrc.includes("Draw your signature first.")
+  && appSrc.includes("Primero dibuja tu firma."));
+check("submit-bar error + missing-field ring styles ship",
+  themeSrc.includes(".signer-submit-error {") && themeSrc.includes(".signer-form .field-missing"));
+
 const detailStart = appSrc.indexOf("function DocumentDetailScreen");
 const detailEnd = appSrc.indexOf("function PunchList", detailStart);
 const DETAIL = appSrc.slice(detailStart, detailEnd);
