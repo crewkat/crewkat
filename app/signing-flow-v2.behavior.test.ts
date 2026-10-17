@@ -287,5 +287,11 @@ check("completion panel emails a copy via the new action", appSrc.includes("api.
 check("unsigned pages stop rendering once signed", appSrc.includes("{!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}"));
 check("sticky bar styles ship", themeSrc.includes(".client-sign-bar {") && themeSrc.includes(".client-sign-hero {"));
 
+// --- Source pins (commit 3: in-app signed-first document view) ---------------------------
+const pdfPagesSlice = appSrc.slice(appSrc.indexOf("function DocumentPdfPages"), appSrc.indexOf("function DocumentPdfPages") + 700);
+check("detail pages render signed-first once client-signed", pdfPagesSlice.includes("doc.clientSignedAt && doc.signedPdfUrl ? doc.signedPdfUrl : doc.originalUrl"));
+check("detail screen labels the signed copy (EN/ES)", appSrc.includes('"Signed copy"') && appSrc.includes('"Copia firmada"'));
+check("redundant View signed copy anchor is gone", !appSrc.includes("View signed copy") && !appSrc.includes("Ver copia firmada"));
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

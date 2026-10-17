@@ -18996,7 +18996,11 @@ function LazyPdfPageImage({
 }
 
 function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
-  const originalUrl = doc.originalUrl;
+  // Signing flow v2 (2026-10-17): once the client has signed, the SIGNED
+  // copy is the document — the preview renders it instead of the
+  // unsigned original. Fetch/cancel logic is unchanged; only the source
+  // URL is signed-first.
+  const originalUrl = doc.clientSignedAt && doc.signedPdfUrl ? doc.signedPdfUrl : doc.originalUrl;
   const [pages, setPages] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -19413,8 +19417,13 @@ function DocumentDetailScreen({
               </div>
             </section>
           )}
-          {doc.originalUrl && (
+          {(doc.originalUrl || (doc.clientSignedAt && doc.signedPdfUrl)) && (
             <section className="saved-section">
+              {doc.clientSignedAt && doc.signedPdfUrl && (
+                <p className="doc-signed-chip">
+                  <span className="ck-pill ck-pill-paid">{lang === "es" ? "Copia firmada" : "Signed copy"}</span>
+                </p>
+              )}
               <DocumentPdfPages doc={doc} lang={lang} />
             </section>
           )}
@@ -19472,16 +19481,6 @@ function DocumentDetailScreen({
                 >
                   {lang === "es" ? "Colocar firma" : "Place signature"}
                 </button>
-              ) : null}
-              {doc.signedPdfUrl ? (
-                <a
-                  href={doc.signedPdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn"
-                >
-                  {lang === "es" ? "Ver copia firmada" : "View signed copy"}
-                </a>
               ) : null}
               <button
                 type="button"
