@@ -18,7 +18,7 @@
 //     payload exposes ONLY client-role definitions plus stored values;
 //     a client sign missing a required value is rejected; a sign with
 //     values stores them and the served signed PDF contains the filled
-//     text; signDocumentWithSavedSignature regenerates a PDF that still
+//     text; signDocumentWithDrawnSignature regenerates a PDF that still
 //     contains the filled text.
 //
 // Run from app/:  bun fill-fields.behavior.test.ts
@@ -236,14 +236,12 @@ check("served signed PDF contains the contractor prefill", pdfText(servedBytes).
 const signedPayload = await A.resolveDocumentLink.handler(ctx, { token: link.token, userAgent: "test" });
 check("signed payload exposes the stored values for the read-only view", signedPayload.fillValues?.["f-name"] === "Denny Client");
 
-// Contractor re-signs with the saved signature: the regenerated final PDF
-// must still carry the client's filled values.
-await db.update(schema.settings).set({ signatureBlobKey: "saved-signature.png" }).where(eq(schema.settings.id, 1));
-blobStore.set("saved-signature.png", pngBytes);
-await A.signDocumentWithSavedSignature.handler(ctx, { documentId: savedDoc.id });
+// Contractor re-signs with a freshly drawn signature: the regenerated
+// final PDF must still carry the client's filled values.
+await A.signDocumentWithDrawnSignature.handler(ctx, { documentId: savedDoc.id, signatureDataBase64: pngBase64 });
 const docRow = (await db.select().from(schema.documents).where(eq(schema.documents.id, savedDoc.id)))[0]!;
 const regenBytes = blobStore.get(docRow.clientSignedPdfBlobKey!);
-check("saved-signature re-sign produced a final PDF", !!regenBytes);
+check("drawn-signature re-sign produced a final PDF", !!regenBytes);
 check("regenerated PDF still contains the filled text", regenBytes ? pdfText(regenBytes).includes("Denny Client") : false);
 check("regenerated PDF still contains the contractor prefill", regenBytes ? pdfText(regenBytes).includes("Prefilled by sender") : false);
 

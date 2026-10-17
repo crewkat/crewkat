@@ -227,5 +227,18 @@ check("editor renders placed fields only on their own page", appSrc.includes("fi
 check("placement hint + page bar are in the editor copy",
   appSrc.includes("placeTapHint") && appSrc.includes("placeDragHint") && appSrc.includes("sig-place-pagenav") && appSrc.includes("goToPage"));
 
+// 2026-10-17 (Danny): the selected-field strips (signature "Field
+// width" slider + Remove, and the fill-field config strip) dock INSIDE
+// the sticky head, so they stay visible while the pages scroll beneath
+// them — the width slider can be dragged while watching the field on a
+// later page resize.
+const headBlock = fnBody(appSrc, 'className="sig-place-head"', 'className="sig-place-body"');
+check("selected-field strips are docked in the sticky head",
+  headBlock.includes("sig-place-controls") && headBlock.includes("sig-place-fill-editor"));
+check("the sticky head carries the strips (sticky + solid surface + hairline)",
+  cssRule(themeCss, ".sig-place-head").includes("position: sticky") && cssRule(themeCss, ".sig-place-head").includes("background") && cssRule(themeCss, ".sig-place-head").includes("border-bottom"));
+const bodyBlock = fnBody(appSrc, 'className="sig-place-body"', 'className="sig-place-pagenav"');
+check("pages body no longer carries the strips", !bodyBlock.includes("sig-place-controls"));
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

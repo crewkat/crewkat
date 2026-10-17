@@ -66,7 +66,7 @@ const humanFileSize = (bytes: number): string =>
 type Invoice = ApiResponse<typeof api, "listInvoices">["invoices"][number];
 type Client = ApiResponse<typeof api, "listClients">["clients"][number];
 type Settings = ApiResponse<typeof api, "getSettings">;
-type SettingsInput = Omit<Settings, "logoUrl" | "coverUrl" | "savedSignatureUrl">;
+type SettingsInput = Omit<Settings, "logoUrl" | "coverUrl">;
 type MarketplaceListing = ApiResponse<typeof api, "listMarketplaceListings">["listings"][number];
 type MarketplaceIntent = "need" | "offer";
 type MarketplaceCategory = MarketplaceListing["category"];
@@ -3168,7 +3168,7 @@ function CrewkatApplication() {
       window.localStorage.setItem("crewkat-public-lang", next);
     } catch { /* storage unavailable */ }
     if (settings.data) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
       saveSettings.mutate({ ...input, language: next });
     }
   };
@@ -3180,7 +3180,7 @@ function CrewkatApplication() {
     langSaveAttemptedRef.current = true;
     const intent = langIntentRef.current;
     if (intent && settings.data.language !== intent) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
       saveSettings.mutate({ ...input, language: intent });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3201,7 +3201,7 @@ function CrewkatApplication() {
     } catch { /* storage unavailable */ }
     if (pending !== "es" && pending !== "en") return;
     if (pending === settings.data.language) return;
-    const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = settings.data;
+    const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = settings.data;
     saveSettings.mutate({ ...input, language: pending });
     // saveSettings is a stable mutation object for this purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7791,7 +7791,7 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
   const [notice, setNotice] = useState("");
   // Signed docs auto-file (Phase D): the Docs entry IS the document row,
   // so opening it shows the real signed PDF — the stored final when one
-  // exists (client-signed copy or tap-to-sign rebuild), else the uploaded
+  // exists (client-signed copy or draw-to-sign rebuild), else the uploaded
   // original. The entry updates in place as signatures land.
   const [pdfPreview, setPdfPreview] = useState<{ blob: Blob; title: string } | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -10634,7 +10634,7 @@ function CompanyProfileEditor({ lang, value, saving, onBack, onSave }: { lang: L
   return <main className="page company-profile-page">
     <PageHeader lang={lang} title={text.title} onBack={onBack}/>
     <p className="profile-editor-intro">{text.intro}</p>
-    <form className="job-form company-profile-form" onSubmit={(event) => { event.preventDefault(); const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = form; onSave(input); }}>
+    <form className="job-form company-profile-form" onSubmit={(event) => { event.preventDefault(); const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = form; onSave(input); }}>
       <section className="profile-visual-editor" aria-label={lang === "es" ? "Imágenes del perfil" : "Profile images"}>
         <div className="profile-cover-preview">
           {form.coverUrl ? <img src={form.coverUrl} alt={text.cover}/> : <span><Icon size={34}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></span>}
@@ -10858,7 +10858,6 @@ function SettingsScreen({
     simpleMode: true,
     logoUrl: null,
     coverUrl: null,
-    savedSignatureUrl: null,
   };
   const [form, setForm] = useState<Settings>(value ?? fallback);
   const [openSettingsSection, setOpenSettingsSection] = useState<string | null>(settingsOpenSectionCache);
@@ -10896,20 +10895,6 @@ function SettingsScreen({
         dataBase64: data.dataBase64,
       });
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
-  });
-  // Saved contractor signature (0079): draw once, tap-to-sign anywhere.
-  const [sigDraft, setSigDraft] = useState("");
-  const savedSignature = useMutation({
-    mutationFn: (signatureDataBase64: string) =>
-      api.saveContractorSignature({ signatureDataBase64 }),
-    onSuccess: () => {
-      setSigDraft("");
-      client.invalidateQueries({ queryKey: ["settings"] });
-    },
-  });
-  const clearSignature = useMutation({
-    mutationFn: () => api.clearContractorSignature({}),
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
   const report = useMutation({
@@ -11005,7 +10990,7 @@ function SettingsScreen({
         onChange={() => setJustSaved(false)}
         onSubmit={(e) => {
           e.preventDefault();
-          const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = form;
+          const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = form;
           onSave(input, () => setJustSaved(true));
         }}
       >
@@ -11063,43 +11048,6 @@ function SettingsScreen({
                   }}
                 />
               </label>
-            </fieldset>
-            <fieldset className="brand-settings">
-              <legend>{lang === "es" ? "Tu firma guardada" : "Your saved signature"}</legend>
-              {form.savedSignatureUrl ? (
-                <div className="logo-preview signature-preview">
-                  <img src={sameOriginBlobPath(form.savedSignatureUrl)} alt={lang === "es" ? "Tu firma guardada" : "Your saved signature"} />
-                </div>
-              ) : (
-                <p className="dim small">
-                  {lang === "es"
-                    ? "Aún no tienes una firma guardada. Dibuja una abajo y podrás firmar documentos con un solo toque."
-                    : "No saved signature yet. Draw one below and you can sign documents with one tap."}
-                </p>
-              )}
-              <SignaturePad
-                label={lang === "es" ? "Dibuja tu firma" : "Draw your signature"}
-                clearLabel={lang === "es" ? "Borrar" : "Clear"}
-                onChange={setSigDraft}
-              />
-              <div className="row-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  disabled={!sigDraft || savedSignature.isPending}
-                  onClick={() => savedSignature.mutate(sigDraft)}
-                >
-                  {lang === "es" ? "Guardar firma" : "Save signature"}
-                </button>
-                {form.savedSignatureUrl && (
-                  <button type="button" className="btn" disabled={clearSignature.isPending} onClick={() => clearSignature.mutate()}>
-                    {lang === "es" ? "Borrar firma" : "Clear signature"}
-                  </button>
-                )}
-              </div>
-              {(savedSignature.isError || clearSignature.isError) && (
-                <p className="status error" role="alert">{t.error}</p>
-              )}
             </fieldset>
             <label>
               <span>{t.company}</span>
@@ -15609,7 +15557,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
   }, [previewSignature]);
   const closeSheet = async () => {
     if (sheet === "business" && localSettings) {
-      const { logoUrl: _logoUrl, coverUrl: _coverUrl, savedSignatureUrl: _savedSignatureUrl, ...input } = localSettings;
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...input } = localSettings;
       await api.updateSettings(input);
       await qc.invalidateQueries({ queryKey: ["settings"] });
     }
@@ -18601,8 +18549,8 @@ function SignaturePlacementEditor({
           {" · "}
           {t.placeDragHint}
         </p>
-      </div>
-      <div className="sig-place-body">
+        {/* Selected-field strips dock in the sticky head (Danny 2026-10-17):
+            they stay visible while the pages scroll beneath them. */}
       {((activeField && !selectedFill) || selectedFill || saveError) && (
       <div className="sig-place-controls">
         {activeField && !selectedFill && (
@@ -18719,6 +18667,8 @@ function SignaturePlacementEditor({
         {saveError && <p className="status error" role="alert">{saveError}</p>}
       </div>
       )}
+      </div>
+      <div className="sig-place-body">
       {loadError && <p className="status error" role="alert">{loadError}</p>}
       {pages.length === 0 && !loadError && <div className="loading-block" />}
       <div className="sig-place-pages">
@@ -19205,7 +19155,7 @@ async function buildSignedDocumentPdf(
 // Document detail (2026-10-15): tapping a contract / change order in a job
 // opens THIS screen — the document itself, its kind + signature state, its
 // linked-job context, and every action the signer screen's saved list used
-// to carry (view the signed document, tap-to-sign, place signature, send
+// to carry (view the signed document, draw-to-sign, place signature, send
 // link, view signed copy) plus Edit and Delete. The signer screen itself is
 // create-only: it no longer renders the saved-documents list.
 // Lazy PDF page (2026-10-16 white-screen fix): every rasterized page used
@@ -19459,6 +19409,82 @@ function DocumentEditForm({
   );
 }
 
+// Draw-to-sign sheet (Danny 2026-10-17): a FRESH signature is drawn
+// for every signing — nothing is stored on the account, so a hijacked
+// account cannot sign in the owner's name with one tap. Used by the
+// document detail Sign action; re-signing replaces the contractor stamp.
+function DocumentSignSheet({
+  lang,
+  initialName,
+  onClose,
+  onSign,
+}: {
+  lang: Lang;
+  initialName: string;
+  onClose: () => void;
+  onSign: (signatureDataBase64: string, signerName: string) => Promise<void>;
+}) {
+  const t = copy[lang];
+  const [name, setName] = useState(initialName);
+  const [signature, setSignature] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <BottomSheet
+      lang={lang}
+      title={lang === "es" ? "Firmar este documento" : "Sign this document"}
+      onClose={onClose}
+    >
+      {() => (
+        <div className="doc-sign-sheet">
+          <label>
+            <span>{t.signerName}</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t.signerNamePlaceholder}
+              maxLength={160}
+            />
+          </label>
+          <SignaturePad
+            label={t.signature}
+            clearLabel={t.clear}
+            onChange={setSignature}
+          />
+          <p className="dim small">
+            {lang === "es"
+              ? "Tu firma y la fecha de hoy se estamparán en el documento donde se colocaron los campos de firma, o al final de la última página si no se colocó ninguno."
+              : "Your signature and today's date are stamped on the document where the signature fields were placed — or at the end of the last page if none were placed."}
+          </p>
+          {error && (
+            <p className="status error" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!name.trim() || !signature || saving}
+            onClick={async () => {
+              setSaving(true);
+              setError("");
+              try {
+                await onSign(signature, name.trim());
+              } catch (e) {
+                setError(actionErrorMessage(e));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? t.saving : lang === "es" ? "Firmar" : "Sign"}
+          </button>
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
 function DocumentDetailScreen({
   lang,
   jobId,
@@ -19490,10 +19516,7 @@ function DocumentDetailScreen({
   const [viewError, setViewError] = useState("");
   const [viewing, setViewing] = useState(false);
   const [placing, setPlacing] = useState<SignedDocument | null>(null);
-  const [tapSigning, setTapSigning] = useState(false);
-  // When tap-to-sign fails for lack of a saved signature, the notice
-  // becomes a link straight to Settings (Danny 2026-10-17).
-  const [needsSavedSignature, setNeedsSavedSignature] = useState(false);
+  const [signSheetOpen, setSignSheetOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEscapeToClose(preview !== null, () => setPreview(null));
@@ -19501,20 +19524,18 @@ function DocumentDetailScreen({
     client.invalidateQueries({ queryKey: ["job", jobId] });
     client.invalidateQueries({ queryKey: ["documents"] });
   };
-  const tapToSign = async () => {
-    setViewError("");
-    setNeedsSavedSignature(false);
-    setTapSigning(true);
-    try {
-      await api.signDocumentWithSavedSignature({ documentId });
-      invalidate();
-    } catch (e) {
-      const message = actionErrorMessage(e);
-      setViewError(message);
-      if (message.includes("Save your signature in Settings")) setNeedsSavedSignature(true);
-    } finally {
-      setTapSigning(false);
-    }
+  // Draw-to-sign (Danny 2026-10-17): the Sign action opens a sheet and
+  // the contractor draws a FRESH signature every time — no signature is
+  // stored on the account. Re-signing replaces the contractor stamp
+  // (same re-sign semantics the old tap-to-sign had).
+  const handleDrawnSign = async (signatureDataBase64: string, signerName: string) => {
+    await api.signDocumentWithDrawnSignature({
+      documentId,
+      signatureDataBase64,
+      signerName: signerName || undefined,
+    });
+    setSignSheetOpen(false);
+    invalidate();
   };
   const deleteDocument = useMutation({
     mutationFn: () => api.deleteDocument({ id: documentId }),
@@ -19624,17 +19645,17 @@ function DocumentDetailScreen({
             <button
               type="button"
               className="doc-action"
-              disabled={tapSigning}
-              aria-label={
-                lang === "es" ? "Firmar con mi firma" : "Sign with saved signature"
-              }
-              onClick={() => void tapToSign()}
+              aria-label={lang === "es" ? "Firmar documento" : "Sign document"}
+              onClick={() => {
+                setViewError("");
+                setSignSheetOpen(true);
+              }}
             >
               <Icon size={21}>
                 <path d="M12 3l4 7-4 11L8 10z" />
                 <circle cx="12" cy="11" r="1.4" />
               </Icon>
-              <span>{tapSigning ? t.saving : t.actSign}</span>
+              <span>{t.actSign}</span>
             </button>
             {doc.originalUrl ? (
               <button
@@ -19675,15 +19696,7 @@ function DocumentDetailScreen({
               <span>{t.actDelete}</span>
             </button>
           </div>
-          {viewError && needsSavedSignature ? (
-            <button
-              type="button"
-              className="status error status-link"
-              onClick={() => setScreen({ name: "settings" })}
-            >
-              {viewError} {lang === "es" ? "Ir a Configuración →" : "Go to Settings →"}
-            </button>
-          ) : viewError ? (
+          {viewError ? (
             <p className="status error" role="alert">
               {viewError}
             </p>
@@ -19888,6 +19901,14 @@ function DocumentDetailScreen({
             invalidate();
             setPlacing(null);
           }}
+        />
+      )}
+      {signSheetOpen && (
+        <DocumentSignSheet
+          lang={lang}
+          initialName={doc.signerName || settings?.companyName || ""}
+          onClose={() => setSignSheetOpen(false)}
+          onSign={handleDrawnSign}
         />
       )}
       {confirmingDelete && (

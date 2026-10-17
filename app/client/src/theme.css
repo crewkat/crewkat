@@ -179,7 +179,7 @@ fieldset { padding: 0; border: 0; }
 .status.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
 /* Tappable status notice (2026-10-17): the no-saved-signature error on a
    document links straight to Settings. */
-.status-link { display: block; width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; text-decoration: underline; }
+
 .social-notice { margin: -8px 0 22px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-weight: 700; line-height: 1.45; }
 .skeleton-list { display: grid; gap: 1px; }
 .skeleton-list div, .loading-block { height: 92px; background: linear-gradient(90deg, var(--bg), var(--surface-2), var(--bg)); background-size: 200% 100%; animation: shine 1.4s infinite linear; }
@@ -1320,6 +1320,9 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .signature-sheet { gap: 13px; }
 .signature-sheet label { display: grid; gap: 6px; }
 .signature-sheet input { min-height: 44px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.doc-sign-sheet { display: grid; gap: 13px; }
+.doc-sign-sheet label { display: grid; gap: 6px; }
+.doc-sign-sheet input { min-height: 44px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
 .fullscreen-preview { z-index: 190; overflow: auto; }
 .fullscreen-paper { overflow: auto; padding: 16px; }
 .fullscreen-paper .quote-paper { width: min(100%,760px); margin: 0 auto; }
@@ -5661,7 +5664,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .sig-place-hint { width: min(100%, 920px); margin: 0 auto; padding: 0 16px 9px; font-size: 12px; color: var(--dim); }
 .sig-place-hint strong { color: var(--text); font-weight: 600; }
 .sig-place-body { width: min(100%, 920px); margin: 0 auto; padding: 12px 12px 76px; }
-.sig-place-modal .sig-place-controls { width: 100%; margin: 0 0 12px; }
+.sig-place-modal .sig-place-controls { width: min(100%, 920px); margin: 0 auto; padding: 0 12px 10px; }
 .sig-place-modal .sig-place-pages { width: 100%; }
 .sig-place-modal .sig-place-fill-editor { padding: 8px 10px; gap: 8px; }
 .sig-place-pagenav { position: fixed; inset: auto 0 0 0; z-index: 60; min-height: 50px; padding-bottom: env(safe-area-inset-bottom); background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 12.5px; color: var(--dim); }

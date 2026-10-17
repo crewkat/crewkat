@@ -104,11 +104,10 @@ check("client signing updates the SAME entry (still exactly one)", afterClient.l
 check("updated entry reflects the fully signed state", !!afterClient[0].clientSignedAt && afterClient[0].clientSignerName === "Denny");
 check("updated entry opens the real signed PDF", !!afterClient[0].signedPdfUrl);
 
-// 3. A second signing event (contractor tap-to-sign) still doesn't
+// 3. A second signing event (contractor draw-to-sign) still doesn't
 // duplicate the entry.
-await A.saveContractorSignature.handler(ctx, { signatureDataBase64: pngBase64 });
-await A.signDocumentWithSavedSignature.handler(ctx, { documentId: saved.id });
-check("tap-to-sign keeps the single Docs entry", (await entriesFor(jobA, saved.id)).length === 1);
+await A.signDocumentWithDrawnSignature.handler(ctx, { documentId: saved.id, signatureDataBase64: pngBase64 });
+check("draw-to-sign keeps the single Docs entry", (await entriesFor(jobA, saved.id)).length === 1);
 check("total document rows for the job stay at one per document", (await docsFor(jobA)).length === 1);
 
 // 4. Unlinked documents cannot exist in this model (jobId is required

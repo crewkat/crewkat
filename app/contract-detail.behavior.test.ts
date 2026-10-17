@@ -95,8 +95,8 @@ check("PDF pages render through renderPdfPreview and open the zoom viewer",
   PAGES.includes("api.renderPdfPreview") && PAGES.includes("<ClientDocPageViewer") && PAGES.includes("sameOriginBlobPath(originalUrl)"));
 check("detail keeps View document (signed PDF builder + preview modal)",
   DETAIL.includes("buildSignedDocumentPdf") && DETAIL.includes("<PdfFrame"));
-check("detail keeps tap-to-sign, placement, signed copy and the send-link panel",
-  DETAIL.includes("api.signDocumentWithSavedSignature")
+check("detail keeps draw-to-sign, placement, signed copy and the send-link panel",
+  DETAIL.includes("api.signDocumentWithDrawnSignature") && DETAIL.includes("DocumentSignSheet")
   && DETAIL.includes("<SignaturePlacementEditor")
   && DETAIL.includes("doc.signedPdfUrl")
   && DETAIL.includes("<DocumentLinkPanel"));
