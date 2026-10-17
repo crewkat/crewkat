@@ -225,6 +225,41 @@ console.log("[crewkat] verifying portal link hardening (0036) ...");
 }
 console.log("[crewkat] portal link hardening verified.");
 
+// Repair (2026-10-17): migrations 0082 (fill-in fields) and 0083 (portal
+// shared files) — same self-heal pattern as the 0036 repair above. If
+// either migration was ever skipped on a database (journal `when`
+// comparison), every document/job read fails on the missing schema and
+// job screens crash for the contractor. Idempotent: PRAGMA /
+// IF NOT EXISTS checks first, so this is a no-op when both applied.
+console.log("[crewkat] verifying fill fields (0082) + shared files (0083) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`documents`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  const missingColumns = [
+    ["fill_fields_json", "ALTER TABLE `documents` ADD COLUMN `fill_fields_json` text NOT NULL DEFAULT '[]'"],
+    ["fill_values_json", "ALTER TABLE `documents` ADD COLUMN `fill_values_json` text NOT NULL DEFAULT '{}'"],
+  ];
+  for (const [column, ddl] of missingColumns) {
+    if (!existing.has(column)) {
+      console.log(`[crewkat] repair: adding missing column documents.${column}`);
+      await libsql.execute(ddl);
+    }
+  }
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`job_files\` (
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`company_id\` integer NOT NULL DEFAULT 1,
+    \`job_id\` integer NOT NULL REFERENCES \`jobs\`(\`id\`) ON DELETE CASCADE,
+    \`title\` text NOT NULL DEFAULT '',
+    \`filename\` text NOT NULL DEFAULT '',
+    \`blob_key\` text NOT NULL,
+    \`content_type\` text NOT NULL DEFAULT 'application/pdf',
+    \`size_bytes\` integer NOT NULL DEFAULT 0,
+    \`shared_with_client\` integer NOT NULL DEFAULT 1,
+    \`created_at\` integer NOT NULL
+  )`);
+}
+console.log("[crewkat] fill fields + shared files schema verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------
