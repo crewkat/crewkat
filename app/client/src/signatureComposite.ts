@@ -192,3 +192,208 @@ export async function compositeSignatureStamps(
   }
   return pdf.save();
 }
+
+// ---------------------------------------------------------------------------
+// Fill-in fields (0082, Danny 2026-10-17): DocuSign-style TEXT / INITIALS /
+// CHECKBOX fields the sender places on an uploaded PDF alongside the
+// signature fields. Definitions live on the document row as a JSON array
+// (documents.fill_fields_json); the values a signer enters live in
+// documents.fill_values_json. Contractor-role fields carry their answer as
+// a prefill ON the definition (value / checked) — the sender fills them in
+// the placement editor; client-role fields are filled on the public sign
+// page and their values arrive with the signature submission.
+// Coordinates use the same page-relative, top-left-origin fractions as the
+// signature placements above.
+
+export type FillFieldKind = "text" | "initials" | "checkbox";
+export type FillFieldRole = "client" | "contractor";
+
+export interface FillField {
+  id: string;
+  kind: FillFieldKind;
+  role: FillFieldRole;
+  label: string;
+  required: boolean;
+  page: number;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+  /** Contractor prefill for text / initials fields. */
+  value?: string;
+  /** Contractor prefill for checkbox fields. */
+  checked?: boolean;
+}
+
+/** Signer-supplied values, keyed by field id. */
+export type FillValues = Record<string, string | boolean>;
+
+export const MAX_FILL_FIELDS = 30;
+const FILL_FIELD_ID_RE = /^[a-z0-9-]{1,40}$/;
+const FILL_KINDS: readonly FillFieldKind[] = ["text", "initials", "checkbox"];
+const FILL_ROLES: readonly FillFieldRole[] = ["client", "contractor"];
+
+export const FILL_KIND_DEFAULT_LABELS: Record<FillFieldKind, string> = {
+  text: "Text field",
+  initials: "Initials",
+  checkbox: "Checkbox",
+};
+
+function cleanFillField(value: unknown): FillField | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  const id = typeof v.id === "string" ? v.id : "";
+  if (!FILL_FIELD_ID_RE.test(id)) return undefined;
+  const kind = FILL_KINDS.includes(v.kind as FillFieldKind) ? (v.kind as FillFieldKind) : undefined;
+  if (!kind) return undefined;
+  const role = FILL_ROLES.includes(v.role as FillFieldRole) ? (v.role as FillFieldRole) : undefined;
+  if (!role) return undefined;
+  const placement = cleanPlacement(v);
+  if (!placement) return undefined;
+  const labelRaw = typeof v.label === "string" ? v.label.trim().slice(0, 80) : "";
+  const label = labelRaw || FILL_KIND_DEFAULT_LABELS[kind];
+  const required = typeof v.required === "boolean" ? v.required : kind !== "checkbox";
+  const out: FillField = { id, kind, role, label, required, ...placement };
+  if (typeof v.value === "string" && v.value.length > 0) out.value = v.value.slice(0, 500);
+  if (typeof v.checked === "boolean") out.checked = v.checked;
+  return out;
+}
+
+export function parseFillFields(json: string | null | undefined): FillField[] {
+  if (!json) return [];
+  try {
+    const raw = JSON.parse(json);
+    if (!Array.isArray(raw)) return [];
+    const out: FillField[] = [];
+    const seen = new Set<string>();
+    for (const entry of raw) {
+      const field = cleanFillField(entry);
+      if (!field || seen.has(field.id)) continue;
+      seen.add(field.id);
+      out.push(field);
+      if (out.length >= MAX_FILL_FIELDS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function serializeFillFields(fields: FillField[]): string {
+  const out: FillField[] = [];
+  const seen = new Set<string>();
+  for (const entry of fields ?? []) {
+    const field = cleanFillField(entry);
+    if (!field || seen.has(field.id)) continue;
+    seen.add(field.id);
+    out.push(field);
+    if (out.length >= MAX_FILL_FIELDS) break;
+  }
+  return JSON.stringify(out);
+}
+
+export function parseFillValues(json: string | null | undefined): FillValues {
+  if (!json) return {};
+  try {
+    const raw = JSON.parse(json);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const out: FillValues = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (key.length > 40) continue;
+      if (typeof value === "string") {
+        if (value.length > 500) continue;
+        out[key] = value;
+      } else if (typeof value === "boolean") {
+        out[key] = value;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** The value a field effectively carries: the signer's stored value when
+ * present, otherwise the sender's prefill on the definition. */
+export function resolveFillValue(field: FillField, values: FillValues): string | boolean | undefined {
+  if (Object.prototype.hasOwnProperty.call(values, field.id)) return values[field.id];
+  return field.kind === "checkbox" ? field.checked : field.value;
+}
+
+// pdf-lib's standard Helvetica encodes WinAnsi only; drawing a character
+// outside it throws. Keep the WinAnsi-printable set and drop the rest so a
+// pasted emoji in a fill value can never break the signed PDF.
+function winAnsiSafe(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (
+      (code >= 0x20 && code <= 0x7e) ||
+      (code >= 0xa0 && code <= 0xff) ||
+      [0x2018, 0x2019, 0x201a, 0x201c, 0x201d, 0x201e, 0x2013, 0x2014, 0x2020, 0x2021, 0x2022, 0x2026, 0x2030, 0x2039, 0x203a, 0x20ac, 0x2122].includes(code)
+    ) {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * Draw fill-field values onto PDF pages and return the new bytes.
+ * Text/initials render in Helvetica, sized to the box and shrunk to fit;
+ * a checked checkbox gets a two-stroke check mark. Fields pointing past
+ * the last page are skipped (mirrors the sign page's page count safety).
+ */
+export async function compositeFillFields(
+  pdfBytes: Uint8Array | ArrayBuffer,
+  fields: FillField[],
+  values: FillValues,
+): Promise<Uint8Array> {
+  const pdf = await PDFDocument.load(pdfBytes);
+  const pageCount = pdf.getPageCount();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const ink = rgb(0.09, 0.13, 0.12);
+  for (const field of fields) {
+    if (field.page < 1 || field.page > pageCount) continue;
+    const effective = resolveFillValue(field, values);
+    if (effective === undefined || effective === "") continue;
+    const page = pdf.getPage(field.page - 1);
+    const { width: pageW, height: pageH } = page.getSize();
+    const boxX = clamp01(field.xPct) * pageW;
+    const boxW = clamp01(field.wPct) * pageW;
+    const boxH = clamp01(field.hPct) * pageH;
+    // pdf-lib's origin is bottom-left; placements are measured from the top.
+    const boxBottomY = pageH - (clamp01(field.yPct) + clamp01(field.hPct)) * pageH;
+    if (field.kind === "checkbox") {
+      if (effective !== true) continue;
+      const thickness = Math.max(1.5, boxW * 0.06);
+      const x1 = boxX + boxW * 0.2;
+      const y1 = boxBottomY + boxH * 0.42;
+      const x2 = boxX + boxW * 0.42;
+      const y2 = boxBottomY + boxH * 0.18;
+      const x3 = boxX + boxW * 0.82;
+      const y3 = boxBottomY + boxH * 0.8;
+      page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: ink });
+      page.drawLine({ start: { x: x2, y: y2 }, end: { x: x3, y: y3 }, thickness, color: ink });
+      continue;
+    }
+    const text = winAnsiSafe(String(effective)).trim();
+    if (!text) continue;
+    let fontSize = Math.min(boxH * 0.62, 16);
+    const maxWidth = Math.max(1, boxW - 4);
+    while (fontSize > 6 && font.widthOfTextAtSize(text, fontSize) > maxWidth) fontSize -= 0.5;
+    if (font.widthOfTextAtSize(text, fontSize) > maxWidth) {
+      // Extremely long value in a tiny box: draw at the floor size and let
+      // pdf-lib clip via maxWidth rather than dropping the value entirely.
+    }
+    page.drawText(text, {
+      x: boxX + 2,
+      y: boxBottomY + boxH * 0.28,
+      size: fontSize,
+      font,
+      color: ink,
+      maxWidth,
+    });
+  }
+  return pdf.save();
+}

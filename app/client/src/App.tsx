@@ -41,7 +41,7 @@ import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
-import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
+import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, type FillFieldKind, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
 import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
@@ -18172,6 +18172,18 @@ const SIGNATURE_FIELD_TABS: Array<{ key: SignatureFieldKey; en: string; es: stri
   { key: "contractorSignature", en: "Your signature", es: "Tu firma" },
   { key: "contractorDate", en: "Your date", es: "Tu fecha" },
 ];
+// Fill-in fields (0082): sender-placed text / initials / checkbox fields
+// edited in the same placement editor as the signature fields.
+const FILL_KIND_LABELS: Record<FillFieldKind, { en: string; es: string }> = {
+  text: { en: "Text field", es: "Texto" },
+  initials: { en: "Initials", es: "Iniciales" },
+  checkbox: { en: "Checkbox", es: "Casilla" },
+};
+const FILL_FIELD_SIZES: Record<FillFieldKind, { wPct: number; hPct: number }> = {
+  text: { wPct: 0.34, hPct: 0.045 },
+  initials: { wPct: 0.16, hPct: 0.045 },
+  checkbox: { wPct: 0.05, hPct: 0.035 },
+};
 
 function SignaturePlacementEditor({
   lang,
@@ -18189,7 +18201,14 @@ function SignaturePlacementEditor({
   const [loadError, setLoadError] = useState("");
   const [fields, setFields] = useState<SignatureFields>(() => ({ ...(document.signatureFields ?? {}) }));
   const [active, setActive] = useState<SignatureFieldKey>("clientSignature");
-  const [drag, setDrag] = useState<{ key: SignatureFieldKey; pageIndex: number; dx: number; dy: number } | null>(null);
+  const [fillFields, setFillFields] = useState<FillField[]>(() => (document.fillFields ?? []).map((f) => ({ ...f })));
+  const [selectedFillId, setSelectedFillId] = useState<string | null>(null);
+  const fillIdCounter = useRef(0);
+  const [drag, setDrag] = useState<
+    | { type: "sig"; key: SignatureFieldKey; pageIndex: number; dx: number; dy: number }
+    | { type: "fill"; id: string; pageIndex: number; dx: number; dy: number }
+    | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -18220,6 +18239,32 @@ function SignaturePlacementEditor({
     xPct: Math.min(Math.max(0, f.xPct), 1 - f.wPct),
     yPct: Math.min(Math.max(0, f.yPct), 1 - f.hPct),
   });
+  const clampFillField = (f: FillField): FillField => ({
+    ...f,
+    xPct: Math.min(Math.max(0, f.xPct), 1 - f.wPct),
+    yPct: Math.min(Math.max(0, f.yPct), 1 - f.hPct),
+  });
+  const updateFill = (id: string, patch: Partial<FillField>) =>
+    setFillFields((prev) => prev.map((f) => (f.id === id ? clampFillField({ ...f, ...patch }) : f)));
+  const addFillField = (kind: FillFieldKind) => {
+    fillIdCounter.current += 1;
+    const id = `f${Date.now().toString(36)}${fillIdCounter.current}`;
+    const pageCount = Math.max(1, pages.length);
+    const stacked = fillFields.filter((f) => f.page === pageCount).length;
+    const field: FillField = {
+      id,
+      kind,
+      role: "client",
+      label: lang === "es" ? FILL_KIND_LABELS[kind].es : FILL_KIND_LABELS[kind].en,
+      required: kind !== "checkbox",
+      page: pageCount,
+      xPct: 0.07,
+      yPct: Math.min(0.93, 0.8 + stacked * 0.055),
+      ...FILL_FIELD_SIZES[kind],
+    };
+    setFillFields((prev) => [...prev, field]);
+    setSelectedFillId(id);
+  };
   const pctFromEvent = (e: PointerEvent, pageIndex: number) => {
     const el = pageRefs.current[pageIndex];
     if (!el) return null;
@@ -18227,6 +18272,16 @@ function SignaturePlacementEditor({
     return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
   };
   const placeAt = (pageIndex: number, x: number, y: number) => {
+    if (selectedFillId) {
+      setFillFields((prev) =>
+        prev.map((f) =>
+          f.id === selectedFillId
+            ? clampFillField({ ...f, page: pageIndex + 1, xPct: x - f.wPct / 2, yPct: y - f.hPct / 2 })
+            : f,
+        ),
+      );
+      return;
+    }
     const size = defaultsFor(active);
     const current = fields[active];
     const wPct = current?.wPct ?? size.wPct;
@@ -18266,10 +18321,21 @@ function SignaturePlacementEditor({
   const onBoxPointerDown = (e: PointerEvent, key: SignatureFieldKey, pageIndex: number) => {
     e.stopPropagation();
     setActive(key);
+    setSelectedFillId(null);
     const f = fields[key];
     const p = pctFromEvent(e, pageIndex);
     if (f && p) {
-      setDrag({ key, pageIndex, dx: p.x - f.xPct, dy: p.y - f.yPct });
+      setDrag({ type: "sig", key, pageIndex, dx: p.x - f.xPct, dy: p.y - f.yPct });
+      pageRefs.current[pageIndex]?.setPointerCapture?.(e.pointerId);
+    }
+  };
+  const onFillBoxPointerDown = (e: PointerEvent, id: string, pageIndex: number) => {
+    e.stopPropagation();
+    setSelectedFillId(id);
+    const f = fillFields.find((x) => x.id === id);
+    const p = pctFromEvent(e, pageIndex);
+    if (f && p) {
+      setDrag({ type: "fill", id, pageIndex, dx: p.x - f.xPct, dy: p.y - f.yPct });
       pageRefs.current[pageIndex]?.setPointerCapture?.(e.pointerId);
     }
   };
@@ -18277,13 +18343,30 @@ function SignaturePlacementEditor({
     if (!drag || drag.pageIndex !== pageIndex) return;
     const p = pctFromEvent(e, pageIndex);
     if (!p) return;
+    if (drag.type === "fill") {
+      const dragId = drag.id;
+      const dragDx = drag.dx;
+      const dragDy = drag.dy;
+      setFillFields((prev) =>
+        prev.map((f) =>
+          f.id === dragId
+            ? clampFillField({ ...f, page: pageIndex + 1, xPct: p.x - dragDx, yPct: p.y - dragDy })
+            : f,
+        ),
+      );
+      return;
+    }
+    const dragKey = drag.key;
+    const dragDx = drag.dx;
+    const dragDy = drag.dy;
     setFields((prev) => {
-      const f = prev[drag.key];
+      const f = prev[dragKey];
       if (!f) return prev;
-      return { ...prev, [drag.key]: clampField({ ...f, page: pageIndex + 1, xPct: p.x - drag.dx, yPct: p.y - drag.dy }) };
+      return { ...prev, [dragKey]: clampField({ ...f, page: pageIndex + 1, xPct: p.x - dragDx, yPct: p.y - dragDy }) };
     });
   };
   const activeField = fields[active];
+  const selectedFill = selectedFillId ? fillFields.find((f) => f.id === selectedFillId) ?? null : null;
   const tabLabel = (key: SignatureFieldKey) => {
     const tab = SIGNATURE_FIELD_TABS.find((x) => x.key === key);
     return tab ? (lang === "es" ? tab.es : tab.en) : key;
@@ -18293,6 +18376,7 @@ function SignaturePlacementEditor({
     setSaveError("");
     try {
       await api.saveDocumentSignatureFields({ documentId: document.id, fields });
+      await api.saveDocumentFillFields({ documentId: document.id, fields: fillFields });
       onSaved();
     } catch {
       setSaveError(t.error);
@@ -18314,21 +18398,38 @@ function SignaturePlacementEditor({
               key={tab.key}
               type="button"
               role="tab"
-              aria-selected={active === tab.key}
-              className={active === tab.key ? "active" : ""}
-              onClick={() => setActive(tab.key)}
+              aria-selected={active === tab.key && !selectedFillId}
+              className={active === tab.key && !selectedFillId ? "active" : ""}
+              onClick={() => {
+                setActive(tab.key);
+                setSelectedFillId(null);
+              }}
             >
               {lang === "es" ? tab.es : tab.en}
               {fields[tab.key] ? " ✓" : ""}
             </button>
           ))}
         </div>
+        <div className="sig-place-fill-add">
+          <span className="dim small">{lang === "es" ? "Agregar campo para completar:" : "Add a fill-in field:"}</span>
+          <div className="sig-place-tabs">
+            <button type="button" onClick={() => addFillField("text")}>
+              + {lang === "es" ? "Texto" : "Text"}
+            </button>
+            <button type="button" onClick={() => addFillField("initials")}>
+              + {lang === "es" ? "Iniciales" : "Initials"}
+            </button>
+            <button type="button" onClick={() => addFillField("checkbox")}>
+              + {lang === "es" ? "Casilla" : "Checkbox"}
+            </button>
+          </div>
+        </div>
         <p className="dim small">
           {lang === "es"
             ? "Toca una página para colocar el campo seleccionado. Arrastra el campo para moverlo. Desplázate para llegar a las demás páginas."
             : "Tap a page to place the selected field. Drag the field to move it. Scroll to reach the later pages."}
         </p>
-        {activeField && (
+        {activeField && !selectedFill && (
           <div className="sig-place-size">
             <label>
               <span>{lang === "es" ? "Ancho del campo" : "Field width"}</span>
@@ -18353,6 +18454,90 @@ function SignaturePlacementEditor({
             >
               {lang === "es" ? "Quitar campo" : "Remove field"}
             </button>
+          </div>
+        )}
+        {selectedFill && (
+          <div className="sig-place-fill-editor">
+            <label>
+              <span>{lang === "es" ? "Etiqueta" : "Label"}</span>
+              <input
+                value={selectedFill.label}
+                maxLength={80}
+                onChange={(e) => updateFill(selectedFill.id, { label: e.target.value })}
+              />
+            </label>
+            <div className="sig-place-tabs" role="tablist" aria-label={lang === "es" ? "Quién lo completa" : "Who fills it in"}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedFill.role === "client"}
+                className={selectedFill.role === "client" ? "active" : ""}
+                onClick={() => updateFill(selectedFill.id, { role: "client" })}
+              >
+                {lang === "es" ? "Cliente" : "Client"}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedFill.role === "contractor"}
+                className={selectedFill.role === "contractor" ? "active" : ""}
+                onClick={() => updateFill(selectedFill.id, { role: "contractor" })}
+              >
+                {lang === "es" ? "Tú" : "You"}
+              </button>
+            </div>
+            {selectedFill.role === "client" && (
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={selectedFill.required}
+                  onChange={(e) => updateFill(selectedFill.id, { required: e.target.checked })}
+                />
+                <span>{lang === "es" ? "Requerido" : "Required"}</span>
+              </label>
+            )}
+            {selectedFill.role === "contractor" &&
+              (selectedFill.kind === "checkbox" ? (
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedFill.checked ?? false}
+                    onChange={(e) => updateFill(selectedFill.id, { checked: e.target.checked })}
+                  />
+                  <span>{lang === "es" ? "Marcada" : "Checked"}</span>
+                </label>
+              ) : (
+                <label>
+                  <span>{lang === "es" ? "Tu respuesta" : "Your answer"}</span>
+                  <input
+                    value={selectedFill.value ?? ""}
+                    maxLength={500}
+                    onChange={(e) => updateFill(selectedFill.id, { value: e.target.value })}
+                  />
+                </label>
+              ))}
+            <div className="sig-place-size">
+              <label>
+                <span>{lang === "es" ? "Ancho del campo" : "Field width"}</span>
+                <input
+                  type="range"
+                  min={4}
+                  max={70}
+                  value={Math.round(selectedFill.wPct * 100)}
+                  onChange={(e) => updateFill(selectedFill.id, { wPct: Number(e.target.value) / 100 })}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setFillFields((prev) => prev.filter((f) => f.id !== selectedFill.id));
+                  setSelectedFillId(null);
+                }}
+              >
+                {lang === "es" ? "Eliminar campo" : "Delete field"}
+              </button>
+            </div>
           </div>
         )}
         {saveError && <p className="status error" role="alert">{saveError}</p>}
@@ -18404,6 +18589,26 @@ function SignaturePlacementEditor({
                   </div>
                 );
               })}
+            {fillFields
+              .filter((f) => f.page === pageIndex + 1)
+              .map((f) => (
+                <div
+                  key={f.id}
+                  className={`sig-place-box fill${f.id === selectedFillId ? " active" : ""}`}
+                  style={{
+                    left: `${f.xPct * 100}%`,
+                    top: `${f.yPct * 100}%`,
+                    width: `${f.wPct * 100}%`,
+                    height: `${f.hPct * 100}%`,
+                  }}
+                  onPointerDown={(e) => onFillBoxPointerDown(e, f.id, pageIndex)}
+                >
+                  <span>
+                    {f.kind === "checkbox" ? "☑" : f.kind === "initials" ? "AB" : "Aa"} · {f.label}
+                    {f.role === "contractor" ? (lang === "es" ? " (tú)" : " (you)") : ""}
+                  </span>
+                </div>
+              ))}
           </div>
         ))}
       </div>
@@ -19090,6 +19295,30 @@ function DocumentDetailScreen({
               : "Signed by you — awaiting client"}
         </small>
       </section>
+      {(doc.fillFields?.length ?? 0) > 0 && (
+        <section className="saved-section">
+          <h2>{lang === "es" ? "Datos completados" : "Filled in"}</h2>
+          <dl className="doc-view-facts">
+            {(doc.fillFields ?? []).map((f) => {
+              const v = doc.fillValues?.[f.id] ?? (f.kind === "checkbox" ? f.checked : f.value);
+              const display =
+                f.kind === "checkbox"
+                  ? v === true
+                    ? "✓"
+                    : "—"
+                  : typeof v === "string" && v.trim()
+                    ? v
+                    : "—";
+              return (
+                <div key={f.id}>
+                  <dt>{f.label}</dt>
+                  <dd>{display}</dd>
+                </div>
+              );
+            })}
+          </dl>
+        </section>
+      )}
       {editing ? (
         <section className="saved-section">
           <h2>{lang === "es" ? "Editar documento" : "Edit document"}</h2>
@@ -27934,6 +28163,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
   const [signerName, setSignerName] = useState("");
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState("");
+  const [fillValues, setFillValues] = useState<Record<string, string | boolean>>({});
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const q = useQuery({
     queryKey: ["client-document", token],
@@ -27949,6 +28179,13 @@ function ClientDocumentScreen({ token }: { token: string }) {
     refetchOnWindowFocus: false,
     retry: false,
   });
+  // Fill-in fields (0082): seed the controls from the stored values (what
+  // the client entered, once signed) whenever the document state flips.
+  const fillSeedKey = q.data ? `${q.data.documentId}:${q.data.alreadySigned}` : "";
+  useEffect(() => {
+    if (q.data) setFillValues({ ...(q.data.fillValues ?? {}) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillSeedKey]);
   const sign = useMutation({
     mutationFn: async () => {
       const doc = q.data;
@@ -27956,6 +28193,20 @@ function ClientDocumentScreen({ token }: { token: string }) {
       const name = signerName.trim();
       if (!name) throw new Error(t.required);
       if (!signature) throw new Error(t.signatureDrawHint);
+      const submittedFill: Record<string, string | boolean> = {};
+      for (const f of doc.fillFields ?? []) {
+        const v = fillValues[f.id];
+        if (v !== undefined) submittedFill[f.id] = v;
+        if (f.required) {
+          const ok = f.kind === "checkbox" ? v === true : typeof v === "string" && v.trim().length > 0;
+          if (!ok)
+            throw new Error(
+              lang === "es"
+                ? "Completa todos los campos requeridos antes de firmar."
+                : "Please complete all required fields before signing.",
+            );
+        }
+      }
       const pdfBlob = doc.hasOriginalPdf
         ? await buildUploadedDocSignedPdf(doc, token, signature, lang).catch(() =>
             buildClientSignedContractPdf(doc, signature, name, lang, token),
@@ -27967,6 +28218,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         signerName: name,
         signatureDataBase64: signature,
         signedPdfDataBase64: pdfDataUrl.split(",")[1] ?? "",
+        fillValues: submittedFill,
         userAgent:
           typeof navigator === "undefined"
             ? ""
@@ -28087,6 +28339,13 @@ function ClientDocumentScreen({ token }: { token: string }) {
   // pages (server-rasterized via the token) instead of only the summary
   // stub — the signer must see the actual document before signing.
   const isUploadedContract = !financialKind && doc.hasOriginalPdf;
+  // Fill-in fields (0082): client-role definitions from the link payload.
+  const fillDefs = doc.fillFields ?? [];
+  const fillMissingRequired = fillDefs.some((f) => {
+    if (!f.required) return false;
+    const v = fillValues[f.id];
+    return f.kind === "checkbox" ? v !== true : typeof v !== "string" || v.trim().length === 0;
+  });
   const contractStub = (
     <article className="quote-paper">
       <div className="quote-paper-title-row">
@@ -28174,6 +28433,57 @@ function ClientDocumentScreen({ token }: { token: string }) {
       {doc.kind === "quote" && doc.options.length > 0 && (
         <QuoteOptionsPicker lang={lang} token={token} quoteId={doc.documentId} baseTotal={doc.total} options={doc.options} initialSelectedKeys={doc.selectedOptionKeys} accepted={doc.acceptedOptions} />
       )}
+      {doc.signable && fillDefs.length > 0 && (
+        <section className="client-sign-section client-fill-section">
+          <h2>{lang === "es" ? "Completa los campos" : "Fill in the fields"}</h2>
+          {fillDefs.map((f) => {
+            const v = fillValues[f.id];
+            if (doc.alreadySigned) {
+              return (
+                <div key={f.id} className="client-fill-readonly">
+                  <span>{f.label}</span>
+                  <strong>
+                    {f.kind === "checkbox" ? (v === true ? "✓" : "—") : typeof v === "string" && v.trim() ? v : "—"}
+                  </strong>
+                </div>
+              );
+            }
+            if (f.kind === "checkbox") {
+              return (
+                <label key={f.id} className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={v === true}
+                    onChange={(e) => setFillValues((prev) => ({ ...prev, [f.id]: e.target.checked }))}
+                  />
+                  <span>
+                    {f.label}
+                    {f.required ? " *" : ""}
+                  </span>
+                </label>
+              );
+            }
+            return (
+              <label key={f.id}>
+                <span>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                <input
+                  value={typeof v === "string" ? v : ""}
+                  maxLength={f.kind === "initials" ? 8 : 500}
+                  onChange={(e) =>
+                    setFillValues((prev) => ({
+                      ...prev,
+                      [f.id]: f.kind === "initials" ? e.target.value.toUpperCase() : e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            );
+          })}
+        </section>
+      )}
       {doc.signable && !doc.alreadySigned && (
         <section className="client-sign-section">
           <h2>{t.signHere}</h2>
@@ -28196,7 +28506,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
           <button
             type="button"
             className="primary-button"
-            disabled={sign.isPending || !signerName.trim() || !signature}
+            disabled={sign.isPending || !signerName.trim() || !signature || fillMissingRequired}
             onClick={() => sign.mutate()}
           >
             {sign.isPending ? t.signing : t.signAndFinish}

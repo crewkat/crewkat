@@ -103,6 +103,10 @@ export const documents = sqliteTable("documents", {
   // contractorSignature?, contractorDate? } of { page, xPct, yPct, wPct,
   // hPct } boxes on the uploaded original PDF.
   signatureFieldsJson: text("signature_fields_json").notNull().default("{}"),
+  // Fill-in fields (0082): JSON array of placed text / initials / checkbox
+  // field definitions, and the signer's values keyed by field id.
+  fillFieldsJson: text("fill_fields_json").notNull().default("[]"),
+  fillValuesJson: text("fill_values_json").notNull().default("{}"),
   signedAt: integer("signed_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

@@ -613,6 +613,15 @@ fieldset { padding: 0; border: 0; }
 .sig-place-box { position: absolute; border: 2px dashed #b3541e; border-radius: 4px; background: rgb(255 122 26 / .14); color: #8a3c10; display: flex; align-items: flex-start; padding: 2px 5px; cursor: grab; touch-action: none; overflow: hidden; }
 .sig-place-box.active { border-style: solid; background: rgb(255 122 26 / .24); }
 .sig-place-box span { font-size: 10.5px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; pointer-events: none; }
+.sig-place-box.fill { border-color: #0f766e; background: rgb(20 184 166 / .16); color: #115e59; }
+.sig-place-box.fill.active { border-style: solid; background: rgb(20 184 166 / .3); }
+.sig-place-fill-add { display: grid; gap: 6px; }
+.sig-place-fill-editor { display: grid; gap: 10px; border: 1px dashed #0f766e; border-radius: 10px; padding: 10px 12px; }
+.sig-place-fill-editor > label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.client-fill-section { display: grid; gap: 10px; }
+.client-fill-section > label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.client-fill-readonly { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.client-fill-readonly span { color: var(--muted, #5c6a66); }
 .row-actions select { width: auto; min-height: 38px; padding: 6px 9px; font-size: 13px; }
 @media (max-width: 520px) { .desk-nav { grid-template-columns: repeat(2, 1fr); } .pdf-loading { min-height: 480px; } .adjustment-field > div { grid-template-columns: 1fr; } }
 
