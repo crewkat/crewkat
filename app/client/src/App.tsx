@@ -366,6 +366,7 @@ type Screen =
   | { name: "dispatch" }
   | { name: "proof"; jobId: number }
   | { name: "settings" }
+  | { name: "billing" }
   | { name: "legal"; document: LegalDocumentKind }
   | { name: "companyProfile" }
   | { name: "quotes" }
@@ -3396,6 +3397,9 @@ function CrewkatApplication() {
           setScreen={setScreen}
           onSave={(v, onDone) => saveSettings.mutate(v, { onSuccess: () => { onDone?.(); } })}
         />
+      )}
+      {screen.name === "billing" && (
+        <BillingScreen lang={lang} onBack={goBack} setScreen={setScreen} />
       )}
       {screen.name === "legal" && <LegalDocumentPage kind={screen.document} lang={lang} onBack={goBack} />}
       {screen.name === "companyProfile" && (
@@ -6780,6 +6784,140 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       </div>
     )}
   </main>;
+}
+
+// Billing section (Danny 2026-10-17): the user's own plan state, subscription
+// management, and payment history with Crewkat — Stripe subscription
+// invoices plus marketplace promotion purchases, served by getBillingOverview.
+function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
+  const text = lang === "es" ? {
+    title: "Facturación",
+    planPremium: "Crewkat Premium", planFree: "Plan gratuito", planFounder: "Plan fundador",
+    renews: "Se renueva el", ends: "Termina el",
+    activeLine: "Todas las herramientas Pro están desbloqueadas",
+    freeLine: "Estás en el plan gratuito.",
+    billedStripe: "Facturado por Stripe",
+    billedPlay: "Facturado por Google Play · adminístralo en la app Play Store.",
+    founderNoBilling: "Plan fundador — sin facturación.",
+    manualNote: "Tu plan fue configurado por el equipo de Crewkat.",
+    manage: "Administrar suscripción", opening: "Abriendo…",
+    viewPlans: "Ver planes Premium",
+    portalNotConfigured: "El portal de facturación aún no está configurado.",
+    portalNoCustomer: "No hay una cuenta de facturación de Stripe para este plan.",
+    portalUnavailable: "No se pudo abrir la facturación ahora. Inténtalo de nuevo.",
+    history: "Historial de pagos", noPayments: "Aún no hay pagos.",
+    sourceSubscription: "Suscripción", sourcePromotion: "Promoción",
+    loadError: "No se pudo cargar la facturación.", retry: "Reintentar",
+    statusOpen: "Pendiente", statusVoid: "Anulado", statusUncollectible: "Incobrable",
+  } : {
+    title: "Billing",
+    planPremium: "Crewkat Premium", planFree: "Free plan", planFounder: "Founder plan",
+    renews: "Renews", ends: "Ends",
+    activeLine: "All Pro tools are unlocked",
+    freeLine: "You're on the free plan.",
+    billedStripe: "Billed through Stripe",
+    billedPlay: "Billed through Google Play · manage it in the Play Store app.",
+    founderNoBilling: "Founder plan — no billing.",
+    manualNote: "Your plan was set up by the Crewkat team.",
+    manage: "Manage subscription", opening: "Opening…",
+    viewPlans: "See Premium plans",
+    portalNotConfigured: "The billing portal isn't set up yet.",
+    portalNoCustomer: "No Stripe billing account found for this plan.",
+    portalUnavailable: "Could not open billing right now. Try again.",
+    history: "Payment history", noPayments: "No payments yet.",
+    sourceSubscription: "Subscription", sourcePromotion: "Promotion",
+    loadError: "Could not load billing.", retry: "Retry",
+    statusOpen: "Open", statusVoid: "Void", statusUncollectible: "Uncollectible",
+  };
+  const query = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
+  const [portalError, setPortalError] = useState("");
+  const portal = useMutation({
+    mutationFn: () => api.createBillingPortalSession({}),
+    onSuccess: (result) => {
+      if (result.url) {
+        setPortalError("");
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setPortalError(result.error === "portal_not_configured" ? text.portalNotConfigured : result.error === "no_stripe_customer" ? text.portalNoCustomer : text.portalUnavailable);
+    },
+    onError: () => setPortalError(text.portalUnavailable),
+  });
+  const data = query.data;
+  const plan = data?.plan;
+  const isFounder = plan?.status === "founder" || plan?.status === "founding_member";
+  const periodEnd = plan?.currentPeriodEnd ? new Date(plan.currentPeriodEnd).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+  const fmtAmount = (cents: number, currency: string) => new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" });
+  const chipFor = (status: string) => status === "open" ? text.statusOpen : status === "void" ? text.statusVoid : status === "uncollectible" ? text.statusUncollectible : null;
+  return (
+    <main className="page billing-page">
+      <PageHeader lang={lang} title={text.title} onBack={onBack} />
+      {query.isLoading && <div className="loading-block" />}
+      {query.isError && (
+        <>
+          <p className="status error" role="alert">{text.loadError}</p>
+          <button type="button" className="secondary-button" onClick={() => void query.refetch()}>{text.retry}</button>
+        </>
+      )}
+      {data && plan && (
+        <>
+          <section className="billing-plan-card">
+            <strong>{isFounder ? text.planFounder : plan.tier === "premium" ? text.planPremium : text.planFree}</strong>
+            {isFounder ? (
+              <span>{text.founderNoBilling}</span>
+            ) : plan.tier === "premium" ? (
+              <>
+                {periodEnd && <span>{plan.cancelAtPeriodEnd ? `${text.ends} ${periodEnd}` : `${text.renews} ${periodEnd}`}</span>}
+                <span>{plan.provider === "play" ? text.billedPlay : plan.provider === "stripe" ? text.billedStripe : text.activeLine}</span>
+              </>
+            ) : (
+              <span>{text.freeLine}</span>
+            )}
+          </section>
+          <div className="billing-manage">
+            {!isFounder && plan.tier === "free" && (
+              <button type="button" className="primary-button" onClick={() => setScreen({ name: "upgrade" })}>{text.viewPlans}</button>
+            )}
+            {!isFounder && plan.tier === "premium" && data.manage.kind === "stripe" && (
+              <>
+                <button type="button" className="primary-button" disabled={portal.isPending} onClick={() => { setPortalError(""); portal.mutate(); }}>{portal.isPending ? text.opening : text.manage}</button>
+                {portalError && <p className="status error" role="alert">{portalError}</p>}
+              </>
+            )}
+            {!isFounder && plan.tier === "premium" && data.manage.kind === "none" && (
+              <p className="privacy-note">{text.manualNote}</p>
+            )}
+          </div>
+          <h3 className="settings-group-title">{text.history}</h3>
+          {data.payments.length === 0 ? (
+            <p className="billing-empty">{text.noPayments}</p>
+          ) : (
+            <ul className="billing-history">
+              {data.payments.map((payment) => {
+                const chip = payment.status === "paid" || payment.status === "completed" ? null : chipFor(payment.status);
+                const row = (
+                  <>
+                    <span className="billing-row-main"><strong>{payment.description}</strong><small>{fmtDate(payment.date)} · {payment.source === "subscription" ? text.sourceSubscription : text.sourcePromotion}</small></span>
+                    <span className="billing-row-side">{payment.amountCents !== null && <span className="billing-row-amount">{fmtAmount(payment.amountCents, payment.currency)}</span>}{chip && <span className="billing-status-chip">{chip}</span>}</span>
+                  </>
+                );
+                return (
+                  <li key={payment.id}>
+                    {payment.receiptUrl ? (
+                      <a className="billing-row" href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">{row}</a>
+                    ) : (
+                      <div className="billing-row">{row}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </main>
+  );
 }
 
 function JobsScreen({
@@ -11032,6 +11170,9 @@ function SettingsScreen({
                 <button type="button" className="secondary-button account-signout" onClick={() => void auth.signOut()}>{lang === "es" ? "Cerrar sesión" : "Sign out"}</button>
                 <DeleteAccountSection lang={lang} />
               </div>
+            </SettingsAccordion>
+            <SettingsAccordion title={lang === "es" ? "Facturación" : "Billing"} icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}>
+              <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "billing" })}><span className="market-category-icon"><Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon></span><span><strong>{lang === "es" ? "Plan y pagos" : "Plan & payments"}</strong><small>{lang === "es" ? "Suscripción, recibos e historial de pagos" : "Subscription, receipts, and payment history"}</small></span><BackIcon /></button>
             </SettingsAccordion>
             <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<Icon><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></Icon>}>
               <SampleDataButton lang={lang} />

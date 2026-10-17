@@ -2137,6 +2137,22 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .upgrade-button { width:100%; margin-top:24px; min-height:54px; }
 .billing-setup-note, .active-plan-note { display:grid; gap:4px; margin-top:20px; padding:15px; border-radius:12px; background:var(--surface-2); }
 .billing-setup-note p, .active-plan-note span { margin:0; color:var(--dim); line-height:1.45; }
+.billing-plan-card { display:grid; gap:4px; margin-top:14px; padding:15px; border-radius:12px; background:var(--surface-2); }
+.billing-plan-card strong { font-size:17px; }
+.billing-plan-card span { color:var(--dim); line-height:1.45; }
+.billing-manage { display:grid; gap:8px; margin-top:12px; }
+.billing-manage .status { margin:0; }
+.billing-empty { color:var(--dim); padding:10px 2px; }
+.billing-history { list-style:none; margin:6px 0 0; padding:0; }
+.billing-history li { border-bottom:1px solid var(--border); }
+.billing-history li:last-child { border-bottom:0; }
+.billing-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 2px; color:var(--text); text-decoration:none; }
+.billing-row-main { min-width:0; display:grid; gap:2px; }
+.billing-row-main strong { font-size:14px; }
+.billing-row-main small { color:var(--dim); font-size:12px; }
+.billing-row-side { display:grid; justify-items:end; gap:3px; flex-shrink:0; }
+.billing-row-amount { font-weight:700; white-space:nowrap; }
+.billing-status-chip { font-size:11px; font-weight:700; padding:2px 7px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--dim); white-space:nowrap; }
 .upgrade-fine-print { margin:14px 2px 0; color:var(--dim); font-size:12px; line-height:1.45; text-align:center; }
 @media (min-width:760px) { .upgrade-page { max-width:760px; margin-inline:auto; } .upgrade-hero { padding:32px; } }
 

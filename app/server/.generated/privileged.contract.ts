@@ -123,6 +123,35 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Billing section (2026-10-17): the signed-in user's OWN Stripe invoices
+  // (subscription receipts) for the in-app payment history. Unconfigured ->
+  // configured:false with an empty list (the overview degrades gracefully);
+  // a Stripe API failure throws and the action layer degrades to local
+  // records only.
+  listStripeInvoices: {
+    request: z.object({ customerId: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(25) }),
+    response: z.object({
+      configured: z.boolean(),
+      invoices: z.array(z.object({
+        id: z.string(), created: z.number().int(), description: z.string().nullable(),
+        amountCents: z.number().int(), currency: z.string(), status: z.string(),
+        receiptUrl: z.string().nullable(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  // Billing section: Stripe Billing Portal session for the signed-in user's
+  // own customer (card update / cancel / invoices live in Stripe's hosted
+  // portal). A portal with no default configuration in the Stripe Dashboard
+  // is reported as errorCode "portal_not_configured" (NOT a throw) so the
+  // client can show "isn't set up yet" instead of a generic failure.
+  createBillingPortalSession: {
+    request: z.object({ customerId: z.string().min(1).max(200), returnUrl: z.string().url().max(500) }),
+    response: z.object({ url: z.string().nullable(), errorCode: z.enum(["portal_not_configured", "stripe_unconfigured"]).nullable() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   issueStripeRefund: {
     request: z.object({ chargeId: z.string().min(1).max(200), amountCents: z.number().int().positive().max(10_000_000).optional(), reason: z.string().trim().max(500).default("") }),
     response: z.object({ id: z.string(), amount: z.number().int(), currency: z.string(), status: z.string() }),
@@ -202,6 +231,8 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Platform admin suite: live revenue stats for the admin dashboard.
+  // Unconfigured -> configured:false (graceful, no crash).
   getStripeRevenueStats: {
     request: z.object({}),
     response: z.object({

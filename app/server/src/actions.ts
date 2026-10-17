@@ -3044,6 +3044,92 @@ export const BaseActions = {
       return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, provider };
     },
   }),
+  // Billing section (Danny 2026-10-17): the signed-in user's own billing —
+  // plan state, a merged payment history (Stripe subscription invoices +
+  // marketplace promotion purchases from our own records), and a manage
+  // hint. Own data only: the Stripe customer + company come from the
+  // caller's own rows, never from args. The Stripe portion degrades to
+  // empty on ANY Stripe failure — the overview itself never fails for it.
+  getBillingOverview: defineAction({
+    request: z.object({}),
+    response: z.object({
+      plan: z.object({ tier: z.enum(["free", "premium"]), status: z.string(), provider: z.enum(["stripe", "play", "none"]), currentPeriodEnd: z.string().nullable(), cancelAtPeriodEnd: z.boolean() }),
+      payments: z.array(z.object({ id: z.string(), source: z.enum(["subscription", "promotion"]), date: z.string(), description: z.string(), amountCents: z.number().int().nullable(), currency: z.string(), status: z.string(), receiptUrl: z.string().nullable() })),
+      manage: z.object({ kind: z.enum(["stripe", "play", "none"]) }),
+    }),
+    privileged: [privileged.listStripeInvoices],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      const provider: "stripe" | "play" | "none" = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : "none";
+      type BillingPayment = { id: string; source: "subscription" | "promotion"; date: string; description: string; amountCents: number | null; currency: string; status: string; receiptUrl: string | null };
+      const payments: BillingPayment[] = [];
+      if (user.stripeCustomerId) {
+        try {
+          const result = await ctx.executePrivileged(privileged.listStripeInvoices, { customerId: user.stripeCustomerId, limit: 25 });
+          for (const invoice of result.invoices) {
+            payments.push({ id: `stripe:${invoice.id}`, source: "subscription", date: new Date(invoice.created * 1000).toISOString(), description: invoice.description ?? "Crewkat Premium", amountCents: invoice.amountCents, currency: invoice.currency, status: invoice.status, receiptUrl: invoice.receiptUrl });
+          }
+        } catch {
+          // Stripe down/unconfigured: history falls back to local records.
+        }
+      }
+      // Marketplace promotional spend from our own records, scoped to the
+      // caller's workspace company. Bump rows record no amount (the price
+      // lives only on the Stripe price object), so amountCents stays null
+      // and the client omits the amount for those rows; credit packs record
+      // their exact amount + status.
+      const bumpRows = await db.select({ id: schema.listingBumpPurchases.id, purchasedAt: schema.listingBumpPurchases.purchasedAt, listingTitle: schema.marketplaceListings.title })
+        .from(schema.listingBumpPurchases)
+        .leftJoin(schema.marketplaceListings, eq(schema.listingBumpPurchases.listingId, schema.marketplaceListings.id))
+        .where(eq(schema.listingBumpPurchases.companyId, identity.workspaceCompanyId))
+        .orderBy(desc(schema.listingBumpPurchases.purchasedAt))
+        .limit(25);
+      for (const bump of bumpRows) {
+        payments.push({ id: `bump:${bump.id}`, source: "promotion", date: bump.purchasedAt.toISOString(), description: bump.listingTitle ?? "Listing promotion", amountCents: null, currency: "usd", status: "completed", receiptUrl: null });
+      }
+      const packRows = await db.select().from(schema.marketplaceCreditPurchases)
+        .where(eq(schema.marketplaceCreditPurchases.companyId, identity.workspaceCompanyId))
+        .orderBy(desc(schema.marketplaceCreditPurchases.createdAt))
+        .limit(25);
+      for (const pack of packRows) {
+        payments.push({ id: `credits:${pack.id}`, source: "promotion", date: pack.createdAt.toISOString(), description: `Marketplace credits — ${pack.packSize} pack`, amountCents: pack.amountCents, currency: "usd", status: pack.status, receiptUrl: null });
+      }
+      payments.sort((a, b) => b.date.localeCompare(a.date));
+      const manageKind: "stripe" | "play" | "none" = user.stripeCustomerId ? "stripe" : user.playPurchaseToken ? "play" : "none";
+      return {
+        plan: { tier: user.tier, status: user.subscriptionStatus, provider, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, cancelAtPeriodEnd: user.cancelAtPeriodEnd },
+        payments: payments.slice(0, 25),
+        manage: { kind: manageKind },
+      };
+    },
+  }),
+  // Billing section: open a Stripe Billing Portal session for the caller's
+  // OWN Stripe customer. Expected non-success states come back as a typed
+  // error (never a throw) so the client can render the right message.
+  createBillingPortalSession: defineAction({
+    request: z.object({}),
+    response: z.object({ url: z.string().nullable(), error: z.enum(["no_stripe_customer", "portal_not_configured", "billing_unavailable"]).nullable() }),
+    privileged: [privileged.createBillingPortalSession],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select({ stripeCustomerId: schema.authUsers.stripeCustomerId }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      if (!user.stripeCustomerId) return { url: null, error: "no_stripe_customer" as const };
+      const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+      if (!publicUrl) return { url: null, error: "billing_unavailable" as const };
+      try {
+        const result = await ctx.executePrivileged(privileged.createBillingPortalSession, { customerId: user.stripeCustomerId, returnUrl: `${publicUrl}/app/?billing=return` });
+        if (result.url) return { url: result.url, error: null };
+        return { url: null, error: result.errorCode === "portal_not_configured" ? "portal_not_configured" as const : "billing_unavailable" as const };
+      } catch {
+        return { url: null, error: "billing_unavailable" as const };
+      }
+    },
+  }),
   getUsageLimits: defineAction({
     request: z.object({}),
     response: z.object({ tier: z.enum(["free", "premium"]), activeJobs: z.number(), maxActiveJobs: z.number(), invoicesThisMonth: z.number(), maxInvoicesPerMonth: z.number() }),

@@ -129,6 +129,35 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Billing section (2026-10-17): the signed-in user's OWN Stripe invoices
+  // (subscription receipts) for the in-app payment history. Unconfigured ->
+  // configured:false with an empty list (the overview degrades gracefully);
+  // a Stripe API failure throws and the action layer degrades to local
+  // records only.
+  listStripeInvoices: {
+    request: z.object({ customerId: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(25) }),
+    response: z.object({
+      configured: z.boolean(),
+      invoices: z.array(z.object({
+        id: z.string(), created: z.number().int(), description: z.string().nullable(),
+        amountCents: z.number().int(), currency: z.string(), status: z.string(),
+        receiptUrl: z.string().nullable(),
+      })),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  // Billing section: Stripe Billing Portal session for the signed-in user's
+  // own customer (card update / cancel / invoices live in Stripe's hosted
+  // portal). A portal with no default configuration in the Stripe Dashboard
+  // is reported as errorCode "portal_not_configured" (NOT a throw) so the
+  // client can show "isn't set up yet" instead of a generic failure.
+  createBillingPortalSession: {
+    request: z.object({ customerId: z.string().min(1).max(200), returnUrl: z.string().url().max(500) }),
+    response: z.object({ url: z.string().nullable(), errorCode: z.enum(["portal_not_configured", "stripe_unconfigured"]).nullable() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   issueStripeRefund: {
     request: z.object({ chargeId: z.string().min(1).max(200), amountCents: z.number().int().positive().max(10_000_000).optional(), reason: z.string().trim().max(500).default("") }),
     response: z.object({ id: z.string(), amount: z.number().int(), currency: z.string(), status: z.string() }),
@@ -649,6 +678,64 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       description: typeof charge.description === "string" ? charge.description : null,
     })).filter((charge) => charge.id);
     return { charges };
+  },
+  // Billing section: normalize the customer's invoices for the in-app
+  // payment history. Drafts are excluded (not yet a bill). amountCents is
+  // what was actually paid, falling back to the amount due for open bills.
+  async listStripeInvoices(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, invoices: [] as Array<{ id: string; created: number; description: string | null; amountCents: number; currency: string; status: string; receiptUrl: string | null }> };
+    const params = new URLSearchParams({ customer: args.customerId, limit: String(args.limit) });
+    const response = await fetch(`https://api.stripe.com/v1/invoices?${params}`, {
+      method: "GET",
+      headers: { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not load Stripe invoices.");
+    const result = await response.json() as { data?: Array<{ id?: unknown; created?: unknown; status?: unknown; currency?: unknown; amount_paid?: unknown; amount_due?: unknown; description?: unknown; hosted_invoice_url?: unknown; invoice_pdf?: unknown; lines?: { data?: Array<{ description?: unknown }> } }> };
+    const invoices = (result.data ?? []).map((invoice) => {
+      const amountPaid = typeof invoice.amount_paid === "number" ? Math.round(invoice.amount_paid) : 0;
+      const amountDue = typeof invoice.amount_due === "number" ? Math.round(invoice.amount_due) : 0;
+      const lineDescription = invoice.lines?.data?.[0]?.description;
+      return {
+        id: typeof invoice.id === "string" ? invoice.id : "",
+        created: typeof invoice.created === "number" ? Math.round(invoice.created) : 0,
+        description: typeof invoice.description === "string" && invoice.description ? invoice.description : typeof lineDescription === "string" && lineDescription ? lineDescription : null,
+        amountCents: amountPaid > 0 ? amountPaid : amountDue,
+        currency: typeof invoice.currency === "string" ? invoice.currency : "usd",
+        status: typeof invoice.status === "string" ? invoice.status : "unknown",
+        receiptUrl: typeof invoice.hosted_invoice_url === "string" && invoice.hosted_invoice_url ? invoice.hosted_invoice_url : typeof invoice.invoice_pdf === "string" && invoice.invoice_pdf ? invoice.invoice_pdf : null,
+      };
+    }).filter((invoice) => invoice.id && invoice.status !== "draft");
+    return { configured: true, invoices };
+  },
+  async createBillingPortalSession(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { url: null as string | null, errorCode: "stripe_unconfigured" as const };
+    const body = new URLSearchParams({ customer: args.customerId, return_url: args.returnUrl });
+    const response = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      let message = "";
+      try {
+        const err = await response.json() as { error?: { message?: unknown } };
+        if (typeof err.error?.message === "string") message = err.error.message;
+      } catch { /* keep empty */ }
+      // No default portal configuration in the Stripe Dashboard -> Stripe
+      // answers with a "configuration" error. Surface it distinctly so the
+      // client can say "isn't set up yet" (Danny: one Dashboard toggle).
+      if (/configuration/i.test(message)) return { url: null as string | null, errorCode: "portal_not_configured" as const };
+      throw new Error(message || "Stripe could not open the billing portal.");
+    }
+    const result = await response.json() as { url?: unknown };
+    if (typeof result.url !== "string" || !/^https:\/\/billing\.stripe\.com\//.test(result.url)) throw new Error("Stripe did not return a valid billing portal page.");
+    return { url: result.url, errorCode: null as null };
   },
   async issueStripeRefund(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
