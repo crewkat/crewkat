@@ -288,8 +288,13 @@ check("unsigned pages stop rendering once signed", appSrc.includes("{!doc.alread
 check("sticky bar styles ship", themeSrc.includes(".client-sign-bar {") && themeSrc.includes(".client-sign-hero {"));
 check("uploaded-contract stub renders as a compact header card", appSrc.includes("{contractStub(true)}") && appSrc.includes("quote-paper quote-paper--compact"));
 check("text-document stub keeps the full paper sheet", appSrc.includes("contractStub(false)"));
-const compactCss = themeSrc.slice(themeSrc.indexOf(".quote-paper--compact {"), themeSrc.indexOf(".quote-paper--compact {") + 120);
+const compactCss = themeSrc.slice(themeSrc.indexOf(".quote-paper.quote-paper--compact {"), themeSrc.indexOf(".quote-paper.quote-paper--compact {") + 160);
 check("compact card styles neutralize the sheet height", compactCss.includes("min-height: 0") && compactCss.includes("padding: 16px 18px"));
+check("compact selector carries doubled-class specificity", themeSrc.includes(".quote-paper.quote-paper--compact { min-height: 0; margin-bottom: 16px; padding: 16px 18px; }"));
+check("compact inner rules use the same strengthened selector", themeSrc.includes(".quote-paper.quote-paper--compact .quote-paper-title-row { padding: 0; }") && themeSrc.includes(".quote-paper.quote-paper--compact .quote-paper-client { padding: 8px 0 2px; }"));
+const narrowSheetIdx = themeSrc.indexOf("@media (max-width:390px) { .app-header h1");
+const narrowSheetBlock = themeSrc.slice(narrowSheetIdx, narrowSheetIdx + 500);
+check("narrow-viewport sheet rule survives for text documents only", narrowSheetIdx >= 0 && narrowSheetBlock.includes(".quote-paper { padding: 0 16px 18px; min-height: 480px; }") && !narrowSheetBlock.includes("quote-paper--compact"));
 // Brand bar as platform strip (Danny 2026-10-17): clean C mark + a
 // "Sign with / Doc by Crewkat" label, so Crewkat reads as the software.
 check("brand bar imports the clean C mark asset", appSrc.includes('import crewkatC from "./assets/crewkat-c.png"'));

@@ -516,9 +516,9 @@ fieldset { padding: 0; border: 0; }
 .theme-swatch.minimal > span { background: linear-gradient(#fff 0 68%,var(--green) 68% 72%,#fff 72%); }
 .quote-preview-page { max-width: 760px; }
 .quote-paper { --quote-accent: #1f5a4a; margin: 14px auto 32px; min-height: 560px; padding: 0 26px 26px; background: #fff; color: #18201e; box-shadow: 0 7px 28px rgba(0,0,0,.12); font-size: 12px; }
-.quote-paper--compact { min-height: 0; margin-bottom: 16px; padding: 16px 18px; }
-.quote-paper--compact .quote-paper-title-row { padding: 0; }
-.quote-paper--compact .quote-paper-client { padding: 8px 0 2px; }
+.quote-paper.quote-paper--compact { min-height: 0; margin-bottom: 16px; padding: 16px 18px; }
+.quote-paper.quote-paper--compact .quote-paper-title-row { padding: 0; }
+.quote-paper.quote-paper--compact .quote-paper-client { padding: 8px 0 2px; }
 .quote-paper-band { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 -26px; padding: 12px 26px; background: #171a1c; color: #fff; }
 .quote-paper-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .quote-paper-band img { width: 42px; height: 30px; object-fit: contain; }
