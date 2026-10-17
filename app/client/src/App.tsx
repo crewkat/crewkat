@@ -1399,11 +1399,23 @@ function FloatingDocHeader({
 }
 function formatDate(value: string, lang: Lang) {
   if (!value) return "—";
+  // Two input shapes reach this helper: date-only values (YYYY-MM-DD —
+  // job dates, due dates, expiries) anchor at local noon so the printed
+  // day never shifts across timezones; full timestamps (a document's
+  // signedAt, a quote's sentAt) parse as-is. The old implementation
+  // appended "T12:00:00" unconditionally, turning a timestamp into
+  // "2026-10-14T01:23:45.678ZT12:00:00" — an Invalid Date whose
+  // Intl format() throws RangeError: Invalid time value. That crashed
+  // EVERY contract screen on open (2026-10-17, caught by the new
+  // Technical details disclosure). An unparseable value now renders
+  // as an em dash: this helper can never throw again.
+  const d = value.includes("T") ? new Date(value) : new Date(`${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "—";
   return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(`${value}T12:00:00`));
+  }).format(d);
 }
 // The user's calendar day in their own timezone (YYYY-MM-DD). Pass as `today`
 // to server actions that stamp user-visible dates so they never use UTC.
