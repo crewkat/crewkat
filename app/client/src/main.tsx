@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { RootErrorBoundary } from "./ErrorBoundary";
 import "./theme.css";
 import "./app.css";
 
@@ -22,7 +23,9 @@ createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={spaceQueryClient}>
       <div className="hatch-space-root" data-hatch-space-root>
-        <App />
+        <RootErrorBoundary>
+          <App />
+        </RootErrorBoundary>
       </div>
     </QueryClientProvider>
   </StrictMode>,

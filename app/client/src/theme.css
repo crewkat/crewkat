@@ -5427,7 +5427,20 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .doc-view-facts dt { font-size:.75rem; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
 .doc-view-facts dd { margin:0; font-size:.9rem; }
 .doc-detail-pages .pdf-pages img { cursor:pointer; }
+/* Lazy PDF pages (2026-10-16): each page keeps a same-shape slot until its
+   image mounts near the viewport, so a long contract never decodes every
+   page at once. The placeholder mirrors the page image's frame exactly. */
+.doc-detail-pages .pdf-page-slot { width:100%; cursor:pointer; }
+.doc-detail-pages .pdf-page-placeholder { width:100%; max-width:760px; margin:0 auto; border:1px solid var(--border); border-radius:6px; background:#fff; box-shadow:0 5px 20px rgb(27 37 34 / .12); overflow:hidden; }
+.doc-detail-pages .pdf-page-placeholder-ratio { padding-top:129.41%; }
 .document-detail-page .saved-section .doc-link-panel { margin-top:12px; }
+/* Error boundary fallback (2026-10-16): a crashed screen lands on this panel
+   instead of a blank white page. */
+.error-boundary-page { display:grid; place-items:center; padding:32px 20px; }
+.error-boundary-panel { display:grid; gap:12px; justify-items:center; text-align:center; width:100%; max-width:420px; padding:28px 22px; border:1px solid var(--border); border-radius:16px; background:var(--surface); }
+.error-boundary-panel h1 { margin:0; font-size:20px; }
+.error-boundary-panel p { margin:0; color:var(--dim); }
+.error-boundary-icon { display:grid; place-items:center; width:56px; height:56px; border-radius:28px; background:color-mix(in srgb, var(--accent) 14%, var(--surface)); color:var(--accent); }
 .danger-button { background:var(--danger,#c0392b); border-color:var(--danger,#c0392b); color:#fff; }
 .fin-unified{display:grid;gap:18px;padding:6px 0 26px}
 .fin-hero{margin:0;padding:20px;border-radius:12px;background:var(--green);color:#fff}

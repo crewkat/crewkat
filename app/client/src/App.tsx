@@ -45,6 +45,7 @@ import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type SignatureField
 import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
+import { ScreenErrorBoundary } from "./ErrorBoundary";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 // Phase 4: Google Play Billing (Digital Goods API) for the TWA.
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
@@ -3263,6 +3264,7 @@ function CrewkatApplication() {
   return (
   <>
     <div className={`app-shell${showMasterNav ? " has-bottom-nav" : ""}${hideMasterNav && screen.name !== "legal" ? " master-nav-hidden" : ""}`} ref={appShellRef}>
+      <ScreenErrorBoundary lang={lang} resetKey={JSON.stringify(screen)} onHome={() => openRoot("today")}>
       <SafeAreaTopScrim backgroundColor="var(--bg)" />
       <ImpersonationBanner lang={lang} />
       {auth.user.announcementBanner.trim() && dismissedBanner !== auth.user.announcementBanner.trim() && (
@@ -3555,6 +3557,7 @@ function CrewkatApplication() {
       )}
       {/* b07: one-time push opt-in prompt for first-time installers. */}
       <PushPromptSheet lang={lang} />
+      </ScreenErrorBoundary>
     </div>
     {limitKind && <LimitReachedSheet lang={lang} kind={limitKind} onClose={dismissLimitHit} onUpgrade={() => { dismissLimitHit(); setScreen({ name: "upgrade" }); }} />}
   </>
@@ -18680,6 +18683,55 @@ async function buildSignedDocumentPdf(
 // to carry (view the signed document, tap-to-sign, place signature, send
 // link, view signed copy) plus Edit and Delete. The signer screen itself is
 // create-only: it no longer renders the saved-documents list.
+// Lazy PDF page (2026-10-16 white-screen fix): every rasterized page used
+// to mount — and decode — its <img> the moment the document opened, so a
+// long contract held up to 20 full-page bitmaps (plus the source PDF) in
+// the Android WebView at once and the renderer died to a blank white page.
+// Each page now keeps a same-shape placeholder and only mounts its image
+// when the placeholder nears the viewport.
+function LazyPdfPageImage({
+  src,
+  alt,
+  onOpen,
+}: {
+  src: string;
+  alt: string;
+  onOpen: () => void;
+}) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    if (near) return;
+    const el = slotRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setNear(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNear(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "800px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [near]);
+  return (
+    <div ref={slotRef} className="pdf-page-slot" onClick={onOpen}>
+      {near ? (
+        <img src={src} alt={alt} />
+      ) : (
+        <div className="pdf-page-placeholder" aria-hidden="true">
+          <div className="pdf-page-placeholder-ratio" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
   const originalUrl = doc.originalUrl;
   const [pages, setPages] = useState<string[]>([]);
@@ -18695,10 +18747,13 @@ function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
         const res = await fetch(sameOriginBlobPath(originalUrl));
         if (!res.ok) throw new Error("original fetch failed");
         const blob = await res.blob();
-        const dataUrl = await blobDataUrl(blob);
-        const result = await api.renderPdfPreview({
-          dataBase64: dataUrl.split(",")[1] ?? "",
-        });
+        // The whole PDF rides along as a base64 data URL only until the
+        // preview pages exist; then the reference is dropped so a large
+        // contract is never held in memory twice (source payload + pages).
+        let dataUrl: string | null = await blobDataUrl(blob);
+        const dataBase64 = dataUrl.split(",")[1] ?? "";
+        dataUrl = null;
+        const result = await api.renderPdfPreview({ dataBase64 });
         if (!cancelled) setPages(result.pagesBase64);
       } catch {
         if (!cancelled) setFailed(true);
@@ -18726,11 +18781,11 @@ function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
         <>
           <div className="pdf-pages" aria-label={doc.title}>
             {pages.map((page, index) => (
-              <img
+              <LazyPdfPageImage
                 key={`${doc.id}-${index}`}
                 src={`data:image/jpeg;base64,${page}`}
                 alt={`${doc.title} — page ${index + 1}`}
-                onClick={() => setViewerIndex(index)}
+                onOpen={() => setViewerIndex(index)}
               />
             ))}
           </div>

@@ -3977,19 +3977,25 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>();
-      const [clients, jobs, quotes, invoices, payments] = await Promise.all([
+      const [clients, jobs, quotes, invoices, payments, paidInvoices] = await Promise.all([
         db.select({ id: schema.clients.id }).from(schema.clients).limit(1),
         db.select({ id: schema.jobs.id }).from(schema.jobs).limit(1),
         db.select({ sentAt: schema.quotes.sentAt }).from(schema.quotes).where(ne(schema.quotes.sentAt, "")).limit(1),
         db.select({ id: schema.invoices.id }).from(schema.invoices).limit(1),
         db.select({ id: schema.payments.id }).from(schema.payments).limit(1),
+        // "Record a payment" also completes when an invoice is fully paid
+        // under the invoice model's own paid flag (status "paid"): invoices
+        // marked paid before the payments table existed — or via paths that
+        // never wrote a payments row — have no row to find, which used to
+        // strand the checklist at 4 of 5 forever.
+        db.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.status, "paid")).limit(1),
       ]);
       const steps = [
         { key: "add_client", titleEn: "Add your first client", titleEs: "Agrega tu primer cliente", done: clients.length > 0 },
         { key: "create_job", titleEn: "Create a job", titleEs: "Crea un trabajo", done: jobs.length > 0 },
         { key: "send_estimate", titleEn: "Send an estimate", titleEs: "Envía un presupuesto", done: quotes.length > 0 },
         { key: "send_invoice", titleEn: "Send an invoice", titleEs: "Envía una factura", done: invoices.length > 0 },
-        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments.length > 0 },
+        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments.length > 0 || paidInvoices.length > 0 },
       ];
       const row = (await db.select().from(schema.onboardingChecklist).where(eq(schema.onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
       const dismissed = !!row?.dismissedAt;
