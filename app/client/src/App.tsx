@@ -52,6 +52,7 @@ import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
+import crewkatC from "./assets/crewkat-c.png";
 
 type Lang = "en" | "es";
 type Stage = "before" | "during" | "after";
@@ -28738,13 +28739,26 @@ function ClientDocumentScreen({ token }: { token: string }) {
       </button>
     </div>
   );
-  // Brand bar (Danny 2026-10-12): Crewkat wordmark + the EN/ES toggle in
-  // one slim bar at the very top of the client page, every account.
+  // Brand bar (Danny 2026-10-12; platform strip 2026-10-17): the clean C
+  // mark + a platform label, with the EN/ES toggle, in one slim bar at the
+  // very top of the client page. Crewkat must read as the SOFTWARE that
+  // delivered the document, not the sending company — the company block
+  // below carries the sender's identity. The label follows the loaded
+  // document: signable docs say "Sign with Crewkat", view-only docs (and
+  // the loading/error states, where no doc is loaded yet) say "Doc by
+  // Crewkat".
+  const brandLabel = q.data?.signable
+    ? lang === "es"
+      ? "Firma con Crewkat"
+      : "Sign with Crewkat"
+    : lang === "es"
+      ? "Documento con Crewkat"
+      : "Doc by Crewkat";
   const brandBar = (
     <div className="client-doc-brandbar">
-      <span className="client-doc-wordmark" aria-label={APP_INFO.name}>
-        <img src={crewkatLogo} alt="" aria-hidden="true" />
-        <span>{APP_INFO.name}</span>
+      <span className="client-doc-wordmark client-doc-wordmark--platform" aria-label={brandLabel}>
+        <img src={crewkatC} alt="" aria-hidden="true" />
+        <span>{brandLabel}</span>
       </span>
       {langToggle}
     </div>

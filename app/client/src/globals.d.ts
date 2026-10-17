@@ -1,5 +1,6 @@
 declare module "*.css";
 declare module "*.webp";
+declare module "*.png";
 
 // Google Identity Services (https://accounts.google.com/gsi/client),
 // loaded dynamically by the Google sign-in button. We use the rendered

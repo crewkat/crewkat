@@ -290,6 +290,18 @@ check("uploaded-contract stub renders as a compact header card", appSrc.includes
 check("text-document stub keeps the full paper sheet", appSrc.includes("contractStub(false)"));
 const compactCss = themeSrc.slice(themeSrc.indexOf(".quote-paper--compact {"), themeSrc.indexOf(".quote-paper--compact {") + 120);
 check("compact card styles neutralize the sheet height", compactCss.includes("min-height: 0") && compactCss.includes("padding: 16px 18px"));
+// Brand bar as platform strip (Danny 2026-10-17): clean C mark + a
+// "Sign with / Doc by Crewkat" label, so Crewkat reads as the software.
+check("brand bar imports the clean C mark asset", appSrc.includes('import crewkatC from "./assets/crewkat-c.png"'));
+const cMarkBytes = await readFile("client/src/assets/crewkat-c.png").catch(() => null);
+check("clean C mark asset is bundled from client assets", !!cMarkBytes && cMarkBytes.length > 1000);
+const brandSlice = appSrc.slice(appSrc.indexOf("const brandBar = ("), appSrc.indexOf("const brandBar = (") + 700);
+check("brand bar renders the clean C mark", brandSlice.includes("src={crewkatC}"));
+check("brand bar no longer renders the wrench-cat mascot", !brandSlice.includes("crewkatLogo"));
+check("brand label follows the loaded doc's signable state", appSrc.includes("q.data?.signable"));
+check("brand label ships signable + view-only variants (EN)", appSrc.includes('"Sign with Crewkat"') && appSrc.includes('"Doc by Crewkat"'));
+check("brand label ships signable + view-only variants (ES)", appSrc.includes('"Firma con Crewkat"') && appSrc.includes('"Documento con Crewkat"'));
+check("brand bar carries the platform strip styling", appSrc.includes("client-doc-wordmark--platform") && themeSrc.includes(".client-doc-wordmark--platform {") && themeSrc.includes(".client-doc-wordmark--platform img {"));
 
 // --- Source pins (commit 3: in-app signed-first document view) ---------------------------
 const pdfPagesSlice = appSrc.slice(appSrc.indexOf("function DocumentPdfPages"), appSrc.indexOf("function DocumentPdfPages") + 700);

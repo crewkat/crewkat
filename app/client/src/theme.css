@@ -1993,6 +1993,11 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 @media (min-width: 720px) { .client-doc-brandbar { margin-inline: -28px; padding-inline: 28px; } }
 .client-doc-wordmark { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 19px; font-weight: 850; letter-spacing: -.01em; }
 .client-doc-wordmark img { width: 30px; height: 30px; display: block; border-radius: 8px; object-fit: cover; }
+/* Platform strip variant (Danny 2026-10-17): the public doc page's brand
+   bar names the software, not a sender — smaller, muted, with the clean
+   C tile at favicon size instead of the mascot wordmark treatment. */
+.client-doc-wordmark--platform { font-size: 14.5px; font-weight: 650; letter-spacing: 0; color: var(--dim); }
+.client-doc-wordmark--platform img { width: 23px; height: 23px; border-radius: 6px; }
 .client-doc-brandbar .client-lang-toggle { padding: 0; }
 .client-doc-company { display: flex; align-items: center; gap: 12px; padding: 14px 4px 0; }
 .client-doc-company img { width: 52px; height: 38px; object-fit: contain; }
