@@ -111,6 +111,24 @@ export const documents = sqliteTable("documents", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// Portal shared files (0083): view-only files uploaded to a job for the
+// client to see in the client portal (scope sheets, plans, permits).
+// Deliberately NOT the documents table — these are never signed and
+// carry no placement/fill fields; shared_with_client is the only
+// visibility switch, and the portal reads shared rows only.
+export const jobFiles = sqliteTable("job_files", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default(""),
+  filename: text("filename").notNull().default(""),
+  blobKey: text("blob_key").notNull(),
+  contentType: text("content_type").notNull().default("application/pdf"),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  sharedWithClient: integer("shared_with_client", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 export const quotes = sqliteTable("quotes", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),

@@ -58,6 +58,10 @@ type JobData = ApiResponse<typeof api, "getJob">;
 type Job = NonNullable<JobData["job"]>;
 type Photo = JobData["photos"][number];
 type SignedDocument = JobData["documents"][number];
+// Portal shared files (0083): one view-only file row from getJob.
+type JobFileRow = JobData["jobFiles"][number];
+const humanFileSize = (bytes: number): string =>
+  bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : bytes >= 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${bytes} B`;
 type Invoice = ApiResponse<typeof api, "listInvoices">["invoices"][number];
 type Client = ApiResponse<typeof api, "listClients">["clients"][number];
 type Settings = ApiResponse<typeof api, "getSettings">;
@@ -9300,6 +9304,13 @@ function JobDetail({
   const [linkTab, setLinkTab] = useState<"new" | "existing">("new");
   const [clientSearch, setClientSearch] = useState("");
   const [detailDraft, setDetailDraft] = useState({ notes: "", jobDate: "", appointmentAt: "", depositAmount: "", paymentNotes: "" });
+  // Portal shared files (0083): upload sheet, per-file menu, delete confirm.
+  const [shareFileOpen, setShareFileOpen] = useState(false);
+  const [shareFile, setShareFile] = useState<File | null>(null);
+  const [shareFileTitle, setShareFileTitle] = useState("");
+  const [shareFileError, setShareFileError] = useState("");
+  const [fileMenu, setFileMenu] = useState<JobFileRow | null>(null);
+  const [fileDelete, setFileDelete] = useState<JobFileRow | null>(null);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
   const query = useQuery({
@@ -9394,6 +9405,19 @@ function JobDetail({
   const saveJobInfo = useMutation({ mutationFn: () => api.updateJobInfo({ jobId, ...detailDraft }), onSuccess: refreshJob });
   const linkInvoice = useMutation({ mutationFn: ({ invoiceId, linkedJobId }: { invoiceId: number; linkedJobId: number | null }) => api.linkInvoiceToJob({ invoiceId, jobId: linkedJobId }), onSuccess: refreshJob });
   const linkDocument = useMutation({ mutationFn: (documentId: number) => api.linkDocumentToJob({ documentId, jobId }), onSuccess: refreshJob });
+  const uploadJobFile = useMutation({
+    mutationFn: async () => {
+      if (!shareFile) throw new Error(t.error);
+      const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+      if (!allowed.includes(shareFile.type)) throw new Error(lang === "es" ? "Solo se admiten archivos PDF, JPEG, PNG o WebP." : "Only PDF, JPEG, PNG, or WebP files are supported.");
+      const { dataBase64 } = await fileToBase64(shareFile);
+      return api.uploadJobFile({ jobId, title: shareFileTitle.trim(), filename: shareFile.name, contentType: shareFile.type as "application/pdf" | "image/jpeg" | "image/png" | "image/webp", dataBase64 });
+    },
+    onSuccess: async () => { setShareFileOpen(false); setShareFile(null); setShareFileTitle(""); setShareFileError(""); await refreshJob(); },
+    onError: (e) => setShareFileError(e instanceof Error ? e.message : t.error),
+  });
+  const setJobFileShared = useMutation({ mutationFn: ({ id, shared }: { id: number; shared: boolean }) => api.setJobFileShared({ id, shared }), onSuccess: async () => { setFileMenu(null); await refreshJob(); } });
+  const deleteJobFile = useMutation({ mutationFn: (id: number) => api.deleteJobFile({ id }), onSuccess: async () => { setFileDelete(null); setFileMenu(null); await refreshJob(); } });
   // Build 3: guided Job → Estimate → Invoice → Payment chain.
   const convertFlowQuote = useMutation({
     mutationFn: (quoteId: number) => api.convertQuoteToInvoice({ quoteId, today: localToday() }),
@@ -9800,6 +9824,8 @@ function JobDetail({
         <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
           {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><span className={`ck-pill ${doc.clientSignedAt ? "ck-pill-paid" : "ck-pill-pending"}`}>{doc.clientSignedAt ? (lang === "es" ? "Firmado" : "Signed") : (lang === "es" ? "En espera" : "Awaiting")}</span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
+          <div className="job-section-heading"><p>{lang === "es" ? "Archivos compartidos" : "Shared files"}</p><button type="button" className="small-button" onClick={() => { setShareFileError(""); setShareFile(null); setShareFileTitle(""); setShareFileOpen(true); }}>{lang === "es" ? "+ Compartir archivo" : "+ Share a file"}</button></div>
+          {query.data.jobFiles.length ? <div className="job-linked-list">{query.data.jobFiles.map((file) => <article key={file.id}><button type="button" onClick={() => window.open(file.url, "_blank", "noopener")}><span><strong>{file.title || file.filename}</strong><small>{file.filename} · {humanFileSize(file.sizeBytes)}</small></span><span className={`ck-pill ${file.sharedWithClient ? "ck-pill-paid" : "ck-pill-draft"}`}>{file.sharedWithClient ? (lang === "es" ? "El cliente lo ve" : "Client can see") : (lang === "es" ? "Oculto" : "Hidden")}</span></button><button type="button" className="unlink-button" aria-label={lang === "es" ? "Opciones del archivo" : "File options"} onClick={() => setFileMenu(file)}>⋯</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client's portal."}</p>}
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} tone="green" icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
           <div className="job-value-row"><p>{job.paymentNotes || (lang === "es" ? "Sin notas de pago" : "No payment notes")}</p><button type="button" className="small-button" onClick={() => setActiveJobSheet("payment")}>{job.paymentNotes ? t.edit : (lang === "es" ? "Agregar" : "Add")}</button></div>
@@ -9833,6 +9859,26 @@ function JobDetail({
         </AccordionSection>
       </section>
       </>)}
+      {shareFileOpen && <div className="client-sheet-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !uploadJobFile.isPending) setShareFileOpen(false); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Compartir archivo" : "Share a file"}>
+        <div className="sheet-handle"/><header><h2>{lang === "es" ? "Compartir archivo" : "Share a file"}</h2><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setShareFileOpen(false)}>×</button></header>
+        <div className="compact-form">
+          <label><span>{lang === "es" ? "Archivo (PDF o imagen)" : "File (PDF or image)"}</span><input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={(event) => { const picked = event.target.files?.[0] ?? null; setShareFile(picked); if (picked) setShareFileTitle(picked.name); }} /></label>
+          <label><span>{lang === "es" ? "Título" : "Title"}</span><input value={shareFileTitle} maxLength={120} onChange={(event) => setShareFileTitle(event.target.value)} placeholder={shareFile?.name ?? ""} /></label>
+          <p className="sheet-note">{lang === "es" ? "El cliente verá este archivo en su portal. Máximo 15 MB." : "Your client will see this file in their portal. Max 15 MB."}</p>
+          {shareFileError && <p className="status error">{shareFileError}</p>}
+          <button className="primary-button" type="button" disabled={!shareFile || uploadJobFile.isPending} onClick={() => uploadJobFile.mutate()}>{uploadJobFile.isPending ? (lang === "es" ? "Compartiendo…" : "Sharing…") : (lang === "es" ? "Compartir" : "Share")}</button>
+        </div>
+      </section></div>}
+      {fileMenu && <div className="sheet-backdrop" onClick={() => setFileMenu(null)}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={fileMenu.title || fileMenu.filename} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" /><h2>{fileMenu.title || fileMenu.filename}</h2>
+        <button type="button" onClick={() => { window.open(fileMenu.url, "_blank", "noopener"); setFileMenu(null); }}><Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Icon>{lang === "es" ? "Ver" : "View"}</button>
+        <button type="button" disabled={setJobFileShared.isPending} onClick={() => setJobFileShared.mutate({ id: fileMenu.id, shared: !fileMenu.sharedWithClient })}><Icon><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></Icon>{fileMenu.sharedWithClient ? (lang === "es" ? "Ocultar del cliente" : "Hide from client") : (lang === "es" ? "Compartir con el cliente" : "Share with client")}</button>
+        <button type="button" className="danger-row" onClick={() => { setFileDelete(fileMenu); setFileMenu(null); }}><Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>{lang === "es" ? "Eliminar" : "Delete"}</button>
+      </section></div>}
+      {fileDelete && <div className="sheet-backdrop" onClick={() => !deleteJobFile.isPending && setFileDelete(null)}><section className="more-sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-handle" /><h2>{lang === "es" ? "¿Eliminar archivo?" : "Delete file?"}</h2><strong>{fileDelete.title || fileDelete.filename}</strong><p>{lang === "es" ? "El archivo se eliminará del trabajo y del portal del cliente." : "The file will be removed from this job and the client's portal."}</p>
+        <div className="delete-sheet-actions"><button type="button" disabled={deleteJobFile.isPending} onClick={() => setFileDelete(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button><button type="button" className="danger-button" disabled={deleteJobFile.isPending} onClick={() => deleteJobFile.mutate(fileDelete.id)}>{lang === "es" ? "Eliminar" : "Delete"}</button></div>
+      </section></div>}
       {activeJobSheet && <div className={`client-sheet-backdrop${jobSheetClosing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet)); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={activeJobSheet}>
         <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2>{["dates", "payment", "deposit"].includes(activeJobSheet as string) ? <button type="button" className="sheet-save-btn" onClick={() => closeJobSheet(true)}>{lang === "es" ? "Guardar" : "Save"}</button> : <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => closeJobSheet(false)}>×</button>}</header>
         {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
@@ -29051,6 +29097,8 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     rejected: lang === "es" ? "Rechazada" : "Declined",
     pending: lang === "es" ? "Pendiente" : "Pending",
     changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
+    documents: lang === "es" ? "Documentos" : "Documents",
+    viewFile: lang === "es" ? "Ver" : "View",
     signedBy: lang === "es" ? "Firmada por" : "Signed by",
     signerName: lang === "es" ? "Nombre del firmante" : "Signer name",
     signature: lang === "es" ? "Firma" : "Signature",
@@ -29150,6 +29198,24 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           <p className="dim">{lang === "es" ? "Aún no hay fotos aquí." : "No photos here yet."}</p>
         )}
       </section>
+
+      {/* Shared files (0083): view-only documents the contractor shared */}
+      {d.files.length > 0 && (
+        <section className="portal-v2-card">
+          <h2>{t.documents}</h2>
+          {d.files.map((f) => (
+            <article className="portal-v2-approval" key={f.id}>
+              <div>
+                <strong>{f.title || f.filename}</strong>
+                {f.title && f.title !== f.filename && <span className="dim">{f.filename}</span>}
+              </div>
+              <div className="row-actions">
+                <a className="secondary-button sm" href={f.url} target="_blank" rel="noreferrer">{t.viewFile}</a>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
 
       {/* Upcoming visits timeline */}
       <section className="portal-v2-card">
