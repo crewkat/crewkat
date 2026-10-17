@@ -19301,6 +19301,93 @@ function DocumentDetailScreen({
   return (
     <section className="page document-detail-page">
       <PageHeader lang={lang} title={doc.title} onBack={onBack} />
+      {!editing && (
+        <section className="saved-section">
+          <div className="row-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={viewing}
+              onClick={async () => {
+                setViewing(true);
+                setViewError("");
+                try {
+                  const blob = await buildSignedDocumentPdf(
+                    doc,
+                    job,
+                    settings,
+                    lang,
+                  );
+                  setPreview({
+                    blob,
+                    filename: `${safeName(job.clientName)}-${safeName(doc.title)}-signed.pdf`,
+                    title: doc.title,
+                  });
+                } catch (e) {
+                  setViewError(actionErrorMessage(e));
+                } finally {
+                  setViewing(false);
+                }
+              }}
+            >
+              {viewing
+                ? lang === "es"
+                  ? "Abriendo…"
+                  : "Opening…"
+                : t.viewDocument}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={tapSigning}
+              onClick={() => void tapToSign()}
+            >
+              {tapSigning
+                ? t.saving
+                : lang === "es"
+                  ? "Firmar con mi firma"
+                  : "Sign with saved signature"}
+            </button>
+            {doc.originalUrl ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setPlacing(doc)}
+              >
+                {lang === "es" ? "Colocar firma" : "Place signature"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setEditing(true)}
+            >
+              {lang === "es" ? "Editar" : "Edit"}
+            </button>
+            <button
+              type="button"
+              className="btn danger-text"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              {lang === "es" ? "Eliminar" : "Delete"}
+            </button>
+          </div>
+          {viewError && needsSavedSignature ? (
+            <button
+              type="button"
+              className="status error status-link"
+              onClick={() => setScreen({ name: "settings" })}
+            >
+              {viewError} {lang === "es" ? "Ir a Configuración →" : "Go to Settings →"}
+            </button>
+          ) : viewError ? (
+            <p className="status error" role="alert">
+              {viewError}
+            </p>
+          ) : null}
+          <DocumentLinkPanel lang={lang} kind={doc.kind} id={doc.id} />
+        </section>
+      )}
       <section className="saved-section">
         <span className="doc-view-meta">
           {kindLabel} · {job.jobType || job.clientName}
@@ -19427,91 +19514,6 @@ function DocumentDetailScreen({
               <DocumentPdfPages doc={doc} lang={lang} />
             </section>
           )}
-          <section className="saved-section">
-            <div className="row-actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={viewing}
-                onClick={async () => {
-                  setViewing(true);
-                  setViewError("");
-                  try {
-                    const blob = await buildSignedDocumentPdf(
-                      doc,
-                      job,
-                      settings,
-                      lang,
-                    );
-                    setPreview({
-                      blob,
-                      filename: `${safeName(job.clientName)}-${safeName(doc.title)}-signed.pdf`,
-                      title: doc.title,
-                    });
-                  } catch (e) {
-                    setViewError(actionErrorMessage(e));
-                  } finally {
-                    setViewing(false);
-                  }
-                }}
-              >
-                {viewing
-                  ? lang === "es"
-                    ? "Abriendo…"
-                    : "Opening…"
-                  : t.viewDocument}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={tapSigning}
-                onClick={() => void tapToSign()}
-              >
-                {tapSigning
-                  ? t.saving
-                  : lang === "es"
-                    ? "Firmar con mi firma"
-                    : "Sign with saved signature"}
-              </button>
-              {doc.originalUrl ? (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setPlacing(doc)}
-                >
-                  {lang === "es" ? "Colocar firma" : "Place signature"}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setEditing(true)}
-              >
-                {lang === "es" ? "Editar" : "Edit"}
-              </button>
-              <button
-                type="button"
-                className="btn danger-text"
-                onClick={() => setConfirmingDelete(true)}
-              >
-                {lang === "es" ? "Eliminar" : "Delete"}
-              </button>
-            </div>
-            {viewError && needsSavedSignature ? (
-              <button
-                type="button"
-                className="status error status-link"
-                onClick={() => setScreen({ name: "settings" })}
-              >
-                {viewError} {lang === "es" ? "Ir a Configuración →" : "Go to Settings →"}
-              </button>
-            ) : viewError ? (
-              <p className="status error" role="alert">
-                {viewError}
-              </p>
-            ) : null}
-            <DocumentLinkPanel lang={lang} kind={doc.kind} id={doc.id} />
-          </section>
         </>
       )}
       {preview && (
