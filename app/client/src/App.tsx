@@ -27,6 +27,7 @@ useLayoutEffect,
 useMemo,
 useRef,
 useState,
+useId,
 useSyncExternalStore,
 type ChangeEvent,
 type CSSProperties,
@@ -675,6 +676,26 @@ const copy = {
     viewed: "Viewed",
     notViewed: "Not viewed yet",
     viewCount: "views",
+    linkNotSent: "Not sent yet",
+    linkActive: "Link active",
+    linkSigned: "Signed",
+    docStepSign: "Sign",
+    docStepPlace: "Place fields",
+    docStepSend: "Send to client",
+    signerPasteRow: "Paste contract text instead",
+    docFileLabel: "Contract file",
+    optionalLabel: "Optional",
+    signerNextNote: "Next you'll place this signature and the client's on the document's signature page — then send the signing link.",
+    actView: "View",
+    actSign: "Sign",
+    actPlace: "Place",
+    actEdit: "Edit",
+    actDelete: "Delete",
+    statusSignedByYou: "Signed by you",
+    statusSignedByClient: "Signed by client",
+    statusWaitingClient: "Waiting on client",
+    placeTapHint: "Tap the page to place",
+    placeDragHint: "drag a field to move it",
     firstViewed: "First viewed",
     signHere: "Sign here",
     signDocument: "Sign document",
@@ -994,6 +1015,26 @@ const copy = {
     viewed: "Visto",
     notViewed: "Aún no visto",
     viewCount: "vistas",
+    linkNotSent: "Aún no enviado",
+    linkActive: "Enlace activo",
+    linkSigned: "Firmado",
+    docStepSign: "Firmar",
+    docStepPlace: "Colocar campos",
+    docStepSend: "Enviar al cliente",
+    signerPasteRow: "Pegar el texto del contrato",
+    docFileLabel: "Archivo del contrato",
+    optionalLabel: "Opcional",
+    signerNextNote: "Luego colocarás esta firma y la del cliente en la página de firmas del documento — y enviarás el enlace de firma.",
+    actView: "Ver",
+    actSign: "Firmar",
+    actPlace: "Colocar",
+    actEdit: "Editar",
+    actDelete: "Eliminar",
+    statusSignedByYou: "Firmado por ti",
+    statusSignedByClient: "Firmado por el cliente",
+    statusWaitingClient: "Esperando al cliente",
+    placeTapHint: "Toca la página para colocar",
+    placeDragHint: "arrastra un campo para moverlo",
     firstViewed: "Visto por primera vez",
     signHere: "Firma aquí",
     signDocument: "Firmar documento",
@@ -18224,11 +18265,11 @@ function JobToolScreen({
 // moves it, the slider sizes it. Fields are stored page-relative so they
 // land at the same spot in the composited signed PDF.
 type SignatureFieldKey = keyof SignatureFields;
-const SIGNATURE_FIELD_TABS: Array<{ key: SignatureFieldKey; en: string; es: string }> = [
-  { key: "clientSignature", en: "Client signature", es: "Firma del cliente" },
-  { key: "clientDate", en: "Signing date", es: "Fecha de firma" },
-  { key: "contractorSignature", en: "Your signature", es: "Tu firma" },
-  { key: "contractorDate", en: "Your date", es: "Tu fecha" },
+const SIGNATURE_FIELD_TABS: Array<{ key: SignatureFieldKey; en: string; es: string; shortEn: string; shortEs: string }> = [
+  { key: "clientSignature", en: "Client signature", es: "Firma del cliente", shortEn: "Client sig", shortEs: "Firma cliente" },
+  { key: "clientDate", en: "Signing date", es: "Fecha de firma", shortEn: "Client date", shortEs: "Fecha cliente" },
+  { key: "contractorSignature", en: "Your signature", es: "Tu firma", shortEn: "Your sig", shortEs: "Tu firma" },
+  { key: "contractorDate", en: "Your date", es: "Tu fecha", shortEn: "Your date", shortEs: "Tu fecha" },
 ];
 // Fill-in fields (0082): sender-placed text / initials / checkbox fields
 // edited in the same placement editor as the signature fields.
@@ -18270,6 +18311,25 @@ function SignaturePlacementEditor({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
+  // Design overhaul (Danny 2026-10-17): the slim bottom page bar tracks the
+  // page currently in view inside the scrolling modal and jumps between
+  // pages. Read-only scroll math — placement/drag behavior is untouched.
+  const modalRef = useRef<HTMLDivElement>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const updateCurrentPage = useCallback(() => {
+    const container = modalRef.current;
+    if (!container || pageRefs.current.length === 0) return;
+    const mid = container.getBoundingClientRect().top + container.clientHeight * 0.4;
+    let current = 1;
+    pageRefs.current.forEach((el, i) => {
+      if (el && el.getBoundingClientRect().top <= mid) current = i + 1;
+    });
+    setCurrentPage((prev) => (prev === current ? prev : current));
+  }, []);
+  const goToPage = (n: number) => {
+    const target = Math.min(Math.max(1, n), Math.max(1, pageRefs.current.length));
+    pageRefs.current[target - 1]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   useEscapeToClose(true, onClose);
 
   useEffect(() => {
@@ -18289,6 +18349,10 @@ function SignaturePlacementEditor({
       cancelled = true;
     };
   }, [document.originalUrl, lang]);
+
+  useEffect(() => {
+    updateCurrentPage();
+  }, [pages, updateCurrentPage]);
 
   const defaultsFor = (key: SignatureFieldKey) =>
     key === "clientDate" || key === "contractorDate" ? SIGNATURE_FIELD_DEFAULTS.date : SIGNATURE_FIELD_DEFAULTS.signature;
@@ -18444,49 +18508,103 @@ function SignaturePlacementEditor({
   };
 
   return (
-    <div className="pdf-modal sig-place-modal" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Colocar firma" : "Place signature"}>
-      <div className="pdf-modal-head">
-        <strong>{lang === "es" ? "Colocar firma" : "Place signature"}</strong>
-        <button type="button" onClick={onClose}>{t.close}</button>
-      </div>
-      <div className="sig-place-controls">
-        <div className="sig-place-tabs" role="tablist">
+    <div
+      className="pdf-modal sig-place-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={lang === "es" ? "Colocar firma" : "Place signature"}
+      ref={modalRef}
+      onScroll={updateCurrentPage}
+    >
+      {/* Design overhaul (Danny 2026-10-17): one sticky head — slim toolbar
+          (× · title · Cancel · Save), ONE scrollable chip row for all seven
+          field types, and a one-line dynamic instruction. */}
+      <div className="sig-place-head">
+        <div className="sig-place-toolbar">
+          <button
+            type="button"
+            className="sig-place-x"
+            onClick={onClose}
+            aria-label={t.close}
+          >
+            <Icon size={19}>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </Icon>
+          </button>
+          <strong className="sig-place-title">
+            {lang === "es" ? "Colocar firma" : "Place signature"}
+          </strong>
+          <button type="button" className="sig-place-cancel" onClick={onClose}>
+            {lang === "es" ? "Cancelar" : "Cancel"}
+          </button>
+          <button
+            type="button"
+            className="sig-place-save"
+            disabled={saving}
+            onClick={() => void save()}
+          >
+            {saving ? t.saving : t.save}
+          </button>
+        </div>
+        <div className="sig-place-chiprow" role="tablist">
           {SIGNATURE_FIELD_TABS.map((tab) => (
             <button
               key={tab.key}
               type="button"
               role="tab"
               aria-selected={active === tab.key && !selectedFillId}
-              className={active === tab.key && !selectedFillId ? "active" : ""}
+              aria-label={lang === "es" ? tab.es : tab.en}
+              className={`sig-chip${active === tab.key && !selectedFillId ? " active" : ""}`}
               onClick={() => {
                 setActive(tab.key);
                 setSelectedFillId(null);
               }}
             >
-              {lang === "es" ? tab.es : tab.en}
+              {tab.key === "clientDate" || tab.key === "contractorDate" ? (
+                <Icon size={13}>
+                  <rect x="4" y="6" width="16" height="14" rx="2" />
+                  <path d="M4 10h16M8 3v4M16 3v4" />
+                </Icon>
+              ) : (
+                <Icon size={13}>
+                  <path d="M12 3l4 7-4 11L8 10z" />
+                  <circle cx="12" cy="11" r="1.4" />
+                </Icon>
+              )}
+              {lang === "es" ? tab.shortEs : tab.shortEn}
               {fields[tab.key] ? " ✓" : ""}
             </button>
           ))}
+          <button type="button" className="sig-chip fill" onClick={() => addFillField("text")}>
+            <Icon size={13}>
+              <path d="M5 5h14M12 5v14M9 19h6" />
+            </Icon>
+            + {lang === "es" ? "Texto" : "Text"}
+          </button>
+          <button type="button" className="sig-chip fill" onClick={() => addFillField("initials")}>
+            <Icon size={13}>
+              <path d="M4 20c6-1 14-8 15-15l-4-1C13 8 7 15 4 20z" />
+            </Icon>
+            + {lang === "es" ? "Iniciales" : "Initials"}
+          </button>
+          <button type="button" className="sig-chip fill" onClick={() => addFillField("checkbox")}>
+            <Icon size={13}>
+              <rect x="4" y="4" width="16" height="16" rx="3" />
+              <path d="m8.5 12.5 2.5 2.5 4.5-5.5" />
+            </Icon>
+            + {lang === "es" ? "Casilla" : "Checkbox"}
+          </button>
         </div>
-        <div className="sig-place-fill-add">
-          <span className="dim small">{lang === "es" ? "Agregar campo para completar:" : "Add a fill-in field:"}</span>
-          <div className="sig-place-tabs">
-            <button type="button" onClick={() => addFillField("text")}>
-              + {lang === "es" ? "Texto" : "Text"}
-            </button>
-            <button type="button" onClick={() => addFillField("initials")}>
-              + {lang === "es" ? "Iniciales" : "Initials"}
-            </button>
-            <button type="button" onClick={() => addFillField("checkbox")}>
-              + {lang === "es" ? "Casilla" : "Checkbox"}
-            </button>
-          </div>
-        </div>
-        <p className="dim small">
-          {lang === "es"
-            ? "Toca una página para colocar el campo seleccionado. Arrastra el campo para moverlo. Desplázate para llegar a las demás páginas."
-            : "Tap a page to place the selected field. Drag the field to move it. Scroll to reach the later pages."}
+        <p className="sig-place-hint">
+          {t.placeTapHint}{" "}
+          <strong>{selectedFill ? selectedFill.label : tabLabel(active)}</strong>
+          {" · "}
+          {t.placeDragHint}
         </p>
+      </div>
+      <div className="sig-place-body">
+      {((activeField && !selectedFill) || selectedFill || saveError) && (
+      <div className="sig-place-controls">
         {activeField && !selectedFill && (
           <div className="sig-place-size">
             <label>
@@ -18599,15 +18717,8 @@ function SignaturePlacementEditor({
           </div>
         )}
         {saveError && <p className="status error" role="alert">{saveError}</p>}
-        <div className="row-actions">
-          <button type="button" className="primary-button" disabled={saving} onClick={() => void save()}>
-            {saving ? t.saving : t.save}
-          </button>
-          <button type="button" className="secondary-button" onClick={onClose}>
-            {lang === "es" ? "Cancelar" : "Cancel"}
-          </button>
-        </div>
       </div>
+      )}
       {loadError && <p className="status error" role="alert">{loadError}</p>}
       {pages.length === 0 && !loadError && <div className="loading-block" />}
       <div className="sig-place-pages">
@@ -18670,6 +18781,35 @@ function SignaturePlacementEditor({
           </div>
         ))}
       </div>
+      </div>
+      {pages.length > 1 && (
+        <div className="sig-place-pagenav">
+          <button
+            type="button"
+            disabled={currentPage <= 1}
+            onClick={() => goToPage(currentPage - 1)}
+            aria-label={lang === "es" ? "Página anterior" : "Previous page"}
+          >
+            <Icon size={17}>
+              <path d="m15 5-7 7 7 7" />
+            </Icon>
+          </button>
+          <span>
+            {lang === "es" ? "Página" : "Page"} <strong>{currentPage}</strong>{" "}
+            {lang === "es" ? "de" : "of"} {pages.length}
+          </span>
+          <button
+            type="button"
+            disabled={currentPage >= pages.length}
+            onClick={() => goToPage(currentPage + 1)}
+            aria-label={lang === "es" ? "Página siguiente" : "Next page"}
+          >
+            <Icon size={17}>
+              <path d="m9 5 7 7-7 7" />
+            </Icon>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -18697,6 +18837,35 @@ function DocumentSigner({
   const [signature, setSignature] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  // Design overhaul (Danny 2026-10-17): the paste-text box starts collapsed
+  // (a slim row, not a screen-tall void) and the picked PDF shows as a slim
+  // chip with its page count when pdf-lib can read it.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [filePages, setFilePages] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = useId();
+  useEffect(() => {
+    let cancelled = false;
+    setFilePages(null);
+    if (!file) return;
+    void (async () => {
+      try {
+        const pdf = await PDFDocument.load(await file.arrayBuffer(), {
+          ignoreEncryption: true,
+        });
+        if (!cancelled) setFilePages(pdf.getPageCount());
+      } catch {
+        // Meta stays plain "PDF" when the file can't be parsed here.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+  const clearFile = () => {
+    setFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
   const save = useMutation({
     mutationFn: async () => {
       let originalDataBase64 = "";
@@ -18728,12 +18897,33 @@ function DocumentSigner({
   if (!job) return null;
   return (
     <>
+      {/* Design overhaul (Danny 2026-10-17): slim presentational stepper —
+          this screen is step 1 of Sign · Place fields · Send to client. */}
+      <nav
+        className="doc-steps"
+        aria-label={lang === "es" ? "Pasos del documento" : "Document steps"}
+      >
+        <span className="doc-step on">
+          <span className="doc-step-dot">1</span>
+          {t.docStepSign}
+        </span>
+        <span className="doc-step-link" aria-hidden="true" />
+        <span className="doc-step">
+          <span className="doc-step-dot">2</span>
+          {t.docStepPlace}
+        </span>
+        <span className="doc-step-link" aria-hidden="true" />
+        <span className="doc-step">
+          <span className="doc-step-dot">3</span>
+          {t.docStepSend}
+        </span>
+      </nav>
       <section className="legal-note">
         <strong>{t.yourDocument}</strong>
         <p>{t.noTemplates}</p>
       </section>
       <form
-        className="tool-form"
+        className="tool-form signer-form"
         onSubmit={(e) => {
           e.preventDefault();
           if (
@@ -18755,23 +18945,82 @@ function DocumentSigner({
         </label>
         {kind === "contract" ? (
           <>
-            <label className="file-drop">
-              <span>{t.uploadPdf}</span>
+            <div className="signer-file-field">
+              <span className="signer-field-label">{t.docFileLabel}</span>
               <input
+                ref={fileInputRef}
+                id={fileInputId}
+                className="signer-file-input"
                 type="file"
                 accept="application/pdf"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
-              <small>{file?.name}</small>
-            </label>
-            <label>
-              <span>{t.pasteText}</span>
-              <textarea
-                rows={8}
-                value={bodyText}
-                onChange={(e) => setBodyText(e.target.value)}
-              />
-            </label>
+              {file ? (
+                <div className="signer-file-row">
+                  <span className="signer-file-tile" aria-hidden="true">
+                    <FileIcon />
+                  </span>
+                  <span className="signer-file-meta">
+                    <span className="signer-file-name">{file.name}</span>
+                    <small>
+                      {filePages
+                        ? `PDF · ${filePages} ${lang === "es" ? (filePages === 1 ? "página" : "páginas") : filePages === 1 ? "page" : "pages"}`
+                        : "PDF"}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    className="signer-file-clear"
+                    aria-label={lang === "es" ? "Quitar archivo" : "Remove file"}
+                    onClick={clearFile}
+                  >
+                    <Icon size={12}>
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </Icon>
+                  </button>
+                </div>
+              ) : (
+                <label className="signer-file-row signer-file-empty" htmlFor={fileInputId}>
+                  <span className="signer-file-tile" aria-hidden="true">
+                    <FileIcon />
+                  </span>
+                  <span className="signer-file-name dim">{t.uploadPdf}</span>
+                  <PlusIcon />
+                </label>
+              )}
+            </div>
+            <div className="signer-paste">
+              <button
+                type="button"
+                className="signer-paste-row"
+                aria-expanded={pasteOpen}
+                onClick={() => setPasteOpen((v) => !v)}
+              >
+                <Icon size={17}>
+                  <path d="M5 5h14M12 5v14M9 19h6" />
+                </Icon>
+                <span className="signer-paste-label">{t.signerPasteRow}</span>
+                <span className="signer-paste-hint">{t.optionalLabel}</span>
+                <span
+                  className={`signer-paste-chevron${pasteOpen ? " open" : ""}`}
+                  aria-hidden="true"
+                >
+                  <Icon size={16}>
+                    <path d="m6 9 6 6 6-6" />
+                  </Icon>
+                </span>
+              </button>
+              {pasteOpen && (
+                <label className="signer-paste-area">
+                  <span>{t.pasteText}</span>
+                  <textarea
+                    rows={6}
+                    value={bodyText}
+                    onChange={(e) => setBodyText(e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
           </>
         ) : (
           <>
@@ -18805,10 +19054,23 @@ function DocumentSigner({
           clearLabel={t.clear}
           onChange={setSignature}
         />
+        <p className="signer-note">
+          <Icon size={15}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5M12 8v.1" />
+          </Icon>
+          <span>{t.signerNextNote}</span>
+        </p>
         {error && <p className="status error">{error}</p>}
-        <button className="primary-button" disabled={save.isPending}>
-          {save.isPending ? t.saving : t.signSave}
-        </button>
+        <div className="signer-submit-bar">
+          <button className="primary-button signer-submit-btn" disabled={save.isPending}>
+            <Icon size={17}>
+              <path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
+              <path d="M14.5 6.5l3 3" />
+            </Icon>
+            {save.isPending ? t.saving : t.signSave}
+          </button>
+        </div>
       </form>
     </>
   );
@@ -19262,6 +19524,15 @@ function DocumentDetailScreen({
     },
     onError: (e) => setViewError(actionErrorMessage(e)),
   });
+  // Design overhaul (2026-10-17): the status strip needs to know whether a
+  // client link exists. Same query key as DocumentLinkPanel, so react-query
+  // shares the one fetch.
+  const linkInfo = useQuery({
+    queryKey: ["document-link", doc?.kind ?? "contract", documentId],
+    queryFn: () =>
+      api.getDocumentLinkInfo({ kind: doc?.kind ?? "contract", id: documentId }),
+    enabled: !!doc,
+  });
   const headerTitle = doc
     ? doc.title
     : lang === "es"
@@ -19302,12 +19573,20 @@ function DocumentDetailScreen({
     <section className="page document-detail-page">
       <PageHeader lang={lang} title={doc.title} onBack={onBack} />
       {!editing && (
-        <section className="saved-section">
-          <div className="row-actions">
+        <section className="saved-section doc-actions-section">
+          {/* Design overhaul (Danny 2026-10-17): the five document actions as
+              one compact icon bar — icon over a tiny label, tap by shape.
+              Same handlers and conditionals as the old button wrap. */}
+          <div
+            className="doc-action-bar"
+            role="group"
+            aria-label={lang === "es" ? "Acciones del documento" : "Document actions"}
+          >
             <button
               type="button"
-              className="btn"
+              className="doc-action"
               disabled={viewing}
+              aria-label={t.viewDocument}
               onClick={async () => {
                 setViewing(true);
                 setViewError("");
@@ -19330,46 +19609,70 @@ function DocumentDetailScreen({
                 }
               }}
             >
-              {viewing
-                ? lang === "es"
-                  ? "Abriendo…"
-                  : "Opening…"
-                : t.viewDocument}
+              <Icon size={21}>
+                <path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </Icon>
+              <span>
+                {viewing
+                  ? lang === "es"
+                    ? "Abriendo…"
+                    : "Opening…"
+                  : t.actView}
+              </span>
             </button>
             <button
               type="button"
-              className="btn"
+              className="doc-action"
               disabled={tapSigning}
+              aria-label={
+                lang === "es" ? "Firmar con mi firma" : "Sign with saved signature"
+              }
               onClick={() => void tapToSign()}
             >
-              {tapSigning
-                ? t.saving
-                : lang === "es"
-                  ? "Firmar con mi firma"
-                  : "Sign with saved signature"}
+              <Icon size={21}>
+                <path d="M12 3l4 7-4 11L8 10z" />
+                <circle cx="12" cy="11" r="1.4" />
+              </Icon>
+              <span>{tapSigning ? t.saving : t.actSign}</span>
             </button>
             {doc.originalUrl ? (
               <button
                 type="button"
-                className="btn"
+                className="doc-action"
+                aria-label={lang === "es" ? "Colocar firma" : "Place signature"}
                 onClick={() => setPlacing(doc)}
               >
-                {lang === "es" ? "Colocar firma" : "Place signature"}
+                <Icon size={21}>
+                  <circle cx="12" cy="12" r="7" />
+                  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                  <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
+                </Icon>
+                <span>{t.actPlace}</span>
               </button>
             ) : null}
             <button
               type="button"
-              className="btn"
+              className="doc-action"
+              aria-label={lang === "es" ? "Editar" : "Edit"}
               onClick={() => setEditing(true)}
             >
-              {lang === "es" ? "Editar" : "Edit"}
+              <Icon size={21}>
+                <path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z" />
+                <path d="M14.5 6.5l3 3" />
+              </Icon>
+              <span>{t.actEdit}</span>
             </button>
             <button
               type="button"
-              className="btn danger-text"
+              className="doc-action danger"
+              aria-label={lang === "es" ? "Eliminar" : "Delete"}
               onClick={() => setConfirmingDelete(true)}
             >
-              {lang === "es" ? "Eliminar" : "Delete"}
+              <Icon size={21}>
+                <path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />
+              </Icon>
+              <span>{t.actDelete}</span>
             </button>
           </div>
           {viewError && needsSavedSignature ? (
@@ -19385,7 +19688,35 @@ function DocumentDetailScreen({
               {viewError}
             </p>
           ) : null}
-          <DocumentLinkPanel lang={lang} kind={doc.kind} id={doc.id} />
+          <DocumentLinkPanel
+            lang={lang}
+            kind={doc.kind}
+            id={doc.id}
+            clientSigned={!!doc.clientSignedAt}
+          />
+          {/* One-line status strip (2026-10-17 overhaul): only segments that
+              apply to this document's real state. */}
+          {(doc.signedAt || doc.clientSignedAt || linkInfo.data?.link) && (
+            <div className="doc-status-strip">
+              {doc.signedAt && (
+                <span className="doc-status-item">
+                  <span className="doc-status-dot" aria-hidden="true" />
+                  {t.statusSignedByYou} · {formatDate(doc.signedAt, lang)}
+                </span>
+              )}
+              {doc.clientSignedAt ? (
+                <span className="doc-status-item">
+                  <span className="doc-status-dot" aria-hidden="true" />
+                  {t.statusSignedByClient} · {formatDate(doc.clientSignedAt, lang)}
+                </span>
+              ) : linkInfo.data?.link ? (
+                <span className="doc-status-item">
+                  <span className="doc-status-dot open" aria-hidden="true" />
+                  {t.statusWaitingClient}
+                </span>
+              ) : null}
+            </div>
+          )}
         </section>
       )}
       <section className="saved-section">
@@ -29057,10 +29388,14 @@ function DocumentLinkPanel({
   lang,
   kind,
   id,
+  clientSigned,
 }: {
   lang: Lang;
   kind: DocumentLinkKind;
   id: number;
+  /** Set by the document detail screen when the client has signed; the
+   *  collapsed row's status chip then reads "Signed". */
+  clientSigned?: boolean;
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
@@ -29127,11 +29462,21 @@ function DocumentLinkPanel({
           {t.clientLink}
         </span>
         <span className="doc-link-side">
-          {link && (link.viewCount > 0 ? (
-            <span className="ck-pill ck-pill-paid"><SeenIcon size={10} /> {t.viewed}</span>
-          ) : (
-            <span className="ck-pill ck-pill-draft">{t.notViewed}</span>
-          ))}
+          {/* Status chip from the real link state (2026-10-17 overhaul):
+              signed → active → viewed → not sent yet. */}
+          {clientSigned ? (
+            <span className="ck-pill ck-pill-paid">{t.linkSigned}</span>
+          ) : info.data ? (
+            link ? (
+              link.viewCount > 0 ? (
+                <span className="ck-pill ck-pill-paid"><SeenIcon size={10} /> {t.viewed}</span>
+              ) : (
+                <span className="ck-pill ck-pill-draft">{t.linkActive}</span>
+              )
+            ) : (
+              <span className="ck-pill ck-pill-draft">{t.linkNotSent}</span>
+            )
+          ) : null}
           <span className="doc-link-chevron" aria-hidden="true">▾</span>
         </span>
       </summary>

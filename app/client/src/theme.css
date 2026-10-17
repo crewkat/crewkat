@@ -5598,3 +5598,89 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .error-boundary-details { margin-top: 14px; text-align: left; }
 .error-boundary-details summary { font-size: 12px; font-weight: 700; color: var(--dim); cursor: pointer; }
 .error-boundary-details pre { margin: 8px 0 0; font-size: 10.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--dim); max-height: 180px; overflow: auto; }
+
+/* =====================================================================
+   Document screens design overhaul (Danny 2026-10-17, approved mockups in
+   ~/workspace/crewkat-design-mockups/documents-overhaul/): signer form,
+   signature placement editor, document detail. Density follows Home/Jobs:
+   compact icon-led rows, hairlines on surface, orange only for the primary
+   action / current selection, sticky bars top (editor) and bottom (CTA).
+   ===================================================================== */
+
+/* ---- Signer form ---- */
+.doc-steps { display: flex; align-items: center; padding: 14px 2px 0; }
+.doc-step { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--dim); white-space: nowrap; }
+.doc-step-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--border); background: var(--surface-2); font-size: 12.5px; font-weight: 800; color: var(--dim); }
+.doc-step.on { color: var(--text); }
+.doc-step.on .doc-step-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.doc-step-link { flex: 0 1 26px; min-width: 8px; height: 2px; border-radius: 2px; background: var(--border); margin: 0 8px; }
+.signer-file-field { display: grid; gap: 5px; }
+.signer-field-label { color: var(--dim); font-size: 12px; font-weight: 800; }
+.signer-form .signer-file-input { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; opacity: 0; pointer-events: none; }
+.signer-file-row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 10px 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.signer-file-tile { flex: none; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.signer-file-tile svg { width: 19px; height: 19px; }
+.signer-file-meta { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.signer-file-name { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.signer-file-meta small { font-size: 11px; color: var(--dim); }
+.signer-file-clear { flex: none; width: 26px; height: 26px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--dim); cursor: pointer; }
+.signer-form label.signer-file-empty { display: flex; cursor: pointer; }
+.signer-file-empty .signer-file-name { flex: 1; min-width: 0; color: var(--dim); font-weight: 550; }
+.signer-file-empty > svg { flex: none; color: var(--dim); }
+.signer-paste-row { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); cursor: pointer; text-align: left; }
+.signer-paste-row > svg { flex: none; color: var(--dim); }
+.signer-paste-label { flex: 1; font-size: 13.5px; }
+.signer-paste-hint { font-size: 11.5px; color: var(--dim); }
+.signer-paste-chevron { display: inline-flex; flex: none; color: var(--dim); transition: transform .15s ease; }
+.signer-paste-chevron.open { transform: rotate(180deg); }
+.signer-paste-area { margin-top: 8px; }
+.signer-form .signature-field canvas { height: 118px; }
+.signer-form .signature-head button { color: #0e7c7b; }
+.signer-note { display: flex; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); font-size: 12px; line-height: 1.45; color: var(--dim); }
+.signer-note svg { flex: none; margin-top: 1px; }
+.signer-submit-bar { position: sticky; bottom: 0; z-index: 5; margin-inline: -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgb(0 0 0 / .05); }
+.signer-submit-btn { width: 100%; }
+
+/* ---- Placement editor ---- */
+.pdf-modal.sig-place-modal { padding: 0; }
+.sig-place-head { position: sticky; top: 0; z-index: 6; background: var(--surface); border-bottom: 1px solid var(--border); }
+.sig-place-toolbar { width: min(100%, 920px); margin: 0 auto; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: max(6px, env(safe-area-inset-top)) 10px 6px; }
+.sig-place-x { flex: none; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--text); display: grid; place-items: center; cursor: pointer; }
+.sig-place-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sig-place-cancel { flex: none; min-height: 34px; padding: 0 10px; border: 0; background: transparent; color: var(--dim); font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.sig-place-save { flex: none; min-height: 34px; padding: 0 16px; border: 0; border-radius: var(--radius); background: var(--accent); color: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.sig-place-save:disabled { opacity: .6; cursor: wait; }
+.sig-place-chiprow { width: min(100%, 920px); margin: 0 auto; display: flex; gap: 6px; overflow-x: auto; padding: 2px 12px 9px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.sig-place-chiprow::-webkit-scrollbar { display: none; }
+.sig-chip { flex: none; height: 31px; display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 11.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.sig-chip svg { color: var(--dim); }
+.sig-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sig-chip.active svg { color: #fff; }
+.sig-chip.fill { border-style: dashed; border-color: #9fc9c8; color: #0e7c7b; }
+.sig-chip.fill svg { color: #0e7c7b; }
+.sig-place-hint { width: min(100%, 920px); margin: 0 auto; padding: 0 16px 9px; font-size: 12px; color: var(--dim); }
+.sig-place-hint strong { color: var(--text); font-weight: 600; }
+.sig-place-body { width: min(100%, 920px); margin: 0 auto; padding: 12px 12px 76px; }
+.sig-place-modal .sig-place-controls { width: 100%; margin: 0 0 12px; }
+.sig-place-modal .sig-place-pages { width: 100%; }
+.sig-place-modal .sig-place-fill-editor { padding: 8px 10px; gap: 8px; }
+.sig-place-pagenav { position: fixed; inset: auto 0 0 0; z-index: 60; min-height: 50px; padding-bottom: env(safe-area-inset-bottom); background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 12.5px; color: var(--dim); }
+.sig-place-pagenav strong { color: var(--text); }
+.sig-place-pagenav button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; }
+.sig-place-pagenav button:disabled { opacity: .35; cursor: default; }
+
+/* ---- Document detail ---- */
+.doc-actions-section { margin-top: 0; }
+.doc-action-bar { display: flex; gap: 2px; margin-inline: -16px; padding: 8px 14px 7px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.doc-action { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 2px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.doc-action svg { flex: none; }
+.doc-action span { white-space: nowrap; }
+.doc-action:active { background: var(--surface-2); }
+.doc-action:disabled { opacity: .55; cursor: wait; }
+.doc-action.danger { color: var(--danger); }
+.doc-status-strip { display: flex; flex-wrap: wrap; gap: 5px 14px; align-items: center; margin-inline: -16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--dim); }
+.doc-status-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.doc-status-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--chart-green); }
+.doc-status-dot.open { background: transparent; border: 1.6px solid #c4c4c4; }
+.doc-link-summary { min-height: 32px; }
+.client-doc-zoom-hint { font-size: 11px; }

@@ -220,7 +220,12 @@ check("pointer cancel clears the tap candidate", fnBody(appSrc, "const onPagePoi
 check("editor renders every payload page", appSrc.includes("pages.map((page, pageIndex)"));
 check("editor shows a Page N of M badge", appSrc.includes("sig-place-pageno") && appSrc.includes("of ${pages.length}"));
 check("editor renders placed fields only on their own page", appSrc.includes("fields[key]!.page === pageIndex + 1"));
-check("scroll hint is in the editor copy", appSrc.includes("Scroll to reach the later pages"));
+// 2026-10-17 design overhaul: the old two-line instruction (with its scroll
+// hint) became one dynamic line naming the selected field, and page
+// navigation moved to the slim bottom page bar. Same intent — the editor
+// still tells the user how placement works and how to reach later pages.
+check("placement hint + page bar are in the editor copy",
+  appSrc.includes("placeTapHint") && appSrc.includes("placeDragHint") && appSrc.includes("sig-place-pagenav") && appSrc.includes("goToPage"));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);
