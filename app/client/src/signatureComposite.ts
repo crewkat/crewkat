@@ -179,14 +179,21 @@ export async function compositeSignatureStamps(
       const dH = clamp01(dateField.hPct) * size.height;
       const dX = clamp01(dateField.xPct) * size.width;
       const dTopY = size.height - clamp01(dateField.yPct) * size.height;
-      const fontSize = Math.max(6, Math.min(14, dH * 0.55));
+      // Width-fit the date text (signing-flow v2, Danny 2026-10-17): the
+      // old fixed size let a long date ("October 17, 2026") burst out of
+      // its box — pdf-lib's maxWidth only wraps, which stacked the date
+      // onto two lines over the signature line. Shrink the font until
+      // the text fits the box width, exactly like compositeFillFields
+      // fits fill-in values; at the 6pt floor the text is drawn as-is.
+      let fontSize = Math.max(6, Math.min(14, dH * 0.55));
+      const maxDateWidth = Math.max(1, dW - 2);
+      while (fontSize > 6 && font.widthOfTextAtSize(stamp.dateText, fontSize) > maxDateWidth) fontSize -= 0.5;
       datePage.drawText(stamp.dateText, {
         x: dX,
         y: dTopY - dH + (dH - fontSize) / 2,
         size: fontSize,
         font,
         color: rgb(0.09, 0.13, 0.12),
-        maxWidth: dW,
       });
     }
   }

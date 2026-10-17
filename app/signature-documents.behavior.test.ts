@@ -166,7 +166,7 @@ const signedBase64 = Buffer.from(signedBytes).toString("base64");
 
 const submit = await A.submitDocumentSignature.handler(ctx, {
   token: link.token, signerName: "Denny", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: signedBase64, userAgent: "test",
+  signedPdfDataBase64: signedBase64, userAgent: "test", consented: true,
 });
 check("submitDocumentSignature accepts the signature", submit.ok === true);
 const afterRow = (await db.select().from(schema.documents).where(eq(schema.documents.id, saved.id)))[0]!;

@@ -2231,6 +2231,11 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
     // stored values ride along so a signed page can show what was filled.
     fillFields: [] as FillField[],
     fillValues: {} as FillValues,
+    // Signing flow v2 (2026-10-17): the completion panel names the client
+    // signer and when they signed. The signer's own name on their own
+    // bearer link — no new exposure beyond the link itself.
+    clientSignerName: "",
+    clientSignedAt: null as string | null,
     // Build 0.3 (item 8): document design defaults (overridden below for invoices/quotes).
     invoiceNumber: "", issueDate: "", dueDate: "", expiryDate: "", status: "", discountType: "percent", discountValue: "0", taxType: "percent", taxValue: "0", theme: "classic", font: "helvetica", accentColor: "#1f5a4a", showTaxLine: true, showDiscountLine: true, showPaidLine: true, showPaymentTerms: true, showFooterNotes: true, showLogo: true, showCompanyInfo: true, customizeJson: "{}",
     // Estimate options (0076): empty defaults; the quote branch fills them.
@@ -2260,7 +2265,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
   const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson) } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -2308,6 +2313,55 @@ async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es")
   }
   docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: (payload as { updatedAtMs?: number }).updatedAtMs ?? 0 });
   return { pdfBase64, filename, kind };
+}
+
+// Signing flow v2 (2026-10-17): the client-signed final PDF behind a
+// document link. getDocumentLinkPdf already prefers the signed bytes once
+// a document is signed; these helpers give the completion screen an
+// explicit signed-only source (download + "email me a copy") that errors
+// while the document is still unsigned, instead of silently serving the
+// unsigned original.
+function signedPdfFilename(title: string): string {
+  const safeTitle = title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+  return `${safeTitle}-signed.pdf`;
+}
+
+async function loadClientSignedPdf(ctx: Ctx, token: string): Promise<{ link: Awaited<ReturnType<typeof resolveDocumentLinkToken>>; doc: typeof schema.documents.$inferSelect; bytes: Buffer; filename: string }> {
+  const db = ctx.db<typeof schema>();
+  const link = await resolveDocumentLinkToken(ctx, token);
+  if (link.documentKind !== "contract" && link.documentKind !== "change_order") throw new Error("This document is only available as a web page.");
+  const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
+  if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
+  if (!doc.clientSignedAt || !doc.clientSignedPdfBlobKey) throw new Error("This document has not been signed yet.");
+  const bytes = await ctx.blobs.get(doc.clientSignedPdfBlobKey);
+  if (!bytes || bytes.length === 0) throw new Error("This document is only available as a web page.");
+  return { link, doc, bytes: Buffer.from(bytes), filename: signedPdfFilename(doc.title) };
+}
+
+// "Email me a copy" is the one public document-link action that can be
+// abused as a mail relay, so it gets its own small limiter on the shared
+// rate_limit_events table (same pattern as checkPortalRateLimit): a
+// handful of sends per link per hour, a few more per source IP.
+const DOC_LINK_EMAIL_LIMIT_PER_TOKEN_HOUR = 5;
+const DOC_LINK_EMAIL_LIMIT_PER_IP_HOUR = 10;
+async function checkDocLinkEmailRateLimit(ctx: Ctx, token: string): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const now = Date.now();
+  const ip = ((ctx as { clientIp?: string }).clientIp ?? "").trim() || "unknown";
+  const tokenHash = await hashLinkToken(token);
+  await db.delete(schema.rateLimitEvents).where(lt(schema.rateLimitEvents.occurredAt, new Date(now - 3_600_000)));
+  const windowStart = new Date(now - 3_600_000);
+  const [tokenHits, ipHits] = await Promise.all([
+    db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents).where(and(eq(schema.rateLimitEvents.scope, "doclink-email:token"), eq(schema.rateLimitEvents.key, tokenHash), gte(schema.rateLimitEvents.occurredAt, windowStart))),
+    db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents).where(and(eq(schema.rateLimitEvents.scope, "doclink-email:ip"), eq(schema.rateLimitEvents.key, ip), gte(schema.rateLimitEvents.occurredAt, windowStart))),
+  ]);
+  if (tokenHits.length >= DOC_LINK_EMAIL_LIMIT_PER_TOKEN_HOUR || ipHits.length >= DOC_LINK_EMAIL_LIMIT_PER_IP_HOUR) {
+    throw new Error("Too many email requests. Try again later.");
+  }
+  await db.batch([
+    db.insert(schema.rateLimitEvents).values({ scope: "doclink-email:token", key: tokenHash, occurredAt: new Date() }),
+    db.insert(schema.rateLimitEvents).values({ scope: "doclink-email:ip", key: ip, occurredAt: new Date() }),
+  ]);
 }
 
 // Rasterized pages are heavier than the PDF bytes — keep this cache small.
@@ -3881,6 +3935,9 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     // Fill-in fields (0082): client-role definitions + stored values.
     fillFields: fillFieldsSchema.default([]),
     fillValues: fillValuesSchema.default({}),
+    // Signing flow v2 (2026-10-17): completion panel signer + timestamp.
+    clientSignerName: z.string().default(""),
+    clientSignedAt: z.string().nullable().default(null),
     // Build 0.3 (item 8): the actual document design, so the client link can
     // render the real PDF instead of a plain-HTML mock.
     invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]) }), async handler(ctx, args) {
@@ -3905,6 +3962,40 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // counting here — resolveDocumentLink owns that side effect.
   getDocumentLinkPdf: defineAction({ request: z.object({ token: z.string().min(8).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pdfBase64: z.string(), filename: z.string(), kind: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string; kind: string }> {
     return documentLinkPdfBase64(ctx, args.token, args.lang);
+  } }),
+  // Signing flow v2 (2026-10-17): the signed-only sibling of
+  // getDocumentLinkPdf for the completion screen's Download button —
+  // serves the client-signed final PDF and errors while the document is
+  // unsigned (getDocumentLinkPdf would serve the original instead).
+  // Same token validation; no view counting.
+  getDocumentLinkSignedPdf: defineAction({ request: z.object({ token: z.string().min(8).max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ pdfBase64: z.string(), filename: z.string(), kind: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string; kind: string }> {
+    const { link, bytes, filename } = await loadClientSignedPdf(ctx, args.token);
+    return { pdfBase64: bytes.toString("base64"), filename, kind: link.documentKind };
+  } }),
+  // Signing flow v2 (2026-10-17): "Email me a copy" on the completion
+  // screen (DocuSign sends the completed document to every party; our
+  // link signer is anonymous, so they ask for it explicitly). Signed-only,
+  // rate-limited (checkDocLinkEmailRateLimit), sent through the same
+  // attachment-capable email path as the backup mailer.
+  emailDocumentLinkSignedCopy: defineAction({ request: z.object({ token: z.string().min(8).max(200), email: z.string().trim().email().max(200), lang: z.enum(["en", "es"]).default("en") }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error("Enter a valid email address.");
+    await checkDocLinkEmailRateLimit(ctx, args.token);
+    const { link, doc, bytes, filename } = await loadClientSignedPdf(ctx, args.token);
+    const db = ctx.db<typeof schema>();
+    const settings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, link.companyId)).limit(1))[0]
+      ?? (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
+    const companyName = settings?.companyName ?? "";
+    const es = args.lang === "es";
+    const result = await ctx.executePrivileged(privileged.sendBackupEmail, {
+      to: args.email,
+      subject: es ? `Tu copia firmada de "${doc.title}"` : `Your signed copy of "${doc.title}"`,
+      text: es
+        ? `Hola,\n\nAdjuntamos la copia firmada de "${doc.title}"${companyName ? ` de ${companyName}` : ""}.\n\nGuárdala para tus registros.\n\n— ${companyName || "Crewkat"}`
+        : `Hi,\n\nYour signed copy of "${doc.title}"${companyName ? ` from ${companyName}` : ""} is attached.\n\nKeep it for your records.\n\n— ${companyName || "Crewkat"}`,
+      attachments: [{ filename, contentType: "application/pdf", dataBase64: bytes.toString("base64") }],
+    });
+    if (!result || (result as { delivery?: string }).delivery !== "sent") throw new Error("We couldn't send the email. Please try again.");
+    return { ok: true as const };
   } }),
   // Phase 2: server-rasterized document pages for the public client link, so
   // the document displays inline as images on every browser (the in-app
@@ -3941,7 +4032,13 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     }
     return { ok: true as const, kind };
   } }),
-  submitDocumentSignature: defineAction({ request: z.object({ token: z.string().min(8).max(200), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedPdfDataBase64: z.string().min(1).max(30_000_000), userAgent: z.string().max(500).default(""), fillValues: fillValuesSchema.optional() }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx,args): Promise<{ok:true;signedAt:string}> {
+  submitDocumentSignature: defineAction({ request: z.object({ token: z.string().min(8).max(200), signerName: z.string().trim().min(1).max(160), signatureDataBase64: z.string().min(1).max(5_000_000), signedPdfDataBase64: z.string().min(1).max(30_000_000), userAgent: z.string().max(500).default(""), fillValues: fillValuesSchema.optional(), consented: z.literal(true) }), response: z.object({ ok: z.literal(true), signedAt: z.string() }), async handler(ctx,args): Promise<{ok:true;signedAt:string}> {
+    // Signing flow v2 (2026-10-17): e-sign consent is part of the audit
+    // record — the sign page's "I agree to sign this document
+    // electronically" checkbox must be ticked, and the server refuses a
+    // submission that doesn't carry the assertion (the schema's literal
+    // covers the wire; this check covers direct handler calls).
+    if((args as {consented?: unknown}).consented!==true)throw new Error("Please agree to sign electronically before signing.");
     const db=ctx.db<typeof schema>(); const link=await resolveDocumentLinkToken(ctx,args.token);
     if(link.documentKind!=="contract"&&link.documentKind!=="change_order")throw new Error("This document cannot be signed.");
     const doc=(await db.select().from(schema.documents).where(eq(schema.documents.id,link.documentId)).limit(1))[0];if(!doc||doc.kind!==link.documentKind)throw new Error("This document is no longer available.");
@@ -3970,6 +4067,40 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     await db.insert(schema.documentLinkEvents).values({linkId:link.id,eventType:"sign",userAgent:args.userAgent.slice(0,300),occurredAt:now});
     // Build 2: tell the company a client signed their document (in-app + push, preference-gated).
     await notifyCompanyEvent(ctx,link.companyId,"notifyDocSigned","document-signed",`Client signed "${doc.title}"`,"Un cliente firmó tu documento",`doc-signed:${doc.id}`);
+    // Signing flow v2 (2026-10-17): DocuSign-style completion emails —
+    // every workspace owner gets "<signer> signed <title>" with the
+    // signed PDF attached (recipient resolved like the security-alert
+    // emails: the account's auth users), and the client gets their
+    // signed copy at the job's email when one is on file. Best-effort
+    // end to end: an email failure must never fail the signing, which
+    // is already stored above.
+    try {
+      const signedAttachment = { filename: signedPdfFilename(doc.title), contentType: "application/pdf", dataBase64: finalPdfBytes.toString("base64") };
+      const owners = await db.select({ email: schema.authUsers.email, name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.companyId, link.companyId));
+      for (const owner of owners) {
+        if (!owner.email) continue;
+        try {
+          await ctx.executePrivileged(privileged.sendBackupEmail, {
+            to: owner.email,
+            subject: `${args.signerName} signed "${doc.title}"`,
+            text: `Hi ${owner.name || "there"},\n\n${args.signerName} just signed "${doc.title}" through your Crewkat document link. The signed PDF is attached, and the signed copy is filed on the document in your app.\n\n— The Crewkat team`,
+            attachments: [signedAttachment],
+          });
+        } catch { /* per-recipient best-effort */ }
+      }
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
+      const clientEmail = (job?.clientEmail ?? "").trim();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+        try {
+          await ctx.executePrivileged(privileged.sendBackupEmail, {
+            to: clientEmail,
+            subject: `Your signed copy of "${doc.title}"`,
+            text: `Hi ${job?.clientName || "there"},\n\nThanks for signing "${doc.title}". Your signed copy is attached — keep it for your records.\n\n— The Crewkat team`,
+            attachments: [signedAttachment],
+          });
+        } catch { /* best-effort */ }
+      }
+    } catch { /* completion emails are best-effort; the signature is already stored */ }
     ctx.invalidateQueries(); return{ok:true,signedAt:now.toISOString()};
   } }),
   // Phase 1: per-document activity timeline (estimate / invoice). Derived
@@ -5929,7 +6060,7 @@ const PUBLIC_ACTIONS = new Set([
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
   "getGoogleClientId", "googleSignIn",
-  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  "getPortalData", "portalUpdateSelection", "portalSignChangeOrder", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
   "getFeatureFlags",
   // Admin panel Phase 2 (Settings): maintenance status, branding, and the
   // public policy version are read by any client; verifyTotpLogin completes

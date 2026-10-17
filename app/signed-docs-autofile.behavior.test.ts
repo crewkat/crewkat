@@ -97,7 +97,7 @@ const clientFinal = await compositeSignatureStamps(Buffer.from(pdfBase64, "base6
 ]);
 await A.submitDocumentSignature.handler(ctx, {
   token: link.token, signerName: "Denny", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: Buffer.from(clientFinal).toString("base64"), userAgent: "test",
+  signedPdfDataBase64: Buffer.from(clientFinal).toString("base64"), userAgent: "test", consented: true,
 });
 const afterClient = await entriesFor(jobA, saved.id);
 check("client signing updates the SAME entry (still exactly one)", afterClient.length === 1);

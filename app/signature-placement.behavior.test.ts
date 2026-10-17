@@ -213,7 +213,7 @@ const signedBytes = await compositeSignatureStamps(twoPage, payload.signatureFie
 ]);
 await A.submitDocumentSignature.handler(ctx, {
   token: link.token, signerName: "Denny", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: Buffer.from(signedBytes).toString("base64"), userAgent: "test",
+  signedPdfDataBase64: Buffer.from(signedBytes).toString("base64"), userAgent: "test", consented: true,
 });
 const served = await A.getDocumentLinkPdf.handler(ctx, { token: link.token, lang: "en" });
 check("link serves the composited signed PDF", Buffer.from(served.pdfBase64, "base64").equals(Buffer.from(signedBytes)));

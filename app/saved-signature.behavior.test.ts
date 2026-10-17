@@ -194,7 +194,7 @@ const clientFinal = await compositeSignatureStamps(Buffer.from(beforeClient.pdfB
 ]);
 await A.submitDocumentSignature.handler(ctx, {
   token: linkA.token, signerName: "Denny", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: Buffer.from(clientFinal).toString("base64"), userAgent: "test",
+  signedPdfDataBase64: Buffer.from(clientFinal).toString("base64"), userAgent: "test", consented: true,
 });
 const servedA = await A.getDocumentLinkPdf.handler(ctx, { token: linkA.token, lang: "en" });
 const servedABytes = Buffer.from(servedA.pdfBase64, "base64");
@@ -217,7 +217,7 @@ const clientFirstBytes = await compositeSignatureStamps(twoPage, payloadB.signat
 ]);
 await A.submitDocumentSignature.handler(ctx, {
   token: linkB.token, signerName: "Denny", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: Buffer.from(clientFirstBytes).toString("base64"), userAgent: "test",
+  signedPdfDataBase64: Buffer.from(clientFirstBytes).toString("base64"), userAgent: "test", consented: true,
 });
 await A.signDocumentWithSavedSignature.handler(ctx, { documentId: docB });
 const servedB = await A.getDocumentLinkPdf.handler(ctx, { token: linkB.token, lang: "en" });

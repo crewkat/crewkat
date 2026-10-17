@@ -215,7 +215,7 @@ const clientSignedBytes = await compositeSignatureStamps(twoPage, payload.signat
 ]);
 const signArgs = {
   token: link.token, signerName: "Denny Client", signatureDataBase64: pngBase64,
-  signedPdfDataBase64: Buffer.from(clientSignedBytes).toString("base64"), userAgent: "test",
+  signedPdfDataBase64: Buffer.from(clientSignedBytes).toString("base64"), userAgent: "test", consented: true,
 };
 await throwsAsync("sign without the required fill values is rejected", () =>
   A.submitDocumentSignature.handler(ctx, { ...signArgs, fillValues: { "f-init": "DC" } }));
