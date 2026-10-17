@@ -278,6 +278,10 @@ check("the Settings-first notice is deleted",
   !appSrc.includes("Save your signature in Settings") && !appSrc.includes("status-link"));
 check("document detail signs through the drawn-signature sheet",
   appSrc.includes("api.signDocumentWithDrawnSignature") && appSrc.includes("DocumentSignSheet") && appSrc.includes("Sign this document"));
+check("signer-name prefill comes from the owner, never the client (2026-10-17 name fix)",
+  appSrc.includes("initialName={ownerSignerName(auth?.user.name)}")
+  && !appSrc.includes("initialName={doc.signerName")
+  && !appSrc.includes("setSignerName] = useState(job?.clientName"));
 check("placement editor offers contractor fields", appSrc.includes('"contractorSignature"') || appSrc.includes('key: "contractorSignature"'));
 const themeCss = await readFile("client/src/theme.css", "utf8");
 check("the dead notice style is removed", !themeCss.includes(".status-link"));

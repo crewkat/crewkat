@@ -19016,6 +19016,37 @@ function SignaturePlacementEditor({
   );
 }
 
+// Contractor printed-name seeding (Danny, 2026-10-17 bug): the "Printed
+// name" on the creation signer form and the "Your full name" on the
+// detail sign sheet are the CONTRACTOR's own name, but the creation form
+// seeded it from the JOB's client name — Danny was prompted to sign as
+// "Anthony Porreca" — and the sign sheet inherited that stored value.
+// Neither field may EVER seed from a client name (job.clientName /
+// doc.clientName / doc.signerName) or from settings.companyName (the
+// BUSINESS name, not a person). Seed chain: the signed-in owner's
+// account name (auth.user.name) → the name this device last signed with
+// (localStorage) → blank (the "Type your full name" placeholder shows).
+const SIGNER_NAME_STORAGE_KEY = "crewkat.signerName";
+function rememberedSignerName(): string {
+  try {
+    return window.localStorage.getItem(SIGNER_NAME_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+function rememberSignerName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  try {
+    window.localStorage.setItem(SIGNER_NAME_STORAGE_KEY, trimmed);
+  } catch {
+    // Storage unavailable (private mode) — the account name still seeds.
+  }
+}
+function ownerSignerName(accountName: string | null | undefined): string {
+  return (accountName ?? "").trim() || rememberedSignerName();
+}
+
 function DocumentSigner({
   lang,
   data,
@@ -19031,13 +19062,14 @@ function DocumentSigner({
   const t = copy[lang];
   const job = data.job;
   const client = useQueryClient();
+  const auth = useContext(AuthContext);
   const [title, setTitle] = useState(
     kind === "contract" ? `${job?.jobType ?? ""} contract` : `Change order`,
   );
   const [bodyText, setBodyText] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [signerName, setSignerName] = useState(job?.clientName ?? "");
+  const [signerName, setSignerName] = useState(() => ownerSignerName(auth?.user.name));
   const [signature, setSignature] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -19108,6 +19140,7 @@ function DocumentSigner({
     mutationFn: async () => {
       let originalDataBase64 = "";
       if (file) originalDataBase64 = (await fileToBase64(file)).dataBase64;
+      rememberSignerName(signerName);
       return api.saveDocument({
         jobId: job?.id ?? 0,
         kind,
@@ -19757,11 +19790,13 @@ function DocumentEditForm({
 function DocumentSignSheet({
   lang,
   initialName,
+  alreadySignedDate,
   onClose,
   onSign,
 }: {
   lang: Lang;
   initialName: string;
+  alreadySignedDate?: string | null;
   onClose: () => void;
   onSign: (signatureDataBase64: string, signerName: string) => Promise<void>;
 }) {
@@ -19787,6 +19822,13 @@ function DocumentSignSheet({
               maxLength={160}
             />
           </label>
+          {alreadySignedDate && (
+            <p className="dim small">
+              {lang === "es"
+                ? `Ya firmaste este documento el ${alreadySignedDate}. Firmar de nuevo reemplaza tu firma.`
+                : `You already signed this document on ${alreadySignedDate}. Signing again replaces your signature.`}
+            </p>
+          )}
           <SignaturePad
             label={t.signature}
             clearLabel={t.clear}
@@ -19877,6 +19919,7 @@ function DocumentDetailScreen({
 }) {
   const t = copy[lang];
   const client = useQueryClient();
+  const auth = useContext(AuthContext);
   const { data } = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => api.getJob({ id: jobId }),
@@ -19909,6 +19952,7 @@ function DocumentDetailScreen({
       signatureDataBase64,
       signerName: signerName || undefined,
     });
+    rememberSignerName(signerName);
     setSignSheetOpen(false);
     invalidate();
   };
@@ -20281,7 +20325,8 @@ function DocumentDetailScreen({
       {signSheetOpen && (
         <DocumentSignSheet
           lang={lang}
-          initialName={doc.signerName || settings?.companyName || ""}
+          initialName={ownerSignerName(auth?.user.name)}
+          alreadySignedDate={doc.signedAt && doc.signerName ? formatDate(doc.signedAt, lang) : null}
           onClose={() => setSignSheetOpen(false)}
           onSign={handleDrawnSign}
         />

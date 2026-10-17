@@ -160,6 +160,36 @@ check("deleteDocument removes links, the row, and all four blobs",
   && deleteLine.includes("doc.originalBlobKey") && deleteLine.includes("doc.signatureBlobKey")
   && deleteLine.includes("doc.clientSignatureBlobKey") && deleteLine.includes("doc.clientSignedPdfBlobKey"));
 
+// --- Contractor printed-name seeding (Danny 2026-10-17): the creation
+// form prefilled "Printed name" with the JOB's CLIENT name ("Anthony
+// Porreca") and the detail sign sheet inherited that stored value, so the
+// contractor was prompted to sign AS the client — and re-signing looked
+// mandatory because no already-signed state was explained. Both fields
+// now seed from the owner's account name -> the device-remembered signer
+// name -> blank, and the sheet says when the doc is already signed.
+const sheetStart = appSrc.indexOf("function DocumentSignSheet");
+const SHEET = appSrc.slice(sheetStart, appSrc.indexOf("// ONE canonical PDF", sheetStart));
+check("creation signer name never seeds from the job's client name",
+  !SIGNER.includes("useState(job?.clientName")
+  && SIGNER.includes("useState(() => ownerSignerName(auth?.user.name))"));
+check("owner-name seed chain ships (account name -> localStorage -> blank)",
+  appSrc.includes('const SIGNER_NAME_STORAGE_KEY = "crewkat.signerName"')
+  && appSrc.includes("function ownerSignerName(") && appSrc.includes("function rememberedSignerName()")
+  && appSrc.includes("window.localStorage.getItem(SIGNER_NAME_STORAGE_KEY)"));
+check("detail sign sheet initialName comes from the owner chain — never doc.signerName / companyName",
+  DETAIL.includes("initialName={ownerSignerName(auth?.user.name)}")
+  && !DETAIL.includes("doc.signerName || settings?.companyName"));
+check("submitted signer names are remembered on this device (creation save + drawn sign)",
+  SIGNER.includes("rememberSignerName(signerName);") && DETAIL.includes("rememberSignerName(signerName);"));
+check("sign sheet shows the already-signed note only when a signed date is passed (EN + ES)",
+  SHEET.includes("alreadySignedDate?: string | null") && SHEET.includes("{alreadySignedDate && (")
+  && SHEET.includes("You already signed this document on ${alreadySignedDate}. Signing again replaces your signature.")
+  && SHEET.includes("Ya firmaste este documento el ${alreadySignedDate}. Firmar de nuevo reemplaza tu firma."));
+check("detail passes the recorded signing date to the sheet (note stays hidden pre-signing)",
+  DETAIL.includes("alreadySignedDate={doc.signedAt && doc.signerName ? formatDate(doc.signedAt, lang) : null}"));
+check("the recorded signer name still displays in the detail facts (audit line untouched)",
+  DETAIL.includes("{doc.signerName} · {formatDate(doc.signedAt, lang)}"));
+
 // --- Server behavior ------------------------------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-contract-detail-"));
 const sqlite = createClient({ url: `file:${join(dir, "app.db")}` });
