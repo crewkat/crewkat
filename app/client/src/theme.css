@@ -3913,7 +3913,9 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .doc-chip { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); flex: none; }
 .doc-chip svg { width: 16px; height: 16px; }
 .custom-row-label { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-/* Stepper shrink — document detail pages only; JobDetail keeps its size.
+/* Stepper shrink — document detail pages; the job detail page matches
+   since 2026-10-17 (Danny: "make the 1234 up top smaller just like in
+   invoices and estimates" — parallel block right below).
    Effective before: 32px dot (the 40px design rule is overridden later in
    the cascade), ~53px block. After: 28px dot, ~46px block. The .flow-step
    button itself stays a ~44px+ tap target via its full column height. */
@@ -3924,6 +3926,15 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .financial-detail-page .flow-dot svg { width: 14px; height: 14px; }
 .financial-detail-page .flow-step.current .flow-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
 .financial-detail-page .flow-link { margin-top: 13px; }
+/* Job detail stepper parity (Danny 2026-10-17): identical values to the
+   financial-detail block above, scoped to the job page (.detail-page). */
+.detail-page .flow-stepper { padding: 2px 4px 0; }
+.detail-page .flow-step { gap: 2px; }
+.detail-page .flow-dot { width: 28px; height: 28px; }
+.detail-page .flow-dot i { font-size: 12.5px; }
+.detail-page .flow-dot svg { width: 14px; height: 14px; }
+.detail-page .flow-step.current .flow-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+.detail-page .flow-link { margin-top: 13px; }
 /* Icon-led collapsible rows on the detail pages (Version history, Activity,
    Recurring): chip + label in one 48px row. */
 .financial-detail-page .action-details > summary { min-height: 48px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
@@ -5559,3 +5570,9 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .quote-options-footer { display: grid; gap: 5px; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 9px; }
 .quote-options-footer span { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); font-size: .9rem; }
 .quote-options-footer span.grand { color: var(--text); font-size: 1rem; font-weight: 800; }
+
+/* Error boundary technical details (2026-10-17): collapsed by default;
+   the caught error text a support screenshot needs. */
+.error-boundary-details { margin-top: 14px; text-align: left; }
+.error-boundary-details summary { font-size: 12px; font-weight: 700; color: var(--dim); cursor: pointer; }
+.error-boundary-details pre { margin: 8px 0 0; font-size: 10.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--dim); max-height: 180px; overflow: auto; }

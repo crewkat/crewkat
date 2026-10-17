@@ -11,7 +11,9 @@
 //    is a styled panel, EN/ES, whose recovery button clears the error state
 //    and returns the user Home) and RootErrorBoundary (wraps <App /> in
 //    main.tsx as the last resort; recovery reloads the app).
-//  - The fallback never renders raw error text (console only).
+//  - The fallback headline stays generic; the caught error rides behind a
+//    collapsed "Technical details" disclosure (2026-10-17 reversal — a
+//    phone-only crash must be screenshot-able with its real cause).
 //  - A resetKey change (navigation while the fallback is up) clears the
 //    error so the user is never stranded on the fallback.
 //
@@ -47,11 +49,12 @@ check("screen boundary resets when the active screen changes",
   appSrc.includes("resetKey={JSON.stringify(screen)}"));
 check("both boundaries derive state from the caught error",
   (boundarySrc.match(/static getDerivedStateFromError/g) ?? []).length === 2);
-check("fallback copy is bilingual and generic (no raw error dump)",
+check("fallback copy is bilingual and generic, error detail behind a disclosure",
   boundarySrc.includes("Something went wrong") && boundarySrc.includes("Algo salió mal")
   && boundarySrc.includes("Back to home") && boundarySrc.includes("Volver al inicio")
   && boundarySrc.includes("Reload the app") && boundarySrc.includes("Recargar la app")
-  && !boundarySrc.includes("error.message") && !boundarySrc.includes("error.stack"));
+  && boundarySrc.includes("Technical details") && boundarySrc.includes("Detalles técnicos")
+  && boundarySrc.includes('className="error-boundary-details"') && boundarySrc.includes("componentStack"));
 check("fallback is styled on-design (panel classes exist in theme.css)",
   themeCss.includes(".error-boundary-panel") && themeCss.includes(".error-boundary-page")
   && boundarySrc.includes('className="primary-button"'));

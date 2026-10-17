@@ -10,28 +10,40 @@
 //  - RootErrorBoundary wraps <App /> in main.tsx as the last resort for
 //    errors outside the signed-in shell (auth, public link screens); its
 //    recovery is a full reload.
-// The fallback never dumps raw error text — just a generic message, in the
-// app's two languages.
+// The fallback headline stays generic in the app's two languages; since
+// 2026-10-17 the caught error (name, message, top of the component stack)
+// rides along behind a collapsed "Technical details" disclosure — a phone
+// crash can be screenshotted with its real cause instead of staying a
+// mystery (contract crash hunt, Danny 2026-10-17).
 import { Component, type ReactNode } from "react";
 
 export type BoundaryLang = "en" | "es";
 
-const STRINGS: Record<BoundaryLang, { title: string; body: string; home: string; reload: string }> = {
+const STRINGS: Record<BoundaryLang, { title: string; body: string; home: string; reload: string; details: string }> = {
   en: {
     title: "Something went wrong",
     body: "This screen couldn't load. Your data is safe — head back home and try again.",
     home: "Back to home",
     reload: "Reload the app",
+    details: "Technical details",
   },
   es: {
     title: "Algo salió mal",
     body: "Esta pantalla no pudo cargarse. Tus datos están a salvo — vuelve al inicio e inténtalo de nuevo.",
     home: "Volver al inicio",
     reload: "Recargar la app",
+    details: "Detalles técnicos",
   },
 };
 
-function BoundaryFallback({ lang, actionLabel, onAction }: { lang: BoundaryLang; actionLabel: string; onAction: () => void }) {
+function errorDetail(error: unknown, info?: { componentStack?: string | null }): string {
+  const err = error instanceof Error ? error : null;
+  const head = err ? `${err.name}: ${err.message}` : String(error);
+  const stack = (info?.componentStack ?? "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
+  return stack ? `${head}\n${stack}` : head;
+}
+
+function BoundaryFallback({ lang, actionLabel, onAction, detail }: { lang: BoundaryLang; actionLabel: string; onAction: () => void; detail?: string | null }) {
   const t = STRINGS[lang];
   return (
     <section className="page error-boundary-page">
@@ -48,6 +60,12 @@ function BoundaryFallback({ lang, actionLabel, onAction }: { lang: BoundaryLang;
         <button type="button" className="primary-button" onClick={onAction}>
           {actionLabel}
         </button>
+        {detail ? (
+          <details className="error-boundary-details">
+            <summary>{t.details}</summary>
+            <pre>{detail}</pre>
+          </details>
+        ) : null}
       </div>
     </section>
   );
@@ -65,17 +83,16 @@ type ScreenBoundaryProps = {
   children: ReactNode;
 };
 
-export class ScreenErrorBoundary extends Component<ScreenBoundaryProps, { hasError: boolean }> {
-  override state = { hasError: false };
+export class ScreenErrorBoundary extends Component<ScreenBoundaryProps, { hasError: boolean; detail: string | null }> {
+  override state = { hasError: false, detail: null as string | null };
 
   static getDerivedStateFromError(): { hasError: boolean } {
     return { hasError: true };
   }
 
-  override componentDidCatch(error: unknown) {
-    // Keep the failure diagnosable in the console without ever showing raw
-    // error text to the user.
+  override componentDidCatch(error: unknown, info?: { componentStack?: string | null }) {
     console.error("Screen render failed:", error);
+    this.setState({ detail: errorDetail(error, info) });
   }
 
   override componentDidUpdate(prevProps: ScreenBoundaryProps) {
@@ -85,7 +102,7 @@ export class ScreenErrorBoundary extends Component<ScreenBoundaryProps, { hasErr
   }
 
   recover = () => {
-    this.setState({ hasError: false });
+    this.setState({ hasError: false, detail: null });
     this.props.onHome();
   };
 
@@ -96,6 +113,7 @@ export class ScreenErrorBoundary extends Component<ScreenBoundaryProps, { hasErr
         lang={this.props.lang}
         actionLabel={STRINGS[this.props.lang].home}
         onAction={this.recover}
+        detail={this.state.detail}
       />
     );
   }
@@ -111,15 +129,16 @@ function detectLang(): BoundaryLang {
   return typeof navigator !== "undefined" && (navigator.language ?? "").toLowerCase().startsWith("es") ? "es" : "en";
 }
 
-export class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; lang: BoundaryLang }> {
-  override state = { hasError: false, lang: detectLang() };
+export class RootErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; lang: BoundaryLang; detail: string | null }> {
+  override state = { hasError: false, lang: detectLang(), detail: null as string | null };
 
   static getDerivedStateFromError(): { hasError: boolean } {
     return { hasError: true };
   }
 
-  override componentDidCatch(error: unknown) {
+  override componentDidCatch(error: unknown, info?: { componentStack?: string | null }) {
     console.error("App render failed:", error);
+    this.setState({ detail: errorDetail(error, info) });
   }
 
   reload = () => {
@@ -133,6 +152,7 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { hasE
         lang={this.state.lang}
         actionLabel={STRINGS[this.state.lang].reload}
         onAction={this.reload}
+        detail={this.state.detail}
       />
     );
   }
