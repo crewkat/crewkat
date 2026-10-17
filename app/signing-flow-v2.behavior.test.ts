@@ -286,6 +286,10 @@ check("completion panel downloads via the signed-only action", appSrc.includes("
 check("completion panel emails a copy via the new action", appSrc.includes("api.emailDocumentLinkSignedCopy") && appSrc.includes("Email me a copy") && appSrc.includes("Enviarme una copia por correo"));
 check("unsigned pages stop rendering once signed", appSrc.includes("{!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}"));
 check("sticky bar styles ship", themeSrc.includes(".client-sign-bar {") && themeSrc.includes(".client-sign-hero {"));
+check("uploaded-contract stub renders as a compact header card", appSrc.includes("{contractStub(true)}") && appSrc.includes("quote-paper quote-paper--compact"));
+check("text-document stub keeps the full paper sheet", appSrc.includes("contractStub(false)"));
+const compactCss = themeSrc.slice(themeSrc.indexOf(".quote-paper--compact {"), themeSrc.indexOf(".quote-paper--compact {") + 120);
+check("compact card styles neutralize the sheet height", compactCss.includes("min-height: 0") && compactCss.includes("padding: 16px 18px"));
 
 // --- Source pins (commit 3: in-app signed-first document view) ---------------------------
 const pdfPagesSlice = appSrc.slice(appSrc.indexOf("function DocumentPdfPages"), appSrc.indexOf("function DocumentPdfPages") + 700);

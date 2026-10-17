@@ -28868,8 +28868,12 @@ function ClientDocumentScreen({ token }: { token: string }) {
       setCopyState("error");
     }
   };
-  const contractStub = (
-    <article className="quote-paper">
+  // Uploaded-PDF contracts get the compact header-card variant: the stub is
+  // only a header there (the PDF pages follow), so the full sheet treatment
+  // read as a blank first page. Text documents keep the full paper — the
+  // stub IS the document for them.
+  const contractStub = (compact: boolean) => (
+    <article className={compact ? "quote-paper quote-paper--compact" : "quote-paper"}>
       <div className="quote-paper-title-row">
         <h2>{doc.title}</h2>
       </div>
@@ -28961,14 +28965,14 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </>
       ) : isUploadedContract ? (
         <>
-          {contractStub}
+          {contractStub(true)}
           {/* Once signed, the SIGNED pages render in the completion
               panel below instead — the unsigned original is not shown
               again (signing flow v2). */}
           {!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}
         </>
       ) : (
-        contractStub
+        contractStub(false)
       )}
       {doc.kind === "quote" && doc.options.length > 0 && (
         <QuoteOptionsPicker lang={lang} token={token} quoteId={doc.documentId} baseTotal={doc.total} options={doc.options} initialSelectedKeys={doc.selectedOptionKeys} accepted={doc.acceptedOptions} />
