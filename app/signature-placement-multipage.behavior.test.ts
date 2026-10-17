@@ -240,5 +240,18 @@ check("the sticky head carries the strips (sticky + solid surface + hairline)",
 const bodyBlock = fnBody(appSrc, 'className="sig-place-body"', 'className="sig-place-pagenav"');
 check("pages body no longer carries the strips", !bodyBlock.includes("sig-place-controls"));
 
+// 2026-10-17 (Danny): a Field height slider joins the width slider in
+// BOTH sticky strips — the placements already carry hPct, so the strip
+// only had to expose it. Top edge anchored (only hPct changes), ranges
+// per type, and never so the field runs past the page bottom.
+check("height slider renders in the sticky strips (EN + ES labels)",
+  headBlock.includes("Field height") && headBlock.includes("Altura del campo"));
+check("signature height slider uses the per-type range helper",
+  headBlock.includes("heightRangeFor(active)"));
+check("signature height update patches hPct, top-anchored with page-bottom clamp",
+  headBlock.includes("Math.min(raw, 1 - f.yPct)") && headBlock.includes("clampField({ ...f, hPct })"));
+check("fill height update patches hPct via updateFill with page-bottom clamp",
+  headBlock.includes("1 - selectedFill.yPct"));
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

@@ -18304,6 +18304,11 @@ function SignaturePlacementEditor({
 
   const defaultsFor = (key: SignatureFieldKey) =>
     key === "clientDate" || key === "contractorDate" ? SIGNATURE_FIELD_DEFAULTS.date : SIGNATURE_FIELD_DEFAULTS.signature;
+  // Field-height slider ranges (% of page height, 0.5% steps) bracket
+  // each type's default height: signature boxes (default 7.5%) get the
+  // taller range, single-line date boxes (default 5%) the slimmer one.
+  const heightRangeFor = (key: SignatureFieldKey) =>
+    key === "clientDate" || key === "contractorDate" ? { min: 2, max: 10 } : { min: 3, max: 15 };
   const clampField = (f: SignatureFieldPlacement): SignatureFieldPlacement => ({
     ...f,
     xPct: Math.min(Math.max(0, f.xPct), 1 - f.wPct),
@@ -18571,6 +18576,27 @@ function SignaturePlacementEditor({
                 }}
               />
             </label>
+            <label>
+              <span>{lang === "es" ? "Altura del campo" : "Field height"}</span>
+              <input
+                type="range"
+                min={heightRangeFor(active).min}
+                max={heightRangeFor(active).max}
+                step={0.5}
+                value={activeField.hPct * 100}
+                onChange={(e) => {
+                  const raw = Number(e.target.value) / 100;
+                  setFields((prev) => {
+                    const f = prev[active];
+                    if (!f) return prev;
+                    // Top edge stays put: only hPct changes, and
+                    // never so the field runs past the page bottom.
+                    const hPct = Math.min(raw, 1 - f.yPct);
+                    return { ...prev, [active]: clampField({ ...f, hPct }) };
+                  });
+                }}
+              />
+            </label>
             <button
               type="button"
               className="btn"
@@ -18649,6 +18675,22 @@ function SignaturePlacementEditor({
                   max={70}
                   value={Math.round(selectedFill.wPct * 100)}
                   onChange={(e) => updateFill(selectedFill.id, { wPct: Number(e.target.value) / 100 })}
+                />
+              </label>
+              <label>
+                <span>{lang === "es" ? "Altura del campo" : "Field height"}</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={10}
+                  step={0.5}
+                  value={selectedFill.hPct * 100}
+                  onChange={(e) =>
+                    updateFill(selectedFill.id, {
+                      // Top edge stays put; never past the page bottom.
+                      hPct: Math.min(Number(e.target.value) / 100, 1 - selectedFill.yPct),
+                    })
+                  }
                 />
               </label>
               <button
