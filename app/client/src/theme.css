@@ -2001,6 +2001,22 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .client-sign-section label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
 .client-sign-section label input { padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; }
 .client-sign-section .dim { margin: 0; }
+/* Signing flow v2 (2026-10-17): DocuSign-style guided signing on the
+   public page — a "Review & sign" hero up top, a sticky bottom action
+   bar that counts down what's missing and jumps to the sign panel, and
+   the completion panel (signed pages + download + email-a-copy). */
+.client-sign-hero { display: grid; gap: 6px; margin: 18px 0 2px; }
+.client-sign-hero h1 { margin: 0; font-size: 24px; }
+.client-sign-hero p { margin: 0; }
+.client-sign-consent { align-items: flex-start !important; font-weight: 600; }
+.client-sign-section label.client-sign-consent input { width: 20px; height: 20px; min-height: 20px; padding: 0; flex: none; margin-top: 1px; accent-color: var(--accent); }
+.client-sign-bar { position: fixed; inset: auto 0 0 0; z-index: 60; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px max(16px, calc(50% - 364px)) calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); box-shadow: 0 -6px 18px color-mix(in srgb, #000 8%, transparent); }
+.client-sign-bar-status { font-size: 13px; font-weight: 700; color: var(--dim); }
+.client-sign-bar .primary-button { min-height: 44px; padding: 0 26px; }
+.client-sign-bar-spacer { height: 78px; }
+.client-signed-email { display: flex; align-items: flex-end; gap: 8px; }
+.client-signed-email label { flex: 1; min-width: 0; }
+.client-signed-email .btn { min-height: 45px; }
 
 
 /* Secure account entry */

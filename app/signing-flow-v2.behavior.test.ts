@@ -270,5 +270,22 @@ const stampSlice = compositeSrc.slice(compositeSrc.indexOf("export async functio
 check("date stamp fits by measured text width", stampSlice.includes("font.widthOfTextAtSize(stamp.dateText"));
 check("date stamp no longer relies on pdf-lib maxWidth wrapping", !stampSlice.includes("maxWidth: dW"));
 
+// --- Source pins (commit 2: public sign page) ------------------------------------------
+const appSrc = await readFile("client/src/App.tsx", "utf8");
+const themeSrc = await readFile("client/src/theme.css", "utf8");
+check("sign page has the Review & sign hero (EN/ES)", appSrc.includes('"Review & sign"') && appSrc.includes('"Revisa y firma"'));
+check("sign page asks who sent it (company from payload)", appSrc.includes("sent you this document to sign") && appSrc.includes("te envió este documento para tu firma"));
+check("consent checkbox copy ships in EN and ES", appSrc.includes("I agree to sign this document electronically.") && appSrc.includes("Acepto firmar este documento electrónicamente."));
+check("sign button is gated on consent", appSrc.includes("fillMissingRequired || !consented"));
+check("sign submission sends the consent assertion", appSrc.includes("consented: true,"));
+check("sticky sign bar exists with its status + jump button", appSrc.includes('className="client-sign-bar"') && appSrc.includes('className="client-sign-bar-status"') && appSrc.includes("scrollIntoView"));
+check("sticky bar counts down required fields (EN/ES)", appSrc.includes("required ${signRemaining === 1 ? \"field\" : \"fields\"} left") && appSrc.includes("Listo para firmar") && appSrc.includes("Ready to sign"));
+check("sign panel carries the scroll anchor id", appSrc.includes('id="client-sign-panel"'));
+check("completion panel renders the signed pages", appSrc.includes('variant="signed"'));
+check("completion panel downloads via the signed-only action", appSrc.includes("api.getDocumentLinkSignedPdf") && appSrc.includes("Download signed PDF") && appSrc.includes("Descargar PDF firmado"));
+check("completion panel emails a copy via the new action", appSrc.includes("api.emailDocumentLinkSignedCopy") && appSrc.includes("Email me a copy") && appSrc.includes("Enviarme una copia por correo"));
+check("unsigned pages stop rendering once signed", appSrc.includes("{!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}"));
+check("sticky bar styles ship", themeSrc.includes(".client-sign-bar {") && themeSrc.includes(".client-sign-hero {"));
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

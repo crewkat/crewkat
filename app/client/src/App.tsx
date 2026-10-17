@@ -28107,10 +28107,14 @@ function ClientDocPageViewer({ pages, urls, kind = "page", index, title, lang, o
   );
 }
 
-function PdfPageView({ token, lang, title }: { token: string; lang: Lang; title: string }) {
+function PdfPageView({ token, lang, title, variant }: { token: string; lang: Lang; title: string; variant?: string }) {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const pagesQuery = useQuery({
-    queryKey: ["client-document-pages", token, lang],
+    // The variant keeps the signed pages (completion state) in a separate
+    // cache entry from the pre-sign pages: the server serves the signed
+    // bytes for the same token once the document is signed, and the
+    // pre-sign rasterization must not be reused for them.
+    queryKey: ["client-document-pages", token, lang, variant ?? ""],
     queryFn: () => api.getDocumentLinkPdfPages({ token, lang }),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -28236,6 +28240,13 @@ function ClientDocumentScreen({ token }: { token: string }) {
   const [signature, setSignature] = useState("");
   const [signError, setSignError] = useState("");
   const [fillValues, setFillValues] = useState<Record<string, string | boolean>>({});
+  // Signing flow v2 (2026-10-17): e-sign consent checkbox state (the
+  // server requires the assertion — see submitDocumentSignature), plus
+  // the completion panel's "email me a copy" + download state.
+  const [consented, setConsented] = useState(false);
+  const [copyEmail, setCopyEmail] = useState("");
+  const [copyState, setCopyState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [downloadingSigned, setDownloadingSigned] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const q = useQuery({
     queryKey: ["client-document", token],
@@ -28265,6 +28276,12 @@ function ClientDocumentScreen({ token }: { token: string }) {
       const name = signerName.trim();
       if (!name) throw new Error(t.required);
       if (!signature) throw new Error(t.signatureDrawHint);
+      if (!consented)
+        throw new Error(
+          lang === "es"
+            ? "Acepta firmar electrónicamente para continuar."
+            : "Agree to sign electronically to continue.",
+        );
       const submittedFill: Record<string, string | boolean> = {};
       for (const f of doc.fillFields ?? []) {
         const v = fillValues[f.id];
@@ -28291,6 +28308,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         signatureDataBase64: signature,
         signedPdfDataBase64: pdfDataUrl.split(",")[1] ?? "",
         fillValues: submittedFill,
+        consented: true,
         userAgent:
           typeof navigator === "undefined"
             ? ""
@@ -28418,6 +28436,43 @@ function ClientDocumentScreen({ token }: { token: string }) {
     const v = fillValues[f.id];
     return f.kind === "checkbox" ? v !== true : typeof v !== "string" || v.trim().length === 0;
   });
+  // Signing flow v2 (2026-10-17): what the sticky action bar counts down —
+  // unfilled required fill fields + missing name + missing signature +
+  // missing consent. Zero means the Sign & Finish button can fire.
+  const unfilledRequiredCount = fillDefs.filter((f) => {
+    if (!f.required) return false;
+    const v = fillValues[f.id];
+    return f.kind === "checkbox" ? v !== true : typeof v !== "string" || v.trim().length === 0;
+  }).length;
+  const signRemaining = unfilledRequiredCount + (signerName.trim() ? 0 : 1) + (signature ? 0 : 1) + (consented ? 0 : 1);
+  const scrollToSignPanel = () => {
+    document.getElementById("client-sign-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const downloadSignedPdf = async () => {
+    setDownloadingSigned(true);
+    try {
+      const res = await api.getDocumentLinkSignedPdf({ token, lang });
+      const binary = atob(res.pdfBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      downloadBlob(new Blob([bytes], { type: "application/pdf" }), res.filename);
+    } catch {
+      /* the button re-enables; the email-a-copy path below still works */
+    } finally {
+      setDownloadingSigned(false);
+    }
+  };
+  const sendSignedCopy = async () => {
+    const email = copyEmail.trim();
+    if (!email) return;
+    setCopyState("sending");
+    try {
+      await api.emailDocumentLinkSignedCopy({ token, email, lang });
+      setCopyState("sent");
+    } catch {
+      setCopyState("error");
+    }
+  };
   const contractStub = (
     <article className="quote-paper">
       <div className="quote-paper-title-row">
@@ -28472,6 +28527,21 @@ function ClientDocumentScreen({ token }: { token: string }) {
           </small>
         </div>
       </header>
+      {doc.signable && !doc.alreadySigned && (
+        <section className="client-sign-hero">
+          <h1>{lang === "es" ? "Revisa y firma" : "Review & sign"}</h1>
+          <p>
+            {lang === "es"
+              ? `${c.name} te envió este documento para tu firma.`
+              : `${c.name} sent you this document to sign.`}
+          </p>
+          <p className="dim">
+            {lang === "es"
+              ? "Revisa el documento, completa los campos marcados y firma al final de la página."
+              : "Review the document below, complete any marked fields, then sign at the bottom of the page."}
+          </p>
+        </section>
+      )}
       {previewDoc && financialKind ? (
         <>
           <PdfPageView token={token} lang={lang} title={doc.title} />
@@ -28497,7 +28567,10 @@ function ClientDocumentScreen({ token }: { token: string }) {
       ) : isUploadedContract ? (
         <>
           {contractStub}
-          <PdfPageView token={token} lang={lang} title={doc.title} />
+          {/* Once signed, the SIGNED pages render in the completion
+              panel below instead — the unsigned original is not shown
+              again (signing flow v2). */}
+          {!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}
         </>
       ) : (
         contractStub
@@ -28557,7 +28630,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </section>
       )}
       {doc.signable && !doc.alreadySigned && (
-        <section className="client-sign-section">
+        <section className="client-sign-section" id="client-sign-panel">
           <h2>{t.signHere}</h2>
           <label>
             <span>{t.signerName}</span>
@@ -28574,11 +28647,23 @@ function ClientDocumentScreen({ token }: { token: string }) {
             clearLabel={t.clear}
             onChange={setSignature}
           />
+          <label className="check-row client-sign-consent">
+            <input
+              type="checkbox"
+              checked={consented}
+              onChange={(e) => setConsented(e.target.checked)}
+            />
+            <span>
+              {lang === "es"
+                ? "Acepto firmar este documento electrónicamente."
+                : "I agree to sign this document electronically."}
+            </span>
+          </label>
           {signError && <p className="status error">{signError}</p>}
           <button
             type="button"
             className="primary-button"
-            disabled={sign.isPending || !signerName.trim() || !signature || fillMissingRequired}
+            disabled={sign.isPending || !signerName.trim() || !signature || fillMissingRequired || !consented}
             onClick={() => sign.mutate()}
           >
             {sign.isPending ? t.signing : t.signAndFinish}
@@ -28587,9 +28672,74 @@ function ClientDocumentScreen({ token }: { token: string }) {
         </section>
       )}
       {doc.signable && doc.alreadySigned && (
-        <section className="empty-state">
+        <section className="client-sign-section client-signed-panel">
           <h2>✓ {t.alreadySigned}</h2>
-          <p>{t.signedThanks}</p>
+          <p>
+            {lang === "es" ? "Firmado por " : "Signed by "}
+            {doc.clientSignerName || doc.clientName || "—"}
+            {doc.clientSignedAt ? ` · ${formatDate(doc.clientSignedAt, lang)}` : ""}
+          </p>
+          <p className="dim">{t.signedThanks}</p>
+          {isUploadedContract && (
+            <PdfPageView token={token} lang={lang} title={doc.title} variant="signed" />
+          )}
+          <button
+            type="button"
+            className="primary-button"
+            disabled={downloadingSigned}
+            onClick={() => void downloadSignedPdf()}
+          >
+            {downloadingSigned
+              ? lang === "es"
+                ? "Descargando…"
+                : "Downloading…"
+              : lang === "es"
+                ? "Descargar PDF firmado"
+                : "Download signed PDF"}
+          </button>
+          <div className="client-signed-email">
+            <label>
+              <span>{lang === "es" ? "Enviarme una copia por correo" : "Email me a copy"}</span>
+              <input
+                type="email"
+                value={copyEmail}
+                onChange={(e) => {
+                  setCopyEmail(e.target.value);
+                  setCopyState("idle");
+                }}
+                placeholder={lang === "es" ? "tu@correo.com" : "you@email.com"}
+                autoComplete="email"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn"
+              disabled={copyState === "sending" || !copyEmail.trim()}
+              onClick={() => void sendSignedCopy()}
+            >
+              {copyState === "sending"
+                ? lang === "es"
+                  ? "Enviando…"
+                  : "Sending…"
+                : lang === "es"
+                  ? "Enviar"
+                  : "Send"}
+            </button>
+          </div>
+          {copyState === "sent" && (
+            <p className="status success">
+              {lang === "es"
+                ? "Copia enviada. Revisa tu correo."
+                : "Copy sent. Check your email."}
+            </p>
+          )}
+          {copyState === "error" && (
+            <p className="status error">
+              {lang === "es"
+                ? "No se pudo enviar la copia. Inténtalo de nuevo."
+                : "Couldn't send the copy. Please try again."}
+            </p>
+          )}
         </section>
       )}
       {galleryIndex !== null && (doc.attachedImages ?? [])[galleryIndex] && (
@@ -28603,6 +28753,25 @@ function ClientDocumentScreen({ token }: { token: string }) {
           )}
           {(() => { const g = (doc.attachedImages ?? [])[galleryIndex]; return g ? <img className="lightbox-image" src={g.url} alt={g.fileName} /> : null; })()}
         </div>
+      )}
+      {doc.signable && !doc.alreadySigned && (
+        <>
+          <div className="client-sign-bar-spacer" aria-hidden="true" />
+          <div className="client-sign-bar">
+            <span className="client-sign-bar-status">
+              {signRemaining > 0
+                ? lang === "es"
+                  ? `Faltan ${signRemaining} ${signRemaining === 1 ? "campo requerido" : "campos requeridos"}`
+                  : `${signRemaining} required ${signRemaining === 1 ? "field" : "fields"} left`
+                : lang === "es"
+                  ? "Listo para firmar"
+                  : "Ready to sign"}
+            </span>
+            <button type="button" className="primary-button" onClick={scrollToSignPanel}>
+              {lang === "es" ? "Firmar" : "Sign"}
+            </button>
+          </div>
+        </>
       )}
     </main>
   );
