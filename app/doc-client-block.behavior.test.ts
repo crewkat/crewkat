@@ -161,3 +161,43 @@ describe("row styling", () => {
     expect(CSS).toContain(".doc-client-sheet .compact-form { border: 0; margin: 0; padding: 0; }");
   });
 });
+
+// Client picker results readability (Danny, 2026-10-17, phone screenshots of
+// the New Job form): each option's detail line (phone · email · address) was
+// forced onto ONE nowrap line and clipped mid-word at the right edge, and the
+// results box was short enough that rows sat half-cut at its edge. The shared
+// ClientPicker renders in the New Job form and in DocClientSheet above, so
+// these base-rule pins cover both.
+describe("client picker results readability", () => {
+  const pickerRule = (selector: string) => {
+    const start = CSS.indexOf(selector);
+    expect(start).toBeGreaterThan(-1);
+    return CSS.slice(start, CSS.indexOf("}", start) + 1);
+  };
+
+  test("detail line wraps to two lines instead of the single-line squeeze", () => {
+    const small = pickerRule(".client-picker-results small {");
+    expect(small).toContain("-webkit-line-clamp: 2");
+    expect(small).toContain("-webkit-box-orient: vertical");
+    expect(small).toContain("line-height: 1.35");
+    expect(small).toContain("overflow-wrap: anywhere");
+    expect(small).not.toContain("white-space: nowrap");
+  });
+
+  test("results box is taller (60dvh) so more clients are visible at once", () => {
+    const results = pickerRule(".client-picker-results {");
+    expect(results).toContain("max-height:min(420px,60dvh)");
+    expect(results).toContain("overflow-y:auto");
+  });
+
+  test("rows grow past the 58px floor; no fixed height caps them", () => {
+    const button = pickerRule(".client-picker-results button {");
+    expect(button).toContain("min-height: 58px");
+    expect(button).toContain("align-content: start");
+    expect(button).not.toMatch(/[;{]\s*height:/);
+  });
+
+  test("name line-height keeps the name from clipping", () => {
+    expect(pickerRule(".client-picker-results strong {")).toContain("line-height: 1.25");
+  });
+});
