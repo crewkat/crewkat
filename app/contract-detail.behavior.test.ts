@@ -167,6 +167,11 @@ check("deleteDocument removes links, the row, and all four blobs",
 // mandatory because no already-signed state was explained. Both fields
 // now seed from the owner's account name -> the device-remembered signer
 // name -> blank, and the sheet says when the doc is already signed.
+// --- One signing moment (Danny, later the same day): the detail action
+// bar carries NO Sign action at all — creation is the signing moment.
+// The only other path to the sheet is ONE quiet entry inside the Edit
+// form ("Sign this document" while unsigned / "Redo signature" once
+// signed), which is why the already-signed note above stays meaningful.
 const sheetStart = appSrc.indexOf("function DocumentSignSheet");
 const SHEET = appSrc.slice(sheetStart, appSrc.indexOf("// ONE canonical PDF", sheetStart));
 check("creation signer name never seeds from the job's client name",
@@ -189,6 +194,25 @@ check("detail passes the recorded signing date to the sheet (note stays hidden p
   DETAIL.includes("alreadySignedDate={doc.signedAt && doc.signerName ? formatDate(doc.signedAt, lang) : null}"));
 check("the recorded signer name still displays in the detail facts (audit line untouched)",
   DETAIL.includes("{doc.signerName} · {formatDate(doc.signedAt, lang)}"));
+
+const barStart = DETAIL.indexOf('className="doc-action-bar"');
+const BAR = DETAIL.slice(barStart, DETAIL.indexOf("<DocumentLinkPanel", barStart));
+check("the main action bar has NO Sign action (View / Place / Edit / Delete only, signed or not)",
+  barStart > -1
+  && BAR.includes("t.actView") && BAR.includes("t.actPlace")
+  && BAR.includes("t.actEdit") && BAR.includes("t.actDelete")
+  && !BAR.includes("Sign document") && !BAR.includes("Firmar documento")
+  && !BAR.includes("setSignSheetOpen"));
+check("the dead actSign copy keys are gone with the action",
+  !appSrc.includes("actSign"));
+check("Edit carries the one Sign/Redo entry, labeled by the status strip's signed condition (doc.signedAt)",
+  EDIT.includes("const contractorSigned = !!doc.signedAt;")
+  && EDIT.includes('className="doc-edit-sign-entry"') && EDIT.includes("onClick={onSignRequest}")
+  && EDIT.includes('"Sign this document"') && EDIT.includes('"Firmar este documento"')
+  && EDIT.includes('"Redo signature"') && EDIT.includes('"Rehacer firma"'));
+check("the detail wires the Edit entry to the sheet — the app's only sheet opener",
+  DETAIL.includes("onSignRequest={() => {")
+  && (appSrc.split("setSignSheetOpen(true)").length - 1) === 1);
 
 // --- Server behavior ------------------------------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-contract-detail-"));

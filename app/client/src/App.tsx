@@ -694,7 +694,6 @@ const copy = {
     optionalLabel: "Optional",
     signerNextNote: "Next you'll place this signature and the client's on the document's signature page — then send the signing link.",
     actView: "View",
-    actSign: "Sign",
     actPlace: "Place",
     actEdit: "Edit",
     actDelete: "Delete",
@@ -1038,7 +1037,6 @@ const copy = {
     optionalLabel: "Opcional",
     signerNextNote: "Luego colocarás esta firma y la del cliente en la página de firmas del documento — y enviarás el enlace de firma.",
     actView: "Ver",
-    actSign: "Firmar",
     actPlace: "Colocar",
     actEdit: "Editar",
     actDelete: "Eliminar",
@@ -19666,13 +19664,19 @@ function DocumentEditForm({
   doc,
   onSaved,
   onCancel,
+  onSignRequest,
 }: {
   lang: Lang;
   doc: SignedDocument;
   onSaved: () => void;
   onCancel: () => void;
+  onSignRequest: () => void;
 }) {
   const t = copy[lang];
+  // Signed state = the exact condition the detail status strip uses for
+  // "Signed by you" (doc.signedAt), so the entry label can never
+  // disagree with the status line.
+  const contractorSigned = !!doc.signedAt;
   const [title, setTitle] = useState(doc.title);
   const [bodyText, setBodyText] = useState(doc.bodyText);
   const [description, setDescription] = useState(doc.description);
@@ -19766,6 +19770,30 @@ function DocumentEditForm({
           </label>
         </>
       )}
+      {/* Signing lives HERE, not in the main action bar (Danny
+          2026-10-17): creation is the one signing moment, so the only
+          other path to the sign sheet is this one quiet secondary entry
+          inside Edit — "Sign this document" while unsigned (rescue for
+          legacy/edge docs), "Redo signature" once signed. */}
+      <button
+        type="button"
+        className="doc-edit-sign-entry"
+        onClick={onSignRequest}
+      >
+        <Icon size={18}>
+          <path d="M12 3l4 7-4 11L8 10z" />
+          <circle cx="12" cy="11" r="1.4" />
+        </Icon>
+        <span>
+          {contractorSigned
+            ? lang === "es"
+              ? "Rehacer firma"
+              : "Redo signature"
+            : lang === "es"
+              ? "Firmar este documento"
+              : "Sign this document"}
+        </span>
+      </button>
       {error && (
         <p className="status error" role="alert">
           {error}
@@ -19785,8 +19813,10 @@ function DocumentEditForm({
 
 // Draw-to-sign sheet (Danny 2026-10-17): a FRESH signature is drawn
 // for every signing — nothing is stored on the account, so a hijacked
-// account cannot sign in the owner's name with one tap. Used by the
-// document detail Sign action; re-signing replaces the contractor stamp.
+// account cannot sign in the owner's name with one tap. Opened from the
+// one quiet Sign/Redo entry inside the document Edit form (there is no
+// Sign action in the main action bar — creation is the signing moment);
+// signing replaces the contractor stamp.
 function DocumentSignSheet({
   lang,
   initialName,
@@ -19942,10 +19972,11 @@ function DocumentDetailScreen({
     client.invalidateQueries({ queryKey: ["job", jobId] });
     client.invalidateQueries({ queryKey: ["documents"] });
   };
-  // Draw-to-sign (Danny 2026-10-17): the Sign action opens a sheet and
-  // the contractor draws a FRESH signature every time — no signature is
-  // stored on the account. Re-signing replaces the contractor stamp
-  // (same re-sign semantics the old tap-to-sign had).
+  // Draw-to-sign (Danny 2026-10-17): the contractor draws a FRESH
+  // signature every time — no signature is stored on the account. The
+  // sheet opens from the Edit form's one Sign/Redo entry (no Sign
+  // action in the main action bar): signing an unsigned document is the
+  // rescue path, re-signing a signed one replaces the contractor stamp.
   const handleDrawnSign = async (signatureDataBase64: string, signerName: string) => {
     await api.signDocumentWithDrawnSignature({
       documentId,
@@ -20014,9 +20045,11 @@ function DocumentDetailScreen({
       <PageHeader lang={lang} title={doc.title} onBack={onBack} />
       {!editing && (
         <section className="saved-section doc-actions-section">
-          {/* Design overhaul (Danny 2026-10-17): the five document actions as
+          {/* Design overhaul (Danny 2026-10-17): the document actions as
               one compact icon bar — icon over a tiny label, tap by shape.
-              Same handlers and conditionals as the old button wrap. */}
+              Same handlers as the old button wrap. NO Sign action here
+              by design (Danny): signing happens at creation; the redo /
+              rescue entry lives inside Edit. */}
           <div
             className="doc-action-bar"
             role="group"
@@ -20060,21 +20093,6 @@ function DocumentDetailScreen({
                     : "Opening…"
                   : t.actView}
               </span>
-            </button>
-            <button
-              type="button"
-              className="doc-action"
-              aria-label={lang === "es" ? "Firmar documento" : "Sign document"}
-              onClick={() => {
-                setViewError("");
-                setSignSheetOpen(true);
-              }}
-            >
-              <Icon size={21}>
-                <path d="M12 3l4 7-4 11L8 10z" />
-                <circle cx="12" cy="11" r="1.4" />
-              </Icon>
-              <span>{t.actSign}</span>
             </button>
             {doc.originalUrl ? (
               <button
@@ -20248,6 +20266,10 @@ function DocumentDetailScreen({
               setEditing(false);
             }}
             onCancel={() => setEditing(false)}
+            onSignRequest={() => {
+              setViewError("");
+              setSignSheetOpen(true);
+            }}
           />
         </section>
       ) : (

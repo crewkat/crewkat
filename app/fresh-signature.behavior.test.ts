@@ -282,6 +282,14 @@ check("signer-name prefill comes from the owner, never the client (2026-10-17 na
   appSrc.includes("initialName={ownerSignerName(auth?.user.name)}")
   && !appSrc.includes("initialName={doc.signerName")
   && !appSrc.includes("setSignerName] = useState(job?.clientName"));
+const barStartFs = appSrc.indexOf('className="doc-action-bar"');
+const BAR_FS = appSrc.slice(barStartFs, appSrc.indexOf("<DocumentLinkPanel", barStartFs));
+check("one signing moment: no Sign action in the detail action bar — the sheet opens only from Edit's Sign/Redo entry, note intact",
+  barStartFs > -1 && !BAR_FS.includes("Sign document") && !BAR_FS.includes("Firmar documento")
+  && appSrc.includes('className="doc-edit-sign-entry"')
+  && appSrc.includes('"Redo signature"') && appSrc.includes('"Rehacer firma"')
+  && appSrc.includes("alreadySignedDate")
+  && (appSrc.split("setSignSheetOpen(true)").length - 1) === 1);
 check("placement editor offers contractor fields", appSrc.includes('"contractorSignature"') || appSrc.includes('key: "contractorSignature"'));
 const themeCss = await readFile("client/src/theme.css", "utf8");
 check("the dead notice style is removed", !themeCss.includes(".status-link"));

@@ -5775,6 +5775,8 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .doc-action:active { background: var(--surface-2); }
 .doc-action:disabled { opacity: .55; cursor: wait; }
 .doc-action.danger { color: var(--danger); }
+.doc-edit-sign-entry { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-weight: 700; text-align: left; cursor: pointer; }
+.doc-edit-sign-entry:active { background: var(--surface-2); }
 .doc-status-strip { display: flex; flex-wrap: wrap; gap: 5px 14px; align-items: center; margin-inline: -16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--dim); }
 .doc-status-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .doc-status-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--chart-green); }
