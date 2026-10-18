@@ -560,6 +560,14 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/privacy" || urlPath === "/privacy/") {
     return sendFile(res, join(MARKETING_DIST, "privacy.html"));
   }
+  // Phase 1 marketing feature pages (2026-10-18): one static HTML file per
+  // feature in the marketing dir, Invoice Fly-style. Explicit routes are
+  // required — unknown paths fall back to the marketing homepage below, which
+  // would soft-duplicate it for crawlers.
+  const marketingPage = /^\/(pricing|invoicing|estimates|contracts|jobs|clients|marketplace)\/?$/.exec(urlPath);
+  if (marketingPage) {
+    return sendFile(res, join(MARKETING_DIST, `${marketingPage[1]}.html`));
+  }
   // Crawler + browser well-known files live at the root.
   if (urlPath === "/robots.txt" || urlPath === "/sitemap.xml" || urlPath === "/favicon.ico") {
     const name = urlPath === "/favicon.ico" ? "favicon.png" : urlPath.slice(1);
