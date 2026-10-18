@@ -67,7 +67,7 @@ await migrate(db, { migrationsFolder: "./drizzle" });
 const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const byTag = Object.fromEntries(entries.map((e: any) => [e.tag, e]));
-check("newest migration tag is 0083_job_files", entries[entries.length - 1].tag === "0083_job_files", entries[entries.length - 1].tag);
+check("newest migration tag is 0084_support_screenshots", entries[entries.length - 1].tag === "0084_support_screenshots", entries[entries.length - 1].tag);
 check("0077 when strictly greater than 0076", byTag["0077_crane_run_weekly"].when > byTag["0076_quote_option_selection"].when);
 const tables = (await client.execute("SELECT name FROM sqlite_master WHERE type='table'")).rows.map((r) => (r as any).name as string);
 check("table exists: weekly_game_champions", tables.includes("weekly_game_champions"));

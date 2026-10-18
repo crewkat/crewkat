@@ -1211,6 +1211,10 @@ export const platformSupportReports = sqliteTable("platform_support_reports", {
   kind: text("kind", { enum: ["support", "problem", "question", "general", "feature"] }).notNull(),
   subject: text("subject").notNull(),
   message: text("message").notNull(),
+  // Screenshot blob keys the user attached from Settings -> Send a report
+  // (JSON array of blob-store keys, max 4, migration 0084). Keys only — the
+  // bytes live in blob storage under `support-screenshots/<userId>/`.
+  screenshotKeysJson: text("screenshot_keys").notNull().default("[]"),
   language: text("language", { enum: ["en", "es"] }).notNull().default("en"),
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   isUnread: integer("is_unread", { mode: "boolean" }).notNull().default(true),

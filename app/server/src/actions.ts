@@ -1131,6 +1131,28 @@ export async function isPlatformTeamMember(db: ReturnType<Ctx["db"]>, user: { id
 // The workspace ctx's `db` proxy auto-filters every table that has a
 // company_id column down to the admin's own company, so admin handlers
 // use this unscoped db instead.
+// Support-report screenshots: the report row stores blob keys as JSON
+// (migration 0084); thread views hydrate them to viewable URLs. A blob that
+// can't be resolved yields a null URL instead of failing the whole thread.
+export function parseScreenshotKeys(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === "string" && key.length > 0).slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function hydrateScreenshots(ctx: Ctx, json: string | null | undefined): Promise<{ key: string; url: string | null }[]> {
+  const keys = parseScreenshotKeys(json);
+  return Promise.all(keys.map(async (key) => {
+    let url: string | null = null;
+    try { url = await ctx.blobs.getUrl(key); } catch { url = null; }
+    return { key, url };
+  }));
+}
+
 export function platformDb(ctx: Ctx): ReturnType<Ctx["db"]> {
   const scoped = ctx as WorkspaceCtx;
   if (typeof scoped.unscopedDb === "function") return scoped.unscopedDb();
@@ -5877,16 +5899,42 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   // plain conversation bubbles — deliberately no read receipts; the only
   // unread signal is Danny's inbox badge.
   // ---------------------------------------------------------------------------
+  // Support screenshots (Danny 2026-10-18): the Settings report form uploads
+  // each image through this action first (same base64 + blob-store pattern as
+  // addPhoto / uploadLogo), then passes the returned keys to
+  // submitPlatformSupportReport. Keys are namespaced per user so a report can
+  // only ever attach its author's own uploads.
+  uploadSupportScreenshot: defineAction({
+    request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: z.string().min(1).max(14_000_000) }),
+    response: z.object({ key: z.string() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      const safeName = args.filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const key = `support-screenshots/${user.id}/${crypto.randomUUID()}-${safeName}`;
+      await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType });
+      return { key };
+    },
+  }),
   submitPlatformSupportReport: defineAction({
-    request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema }),
+    request: z.object({ kind: z.enum(["support", "problem", "question", "general", "feature"]), subject: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(5000), language: languageSchema, screenshots: z.array(z.string().min(1).max(300)).max(4).default([]) }),
     response: z.object({ id: z.number(), sentAt: z.string() }),
     async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db<typeof schema>();
       const user = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name, email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user) throw new Error("Sign in to continue.");
+      // Zod caps the array at 4 through the runtime; re-check here so direct
+      // handler calls behave the same, and only accept keys this user
+      // uploaded (their `support-screenshots/<userId>/` namespace).
+      const screenshots = args.screenshots ?? [];
+      if (screenshots.length > 4) throw new Error("Attach at most 4 screenshots.");
+      const ownPrefix = `support-screenshots/${user.id}/`;
+      if (screenshots.some((key) => typeof key !== "string" || !key.startsWith(ownPrefix))) throw new Error("Those screenshots could not be attached.");
       const now = new Date();
-      const made = (await db.insert(schema.platformSupportReports).values({ userId: user.id, userName: user.name, userEmail: user.email, kind: args.kind, subject: args.subject, message: args.message, language: args.language, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.platformSupportReports.id }))[0];
+      const made = (await db.insert(schema.platformSupportReports).values({ userId: user.id, userName: user.name, userEmail: user.email, kind: args.kind, subject: args.subject, message: args.message, screenshotKeysJson: JSON.stringify(screenshots), language: args.language, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: schema.platformSupportReports.id }))[0];
       if (!made) throw new Error("The report could not be sent.");
       ctx.invalidateQueries();
       return { id: made.id, sentAt: now.toISOString() };
@@ -5964,7 +6012,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   platformSupportThread: defineAction({
     request: z.object({ reportId: z.number().int().positive() }),
     response: z.object({
-      report: z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), language: z.string(), status: z.string(), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable(), priority: z.string(), assignedTo: z.object({ id: z.number(), name: z.string() }).nullable() }),
+      report: z.object({ id: z.number(), userName: z.string(), userEmail: z.string(), kind: z.string(), subject: z.string(), message: z.string(), screenshots: z.array(z.object({ key: z.string(), url: z.string().nullable() })), language: z.string(), status: z.string(), isUnread: z.boolean(), createdAt: z.string(), resolvedAt: z.string().nullable(), priority: z.string(), assignedTo: z.object({ id: z.number(), name: z.string() }).nullable() }),
       replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
     }),
     async handler(ctx, args) {
@@ -5977,7 +6025,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
         : undefined;
       const replies = await db.select().from(schema.platformSupportReplies).where(eq(schema.platformSupportReplies.reportId, report.id)).orderBy(schema.platformSupportReplies.createdAt, schema.platformSupportReplies.id);
       return {
-        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
+        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, screenshots: await hydrateScreenshots(ctx, report.screenshotKeysJson), language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() })),
       };
     },
@@ -6060,7 +6108,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   userSupportThread: defineAction({
     request: z.object({ reportId: z.number().int().positive() }),
     response: z.object({
-      report: z.object({ id: z.number(), kind: z.string(), subject: z.string(), message: z.string(), status: z.string(), createdAt: z.string() }),
+      report: z.object({ id: z.number(), kind: z.string(), subject: z.string(), message: z.string(), screenshots: z.array(z.object({ key: z.string(), url: z.string().nullable() })), status: z.string(), createdAt: z.string() }),
       replies: z.array(z.object({ id: z.number(), sender: z.string(), message: z.string(), createdAt: z.string() })),
     }),
     async handler(ctx, args) {
@@ -6071,7 +6119,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       if (!report || report.userId !== identity.workspaceUserId) throw new Error("Report not found.");
       const replies = await db.select().from(schema.platformSupportReplies).where(eq(schema.platformSupportReplies.reportId, report.id)).orderBy(schema.platformSupportReplies.createdAt, schema.platformSupportReplies.id);
       return {
-        report: { id: report.id, kind: report.kind, subject: report.subject, message: report.message, status: report.status, createdAt: report.createdAt.toISOString() },
+        report: { id: report.id, kind: report.kind, subject: report.subject, message: report.message, screenshots: await hydrateScreenshots(ctx, report.screenshotKeysJson), status: report.status, createdAt: report.createdAt.toISOString() },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() })),
       };
     },

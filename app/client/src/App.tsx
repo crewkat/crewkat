@@ -11088,6 +11088,15 @@ function SettingsScreen({
     id: number;
     sentAt: string;
   } | null>(null);
+  // Report screenshots (Danny 2026-10-18): uploaded one by one through
+  // uploadSupportScreenshot as they're picked; only the blob keys ride along
+  // with the submit. A failed upload never blocks the report itself.
+  const [supportShots, setSupportShots] = useState<
+    { key: string; previewUrl: string }[]
+  >([]);
+  const [shotUploadsInFlight, setShotUploadsInFlight] = useState(0);
+  const [shotError, setShotError] = useState("");
+  const shotInputRef = useRef<HTMLInputElement | null>(null);
   const [morePanel, setMorePanel] = useState<"email" | "payments" | "overdue" | "sorting" | "notifications" | "trash" | null>(settingsMorePanelCache);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
@@ -11111,12 +11120,69 @@ function SettingsScreen({
     },
     onSuccess: () => client.invalidateQueries({ queryKey: ["settings"] }),
   });
+  const shotUpload = useMutation({
+    mutationFn: async (file: File) => {
+      const compressed = await compressImageFile(file, "attachment");
+      if (
+        compressed.type !== "image/jpeg" &&
+        compressed.type !== "image/png" &&
+        compressed.type !== "image/webp"
+      ) {
+        throw new Error("unsupported image type");
+      }
+      const data = await fileToBase64(compressed);
+      const result = await api.uploadSupportScreenshot({
+        filename: compressed.name,
+        contentType: compressed.type,
+        dataBase64: data.dataBase64,
+      });
+      return { key: result.key, previewUrl: URL.createObjectURL(compressed) };
+    },
+    onMutate: () => {
+      setShotError("");
+      setShotUploadsInFlight((count) => count + 1);
+    },
+    onSuccess: (shot) => {
+      setSupportShots((current) =>
+        current.length >= 4 ? current : [...current, shot],
+      );
+    },
+    onError: () => {
+      setShotError(
+        lang === "es"
+          ? "Esa imagen no se pudo subir — aún puedes enviar el reporte sin ella."
+          : "That image couldn't be uploaded — you can still send the report without it.",
+      );
+    },
+    onSettled: () => {
+      setShotUploadsInFlight((count) => Math.max(0, count - 1));
+    },
+  });
+  const pickSupportShots = (files: FileList | null) => {
+    if (!files) return;
+    const room = Math.max(0, 4 - supportShots.length - shotUploadsInFlight);
+    Array.from(files).slice(0, room).forEach((file) => shotUpload.mutate(file));
+  };
+  const removeSupportShot = (key: string) => {
+    setSupportShots((current) => {
+      const shot = current.find((entry) => entry.key === key);
+      if (shot) URL.revokeObjectURL(shot.previewUrl);
+      return current.filter((entry) => entry.key !== key);
+    });
+  };
   const report = useMutation({
     mutationFn: () =>
-      api.submitPlatformSupportReport({ ...supportForm, language: lang }),
+      api.submitPlatformSupportReport({
+        ...supportForm,
+        language: lang,
+        screenshots: supportShots.map((shot) => shot.key),
+      }),
     onSuccess: (result) => {
       setSentReport(result);
       setSupportForm((current) => ({ ...current, subject: "", message: "" }));
+      supportShots.forEach((shot) => URL.revokeObjectURL(shot.previewUrl));
+      setSupportShots([]);
+      setShotError("");
       client.invalidateQueries({ queryKey: ["support-threads"] });
     },
   });
@@ -11754,11 +11820,70 @@ function SettingsScreen({
                   }}
                 />
               </label>
+              <div className="support-shots">
+                <span className="support-shots-label">
+                  {lang === "es" ? "Capturas" : "Screenshots"}
+                </span>
+                <div className="support-shots-row">
+                  {supportShots.map((shot) => (
+                    <span key={shot.key} className="support-shot">
+                      <img src={shot.previewUrl} alt="" />
+                      <button
+                        type="button"
+                        aria-label={
+                          lang === "es"
+                            ? "Quitar captura"
+                            : "Remove screenshot"
+                        }
+                        onClick={() => removeSupportShot(shot.key)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {supportShots.length < 4 && (
+                    <button
+                      type="button"
+                      className="support-shot-add"
+                      onClick={() => shotInputRef.current?.click()}
+                    >
+                      {lang === "es" ? "Añadir capturas" : "Add screenshots"}
+                    </button>
+                  )}
+                  <input
+                    ref={shotInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      pickSupportShots(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                <small className="support-shots-hint">
+                  {lang === "es"
+                    ? "Opcional — hasta 4 imágenes."
+                    : "Optional — up to 4 images."}
+                </small>
+                {shotUploadsInFlight > 0 && (
+                  <p className="status" role="status">
+                    {lang === "es" ? "Subiendo…" : "Uploading…"}
+                  </p>
+                )}
+                {shotError && (
+                  <p className="status error" role="alert">
+                    {shotError}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 className="secondary-button"
                 disabled={
                   report.isPending ||
+                  shotUploadsInFlight > 0 ||
                   !supportForm.subject.trim() ||
                   !supportForm.message.trim()
                 }
@@ -12496,6 +12621,26 @@ function PASupportTab({ lang }: { lang: Lang }) {
   </>;
 }
 
+// Screenshots attached to a support report (Danny 2026-10-18): thumbnails
+// that open the full image. Shared by the admin thread view and the user's
+// own thread view.
+function SupportScreenshots({ shots, lang }: { shots: { key: string; url: string | null }[]; lang: Lang }) {
+  const visible = shots.filter((shot) => shot.url);
+  if (!visible.length) return null;
+  return (
+    <div className="support-shots-block">
+      <span className="support-shots-label">{lang === "es" ? "Capturas" : "Screenshots"}</span>
+      <div className="support-shots-view">
+        {visible.map((shot) => (
+          <a key={shot.key} href={shot.url!} target="_blank" rel="noreferrer">
+            <img src={shot.url!} alt="" loading="lazy" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; reportId: number; onBack: () => void; t: SupportStrings }) {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["pa-support-thread", reportId], queryFn: () => api.platformSupportThread({ reportId }) });
@@ -12570,6 +12715,7 @@ function PASupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; report
       </div>
     </div>
     <ThreadBubbles lang={lang} items={items} />
+    <SupportScreenshots shots={report.screenshots ?? []} lang={lang} />
     <div className="pa-notes">
       <h4 className="pa-notes-title">{t.notesTitle}</h4>
       {notesQuery.isLoading && <div className="loading-block" aria-label={t.loading} />}
@@ -12635,6 +12781,7 @@ function UserSupportThreadView({ lang, reportId, onBack, t }: { lang: Lang; repo
     <button type="button" className="secondary-button thread-back" onClick={onBack}>← {t.back}</button>
     <h3 className="thread-subject">{report.subject}</h3>
     <ThreadBubbles lang={lang} items={items} />
+    <SupportScreenshots shots={report.screenshots ?? []} lang={lang} />
     {report.status !== "resolved" && <ThreadReplyBox lang={lang} pending={send.isPending} error={error} onSend={(message) => send.mutate(message)} />}
   </div>;
 }
