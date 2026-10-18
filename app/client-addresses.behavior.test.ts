@@ -55,7 +55,7 @@ function check(name: string, cond: boolean, detail = "") {
 // --- 1. Journal / migration -------------------------------------------------------
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8")) as { entries: Array<{ tag: string; when: number }> };
 const byTag = Object.fromEntries(journal.entries.map((e) => [e.tag, e]));
-check("newest migration tag is 0084_support_screenshots", journal.entries[journal.entries.length - 1]!.tag === "0084_support_screenshots", journal.entries[journal.entries.length - 1]!.tag);
+check("newest migration tag is 0085_contract_opened_notify", journal.entries[journal.entries.length - 1]!.tag === "0085_contract_opened_notify", journal.entries[journal.entries.length - 1]!.tag);
 check("0081 when strictly greater than 0080", byTag["0081_client_addresses"]!.when > byTag["0080_photo_pairs"]!.when);
 const sql81 = await readFile(join("drizzle", "0081_client_addresses.sql"), "utf8");
 check("0081 adds addresses_json column", sql81.includes("ALTER TABLE `clients` ADD COLUMN `addresses_json`"));

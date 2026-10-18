@@ -358,6 +358,7 @@ export const settings = sqliteTable("settings", {
   notifyDocSigned: integer("notify_doc_signed", { mode: "boolean" }).notNull().default(true),
   notifyInvoiceViewed: integer("notify_invoice_viewed", { mode: "boolean" }).notNull().default(true),
   notifyEstimateViewed: integer("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
+  notifyContractViewed: integer("notify_contract_viewed", { mode: "boolean" }).notNull().default(true),
   reviewRequestsEnabled: integer("review_requests_enabled", { mode: "boolean" }).notNull().default(true),
   reviewRequestDelayDays: integer("review_request_delay_days").notNull().default(3),
   weeklyProgressEnabled: integer("weekly_progress_enabled", { mode: "boolean" }).notNull().default(true),
