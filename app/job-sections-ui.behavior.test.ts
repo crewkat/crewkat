@@ -8,8 +8,9 @@
 //     under the header hairline, 16px on the sides.
 //  2. List items are inset tappable rows (hairline border, ~12px radius)
 //     with a status chip where the data supports one — invoices reuse
-//     the ck-pill mapping from the invoice screens, contracts show
-//     Signed/Awaiting from doc.clientSignedAt.
+//     the ck-pill mapping from the invoice screens, contracts show the
+//     link-state pill (Signed > Opened > Awaiting > none, Danny
+//     2026-10-18) fed by the payload's linkView.
 //  3. Empty states render inside a dashed placeholder box
 //     (.accordion-panel .job-section-empty), not loose text.
 //  4. Heading label + orange + / Add / Record actions sit on one
@@ -75,12 +76,44 @@ describe("inset tappable rows with status chips", () => {
     expect(seg).toContain("linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: null })");
   });
 
-  test("contract rows show Signed/Awaiting from clientSignedAt and keep the document route", () => {
+  test("contract rows keep the document route and render the link-state pill", () => {
     const seg = slice('title={lang === "es" ? "Contratos" : "Contracts"}', 'title={lang === "es" ? "Notas de pago" : "Payment notes"}');
     expect(seg).toContain('setScreen({ name: "document", jobId, documentId: doc.id })');
-    expect(seg).toContain("doc.clientSignedAt ? \"ck-pill-paid\" : \"ck-pill-pending\"");
+    expect(seg).toContain("<DocRowLinkPill lang={lang} doc={doc} />");
+  });
+
+  test("row link pill precedence: Signed > Opened (first-opened date) > Awaiting > none", () => {
+    const seg = slice("function DocRowLinkPill", "function ViewedBadge");
+    // Branch order IS the precedence: signed is tested first, then the
+    // viewed branch, then the plain active-link (awaiting) fallthrough.
+    const signedAt = seg.indexOf("doc.clientSignedAt");
+    const openedAt = seg.indexOf("link.viewCount > 0");
+    const awaitingAt = seg.indexOf("ck-pill-pending");
+    expect(signedAt).toBeGreaterThan(-1);
+    expect(openedAt).toBeGreaterThan(signedAt);
+    expect(awaitingAt).toBeGreaterThan(openedAt);
+    expect(seg).toContain('className="ck-pill ck-pill-paid"');
     expect(seg).toContain('"Firmado" : "Signed"');
+    expect(seg).toContain('className="ck-pill ck-pill-completed"');
+    expect(seg).toContain('"Abierto" : "Opened"');
     expect(seg).toContain('"En espera" : "Awaiting"');
+    // No link yet -> no pill at all (never a misleading Awaiting), and the
+    // state comes from the list payload, not a per-row fetch.
+    expect(seg).toContain("if (!link) return null;");
+    expect(seg).toContain("doc.linkView");
+    expect(seg).not.toContain("useQuery");
+  });
+
+  test("linked-list rows: only the title span shrinks — pill and chevron are flex:none", () => {
+    // Regression (Danny 2026-10-18): the unscoped `> span` rule also hit
+    // the .ck-pill span, letting flex shrink squeeze the pill box so its
+    // text spilled over the chevron and clipped at the card edge.
+    expect(CSS).not.toContain(".job-linked-list article > button:first-child > span { min-width: 0");
+    const title = rule(".job-linked-list article > button:first-child > span:first-child");
+    expect(title).toContain("min-width: 0");
+    expect(title).toContain("display: grid");
+    expect(rule(".job-linked-list article > button:first-child > .ck-pill")).toContain("flex: none");
+    expect(rule(".job-linked-list article > button:first-child > svg")).toContain("flex: none");
   });
 
   test("related estimates become inset rows too", () => {

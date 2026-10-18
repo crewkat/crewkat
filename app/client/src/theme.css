@@ -2489,7 +2489,17 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
   align-items: center;
   gap: 10px;
 }
-.job-linked-list article > button:first-child > span { min-width: 0; display: grid; gap: 3px; }
+/* Only the FIRST span (the title block) is a shrinkable grid. The bare
+   `> span` version also matched the .ck-pill status span: it overrode the
+   pill's inline-flex (higher specificity) and stripped its min-content
+   floor (min-width: 0), so with a long wrapping title the flex shrink
+   squeezed the pill's box while its text kept its full width — spilling
+   over the chevron and clipping at the card edge (Danny 2026-10-18). */
+.job-linked-list article > button:first-child > span:first-child { min-width: 0; display: grid; gap: 3px; }
+.job-linked-list article > button:first-child > span:first-child > * { min-width: 0; overflow-wrap: anywhere; }
+.job-linked-list article > button:first-child > .ck-pill { flex: none; }
+.job-linked-list article > button:first-child > svg { flex: none; }
+.job-linked-list article .ck-pill { gap: 4px; }
 .job-linked-list article small { color: var(--muted); }
 .job-linked-list article svg { width: 16px; transform: rotate(180deg); }
 .unlink-button {

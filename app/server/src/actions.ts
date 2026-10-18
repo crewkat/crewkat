@@ -78,6 +78,10 @@ const documentSchema = z.object({
   signatureFields: signatureFieldsSchema,
   fillFields: fillFieldsSchema.default([]),
   fillValues: fillValuesSchema.default({}),
+  // Link view state (Danny 2026-10-18): the document's ACTIVE client link
+  // (latest non-revoked document_links row), or null when no link exists —
+  // list rows show Opened/Awaiting from this without opening the detail.
+  linkView: z.object({ viewCount: z.number(), firstViewedAt: z.string().nullable() }).nullable(),
 });
 const punchItemSchema = z.object({ id: z.number(), jobId: z.number(), text: z.string(), completed: z.boolean() });
 const punchSignoffSchema = z.object({ id: z.number(), jobId: z.number(), customerName: z.string(), customerSignatureUrl: z.string(), contractorName: z.string(), contractorSignatureUrl: z.string(), signedAt: z.string() });
@@ -313,6 +317,24 @@ async function getActiveDocumentLinkRow(ctx: Ctx, kind: "invoice" | "quote" | "c
   const db = ctx.db<typeof schema>();
   const rows = await db.select().from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, kind), eq(schema.documentLinks.documentId, id), isNull(schema.documentLinks.revokedAt))).orderBy(desc(schema.documentLinks.createdAt));
   return rows[0] ?? null;
+}
+// Batch version of getActiveDocumentLinkRow for document lists (Danny
+// 2026-10-18): one query returns each document's active-link view state,
+// keyed `${kind}:${id}`. Rows arrive newest first, so the first row per
+// key is the active link — the same semantics as the single-row helper.
+async function getDocumentLinkViews(ctx: Ctx, docs: { id: number; kind: "contract" | "change_order" }[]) {
+  const views = new Map<string, { viewCount: number; firstViewedAt: string | null }>();
+  if (!docs.length) return views;
+  const db = ctx.db<typeof schema>();
+  const rows = await db.select({ documentKind: schema.documentLinks.documentKind, documentId: schema.documentLinks.documentId, viewCount: schema.documentLinks.viewCount, firstViewedAt: schema.documentLinks.firstViewedAt })
+    .from(schema.documentLinks)
+    .where(and(inArray(schema.documentLinks.documentKind, [...new Set(docs.map((d) => d.kind))]), inArray(schema.documentLinks.documentId, docs.map((d) => d.id)), isNull(schema.documentLinks.revokedAt)))
+    .orderBy(desc(schema.documentLinks.createdAt));
+  for (const r of rows) {
+    const key = `${r.documentKind}:${r.documentId}`;
+    if (!views.has(key)) views.set(key, { viewCount: r.viewCount, firstViewedAt: r.firstViewedAt?.toISOString() ?? null });
+  }
+  return views;
 }
 async function resolveDocumentLinkToken(ctx: Ctx, token: string) {
   const db = ctx.db<typeof schema>();
@@ -3361,7 +3383,8 @@ export const BaseActions = {
       db.select().from(schema.jobFiles).where(eq(schema.jobFiles.jobId, args.id)).orderBy(desc(schema.jobFiles.createdAt), desc(schema.jobFiles.id)),
     ]);
     const hydratedPhotos = await Promise.all(photoRows.map(async (p) => ({ id: p.id, jobId: p.jobId, stage: p.stage, caption: p.caption, filename: p.filename, contentType: p.contentType, url: await ctx.blobs.getUrl(p.blobKey), galleryPick: p.galleryPick, excludeFromSocial: p.excludeFromSocial, annotatedFromId: p.annotatedFromId, capturedAt: (p.capturedAt ?? p.createdAt).toISOString(), createdAt: p.createdAt.toISOString() })));
-    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson) })));
+    const docLinkViews = await getDocumentLinkViews(ctx, documentRows);
+    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson), linkView: docLinkViews.get(`${d.kind}:${d.id}`) ?? null })));
     const signoff = signoffRows[0];
     const receiptData = await Promise.all(receiptRows.map(async (p) => ({ id: p.id, jobId: p.jobId, vendor: p.vendor, amount: p.amount, purchaseDate: p.purchaseDate, note: p.note, filename: p.filename, url: await ctx.blobs.getUrl(p.blobKey), createdAt: p.createdAt.toISOString() })));
     const voiceData = await Promise.all(voiceRows.map(async (p) => ({ id: p.id, jobId: p.jobId, title: p.title, url: await ctx.blobs.getUrl(p.blobKey), durationSeconds: p.durationSeconds, createdAt: p.createdAt.toISOString() })));
@@ -3376,7 +3399,7 @@ export const BaseActions = {
 setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positive(), clientId: z.number().int().positive().nullable() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); if (args.clientId === null) { await db.update(schema.jobs).set({ clientId: null, updatedAt: new Date() }).where(eq(schema.jobs.id, args.jobId)); } else { const selected = (await db.select().from(schema.clients).where(eq(schema.clients.id, args.clientId)).limit(1))[0]; if (!selected) throw new Error("Client not found."); await db.update(schema.jobs).set({ clientId: selected.id, clientName: selected.name, clientPhone: selected.phone, clientEmail: selected.email, updatedAt: new Date() }).where(eq(schema.jobs.id, args.jobId)); } ctx.invalidateQueries(); return { ok: true }; }}),
   updateJobInfo: defineAction({ request: z.object({ jobId: z.number().int().positive(), notes: z.string().trim().max(3000), jobDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: z.string().max(40), depositAmount: z.string().trim().max(80), paymentNotes: z.string().trim().max(1000) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const { jobId, ...values } = args; await ctx.db<typeof schema>().update(schema.jobs).set({ ...values, depositAmount: normalizeMoney(args.depositAmount), updatedAt: new Date() }).where(eq(schema.jobs.id, jobId)); ctx.invalidateQueries(); return { ok: true }; }}),
   linkInvoiceToJob: defineAction({ request: z.object({ invoiceId: z.number().int().positive(), jobId: z.number().int().positive().nullable() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1))[0]; if (!invoice) throw new Error("Invoice not found."); if (args.jobId === null) { await db.update(schema.invoices).set({ jobId: null, updatedAt: new Date() }).where(eq(schema.invoices.id, args.invoiceId)); } else { const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0]; if (!job) throw new Error("Job not found."); await db.update(schema.invoices).set({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, updatedAt: new Date() }).where(eq(schema.invoices.id, args.invoiceId)); } ctx.invalidateQueries(); return { ok: true }; }}),
-  listDocuments: defineAction({ request: z.object({}), response: z.object({ documents: z.array(documentSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.documents).orderBy(desc(schema.documents.signedAt)); const documents = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson) }))); return { documents }; }}),
+  listDocuments: defineAction({ request: z.object({}), response: z.object({ documents: z.array(documentSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.documents).orderBy(desc(schema.documents.signedAt)); const linkViews = await getDocumentLinkViews(ctx, rows); const documents = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson), linkView: linkViews.get(`${d.kind}:${d.id}`) ?? null }))); return { documents }; }}),
   // ONE canonical PDF (Danny 2026-10-17): the owner's document-PDF read
   // (detail View / Share / Download, job Docs). Serves the stored
   // canonical — the same bytes the client link serves — never a

@@ -10090,7 +10090,7 @@ function JobDetail({
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
-          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><span className={`ck-pill ${doc.clientSignedAt ? "ck-pill-paid" : "ck-pill-pending"}`}>{doc.clientSignedAt ? (lang === "es" ? "Firmado" : "Signed") : (lang === "es" ? "En espera" : "Awaiting")}</span><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
+          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><DocRowLinkPill lang={lang} doc={doc} /><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
           <div className="job-section-heading"><p>{lang === "es" ? "Archivos compartidos" : "Shared files"}</p><button type="button" className="small-button" onClick={() => { setShareFileError(""); setShareFile(null); setShareFileTitle(""); setShareFileOpen(true); }}>{lang === "es" ? "+ Compartir archivo" : "+ Share a file"}</button></div>
           {(query.data.jobFiles ?? []).length ? <div className="job-linked-list">{(query.data.jobFiles ?? []).map((file) => <article key={file.id}><button type="button" onClick={() => window.open(file.url, "_blank", "noopener")}><span><strong>{file.title || file.filename}</strong><small>{file.filename} · {humanFileSize(file.sizeBytes)}</small></span><span className={`ck-pill ${file.sharedWithClient ? "ck-pill-paid" : "ck-pill-draft"}`}>{file.sharedWithClient ? (lang === "es" ? "El cliente lo ve" : "Client can see") : (lang === "es" ? "Oculto" : "Hidden")}</span></button><button type="button" className="unlink-button" aria-label={lang === "es" ? "Opciones del archivo" : "File options"} onClick={() => setFileMenu(file)}>⋯</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client's portal."}</p>}
         </AccordionSection>
@@ -29809,6 +29809,34 @@ function SeenIcon({ size = 12 }: { size?: number }) {
   );
 }
 
+// Job documents row link state (Danny 2026-10-18 — "can we add a way to
+// see if they have opened the link"): mirrors the DocumentLinkPanel chip
+// precedence so the state reads at a glance on the job page — Signed
+// (client signed) → Opened (link viewed, with the first-opened short date)
+// → Awaiting (link active, never viewed) → no pill (no link yet). The
+// view state rides the list payload (linkView), no per-row fetch.
+function DocRowLinkPill({ lang, doc }: { lang: Lang; doc: SignedDocument }) {
+  if (doc.clientSignedAt)
+    return <span className="ck-pill ck-pill-paid">{lang === "es" ? "Firmado" : "Signed"}</span>;
+  const link = doc.linkView;
+  if (!link) return null;
+  if (link.viewCount > 0) {
+    const openedOn = link.firstViewedAt
+      ? ` · ${new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" }).format(new Date(link.firstViewedAt))}`
+      : "";
+    return (
+      <span className="ck-pill ck-pill-completed">
+        <Icon size={10}>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+          <circle cx="12" cy="12" r="3" />
+        </Icon>
+        {lang === "es" ? "Abierto" : "Opened"}{openedOn}
+      </span>
+    );
+  }
+  return <span className="ck-pill ck-pill-pending">{lang === "es" ? "En espera" : "Awaiting"}</span>;
+}
+
 function ViewedBadge({
   lang,
   kind,
@@ -30178,6 +30206,9 @@ function DocumentLinkPanel({
               {link.viewCount > 0
                 ? `${t.viewed} · ${link.viewCount} ${t.viewCount}`
                 : t.notViewed}
+              {link.firstViewedAt
+                ? ` · ${t.firstViewed}: ${formatDate(link.firstViewedAt.slice(0, 10), lang)}`
+                : ""}
               {` · ${t.linkExpires}: ${formatDate(link.expiresAt.slice(0, 10), lang)}`}
             </p>
             {url && (

@@ -160,6 +160,18 @@ check("deleteDocument removes links, the row, and all four blobs",
   && deleteLine.includes("doc.originalBlobKey") && deleteLine.includes("doc.signatureBlobKey")
   && deleteLine.includes("doc.clientSignatureBlobKey") && deleteLine.includes("doc.clientSignedPdfBlobKey"));
 
+// --- Link view state on document lists (Danny 2026-10-18): "can we add a
+// way to see if they have opened the link" — the view counters already
+// live on document_links; the list payloads now carry the ACTIVE link's
+// state per document (linkView) and the link panel body prints the
+// first-viewed date next to the view count.
+check("document payload schema carries the active link's view state (linkView)",
+  actionsSrc.includes("linkView: z.object({ viewCount: z.number(), firstViewedAt: z.string().nullable() }).nullable()")
+  && actionsSrc.includes("getDocumentLinkViews"));
+const PANEL = appSrc.slice(appSrc.indexOf("function DocumentLinkPanel"), appSrc.indexOf("function ClientPortalScreen"));
+check("link panel body prints the first-viewed date when the link was opened",
+  PANEL.includes("link.firstViewedAt") && PANEL.includes("t.firstViewed"));
+
 // --- Contractor printed-name seeding (Danny 2026-10-17): the creation
 // form prefilled "Printed name" with the JOB's CLIENT name ("Anthony
 // Porreca") and the detail sign sheet inherited that stored value, so the
@@ -299,6 +311,62 @@ check("change-order edit saves description + normalized amount",
   changeEdited?.description === "Add two outlets" && changeEdited?.amount === "475.50", changeEdited?.amount);
 
 await throwsAsync("updateDocument on a missing document throws", () => A.updateDocument.handler(ctx, { id: 999999, title: "Nope" }));
+
+// --- Link view state rides the list payloads (Danny 2026-10-18) ----------
+// getJob + listDocuments attach each document's ACTIVE link state so the
+// job page rows can show Opened/Awaiting without opening the detail.
+const lvNoLink = await A.saveDocument.handler(ctx, {
+  jobId, kind: "contract", title: "No-link contract", bodyText: "",
+  originalFilename: "", originalDataBase64: "",
+  description: "", amount: "", signerName: "Denny",
+  signatureDataBase64: pngBase64, signedAt: now.toISOString(),
+});
+const lvLinked = await A.saveDocument.handler(ctx, {
+  jobId, kind: "contract", title: "Linked contract", bodyText: "",
+  originalFilename: "", originalDataBase64: "",
+  description: "", amount: "", signerName: "Denny",
+  signatureDataBase64: pngBase64, signedAt: now.toISOString(),
+});
+const docById = (docs: any[], id: number) => docs.find((d: any) => d.id === id);
+check("payload: a document with no link carries linkView null (both lists)",
+  docById((await A.getJob.handler(ctx, { id: jobId })).documents, lvNoLink.id)?.linkView === null
+  && docById((await A.listDocuments.handler(ctx, {})).documents, lvNoLink.id)?.linkView === null);
+await A.createDocumentLink.handler(ctx, { kind: "contract", id: lvLinked.id });
+const unviewed = docById((await A.getJob.handler(ctx, { id: jobId })).documents, lvLinked.id)?.linkView;
+check("payload: an active but unopened link carries viewCount 0 / firstViewedAt null",
+  unviewed?.viewCount === 0 && unviewed?.firstViewedAt === null, JSON.stringify(unviewed));
+// Simulate the client opening the link (the public resolve path bumps
+// these counters on document_links; mirror that write here).
+const viewedAt = new Date("2026-10-18T14:05:00.000Z");
+await db.update(schema.documentLinks).set({ viewCount: 3, firstViewedAt: viewedAt, lastViewedAt: viewedAt })
+  .where(eq(schema.documentLinks.documentId, lvLinked.id));
+const viewed = docById((await A.listDocuments.handler(ctx, {})).documents, lvLinked.id)?.linkView;
+check("payload: views surface as viewCount + firstViewedAt",
+  viewed?.viewCount === 3 && viewed?.firstViewedAt === viewedAt.toISOString(), JSON.stringify(viewed));
+// Revoke that link and issue a fresh one: the revoked row's views must
+// not leak — the payload follows the ACTIVE (latest non-revoked) link.
+await db.update(schema.documentLinks).set({ revokedAt: new Date() })
+  .where(eq(schema.documentLinks.documentId, lvLinked.id));
+await db.insert(schema.documentLinks).values({
+  companyId: 1, documentKind: "contract", documentId: lvLinked.id,
+  tokenHash: "hash-lv-replacement", tokenHint: "zz",
+  expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+  viewCount: 1, firstViewedAt: viewedAt, lastViewedAt: viewedAt,
+  createdAt: new Date(Date.now() + 60_000),
+});
+const relinked = docById((await A.getJob.handler(ctx, { id: jobId })).documents, lvLinked.id)?.linkView;
+check("payload: after revoke + reissue, the fresh link's state wins",
+  relinked?.viewCount === 1 && relinked?.firstViewedAt === viewedAt.toISOString(), JSON.stringify(relinked));
+// A link of a DIFFERENT kind sharing the numeric id must never attach.
+await db.insert(schema.documentLinks).values({
+  companyId: 1, documentKind: "invoice", documentId: lvNoLink.id,
+  tokenHash: "hash-lv-invoice", tokenHint: "zz",
+  expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+  viewCount: 9, firstViewedAt: viewedAt, lastViewedAt: viewedAt,
+  createdAt: new Date(Date.now() + 60_000),
+});
+check("payload: another kind's link never attaches to a document",
+  docById((await A.getJob.handler(ctx, { id: jobId })).documents, lvNoLink.id)?.linkView === null);
 
 // Delete: row, links and every blob go away; the job's list updates.
 const link = await A.createDocumentLink.handler(ctx, { kind: "contract", id: saved.id });
