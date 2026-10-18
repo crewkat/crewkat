@@ -47,7 +47,9 @@ describe("shared row + sheet components", () => {
   });
 
   test("row summarizes the selection: name + first of address/phone/email, chevron", () => {
-    expect(ROW).toContain('className="doc-client-row"');
+    // 2026-10-18: the class became a template string so the missing-field
+    // ring can append (" field-missing"); the base class is unchanged.
+    expect(ROW).toContain('className={`doc-client-row');
     expect(ROW).toContain("[jobAddress, clientPhone, clientEmail]");
     expect(ROW).toContain("<strong>{clientName}</strong>");
     expect(ROW).toContain('className="doc-client-chevron"');
@@ -139,9 +141,14 @@ describe("save semantics preserved bit-for-bit", () => {
   });
 
   test("required client-name validation still fires at save time in both builders", () => {
-    expect(QUOTE).toContain("if (!form.clientName.trim() || validLineItems().length === 0)");
+    // Danny 2026-10-18: the old combined check (one generic message) is now
+    // per-field flagMissing checks; the exit-and-save submittable checks are
+    // untouched.
+    expect(QUOTE).toContain("if (!form.clientName.trim()) { flagMissing(\"client\", t.builderNeedClient); return; }");
+    expect(QUOTE).toContain("if (validLineItems().length === 0) { flagMissing(\"items\", t.builderNeedLine); return; }");
     expect(QUOTE).toContain("form.clientName.trim().length > 0");
-    expect(INVOICE).toContain("if (!form.clientName.trim() || !validItems.length)");
+    expect(INVOICE).toContain("if (!form.clientName.trim()) { flagMissing(\"client\", t.builderNeedClient); return; }");
+    expect(INVOICE).toContain("if (!validItems.length) { flagMissing(\"items\", t.builderNeedLine); return; }");
     expect(INVOICE).toContain("if (form.clientName.trim() && validItems.length)");
   });
 });
@@ -199,5 +206,82 @@ describe("client picker results readability", () => {
 
   test("name line-height keeps the name from clipping", () => {
     expect(pickerRule(".client-picker-results strong {")).toContain("line-height: 1.25");
+  });
+});
+
+// Builder missing-field marks (Danny, 2026-10-18, screenshot of New invoice):
+// tapping Save with something missing showed only a generic pink bar —
+// "Complete the required fields." — and nothing marked WHICH field. Both
+// builders now mirror the contract signer's flagMissing pattern (d6610a8):
+// the error bar names the first missing field, that field gets the red
+// .field-missing ring, and it is scrolled into view. Marks exist only after
+// a failed save and clear live from form state. The flagged set is exactly
+// what can block a save: client name, a malformed client email (the server
+// schemas reject it), and zero lines with a name/description — a blank line
+// price never blocks (2026-10-12 rule; server amount has no minimum).
+describe("builder missing-field marks (Danny 2026-10-18)", () => {
+  test("specific messages exist for each blocking field, EN + ES", () => {
+    expect(APP).toContain('builderNeedClient: "Add a client to continue."');
+    expect(APP).toContain('builderNeedEmail: "That email doesn\'t look right."');
+    expect(APP).toContain('builderNeedLine: "Give Item 1 a title."');
+    expect(APP).toContain('builderNeedClient: "Agrega un cliente para continuar."');
+    expect(APP).toContain('builderNeedEmail: "Ese correo no se ve bien."');
+    expect(APP).toContain('builderNeedLine: "Ponle un título a la partida 1."');
+  });
+
+  test("the generic-only save gate is gone from both builders", () => {
+    expect(QUOTE).not.toContain("setError(t.required)");
+    expect(INVOICE).not.toContain("setError(t.required)");
+    // The generic string itself survives for other forms (job, marketplace…).
+    expect(APP).toContain('required: "Complete the required fields."');
+  });
+
+  test("flagMissing (mark + message + scroll) is wired in both builders", () => {
+    for (const slice of [QUOTE, INVOICE]) {
+      expect(slice).toContain("setMissing(field)");
+      expect(slice).toContain('scrollIntoView({ behavior: "smooth", block: "center" })');
+      expect(slice).toContain('flagMissing("email", t.builderNeedEmail)');
+      expect(slice).toContain("clientRowRef");
+      expect(slice).toContain("firstLineRef");
+    }
+  });
+
+  test("the ring is applied from the missing-field state: client row + first line card", () => {
+    expect(ROW).toContain('missing ? " field-missing" : ""');
+    expect(ROW).toContain("rowRef");
+    expect(QUOTE).toContain('missing={missing === "client" || missing === "email"}');
+    expect(INVOICE).toContain('missing={missing === "client" || missing === "email"}');
+    expect(QUOTE).toContain('missing === "items" && i === 0 ? " field-missing"');
+    expect(INVOICE).toContain('missing === "items" && index === 0 ? " field-missing"');
+    expect(QUOTE).toContain("ref={i === 0 ? firstLineRef : undefined}");
+    expect(INVOICE).toContain("ref={index === 0 ? firstLineRef : undefined}");
+  });
+
+  test("marks clear live from form state once the field is fixed", () => {
+    expect(QUOTE).toContain('if (missing === "client" && form.clientName.trim()) { setMissing(""); setError(""); }');
+    expect(QUOTE).toContain('else if (missing === "items" && validLineItems().length > 0) { setMissing(""); setError(""); }');
+    expect(INVOICE).toContain('if (missing === "client" && form.clientName.trim()) { setMissing(""); setError(""); }');
+    expect(INVOICE).toContain('else if (missing === "items" && validItems.length > 0) { setMissing(""); setError(""); }');
+    // Email mark clears when the address is emptied or made valid.
+    expect(QUOTE).toContain('else if (missing === "email" && clientEmailValid)');
+    expect(INVOICE).toContain('else if (missing === "email" && clientEmailValid)');
+  });
+
+  test("a blank line price is not part of the gate (title/description only)", () => {
+    // The usable-line rule stays name-or-description; amount is never read
+    // by either builder's missing-field checks.
+    expect(QUOTE).toContain("i.description.trim() || (i.name ?? \"\").trim()");
+    expect(INVOICE).toContain("item.name.trim() || item.description.trim()");
+    expect(QUOTE).not.toContain('flagMissing("amount"');
+    expect(INVOICE).not.toContain('flagMissing("amount"');
+  });
+
+  test("the ring style matches the signer's danger ring", () => {
+    const start = CSS.indexOf(".doc-client-row.field-missing");
+    expect(start).toBeGreaterThan(-1);
+    const rule = CSS.slice(start, CSS.indexOf("}", start) + 1);
+    expect(rule).toContain(".doc-line-card.field-missing");
+    expect(rule).toContain("border-color: var(--danger)");
+    expect(rule).toContain("box-shadow: 0 0 0 3px");
   });
 });

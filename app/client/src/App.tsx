@@ -513,6 +513,9 @@ const copy = {
     clear: "Clear",
     signSave: "Sign & save",
     signerNeedTitle: "Give the document a title first.",
+    builderNeedClient: "Add a client to continue.",
+    builderNeedEmail: "That email doesn't look right.",
+    builderNeedLine: "Give Item 1 a title.",
     signerNeedFile: "Add your PDF or paste the contract text first.",
     signerNeedDescription: "Describe the extra work first.",
     signerNeedSigner: "Add the printed signer name first.",
@@ -856,6 +859,9 @@ const copy = {
     clear: "Borrar",
     signSave: "Firmar y guardar",
     signerNeedTitle: "Primero ponle un título al documento.",
+    builderNeedClient: "Agrega un cliente para continuar.",
+    builderNeedEmail: "Ese correo no se ve bien.",
+    builderNeedLine: "Ponle un título a la partida 1.",
     signerNeedFile: "Primero agrega tu PDF o pega el texto del contrato.",
     signerNeedDescription: "Primero describe el trabajo extra.",
     signerNeedSigner: "Primero agrega el nombre de quien firma.",
@@ -7303,6 +7309,8 @@ function DocClientRow({
   clientPhone,
   clientEmail,
   onOpen,
+  missing = false,
+  rowRef,
 }: {
   lang: Lang;
   clientName: string;
@@ -7310,10 +7318,15 @@ function DocClientRow({
   clientPhone: string;
   clientEmail: string;
   onOpen: () => void;
+  // Danny 2026-10-18: red ring when a failed save flags the client block
+  // (no client yet, or a malformed email inside it); rowRef is the scroll
+  // target the builders' flagMissing lands on.
+  missing?: boolean;
+  rowRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
   const sub = [jobAddress, clientPhone, clientEmail].map((v) => v.trim()).find(Boolean) ?? "";
   return (
-    <button type="button" className="doc-client-row" onClick={onOpen} aria-haspopup="dialog">
+    <button type="button" ref={rowRef} className={`doc-client-row${missing ? " field-missing" : ""}`} onClick={onOpen} aria-haspopup="dialog">
       <span className="doc-client-row-label">{lang === "es" ? "Cliente" : "Client"}</span>
       <span className="doc-client-row-main">
         {clientName.trim() ? (
@@ -14992,6 +15005,30 @@ function QuoteBuilder({
     form.lineItems
       .filter((i) => i.description.trim() || (i.name ?? "").trim())
       .map((i) => ({ ...i, description: i.description.trim() || (i.name ?? "").trim() }));
+  // Danny 2026-10-18: a failed Save names AND marks the exact missing field
+  // (red ring + scroll to it), mirroring the contract signer's flagMissing
+  // (d6610a8) — no more lone "Complete the required fields." with no pointer
+  // to the field. The flagged set mirrors the real save gate exactly: a
+  // client name; a valid client email when one is typed (the saveQuote /
+  // saveInvoice server schemas reject malformed emails, which used to die
+  // as a generic error); and at least one line with a name or a description.
+  // A blank line PRICE never blocks (2026-10-12 rule — the server amount
+  // has no minimum). Marks appear only after a failed attempt and clear
+  // live, from form state, as soon as the field is fixed.
+  const [missing, setMissing] = useState<"" | "client" | "email" | "items">("");
+  const clientRowRef = useRef<HTMLButtonElement>(null);
+  const firstLineRef = useRef<HTMLDivElement>(null);
+  const clientEmailValid = form.clientEmail.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.clientEmail.trim());
+  const flagMissing = (field: "client" | "email" | "items", message: string) => {
+    setMissing(field);
+    setError(message);
+    (field === "items" ? firstLineRef.current : clientRowRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  useEffect(() => {
+    if (missing === "client" && form.clientName.trim()) { setMissing(""); setError(""); }
+    else if (missing === "email" && clientEmailValid) { setMissing(""); setError(""); }
+    else if (missing === "items" && validLineItems().length > 0) { setMissing(""); setError(""); }
+  }, [form, missing]);
   const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number; optional: boolean }>) =>
     setForm((current) => ({
       ...current,
@@ -15171,10 +15208,9 @@ function QuoteBuilder({
         className="job-form floating-doc-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!form.clientName.trim() || validLineItems().length === 0) {
-            setError(t.required);
-            return;
-          }
+          if (!form.clientName.trim()) { flagMissing("client", t.builderNeedClient); return; }
+          if (!clientEmailValid) { flagMissing("email", t.builderNeedEmail); return; }
+          if (validLineItems().length === 0) { flagMissing("items", t.builderNeedLine); return; }
           save.mutate();
         }}
       >
@@ -15195,6 +15231,8 @@ function QuoteBuilder({
           clientPhone={form.clientPhone}
           clientEmail={form.clientEmail}
           onOpen={() => setClientSheetOpen(true)}
+          missing={missing === "client" || missing === "email"}
+          rowRef={clientRowRef}
         />
         <div className="field-pair">
           <label>
@@ -15281,7 +15319,7 @@ function QuoteBuilder({
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1));
             const summary = lineItemSummary(item, `${t.item} ${i + 1}`);
             return (
-            <div className={`doc-line-card collapsed${draggingIdx === i ? " b06-dragging" : ""}`} key={i} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(i); }}>
+            <div className={`doc-line-card collapsed${missing === "items" && i === 0 ? " field-missing" : ""}${draggingIdx === i ? " b06-dragging" : ""}`} key={i} ref={i === 0 ? firstLineRef : undefined} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(i); }}>
               <div className="doc-line-top">
                 <span
                   className="b06-grip"
@@ -17152,6 +17190,30 @@ function InvoiceBuilder({
   const formRef = useRef<HTMLFormElement | null>(null);
   const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
   const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
+  // Danny 2026-10-18: a failed Save names AND marks the exact missing field
+  // (red ring + scroll to it), mirroring the contract signer's flagMissing
+  // (d6610a8) and the estimate builder above — no more lone "Complete the
+  // required fields." The flagged set mirrors the real save gate exactly:
+  // a client name; a valid client email when one is typed (the saveInvoice
+  // server schema rejects malformed emails, which used to die as a generic
+  // error); and at least one line with a name or a description. A blank
+  // line PRICE never blocks (2026-10-12 rule — the server amount has no
+  // minimum). Marks appear only after a failed attempt and clear live,
+  // from form state, as soon as the field is fixed.
+  const [missing, setMissing] = useState<"" | "client" | "email" | "items">("");
+  const clientRowRef = useRef<HTMLButtonElement>(null);
+  const firstLineRef = useRef<HTMLElement>(null);
+  const clientEmailValid = form.clientEmail.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.clientEmail.trim());
+  const flagMissing = (field: "client" | "email" | "items", message: string) => {
+    setMissing(field);
+    setError(message);
+    (field === "items" ? firstLineRef.current : clientRowRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  useEffect(() => {
+    if (missing === "client" && form.clientName.trim()) { setMissing(""); setError(""); }
+    else if (missing === "email" && clientEmailValid) { setMissing(""); setError(""); }
+    else if (missing === "items" && validItems.length > 0) { setMissing(""); setError(""); }
+  }, [form, missing]);
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
     onSuccess: async () => { /* 0081: sheet opt-in append — its own explicit call after the (doc-only) save; best-effort + deduped server-side. */ if (saveAddrToClient && form.clientId && form.jobAddress.trim()) { await api.appendClientAddress({ clientId: form.clientId, address: form.jobAddress.trim(), label: "" }).catch(() => {}); setSaveAddrToClient(false); } try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
@@ -17175,16 +17237,16 @@ function InvoiceBuilder({
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
   return <div className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) exitAndSave(); }}>
     <section className="floating-doc-sheet invoice-builder-page" role="dialog" aria-modal="true" aria-label={t.newInvoice}>
-    <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim() || !validItems.length) { setError(t.required); return; } save.mutate(); }}>
+    <form ref={formRef} className="job-form invoice-fly-form floating-doc-form" onSubmit={(event) => { event.preventDefault(); if (!form.clientName.trim()) { flagMissing("client", t.builderNeedClient); return; } if (!clientEmailValid) { flagMissing("email", t.builderNeedEmail); return; } if (!validItems.length) { flagMissing("items", t.builderNeedLine); return; } save.mutate(); }}>
       <FloatingDocHeader lang={lang} title={t.newInvoice} onExit={exitAndSave} onPreview={() => setPreviewOpen(true)} saveLabel={t.save} saving={save.isPending} />
       <div className="floating-doc-body">
-      <DocClientRow lang={lang} clientName={form.clientName} jobAddress={form.jobAddress} clientPhone={form.clientPhone} clientEmail={form.clientEmail} onOpen={() => setClientSheetOpen(true)} />
+      <DocClientRow lang={lang} clientName={form.clientName} jobAddress={form.jobAddress} clientPhone={form.clientPhone} clientEmail={form.clientEmail} onOpen={() => setClientSheetOpen(true)} missing={missing === "client" || missing === "email"} rowRef={clientRowRef} />
       {draftOffered && <div className="draft-restored-notice" role="status"><span>{lang === "es" ? "Tienes un borrador sin guardar" : "You have an unsaved draft"}</span><span className="draft-notice-actions"><button type="button" className="draft-resume-btn" onClick={resumeDraft}>{lang === "es" ? "Continuar" : "Resume"}</button><button type="button" onClick={discardDraft}>{lang === "es" ? "Descartar" : "Discard"}</button></span></div>}
       <button className="invoice-summary-line" type="button" onClick={() => setActiveSheet("details")}><span>{dateSummary}</span><b>›</b></button>
       {/* Build 2.0: line items stand alone — no card-within-a-card; the
           rows extend side to side for more usable space. */}
       <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
-        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className="invoice-line-card doc-line-card collapsed" key={index} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}>
+        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className={`invoice-line-card doc-line-card collapsed${missing === "items" && index === 0 ? " field-missing" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, Price | Quantity side-by-side. */}
           <div className="doc-line-top"><span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span><span className="doc-line-total">{usd(lineTotal)}</span>{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>

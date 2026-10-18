@@ -5737,6 +5737,10 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .signer-form .field-missing input, .signer-form .field-missing textarea { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
 .signer-form .field-missing .signer-file-row, .signer-form .field-missing .signer-paste-row { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
 .signer-form .field-missing .signature-field canvas { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
+/* Builder missing-field marks (Danny 2026-10-18): the same red ring as the
+   signer's, applied directly to the estimate/invoice builder's client row
+   and first line card when a failed save flags them. */
+.doc-client-row.field-missing, .doc-line-card.field-missing { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); }
 
 /* ---- Placement editor ---- */
 .pdf-modal.sig-place-modal { padding: 0; }

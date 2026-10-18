@@ -79,7 +79,10 @@ describe("whole card is the tap target", () => {
   });
 
   test("invoice builder card opens the editor on card tap", () => {
-    expect(INVOICE).toContain('className="invoice-line-card doc-line-card collapsed" key={index} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}');
+    // 2026-10-18: the className became a template string and the first card
+    // carries the missing-field scroll ref (builder missing-field marks);
+    // the tap-to-open wiring itself is unchanged.
+    expect(INVOICE).toContain('className={`invoice-line-card doc-line-card collapsed${missing === "items" && index === 0 ? " field-missing" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}');
   });
 
   test("document editor card opens on tap, but never while reordering", () => {
