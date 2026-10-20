@@ -5516,6 +5516,12 @@ a.portal-v2-doc-row:hover { border-color: var(--accent); }
 .portal-v2-lightbox img {
   max-width: 100%; max-height: 100%; border-radius: var(--radius);
 }
+.portal-v2-lightbox-download {
+  position: absolute; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  padding: 10px 22px; border: 0; border-radius: 99px; background: var(--surface); color: var(--text);
+  font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 4px 18px rgba(0, 0, 0, .35);
+}
+.portal-v2-lightbox-download:disabled { opacity: .6; }
 
 /* Job Overview redesign 2026-10-11 (Danny's 6 points). Flat cards, hairline
    borders, 8px+ radius, orange accent — matches the app design language. */

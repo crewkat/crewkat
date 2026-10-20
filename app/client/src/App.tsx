@@ -30294,7 +30294,21 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   const [sig, setSig] = useState("");
   const [note, setNote] = useState("");
   const [photoStage, setPhotoStage] = useState<"all" | "before" | "during" | "after">("all");
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ id: number | null; url: string } | null>(null);
+  const [downloadingPhoto, setDownloadingPhoto] = useState(false);
+  const downloadPortalPhoto = async (photoId: number) => {
+    if (downloadingPhoto) return;
+    setDownloadingPhoto(true);
+    try {
+      const r = await api.getPortalPhotoDownload({ token, photoId });
+      const bytes = Uint8Array.from(atob(r.dataBase64), (char) => char.charCodeAt(0));
+      downloadBlob(new Blob([bytes], { type: r.contentType || "application/octet-stream" }), r.filename);
+    } catch {
+      /* a failed download leaves the lightbox untouched */
+    } finally {
+      setDownloadingPhoto(false);
+    }
+  };
   if (q.isLoading)
     return (
       <main className="page public-page portal-v2">
@@ -30382,6 +30396,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     docChangeOrder: lang === "es" ? "Orden de cambio" : "Change order",
     viewEstimate: lang === "es" ? "Ver presupuesto" : "View estimate",
     viewFile: lang === "es" ? "Ver" : "View",
+    download: lang === "es" ? "Descargar" : "Download",
     signedBy: lang === "es" ? "Firmada por" : "Signed by",
     signerName: lang === "es" ? "Nombre del firmante" : "Signer name",
     signature: lang === "es" ? "Firma" : "Signature",
@@ -30499,7 +30514,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
                 key={p.id}
                 type="button"
                 className="portal-v2-thumb"
-                onClick={() => setLightbox(p.url)}
+                onClick={() => setLightbox({ id: p.id, url: p.url })}
                 aria-label={p.caption || stageLabel(p.stage)}
               >
                 <img src={p.url} alt={p.caption || stageLabel(p.stage)} loading="lazy" />
@@ -30565,7 +30580,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
               <strong>{s.category}: {s.item}</strong>
               {s.vendor && <span className="dim">{s.vendor}</span>}
               {s.photoUrl && (
-                <button type="button" className="portal-v2-thumb sm" onClick={() => setLightbox(s.photoUrl!)}>
+                <button type="button" className="portal-v2-thumb sm" onClick={() => setLightbox({ id: null, url: s.photoUrl! })}>
                   <img src={s.photoUrl} alt={s.item} loading="lazy" />
                 </button>
               )}
@@ -30708,7 +30723,17 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       {/* Lightbox */}
       {lightbox && (
         <div className="portal-v2-lightbox" onClick={() => setLightbox(null)} role="dialog" aria-modal="true">
-          <img src={lightbox} alt="" />
+          <img src={lightbox.url} alt="" />
+          {lightbox.id !== null && (
+            <button
+              type="button"
+              className="portal-v2-lightbox-download"
+              disabled={downloadingPhoto}
+              onClick={(e) => { e.stopPropagation(); if (lightbox.id !== null) void downloadPortalPhoto(lightbox.id); }}
+            >
+              {t.download}
+            </button>
+          )}
         </div>
       )}
     </main>
