@@ -1,11 +1,14 @@
 // Invoice editor dates (Danny 2026-10-20): the Edit screen for an
 // EXISTING invoice had no date fields anywhere — a due date could only
 // be set in the new-invoice builder, never changed after creation. The
-// editor now opens with a Dates section (invoice-only: the server's
+// dates are edited through ONE tappable summary line at the top of
+// FinancialEditor (the builder's invoice-summary-line pattern) that
+// opens a dates-only sheet (invoice-only: the server's
 // updateQuoteDocument schema takes no date fields), bound to the
 // document's stored issueDate/dueDate and saved through the editor's
 // normal Save into updateInvoiceDocument, whose schema already accepted
-// both fields.
+// both fields. An earlier build rendered a big two-input Dates card
+// here; Danny asked for the single tap line instead.
 //
 // Covers:
 //  1. updateInvoiceDocument with new issueDate/dueDate persists, and the
@@ -14,11 +17,13 @@
 //     the column is NOT NULL DEFAULT '') persists as no due date.
 //  3. An update that omits the date fields leaves stored dates untouched
 //     (the pre-fix payload shape still works).
-//  4. Source wiring: Dates section in FinancialEditor gated to
-//     kind === "invoice", above Line items, two date inputs bound to the
-//     form state initialized from the document, dates in the invoice
-//     save payload, EN/ES "Dates"/"Fechas" label, and updateQuoteDocument
-//     still date-free (the reason quotes get no section).
+//  4. Source wiring: summary line in FinancialEditor gated to
+//     kind === "invoice", above Line items, label derived from form
+//     state; dates-only sheet in the builder's details-sheet shape with
+//     two date inputs bound to the same form state initialized from the
+//     document; the big Dates card and its "Dates"/"Fechas" strings are
+//     gone; dates in the invoice save payload; updateQuoteDocument
+//     still date-free (the reason quotes get no line).
 //
 // Run from app/:  bun invoice-editor-dates.behavior.test.ts
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -122,10 +127,17 @@ const appSrc = await readFile("client/src/App.tsx", "utf8");
 const serverSrc = await readFile("server/src/actions.ts", "utf8");
 const editorStart = appSrc.indexOf("function FinancialEditor(");
 const editorSrc = appSrc.slice(editorStart, appSrc.indexOf("\n}\n", editorStart));
-check("FinancialEditor renders the Dates section", editorSrc.includes("editor-dates-section") && editorSrc.includes("{t.dates}"));
-check("Dates section is invoice-only", editorSrc.includes('kind === "invoice" && <section className="editor-section editor-dates-section"'));
-check("Dates section sits above Line items",
-  editorSrc.indexOf("editor-dates-section") > -1 && editorSrc.indexOf("editor-dates-section") < editorSrc.indexOf("editor-items-section"));
+check("FinancialEditor renders the dates summary line", editorSrc.includes('<button className="invoice-summary-line"') && editorSrc.includes("{dateSummary}") && editorSrc.includes("onClick={() => setDatesSheetOpen(true)}"));
+check("summary line is invoice-only", editorSrc.includes('kind === "invoice" && <button className="invoice-summary-line"'));
+check("summary line sits above Line items",
+  editorSrc.indexOf('<button className="invoice-summary-line"') > -1 && editorSrc.indexOf('<button className="invoice-summary-line"') < editorSrc.indexOf("editor-items-section"));
+check("summary label derives from form state (formatted issue → due)",
+  editorSrc.includes("const dateSummary =") && editorSrc.includes("formatDate(form.issueDate, lang)") && editorSrc.includes("formatDate(form.dueDate, lang)"));
+check("summary label localizes the no-due-date fallback",
+  editorSrc.includes('"No due date"') && editorSrc.includes('"Sin vencimiento"'));
+check("big Dates card is gone", !editorSrc.includes("editor-dates-section") && !editorSrc.includes("{t.dates}"));
+check("dates sheet mirrors the builder details sheet (backdrop, option sheet, Invoice Details title, Done)",
+  editorSrc.includes("client-sheet invoice-option-sheet") && editorSrc.includes('"Invoice Details"') && editorSrc.includes('"Detalles de la factura"') && editorSrc.includes("sheet-save-btn") && editorSrc.includes("onClick={closeDatesSheet}"));
 check("issue date input bound to form.issueDate",
   editorSrc.includes('<input type="date" value={form.issueDate}') && editorSrc.includes("issueDate: e.target.value"));
 check("due date input bound to form.dueDate",
@@ -138,8 +150,7 @@ check("invoice save payload always sends both dates",
   editorSrc.includes("api.updateInvoiceDocument({...payload,issueDate:form.issueDate,dueDate:form.dueDate})"));
 check("quote save payload unchanged (no dates sent)",
   editorSrc.includes("await api.updateQuoteDocument(payload)"));
-check("EN label added", appSrc.includes('dates: "Dates",'));
-check("ES label added", appSrc.includes('dates: "Fechas",'));
+check("unused Dates/Fechas heading strings removed", !appSrc.includes('dates: "Dates",') && !appSrc.includes('dates: "Fechas",') && !appSrc.includes("{t.dates}"));
 const quoteAction = serverSrc.slice(serverSrc.indexOf("updateQuoteDocument: defineAction"), serverSrc.indexOf("updateQuoteDocument: defineAction") + 400);
 check("updateQuoteDocument schema still takes no date fields (why quotes get no section)",
   !quoteAction.includes("issueDate") && !quoteAction.includes("dueDate") && !quoteAction.includes("expiryDate"));

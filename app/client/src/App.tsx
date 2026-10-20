@@ -480,7 +480,6 @@ const copy = {
     annotations: "Annotate",
     galleryPick: "Gallery pick",
     amountDue: "Amount due",
-    dates: "Dates",
     dueDate: "Due date",
     depositAmount: "Deposit amount",
     paymentNotes: "Payment notes",
@@ -827,7 +826,6 @@ const copy = {
     annotations: "Anotar",
     galleryPick: "Elegir para galería",
     amountDue: "Saldo pendiente",
-    dates: "Fechas",
     dueDate: "Fecha de vencimiento",
     depositAmount: "Monto del depósito",
     paymentNotes: "Notas de pago",
@@ -16078,6 +16076,14 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   const [saving, setSaving] = useState(false);
   const [editorPreview, setEditorPreview] = useState<Blob | null>(null);
   const editorPreviewSheet = useAnimatedDismiss(editorPreview);
+  // Dates sheet (Danny 2026-10-20): the invoice dates live behind one
+  // tappable summary line (see the render); this is that sheet's
+  // open/close state, mirroring the new-invoice builder's details sheet.
+  const [datesSheetOpen, setDatesSheetOpen] = useState(false);
+  const [datesSheetClosing, setDatesSheetClosing] = useState(false);
+  const closeDatesSheet = () => { setDatesSheetClosing(true); window.setTimeout(() => { setDatesSheetOpen(false); setDatesSheetClosing(false); }, 180); };
+  useEscapeToClose(datesSheetOpen, closeDatesSheet);
+  useEffect(() => { if (!datesSheetOpen) return; return pushHardwareBackInterceptor(() => { closeDatesSheet(); return true; }); }, [datesSheetOpen]);
   // Build 0.6: preview Send opens explicit options (PDF/messages/link/email)
   // instead of nativeShare, which silently degrades to a download in the TWA.
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
@@ -16110,7 +16116,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // persists the document automatically — no separate save tap.
   const collapseDiscount = () => { setShowDiscount(false); exitAndSave(); };
   const collapseTax = () => { setShowTax(false); exitAndSave(); };
-  useEscapeToClose(editingItem === null, exitAndSave);
+  useEscapeToClose(editingItem === null && !datesSheetOpen, exitAndSave);
   const closeEditorPreview = () => { setEditorPreview(null); };
   useEscapeToClose(editorPreview!==null,()=>closeEditorPreview());
   // Build 0.3 (item 7): hardware back while editing saves the document, then
@@ -16122,6 +16128,11 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     void Promise.resolve(saveRef.current()).catch(() => {}).finally(() => cancelRef.current());
     return true;
   }), []);
+  // The dates summary line's label derives from form state (same
+  // formulation as the builder's dateSummary, minus the invoice number —
+  // this editor never had number editing), so the line reflects sheet
+  // edits the moment the sheet closes.
+  const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}`;
   // Build 3.0 (item 7): the edit screen is a full-screen window — the
   // line-item editor is no longer a card inside a card.
   return <div className="sheet-backdrop floating-doc-backdrop doc-fullscreen" role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)exitAndSave();}}>
@@ -16139,11 +16150,14 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
     <div className="financial-editor">
       {/* Invoice dates (Danny 2026-10-20): an existing invoice's issue/due
           dates used to be settable only in the new-invoice builder — the
-          Edit screen had no date fields at all. updateQuoteDocument's
-          schema takes no date fields, so the section is invoice-only.
-          Dates always ride the normal Save; "" is the stored form of
-          "no due date", so clearing the input clears the date. */}
-      {kind === "invoice" && <section className="editor-section editor-dates-section"><div className="section-title-row"><h2>{t.dates}</h2></div><div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} /></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label></div></section>}
+          Edit screen had no date fields at all. They sit behind ONE
+          tappable summary line (the builder's invoice-summary-line
+          pattern) that opens a dates-only sheet: the two-input card this
+          replaced was too much bulk. updateQuoteDocument's schema takes
+          no date fields, so the line is invoice-only. Dates always ride
+          the normal Save; "" is the stored form of "no due date", so
+          clearing the input in the sheet clears the date. */}
+      {kind === "invoice" && <button className="invoice-summary-line" type="button" onClick={() => setDatesSheetOpen(true)}><span>{dateSummary}</span><b>›</b></button>}
       <section className="editor-section editor-items-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=>{
         const qty = item.quantity ?? 1;
         const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
@@ -16187,6 +16201,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={3} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="editor-delete-quiet" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar estimado" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
+    {kind === "invoice" && datesSheetOpen && <div className={`client-sheet-backdrop${datesSheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeDatesSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Detalles de la factura" : "Invoice Details"}><div className="sheet-handle"/><header><h2>{lang === "es" ? "Detalles de la factura" : "Invoice Details"}</h2><button type="button" className="sheet-save-btn" onClick={closeDatesSheet}>{t.done}</button></header><div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label></div></section></div>}
     {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewSheet.value ? <div className="editor-preview-paper"><PdfFrame blob={editorPreviewSheet.value} title={lang === "es" ? "Vista previa del documento" : "Document preview"} /></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
   </div>;
