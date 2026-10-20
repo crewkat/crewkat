@@ -3896,6 +3896,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .ck-pill-paid { background: color-mix(in srgb, #22c55e 18%, var(--surface)); color: color-mix(in srgb, #22c55e 68%, var(--text)); }
 .ck-pill-completed { background: color-mix(in srgb, #3b82f6 18%, var(--surface)); color: color-mix(in srgb, #3b82f6 68%, var(--text)); }
 .ck-pill-overdue { background: color-mix(in srgb, var(--danger) 16%, var(--surface)); color: var(--danger); }
+.milestone-invoice-link { display: inline-flex; align-items: center; gap: 8px; }
+.milestone-invoice-link > span:first-child { font-weight: 700; }
 .ck-pill-draft { background: var(--surface-2); color: var(--dim); }
 .ck-btn-sm { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 800; cursor: pointer; }
 .ck-btn-sm:active { transform: scale(.98); }

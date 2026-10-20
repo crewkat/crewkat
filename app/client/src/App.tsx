@@ -8787,6 +8787,8 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
               </select>
               {m.invoiceId ? (
                 <button
+                  type="button"
+                  className="milestone-invoice-link"
                   onClick={() =>
                     setScreen({
                       name: "invoicePreview",
@@ -8794,7 +8796,16 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
                     })
                   }
                 >
-                  {lang === "es" ? "Ver factura" : "View invoice"}
+                  <span>{m.invoiceNumber ?? (lang === "es" ? "Factura" : "Invoice")}</span>
+                  <span className={`ck-pill ${m.invoiceStatus === "paid" ? "ck-pill-paid" : m.invoiceStatus === "overdue" ? "ck-pill-overdue" : m.invoiceStatus === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>
+                    {m.invoiceStatus === "paid"
+                      ? lang === "es" ? "Pagada" : "Paid"
+                      : m.invoiceStatus === "overdue"
+                        ? lang === "es" ? "Vencida" : "Overdue"
+                        : m.invoiceStatus === "draft"
+                          ? lang === "es" ? "Borrador" : "Draft"
+                          : lang === "es" ? "Pendiente" : "Pending"}
+                  </span>
                 </button>
               ) : (
                 <button
