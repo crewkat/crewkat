@@ -5502,6 +5502,10 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 }
 .portal-v2-invoice > div { display: grid; gap: 4px; }
 .portal-v2-balance { color: var(--accent); white-space: nowrap; }
+.portal-v2-doc-card { display: flex; justify-content: space-between; align-items: center; }
+a.portal-v2-doc-row { text-decoration: none; color: inherit; }
+a.portal-v2-doc-row:hover { border-color: var(--accent); }
+.portal-v2-chevron { color: var(--dim); font-size: 1.3rem; line-height: 1; flex: none; }
 .portal-v2-lightbox {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(0, 0, 0, .88);

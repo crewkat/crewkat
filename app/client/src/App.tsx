@@ -30341,6 +30341,10 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(value));
+  const fmtDate = (value: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      dateStyle: "medium",
+    }).format(new Date(value));
   const shownPhotos = photoStage === "all" ? d.photos : d.photos.filter((p) => p.stage === photoStage);
   const t = {
     project: lang === "es" ? "Su proyecto" : "Your project",
@@ -30361,6 +30365,11 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     pending: lang === "es" ? "Pendiente" : "Pending",
     changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
     documents: lang === "es" ? "Documentos" : "Documents",
+    docSigned: lang === "es" ? "Firmado" : "Signed",
+    docAwaiting: lang === "es" ? "En espera de firma" : "Awaiting signature",
+    docContract: lang === "es" ? "Contrato" : "Contract",
+    docChangeOrder: lang === "es" ? "Orden de cambio" : "Change order",
+    viewEstimate: lang === "es" ? "Ver presupuesto" : "View estimate",
     viewFile: lang === "es" ? "Ver" : "View",
     signedBy: lang === "es" ? "Firmada por" : "Signed by",
     signerName: lang === "es" ? "Nombre del firmante" : "Signer name",
@@ -30418,6 +30427,35 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           <span>{t.balance}</span>
         </div>
       </section>
+
+      {/* Documents: contracts + change orders linked to this job. A row
+          links to the document's existing /d/ page when it has an active
+          document link; without one it renders as a plain status row. */}
+      {(d.jobDocuments ?? []).length > 0 && (
+        <section className="portal-v2-card">
+          <h2>{t.documents}</h2>
+          {(d.jobDocuments ?? []).map((doc) => {
+            const signed = !!doc.clientSignedAt;
+            const body = (
+              <>
+                <div>
+                  <strong>{doc.title}</strong>
+                  <span className="dim">{doc.kind === "contract" ? t.docContract : t.docChangeOrder}</span>
+                  <span className={`status-chip ${signed ? "paid" : "sent"}`}>
+                    {signed ? `${t.docSigned} · ${fmtDate(doc.clientSignedAt!)}` : t.docAwaiting}
+                  </span>
+                </div>
+                {doc.href && <span className="portal-v2-chevron" aria-hidden="true">›</span>}
+              </>
+            );
+            return doc.href ? (
+              <a className="portal-v2-approval portal-v2-doc-card portal-v2-doc-row" key={doc.id} href={doc.href}>{body}</a>
+            ) : (
+              <article className="portal-v2-approval portal-v2-doc-card" key={doc.id}>{body}</article>
+            );
+          })}
+        </section>
+      )}
 
       {/* Photo gallery with stage tabs */}
       <section className="portal-v2-card">
@@ -30618,6 +30656,11 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
             {e.options.length > 0 && (
               <QuoteOptionsPicker lang={lang} token={token} quoteId={e.id} baseTotal={e.total} options={e.options} initialSelectedKeys={e.selectedOptionKeys} accepted={e.acceptedOptions} />
             )}
+            {e.href && (
+              <div className="row-actions">
+                <a className="secondary-button sm" href={e.href}>{t.viewEstimate}</a>
+              </div>
+            )}
           </details>
         ))}
         {!d.estimates.length && <p className="dim">{t.noEstimates}</p>}
@@ -30626,20 +30669,28 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       {/* Invoices */}
       <section className="portal-v2-card">
         <h2>{t.invoices}</h2>
-        {d.invoices.map((inv) => (
-          <article className="portal-v2-invoice" key={inv.id}>
-            <div>
-              <strong>{inv.invoiceNumber} · {usd(money(inv.total))}</strong>
-              <span className="dim">
-                <span className={`status-chip ${inv.status}`}>{inv.status}</span>
-                {" · "}{t.due} {inv.dueDate}
-              </span>
-            </div>
-            {Number(inv.balanceDue) > 0 && (
-              <strong className="portal-v2-balance">{t.balance}: {usd(money(inv.balanceDue))}</strong>
-            )}
-          </article>
-        ))}
+        {d.invoices.map((inv) => {
+          const body = (
+            <>
+              <div>
+                <strong>{inv.invoiceNumber} · {usd(money(inv.total))}</strong>
+                <span className="dim">
+                  <span className={`status-chip ${inv.status}`}>{inv.status}</span>
+                  {" · "}{t.due} {inv.dueDate}
+                </span>
+              </div>
+              {Number(inv.balanceDue) > 0 && (
+                <strong className="portal-v2-balance">{t.balance}: {usd(money(inv.balanceDue))}</strong>
+              )}
+              {inv.href && <span className="portal-v2-chevron" aria-hidden="true">›</span>}
+            </>
+          );
+          return inv.href ? (
+            <a className="portal-v2-invoice portal-v2-doc-row" key={inv.id} href={inv.href}>{body}</a>
+          ) : (
+            <article className="portal-v2-invoice" key={inv.id}>{body}</article>
+          );
+        })}
         {!d.invoices.length && <p className="dim">{t.noInvoices}</p>}
       </section>
 
