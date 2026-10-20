@@ -480,6 +480,7 @@ const copy = {
     annotations: "Annotate",
     galleryPick: "Gallery pick",
     amountDue: "Amount due",
+    dates: "Dates",
     dueDate: "Due date",
     depositAmount: "Deposit amount",
     paymentNotes: "Payment notes",
@@ -826,6 +827,7 @@ const copy = {
     annotations: "Anotar",
     galleryPick: "Elegir para galería",
     amountDue: "Saldo pendiente",
+    dates: "Fechas",
     dueDate: "Fecha de vencimiento",
     depositAmount: "Monto del depósito",
     paymentNotes: "Notas de pago",
@@ -16059,11 +16061,11 @@ function buildPaymentReceipt(invoice: Invoice, settings: Settings | null, lang: 
   doc.setFontSize(9); doc.text(companyContact(settings), 42, 744); return doc.output("blob");
 }
 
-type EditableFinancial = Pick<FinancialDocument, "lineItems" | "discountType" | "discountValue" | "taxType" | "taxValue" | "footnote">;
+type EditableFinancial = Pick<FinancialDocument, "lineItems" | "discountType" | "discountValue" | "taxType" | "taxValue" | "footnote"> & { issueDate: string; dueDate: string };
 function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, settings }: { lang: Lang; kind: "invoice" | "quote"; document: FinancialDocument & { id: number }; onCancel: () => void; onSaved: () => void; onDelete: () => void; settings?: Settings | null }) {
   const t = copy[lang];
   const estTerms = estimateTerms(lang, settings ?? null);
-  const [form, setForm] = useState<EditableFinancial>({ lineItems: document.lineItems.map((item) => ({...item})), discountType: document.discountType, discountValue: document.discountValue, taxType: document.taxType, taxValue: document.taxValue, footnote: document.footnote });
+  const [form, setForm] = useState<EditableFinancial>({ lineItems: document.lineItems.map((item) => ({...item})), discountType: document.discountType, discountValue: document.discountValue, taxType: document.taxType, taxValue: document.taxValue, footnote: document.footnote, issueDate: document.issueDate ?? "", dueDate: document.dueDate ?? "" });
   const [showDiscount, setShowDiscount] = useState(money(document.discountValue) > 0);
   const [showTax, setShowTax] = useState(money(document.taxValue) > 0);
   const [reorder, setReorder] = useState(false);
@@ -16090,12 +16092,12 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // missing. Keep an item when it has either, and fall back to the name when
   // the description is blank (same rule as the new-invoice form).
   const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const,...(item.id?{id:item.id}:{}),...(item.optional?{optional:true}:{})}));
-  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument(payload);else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument({...payload,issueDate:form.issueDate,dueDate:form.dueDate});else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
   // the current (unsaved) form values.
   const previewPdf = async () => {
     const items = editableItems();
-    const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote };
+    const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote, ...(kind === "invoice" ? { issueDate: form.issueDate, dueDate: form.dueDate } : {}) };
     const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
     const pdf = kind === "invoice" ? await buildInvoicePdf(doc, settings ?? null, lang, strings) : await buildQuotePdf(doc, settings ?? null, lang, strings);
     setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
@@ -16135,6 +16137,13 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       onSave={() => void save()}
     />
     <div className="financial-editor">
+      {/* Invoice dates (Danny 2026-10-20): an existing invoice's issue/due
+          dates used to be settable only in the new-invoice builder — the
+          Edit screen had no date fields at all. updateQuoteDocument's
+          schema takes no date fields, so the section is invoice-only.
+          Dates always ride the normal Save; "" is the stored form of
+          "no due date", so clearing the input clears the date. */}
+      {kind === "invoice" && <section className="editor-section editor-dates-section"><div className="section-title-row"><h2>{t.dates}</h2></div><div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} /></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label></div></section>}
       <section className="editor-section editor-items-section"><div className="section-title-row"><h2>{t.lineItems}</h2><button type="button" className="text-button" onClick={() => setReorder(!reorder)}>{reorder ? (lang === "es" ? "Listo" : "Done") : (lang === "es" ? "Reordenar" : "Reorder")}</button></div>{form.lineItems.map((item,index)=>{
         const qty = item.quantity ?? 1;
         const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
