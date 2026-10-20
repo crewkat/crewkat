@@ -23558,9 +23558,7 @@ function TodayScreen({
               </h3>
               <p>
                 {q.daysWaiting}{" "}
-                {lang === "es" ? "días esperando" : "days waiting"} ·{" "}
-                {lang === "es" ? "prioridad" : "priority"}{" "}
-                {Math.round(q.score).toLocaleString()}
+                {lang === "es" ? "días esperando" : "days waiting"}
               </p>
               <div className={`automation-actions${q.clientPhone ? "" : " no-phone"}`}>
                 {q.clientPhone ? (
