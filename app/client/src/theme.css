@@ -5522,6 +5522,27 @@ a.portal-v2-doc-row:hover { border-color: var(--accent); }
   font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 4px 18px rgba(0, 0, 0, .35);
 }
 .portal-v2-lightbox-download:disabled { opacity: .6; }
+.portal-v2-payments {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin: -4px 0 10px; display: grid; gap: 8px;
+}
+.portal-v2-payments-title {
+  margin: 0; font-size: .78rem; font-weight: 800; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.portal-v2-payment { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.portal-v2-payment-meta { font-size: .92rem; }
+.portal-v2-receipt-btn { flex: none; }
+.portal-v2-receipt-backdrop { place-items: center; }
+.portal-v2-receipt {
+  background: var(--surface); color: var(--text);
+  border-radius: 16px; padding: 22px; width: min(400px, calc(100vw - 48px));
+  display: grid; gap: 9px; max-height: 85vh; overflow: auto;
+}
+.portal-v2-receipt h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.portal-v2-receipt-company { font-size: 1rem; }
+.portal-v2-receipt-row { display: flex; justify-content: space-between; gap: 12px; font-size: .92rem; }
+.portal-v2-receipt .row-actions { display: flex; gap: 8px; margin-top: 8px; }
 
 /* Job Overview redesign 2026-10-11 (Danny's 6 points). Flat cards, hairline
    borders, 8px+ radius, orange accent — matches the app design language. */

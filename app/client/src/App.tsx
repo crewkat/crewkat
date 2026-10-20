@@ -30317,6 +30317,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   const [note, setNote] = useState("");
   const [photoStage, setPhotoStage] = useState<"all" | "before" | "during" | "after">("all");
   const [lightbox, setLightbox] = useState<{ id: number | null; url: string } | null>(null);
+  const [receipt, setReceipt] = useState<{ invoiceNumber: string; total: string; payment: { id: number; amount: string; paymentDate: string; method: string }; balanceAfter: number } | null>(null);
   const [downloadingPhoto, setDownloadingPhoto] = useState(false);
   const downloadPortalPhoto = async (photoId: number) => {
     if (downloadingPhoto) return;
@@ -30392,6 +30393,46 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
       dateStyle: "medium",
     }).format(new Date(value));
+  // Payment dates are stored date-only ("YYYY-MM-DD"); parse at noon so the
+  // day never shifts with the viewer's timezone.
+  const fmtDay = (value: string) =>
+    new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+      dateStyle: "medium",
+    }).format(new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value));
+  // Balance remaining on an invoice right after a given payment landed:
+  // total minus every payment up to and including it (payload order is
+  // oldest → newest), matching the payload's balanceDue math.
+  const openReceipt = (inv: (typeof d.invoices)[number], pay: (typeof d.invoices)[number]["payments"][number]) => {
+    let running = 0;
+    for (const p of inv.payments) {
+      running += money(p.amount);
+      if (p.id === pay.id) break;
+    }
+    setReceipt({
+      invoiceNumber: inv.invoiceNumber,
+      total: inv.total,
+      payment: pay,
+      balanceAfter: Math.max(0, money(inv.total) - running),
+    });
+  };
+  // The receipt download is a standalone, print-clean HTML file built from
+  // the portal payload only — no server round-trip.
+  const downloadReceipt = () => {
+    if (!receipt) return;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const labels = {
+      title: lang === "es" ? "Recibo de pago" : "Payment receipt",
+      invoice: lang === "es" ? "Factura" : "Invoice",
+      date: lang === "es" ? "Fecha de pago" : "Payment date",
+      method: lang === "es" ? "Método de pago" : "Payment method",
+      paid: lang === "es" ? "Monto pagado" : "Amount paid",
+      total: lang === "es" ? "Total de la factura" : "Invoice total",
+      balance: lang === "es" ? "Saldo restante" : "Balance remaining",
+    };
+    const row = (k: string, v: string) => `<tr><td style="padding:8px 0;color:#666">${esc(k)}</td><td style="padding:8px 0;text-align:right;font-weight:600">${esc(v)}</td></tr>`;
+    const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${esc(labels.title)} — ${esc(receipt.invoiceNumber)}</title></head><body style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;color:#111"><h1 style="font-size:20px;margin:0 0 4px">${esc(company.name || "Crewkat")}</h1><h2 style="font-size:16px;margin:0 0 16px;font-weight:600">${esc(labels.title)}</h2><table style="width:100%;border-collapse:collapse;border-top:1px solid #ddd;border-bottom:1px solid #ddd">${row(labels.invoice, receipt.invoiceNumber)}${row(labels.date, fmtDay(receipt.payment.paymentDate))}${receipt.payment.method ? row(labels.method, receipt.payment.method) : ""}${row(labels.paid, usd(money(receipt.payment.amount)))}${row(labels.total, usd(money(receipt.total)))}${row(labels.balance, usd(receipt.balanceAfter))}</table></body></html>`;
+    downloadBlob(new Blob([html], { type: "text/html" }), `receipt-${receipt.invoiceNumber}-${receipt.payment.paymentDate}.html`);
+  };
   const shownPhotos = photoStage === "all" ? d.photos : d.photos.filter((p) => p.stage === photoStage);
   const t = {
     project: lang === "es" ? "Su proyecto" : "Your project",
@@ -30430,8 +30471,18 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     estimate: lang === "es" ? "Presupuesto" : "Estimate",
     accepted: lang === "es" ? "Aceptado" : "Accepted",
     invoices: lang === "es" ? "Facturas" : "Invoices",
+    invoice: lang === "es" ? "Factura" : "Invoice",
     noInvoices: lang === "es" ? "No hay facturas." : "No invoices yet.",
     due: lang === "es" ? "Vence" : "Due",
+    payments: lang === "es" ? "Pagos" : "Payments",
+    receipt: lang === "es" ? "Recibo" : "Receipt",
+    paymentReceipt: lang === "es" ? "Recibo de pago" : "Payment receipt",
+    amountPaid: lang === "es" ? "Monto pagado" : "Amount paid",
+    invoiceTotal: lang === "es" ? "Total de la factura" : "Invoice total",
+    balanceRemaining: lang === "es" ? "Saldo restante" : "Balance remaining",
+    paymentDate: lang === "es" ? "Fecha de pago" : "Payment date",
+    paymentMethod: lang === "es" ? "Método de pago" : "Payment method",
+    close: lang === "es" ? "Cerrar" : "Close",
     messages: lang === "es" ? "Mensajes" : "Messages",
   };
   return (
@@ -30733,14 +30784,60 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
               {inv.href && <span className="portal-v2-chevron" aria-hidden="true">›</span>}
             </>
           );
-          return inv.href ? (
-            <a className="portal-v2-invoice portal-v2-doc-row" key={inv.id} href={inv.href}>{body}</a>
+          const row = inv.href ? (
+            <a className="portal-v2-invoice portal-v2-doc-row" href={inv.href}>{body}</a>
           ) : (
-            <article className="portal-v2-invoice" key={inv.id}>{body}</article>
+            <article className="portal-v2-invoice">{body}</article>
+          );
+          return (
+            <div key={inv.id}>
+              {row}
+              {inv.payments.length > 0 && (
+                <div className="portal-v2-payments">
+                  <p className="portal-v2-payments-title">{t.payments}</p>
+                  {inv.payments.map((pay) => (
+                    <div className="portal-v2-payment" key={pay.id}>
+                      <span className="portal-v2-payment-meta">
+                        {fmtDay(pay.paymentDate)}{pay.method ? ` · ${pay.method}` : ""} · {usd(money(pay.amount))}
+                      </span>
+                      <button
+                        type="button"
+                        className="secondary-button sm portal-v2-receipt-btn"
+                        onClick={() => openReceipt(inv, pay)}
+                      >
+                        {t.receipt}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
         {!d.invoices.length && <p className="dim">{t.noInvoices}</p>}
       </section>
+
+      {/* Payment receipt */}
+      {receipt && (
+        <div className="portal-v2-lightbox portal-v2-receipt-backdrop" onClick={() => setReceipt(null)} role="dialog" aria-modal="true" aria-label={t.paymentReceipt}>
+          <div className="portal-v2-receipt" onClick={(e) => e.stopPropagation()}>
+            <strong className="portal-v2-receipt-company">{company.name || "Crewkat"}</strong>
+            <h2>{t.paymentReceipt}</h2>
+            <div className="portal-v2-receipt-row"><span className="dim">{t.invoice}</span><strong>{receipt.invoiceNumber}</strong></div>
+            <div className="portal-v2-receipt-row"><span className="dim">{t.paymentDate}</span><strong>{fmtDay(receipt.payment.paymentDate)}</strong></div>
+            {receipt.payment.method && (
+              <div className="portal-v2-receipt-row"><span className="dim">{t.paymentMethod}</span><strong>{receipt.payment.method}</strong></div>
+            )}
+            <div className="portal-v2-receipt-row"><span className="dim">{t.amountPaid}</span><strong>{usd(money(receipt.payment.amount))}</strong></div>
+            <div className="portal-v2-receipt-row"><span className="dim">{t.invoiceTotal}</span><strong>{usd(money(receipt.total))}</strong></div>
+            <div className="portal-v2-receipt-row"><span className="dim">{t.balanceRemaining}</span><strong>{usd(receipt.balanceAfter)}</strong></div>
+            <div className="row-actions">
+              <button type="button" className="primary-button sm" onClick={downloadReceipt}>{t.download}</button>
+              <button type="button" className="secondary-button sm" onClick={() => setReceipt(null)}>{t.close}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox */}
       {lightbox && (
