@@ -40,7 +40,7 @@ type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
-import { blobDataUrl, buildInvoicePdf, buildQuotePdf, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
+import { blobDataUrl, buildChangeOrderPdf, buildInvoicePdf, buildQuotePdf, changeOrderStrings, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type ChangeOrderPdfData, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, type FillFieldKind, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
 import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
@@ -8000,14 +8000,16 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
   const [pdfError, setPdfError] = useState("");
   const openPdf = async (d: Doc) => {
     const url = d.signedPdfUrl ?? d.originalUrl;
-    if (!url) return;
+    // Generated change orders have no file URL — the server serves
+    // their canonical formal PDF by id (Danny 2026-10-21).
+    if (!url && d.kind !== "change_order") return;
     setPdfError("");
     setPdfBusy(true);
     try {
       // ONE canonical PDF (2026-10-17): the server action serves the
       // stored canonical file; the direct URL fetch stays as fallback.
       let blob: Blob | null = null;
-      if (d.originalUrl) {
+      if (d.originalUrl || d.kind === "change_order") {
         try {
           const res = await api.getDocumentPdf({ documentId: d.id });
           const bytes = Uint8Array.from(atob(res.pdfBase64), (char) => char.charCodeAt(0));
@@ -8015,11 +8017,12 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
         } catch { blob = null; }
       }
       if (!blob) {
+        if (!url) throw new Error("fetch failed");
         const res = await fetch(sameOriginBlobPath(url));
         if (!res.ok) throw new Error("fetch failed");
         blob = await res.blob();
       }
-      setPdfPreview({ blob, title: d.title });
+      setPdfPreview({ blob, title: d.kind === "change_order" ? d.displayTitle || d.title : d.title });
     } catch {
       setPdfError(lang === "es" ? "No se pudo abrir el PDF." : "The PDF couldn't be opened.");
     } finally {
@@ -8096,7 +8099,7 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
               <li key={d.id}>
                 <button type="button" className="doc-row" onClick={() => { setSelected(d); setNotice(""); }}>
                   <span>
-                    <strong>{d.title}</strong>
+                    <strong>{d.kind === "change_order" ? d.displayTitle || d.title : d.title}</strong>
                     <small>{kindLabel(d)} · {statusLabel(d)}</small>
                   </span>
                   <BackIcon />
@@ -8149,7 +8152,7 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
                 <div><dt>{lang === "es" ? "Firmado por" : "Signed by"}</dt><dd>{viewing.signerName} · {new Date(viewing.signedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}</dd></div>
                 {viewing.clientSignerName && <div><dt>{lang === "es" ? "Cliente" : "Client"}</dt><dd>{viewing.clientSignerName}{viewing.clientSignedAt ? ` · ${new Date(viewing.clientSignedAt).toLocaleDateString(lang === "es" ? "es-US" : "en-US")}` : ""}</dd></div>}
               </dl>
-              {(viewing.signedPdfUrl || viewing.originalUrl) && (
+              {(viewing.signedPdfUrl || viewing.originalUrl || viewing.kind === "change_order") && (
                 <button type="button" className="primary-button" disabled={pdfBusy} onClick={() => void openPdf(viewing)}>
                   {pdfBusy
                     ? (lang === "es" ? "Abriendo…" : "Opening…")
@@ -10102,7 +10105,17 @@ function JobDetail({
         </AccordionSection>
         <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
-          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><DocRowLinkPill lang={lang} doc={doc} /><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
+          {query.data.contractSummary && query.data.documents.some((doc) => doc.kind === "change_order") && (
+            <div className="job-contract-summary">
+              <div><span>{lang === "es" ? "Contrato original" : "Original contract"}</span><strong>{usd(money(query.data.contractSummary.baseAmount))}</strong></div>
+              <div><span>{lang === "es" ? "Órdenes de cambio firmadas" : "Signed change orders"}</span><strong>{usd(money(query.data.contractSummary.signedChangeOrdersTotal))}</strong></div>
+              <div className="job-contract-summary-total"><span>{lang === "es" ? "Total revisado del contrato" : "Revised contract total"}</span><strong>{usd(money(query.data.contractSummary.revisedTotal))}</strong></div>
+              {money(query.data.contractSummary.pendingChangeOrdersTotal) !== 0 && (
+                <p className="dim small">{lang === "es" ? "Órdenes de cambio pendientes (no incluidas)" : "Pending change orders (not included)"}: {usd(money(query.data.contractSummary.pendingChangeOrdersTotal))}</p>
+              )}
+            </div>
+          )}
+          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.kind === "change_order" ? doc.displayTitle || doc.title : doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}{doc.kind === "change_order" && doc.amount ? ` · ${usd(money(doc.amount))}` : ""}</small></span><DocRowLinkPill lang={lang} doc={doc} /><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
           <div className="job-section-heading"><p>{lang === "es" ? "Archivos compartidos" : "Shared files"}</p><button type="button" className="small-button" onClick={() => { setShareFileError(""); setShareFile(null); setShareFileTitle(""); setShareFileOpen(true); }}>{lang === "es" ? "+ Compartir archivo" : "+ Share a file"}</button></div>
           {(query.data.jobFiles ?? []).length ? <div className="job-linked-list">{(query.data.jobFiles ?? []).map((file) => <article key={file.id}><button type="button" onClick={() => window.open(file.url, "_blank", "noopener")}><span><strong>{file.title || file.filename}</strong><small>{file.filename} · {humanFileSize(file.sizeBytes)}</small></span><span className={`ck-pill ${file.sharedWithClient ? "ck-pill-paid" : "ck-pill-draft"}`}>{file.sharedWithClient ? (lang === "es" ? "El cliente lo ve" : "Client can see") : (lang === "es" ? "Oculto" : "Hidden")}</span></button><button type="button" className="unlink-button" aria-label={lang === "es" ? "Opciones del archivo" : "File options"} onClick={() => setFileMenu(file)}>⋯</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client's portal."}</p>}
         </AccordionSection>
@@ -20170,6 +20183,16 @@ async function buildCanonicalDocumentPdf(
     if (!res.ok) throw new Error("The document file could not be loaded.");
     return res.blob();
   }
+  if (document.kind === "change_order" && !document.originalUrl) {
+    // Generated change order (Danny 2026-10-21): the server serves the
+    // canonical formal document (stored signed copy once signed,
+    // rendered current state before) — the same file the client gets.
+    try {
+      const res = await api.getDocumentPdf({ documentId: document.id });
+      const bytes = Uint8Array.from(atob(res.pdfBase64), (char) => char.charCodeAt(0));
+      return new Blob([bytes as BlobPart], { type: "application/pdf" });
+    } catch { /* fall through to the legacy paths below */ }
+  }
   if (document.clientSignedAt && document.signedPdfUrl) {
     const res = await fetch(sameOriginBlobPath(document.signedPdfUrl));
     if (!res.ok) throw new Error("The document file could not be loaded.");
@@ -20251,7 +20274,9 @@ function DocumentDetailScreen({
     enabled: !!doc,
   });
   const headerTitle = doc
-    ? doc.title
+    ? doc.kind === "change_order"
+      ? doc.displayTitle || doc.title
+      : doc.title
     : lang === "es"
       ? "Documento"
       : "Document";
@@ -20451,6 +20476,18 @@ function DocumentDetailScreen({
             <div>
               <dt>{t.amount}</dt>
               <dd>{usd(money(doc.amount))}</dd>
+            </div>
+          )}
+          {doc.kind === "change_order" && doc.contractSumBefore && (
+            <div>
+              <dt>{lang === "es" ? "Suma del contrato antes" : "Contract sum before"}</dt>
+              <dd>{usd(money(doc.contractSumBefore))}</dd>
+            </div>
+          )}
+          {doc.kind === "change_order" && doc.newContractSum && (
+            <div>
+              <dt>{lang === "es" ? "Nueva suma del contrato" : "New contract sum"}</dt>
+              <dd>{usd(money(doc.newContractSum))}</dd>
             </div>
           )}
           {doc.originalFilename && (
@@ -28632,6 +28669,55 @@ async function mergePdfBytes(baseBytes: ArrayBuffer | Uint8Array, extraBytes: Ar
   return base.save();
 }
 
+// Change-order documents (Danny 2026-10-21): when a client signs a
+// generated change order through its document link, the submitted
+// signed PDF is the FORMAL document (the same buildChangeOrderPdf the
+// server renders for downloads) with both signatures — never the old
+// generic signature stub. All amounts come from the server payload.
+async function buildClientSignedChangeOrderPdf(
+  doc: ClientDoc,
+  signatureBase64: string,
+  signerName: string,
+  lang: Lang,
+): Promise<Blob> {
+  const co = doc.changeOrder;
+  if (!co) throw new Error("Change order data is missing.");
+  const contractorSignatureDataUrl = co.contractorSignatureUrl
+    ? await loadImageDataUrl(co.contractorSignatureUrl)
+    : null;
+  const logoDataUrl = await loadImageDataUrl(doc.company.logoUrl);
+  const data: ChangeOrderPdfData = {
+    coNumber: co.number,
+    dateIso: co.dateIso,
+    clientName: doc.clientName,
+    jobType: doc.jobType,
+    jobAddress: doc.jobAddress,
+    referenceContract: co.referenceContract,
+    scope: doc.description,
+    bodyText: doc.bodyText,
+    contractSumBefore: co.contractSumBefore,
+    amount: co.amount,
+    newContractSum: co.newContractSum,
+    contractorSignerName: doc.contractorSignerName,
+    contractorSignatureDataUrl,
+    contractorSignedAtIso: co.contractorSignedAt,
+    clientSignerName: signerName,
+    clientSignatureDataUrl: `data:image/png;base64,${signatureBase64}`,
+    clientSignedAtIso: new Date().toISOString(),
+    logoDataUrl,
+  };
+  const settings = {
+    companyName: doc.company.name,
+    phone: doc.company.phone,
+    email: doc.company.email,
+    website: doc.company.website,
+    address: "",
+    licenseNumber: doc.company.licenseNumber,
+    accentColor: "#1f5a4a",
+  };
+  return buildChangeOrderPdf(data, settings as never, lang);
+}
+
 async function buildClientSignedContractPdf(
   doc: ClientDoc,
   signatureBase64: string,
@@ -29272,6 +29358,101 @@ function QuoteOptionsPicker({ lang, token, quoteId, baseTotal, options, initialS
   );
 }
 
+// Change-order documents (Danny 2026-10-21): the formal change-order
+// document as the client sees it on the document page — the HTML twin
+// of buildChangeOrderPdf, fed entirely by the server payload (number,
+// contract-sum chain, reference) and worded with the same
+// changeOrderStrings so the page and the PDF never diverge. Used for
+// generated COs; uploaded-PDF COs keep the compact header + real pages.
+function ChangeOrderPaper({ doc, lang }: { doc: ClientDoc; lang: Lang }) {
+  const co = doc.changeOrder;
+  if (!co) return null;
+  const s = changeOrderStrings(lang);
+  const c = doc.company;
+  const fmtDay = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  return (
+    <article className="quote-paper client-co-paper">
+      <div className="quote-paper-title-row">
+        <h2>{co.displayTitle}</h2>
+      </div>
+      <p className="dim small client-co-date">
+        {s.date}: {fmtDay(co.dateIso ? `${co.dateIso}T12:00:00` : null)}
+      </p>
+      <section className="quote-paper-client">
+        <strong>
+          {lang === "es" ? "Para" : "For"}: {doc.clientName || "—"}
+        </strong>
+        <span>{[doc.jobType, doc.jobAddress].filter((v) => v && v.trim()).join(" · ")}</span>
+        <span>
+          {s.contractor}: {c.name}
+        </span>
+      </section>
+      <p className="client-co-reference">
+        {s.reference}: {s.referenceText(co.referenceContract)}
+      </p>
+      <h3 className="client-co-section-head">{s.scope}</h3>
+      {doc.description && <p className="client-doc-description">{doc.description}</p>}
+      {doc.bodyText && doc.bodyText.trim() !== doc.description.trim() && (
+        <div className="client-doc-body">{doc.bodyText}</div>
+      )}
+      <h3 className="client-co-section-head">{s.price}</h3>
+      <div className="client-co-price">
+        <div className="client-co-price-row">
+          <span>{s.sumBefore}</span>
+          <strong>{usd(money(co.contractSumBefore))}</strong>
+        </div>
+        <div className="client-co-price-row">
+          <span>{s.thisChange}</span>
+          <strong>{usd(money(co.amount))}</strong>
+        </div>
+        <div className="client-co-price-row client-co-price-total">
+          <span>{s.newSum}</span>
+          <strong>{usd(money(co.newContractSum))}</strong>
+        </div>
+      </div>
+      <h3 className="client-co-section-head">{s.schedule}</h3>
+      <p className="client-co-line">{s.scheduleText}</p>
+      <h3 className="client-co-section-head">{s.payment}</h3>
+      <p className="client-co-line">{s.paymentText}</p>
+      <h3 className="client-co-section-head">{s.terms}</h3>
+      <p className="client-co-line">{s.termsText}</p>
+      <div className="client-co-sigs">
+        <div className="client-co-sig">
+          <span className="client-co-sig-head">{s.contractorSignature}</span>
+          {co.contractorSignatureUrl && (
+            <img className="client-co-sig-img" src={co.contractorSignatureUrl} alt="" />
+          )}
+          <span className="client-co-sig-rule" aria-hidden="true" />
+          <strong>{doc.contractorSignerName || "—"}</strong>
+          {c.name && <span className="dim small">{s.onBehalfOf(c.name)}</span>}
+          {co.contractorSignedAt && (
+            <span className="dim small">
+              {s.signedDate}: {fmtDay(co.contractorSignedAt)}
+            </span>
+          )}
+        </div>
+        <div className="client-co-sig">
+          <span className="client-co-sig-head">{s.clientSignature}</span>
+          <span className="client-co-sig-rule" aria-hidden="true" />
+          {doc.alreadySigned ? (
+            <>
+              <strong>{doc.clientSignerName || "—"}</strong>
+              {doc.clientSignedAt && (
+                <span className="dim small">
+                  {s.signedDate}: {fmtDay(doc.clientSignedAt)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="dim small">{lang === "es" ? "Firma abajo para aprobar" : "Sign below to approve"}</span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function ClientDocumentScreen({ token }: { token: string }) {
   const [lang, setLang] = useState<Lang>("en");
   const t = copy[lang];
@@ -29339,7 +29520,9 @@ function ClientDocumentScreen({ token }: { token: string }) {
         ? await buildUploadedDocSignedPdf(doc, token, signature, lang).catch(() =>
             buildClientSignedContractPdf(doc, signature, name, lang, token),
           )
-        : await buildClientSignedContractPdf(doc, signature, name, lang, token);
+        : doc.kind === "change_order" && doc.changeOrder
+          ? await buildClientSignedChangeOrderPdf(doc, signature, name, lang)
+          : await buildClientSignedContractPdf(doc, signature, name, lang, token);
       const pdfDataUrl = await blobDataUrl(pdfBlob);
       return api.submitDocumentSignature({
         token,
@@ -29628,6 +29811,10 @@ function ClientDocumentScreen({ token }: { token: string }) {
               again (signing flow v2). */}
           {!doc.alreadySigned && <PdfPageView token={token} lang={lang} title={doc.title} />}
         </>
+      ) : doc.kind === "change_order" && doc.changeOrder ? (
+        // Change-order documents (Danny 2026-10-21): a generated CO
+        // renders as the formal document, not the generic stub.
+        <ChangeOrderPaper doc={doc} lang={lang} />
       ) : (
         contractStub(false)
       )}
@@ -30314,10 +30501,13 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   });
   const [signer, setSigner] = useState("");
   const [sig, setSig] = useState("");
-  const [note, setNote] = useState("");
   const [photoStage, setPhotoStage] = useState<"all" | "before" | "during" | "after">("all");
   const [lightbox, setLightbox] = useState<{ id: number | null; url: string } | null>(null);
   const [receipt, setReceipt] = useState<{ invoiceNumber: string; total: string; payment: { id: number; amount: string; paymentDate: string; method: string }; balanceAfter: number } | null>(null);
+  // Change-order documents (Danny 2026-10-21): the CO whose full
+  // document is open in the portal overlay (COs without a /d/ link).
+  const [coDocId, setCoDocId] = useState<number | null>(null);
+  const [coDownloading, setCoDownloading] = useState(false);
   const [downloadingPhoto, setDownloadingPhoto] = useState(false);
   const downloadPortalPhoto = async (photoId: number) => {
     if (downloadingPhoto) return;
@@ -30433,6 +30623,24 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${esc(labels.title)} — ${esc(receipt.invoiceNumber)}</title></head><body style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:40px auto;padding:0 20px;color:#111"><h1 style="font-size:20px;margin:0 0 4px">${esc(company.name || "Crewkat")}</h1><h2 style="font-size:16px;margin:0 0 16px;font-weight:600">${esc(labels.title)}</h2><table style="width:100%;border-collapse:collapse;border-top:1px solid #ddd;border-bottom:1px solid #ddd">${row(labels.invoice, receipt.invoiceNumber)}${row(labels.date, fmtDay(receipt.payment.paymentDate))}${receipt.payment.method ? row(labels.method, receipt.payment.method) : ""}${row(labels.paid, usd(money(receipt.payment.amount)))}${row(labels.total, usd(money(receipt.total)))}${row(labels.balance, usd(receipt.balanceAfter))}</table></body></html>`;
     downloadBlob(new Blob([html], { type: "text/html" }), `receipt-${receipt.invoiceNumber}-${receipt.payment.paymentDate}.html`);
   };
+  // Change-order documents (Danny 2026-10-21): the open CO (portal
+  // overlay) and its canonical-PDF download — the same file the
+  // document link and the owner's copy serve.
+  const openCo = coDocId !== null ? (d.changeOrders.find((o) => o.id === coDocId) ?? null) : null;
+  const downloadCoPdf = async (documentId: number) => {
+    setCoDownloading(true);
+    try {
+      const res = await api.getPortalChangeOrderPdf({ token, documentId, lang });
+      const binary = atob(res.pdfBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      downloadBlob(new Blob([bytes], { type: "application/pdf" }), res.filename);
+    } catch {
+      /* the button re-enables; the document stays readable above */
+    } finally {
+      setCoDownloading(false);
+    }
+  };
   const shownPhotos = photoStage === "all" ? d.photos : d.photos.filter((p) => p.stage === photoStage);
   const t = {
     project: lang === "es" ? "Su proyecto" : "Your project",
@@ -30457,6 +30665,9 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     docAwaiting: lang === "es" ? "En espera de firma" : "Awaiting signature",
     docContract: lang === "es" ? "Contrato" : "Contract",
     docChangeOrder: lang === "es" ? "Orden de cambio" : "Change order",
+    viewDocument: lang === "es" ? "Ver documento" : "View document",
+    reviewSign: lang === "es" ? "Revisar y firmar" : "Review & sign",
+    downloadPdf: lang === "es" ? "Descargar PDF" : "Download PDF",
     viewEstimate: lang === "es" ? "Ver presupuesto" : "View estimate",
     viewFile: lang === "es" ? "Ver" : "View",
     download: lang === "es" ? "Descargar" : "Download",
@@ -30535,21 +30746,35 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           <h2>{t.documents}</h2>
           {(d.jobDocuments ?? []).map((doc) => {
             const signed = !!doc.clientSignedAt;
+            const isCo = doc.kind === "change_order";
             const body = (
               <>
                 <div>
-                  <strong>{doc.title}</strong>
-                  <span className="dim">{doc.kind === "contract" ? t.docContract : t.docChangeOrder}</span>
+                  <strong>{isCo ? doc.displayTitle || doc.title : doc.title}</strong>
+                  <span className="dim">
+                    {isCo ? t.docChangeOrder : t.docContract}
+                    {isCo && doc.amount ? ` · ${usd(money(doc.amount))}` : ""}
+                  </span>
                   <span className={`status-chip ${signed ? "paid" : "sent"}`}>
                     {signed ? `${t.docSigned} · ${fmtDate(doc.clientSignedAt!)}` : t.docAwaiting}
                   </span>
                 </div>
-                {doc.href && <span className="portal-v2-chevron" aria-hidden="true">›</span>}
+                {(doc.href || isCo) && <span className="portal-v2-chevron" aria-hidden="true">›</span>}
               </>
             );
-            return doc.href ? (
-              <a className="portal-v2-approval portal-v2-doc-card portal-v2-doc-row" key={doc.id} href={doc.href}>{body}</a>
-            ) : (
+            if (doc.href) {
+              return (
+                <a className="portal-v2-approval portal-v2-doc-card portal-v2-doc-row" key={doc.id} href={doc.href}>{body}</a>
+              );
+            }
+            if (isCo) {
+              // No /d/ link: the document opens right here in the
+              // portal (Danny 2026-10-21) — view, download, sign.
+              return (
+                <button type="button" className="portal-v2-approval portal-v2-doc-card portal-v2-doc-row portal-v2-doc-button" key={doc.id} onClick={() => setCoDocId(doc.id)}>{body}</button>
+              );
+            }
+            return (
               <article className="portal-v2-approval portal-v2-doc-card" key={doc.id}>{body}</article>
             );
           })}
@@ -30691,49 +30916,39 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           </article>
         ))}
         {unsignedOrders.map((o) => (
-          <details className="action-details portal-v2-co" key={`co-${o.id}`}>
-            <summary>
-              {o.title} · {usd(money(o.amount))}
+          // Change-order documents (Danny 2026-10-21): the attention
+          // entry presents the DOCUMENT — number, scope, amount, and
+          // the contract-sum chain — and opens it (its /d/ page when a
+          // link exists, the portal document view otherwise). Signing
+          // happens on the document, never on a bare quick-sign pad.
+          <article className="portal-v2-approval portal-v2-co" key={`co-${o.id}`}>
+            <div>
+              <strong>{o.displayTitle || o.title}</strong>
               <span className="status-chip sent">{t.pending}</span>
-            </summary>
-            <p>{o.description}</p>
-            <div className="compact-form">
-              <label>
-                <span>{t.signerName}</span>
-                <input value={signer} onChange={(e) => setSigner(e.target.value)} />
-              </label>
-              <SignaturePad label={t.signature} clearLabel={t.clear} onChange={setSig} />
-              <label>
-                <span>{t.optionalNote}</span>
-                <textarea value={note} onChange={(e) => setNote(e.target.value)} />
-              </label>
-              <button
-                className="primary-button"
-                disabled={!signer || !sig}
-                onClick={async () => {
-                  await api.portalSignChangeOrder({
-                    token,
-                    documentId: o.id,
-                    signerName: signer,
-                    signatureDataBase64: sig,
-                  });
-                  setSigner("");
-                  setSig("");
-                  setNote("");
-                  qc.invalidateQueries({ queryKey: ["client-portal", token] });
-                }}
-              >
-                {t.signOrder}
-              </button>
+              <span className="dim">{usd(money(o.amount))}</span>
+              {o.description ? <p>{o.description}</p> : null}
+              {o.contractSumBefore && (
+                <span className="dim">
+                  {changeOrderStrings(lang).sumBefore}: {usd(money(o.contractSumBefore))} → {changeOrderStrings(lang).newSum}: {usd(money(o.newContractSum))}
+                </span>
+              )}
             </div>
-          </details>
+            {o.href ? (
+              <a className="primary-button sm" href={o.href}>{t.reviewSign}</a>
+            ) : (
+              <button type="button" className="primary-button sm" onClick={() => setCoDocId(o.id)}>{t.viewDocument}</button>
+            )}
+          </article>
         ))}
         {d.changeOrders.filter((o) => o.clientSignedAt).map((o) => (
           <article className="portal-v2-approval decided" key={`co-${o.id}`}>
             <div>
-              <strong>{o.title} · {usd(money(o.amount))}</strong>
+              <strong>{o.displayTitle || o.title} · {usd(money(o.amount))}</strong>
               <span className="dim">{t.signedBy} {o.clientSignerName}</span>
             </div>
+            {!o.href && (
+              <button type="button" className="secondary-button sm" onClick={() => setCoDocId(o.id)}>{t.viewDocument}</button>
+            )}
           </article>
         ))}
       </section>
@@ -30818,6 +31033,76 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       </section>
 
       {/* Payment receipt */}
+      {openCo && (() => {
+        // The full change-order document inside the portal (Danny
+        // 2026-10-21): same content and wording as the rendered PDF
+        // (changeOrderStrings), fed by the server payload. Unsigned:
+        // the fresh-signature form sits at the foot of the document.
+        const s = changeOrderStrings(lang);
+        const coSigned = !!openCo.clientSignedAt;
+        return (
+          <div className="portal-v2-lightbox portal-v2-receipt-backdrop" onClick={() => setCoDocId(null)} role="dialog" aria-modal="true" aria-label={openCo.displayTitle || openCo.title}>
+            <div className="portal-v2-receipt portal-v2-co-doc" onClick={(e) => e.stopPropagation()}>
+              <strong className="portal-v2-receipt-company">{company.name || "Crewkat"}</strong>
+              <h2>{openCo.displayTitle || openCo.title}</h2>
+              <p className="dim">
+                {s.date}: {fmtDay(openCo.dateIso)}
+                {openCo.referenceContract ? ` · ${s.reference}: ${openCo.referenceContract}` : ""}
+              </p>
+              <p className="dim">{s.referenceText(openCo.referenceContract)}</p>
+              <h3 className="client-co-section-head">{s.scope}</h3>
+              {openCo.description ? <p>{openCo.description}</p> : null}
+              <h3 className="client-co-section-head">{s.price}</h3>
+              <div className="portal-v2-receipt-row"><span className="dim">{s.sumBefore}</span><strong>{usd(money(openCo.contractSumBefore))}</strong></div>
+              <div className="portal-v2-receipt-row"><span className="dim">{s.thisChange}</span><strong>{usd(money(openCo.amount))}</strong></div>
+              <div className="portal-v2-receipt-row"><span className="dim">{s.newSum}</span><strong>{usd(money(openCo.newContractSum))}</strong></div>
+              <h3 className="client-co-section-head">{s.schedule}</h3>
+              <p>{s.scheduleText}</p>
+              <h3 className="client-co-section-head">{s.payment}</h3>
+              <p>{s.paymentText}</p>
+              <h3 className="client-co-section-head">{s.terms}</h3>
+              <p>{s.termsText}</p>
+              <div className="portal-v2-receipt-row"><span className="dim">{s.contractor}</span><strong>{company.name} — {s.onBehalfOf(company.name)}</strong></div>
+              {coSigned && (
+                <div className="portal-v2-receipt-row"><span className="dim">{t.signedBy}</span><strong>{openCo.clientSignerName} · {fmtDate(openCo.clientSignedAt!)}</strong></div>
+              )}
+              {!coSigned && (
+                <div className="compact-form">
+                  <label>
+                    <span>{t.signerName}</span>
+                    <input value={signer} onChange={(e) => setSigner(e.target.value)} />
+                  </label>
+                  <SignaturePad label={t.signature} clearLabel={t.clear} onChange={setSig} />
+                  <button
+                    className="primary-button"
+                    disabled={!signer || !sig}
+                    onClick={async () => {
+                      await api.portalSignChangeOrder({
+                        token,
+                        documentId: openCo.id,
+                        signerName: signer,
+                        signatureDataBase64: sig,
+                        lang,
+                      });
+                      setSigner("");
+                      setSig("");
+                      setCoDocId(null);
+                      qc.invalidateQueries({ queryKey: ["client-portal", token] });
+                    }}
+                  >
+                    {t.signOrder}
+                  </button>
+                </div>
+              )}
+              <div className="row-actions">
+                <button type="button" className="primary-button sm" disabled={coDownloading} onClick={() => void downloadCoPdf(openCo.id)}>{t.downloadPdf}</button>
+                <button type="button" className="secondary-button sm" onClick={() => setCoDocId(null)}>{t.close}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {receipt && (
         <div className="portal-v2-lightbox portal-v2-receipt-backdrop" onClick={() => setReceipt(null)} role="dialog" aria-modal="true" aria-label={t.paymentReceipt}>
           <div className="portal-v2-receipt" onClick={(e) => e.stopPropagation()}>
