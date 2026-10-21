@@ -5,12 +5,19 @@
 import { and, eq } from "drizzle-orm";
 import type { Ctx } from "@hatch/space-sdk";
 import {
+  buildChangeOrderPdf,
   buildInvoicePdf,
   buildQuotePdf,
+  type ChangeOrderPdfData,
   type FinancialDocument,
   type PdfLang,
   type PdfStrings,
 } from "../../client/src/financialPdf";
+import {
+  changeOrderChain,
+  jobDocumentsOrdered,
+  referenceContractTitle,
+} from "./changeOrders";
 import { appendAttachmentsToPdf, type AttachmentForPdf } from "../../client/src/pdfAttachments";
 import * as schema from "./schema";
 
@@ -232,5 +239,81 @@ export async function buildDocumentLinkPdf(
   } catch {
     // Attachments are additive — never fail the main document for them.
   }
+  return { bytes, filename };
+}
+
+// ---------------------------------------------------------------------------
+// Formal change-order PDF (Danny 2026-10-21): renders the CO document row
+// as the legal change-order document — number, parties, reference,
+// scope, contract-sum chain, schedule/payment/terms lines, both
+// signature blocks. All math comes from changeOrders.ts (server-side);
+// signature images are read from their blobs as data URLs. This is THE
+// canonical rendering for generated (non-uploaded) change orders: link
+// downloads, the signed copy, portal downloads, and the owner's copy
+// all serve bytes built here (or the stored copy of them).
+// ---------------------------------------------------------------------------
+export async function buildChangeOrderPdfForDocument(
+  ctx: Ctx,
+  documentId: number,
+  lang: "en" | "es",
+): Promise<{ bytes: Uint8Array; filename: string }> {
+  const db = ctx.db<typeof schema>();
+  const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, documentId)).limit(1))[0];
+  if (!doc || doc.kind !== "change_order") throw new Error("Change order not found.");
+  const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
+  if (!job) throw new Error("Job not found.");
+  const settings =
+    (await db.select().from(schema.settings).where(eq(schema.settings.companyId, job.companyId)).limit(1))[0] ??
+    (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
+  const docs = await jobDocumentsOrdered(db, job.id);
+  const math = changeOrderChain(job, docs).get(doc.id);
+  if (!math) throw new Error("Change order not found.");
+  const imageDataUrl = async (key: string | null): Promise<string | null> => {
+    if (!key) return null;
+    try {
+      const bytes = await ctx.blobs.get(key);
+      if (!bytes || bytes.length === 0) return null;
+      const head = await ctx.blobs.head(key).catch(() => null);
+      return `data:${head?.contentType || "image/png"};base64,${Buffer.from(bytes).toString("base64")}`;
+    } catch {
+      return null;
+    }
+  };
+  const data: ChangeOrderPdfData = {
+    coNumber: math.number,
+    dateIso: doc.createdAt.toISOString().slice(0, 10),
+    clientName: job.clientName,
+    jobType: job.jobType,
+    jobAddress: job.jobAddress,
+    referenceContract: referenceContractTitle(docs),
+    scope: doc.description,
+    bodyText: doc.bodyText,
+    contractSumBefore: math.contractSumBefore,
+    amount: math.amount,
+    newContractSum: math.newContractSum,
+    contractorSignerName: doc.signerName,
+    contractorSignatureDataUrl: await imageDataUrl(doc.signatureBlobKey),
+    contractorSignedAtIso: doc.signedAt ? doc.signedAt.toISOString() : null,
+    clientSignerName: doc.clientSignerName,
+    clientSignatureDataUrl: await imageDataUrl(doc.clientSignatureBlobKey),
+    clientSignedAtIso: doc.clientSignedAt ? doc.clientSignedAt.toISOString() : null,
+    logoDataUrl: settings?.logoBlobKey ? await imageDataUrl(settings.logoBlobKey) : null,
+  };
+  const companySettings = {
+    companyName: settings?.companyName ?? "",
+    phone: settings?.phone ?? "",
+    email: settings?.email ?? "",
+    website: settings?.website ?? "",
+    address: settings?.address ?? "",
+    licenseNumber: settings?.licenseNumber ?? "",
+    logoUrl: null,
+    accentColor: settings?.accentColor ?? "#1f5a4a",
+  };
+  const blob = await buildChangeOrderPdf(data, companySettings as never, asPdfLang(lang));
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length < 100 || String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") {
+    throw new Error("The document PDF could not be generated.");
+  }
+  const filename = lang === "es" ? `orden-de-cambio-${math.number}.pdf` : `change-order-${math.number}.pdf`;
   return { bytes, filename };
 }

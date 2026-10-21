@@ -1064,3 +1064,375 @@ export async function buildInvoicePdf(
 ) {
   return buildFinancialPdf(invoice, settings, lang, "invoice", strings);
 }
+
+// ---------------------------------------------------------------------------
+// Formal change-order document (Danny 2026-10-21): a change order renders
+// as a real legal document — the same file the client views, downloads,
+// signs, and is emailed. All amounts are computed SERVER-side (see
+// server/src/changeOrders.ts) and passed in ready to print; this builder
+// only lays them out. Used by the server (docPdf.ts) for the canonical
+// PDF and by the client page when the client signs through a document
+// link, so both produce the identical document.
+// ---------------------------------------------------------------------------
+export type ChangeOrderPdfData = {
+  coNumber: number;
+  // Document created date, yyyy-mm-dd ("" when unknown).
+  dateIso: string;
+  clientName: string;
+  jobType: string;
+  jobAddress: string;
+  // Title of the job's original contract document ("" when none).
+  referenceContract: string;
+  scope: string;
+  bodyText: string;
+  contractSumBefore: string;
+  amount: string;
+  newContractSum: string;
+  contractorSignerName: string;
+  contractorSignatureDataUrl: string | null;
+  contractorSignedAtIso: string | null;
+  clientSignerName: string;
+  clientSignatureDataUrl: string | null;
+  clientSignedAtIso: string | null;
+  logoDataUrl?: string | null;
+};
+
+export function changeOrderStrings(lang: PdfLang) {
+  return lang === "es"
+    ? {
+        title: (n: number) => `Orden de cambio #${n}`,
+        date: "Fecha",
+        client: "Cliente",
+        job: "Trabajo",
+        address: "Dirección",
+        reference: "Referencia",
+        referenceText: (ref: string) =>
+          `Esta orden de cambio modifica el contrato original de este trabajo${ref ? `: "${ref}"` : ""}. Forma parte de ese contrato y se rige por sus términos.`,
+        scope: "ALCANCE DEL CAMBIO",
+        price: "PRECIO",
+        sumBefore: "Suma del contrato antes de esta orden de cambio",
+        thisChange: "Monto de esta orden de cambio",
+        newSum: "Nueva suma del contrato",
+        schedule: "PLAZO",
+        scheduleText:
+          "Sin cambio al plazo del contrato. Esta orden de cambio no modifica la fecha de terminación del contrato original.",
+        payment: "PAGO",
+        paymentText:
+          "El monto de esta orden de cambio vence según los términos de pago del contrato original.",
+        terms: "TÉRMINOS",
+        termsText:
+          "Todos los demás términos y condiciones del contrato original permanecen sin cambios y en pleno vigor.",
+        contractor: "Contratista",
+        clientSignature: "Firma del cliente",
+        contractorSignature: "Firma del contratista",
+        signature: "Firma",
+        printedName: "Nombre",
+        signedDate: "Fecha",
+        onBehalfOf: (company: string) => `en nombre de ${company}`,
+        page: "Página",
+        of: "de",
+      }
+    : {
+        title: (n: number) => `Change Order #${n}`,
+        date: "Date",
+        client: "Client",
+        job: "Job",
+        address: "Address",
+        reference: "Reference",
+        referenceText: (ref: string) =>
+          `This change order modifies the original contract for this job${ref ? `: "${ref}"` : ""}. It is part of that contract and is governed by its terms.`,
+        scope: "SCOPE OF CHANGE",
+        price: "PRICE",
+        sumBefore: "Contract sum before this change order",
+        thisChange: "Amount of this change order",
+        newSum: "New contract sum",
+        schedule: "SCHEDULE",
+        scheduleText:
+          "No change to the contract time. This change order does not change the completion date under the original contract.",
+        payment: "PAYMENT",
+        paymentText:
+          "The amount of this change order is due in accordance with the payment terms of the original contract.",
+        terms: "TERMS",
+        termsText:
+          "All other terms and conditions of the original contract remain unchanged and in full effect.",
+        contractor: "Contractor",
+        clientSignature: "Client signature",
+        contractorSignature: "Contractor signature",
+        signature: "Signature",
+        printedName: "Printed name",
+        signedDate: "Date",
+        onBehalfOf: (company: string) => `on behalf of ${company}`,
+        page: "Page",
+        of: "of",
+      };
+}
+
+function coDateLabel(iso: string | null, lang: PdfLang): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return String(iso).slice(0, 10);
+  return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+export async function buildChangeOrderPdf(
+  data: ChangeOrderPdfData,
+  settings: Settings | null,
+  lang: PdfLang,
+): Promise<Blob> {
+  const s = changeOrderStrings(lang);
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const w = 612;
+  const h = 792;
+  const margin = 54;
+  const contentW = w - margin * 2;
+  const ink: [number, number, number] = [24, 32, 30];
+  const dim: [number, number, number] = [96, 106, 103];
+  const faint: [number, number, number] = [120, 128, 125];
+  const accent = hexRgb(settings?.accentColor || "#1f5a4a");
+  const companyName = settings?.companyName || "";
+  let y = 0;
+  const ensure = (need: number) => {
+    if (y + need <= h - 64) return;
+    doc.addPage();
+    y = 54;
+  };
+  const wrapped = (text: string, size: number, fontStyle = "normal") => {
+    doc.setFont("helvetica", fontStyle);
+    doc.setFontSize(size);
+    return doc.splitTextToSize(text, contentW) as string[];
+  };
+  const paragraph = (text: string, size = 10.5, gap = 14, color = ink) => {
+    if (!text.trim()) return;
+    const lines = wrapped(text, size);
+    ensure(lines.length * (size + 3.5) + gap);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.text(lines, margin, y);
+    y += lines.length * (size + 3.5) + gap;
+  };
+  const sectionHead = (label: string) => {
+    ensure(30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...accent);
+    doc.text(label, margin, y);
+    y += 5;
+    doc.setDrawColor(...accent);
+    doc.setLineWidth(1);
+    doc.line(margin, y, margin + 34, y);
+    y += 15;
+  };
+
+  // Header band (classic contract treatment): dark band, logo left,
+  // company stack right.
+  const headerH = 66;
+  doc.setFillColor(23, 26, 28);
+  doc.rect(0, 0, w, headerH, "F");
+  if (data.logoDataUrl) {
+    try {
+      const props = doc.getImageProperties(data.logoDataUrl);
+      const boxW = 58;
+      const boxH = 40;
+      let drawW = boxW;
+      let drawH = boxH;
+      if (props.width > 0 && props.height > 0) {
+        const scale = Math.min(boxW / props.width, boxH / props.height);
+        drawW = props.width * scale;
+        drawH = props.height * scale;
+      }
+      doc.addImage(
+        data.logoDataUrl,
+        data.logoDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG",
+        margin,
+        (headerH - drawH) / 2,
+        drawW,
+        drawH,
+        undefined,
+        "FAST",
+      );
+    } catch {
+      /* text branding stays */
+    }
+  }
+  const stack: Array<{ text: string; name?: boolean }> = [];
+  if (companyName) stack.push({ text: companyName, name: true });
+  const bits = [settings?.phone, settings?.licenseNumber, settings?.website].filter(Boolean);
+  if (bits.length) stack.push({ text: bits.join("  ·  ") });
+  if (settings?.address) stack.push({ text: settings.address });
+  if (settings?.email) stack.push({ text: settings.email });
+  let stackY = headerH / 2 - ((stack.length - 1) * 11) / 2 + 3;
+  for (const line of stack) {
+    doc.setFont("helvetica", line.name ? "bold" : "normal");
+    doc.setFontSize(line.name ? 11.5 : 7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(line.text, w - margin, stackY, { align: "right" });
+    stackY += 11;
+  }
+  y = headerH + 40;
+
+  // Title + date.
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(21);
+  doc.setTextColor(...ink);
+  doc.text(s.title(data.coNumber), w / 2, y, { align: "center" });
+  y += 19;
+  const dateText = coDateLabel(data.dateIso ? `${data.dateIso}T12:00:00` : null, lang);
+  if (dateText) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...dim);
+    doc.text(`${s.date}: ${dateText}`, w / 2, y, { align: "center" });
+    y += 10;
+  }
+  y += 16;
+
+  // Parties / job meta.
+  const meta: Array<[string, string]> = [];
+  if (companyName.trim()) meta.push([s.contractor, companyName]);
+  if (data.clientName.trim()) meta.push([s.client, data.clientName]);
+  if (data.jobType.trim()) meta.push([s.job, data.jobType]);
+  if (data.jobAddress.trim()) meta.push([s.address, data.jobAddress]);
+  for (const [label, value] of meta) {
+    ensure(16);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...dim);
+    doc.text(`${label}:`, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...ink);
+    const lines = doc.splitTextToSize(value, contentW - 92) as string[];
+    doc.text(lines, margin + 92, y);
+    y += Math.max(1, lines.length) * 13 + 3;
+  }
+  y += 4;
+  paragraph(`${s.reference}: ${s.referenceText(data.referenceContract)}`, 10, 16, dim);
+
+  // Scope.
+  sectionHead(s.scope);
+  paragraph(data.scope, 10.5, 8);
+  if (data.bodyText.trim() && data.bodyText.trim() !== data.scope.trim()) {
+    paragraph(data.bodyText, 10.5, 14);
+  } else {
+    y += 6;
+  }
+
+  // Price: before / this change / new sum.
+  sectionHead(s.price);
+  const priceRow = (label: string, value: string, bold = false, band = false) => {
+    ensure(24);
+    if (band) {
+      doc.setFillColor(238, 241, 240);
+      doc.rect(margin, y - 13, contentW, 24, "F");
+    }
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(bold ? 11.5 : 10.5);
+    doc.setTextColor(...ink);
+    doc.text(label, margin + (band ? 8 : 0), y);
+    doc.text(value, w - margin - (band ? 8 : 0), y, { align: "right" });
+    y += 24;
+  };
+  priceRow(s.sumBefore, usd(money(data.contractSumBefore)));
+  priceRow(s.thisChange, usd(money(data.amount)));
+  priceRow(s.newSum, usd(money(data.newContractSum)), true, true);
+  y += 4;
+
+  sectionHead(s.schedule);
+  paragraph(s.scheduleText, 10.5, 14);
+  sectionHead(s.payment);
+  paragraph(s.paymentText, 10.5, 14);
+  sectionHead(s.terms);
+  paragraph(s.termsText, 10.5, 18);
+
+  // Signature blocks: contractor (signed at creation) + client. The
+  // contractor signs "on behalf of" the company — the company is the
+  // contracting party, never the individual.
+  ensure(120);
+  y += 6;
+  const colW = (contentW - 28) / 2;
+  const block = (
+    x: number,
+    heading: string,
+    signatureDataUrl: string | null,
+    printedName: string,
+    behalfLine: string,
+    signedAtIso: string | null,
+  ) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...dim);
+    doc.text(heading.toUpperCase(), x, y);
+    const sigTop = y + 8;
+    if (signatureDataUrl) {
+      try {
+        doc.addImage(signatureDataUrl, "PNG", x, sigTop, 150, 38, undefined, "FAST");
+      } catch {
+        /* the printed name + date below still carry the block */
+      }
+    }
+    const ruleY = sigTop + 46;
+    doc.setDrawColor(150, 158, 155);
+    doc.setLineWidth(0.75);
+    doc.line(x, ruleY, x + colW, ruleY);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...faint);
+    doc.text(s.signature, x, ruleY + 11);
+    doc.setFontSize(10);
+    doc.setTextColor(...ink);
+    let lineY = ruleY + 27;
+    if (printedName) {
+      doc.text(`${s.printedName}: ${printedName}`, x, lineY);
+      lineY += 13;
+    }
+    if (behalfLine) {
+      doc.setFontSize(9);
+      doc.setTextColor(...dim);
+      const behalfLines = doc.splitTextToSize(behalfLine, colW) as string[];
+      doc.text(behalfLines, x, lineY);
+      lineY += behalfLines.length * 11;
+      doc.setFontSize(10);
+      doc.setTextColor(...ink);
+    }
+    const dateLabel = coDateLabel(signedAtIso, lang);
+    if (dateLabel) doc.text(`${s.signedDate}: ${dateLabel}`, x, lineY);
+  };
+  block(
+    margin,
+    s.contractorSignature,
+    data.contractorSignatureDataUrl,
+    data.contractorSignerName,
+    companyName ? s.onBehalfOf(companyName) : "",
+    data.contractorSignedAtIso,
+  );
+  block(
+    margin + colW + 28,
+    s.clientSignature,
+    data.clientSignatureDataUrl,
+    data.clientSignerName,
+    "",
+    data.clientSignedAtIso,
+  );
+  y += 140;
+
+  // Footer on every page: license/contact left, page numbers right.
+  const pageCount = doc.getNumberOfPages();
+  const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website].filter(Boolean) as string[];
+  while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" · ")) > 425) footerParts.pop();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setDrawColor(224, 227, 226);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 758, w - margin, 758);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...faint);
+    if (footerParts.length) doc.text(footerParts.join(" · "), margin, 770);
+    doc.text(`${s.page} ${page} ${s.of} ${pageCount}`, w - margin, 770, { align: "right" });
+  }
+  return doc.output("blob");
+}
