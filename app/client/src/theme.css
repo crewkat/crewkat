@@ -2033,8 +2033,42 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .client-co-sig-head { font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); }
 .client-co-sig-img { max-width: 150px; max-height: 40px; object-fit: contain; object-position: left bottom; }
 .client-co-sig-rule { display: block; border-bottom: 1.5px solid #969e9b; height: 34px; }
-.portal-v2-co-doc { max-height: 88vh; overflow-y: auto; text-align: left; }
-.portal-v2-co-doc .row-actions { margin-top: 16px; }
+/* Formal CO paper (Danny 2026-10-21 fix): the HTML twin of
+   buildChangeOrderPdf — meta block, dark total band, footer — shared
+   by the document page and the portal document sheet. */
+.co-paper-meta { display: grid; gap: 3px; margin: 14px 0 2px; }
+.co-paper-meta > div { display: flex; gap: 8px; font-size: 12.5px; }
+.co-paper-meta dt { font-weight: 700; color: #606a67; min-width: 92px; }
+.co-paper-meta dd { margin: 0; }
+.co-paper-scope { white-space: pre-wrap; }
+.client-co-price-row.co-paper-total { background: #171a1c; color: #fff; border-bottom: none; padding: 9px 10px; font-size: 14.5px; font-weight: 700; }
+.client-co-price-row.co-paper-total strong { color: #fff; }
+.co-paper-footer { border-top: 1px solid #dfe4e2; margin-top: 20px; padding-top: 8px; }
+.co-paper-footer span { color: #78807d; font-size: 9.5px; }
+/* Portal CO document sheet (Danny 2026-10-21 fix): the paper scrolls
+   in its own area; a sticky ✕ sits top-right over the sheet and a
+   compact action bar stays pinned to the bottom — Sign is never
+   buried at the foot of the document again. */
+.portal-v2-co-sheet { position: relative; background: var(--surface); color: var(--text); border-radius: 16px; width: min(560px, calc(100vw - 32px)); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; text-align: left; }
+.portal-v2-co-scroll { overflow-y: auto; flex: 1 1 auto; }
+.portal-v2-co-scroll .quote-paper { margin: 0; box-shadow: none; min-height: 0; }
+.portal-v2-doc-close { position: absolute; top: 10px; right: 10px; z-index: 6; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 99px; background: rgba(23, 26, 28, .72); color: #fff; cursor: pointer; }
+.portal-v2-doc-close:active { background: rgba(23, 26, 28, .92); }
+.portal-v2-co-actionbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); }
+.portal-v2-co-signed-note { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: .92rem; color: var(--accent, #1f5a4a); }
+.portal-v2-co-signsheet { position: absolute; inset: auto 0 0 0; z-index: 7; background: var(--surface); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 28px rgba(0, 0, 0, .22); padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 88%; overflow-y: auto; }
+.portal-v2-co-signsheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding-right: 44px; }
+.portal-v2-doc-close--sheet { background: var(--surface-2, #eef1f0); color: var(--text); top: 12px; right: 12px; }
+/* Contract sum editor (Danny 2026-10-21): job summary row + CO
+   composer affordance for jobs.contractSum. */
+.job-contract-sum-row { display: flex; justify-content: space-between; gap: 16px; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 13.5px; color: inherit; text-align: left; cursor: pointer; }
+.contract-sum-set { color: var(--accent, #1f5a4a); text-decoration: underline; text-underline-offset: 3px; }
+.contract-sum-editor { display: grid; gap: 8px; }
+.contract-sum-editor label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.contract-sum-editor input { padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; background: var(--surface); color: var(--text); }
+.composer-contract-sum { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }
+.composer-contract-sum-line { margin: 0; font-size: 13.5px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.composer-contract-sum-edit { font-size: 13px; }
 .portal-v2-doc-button { width: 100%; text-align: left; font: inherit; cursor: pointer; background: none; }
 .job-contract-summary { display: grid; gap: 6px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .job-contract-summary > div { display: flex; justify-content: space-between; gap: 16px; font-size: 13.5px; }

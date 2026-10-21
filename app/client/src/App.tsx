@@ -9554,6 +9554,156 @@ function PortalMessages({ lang, token }: { lang: Lang; token: string }) {
   );
 }
 
+// Contract sum (Danny 2026-10-21, migration 0086): the job's original
+// contract amount is the base every change order's price chain builds
+// on. When it can't be derived (uploaded-PDF contract with no stored
+// amount, amountDue unset) the chain showed $0 — so the contractor
+// can set/correct it here. One editor, two surfaces: the job screen's
+// contract summary row and the change-order composer. Saving goes
+// through setJobContractSum (never updateJob — amountDue keeps its
+// balance meaning) and the ["job", jobId] invalidation re-derives
+// every CO's numbers at render.
+function ContractSumEditControl({
+  lang,
+  jobId,
+  seedValue,
+  onDone,
+}: {
+  lang: Lang;
+  jobId: number;
+  seedValue: string;
+  onDone: () => void;
+}) {
+  const t = copy[lang];
+  const qc = useQueryClient();
+  const [value, setValue] = useState(seedValue);
+  const [error, setError] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.setJobContractSum({ jobId, contractSum: value }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["job", jobId] });
+      onDone();
+    },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  return (
+    <div className="contract-sum-editor">
+      <label>
+        <span>{lang === "es" ? "Suma del contrato" : "Contract sum"}</span>
+        <input
+          inputMode="decimal"
+          value={value}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            // Inside the CO composer this control sits in the document
+            // form — Enter must save the sum, never submit the form.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (value.trim() && !save.isPending) save.mutate();
+            }
+          }}
+        />
+      </label>
+      {error && (
+        <p className="status error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="row-actions">
+        <button type="button" className="primary-button sm" disabled={save.isPending || !value.trim()} onClick={() => save.mutate()}>
+          {save.isPending ? t.saving : t.save}
+        </button>
+        <button type="button" className="secondary-button sm" onClick={onDone}>
+          {lang === "es" ? "Cancelar" : "Cancel"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// The job screen's "Original contract" row: tappable, opens the
+// contract-sum editor inline. When the resolved base is $0 the row
+// itself is the "Set contract sum" call to action.
+function ContractSumRow({
+  lang,
+  jobId,
+  summary,
+}: {
+  lang: Lang;
+  jobId: number;
+  summary: { baseAmount: string; contractSum: string };
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <ContractSumEditControl
+        lang={lang}
+        jobId={jobId}
+        seedValue={summary.contractSum || (money(summary.baseAmount) !== 0 ? summary.baseAmount : "")}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
+  const unset = money(summary.baseAmount) === 0;
+  return (
+    <button
+      type="button"
+      className="job-contract-sum-row"
+      onClick={() => setEditing(true)}
+      aria-label={lang === "es" ? "Editar suma del contrato" : "Edit contract sum"}
+    >
+      <span>{lang === "es" ? "Contrato original" : "Original contract"}</span>
+      {unset ? (
+        <strong className="contract-sum-set">{lang === "es" ? "Establecer suma" : "Set contract sum"}</strong>
+      ) : (
+        <strong>{usd(money(summary.baseAmount))}</strong>
+      )}
+    </button>
+  );
+}
+
+// The change-order composer's contract-sum line: a NEW change order's
+// "contract sum before" is the current revised total (original +
+// signed COs). When the original base resolves to $0 the set editor
+// opens right here — the CO would otherwise print a $0 chain.
+function ComposerContractSum({
+  lang,
+  data,
+}: {
+  lang: Lang;
+  data: JobData;
+}) {
+  // null = follow the data: the editor starts OPEN while the base is
+  // unset (the obvious affordance), closed once a base exists.
+  const [open, setOpen] = useState<boolean | null>(null);
+  const summary = data.contractSummary;
+  const job = data.job;
+  if (!summary || !job) return null;
+  const baseUnset = money(summary.baseAmount) === 0;
+  const showEditor = open ?? baseUnset;
+  return (
+    <div className="composer-contract-sum">
+      <p className="composer-contract-sum-line">
+        {changeOrderStrings(lang).sumBefore}: <strong>{usd(money(summary.revisedTotal))}</strong>
+        {!showEditor && (
+          <button type="button" className="text-button composer-contract-sum-edit" onClick={() => setOpen(true)}>
+            {baseUnset ? (lang === "es" ? "Establecer suma" : "Set contract sum") : lang === "es" ? "Editar" : "Edit"}
+          </button>
+        )}
+      </p>
+      {showEditor && (
+        <ContractSumEditControl
+          lang={lang}
+          jobId={job.id}
+          seedValue={summary.contractSum || ""}
+          onDone={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function JobDetail({
   lang,
   jobId,
@@ -10107,7 +10257,7 @@ function JobDetail({
           <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
           {query.data.contractSummary && query.data.documents.some((doc) => doc.kind === "change_order") && (
             <div className="job-contract-summary">
-              <div><span>{lang === "es" ? "Contrato original" : "Original contract"}</span><strong>{usd(money(query.data.contractSummary.baseAmount))}</strong></div>
+              <ContractSumRow lang={lang} jobId={jobId} summary={query.data.contractSummary} />
               <div><span>{lang === "es" ? "Órdenes de cambio firmadas" : "Signed change orders"}</span><strong>{usd(money(query.data.contractSummary.signedChangeOrdersTotal))}</strong></div>
               <div className="job-contract-summary-total"><span>{lang === "es" ? "Total revisado del contrato" : "Revised contract total"}</span><strong>{usd(money(query.data.contractSummary.revisedTotal))}</strong></div>
               {money(query.data.contractSummary.pendingChangeOrdersTotal) !== 0 && (
@@ -19583,6 +19733,7 @@ function DocumentSigner({
           </>
         ) : (
           <>
+            <ComposerContractSum lang={lang} data={data} />
             <label className={missing === "description" ? "field-missing" : undefined}>
               <span>{t.changeDescription}</span>
               <textarea
@@ -29359,56 +29510,122 @@ function QuoteOptionsPicker({ lang, token, quoteId, baseTotal, options, initialS
 }
 
 // Change-order documents (Danny 2026-10-21): the formal change-order
-// document as the client sees it on the document page — the HTML twin
-// of buildChangeOrderPdf, fed entirely by the server payload (number,
+// document as the client sees it — the HTML twin of
+// buildChangeOrderPdf, fed entirely by server payloads (number,
 // contract-sum chain, reference) and worded with the same
-// changeOrderStrings so the page and the PDF never diverge. Used for
-// generated COs; uploaded-PDF COs keep the compact header + real pages.
-function ChangeOrderPaper({ doc, lang }: { doc: ClientDoc; lang: Lang }) {
-  const co = doc.changeOrder;
-  if (!co) return null;
+// changeOrderStrings so the page and the PDF never diverge. ONE
+// component renders it everywhere a client reads a CO: the document
+// page (ChangeOrderPaper below) and the portal document overlay.
+// Official treatment (Danny 2026-10-21 fix): the dark header band
+// with logo + company stack, the big centered title with the date
+// under it, the Contractor / Client / Job / Address meta block, the
+// price table ending in the dark NEW CONTRACT SUM band, both formal
+// signature blocks, and the license/contact footer — the same
+// document the PDF prints. Used for generated COs; uploaded-PDF COs
+// keep the compact header + real pages.
+type CoPaperCompany = {
+  name: string;
+  phone: string;
+  email: string;
+  website: string;
+  address: string;
+  licenseNumber: string;
+  accentColor?: string;
+  logoUrl: string | null;
+};
+type CoPaperData = {
+  company: CoPaperCompany;
+  coNumber: number;
+  // Document date, yyyy-mm-dd ("" when unknown).
+  dateIso: string;
+  clientName: string;
+  jobType: string;
+  jobAddress: string;
+  referenceContract: string;
+  scope: string;
+  bodyText: string;
+  contractSumBefore: string;
+  amount: string;
+  newContractSum: string;
+  contractorSignerName: string;
+  contractorSignatureUrl: string | null;
+  contractorSignedAt: string | null;
+  clientSignerName: string;
+  clientSignatureUrl: string | null;
+  clientSignedAt: string | null;
+  // What the unsigned client signature block says (the signing action
+  // itself lives outside the paper: the /d/ sign panel, the portal
+  // action bar).
+  clientPendingLabel: string;
+};
+
+function ChangeOrderPaperView({ data, lang }: { data: CoPaperData; lang: Lang }) {
   const s = changeOrderStrings(lang);
-  const c = doc.company;
+  const c = data.company;
   const fmtDay = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  const stackBits = [c.phone, c.licenseNumber, c.website].filter((v) => v && v.trim()).join("  ·  ");
+  const footerParts = [c.licenseNumber, c.phone, c.email, c.website].filter((v) => v && v.trim());
+  const meta: Array<[string, string]> = [];
+  if (c.name.trim()) meta.push([s.contractor, c.name]);
+  if (data.clientName.trim()) meta.push([s.client, data.clientName]);
+  if (data.jobType.trim()) meta.push([s.job, data.jobType]);
+  if (data.jobAddress.trim()) meta.push([s.address, data.jobAddress]);
   return (
-    <article className="quote-paper client-co-paper">
-      <div className="quote-paper-title-row">
-        <h2>{co.displayTitle}</h2>
+    <article
+      className="quote-paper co-paper"
+      style={{ "--quote-accent": c.accentColor || "#1f5a4a" } as CSSProperties}
+    >
+      <header className="quote-paper-band">
+        <div className="quote-paper-brand">
+          {c.logoUrl && <img src={c.logoUrl} alt={c.name} />}
+        </div>
+        <div className="quote-paper-stack">
+          {c.name && <strong>{c.name}</strong>}
+          {stackBits && <small>{stackBits}</small>}
+          {c.address && <small>{c.address}</small>}
+          {c.email && <small>{c.email}</small>}
+        </div>
+      </header>
+      <div className="quote-paper-title-block">
+        <h2>{s.title(data.coNumber)}</h2>
+        {data.dateIso && (
+          <span className="quote-paper-title-date">
+            {s.date}: {fmtDay(`${data.dateIso}T12:00:00`)}
+          </span>
+        )}
       </div>
-      <p className="dim small client-co-date">
-        {s.date}: {fmtDay(co.dateIso ? `${co.dateIso}T12:00:00` : null)}
-      </p>
-      <section className="quote-paper-client">
-        <strong>
-          {lang === "es" ? "Para" : "For"}: {doc.clientName || "—"}
-        </strong>
-        <span>{[doc.jobType, doc.jobAddress].filter((v) => v && v.trim()).join(" · ")}</span>
-        <span>
-          {s.contractor}: {c.name}
-        </span>
-      </section>
+      {meta.length > 0 && (
+        <dl className="co-paper-meta">
+          {meta.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}:</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <p className="client-co-reference">
-        {s.reference}: {s.referenceText(co.referenceContract)}
+        {s.reference}: {s.referenceText(data.referenceContract)}
       </p>
       <h3 className="client-co-section-head">{s.scope}</h3>
-      {doc.description && <p className="client-doc-description">{doc.description}</p>}
-      {doc.bodyText && doc.bodyText.trim() !== doc.description.trim() && (
-        <div className="client-doc-body">{doc.bodyText}</div>
+      {data.scope && <p className="client-co-line co-paper-scope">{data.scope}</p>}
+      {data.bodyText && data.bodyText.trim() !== data.scope.trim() && (
+        <div className="client-doc-body">{data.bodyText}</div>
       )}
       <h3 className="client-co-section-head">{s.price}</h3>
       <div className="client-co-price">
         <div className="client-co-price-row">
           <span>{s.sumBefore}</span>
-          <strong>{usd(money(co.contractSumBefore))}</strong>
+          <strong>{usd(money(data.contractSumBefore))}</strong>
         </div>
         <div className="client-co-price-row">
           <span>{s.thisChange}</span>
-          <strong>{usd(money(co.amount))}</strong>
+          <strong>{usd(money(data.amount))}</strong>
         </div>
-        <div className="client-co-price-row client-co-price-total">
+        <div className="client-co-price-row co-paper-total">
           <span>{s.newSum}</span>
-          <strong>{usd(money(co.newContractSum))}</strong>
+          <strong>{usd(money(data.newContractSum))}</strong>
         </div>
       </div>
       <h3 className="client-co-section-head">{s.schedule}</h3>
@@ -29420,36 +29637,83 @@ function ChangeOrderPaper({ doc, lang }: { doc: ClientDoc; lang: Lang }) {
       <div className="client-co-sigs">
         <div className="client-co-sig">
           <span className="client-co-sig-head">{s.contractorSignature}</span>
-          {co.contractorSignatureUrl && (
-            <img className="client-co-sig-img" src={co.contractorSignatureUrl} alt="" />
+          {data.contractorSignatureUrl && (
+            <img className="client-co-sig-img" src={data.contractorSignatureUrl} alt="" />
           )}
           <span className="client-co-sig-rule" aria-hidden="true" />
-          <strong>{doc.contractorSignerName || "—"}</strong>
+          <strong>{data.contractorSignerName || "—"}</strong>
           {c.name && <span className="dim small">{s.onBehalfOf(c.name)}</span>}
-          {co.contractorSignedAt && (
+          {data.contractorSignedAt && (
             <span className="dim small">
-              {s.signedDate}: {fmtDay(co.contractorSignedAt)}
+              {s.signedDate}: {fmtDay(data.contractorSignedAt)}
             </span>
           )}
         </div>
         <div className="client-co-sig">
           <span className="client-co-sig-head">{s.clientSignature}</span>
+          {data.clientSignatureUrl && (
+            <img className="client-co-sig-img" src={data.clientSignatureUrl} alt="" />
+          )}
           <span className="client-co-sig-rule" aria-hidden="true" />
-          {doc.alreadySigned ? (
+          {data.clientSignedAt ? (
             <>
-              <strong>{doc.clientSignerName || "—"}</strong>
-              {doc.clientSignedAt && (
-                <span className="dim small">
-                  {s.signedDate}: {fmtDay(doc.clientSignedAt)}
-                </span>
-              )}
+              <strong>{data.clientSignerName || "—"}</strong>
+              <span className="dim small">
+                {s.signedDate}: {fmtDay(data.clientSignedAt)}
+              </span>
             </>
           ) : (
-            <span className="dim small">{lang === "es" ? "Firma abajo para aprobar" : "Sign below to approve"}</span>
+            <span className="dim small">{data.clientPendingLabel}</span>
           )}
         </div>
       </div>
+      {footerParts.length > 0 && (
+        <footer className="co-paper-footer">
+          <span>{footerParts.join(" · ")}</span>
+        </footer>
+      )}
     </article>
+  );
+}
+
+function ChangeOrderPaper({ doc, lang }: { doc: ClientDoc; lang: Lang }) {
+  const co = doc.changeOrder;
+  if (!co) return null;
+  const c = doc.company;
+  return (
+    <ChangeOrderPaperView
+      lang={lang}
+      data={{
+        company: {
+          name: c.name,
+          phone: c.phone,
+          email: c.email,
+          website: c.website,
+          address: c.address,
+          licenseNumber: c.licenseNumber,
+          accentColor: c.accentColor,
+          logoUrl: c.logoUrl,
+        },
+        coNumber: co.number,
+        dateIso: co.dateIso,
+        clientName: doc.clientName,
+        jobType: doc.jobType,
+        jobAddress: doc.jobAddress,
+        referenceContract: co.referenceContract,
+        scope: doc.description,
+        bodyText: doc.bodyText,
+        contractSumBefore: co.contractSumBefore,
+        amount: co.amount,
+        newContractSum: co.newContractSum,
+        contractorSignerName: doc.contractorSignerName,
+        contractorSignatureUrl: co.contractorSignatureUrl,
+        contractorSignedAt: co.contractorSignedAt,
+        clientSignerName: doc.clientSignerName,
+        clientSignatureUrl: co.clientSignatureUrl,
+        clientSignedAt: doc.clientSignedAt,
+        clientPendingLabel: lang === "es" ? "Firma abajo para aprobar" : "Sign below to approve",
+      }}
+    />
   );
 }
 
@@ -30508,6 +30772,11 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
   // document is open in the portal overlay (COs without a /d/ link).
   const [coDocId, setCoDocId] = useState<number | null>(null);
   const [coDownloading, setCoDownloading] = useState(false);
+  // The signature sheet the document's bottom action bar opens (Danny
+  // 2026-10-21 fix): signing no longer lives at the foot of the
+  // document — the bar is the action surface, this sheet captures the
+  // typed name + FRESH drawn signature.
+  const [coSignOpen, setCoSignOpen] = useState(false);
   const [downloadingPhoto, setDownloadingPhoto] = useState(false);
   const downloadPortalPhoto = async (photoId: number) => {
     if (downloadingPhoto) return;
@@ -31035,69 +31304,104 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       {/* Payment receipt */}
       {openCo && (() => {
         // The full change-order document inside the portal (Danny
-        // 2026-10-21): same content and wording as the rendered PDF
-        // (changeOrderStrings), fed by the server payload. Unsigned:
-        // the fresh-signature form sits at the foot of the document.
-        const s = changeOrderStrings(lang);
+        // 2026-10-21): the SAME formal paper the document page and the
+        // PDF present (ChangeOrderPaperView), fed by the server
+        // payload. Fix pass (Danny 2026-10-21): the sheet has a sticky
+        // ✕ (the backdrop tap also closes), the document scrolls in
+        // its own area, and a sticky bottom action bar carries
+        // Download + Sign — Sign opens the signature sheet (typed name
+        // + FRESH drawn signature) instead of a form buried at the
+        // foot of the document. The paper's signature blocks stay the
+        // record; the bar is only the action surface.
         const coSigned = !!openCo.clientSignedAt;
+        const closeCo = () => { setCoSignOpen(false); setCoDocId(null); };
         return (
-          <div className="portal-v2-lightbox portal-v2-receipt-backdrop" onClick={() => setCoDocId(null)} role="dialog" aria-modal="true" aria-label={openCo.displayTitle || openCo.title}>
-            <div className="portal-v2-receipt portal-v2-co-doc" onClick={(e) => e.stopPropagation()}>
-              <strong className="portal-v2-receipt-company">{company.name || "Crewkat"}</strong>
-              <h2>{openCo.displayTitle || openCo.title}</h2>
-              <p className="dim">
-                {s.date}: {fmtDay(openCo.dateIso)}
-                {openCo.referenceContract ? ` · ${s.reference}: ${openCo.referenceContract}` : ""}
-              </p>
-              <p className="dim">{s.referenceText(openCo.referenceContract)}</p>
-              <h3 className="client-co-section-head">{s.scope}</h3>
-              {openCo.description ? <p>{openCo.description}</p> : null}
-              <h3 className="client-co-section-head">{s.price}</h3>
-              <div className="portal-v2-receipt-row"><span className="dim">{s.sumBefore}</span><strong>{usd(money(openCo.contractSumBefore))}</strong></div>
-              <div className="portal-v2-receipt-row"><span className="dim">{s.thisChange}</span><strong>{usd(money(openCo.amount))}</strong></div>
-              <div className="portal-v2-receipt-row"><span className="dim">{s.newSum}</span><strong>{usd(money(openCo.newContractSum))}</strong></div>
-              <h3 className="client-co-section-head">{s.schedule}</h3>
-              <p>{s.scheduleText}</p>
-              <h3 className="client-co-section-head">{s.payment}</h3>
-              <p>{s.paymentText}</p>
-              <h3 className="client-co-section-head">{s.terms}</h3>
-              <p>{s.termsText}</p>
-              <div className="portal-v2-receipt-row"><span className="dim">{s.contractor}</span><strong>{company.name} — {s.onBehalfOf(company.name)}</strong></div>
-              {coSigned && (
-                <div className="portal-v2-receipt-row"><span className="dim">{t.signedBy}</span><strong>{openCo.clientSignerName} · {fmtDate(openCo.clientSignedAt!)}</strong></div>
-              )}
-              {!coSigned && (
-                <div className="compact-form">
-                  <label>
-                    <span>{t.signerName}</span>
-                    <input value={signer} onChange={(e) => setSigner(e.target.value)} />
-                  </label>
-                  <SignaturePad label={t.signature} clearLabel={t.clear} onChange={setSig} />
-                  <button
-                    className="primary-button"
-                    disabled={!signer || !sig}
-                    onClick={async () => {
-                      await api.portalSignChangeOrder({
-                        token,
-                        documentId: openCo.id,
-                        signerName: signer,
-                        signatureDataBase64: sig,
-                        lang,
-                      });
-                      setSigner("");
-                      setSig("");
-                      setCoDocId(null);
-                      qc.invalidateQueries({ queryKey: ["client-portal", token] });
-                    }}
-                  >
-                    {t.signOrder}
-                  </button>
+          <div className="portal-v2-lightbox portal-v2-receipt-backdrop" onClick={closeCo} role="dialog" aria-modal="true" aria-label={openCo.displayTitle || openCo.title}>
+            <div className="portal-v2-co-sheet" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="portal-v2-doc-close" aria-label={t.close} onClick={closeCo}>
+                <Icon size={18}><path d="M6 6l12 12M18 6L6 18" /></Icon>
+              </button>
+              <div className="portal-v2-co-scroll">
+                <ChangeOrderPaperView
+                  lang={lang}
+                  data={{
+                    company: {
+                      name: company.name,
+                      phone: company.phone,
+                      email: company.email,
+                      website: company.website,
+                      address: company.address,
+                      licenseNumber: company.licenseNumber,
+                      accentColor: company.accentColor,
+                      logoUrl: company.logoUrl,
+                    },
+                    coNumber: openCo.coNumber ?? 0,
+                    dateIso: openCo.dateIso,
+                    clientName: d.job.clientName,
+                    jobType: d.job.jobType,
+                    jobAddress: d.job.jobAddress,
+                    referenceContract: openCo.referenceContract,
+                    scope: openCo.description,
+                    bodyText: openCo.bodyText,
+                    contractSumBefore: openCo.contractSumBefore,
+                    amount: openCo.amount,
+                    newContractSum: openCo.newContractSum,
+                    contractorSignerName: openCo.contractorSignerName,
+                    contractorSignatureUrl: openCo.contractorSignatureUrl,
+                    contractorSignedAt: openCo.contractorSignedAt,
+                    clientSignerName: openCo.clientSignerName,
+                    clientSignatureUrl: openCo.clientSignatureUrl,
+                    clientSignedAt: openCo.clientSignedAt,
+                    clientPendingLabel: t.docAwaiting,
+                  }}
+                />
+              </div>
+              <div className="portal-v2-co-actionbar">
+                {coSigned ? (
+                  <span className="portal-v2-co-signed-note">
+                    <CheckIcon /> {t.docSigned} · {fmtDate(openCo.clientSignedAt!)}
+                  </span>
+                ) : (
+                  <button type="button" className="primary-button sm" onClick={() => setCoSignOpen(true)}>{t.signOrder}</button>
+                )}
+                <button type="button" className="secondary-button sm" disabled={coDownloading} onClick={() => void downloadCoPdf(openCo.id)}>{t.downloadPdf}</button>
+              </div>
+              {coSignOpen && !coSigned && (
+                <div className="portal-v2-co-signsheet" role="dialog" aria-modal="true" aria-label={t.signOrder}>
+                  <div className="portal-v2-co-signsheet-head">
+                    <strong>{openCo.displayTitle || openCo.title}</strong>
+                    <button type="button" className="portal-v2-doc-close portal-v2-doc-close--sheet" aria-label={t.close} onClick={() => setCoSignOpen(false)}>
+                      <Icon size={18}><path d="M6 6l12 12M18 6L6 18" /></Icon>
+                    </button>
+                  </div>
+                  <div className="compact-form">
+                    <label>
+                      <span>{t.signerName}</span>
+                      <input value={signer} onChange={(e) => setSigner(e.target.value)} />
+                    </label>
+                    <SignaturePad label={t.signature} clearLabel={t.clear} onChange={setSig} />
+                    <button
+                      className="primary-button"
+                      disabled={!signer || !sig}
+                      onClick={async () => {
+                        await api.portalSignChangeOrder({
+                          token,
+                          documentId: openCo.id,
+                          signerName: signer,
+                          signatureDataBase64: sig,
+                          lang,
+                        });
+                        setSigner("");
+                        setSig("");
+                        closeCo();
+                        qc.invalidateQueries({ queryKey: ["client-portal", token] });
+                      }}
+                    >
+                      {t.signOrder}
+                    </button>
+                  </div>
                 </div>
               )}
-              <div className="row-actions">
-                <button type="button" className="primary-button sm" disabled={coDownloading} onClick={() => void downloadCoPdf(openCo.id)}>{t.downloadPdf}</button>
-                <button type="button" className="secondary-button sm" onClick={() => setCoDocId(null)}>{t.close}</button>
-              </div>
             </div>
           </div>
         );

@@ -1326,12 +1326,16 @@ export async function buildChangeOrderPdf(
   const priceRow = (label: string, value: string, bold = false, band = false) => {
     ensure(24);
     if (band) {
-      doc.setFillColor(238, 241, 240);
+      // Dark total band (Danny 2026-10-21): the NEW CONTRACT SUM row
+      // carries the header band's treatment so the PDF and the
+      // on-screen paper present the identical document.
+      doc.setFillColor(23, 26, 28);
       doc.rect(margin, y - 13, contentW, 24, "F");
     }
     doc.setFont("helvetica", bold ? "bold" : "normal");
     doc.setFontSize(bold ? 11.5 : 10.5);
-    doc.setTextColor(...ink);
+    if (band) doc.setTextColor(255, 255, 255);
+    else doc.setTextColor(...ink);
     doc.text(label, margin + (band ? 8 : 0), y);
     doc.text(value, w - margin - (band ? 8 : 0), y, { align: "right" });
     y += 24;
