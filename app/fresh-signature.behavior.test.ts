@@ -92,7 +92,7 @@ async function pageImageCount(pdfBytes: Uint8Array, pageIndex: number): Promise<
 const journal = await import("./drizzle/meta/_journal.json");
 const entries = (journal as any).entries ?? (journal as any).default.entries;
 const byTag = Object.fromEntries(entries.map((e: any) => [e.tag, e]));
-check("newest migration tag is 0085_contract_opened_notify", entries[entries.length - 1].tag === "0085_contract_opened_notify", entries[entries.length - 1].tag);
+check("newest migration tag is 0086_job_contract_sum", entries[entries.length - 1].tag === "0086_job_contract_sum", entries[entries.length - 1].tag);
 check("0079 when strictly greater than 0078", byTag["0079_saved_signature"].when > byTag["0078_signature_fields"].when);
 
 const dir = await mkdtemp(join(tmpdir(), "crewkat-sig-fresh-"));

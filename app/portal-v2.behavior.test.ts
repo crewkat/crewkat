@@ -160,6 +160,6 @@ describe("ClientPortalScreen premium redesign", () => {
   });
 
   test("getPortalData returns company for the branded header", () => {
-    expect(ACTIONS).toMatch(/getPortalData[\s\S]*?company:z\.object\(\{name:z\.string\(\),phone:z\.string\(\),logoUrl:z\.string\(\)\.nullable\(\)\}\)/);
+    expect(ACTIONS).toMatch(/getPortalData[\s\S]*?company:z\.object\(\{name:z\.string\(\),phone:z\.string\(\),email:z\.string\(\),website:z\.string\(\),address:z\.string\(\),licenseNumber:z\.string\(\),accentColor:z\.string\(\),logoUrl:z\.string\(\)\.nullable\(\)\}\)/);
   });
 });

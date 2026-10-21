@@ -30,6 +30,12 @@ export const jobs = sqliteTable("jobs", {
   jobDate: text("job_date").notNull(),
   appointmentAt: text("appointment_at").notNull().default(""),
   amountDue: text("amount_due").notNull().default(""),
+  // 0086: the job's explicit original contract sum — the base the
+  // change-order price chain builds on. Kept separate from amountDue,
+  // which carries balance-due meaning (payment reminders quote it as
+  // the balance owed). Set by the contractor from the job screen or
+  // the change-order composer; wins the CO chain base resolution.
+  contractSum: text("contract_sum").notNull().default(""),
   dueDate: text("due_date").notNull().default(""),
   depositAmount: text("deposit_amount").notNull().default(""),
   paymentNotes: text("payment_notes").notNull().default(""),

@@ -17,10 +17,15 @@
 // what the total becomes IF it is signed, and it does not move the
 // chain for later COs until it is signed).
 //
-// Original contract amount source, in order: (1) the job's earliest
-// contract document carrying a parseable amount; (2) the job's
-// amountDue field (the app's job-level base amount — the proof packet
-// already treats it as the base the COs add to); (3) 0.
+// Original contract amount source, in order: (1) the job's explicit
+// contract sum (jobs.contractSum, migration 0086 — set by the
+// contractor when the derived base is wrong, e.g. an uploaded-PDF
+// contract with no stored amount); (2) the job's earliest contract
+// document carrying a parseable amount; (3) the job's amountDue
+// field (a job-level figure the proof packet treats as the base the
+// COs add to — but it also carries balance-due meaning in payment
+// reminders, which is why the explicit field exists and wins);
+// (4) 0.
 import { asc, eq } from "drizzle-orm";
 import type { Ctx } from "@hatch/space-sdk";
 import * as schema from "./schema";
@@ -60,6 +65,8 @@ export function changeOrderNumbers(docs: DocumentRow[]): Map<number, number> {
 }
 
 export function originalContractAmount(job: JobRow, docs: DocumentRow[]): number {
+  const explicit = parseMoneyLoose(job.contractSum);
+  if (explicit > 0) return explicit;
   for (const doc of docs) {
     if (doc.kind !== "contract") continue;
     const amount = parseMoneyLoose(doc.amount);
@@ -113,6 +120,9 @@ export function changeOrderChain(job: JobRow, docs: DocumentRow[]): Map<number, 
 
 export type ContractSummary = {
   baseAmount: string;
+  // The job's explicit contract sum ("" when unset) — the edit
+  // surfaces seed from it; baseAmount stays the RESOLVED base.
+  contractSum: string;
   signedChangeOrdersTotal: string;
   revisedTotal: string;
   pendingChangeOrdersTotal: string;
@@ -136,6 +146,7 @@ export function contractSummaryForJob(job: JobRow, docs: DocumentRow[]): Contrac
   }
   return {
     baseAmount: moneyString(base),
+    contractSum: parseMoneyLoose(job.contractSum) > 0 ? moneyString(parseMoneyLoose(job.contractSum)) : "",
     signedChangeOrdersTotal: moneyString(signedTotal),
     revisedTotal: moneyString(base + signedTotal),
     pendingChangeOrdersTotal: moneyString(pendingTotal),

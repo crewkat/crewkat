@@ -88,7 +88,7 @@ const throwsAsync = async (name: string, fn: () => Promise<unknown>) => {
 const journal = await import("./drizzle/meta/_journal.json");
 const entries = (journal as any).entries ?? (journal as any).default.entries;
 const byTag = Object.fromEntries(entries.map((e: any) => [e.tag, e]));
-check("newest migration tag is 0085_contract_opened_notify", entries[entries.length - 1].tag === "0085_contract_opened_notify", entries[entries.length - 1].tag);
+check("newest migration tag is 0086_job_contract_sum", entries[entries.length - 1].tag === "0086_job_contract_sum", entries[entries.length - 1].tag);
 check("0082 when strictly greater than 0081", byTag["0082_fill_fields"].when > byTag["0081_client_addresses"].when);
 const sql82 = await readFile(join("drizzle", "0082_fill_fields.sql"), "utf8");
 check("0082 adds fill_fields_json + fill_values_json", sql82.includes("ADD COLUMN `fill_fields_json`") && sql82.includes("ADD COLUMN `fill_values_json`"));
