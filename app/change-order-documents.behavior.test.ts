@@ -144,7 +144,8 @@ check("listDocuments agrees on numbering", listedCo3?.coNumber === 3 && listedCo
 // --- 2. Price math (all unsigned) --------------------------------------------------
 const linkCo2 = await A.createDocumentLink.handler(ctx, { kind: "change_order", id: co2 });
 const payloadCo2 = await A.resolveDocumentLink.handler(ctx, { token: linkCo2.shortCode, userAgent: "test" });
-check("link payload title is the formal CO title", payloadCo2.title === "Change Order #2 — Arcade outlet on its own circuit", payloadCo2.title);
+check("link payload keeps the stored title (notifications quote it)", payloadCo2.title === "Change order", payloadCo2.title);
+check("link payload carries the formal CO title", payloadCo2.changeOrder?.displayTitle === "Change Order #2 — Arcade outlet on its own circuit", payloadCo2.changeOrder?.displayTitle);
 check("CO2 chain: before = original contract sum", payloadCo2.changeOrder?.contractSumBefore === "18180.00", payloadCo2.changeOrder?.contractSumBefore);
 check("CO2 chain: amount normalized", payloadCo2.changeOrder?.amount === "140.00", payloadCo2.changeOrder?.amount);
 check("CO2 chain: new sum", payloadCo2.changeOrder?.newContractSum === "18320.00", payloadCo2.changeOrder?.newContractSum);
@@ -262,7 +263,7 @@ const co5 = await makeDoc(jobA, "change_order", { title: "Change order", descrip
 const linkCo5 = await A.createDocumentLink.handler(ctx, { kind: "change_order", id: co5 });
 const payloadCo5 = await A.resolveDocumentLink.handler(ctx, { token: linkCo5.shortCode, userAgent: "test" });
 check("uploaded CO still exposes its original PDF", payloadCo5.hasOriginalPdf === true);
-check("uploaded CO still gets its number + formal title", payloadCo5.changeOrder?.number === 5 && payloadCo5.title.startsWith("Change Order #5"), payloadCo5.title);
+check("uploaded CO still gets its number + formal title", payloadCo5.changeOrder?.number === 5 && payloadCo5.changeOrder?.displayTitle.startsWith("Change Order #5"), payloadCo5.changeOrder?.displayTitle);
 const co5Row = (await db.select().from(schema.documents).where(eq(schema.documents.id, co5)))[0]!;
 check("uploaded CO has the composited canonical stored", !!co5Row.clientSignedPdfBlobKey);
 const numberingAfter = await A.getJob.handler(ctx, { id: jobA });

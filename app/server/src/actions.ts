@@ -2347,16 +2347,19 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   // generated CO whose canonical PDF predates this build gets it
   // backfilled here (best-effort) so the signed-copy paths work.
   let changeOrder: typeof base.changeOrder = null;
-  let payloadTitle = doc.title;
   let payloadPdfVersion = doc.clientSignedPdfBlobKey ?? "";
   if (doc.kind === "change_order" && job) {
     const docs = await jobDocumentsOrdered(db, job.id);
     const math = changeOrderChain(job, docs).get(doc.id);
     if (math) {
-      payloadTitle = changeOrderDisplayTitle(doc, math.number);
+      // NOTE: payload.title stays the document's stored title — the
+      // first-open notification and other existing copy quote it. The
+      // FORMAL title ("Change Order #N — <scope>") rides in
+      // changeOrder.displayTitle, which the document page, the portal,
+      // and the app all render.
       changeOrder = {
         number: math.number,
-        displayTitle: payloadTitle,
+        displayTitle: changeOrderDisplayTitle(doc, math.number),
         scopeLabel: doc.description.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? "",
         dateIso: doc.createdAt.toISOString().slice(0, 10),
         referenceContract: referenceContractTitle(docs),
@@ -2373,7 +2376,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
       }
     }
   }
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: payloadTitle, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -2413,7 +2416,11 @@ async function documentLinkPdfBase64(ctx: Ctx, token: string, lang: "en" | "es")
       // state always has the stored canonical above). Contracts without
       // an upload stay web-only, exactly as before.
       if (kind !== "change_order") throw new Error("This document is only available as a web page.");
-      const cacheKey = `change_order:${payload.documentId}:${lang}`;
+      // Documents carry no updatedAt; the payload's updatedAtMs only
+      // moves at signing. Fold the rendered content's fingerprint into
+      // the cache key so editing an unsigned CO's scope/amount (which
+      // also shifts later COs' sums) never serves a stale render.
+      const cacheKey = `change_order:${payload.documentId}:${lang}:${payload.changeOrder?.contractSumBefore ?? ""}:${payload.amount}:${(payload.description ?? "").length}:${(payload.bodyText ?? "").length}`;
       const hit = docPdfCache.get(cacheKey);
       if (hit && hit.updatedAtMs === (payload as { updatedAtMs?: number }).updatedAtMs) {
         return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
@@ -3654,10 +3661,12 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       if (replacedBlobKey) {
         const nextDoc = { ...existing, ...patch } as typeof existing;
         await refreshDocumentCanonicalPdf(ctx, nextDoc, { locale: await documentDateLocale(ctx, nextDoc.companyId) });
-      } else if (existing.kind === "change_order" && !existing.originalBlobKey && existing.clientSignedAt) {
+      } else if (existing.kind === "change_order" && !existing.originalBlobKey && existing.clientSignatureBlobKey) {
         // A signed generated CO's canonical PDF is rendered from its
         // content (Danny 2026-10-21) — an edit re-renders it so the
-        // stored file never goes stale against the row.
+        // stored file never goes stale against the row. (The helper
+        // re-verifies the signed state itself; signature state is
+        // never written here.)
         await refreshChangeOrderCanonicalPdf(ctx, { ...existing, ...patch } as typeof existing);
       }
       ctx.invalidateQueries?.();
