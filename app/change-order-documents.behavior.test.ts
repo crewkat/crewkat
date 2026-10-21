@@ -282,5 +282,84 @@ check("portal documents rows use the formal title + amount", appSrc.includes("do
 check("job screen shows the revised contract total block", appSrc.includes("job-contract-summary") && appSrc.includes("contractSummary.revisedTotal"));
 check("portal CO overlay downloads the canonical PDF", appSrc.includes("downloadCoPdf") && appSrc.includes("api.getPortalChangeOrderPdf"));
 
+// --- 10. Contract sum (0086): the $0 base fix -----------------------------------------
+// Anthony's exact shape: an uploaded-PDF contract with NO stored
+// amount and amountDue unset — the derived base is $0, so CO #3
+// printed "before $0.00 / new $480.00". The contractor-set contract
+// sum fixes the chain everywhere at render, and signed COs get their
+// stored canonical PDF re-rendered with the corrected sums.
+const jobFix = await mkJob("Fix Flow Client", "1 Repair Rd");
+await makeDoc(jobFix, "contract", { title: "Uploaded contract", amount: "", originalDataBase64: formalB64 });
+const fco1 = await makeDoc(jobFix, "change_order", { title: "Change order", description: "Carpet swap — no price change", amount: "0" });
+const fco2 = await makeDoc(jobFix, "change_order", { title: "Change order", description: "Arcade outlet on its own circuit", amount: "140" });
+const fco3 = await makeDoc(jobFix, "change_order", { title: "Change order", description: "Replace door to water heater closet", amount: "480" });
+const payloadFix3pre = await A.resolveDocumentLink.handler(ctx, { token: (await A.createDocumentLink.handler(ctx, { kind: "change_order", id: fco3 })).shortCode, userAgent: "test" });
+check("bug repro: unresolvable base renders $0.00", payloadFix3pre.changeOrder?.contractSumBefore === "0.00" && payloadFix3pre.changeOrder?.newContractSum === "480.00", JSON.stringify(payloadFix3pre.changeOrder));
+// Sign CO2 through the portal while the base is still $0 — its stored
+// canonical PDF carries the wrong chain until the sum is corrected.
+const portalFix = await A.createPortalLink.handler(ctx, { jobId: jobFix, expiresInDays: 90 });
+await A.portalSignChangeOrder.handler(ctx, { token: portalFix.token, documentId: fco2, signerName: "Fix Flow Client", signatureDataBase64: pngBase64, lang: "en" });
+const fixPdfBefore = await A.getPortalChangeOrderPdf.handler(ctx, { token: portalFix.token, documentId: fco2, lang: "en" });
+check("signed canonical starts with the $0 chain", pdfText(Buffer.from(fixPdfBefore.pdfBase64, "base64")).includes("$0.00"), "");
+const setRes = await A.setJobContractSum.handler(ctx, { jobId: jobFix, contractSum: "18180" });
+check("setJobContractSum normalizes the value", setRes.contractSum === "18180.00", setRes.contractSum);
+const fixPdfAfter = await A.getPortalChangeOrderPdf.handler(ctx, { token: portalFix.token, documentId: fco2, lang: "en" });
+const fixPdfAfterText = pdfText(Buffer.from(fixPdfAfter.pdfBase64, "base64"));
+check("signed canonical re-renders with the corrected base", fixPdfAfterText.includes("$18,180.00") && fixPdfAfterText.includes("$18,320.00"), fixPdfAfterText.slice(0, 160));
+const payloadFix3 = await A.resolveDocumentLink.handler(ctx, { token: (await A.createDocumentLink.handler(ctx, { kind: "change_order", id: fco3 })).shortCode, userAgent: "test" });
+check("later CO chain builds on corrected base + signed CO2", payloadFix3.changeOrder?.contractSumBefore === "18320.00" && payloadFix3.changeOrder?.newContractSum === "18800.00", JSON.stringify(payloadFix3.changeOrder));
+const payloadFix1 = await A.resolveDocumentLink.handler(ctx, { token: (await A.createDocumentLink.handler(ctx, { kind: "change_order", id: fco1 })).shortCode, userAgent: "test" });
+check("the $0 CO keeps the corrected base as its before", payloadFix1.changeOrder?.contractSumBefore === "18180.00" && payloadFix1.changeOrder?.newContractSum === "18180.00", JSON.stringify(payloadFix1.changeOrder));
+const fixJob = await A.getJob.handler(ctx, { id: jobFix });
+check("summary reports the explicit sum + corrected base", fixJob.contractSummary?.contractSum === "18180.00" && fixJob.contractSummary?.baseAmount === "18180.00" && fixJob.job.contractSum === "18180.00", JSON.stringify(fixJob.contractSummary));
+check("summary revised counts the signed CO on the corrected base", fixJob.contractSummary?.revisedTotal === "18320.00" && fixJob.contractSummary?.pendingChangeOrdersTotal === "480.00", JSON.stringify(fixJob.contractSummary));
+const fixPortal = await A.getPortalData.handler(ctx, { token: portalFix.token });
+const fixPortalCo3 = fixPortal.changeOrders.find((o: any) => o.id === fco3);
+check("portal chain reflects the corrected base", fixPortalCo3?.contractSumBefore === "18320.00" && fixPortalCo3?.newContractSum === "18800.00", JSON.stringify(fixPortalCo3));
+check("portal payload carries the formal-paper fields", !!fixPortal.company.licenseNumber && "address" in fixPortal.company && !!fixPortalCo3 && "bodyText" in fixPortalCo3 && "contractorSignatureUrl" in fixPortalCo3 && "clientSignatureUrl" in fixPortalCo3, "");
+let foreignSetThrew = false;
+try { await A.setJobContractSum.handler(ctx, { jobId: jobC2, contractSum: "1" }); } catch { foreignSetThrew = true; }
+check("setJobContractSum refuses another company's job", foreignSetThrew);
+
+// Acceptance, exactly as specified: base 18180, COs $0/$140/$480,
+// none signed — CO #3 shows before $18,180 → new $18,660 in the link
+// payload AND the rendered PDF.
+const jobAcc = await mkJob("Acceptance Client", "2 Spec Way");
+await makeDoc(jobAcc, "contract", { title: "Uploaded contract", amount: "", originalDataBase64: formalB64 });
+await makeDoc(jobAcc, "change_order", { title: "Change order", description: "Carpet swap — no price change", amount: "0" });
+await makeDoc(jobAcc, "change_order", { title: "Change order", description: "Arcade outlet on its own circuit", amount: "140" });
+const aco3 = await makeDoc(jobAcc, "change_order", { title: "Change order", description: "Replace door to water heater closet", amount: "480" });
+await A.setJobContractSum.handler(ctx, { jobId: jobAcc, contractSum: "18180.00" });
+const linkAcc3 = await A.createDocumentLink.handler(ctx, { kind: "change_order", id: aco3 });
+const payloadAcc3 = await A.resolveDocumentLink.handler(ctx, { token: linkAcc3.shortCode, userAgent: "test" });
+check("acceptance: CO3 before $18,180 → new $18,660", payloadAcc3.changeOrder?.contractSumBefore === "18180.00" && payloadAcc3.changeOrder?.newContractSum === "18660.00", JSON.stringify(payloadAcc3.changeOrder));
+const pdfAcc3 = await A.getDocumentLinkPdf.handler(ctx, { token: linkAcc3.token, lang: "en" });
+const pdfAcc3Text = pdfText(Buffer.from(pdfAcc3.pdfBase64, "base64"));
+check("acceptance: CO3 PDF prints $18,180.00 → $18,660.00", pdfAcc3Text.includes("$18,180.00") && pdfAcc3Text.includes("$18,660.00"), pdfAcc3Text.slice(0, 160));
+const accJob = await A.getJob.handler(ctx, { id: jobAcc });
+check("acceptance: summary base/revised stay $18,180 with nothing signed", accJob.contractSummary?.baseAmount === "18180.00" && accJob.contractSummary?.revisedTotal === "18180.00" && accJob.contractSummary?.pendingChangeOrdersTotal === "620.00", JSON.stringify(accJob.contractSummary));
+
+// Resolution precedence: explicit sum > contract document amount >
+// amountDue. (The amountDue-only fallback is covered by job C2 above.)
+const jobPrec = await mkJob("Precedence Client", "3 Order Ave", 1, "7000");
+await makeDoc(jobPrec, "contract", { title: "Priced contract", amount: "9000" });
+const pco1 = await makeDoc(jobPrec, "change_order", { title: "Change order", description: "Precedence probe", amount: "100" });
+const payloadPrec1 = await A.resolveDocumentLink.handler(ctx, { token: (await A.createDocumentLink.handler(ctx, { kind: "change_order", id: pco1 })).shortCode, userAgent: "test" });
+check("contract document amount beats amountDue", payloadPrec1.changeOrder?.contractSumBefore === "9000.00", JSON.stringify(payloadPrec1.changeOrder));
+await A.setJobContractSum.handler(ctx, { jobId: jobPrec, contractSum: "5000" });
+const payloadPrec2 = await A.resolveDocumentLink.handler(ctx, { token: (await A.createDocumentLink.handler(ctx, { kind: "change_order", id: pco1 })).shortCode, userAgent: "test" });
+check("explicit contract sum beats the document amount", payloadPrec2.changeOrder?.contractSumBefore === "5000.00" && payloadPrec2.changeOrder?.newContractSum === "5100.00", JSON.stringify(payloadPrec2.changeOrder));
+
+// --- 11. Fix-pass source wiring (official paper, close ✕, action bar) -------------------
+check("one formal paper component serves page + portal", appSrc.includes("ChangeOrderPaperView") && appSrc.includes("co-paper-total") && appSrc.includes("co-paper-meta"));
+check("portal sheet has the sticky close + bottom action bar + sign sheet", appSrc.includes("portal-v2-doc-close") && appSrc.includes("portal-v2-co-actionbar") && appSrc.includes("portal-v2-co-signsheet") && appSrc.includes("setCoSignOpen(true)"));
+check("portal sign still goes through the document path", appSrc.includes("api.portalSignChangeOrder"));
+check("job screen + composer carry the contract-sum editor", appSrc.includes("ContractSumRow") && appSrc.includes("ComposerContractSum") && appSrc.includes("api.setJobContractSum"));
+const coMathSrc = await readFile("server/src/changeOrders.ts", "utf8");
+check("server exposes setJobContractSum + the explicit field wins", serverSrc.includes("setJobContractSum") && coMathSrc.includes("job.contractSum"));
+check("PDF new-sum row takes the dark band", (pdfSrc.match(/setFillColor\(23, 26, 28\)/g) ?? []).length >= 2);
+const coSql = await readFile("drizzle/0086_job_contract_sum.sql", "utf8");
+check("migration 0086 adds jobs.contract_sum", coSql.includes("contract_sum") && coSql.includes("jobs"));
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);
