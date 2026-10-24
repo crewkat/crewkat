@@ -532,6 +532,8 @@ async function readBody(req, { raw = false } = {}) {
 
 const CLIENT_DIST = join(APP_DIR, "client/dist");
 
+const OFFICE_DIST = join(APP_DIR, "office/dist");
+
 const MARKETING_DIST = join(CLIENT_DIST, "marketing");
 
 async function sendFile(res, filePath, cacheControl) {
@@ -622,6 +624,38 @@ async function serveStatic(res, urlPath) {
     // otherwise a deploy can sit invisible behind a stale shell/SW for hours.
     // Hashed /assets/* files are content-addressed, so they cache for a year.
     const noStore = relative === "/index.html" || relative === "/sw.js"
+      ? "no-store"
+      : relative.startsWith("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : undefined;
+    return sendFile(res, filePath, noStore);
+  }
+  // Crewkat Office (desktop CRM): SPA bundle at /office/*, same semantics
+  // as /app/* — SPA fallback to the office index for client-side routes,
+  // real 404 for missing files under /office/assets/.
+  if (urlPath === "/office" || urlPath.startsWith("/office/")) {
+    const relative = urlPath === "/office" ? "/index.html" : urlPath.slice(7) || "/index.html";
+    const filePath = safeJoin(OFFICE_DIST, relative);
+    if (!filePath) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    let fileStat;
+    try {
+      fileStat = await stat(filePath);
+    } catch {
+      fileStat = null;
+    }
+    if (!fileStat || !fileStat.isFile()) {
+      if (relative.startsWith("/assets/")) {
+        res.writeHead(404, { "x-content-type-options": "nosniff" });
+        res.end();
+        return;
+      }
+      return sendFile(res, join(OFFICE_DIST, "index.html"), "no-store");
+    }
+    const noStore = relative === "/index.html"
       ? "no-store"
       : relative.startsWith("/assets/")
         ? "public, max-age=31536000, immutable"

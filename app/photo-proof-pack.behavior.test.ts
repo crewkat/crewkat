@@ -54,7 +54,7 @@ async function checkThrows(name: string, fn: () => Promise<unknown>) {
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const byTag = Object.fromEntries(entries.map((e) => [e.tag, e]));
-check("newest migration tag is 0086_job_contract_sum", entries[entries.length - 1]!.tag === "0086_job_contract_sum", entries[entries.length - 1]!.tag);
+check("newest migration tag is 0087_office_crm", entries[entries.length - 1]!.tag === "0087_office_crm", entries[entries.length - 1]!.tag);
 check("0080 when strictly greater than 0079", byTag["0080_photo_pairs"]!.when > byTag["0079_saved_signature"]!.when);
 const sql80 = await readFile(join("drizzle", "0080_photo_pairs.sql"), "utf8");
 check("0080 creates photo_pairs", sql80.includes("CREATE TABLE `photo_pairs`"));
