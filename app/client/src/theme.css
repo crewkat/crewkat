@@ -5909,3 +5909,184 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .doc-status-dot.open { background: transparent; border: 1.6px solid #c4c4c4; }
 .doc-link-summary { min-height: 32px; }
 .client-doc-zoom-hint { font-size: 11px; }
+
+/* ================================================================
+   Job screens overhaul (Danny 2026-10-24): compact chrome, honest
+   Financials with the approved color key, photos-first completion,
+   grouped appointment form, portal feature card + portal color.
+   Color key (from the approved mockup): invoiced #2f5fb3 · paid
+   #1e7a46 · still owed #b45309 · costs #b3392e · deposit #0e7490 ·
+   budget #7c4d8f · contract #0b1f4d · change orders #c2570a ·
+   subcontractors #5b5ea6 · accent orange #f97316.
+   ================================================================ */
+
+/* ---- Slim step bar: label + small status box on one ~30px row ---- */
+.flow-stepper { align-items: center; padding: 6px 4px 2px; }
+.flow-step { flex-direction: row; align-items: center; justify-content: center; gap: 6px; }
+.flow-label { order: 1; font-size: 11.5px; }
+.flow-dot { order: 2; width: 16px; height: 16px; border-radius: 5px; border-width: 1.5px; }
+.flow-dot i { font-size: 9.5px; }
+.flow-dot svg { width: 11px; height: 11px; }
+.flow-step.done .flow-dot { background: transparent; border-color: transparent; color: var(--accent); }
+.flow-step.current .flow-dot { background: var(--text); border-color: var(--text); color: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.flow-step:not(.done):not(.current) .flow-dot { background: transparent; border-color: transparent; color: var(--dim); }
+.flow-link { margin-top: 0; height: 1.5px; flex-basis: 14px; }
+
+/* ---- Slim workspace tab row (active = 2px orange underline) ---- */
+.workspace-tabs { padding: 2px 0 0; margin: 0 0 6px; }
+.workspace-tabs button { min-height: 34px; padding: 4px 9px; font-size: 12.5px; }
+
+/* ---- Overview: compact action rail ---- */
+.quick-rail { padding: 2px 16px 8px; gap: 8px; }
+.quick-rail-action { min-height: 38px; padding: 6px 13px; font-size: 13px; border-radius: 10px; box-shadow: none; }
+.quick-rail-action svg { width: 16px; height: 16px; }
+
+/* ---- Overview: slimmer client card ---- */
+.job-client-card { border-radius: 12px; margin-top: 10px; }
+.job-client-pick { padding: 9px 4px 9px 12px; gap: 1px; }
+.job-client-pick strong { font-size: .95rem; }
+.job-client-pick small { font-size: .78rem; }
+
+/* ---- Overview money strip: contract progress only ---- */
+.profit-strip .ps-contract { color: #0b1f4d; }
+.profit-strip .ps-invoiced { color: #2f5fb3; }
+.profit-strip .ps-balance { color: #b45309; }
+.profit-strip .ps-progress { grid-column: 1 / -1; display: grid; gap: 5px; }
+.profit-strip .ps-bar { height: 5px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.profit-strip .ps-bar > span { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.profit-strip .ps-progress small { color: var(--dim); font-size: 11px; font-weight: 700; }
+
+/* ---- Overview: change-orders slim row ---- */
+.job-co-row { display: flex; align-items: center; gap: 10px; width: 100%; margin: 10px 0 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.job-co-row-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13.5px; }
+.job-co-row-label::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 2.5px; background: #c2570a; }
+.job-co-row-value { margin-left: auto; color: #c2570a; font-weight: 800; font-size: 13px; white-space: nowrap; }
+.job-co-row > svg { flex: none; width: 16px; height: 16px; color: var(--dim); transform: rotate(180deg); }
+
+/* ---- Overview: slimmer photo-completeness summary row ---- */
+.completion-summary-card { padding: 9px 12px; gap: 10px; border-radius: 12px; margin-top: 10px; }
+.completion-summary-text { gap: 1px; }
+.completion-summary-text strong { font-size: .92rem; }
+.completion-summary-text small { font-size: .78rem; }
+
+/* ---- Photos: slim completion status line ---- */
+.completion-panel { gap: 10px; padding: 12px; margin: 10px 0; }
+.completion-status-line { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; font-weight: 700; }
+.completion-status-line > svg { flex: none; width: 18px; height: 18px; }
+.completion-status-line.is-ok > svg, .completion-status-line.is-complete > svg { color: var(--green); }
+.completion-status-line.is-complete { background: color-mix(in srgb, var(--green) 10%, var(--surface)); }
+.completion-status-line.is-missing > svg { color: #b45309; }
+.completion-status-line.is-missing { background: color-mix(in srgb, #b45309 10%, var(--surface)); }
+.completion-status-text { flex: 1; min-width: 0; }
+.completion-mark-btn { flex: none; min-height: 34px; padding: 6px 12px; font-size: 13px; border-radius: 9px; }
+.completion-status-line .reopen-inline { flex: none; }
+
+/* ---- Financials: 4 compact cards + color key ---- */
+.fin-unified { gap: 10px; }
+.fin-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 13px 14px; display: grid; gap: 11px; }
+.fin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fin-card-head h2 { margin: 0; font-size: 15.5px; font-weight: 800; letter-spacing: -.01em; }
+.fin-chip-warn { flex: none; font-size: 10px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; color: #b45309; background: color-mix(in srgb, #b45309 13%, var(--surface)); padding: 3px 8px; border-radius: 99px; }
+.fin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.fin-grid.fin-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.fin-fig { display: grid; gap: 2px; min-width: 0; --fc: var(--dim); }
+.fin-fig-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--dim); }
+.fin-dot { flex: none; width: 7px; height: 7px; border-radius: 2.5px; background: var(--fc, var(--dim)); }
+.fin-fig strong { font-size: 19px; font-weight: 800; letter-spacing: -.02em; color: var(--fc); white-space: nowrap; }
+.f-invoiced { --fc: #2f5fb3; }
+.f-paid { --fc: #1e7a46; }
+.f-owed { --fc: #b45309; }
+.f-costs { --fc: #b3392e; }
+.f-deposit { --fc: #0e7490; }
+.f-budget { --fc: #7c4d8f; }
+.f-contract { --fc: #0b1f4d; }
+.f-co { --fc: #c2570a; }
+.f-subs { --fc: #5b5ea6; }
+.fin-cost-row { display: flex; flex-wrap: wrap; gap: 6px 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; font-weight: 700; }
+.fin-cost-row > span { display: inline-flex; align-items: center; gap: 6px; }
+.fin-honest-note { margin: 0; padding: 9px 11px; border-radius: 9px; background: color-mix(in srgb, #b45309 11%, var(--surface)); border: 1px solid color-mix(in srgb, #b45309 40%, var(--border)); color: color-mix(in srgb, #b45309 82%, var(--text)); font-size: 12.5px; font-weight: 650; line-height: 1.45; }
+.fin-profit-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; font-weight: 700; }
+.fin-profit-line strong { font-size: 16.5px; font-weight: 800; white-space: nowrap; }
+.fin-profit-line strong.pos { color: #1e7a46; }
+.fin-profit-line strong.neg { color: #b3392e; }
+.fin-progress { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.fin-progress > span { display: block; height: 100%; border-radius: 99px; background: var(--fc); }
+.fin-progress-caption { margin: 0; font-size: 11.5px; font-weight: 700; color: var(--dim); }
+.fin-card-note { margin: 0; font-size: 12.5px; }
+.fin-row-label { display: inline-flex; align-items: center; gap: 6px; }
+.fin-rows li strong { color: var(--fc, inherit); }
+.fin-rows li.fin-remaining-row strong.pos { color: #1e7a46; }
+.fin-rows li.fin-remaining-row strong.neg { color: #b3392e; }
+
+/* ---- Portal feature card (Overview): navy/orange, status at a glance ---- */
+.portal-owner.portal-feature { overflow: hidden; border-radius: 14px; border: 1px solid color-mix(in srgb, #0b1f4d 45%, var(--border)); box-shadow: 0 8px 22px rgb(11 31 77 / .13); }
+.portal-feature-head { display: flex; align-items: center; gap: 9px; padding: 11px 13px; background: linear-gradient(120deg, #0b1f4d 0%, #173a75 72%, #8a4410 135%); color: #fff; }
+.portal-feature-mark { flex: none; width: 28px; height: 28px; border-radius: 8px; background: rgba(255, 255, 255, .14); display: grid; place-items: center; overflow: hidden; }
+.portal-feature-mark img { width: 20px; height: 20px; object-fit: contain; }
+.portal-feature-head strong { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 800; letter-spacing: -.01em; }
+.portal-status-pill { flex: none; font-size: 10px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; padding: 4px 8px; border-radius: 99px; background: rgba(255, 255, 255, .16); color: #fff; white-space: nowrap; }
+.portal-status-pill.is-sent { background: #c2570a; }
+.portal-status-pill.is-opened { background: #2f5fb3; }
+.portal-status-pill.is-signed { background: #1e7a46; }
+.portal-feature .portal-link-panel { padding: 12px 13px 13px; }
+
+/* ---- Client portal page: same color system, company stays the brand ---- */
+.portal-v2-hero { margin: 0 16px 14px; padding: 20px 16px; border-radius: 14px; background: linear-gradient(135deg, #0b1f4d, #173a75); color: #fff; box-shadow: 0 8px 22px rgb(11 31 77 / .16); }
+.portal-v2-hero h1 { color: #fff; }
+.portal-v2-kicker { color: #fda65d; }
+.portal-v2-address { color: rgba(255, 255, 255, .85); }
+.portal-v2-stat:nth-child(1) strong { color: #c2570a; }
+.portal-v2-stat:nth-child(2) strong { color: #2f5fb3; }
+.portal-v2-stat:nth-child(3) strong { color: #1e7a46; }
+.portal-v2-stat:nth-child(3).is-alert strong { color: #b45309; }
+.portal-v2-stat:nth-child(4) strong { color: #0b1f4d; }
+.portal-v2-card { --pc: var(--accent); }
+.portal-v2-card.pc-docs { --pc: #0b1f4d; }
+.portal-v2-card.pc-photos { --pc: #f97316; }
+.portal-v2-card.pc-files { --pc: #0e7490; }
+.portal-v2-card.pc-visits { --pc: #2f5fb3; }
+.portal-v2-card.pc-messages { --pc: #7c4d8f; }
+.portal-v2-card.pc-attention { --pc: #b45309; }
+.portal-v2-card.pc-estimates { --pc: #5b5ea6; }
+.portal-v2-card.pc-invoices { --pc: #1e7a46; }
+.portal-v2-card > h2 { display: flex; align-items: center; gap: 8px; }
+.portal-v2-card > h2::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 3px; background: var(--pc); }
+.pc-docs .portal-v2-doc-card { border-left: 3px solid #0b1f4d; }
+.portal-v2 .status-chip.paid { background: color-mix(in srgb, #1e7a46 16%, var(--surface)); color: #1e7a46; }
+.portal-v2 .status-chip.sent { background: color-mix(in srgb, #b45309 14%, var(--surface)); color: #b45309; }
+.portal-v2 .status-chip.draft { background: var(--surface-2); color: var(--dim); }
+.portal-v2 .status-chip.partial { background: color-mix(in srgb, #b45309 14%, var(--surface)); color: #b45309; }
+.portal-v2-balance { color: #b45309; }
+
+/* ---- Appointment form: one row toolbar + grouped card ---- */
+.calendar-toolbar.appt-toolbar { grid-template-columns: auto minmax(0, 1fr) auto; }
+.calendar-toolbar.appt-toolbar > div button { min-height: 38px; }
+.calendar-toolbar.appt-toolbar input { min-height: 38px; }
+.calendar-toolbar.appt-toolbar > .primary-button { grid-column: auto; min-height: 38px; padding: 0 13px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+.operation-editor.appt-form { display: grid; gap: 11px; padding: 13px; border-radius: 14px; }
+.appt-client-block { display: grid; gap: 8px; }
+.appt-client-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; background: var(--surface-2); border-radius: 9px; }
+.appt-client-toggle button { min-height: 32px; border: 0; border-radius: 7px; background: transparent; font-weight: 800; font-size: 12.5px; color: var(--dim); cursor: pointer; }
+.appt-client-toggle button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.appt-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; font-weight: 700; }
+.appt-form-bar { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 0 calc(2px + env(safe-area-inset-bottom)); background: var(--surface); }
+.appt-form-bar .primary-button { flex: 1; }
+.appt-form-bar .secondary-button { flex: 0 0 auto; }
+
+/* ---- Dark theme: lift the navy/blue key colors for legibility ---- */
+:root[data-theme="dark"] .f-contract { --fc: #8fb0e8; }
+:root[data-theme="dark"] .f-invoiced { --fc: #7aa5e0; }
+:root[data-theme="dark"] .f-budget { --fc: #c39bd8; }
+:root[data-theme="dark"] .profit-strip .ps-contract { color: #8fb0e8; }
+:root[data-theme="dark"] .profit-strip .ps-invoiced { color: #7aa5e0; }
+:root[data-theme="dark"] .portal-v2-stat:nth-child(4) strong { color: #8fb0e8; }
+:root[data-theme="dark"] .portal-v2-card.pc-docs { --pc: #8fb0e8; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .f-contract { --fc: #8fb0e8; }
+  :root:not([data-theme]) .f-invoiced { --fc: #7aa5e0; }
+  :root:not([data-theme]) .f-budget { --fc: #c39bd8; }
+  :root:not([data-theme]) .profit-strip .ps-contract { color: #8fb0e8; }
+  :root:not([data-theme]) .profit-strip .ps-invoiced { color: #7aa5e0; }
+  :root:not([data-theme]) .portal-v2-stat:nth-child(4) strong { color: #8fb0e8; }
+  :root:not([data-theme]) .portal-v2-card.pc-docs { --pc: #8fb0e8; }
+}

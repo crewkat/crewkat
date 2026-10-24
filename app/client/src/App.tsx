@@ -3960,6 +3960,7 @@ function JobCompletionWorkflow({
   completionError,
   reopen,
   optimisticCompleted,
+  coveredStages,
 }: {
   lang: Lang;
   job: { id: number; photoCompleteness: number; requiredPhotoStages: Stage[]; completedAt: string | null; completionOverrideNote: string | null };
@@ -3971,21 +3972,63 @@ function JobCompletionWorkflow({
   completionError: string;
   reopen: { mutate: () => void; isPending: boolean };
   optimisticCompleted: boolean;
+  // Stages that already hold at least one photo (from the job's photo
+  // list) — drives the slim status line and the conditional override
+  // field in the 2026-10-24 photos redesign.
+  coveredStages?: Stage[];
 }) {
+  const stageOrder: Stage[] = ["before", "during", "after"];
+  const covered = coveredStages ?? (job.photoCompleteness >= 100 ? stageOrder : []);
+  const missingRequired = stageOrder.filter(
+    (s) => job.requiredPhotoStages.includes(s) && !covered.includes(s),
+  );
+  const allCovered = missingRequired.length === 0;
+  const isCompleted = Boolean(job.completedAt || optimisticCompleted);
+  const coveredLabels = stageOrder
+    .filter((s) => job.requiredPhotoStages.includes(s))
+    .map((s) => t[s]);
+  const missingLabels = missingRequired.map((s) => t[s]);
+  const completedText = job.completedAt
+    ? lang === "es"
+      ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
+      : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`
+    : lang === "es" ? "Completado" : "Completed";
   return (
     <section className="completion-panel completion-v2" id="job-completion" aria-label={lang === "es" ? "Completitud de fotos" : "Photo completeness"}>
-      <div className="completion-hero">
-        <ProgressRing value={job.photoCompleteness} />
-        <div className="completion-hero-text">
-          <strong>
-            {lang === "es" ? "Completitud de fotos" : "Photo completeness"}
-          </strong>
-          <span>
-            {lang === "es"
-              ? `${job.requiredPhotoStages.length} de 3 etapas requeridas`
-              : `${job.requiredPhotoStages.length} of 3 stages required`}
-          </span>
-        </div>
+      <div className={`completion-status-line${isCompleted ? " is-complete" : allCovered ? " is-ok" : " is-missing"}`}>
+        {isCompleted || allCovered ? (
+          <CheckIcon />
+        ) : (
+          <Icon><path d="M12 3 2.5 20h19L12 3zM12 10v4M12 17.2h.01" /></Icon>
+        )}
+        <span className="completion-status-text">
+          {isCompleted
+            ? `${completedText}${job.completionOverrideNote ? ` · ${job.completionOverrideNote}` : ""}`
+            : allCovered
+              ? coveredLabels.length > 0
+                ? `${lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"} — ${coveredLabels.join(" · ")}`
+                : lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"
+              : `${lang === "es" ? "Faltan fotos" : "Missing photos"} — ${missingLabels.join(" · ")}`}
+        </span>
+        {isCompleted ? (
+          <button
+            type="button"
+            className="small-button reopen-inline"
+            disabled={reopen.isPending}
+            onClick={() => { buzz(8); reopen.mutate(); }}
+          >
+            {lang === "es" ? "Reabrir" : "Reopen"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary-button completion-mark-btn"
+            disabled={complete.isPending}
+            onClick={() => complete.mutate()}
+          >
+            {lang === "es" ? "Marcar trabajo completo" : "Mark job complete"}
+          </button>
+        )}
       </div>
       <fieldset className="completion-stages">
         <legend>
@@ -4012,48 +4055,25 @@ function JobCompletionWorkflow({
           ))}
         </div>
       </fieldset>
-      {(job.completedAt || optimisticCompleted) ? (
-        <p className="status success">
-          <CheckIcon />
-          {job.completedAt
-            ? (lang === "es"
-              ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
-              : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`)
-            : (lang === "es" ? "Completado" : "Completed")}
-          {job.completionOverrideNote
-            ? ` · ${job.completionOverrideNote}`
-            : ""}
-          {/* Phase 1: persistent reopen affordance next to the undo toast. */}
-          <button
-            type="button"
-            className="small-button reopen-inline"
-            disabled={reopen.isPending}
-            onClick={() => { buzz(8); reopen.mutate(); }}
-          >
-            {lang === "es" ? "Reabrir" : "Reopen"}
-          </button>
-        </p>
-      ) : (
+      {!isCompleted && (
         <>
-          <label>
-            <span>
-              {lang === "es"
-                ? "Nota de excepción si faltan fotos"
-                : "Override note if required photos are missing"}
-            </span>
-            <textarea
-              rows={2}
-              value={completionNote}
-              onChange={(e) => setCompletionNote(e.target.value)}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={complete.isPending}
-            onClick={() => complete.mutate()}
-          >
-            {lang === "es" ? "Marcar trabajo completo" : "Mark job complete"}
-          </button>
+          {/* Photos redesign (2026-10-24): the override field appears
+              only when a required stage is actually missing photos (or
+              the server just asked for one via completionError). */}
+          {(missingRequired.length > 0 || completionError) && (
+            <label>
+              <span>
+                {lang === "es"
+                  ? "Nota de excepción si faltan fotos"
+                  : "Override note if required photos are missing"}
+              </span>
+              <textarea
+                rows={2}
+                value={completionNote}
+                onChange={(e) => setCompletionNote(e.target.value)}
+              />
+            </label>
+          )}
           {completionError && (
             <p className="status error" role="alert">
               {completionError}
@@ -7997,6 +8017,10 @@ type WorkspacePanelProps = {
   invoices: Awaited<ReturnType<typeof api.listInvoices>>["invoices"];
   quotes: Awaited<ReturnType<typeof api.listQuotes>>["quotes"];
   operations: Awaited<ReturnType<typeof api.getJobOperations>> | undefined;
+  // Job-screens overhaul (2026-10-24): the Financials Contract card and
+  // the Overview change-orders row read the same resolved contract
+  // summary getJob already returns.
+  contractSummary?: { baseAmount: string; contractSum: string; signedChangeOrdersTotal: string; revisedTotal: string; pendingChangeOrdersTotal: string } | null;
   setScreen: (s: Screen) => void;
   // Full photo-completeness workflow, rendered by the Photos tab above the gallery.
   completionWorkflow?: React.ReactNode;
@@ -8937,7 +8961,7 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
   );
 }
 
-function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operations, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "operations" | "setScreen">) {
+function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, operations, contractSummary, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "quotes" | "operations" | "contractSummary" | "setScreen">) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
   const qc = useQueryClient();
@@ -8952,6 +8976,18 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
   const selPct = p && p.selectionBudget > 0
     ? Math.min(100, (p.selectionActual / p.selectionBudget) * 100)
     : p && p.selectionActual > 0 ? 100 : 0;
+  // Honest state (Danny 2026-10-24): "Estimated" reads $0 whenever the
+  // job's price lives in an uploaded contract document instead of a
+  // Crewkat estimate — the server sums only quotes LINKED to the job.
+  // So the honest state keys off estimate linkage, never the $0 itself:
+  // no linked estimate → no Profit/Margin claims, just invoiced − costs.
+  const hasLinkedEstimate = quotes.some((q) => q.jobId === jobId);
+  const costsSoFar = p ? p.materials + p.laborCost + p.expenses + p.subcontractors : 0;
+  const balanceDue = totalInvoiced - totalPaid;
+  const contractBase = contractSummary ? money(contractSummary.baseAmount) : 0;
+  const contractPct = contractBase > 0
+    ? Math.min(100, Math.max(0, (totalInvoiced / contractBase) * 100))
+    : 0;
   const t = {
     title: lang === "es" ? "Finanzas del trabajo" : "Job financials",
     profitability: lang === "es" ? "Rentabilidad" : "Profitability",
@@ -8966,6 +9002,21 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
     margin: lang === "es" ? "Margen" : "Margin",
     paid: lang === "es" ? "Cobrado" : "Paid",
     deposit: lang === "es" ? "Depósito" : "Deposit",
+    depositHeld: lang === "es" ? "Depósito retenido" : "Deposit held",
+    costsSoFar: lang === "es" ? "Costos hasta ahora" : "Costs so far",
+    balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due",
+    estimateNotLinked: lang === "es" ? "Estimado no vinculado" : "Estimate not linked",
+    noEstimateNote: lang === "es"
+      ? "Aún no hay un estimado vinculado — no se puede calcular la ganancia ni el margen. Vincula el estimado y esta tarjeta mostrará los números reales."
+      : "No estimate linked yet — profit and margin can't be calculated. Link the estimate and this card shows the real numbers.",
+    invoicedMinusCosts: lang === "es" ? "Facturado − costos hasta ahora" : "Invoiced − costs so far",
+    contract: lang === "es" ? "Contrato" : "Contract",
+    contractSum: lang === "es" ? "Monto del contrato" : "Contract sum",
+    invoicedSoFar: lang === "es" ? "Facturado hasta ahora" : "Invoiced so far",
+    leftToInvoice: lang === "es" ? "Por facturar" : "Left to invoice",
+    noContract: lang === "es" ? "Aún no hay monto de contrato." : "No contract amount set yet.",
+    remaining: lang === "es" ? "Restante" : "Remaining",
+    moneySummary: lang === "es" ? "Resumen de dinero" : "Money summary",
     budget: lang === "es" ? "Presupuesto" : "Budget",
     budgetTotal: lang === "es" ? "Presupuesto total" : "Budget total",
     changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
@@ -8978,50 +9029,90 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
     <ProShowcase lang={lang} isPremium={isPremium} title={t.title} setScreen={setScreen} className="fin-showcase">
       <section className="workspace-panel fin-unified" aria-label={lang === "es" ? "Finanzas" : "Financials"}>
         {p && (
-          <section className="fin-hero" aria-label={t.profitability}>
-            <h2>{t.profitability}</h2>
-            <div className="fin-hero-grid">
-              <div><span>{t.estimated}</span><strong>{usd(p.quoted)}</strong></div>
-              <div><span>{t.invoiced}</span><strong>{usd(p.invoiced)}</strong></div>
-              <div><span>{t.variance}</span><strong>{p.variance >= 0 ? "+" : ""}{usd(p.variance)}</strong></div>
-              <div><span>{t.materials}</span><strong>{usd(p.materials)}</strong></div>
-              <div><span>{t.expenses}</span><strong>{usd(p.expenses)}</strong></div>
-              <div><span>{t.subcontractors}</span><strong>{usd(p.subcontractors)}</strong></div>
+          <section className="fin-card fin-profit" aria-label={t.profitability}>
+            <div className="fin-card-head">
+              <h2>{t.profitability}</h2>
+              {!hasLinkedEstimate && <span className="fin-chip-warn">{t.estimateNotLinked}</span>}
             </div>
-            <div className="fin-hero-total">
-              <span>{t.profit}</span>
-              <strong>{usd(p.profit)} · {p.margin.toFixed(1)}%</strong>
+            <div className="fin-grid">
+              <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoiced}</span><strong>{usd(p.invoiced)}</strong></div>
+              <div className="fin-fig f-paid"><span className="fin-fig-label"><i className="fin-dot" />{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
+              <div className="fin-fig f-costs"><span className="fin-fig-label"><i className="fin-dot" />{t.costsSoFar}</span><strong>{usd(costsSoFar)}</strong></div>
+              <div className="fin-fig f-owed"><span className="fin-fig-label"><i className="fin-dot" />{t.balanceDue}</span><strong>{usd(balanceDue)}</strong></div>
             </div>
+            <div className="fin-cost-row">
+              <span className="f-costs"><i className="fin-dot" />{t.materials} {usd(p.materials)}</span>
+              <span className="f-costs"><i className="fin-dot" />{t.expenses} {usd(p.expenses)}</span>
+              <span className="f-subs"><i className="fin-dot" />{t.subcontractors} {usd(p.subcontractors)}</span>
+            </div>
+            {hasLinkedEstimate ? (
+              <div className="fin-profit-line">
+                <span>{t.profit}</span>
+                <strong className={p.profit < 0 ? "neg" : "pos"}>{usd(p.profit)} · {t.margin} {p.margin.toFixed(1)}%</strong>
+              </div>
+            ) : (
+              <>
+                <p className="fin-honest-note">{t.noEstimateNote}</p>
+                <div className="fin-profit-line">
+                  <span>{t.invoicedMinusCosts}: {usd(p.profit)}</span>
+                  <strong>{t.margin} —</strong>
+                </div>
+              </>
+            )}
           </section>
         )}
-        <div className="pa-stat-grid fin-stats">
-          <div className="pa-stat">
-            <PAStatIcon path="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />
-            <div className="pa-stat-text"><span className="pa-stat-value">{usd(totalInvoiced)}</span><span className="pa-stat-label">{t.invoiced}</span></div>
+        <section className="fin-card fin-money" aria-label={t.moneySummary}>
+          <div className="fin-card-head">
+            <h2>{t.moneySummary}</h2>
           </div>
-          <div className="pa-stat">
-            <PAStatIcon path="M20 6L9 17l-5-5" />
-            <div className="pa-stat-text"><span className="pa-stat-value">{usd(totalPaid)}</span><span className="pa-stat-label">{t.paid}</span></div>
+          <div className="fin-grid">
+            <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoiced}</span><strong>{usd(totalInvoiced)}</strong></div>
+            <div className="fin-fig f-paid"><span className="fin-fig-label"><i className="fin-dot" />{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
+            <div className="fin-fig f-deposit"><span className="fin-fig-label"><i className="fin-dot" />{t.depositHeld}</span><strong>{usd(money(job.depositAmount))}</strong></div>
+            <div className="fin-fig f-budget"><span className="fin-fig-label"><i className="fin-dot" />{t.budget}</span><strong>{p ? usd(p.budgetTotal) : "—"}</strong></div>
           </div>
-          <div className="pa-stat">
-            <PAStatIcon path="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />
-            <div className="pa-stat-text"><span className="pa-stat-value">{usd(money(job.depositAmount))}</span><span className="pa-stat-label">{t.deposit}</span></div>
-          </div>
-          <div className="pa-stat">
-            <PAStatIcon path="M4 19V9M10 19V5M16 19v-8M22 19H2" />
-            <div className="pa-stat-text"><span className="pa-stat-value">{p ? usd(p.budgetTotal) : "—"}</span><span className="pa-stat-label">{t.budget}</span></div>
-          </div>
-        </div>
+        </section>
+        {contractSummary && (
+          <section className="fin-card fin-contract-card" aria-label={t.contract}>
+            <div className="fin-card-head">
+              <h2>{t.contract}</h2>
+            </div>
+            <div className="fin-grid fin-grid-3">
+              <div className="fin-fig f-contract"><span className="fin-fig-label"><i className="fin-dot" />{t.contractSum}</span><strong>{contractBase > 0 ? usd(contractBase) : "—"}</strong></div>
+              <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoicedSoFar}</span><strong>{usd(totalInvoiced)}</strong></div>
+              <div className="fin-fig f-owed"><span className="fin-fig-label"><i className="fin-dot" />{t.leftToInvoice}</span><strong>{contractBase > 0 ? usd(contractBase - totalInvoiced) : "—"}</strong></div>
+            </div>
+            {contractBase > 0 ? (
+              <>
+                <div
+                  className="fin-progress f-invoiced"
+                  role="progressbar"
+                  aria-valuenow={Math.round(contractPct)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={t.invoicedSoFar}
+                >
+                  <span style={{ width: `${contractPct}%` }} />
+                </div>
+                <p className="fin-progress-caption">{Math.round(contractPct)}% {lang === "es" ? "facturado" : "invoiced"}</p>
+              </>
+            ) : (
+              <p className="muted fin-card-note">{t.noContract}</p>
+            )}
+          </section>
+        )}
         {p && (
-          <section className="pa-chart-section">
-            <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "var(--accent)" }} />{t.budget}</h3>
-            <ul className="panel-list budget-rows">
-              <li>
-                <span>{t.budgetTotal}</span>
+          <section className="fin-card fin-budget-card" aria-label={t.budget}>
+            <div className="fin-card-head">
+              <h2>{t.budget}</h2>
+            </div>
+            <ul className="panel-list budget-rows fin-rows">
+              <li className="f-budget">
+                <span className="fin-row-label"><i className="fin-dot" />{t.budgetTotal}</span>
                 <strong>{usd(p.budgetTotal)}</strong>
               </li>
-              <li>
-                <span>{t.changeOrders}</span>
+              <li className="f-co">
+                <span className="fin-row-label"><i className="fin-dot" />{t.changeOrders}</span>
                 <strong>{usd(p.changeOrdersTotal)}</strong>
               </li>
               <li>
@@ -9032,6 +9123,10 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, operatio
                   </small>
                 </span>
                 <strong>{(selPct ?? 0).toFixed(0)}%</strong>
+              </li>
+              <li className="fin-remaining-row">
+                <span className="fin-row-label">{t.remaining}</span>
+                <strong className={p.budgetTotal - costsSoFar < 0 ? "neg" : "pos"}>{usd(p.budgetTotal - costsSoFar)}</strong>
               </li>
             </ul>
             <div
@@ -10144,6 +10239,22 @@ function JobDetail({
   const jobInvoices =
     invoicesQuery.data?.invoices.filter((invoice) => invoice.jobId === jobId) ??
     [];
+  const jobChangeOrders = query.data.documents.filter(
+    (doc) => doc.kind === "change_order",
+  );
+  const pendingChangeOrders = jobChangeOrders.filter(
+    (doc) => !doc.clientSignedAt,
+  );
+  // Overview money strip (2026-10-24 overhaul): contract progress only —
+  // the resolved contract base vs what has been invoiced against it.
+  const overviewContractBase = query.data.contractSummary
+    ? money(query.data.contractSummary.baseAmount)
+    : 0;
+  const overviewInvoiced = operationsQuery.data?.profitability.invoiced ?? 0;
+  const overviewContractPct =
+    overviewContractBase > 0
+      ? Math.min(100, Math.max(0, Math.round((overviewInvoiced / overviewContractBase) * 100)))
+      : 0;
   const documentCount =
     query.data.documents.length + (query.data.certificate ? 1 : 0);
   const trackingCount =
@@ -10184,6 +10295,7 @@ function JobDetail({
           invoices={invoicesQuery.data?.invoices ?? []}
           quotes={quotesQuery.data?.quotes ?? []}
           operations={operationsQuery.data}
+          contractSummary={query.data.contractSummary}
           setScreen={setScreen}
           completionWorkflow={settings?.simpleMode !== true ? (
             <JobCompletionWorkflow
@@ -10197,6 +10309,7 @@ function JobDetail({
               completionError={completionError}
               reopen={reopen}
               optimisticCompleted={optimisticCompleted}
+              coveredStages={[...new Set(query.data.photos.map((photo) => photo.stage))]}
             />
           ) : undefined}
         />
@@ -10285,28 +10398,36 @@ function JobDetail({
           aria-label={lang === "es" ? "Ver finanzas" : "View financials"}
         >
           <div>
-            <span>{lang === "es" ? "Facturado" : "Invoiced"}</span>
-            <strong>{usd(operationsQuery.data.profitability.invoiced)}</strong>
-          </div>
-          <div>
-            <span>{lang === "es" ? "Ganancia" : "Profit"}</span>
-            <strong
-              className={
-                operationsQuery.data.profitability.profit < 0 ? "negative" : ""
-              }
-            >
-              {usd(operationsQuery.data.profitability.profit)}
+            <span>{lang === "es" ? "Contrato" : "Contract"}</span>
+            <strong className="ps-contract">
+              {overviewContractBase > 0 ? usd(overviewContractBase) : "—"}
             </strong>
           </div>
           <div>
-            <span>{lang === "es" ? "Margen" : "Margin"}</span>
-            <strong>
-              {operationsQuery.data.profitability.margin.toFixed(1)}%
+            <span>{lang === "es" ? "Facturado" : "Invoiced"}</span>
+            <strong className="ps-invoiced">{usd(overviewInvoiced)}</strong>
+          </div>
+          <div>
+            <span>{lang === "es" ? "Saldo" : "Balance"}</span>
+            <strong className="ps-balance">
+              {overviewContractBase > 0
+                ? usd(overviewContractBase - overviewInvoiced)
+                : "—"}
             </strong>
           </div>
           <span className="profit-strip-cta">
             {lang === "es" ? "Finanzas →" : "Financials →"}
           </span>
+          {overviewContractBase > 0 && (
+            <div className="ps-progress">
+              <div className="ps-bar" role="progressbar" aria-valuenow={overviewContractPct} aria-valuemin={0} aria-valuemax={100} aria-label={lang === "es" ? "Contrato facturado" : "Contract invoiced"}>
+                <span style={{ width: `${overviewContractPct}%` }} />
+              </div>
+              <small>
+                {overviewContractPct}% {lang === "es" ? "facturado" : "invoiced"}
+              </small>
+            </div>
+          )}
         </button>
       )}
       <ProShowcase lang={lang} isPremium={isPremium} title={lang === "es" ? "Portal del cliente" : "Client portal"} setScreen={setScreen}>
@@ -10338,7 +10459,7 @@ function JobDetail({
           onClick={() => setWsTab("photos")}
           aria-label={lang === "es" ? "Ver fotos y completitud" : "View photos and completeness"}
         >
-          <ProgressRing value={job.photoCompleteness} size={52} />
+          <ProgressRing value={job.photoCompleteness} size={38} />
           <span className="completion-summary-text">
             <strong>{lang === "es" ? "Completitud de fotos" : "Photo completeness"}</strong>
             <small>
@@ -10350,6 +10471,24 @@ function JobDetail({
           <span className="completion-summary-cta">
             {lang === "es" ? "Fotos \u2192" : "Photos \u2192"}
           </span>
+        </button>
+      )}
+      {jobChangeOrders.length > 0 && (
+        <button
+          type="button"
+          className="job-co-row"
+          onClick={() => setWsTab("documents")}
+          aria-label={lang === "es" ? "Ver órdenes de cambio" : "View change orders"}
+        >
+          <span className="job-co-row-label">
+            {lang === "es" ? "Órdenes de cambio" : "Change orders"}
+          </span>
+          <span className="job-co-row-value">
+            {pendingChangeOrders.length > 0
+              ? `${pendingChangeOrders.length} ${lang === "es" ? "pendientes" : "pending"} · ${usd(money(query.data.contractSummary?.pendingChangeOrdersTotal ?? "0"))}`
+              : lang === "es" ? "Todas firmadas" : "All signed"}
+          </span>
+          <BackIcon />
         </button>
       )}
       <section className="job-accordion job-hub" aria-label={lang === "es" ? "Centro del trabajo" : "Job hub"}>
@@ -25894,6 +26033,9 @@ function OperationsScreen({
     queryFn: () => api.listClients({ search: "" }),
   });
   const [showAppointment, setShowAppointment] = useState(false);
+  // Grouped appointment form (2026-10-24): client is an Existing/New
+  // toggle — existing shows the client picker, new shows name + phone.
+  const [apptClientMode, setApptClientMode] = useState<"existing" | "new">("existing");
   const [showLead, setShowLead] = useState(false);
   const [focusDate, setFocusDate] = useState(
     new Date().toLocaleDateString("en-CA"),
@@ -25980,7 +26122,7 @@ function OperationsScreen({
       />
       {tab === "calendar" ? (
         <>
-          <div className="calendar-toolbar">
+          <div className="calendar-toolbar appt-toolbar">
             <div>
               <button
                 className={view === "day" ? "active" : ""}
@@ -26011,7 +26153,7 @@ function OperationsScreen({
           </div>
           {showAppointment && (
             <form
-              className="compact-form operation-editor"
+              className="compact-form operation-editor appt-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (appointment.clientName && appointment.startsAt)
@@ -26038,56 +26180,80 @@ function OperationsScreen({
                   ))}
                 </select>
               </label>
-              <label>
-                <span>{copy[lang].chooseClient}</span>
-                <select
-                  value={appointment.clientId ?? ""}
-                  onChange={(e) => {
-                    const c = clients.data?.clients.find(
-                      (row) => row.id === Number(e.target.value),
-                    );
-                    if (c)
-                      setAppointment({
-                        ...appointment,
-                        clientId: c.id,
-                        clientName: c.name,
-                        clientPhone: c.phone,
-                      });
-                  }}
-                >
-                  <option value="">—</option>
-                  {clients.data?.clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="field-pair">
-                <label>
-                  <span>{copy[lang].client}</span>
-                  <input
-                    value={appointment.clientName}
-                    onChange={(e) =>
-                      setAppointment({
-                        ...appointment,
-                        clientName: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{copy[lang].phone}</span>
-                  <input
-                    value={appointment.clientPhone}
-                    onChange={(e) =>
-                      setAppointment({
-                        ...appointment,
-                        clientPhone: e.target.value,
-                      })
-                    }
-                  />
-                </label>
+              <div className="appt-client-block">
+                <div className="appt-client-toggle" role="group" aria-label={copy[lang].chooseClient}>
+                  <button
+                    type="button"
+                    className={apptClientMode === "existing" ? "active" : ""}
+                    onClick={() => setApptClientMode("existing")}
+                  >
+                    {lang === "es" ? "Existente" : "Existing"}
+                  </button>
+                  <button
+                    type="button"
+                    className={apptClientMode === "new" ? "active" : ""}
+                    onClick={() => {
+                      setApptClientMode("new");
+                      setAppointment({ ...appointment, clientId: null });
+                    }}
+                  >
+                    {lang === "es" ? "Nuevo" : "New"}
+                  </button>
+                </div>
+                {apptClientMode === "existing" ? (
+                  <label>
+                    <span>{copy[lang].chooseClient}</span>
+                    <select
+                      value={appointment.clientId ?? ""}
+                      onChange={(e) => {
+                        const c = clients.data?.clients.find(
+                          (row) => row.id === Number(e.target.value),
+                        );
+                        if (c)
+                          setAppointment({
+                            ...appointment,
+                            clientId: c.id,
+                            clientName: c.name,
+                            clientPhone: c.phone,
+                          });
+                      }}
+                    >
+                      <option value="">—</option>
+                      {clients.data?.clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <div className="field-pair">
+                    <label>
+                      <span>{copy[lang].client}</span>
+                      <input
+                        value={appointment.clientName}
+                        onChange={(e) =>
+                          setAppointment({
+                            ...appointment,
+                            clientName: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{copy[lang].phone}</span>
+                      <input
+                        value={appointment.clientPhone}
+                        onChange={(e) =>
+                          setAppointment({
+                            ...appointment,
+                            clientPhone: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
               <label>
                 <span>{copy[lang].appointment}</span>
@@ -26102,31 +26268,39 @@ function OperationsScreen({
               <label>
                 <span>{copy[lang].notes}</span>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={appointment.notes}
                   onChange={(e) =>
                     setAppointment({ ...appointment, notes: e.target.value })
                   }
                 />
               </label>
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={appointment.exteriorWork}
-                  onChange={(e) =>
-                    setAppointment({
-                      ...appointment,
-                      exteriorWork: e.target.checked,
-                    })
-                  }
-                />
+              <div className="appt-switch-row">
                 <span>
                   {lang === "es"
                     ? "Trabajo exterior — mostrar pronóstico"
                     : "Exterior work — show forecast"}
                 </span>
-              </label>
-              <button className="primary-button">{copy[lang].save}</button>
+                <Switch
+                  checked={appointment.exteriorWork}
+                  onChange={(next) =>
+                    setAppointment({ ...appointment, exteriorWork: next })
+                  }
+                  ariaLabel={lang === "es"
+                    ? "Trabajo exterior — mostrar pronóstico"
+                    : "Exterior work — show forecast"}
+                />
+              </div>
+              <div className="appt-form-bar">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setShowAppointment(false)}
+                >
+                  {lang === "es" ? "Cancelar" : "Cancel"}
+                </button>
+                <button className="primary-button">{copy[lang].save}</button>
+              </div>
             </form>
           )}
           <section className="calendar-list">
@@ -28653,6 +28827,10 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         revoke: "Revocar",
         revoking: "Revocando…",
         code: "Código del portal — se muestra una sola vez",
+        statusNone: "Enlace no enviado",
+        statusSent: "Enviado · sin abrir",
+        statusOpened: "Abierto",
+        statusSigned: "Contrato firmado",
         issued: "Enlace nuevo listo. Cópielo ahora; el código solo se muestra una vez.",
         rotated: "Enlace rotado. El enlace anterior dejó de funcionar; copie el nuevo ahora.",
         revoked: "Enlace revocado.",
@@ -28693,6 +28871,10 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         revoke: "Revoke",
         revoking: "Revoking…",
         code: "Portal code — shown once",
+        statusNone: "Link not sent",
+        statusSent: "Sent · not opened yet",
+        statusOpened: "Opened",
+        statusSigned: "Contract signed",
         issued: "New link ready. Copy it now; the code is shown only once.",
         rotated: "Link rotated. The previous link no longer works; copy the new one now.",
         revoked: "Link revoked.",
@@ -28704,6 +28886,32 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
     retry: false,
   });
   const link = info.data?.link ?? null;
+  // Feature-card status (Danny 2026-10-24): the portal is a headline
+  // feature, so its state reads at a glance — not sent / sent / opened /
+  // contract signed. The signed tier comes from the job payload this
+  // screen already loads (same ["job", jobId] cache entry as JobDetail).
+  const jobInfo = useQuery({
+    queryKey: ["job", jobId],
+    queryFn: () => api.getJob({ id: jobId }),
+  });
+  const hasSignedContract = (jobInfo.data?.documents ?? []).some(
+    (doc) => doc.kind === "contract" && !!doc.clientSignedAt,
+  );
+  const portalStatus: "none" | "sent" | "opened" | "signed" = !link
+    ? "none"
+    : hasSignedContract
+      ? "signed"
+      : link.viewCount > 0
+        ? "opened"
+        : "sent";
+  const portalStatusLabel =
+    portalStatus === "signed"
+      ? t.statusSigned
+      : portalStatus === "opened"
+        ? t.statusOpened
+        : portalStatus === "sent"
+          ? t.statusSent
+          : t.statusNone;
   const refresh = () => qc.invalidateQueries({ queryKey: ["portal-link", jobId] });
   const rememberIssuedLink = (result: { token: string; route: string }, message: string) => {
     setIssuedToken(result.token);
@@ -28764,8 +28972,16 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
       timeStyle: "short",
     }).format(new Date(value));
   return (
-    <details className="action-details portal-owner">
-      <summary>{t.title}</summary>
+    <section className="portal-owner portal-feature">
+      <header className="portal-feature-head">
+        <span className="portal-feature-mark">
+          <img src={crewkatC} alt="" aria-hidden="true" />
+        </span>
+        <strong>{t.title}</strong>
+        <span className={`portal-status-pill is-${portalStatus}`}>
+          {portalStatusLabel}
+        </span>
+      </header>
       <div className="compact-form portal-link-panel">
         <p>{t.intro}</p>
         {info.isLoading && <p className="dim">{t.loading}</p>}
@@ -28883,7 +29099,7 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         {link && !shareUrl && <small className="dim">{t.copyUnavailable}</small>}
         {msg && <p className="status">{msg}</p>}
       </div>
-    </details>
+    </section>
   );
 }
 type ClientDoc = ApiResponse<typeof api, "resolveDocumentLink">;
@@ -31116,7 +31332,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           links to the document's existing /d/ page when it has an active
           document link; without one it renders as a plain status row. */}
       {(d.jobDocuments ?? []).length > 0 && (
-        <section className="portal-v2-card">
+        <section className="portal-v2-card pc-docs">
           <h2>{t.documents}</h2>
           {(d.jobDocuments ?? []).map((doc) => {
             const signed = !!doc.clientSignedAt;
@@ -31156,7 +31372,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       )}
 
       {/* Photo gallery with stage tabs */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-photos">
         <h2>{t.gallery}</h2>
         <div className="portal-v2-tabs" role="tablist">
           {(["all", "before", "during", "after"] as const).map((s) => (
@@ -31200,7 +31416,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
 
       {/* Shared files (0083): view-only documents the contractor shared */}
       {(d.files ?? []).length > 0 && (
-        <section className="portal-v2-card">
+        <section className="portal-v2-card pc-files">
           <h2>{t.documents}</h2>
           {(d.files ?? []).map((f) => (
             <article className="portal-v2-approval" key={f.id}>
@@ -31217,7 +31433,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       )}
 
       {/* Upcoming visits timeline */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-visits">
         <h2>{t.upcoming}</h2>
         {d.appointments.length ? (
           <ol className="portal-v2-timeline">
@@ -31237,13 +31453,13 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       </section>
 
       {/* Messages */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-messages">
         <h2>{t.messages}</h2>
         <PortalMessages lang={lang} token={token} />
       </section>
 
       {/* Needs attention: selections + change orders */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-attention">
         <h2>{t.attention}</h2>
         {!needsAttention && <p className="portal-v2-caught-up">{t.allCaughtUp}</p>}
         {pendingSelections.map((s) => (
@@ -31328,7 +31544,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       </section>
 
       {/* Estimates */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-estimates">
         <h2>{t.estimates}</h2>
         {d.estimates.map((e) => (
           <details className="action-details" key={e.id}>
@@ -31355,7 +31571,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
       </section>
 
       {/* Invoices */}
-      <section className="portal-v2-card">
+      <section className="portal-v2-card pc-invoices">
         <h2>{t.invoices}</h2>
         {d.invoices.map((inv) => {
           const body = (
