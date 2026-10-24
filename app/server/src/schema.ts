@@ -485,6 +485,9 @@ export const leads = sqliteTable("leads", {
   preferredContactTime: text("preferred_contact_time").notNull().default(""),
   notes: text("notes").notNull().default(""),
   stage: text("stage", { enum: ["new", "contacted", "quoted", "won", "lost"] }).notNull().default("new"),
+  // 0087 (Office CRM): estimated pipeline value for the lead, money-as-text
+  // like the rest of the codebase ("0" = not yet estimated).
+  estimatedValue: text("estimated_value").notNull().default("0"),
   clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
   quoteId: integer("quote_id").references(() => quotes.id, { onDelete: "set null" }),
   projectSize: text("project_size", { enum: ["small", "medium", "large"] }).notNull().default("medium"),
@@ -493,6 +496,20 @@ export const leads = sqliteTable("leads", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+// 0087 (Office CRM): per-lead activity timeline — notes, calls, emails,
+// texts logged by the office, plus stage moves and system events written by
+// the lead actions themselves. Deleting a lead cascades its timeline away.
+export const leadActivities = sqliteTable("lead_activities", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  leadId: integer("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["note", "call", "email", "text", "stage", "system"] }).notNull().default("note"),
+  body: text("body").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("lead_activities_lead_idx").on(table.leadId),
+]);
 
 export const selections = sqliteTable("selections", {
   companyId: integer("company_id").notNull().default(1),
