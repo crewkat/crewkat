@@ -4060,22 +4060,14 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
    Effective before: 32px dot (the 40px design rule is overridden later in
    the cascade), ~53px block. After: 28px dot, ~46px block. The .flow-step
    button itself stays a ~44px+ tap target via its full column height. */
-.financial-detail-page .flow-stepper { padding: 2px 4px 0; }
-.financial-detail-page .flow-step { gap: 2px; }
-.financial-detail-page .flow-dot { width: 28px; height: 28px; }
-.financial-detail-page .flow-dot i { font-size: 12.5px; }
-.financial-detail-page .flow-dot svg { width: 14px; height: 14px; }
-.financial-detail-page .flow-step.current .flow-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
-.financial-detail-page .flow-link { margin-top: 13px; }
-/* Job detail stepper parity (Danny 2026-10-17): identical values to the
-   financial-detail block above, scoped to the job page (.detail-page). */
-.detail-page .flow-stepper { padding: 2px 4px 0; }
-.detail-page .flow-step { gap: 2px; }
-.detail-page .flow-dot { width: 28px; height: 28px; }
-.detail-page .flow-dot i { font-size: 12.5px; }
-.detail-page .flow-dot svg { width: 14px; height: 14px; }
-.detail-page .flow-step.current .flow-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
-.detail-page .flow-link { margin-top: 13px; }
+/* Stepper coherence (Danny 2026-10-24): the scoped 28px-dot / 4px
+   halo / offset-link overrides that used to live here fought the
+   slim overhaul rule set (different sizes won on detail pages, the
+   halo smeared, links sat as low underscores). They are REMOVED —
+   the overhaul section's .flow-* rules now govern every screen,
+   detail pages included, as one coherent set. */
+/* Job detail stepper parity: same removal, same reason — the
+   overhaul .flow-* set governs the job page too. */
 /* Icon-led collapsible rows on the detail pages (Version history, Activity,
    Recurring): chip + label in one 48px row. */
 .financial-detail-page .action-details > summary { min-height: 48px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
@@ -5920,17 +5912,25 @@ button.profit-strip-link:hover{border-color:var(--green)}
    subcontractors #5b5ea6 · accent orange #f97316.
    ================================================================ */
 
-/* ---- Slim step bar: label + small status box on one ~30px row ---- */
+/* ---- Slim step bar: label + small status box on one ~30px row ----
+   Stepper coherence pass (Danny 2026-10-24, later the same day —
+   "top progress bar looks off"): this block is now the ONE stepper
+   rule set for every screen. The current step is a clean ink box —
+   the old color-mix halo rendered as a smeared peach fringe at 16px
+   and is gone (box-shadow: none, also overriding the older base and
+   detail-page halos). Steps size to their content and connectors
+   flex to span the gaps evenly as true hairlines, vertically
+   centered on the label+box row by the stepper's align-items. */
 .flow-stepper { align-items: center; padding: 6px 4px 2px; }
-.flow-step { flex-direction: row; align-items: center; justify-content: center; gap: 6px; }
+.flow-step { flex: 0 1 auto; flex-direction: row; align-items: center; justify-content: center; gap: 6px; }
 .flow-label { order: 1; font-size: 11.5px; }
 .flow-dot { order: 2; width: 16px; height: 16px; border-radius: 5px; border-width: 1.5px; }
 .flow-dot i { font-size: 9.5px; }
 .flow-dot svg { width: 11px; height: 11px; }
 .flow-step.done .flow-dot { background: transparent; border-color: transparent; color: var(--accent); }
-.flow-step.current .flow-dot { background: var(--text); border-color: var(--text); color: var(--bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.flow-step.current .flow-dot { background: var(--text); border-color: var(--text); color: var(--bg); box-shadow: none; }
 .flow-step:not(.done):not(.current) .flow-dot { background: transparent; border-color: transparent; color: var(--dim); }
-.flow-link { margin-top: 0; height: 1.5px; flex-basis: 14px; }
+.flow-link { flex: 1 1 auto; min-width: 10px; height: 1.5px; margin-top: 0; align-self: center; }
 
 /* ---- Slim workspace tab row (active = 2px orange underline) ---- */
 .workspace-tabs { padding: 2px 0 0; margin: 0 0 6px; }
@@ -6090,3 +6090,28 @@ button.profit-strip-link:hover{border-color:var(--green)}
   :root:not([data-theme]) .portal-v2-stat:nth-child(4) strong { color: #8fb0e8; }
   :root:not([data-theme]) .portal-v2-card.pc-docs { --pc: #8fb0e8; }
 }
+
+/* ================================================================
+   Tap-to-dropdown cards (Danny 2026-10-24, later the same day,
+   from his live review of the overhaul): the Financials form
+   modules and the Overview portal card rest as header rows and
+   drop their bodies down on tap.
+   ================================================================ */
+
+/* ---- Financials modules: header row is the whole card ---- */
+.fin-collapsible .fin-module-head { margin: 0; }
+.fin-module-trigger { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 40px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.fin-module-trigger .pa-chart-title { margin: 0; }
+.fin-module-trigger:active { opacity: .72; }
+.fin-module-count { flex: none; min-width: 24px; height: 22px; display: grid; place-items: center; padding: 0 7px; border-radius: 11px; background: var(--surface-2); color: var(--dim); font-size: 11.5px; font-weight: 850; }
+.fin-module-chevron { flex: none; margin-left: auto; font-size: 20px; line-height: 1; color: var(--dim); transition: transform .16s ease; }
+.fin-module-chevron.open { transform: rotate(90deg); }
+.fin-module-body { margin-top: 12px; }
+.fin-module-body[hidden] { display: none; }
+
+/* ---- Portal feature card: navy head is the dropdown toggle ---- */
+.portal-feature-toggle { width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
+.portal-feature-toggle:active { filter: brightness(1.12); }
+.portal-feature-chevron { flex: none; font-size: 20px; line-height: 1; color: rgba(255, 255, 255, .85); transition: transform .16s ease; }
+.portal-feature-chevron.open { transform: rotate(90deg); }
+.portal-link-panel[hidden] { display: none; }

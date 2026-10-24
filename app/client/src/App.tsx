@@ -8336,6 +8336,46 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
 type FinData = NonNullable<WorkspacePanelProps["operations"]>;
 type FinJob = NonNullable<WorkspacePanelProps["job"]>;
 
+// Tap-to-expand module shell (Danny 2026-10-24): the Financials tab's
+// form sections rendered as tall always-open cards and the tab ran
+// very long. Now the header row (colored dot + title + count bubble +
+// chevron, the AccordionSection affordance) is the whole card — tap
+// it to drop the body down, tap again to collapse. Collapsed by
+// default. The body stays MOUNTED (hidden attribute) so in-progress
+// form input survives a collapse/expand within the session.
+function FinModuleShell({ dot, title, count, headerAction, children }: {
+  dot: string;
+  title: string;
+  count?: number;
+  headerAction?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className={`pa-chart-section fin-module fin-collapsible${open ? " open" : ""}`}>
+      <div className="module-heading fin-module-head">
+        <button
+          type="button"
+          className="fin-module-trigger"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <h3 className="pa-chart-title">
+            <span className="pa-chart-dot" style={{ background: dot }} />
+            {title}
+          </h3>
+          {typeof count === "number" && <span className="fin-module-count">{count}</span>}
+          <span className={`fin-module-chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
+        </button>
+        {headerAction}
+      </div>
+      <div className="fin-module-body" hidden={!open}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 function FinSelectionsSection({ lang, jobId, job, data, refresh }: {
   lang: Lang; jobId: number; job: FinJob; data: FinData; refresh: () => void;
 }) {
@@ -8385,9 +8425,11 @@ function FinSelectionsSection({ lang, jobId, job, data, refresh }: {
     else await copyText(text);
   };
   return (
-    <section className="pa-chart-section fin-module">
-      <div className="module-heading">
-        <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#a855f7" }} />{lang === "es" ? "Selecciones del cliente" : "Client selections"}</h3>
+    <FinModuleShell
+      dot="#a855f7"
+      title={lang === "es" ? "Selecciones del cliente" : "Client selections"}
+      count={data.selections.length}
+      headerAction={(
         <button
           className="small-button"
           onClick={() => void shareSelections()}
@@ -8395,7 +8437,8 @@ function FinSelectionsSection({ lang, jobId, job, data, refresh }: {
           <ShareIcon />
           {lang === "es" ? "Compartir resumen" : "Share summary"}
         </button>
-      </div>
+      )}
+    >
       <form
         className="compact-form"
         onSubmit={async (e) => {
@@ -8600,7 +8643,7 @@ function FinSelectionsSection({ lang, jobId, job, data, refresh }: {
           </article>
         ))}
       </div>
-    </section>
+    </FinModuleShell>
   );
 }
 
@@ -8618,8 +8661,11 @@ function FinDailyLogSection({ lang, jobId, photos, data, refresh }: {
     sharedWithClient: true,
   });
   return (
-    <section className="pa-chart-section fin-module">
-      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#22c55e" }} />{lang === "es" ? "Registro diario" : "Daily log"}</h3>
+    <FinModuleShell
+      dot="#22c55e"
+      title={lang === "es" ? "Registro diario" : "Daily log"}
+      count={data.dailyLogs.length}
+    >
       <form
         className="compact-form"
         onSubmit={async (e) => {
@@ -8732,7 +8778,7 @@ function FinDailyLogSection({ lang, jobId, photos, data, refresh }: {
           </article>
         ))}
       </div>
-    </section>
+    </FinModuleShell>
   );
 }
 
@@ -8741,8 +8787,11 @@ function FinPrivateNotesSection({ lang, jobId, job, data, refresh }: {
 }) {
   const [note, setNote] = useState({ note: "", reminderDate: "" });
   return (
-    <section className="pa-chart-section fin-module">
-      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#64748b" }} />{lang === "es" ? "Notas internas" : "Internal notes"}</h3>
+    <FinModuleShell
+      dot="#64748b"
+      title={lang === "es" ? "Notas internas" : "Internal notes"}
+      count={data.internalNotes.length}
+    >
       <p className="privacy-note">
         {lang === "es"
           ? "Privadas: nunca aparecen en los PDF del cliente."
@@ -8807,7 +8856,7 @@ function FinPrivateNotesSection({ lang, jobId, job, data, refresh }: {
           </label>
         ))}
       </div>
-    </section>
+    </FinModuleShell>
   );
 }
 
@@ -8821,8 +8870,11 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
     dueDate: "",
   });
   return (
-    <section className="pa-chart-section fin-module">
-      <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#14b8a6" }} />{lang === "es" ? "Programa de pagos" : "Payment schedule"}</h3>
+    <FinModuleShell
+      dot="#14b8a6"
+      title={lang === "es" ? "Programa de pagos" : "Payment schedule"}
+      count={data.milestones.length}
+    >
       <form
         className="compact-form"
         onSubmit={async (e) => {
@@ -8957,7 +9009,7 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
           </article>
         ))}
       </div>
-    </section>
+    </FinModuleShell>
   );
 }
 
@@ -10063,19 +10115,39 @@ function JobDetail({
   });
   const flowQuote = (quotesQuery.data?.quotes ?? []).find((q) => q.jobId === jobId) ?? null;
   const flowInvoice = (invoicesQuery.data?.invoices ?? []).find((i) => i.jobId === jobId) ?? null;
+  // Stepper state read (Danny 2026-10-24): exactly ONE step may render
+  // "current" (the ink box) — the first unachieved stage AFTER the
+  // furthest stage the flow has reached. A stage is achieved when its
+  // artifact exists: an estimate or invoice moves the flow past Job;
+  // a quote achieves Estimate; an invoice achieves Invoice; a paid
+  // invoice achieves Payment. A stage the flow skipped (Anthony: the
+  // price lived in an uploaded-PDF contract, invoices exist, no in-app
+  // estimate) reads "todo" — dim, never a second ink box. The old
+  // derivation hardcoded Job AND Estimate as "current", so that job
+  // shape showed two ink boxes and the progression read broken.
+  const flowAchieved = [
+    !!(flowQuote || flowInvoice),
+    !!flowQuote,
+    !!flowInvoice,
+    flowInvoice?.status === "paid",
+  ];
+  const flowFurthest = flowAchieved.lastIndexOf(true);
+  const flowCurrent = flowAchieved.findIndex((done, i) => !done && i > flowFurthest);
+  const flowState = (idx: number): FlowStepState =>
+    flowAchieved[idx] ? "done" : idx === flowCurrent ? "current" : "todo";
   const flowSteps = job ? [
-    { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: "current" as FlowStepState },
+    { key: "job", label: lang === "es" ? "Trabajo" : "Job", state: flowState(0) },
     flowQuote
-      ? { key: "estimate", label: capFirst(estTerms.singular), state: "done" as FlowStepState, onTap: () => setScreen({ name: "quotePreview", quoteId: flowQuote.id }) }
-      : { key: "estimate", label: capFirst(estTerms.singular), state: "current" as FlowStepState, onTap: () => setScreen({ name: "quoteNew", jobId }) },
+      ? { key: "estimate", label: capFirst(estTerms.singular), state: flowState(1), onTap: () => setScreen({ name: "quotePreview", quoteId: flowQuote.id }) }
+      : { key: "estimate", label: capFirst(estTerms.singular), state: flowState(1), onTap: () => setScreen({ name: "quoteNew", jobId }) },
     flowInvoice
-      ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "done" as FlowStepState, onTap: () => setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }) }
+      ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: flowState(2), onTap: () => setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }) }
       : flowQuote
-        ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState, onTap: () => convertFlowQuote.mutate(flowQuote.id) }
-        : { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: "todo" as FlowStepState },
+        ? { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: flowState(2), onTap: () => convertFlowQuote.mutate(flowQuote.id) }
+        : { key: "invoice", label: lang === "es" ? "Factura" : "Invoice", state: flowState(2) },
     flowInvoice?.status === "paid"
-      ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: "done" as FlowStepState }
-      : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
+      ? { key: "paid", label: lang === "es" ? "Pagado" : "Paid", state: flowState(3) }
+      : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: flowState(3) },
   ] : [];
   const closeJobSheet = (save = false) => {
     if (save && activeJobSheet && ["dates", "payment", "deposit"].includes(activeJobSheet)) saveJobInfo.mutate();
@@ -28785,6 +28857,13 @@ function SlideshowManager({
 
 function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
   const qc = useQueryClient();
+  // Tap-to-dropdown (Danny 2026-10-24): the colorful navy head is the
+  // whole card at rest — C mark, title, live status pill, chevron.
+  // Tapping it drops down the full link panel (create, expiry, code,
+  // share / copy / rotate / revoke), which stays MOUNTED (hidden
+  // attribute) so an issued one-time code or message survives a
+  // collapse/expand. Collapsed by default.
+  const [open, setOpen] = useState(false);
   const [expiryDays, setExpiryDays] = useState<PortalExpiryDays>(90);
   const [neverConfirmed, setNeverConfirmed] = useState(false);
   const [issuedToken, setIssuedToken] = useState("");
@@ -28973,7 +29052,12 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
     }).format(new Date(value));
   return (
     <section className="portal-owner portal-feature">
-      <header className="portal-feature-head">
+      <button
+        type="button"
+        className="portal-feature-head portal-feature-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
         <span className="portal-feature-mark">
           <img src={crewkatC} alt="" aria-hidden="true" />
         </span>
@@ -28981,8 +29065,9 @@ function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
         <span className={`portal-status-pill is-${portalStatus}`}>
           {portalStatusLabel}
         </span>
-      </header>
-      <div className="compact-form portal-link-panel">
+        <span className={`portal-feature-chevron${open ? " open" : ""}`} aria-hidden="true">›</span>
+      </button>
+      <div className="compact-form portal-link-panel" hidden={!open}>
         <p>{t.intro}</p>
         {info.isLoading && <p className="dim">{t.loading}</p>}
         {info.isError && <p className="status error">{t.unavailable}</p>}

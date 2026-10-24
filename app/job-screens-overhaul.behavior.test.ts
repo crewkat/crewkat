@@ -152,8 +152,15 @@ describe("Portal: prominent feature card on the Overview", () => {
     expect(panel).toContain("revoke.mutate()");
     expect(panel).toContain("create.mutate()");
   });
-  test("panel is no longer a collapsed details element", () => {
+  test("panel dropdown: navy head is the toggle, body rests hidden (Danny 2026-10-24, later direction)", () => {
+    // Supersedes the morning's always-open shape: Danny's live review
+    // made the card a tap-to-dropdown. Still a button toggle, never a
+    // <details> element; the machinery stays mounted (hidden) so an
+    // issued one-time code survives a collapse. Full contract pinned
+    // in job-cards-dropdown.behavior.test.ts.
     expect(panel).not.toContain("<details");
+    expect(panel).toContain("portal-feature-toggle");
+    expect(panel).toContain("hidden={!open}");
     expect(APP).toContain("<PortalOwnerPanel lang={lang} jobId={jobId} />");
   });
   test("feature card CSS: navy gradient head + pill colors", () => {
