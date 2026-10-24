@@ -3062,6 +3062,19 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 .swipe-action.danger { background: var(--danger, #c0392b); }
 .swipe-content { position: relative; background: var(--bg); transition: transform .18s ease-out; }
 .swipe-row .swipe-content > button { border-radius: 0; }
+/* Jobs swipe-to-delete (2026-10-24): the wrapper takes over the job
+   card's spacing/radius so the revealed Delete reads as part of the card. */
+.jobs-page .job-list .swipe-row { border-radius: 16px; margin-bottom: 8px; }
+.jobs-page .job-list .swipe-content { background: transparent; }
+.jobs-page .job-list .swipe-content .job-row { margin-bottom: 0; }
+/* Floating delete confirm for a job (FloatPopup body). */
+.job-delete-confirm { display: grid; gap: 6px; padding: 2px 6px 0; }
+.job-delete-name { font-size: 17px; }
+.job-delete-sub { color: var(--dim); font-size: 13px; }
+.job-delete-warn { margin: 6px 0 0; color: var(--danger, #c0392b); font-size: 14px; font-weight: 700; line-height: 1.45; }
+.job-delete-note { margin: 6px 0 0; color: var(--dim); font-size: 13px; line-height: 1.45; }
+.job-delete-actions { display: flex; gap: 10px; margin-top: 12px; }
+.job-delete-actions > button { flex: 1; }
 
 /* ---- 15. Empty states (b12: less dead space) ---- */
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; min-height: 240px; padding: 28px 20px; }

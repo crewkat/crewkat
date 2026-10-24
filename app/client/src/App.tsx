@@ -4137,18 +4137,31 @@ function SkeletonList({ rows = 4, className = "" }: { rows?: number; className?:
   );
 }
 
-/** Touch swipe-to-reveal row actions (e.g. Mark paid, Call). Desktop: actions stay hidden; use the row tap. */
+/** Touch swipe-to-reveal row actions (e.g. Mark paid, Call). Desktop: actions stay hidden; use the row tap.
+ *  Optional controlled mode (Jobs list delete, 2026-10-24): pass `open` +
+ *  `onOpenChange` so a parent can guarantee one open row at a time —
+ *  when another row reports open, the parent flips this row's `open` to
+ *  false and it animates shut. Uncontrolled callers behave as before. */
 function SwipeRow({
   actions,
   children,
+  open,
+  onOpenChange,
 }: {
   actions: Array<{ label: string; icon?: ReactNode; kind?: "primary" | "danger"; onTap: () => void }>;
   children: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [offset, setOffset] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
   const tracking = useRef(false);
   const actionWidth = 76 * Math.min(actions.length, 2);
+  const controlled = open !== undefined;
+  useEffect(() => {
+    if (!controlled || tracking.current) return;
+    setOffset(open ? -actionWidth : 0);
+  }, [controlled, open, actionWidth]);
   const onTouchStart = (event: React.TouchEvent) => {
     const touch = event.touches[0];
     if (!touch) return;
@@ -4167,7 +4180,11 @@ function SwipeRow({
   };
   const onTouchEnd = () => {
     tracking.current = false;
-    setOffset((current) => (current < -56 ? -actionWidth : 0));
+    setOffset((current) => {
+      const snapped = current < -56 ? -actionWidth : 0;
+      if (controlled) onOpenChange?.(snapped !== 0);
+      return snapped;
+    });
   };
   return (
     <div className="swipe-row" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
@@ -4178,7 +4195,7 @@ function SwipeRow({
             type="button"
             tabIndex={offset === 0 ? -1 : 0}
             className={`swipe-action ${action.kind ?? "primary"}`}
-            onClick={(event) => { event.stopPropagation(); setOffset(0); buzz(10); action.onTap(); }}
+            onClick={(event) => { event.stopPropagation(); setOffset(0); if (controlled) onOpenChange?.(false); buzz(10); action.onTap(); }}
             aria-label={action.label}
           >
             {action.icon}<span>{action.label}</span>
@@ -6978,6 +6995,7 @@ function JobsScreen({
   toggleLanguage: () => void;
 }) {
   const t = copy[lang];
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"active" | "completed" | "all">("active");
   const jobs = useQuery({
@@ -6985,6 +7003,25 @@ function JobsScreen({
     queryFn: () => api.listJobs({ search }),
   });
   const visibleJobs = (jobs.data?.jobs ?? []).filter((job) => statusFilter === "all" || (statusFilter === "completed" ? Boolean(job.completedAt) : !job.completedAt));
+  // Swipe-to-delete (Danny 2026-10-24): one card open at a time; the
+  // confirm fetches the job's attachment counts before anything is
+  // destroyed, and the delete drops the card via query invalidation —
+  // no page reload.
+  const [openSwipeJobId, setOpenSwipeJobId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<(typeof visibleJobs)[number] | null>(null);
+  const deletePreview = useQuery({
+    queryKey: ["job-delete-preview", deleteTarget?.id ?? 0],
+    queryFn: () => api.getJobDeletePreview({ jobId: deleteTarget!.id }),
+    enabled: deleteTarget !== null,
+  });
+  const deleteJob = useMutation({
+    mutationFn: (jobId: number) => api.deleteJob({ jobId }),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      setOpenSwipeJobId(null);
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
   return (
     <main className="page jobs-page">
       <PageHeader
@@ -7043,10 +7080,26 @@ function JobsScreen({
           </div>
         )}
         {visibleJobs.map((job) => (
+          <SwipeRow
+            key={job.id}
+            open={openSwipeJobId === job.id}
+            onOpenChange={(isOpen) => setOpenSwipeJobId((current) => (isOpen ? job.id : current === job.id ? null : current))}
+            actions={[{
+              label: lang === "es" ? "Eliminar" : "Delete",
+              icon: <TrashIcon />,
+              kind: "danger",
+              onTap: () => setDeleteTarget(job),
+            }]}
+          >
           <button
             className="job-row"
-            key={job.id}
-            onClick={(e) => { captureDetailHeroRect(e); setScreen({ name: "detail", jobId: job.id }); }}
+            onClick={(e) => {
+              // A tap on a swiped-open card just closes it — only a clean
+              // tap (actions hidden) opens the job, exactly as before.
+              if (openSwipeJobId === job.id) { setOpenSwipeJobId(null); return; }
+              captureDetailHeroRect(e);
+              setScreen({ name: "detail", jobId: job.id });
+            }}
           >
             <span className="date-block">
               <strong>{new Date(`${job.jobDate}T12:00:00`).getDate()}</strong>
@@ -7074,6 +7127,7 @@ function JobsScreen({
             </span>
             <BackIcon />
           </button>
+          </SwipeRow>
         ))}
         {!jobs.isPending && visibleJobs.length === 0 && (
           <EmptyState
@@ -7086,6 +7140,57 @@ function JobsScreen({
           />
         )}
       </section>
+      {deleteTarget && (
+        <FloatPopup
+          lang={lang}
+          title={lang === "es" ? "¿Eliminar este trabajo?" : "Delete this job?"}
+          onClose={() => { if (!deleteJob.isPending) setDeleteTarget(null); }}
+        >
+          {(close) => {
+            const preview = deletePreview.data;
+            const deletedParts: string[] = [];
+            if (preview) {
+              if (preview.documents) deletedParts.push(lang === "es" ? `${preview.documents} documento${preview.documents === 1 ? "" : "s"}` : `${preview.documents} document${preview.documents === 1 ? "" : "s"}`);
+              if (preview.photos) deletedParts.push(lang === "es" ? `${preview.photos} foto${preview.photos === 1 ? "" : "s"}` : `${preview.photos} photo${preview.photos === 1 ? "" : "s"}`);
+              if (preview.files) deletedParts.push(lang === "es" ? `${preview.files} archivo${preview.files === 1 ? "" : "s"}` : `${preview.files} file${preview.files === 1 ? "" : "s"}`);
+              if (preview.portalLink) deletedParts.push(lang === "es" ? "el enlace del portal del cliente" : "the client portal link");
+            }
+            const keptParts: string[] = [];
+            if (preview) {
+              if (preview.estimates) keptParts.push(lang === "es" ? `${preview.estimates} presupuesto${preview.estimates === 1 ? "" : "s"}` : `${preview.estimates} estimate${preview.estimates === 1 ? "" : "s"}`);
+              if (preview.invoices) keptParts.push(lang === "es" ? `${preview.invoices} factura${preview.invoices === 1 ? "" : "s"}` : `${preview.invoices} invoice${preview.invoices === 1 ? "" : "s"}`);
+              if (preview.payments) keptParts.push(lang === "es" ? `${preview.payments} pago${preview.payments === 1 ? "" : "s"}` : `${preview.payments} payment${preview.payments === 1 ? "" : "s"}`);
+            }
+            const nothingAttached = preview && deletedParts.length === 0 && keptParts.length === 0;
+            return (
+              <div className="job-delete-confirm">
+                <strong className="job-delete-name">{deleteTarget.clientName}</strong>
+                <span className="job-delete-sub">{deleteTarget.jobType} · {deleteTarget.jobAddress}</span>
+                {deletePreview.isPending && <p className="job-delete-note">{lang === "es" ? "Revisando qué tiene adjunto…" : "Checking what's attached…"}</p>}
+                {preview && deletedParts.length > 0 && (
+                  <p className="job-delete-warn">
+                    {deletedParts.join(" · ")}
+                    {preview.signedDocuments > 0 ? (lang === "es" ? " — incluye documentos firmados." : " — includes signed documents.") : ""}
+                    <br />
+                    {lang === "es" ? "También se eliminará todo esto. Esto no se puede deshacer." : "These will be deleted too. This can't be undone."}
+                  </p>
+                )}
+                {preview && keptParts.length > 0 && (
+                  <p className="job-delete-note">
+                    {keptParts.join(" · ")} {lang === "es" ? "se conservan en tus registros — solo se desvinculan de este trabajo." : "stay in your records — just unlinked from this job."}
+                  </p>
+                )}
+                {nothingAttached && <p className="job-delete-note">{lang === "es" ? "Este trabajo no tiene nada adjunto." : "This job has nothing attached."}</p>}
+                {deleteJob.isError && <p className="status error">{deleteJob.error instanceof Error ? deleteJob.error.message : (lang === "es" ? "No se pudo eliminar el trabajo." : "The job could not be deleted.")}</p>}
+                <div className="job-delete-actions">
+                  <button type="button" className="secondary-button" disabled={deleteJob.isPending} onClick={close}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+                  <button type="button" className="danger-button" disabled={deleteJob.isPending || deletePreview.isPending} onClick={() => deleteJob.mutate(deleteTarget.id)}>{deleteJob.isPending ? (lang === "es" ? "Eliminando…" : "Deleting…") : (lang === "es" ? "Eliminar" : "Delete")}</button>
+                </div>
+              </div>
+            );
+          }}
+        </FloatPopup>
+      )}
     </main>
   );
 }

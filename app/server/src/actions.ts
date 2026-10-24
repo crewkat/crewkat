@@ -2105,6 +2105,42 @@ async function requireJobCompany(ctx: Ctx, db: ReturnType<Ctx["db"]>, jobId: num
   return { identity, job };
 }
 
+// Job deletion (Danny 2026-10-24): swipe-to-delete on the Jobs list.
+// The cascade model follows the schema's FK design: rows that are
+// job-OWNED (job_id NOT NULL, onDelete cascade) die with the job —
+// documents (contracts + change orders), photos, shared files, portal
+// tokens, messages, and the job's operational records. Rows the schema
+// models as INDEPENDENT client documents (quotes, invoices, schedule
+// appointments, expenses, mileage, supplier paperwork — job_id nullable,
+// onDelete set null) survive, unlinked: invoices carry their payments
+// with them, since payments hang off invoices, not jobs. The deletes
+// are written out explicitly inside one transaction rather than left
+// to FK enforcement, so the result is identical whether or not the
+// connection has PRAGMA foreign_keys on.
+async function jobAttachmentSummary(db: ReturnType<Ctx["db"]>, jobId: number) {
+  const [docRows, photoRows, fileRows, invoiceRows, quoteRows, tokenRows] = await Promise.all([
+    db.select({ id: schema.documents.id, clientSignedAt: schema.documents.clientSignedAt }).from(schema.documents).where(eq(schema.documents.jobId, jobId)),
+    db.select({ id: schema.photos.id }).from(schema.photos).where(eq(schema.photos.jobId, jobId)),
+    db.select({ id: schema.jobFiles.id }).from(schema.jobFiles).where(eq(schema.jobFiles.jobId, jobId)),
+    db.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.jobId, jobId)),
+    db.select({ id: schema.quotes.id }).from(schema.quotes).where(eq(schema.quotes.jobId, jobId)),
+    db.select({ id: schema.portalTokens.id, revokedAt: schema.portalTokens.revokedAt }).from(schema.portalTokens).where(eq(schema.portalTokens.jobId, jobId)),
+  ]);
+  const paymentRows = invoiceRows.length
+    ? await db.select({ id: schema.payments.id }).from(schema.payments).where(inArray(schema.payments.invoiceId, invoiceRows.map((row) => row.id)))
+    : [];
+  return {
+    documents: docRows.length,
+    signedDocuments: docRows.filter((row) => row.clientSignedAt).length,
+    photos: photoRows.length,
+    files: fileRows.length,
+    invoices: invoiceRows.length,
+    payments: paymentRows.length,
+    estimates: quoteRows.length,
+    portalLink: tokenRows.some((row) => !row.revokedAt),
+  };
+}
+
 // Free tier usage ceilings — the conversion engine. Free users get a complete
 // experience for a small operation; the paywall hits exactly when they're busy.
 const FREE_TIER_LIMITS = { maxActiveJobs: 3, maxInvoicesPerMonth: 5 } as const;
@@ -3543,6 +3579,107 @@ export const BaseActions = {
   // user's say-so — never from saveQuote / saveInvoice.
   appendClientAddress: defineAction({ request: z.object({ clientId: z.number().int().positive(), address: z.string().trim().min(1).max(240), label: z.string().trim().max(60).default("") }), response: z.object({ ok: z.literal(true), addresses: z.array(clientAddressSchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, args.clientId)).limit(1); const client = rows[0]; if (!client) throw new Error("Client not found."); const current = clientAddressesOf(client); const key = clientAddressKey(args.address); const next = current.some((entry) => clientAddressKey(entry.address) === key) ? current : normalizeClientAddresses([...current, { label: args.label, address: args.address, primary: current.length === 0 }]); const primaryAddress = next.find((entry) => entry.primary)?.address ?? client.address; await db.update(schema.clients).set({ addressesJson: JSON.stringify(next), address: primaryAddress, updatedAt: new Date() }).where(eq(schema.clients.id, client.id)); ctx.invalidateQueries(); return { ok: true as const, addresses: next }; }}),
   deleteClient: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().delete(schema.clients).where(eq(schema.clients.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+
+  // Swipe-to-delete (Danny 2026-10-24): the confirm dialog fetches this
+  // first so it can name exactly what is attached before anything is
+  // destroyed — documents/photos/files are deleted with the job;
+  // estimates/invoices (and their payments) are independent records
+  // that survive, unlinked (see jobAttachmentSummary).
+  getJobDeletePreview: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ documents: z.number(), signedDocuments: z.number(), photos: z.number(), files: z.number(), invoices: z.number(), payments: z.number(), estimates: z.number(), portalLink: z.boolean() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); return jobAttachmentSummary(db, job.id); }}),
+
+  deleteJob: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ ok: z.literal(true), deletedDocuments: z.number(), deletedPhotos: z.number(), deletedFiles: z.number(), unlinkedInvoices: z.number(), unlinkedEstimates: z.number() }), async handler(ctx, args): Promise<{ ok: true; deletedDocuments: number; deletedPhotos: number; deletedFiles: number; unlinkedInvoices: number; unlinkedEstimates: number }> { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const jobId = job.id;
+    // Gather counts + every blob key up front: after the transaction the
+    // rows are gone, and blob cleanup is best-effort (sibling deletes'
+    // pattern) so a storage hiccup never resurrects the job.
+    const summary = await jobAttachmentSummary(db, jobId);
+    const [docRows, photoRows, fileRows, receiptRows, voiceRows, selectionRows, shareRows, slideshowRows, scannedRows, incidentRows, messageRows, signoffRows] = await Promise.all([
+      db.select().from(schema.documents).where(eq(schema.documents.jobId, jobId)),
+      db.select({ blobKey: schema.photos.blobKey }).from(schema.photos).where(eq(schema.photos.jobId, jobId)),
+      db.select({ blobKey: schema.jobFiles.blobKey }).from(schema.jobFiles).where(eq(schema.jobFiles.jobId, jobId)),
+      db.select({ blobKey: schema.receipts.blobKey }).from(schema.receipts).where(eq(schema.receipts.jobId, jobId)),
+      db.select({ blobKey: schema.voiceNotes.blobKey }).from(schema.voiceNotes).where(eq(schema.voiceNotes.jobId, jobId)),
+      db.select({ photoBlobKey: schema.selections.photoBlobKey }).from(schema.selections).where(eq(schema.selections.jobId, jobId)),
+      db.select({ blobKey: schema.shareImages.blobKey }).from(schema.shareImages).where(eq(schema.shareImages.jobId, jobId)),
+      db.select({ blobKey: schema.slideshowVideos.blobKey }).from(schema.slideshowVideos).where(eq(schema.slideshowVideos.jobId, jobId)),
+      db.select({ blobKey: schema.scannedDocuments.blobKey }).from(schema.scannedDocuments).where(eq(schema.scannedDocuments.jobId, jobId)),
+      db.select({ photoBlobKey: schema.incidents.photoBlobKey }).from(schema.incidents).where(eq(schema.incidents.jobId, jobId)),
+      db.select({ imageBlobKey: schema.jobMessages.imageBlobKey, voiceBlobKey: schema.jobMessages.voiceBlobKey }).from(schema.jobMessages).where(eq(schema.jobMessages.jobId, jobId)),
+      db.select({ customerSignatureBlobKey: schema.punchSignoffs.customerSignatureBlobKey, contractorSignatureBlobKey: schema.punchSignoffs.contractorSignatureBlobKey }).from(schema.punchSignoffs).where(eq(schema.punchSignoffs.jobId, jobId)),
+    ]);
+    const blobKeys = new Set<string>();
+    for (const doc of docRows) for (const key of [doc.originalBlobKey, doc.signatureBlobKey, doc.clientSignatureBlobKey, doc.clientSignedPdfBlobKey]) if (key) blobKeys.add(key);
+    for (const row of photoRows) blobKeys.add(row.blobKey);
+    for (const row of fileRows) blobKeys.add(row.blobKey);
+    for (const row of receiptRows) blobKeys.add(row.blobKey);
+    for (const row of voiceRows) blobKeys.add(row.blobKey);
+    for (const row of selectionRows) if (row.photoBlobKey) blobKeys.add(row.photoBlobKey);
+    for (const row of shareRows) blobKeys.add(row.blobKey);
+    for (const row of slideshowRows) blobKeys.add(row.blobKey);
+    for (const row of scannedRows) blobKeys.add(row.blobKey);
+    for (const row of incidentRows) if (row.photoBlobKey) blobKeys.add(row.photoBlobKey);
+    for (const row of messageRows) { if (row.imageBlobKey) blobKeys.add(row.imageBlobKey); if (row.voiceBlobKey) blobKeys.add(row.voiceBlobKey); }
+    for (const row of signoffRows) { blobKeys.add(row.customerSignatureBlobKey); blobKeys.add(row.contractorSignatureBlobKey); }
+    const docIds = docRows.map((doc) => doc.id);
+    // Everything id-dependent is read BEFORE the atomic batch (SpaceDb
+    // has no interactive transaction; db.batch runs the whole list in
+    // one transaction, so the cascade lands all-or-nothing).
+    // document_links.document_id is only unique per kind — scope to this
+    // job's document kinds so an invoice/quote link sharing a numeric id
+    // is never touched. Same for portal link events (they hang off the
+    // job's portal tokens).
+    const linkFilter = docIds.length ? and(inArray(schema.documentLinks.documentId, docIds), inArray(schema.documentLinks.documentKind, ["contract", "change_order"])) : undefined;
+    const linkRows = linkFilter ? await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(linkFilter) : [];
+    const tokenIdRows = await db.select({ id: schema.portalTokens.id }).from(schema.portalTokens).where(eq(schema.portalTokens.jobId, jobId));
+    const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
+    const cascade: unknown[] = [
+      ...(linkRows.length ? [db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, linkRows.map((link) => link.id)))] : []),
+      ...(linkFilter ? [db.delete(schema.documentLinks).where(linkFilter)] : []),
+      ...(tokenIdRows.length ? [db.delete(schema.portalLinkEvents).where(inArray(schema.portalLinkEvents.linkId, tokenIdRows.map((row) => row.id)))] : []),
+      // Notifications that deep-link into this job or its documents.
+      db.delete(schema.userNotifications).where(inArray(schema.userNotifications.link, notificationLinks)),
+      // Independent records keep their rows; only the job link goes.
+      db.update(schema.quotes).set({ jobId: null, updatedAt: new Date() }).where(eq(schema.quotes.jobId, jobId)),
+      db.update(schema.invoices).set({ jobId: null, updatedAt: new Date() }).where(eq(schema.invoices.jobId, jobId)),
+      db.update(schema.appointments).set({ jobId: null, updatedAt: new Date() }).where(eq(schema.appointments.jobId, jobId)),
+      db.update(schema.mileageTrips).set({ jobId: null }).where(eq(schema.mileageTrips.jobId, jobId)),
+      db.update(schema.businessExpenses).set({ jobId: null }).where(eq(schema.businessExpenses.jobId, jobId)),
+      db.update(schema.supplierQuotes).set({ jobId: null }).where(eq(schema.supplierQuotes.jobId, jobId)),
+      db.update(schema.purchaseOrders).set({ jobId: null }).where(eq(schema.purchaseOrders.jobId, jobId)),
+      db.update(schema.maintenancePlans).set({ lastJobId: null, updatedAt: new Date() }).where(eq(schema.maintenancePlans.lastJobId, jobId)),
+      // Job-owned rows (schema onDelete cascade set), children first.
+      db.delete(schema.photoPairs).where(eq(schema.photoPairs.jobId, jobId)),
+      db.delete(schema.photos).where(eq(schema.photos.jobId, jobId)),
+      db.delete(schema.documents).where(eq(schema.documents.jobId, jobId)),
+      db.delete(schema.jobFiles).where(eq(schema.jobFiles.jobId, jobId)),
+      db.delete(schema.portalTokens).where(eq(schema.portalTokens.jobId, jobId)),
+      db.delete(schema.jobMessages).where(eq(schema.jobMessages.jobId, jobId)),
+      db.delete(schema.punchItems).where(eq(schema.punchItems.jobId, jobId)),
+      db.delete(schema.punchSignoffs).where(eq(schema.punchSignoffs.jobId, jobId)),
+      db.delete(schema.progressUpdates).where(eq(schema.progressUpdates.jobId, jobId)),
+      db.delete(schema.timeEntries).where(eq(schema.timeEntries.jobId, jobId)),
+      db.delete(schema.receipts).where(eq(schema.receipts.jobId, jobId)),
+      db.delete(schema.crewTasks).where(eq(schema.crewTasks.jobId, jobId)),
+      db.delete(schema.voiceNotes).where(eq(schema.voiceNotes.jobId, jobId)),
+      db.delete(schema.completionCertificates).where(eq(schema.completionCertificates.jobId, jobId)),
+      db.delete(schema.selections).where(eq(schema.selections.jobId, jobId)),
+      db.delete(schema.dailyLogs).where(eq(schema.dailyLogs.jobId, jobId)),
+      db.delete(schema.internalNotes).where(eq(schema.internalNotes.jobId, jobId)),
+      db.delete(schema.paymentMilestones).where(eq(schema.paymentMilestones.jobId, jobId)),
+      db.delete(schema.subcontractors).where(eq(schema.subcontractors.jobId, jobId)),
+      db.delete(schema.shareImages).where(eq(schema.shareImages.jobId, jobId)),
+      db.delete(schema.warranties).where(eq(schema.warranties.jobId, jobId)),
+      db.delete(schema.slideshowVideos).where(eq(schema.slideshowVideos.jobId, jobId)),
+      db.delete(schema.scannedDocuments).where(eq(schema.scannedDocuments.jobId, jobId)),
+      db.delete(schema.safetyTalks).where(eq(schema.safetyTalks.jobId, jobId)),
+      db.delete(schema.incidents).where(eq(schema.incidents.jobId, jobId)),
+      db.delete(schema.completionOverrides).where(eq(schema.completionOverrides.jobId, jobId)),
+      db.delete(schema.jobs).where(eq(schema.jobs.id, jobId)),
+    ];
+    await db.batch(cascade as [never, ...never[]]);
+    for (const key of blobKeys) { try { await ctx.blobs.delete(key); } catch { /* best-effort blob cleanup, like deleteDocument */ } }
+    ctx.invalidateQueries();
+    return { ok: true as const, deletedDocuments: summary.documents, deletedPhotos: summary.photos, deletedFiles: summary.files, unlinkedInvoices: summary.invoices, unlinkedEstimates: summary.estimates };
+  }}),
 
   listJobs: defineAction({ request: z.object({ search: z.string().max(120).default("") }), response: z.object({ jobs: z.array(jobSchema) }), async handler(ctx, args) {
     const db = ctx.db<typeof schema>(); const term = args.search.trim();
