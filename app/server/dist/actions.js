@@ -73230,6 +73230,8 @@ var ADMIN_ACTIONS = new Set([
   "deleteDocument",
   "deleteDocumentAttachment",
   "deleteInvoice",
+  "deleteJob",
+  "getJobDeletePreview",
   "deleteJobFile",
   "deleteMarketplaceAlert",
   "deleteMarketplaceListing",
@@ -77546,6 +77548,27 @@ async function requireJobCompany(ctx, db, jobId) {
     throw new Error("Job not found.");
   return { identity, job };
 }
+async function jobAttachmentSummary(db, jobId) {
+  const [docRows, photoRows, fileRows, invoiceRows, quoteRows, tokenRows] = await Promise.all([
+    db.select({ id: documents.id, clientSignedAt: documents.clientSignedAt }).from(documents).where(eq(documents.jobId, jobId)),
+    db.select({ id: photos.id }).from(photos).where(eq(photos.jobId, jobId)),
+    db.select({ id: jobFiles.id }).from(jobFiles).where(eq(jobFiles.jobId, jobId)),
+    db.select({ id: invoices.id }).from(invoices).where(eq(invoices.jobId, jobId)),
+    db.select({ id: quotes.id }).from(quotes).where(eq(quotes.jobId, jobId)),
+    db.select({ id: portalTokens.id, revokedAt: portalTokens.revokedAt }).from(portalTokens).where(eq(portalTokens.jobId, jobId))
+  ]);
+  const paymentRows = invoiceRows.length ? await db.select({ id: payments.id }).from(payments).where(inArray(payments.invoiceId, invoiceRows.map((row) => row.id))) : [];
+  return {
+    documents: docRows.length,
+    signedDocuments: docRows.filter((row) => row.clientSignedAt).length,
+    photos: photoRows.length,
+    files: fileRows.length,
+    invoices: invoiceRows.length,
+    payments: paymentRows.length,
+    estimates: quoteRows.length,
+    portalLink: tokenRows.some((row) => !row.revokedAt)
+  };
+}
 var FREE_TIER_LIMITS = { maxActiveJobs: 3, maxInvoicesPerMonth: 5 };
 async function getFreeTierUsage(db, companyId) {
   const now = new Date;
@@ -78909,6 +78932,120 @@ If that was you, just sign in again. If not, we recommend changing your password
     await ctx.db().delete(clients).where(eq(clients.id, args.id));
     ctx.invalidateQueries();
     return { ok: true };
+  } }),
+  getJobDeletePreview: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ documents: number2(), signedDocuments: number2(), photos: number2(), files: number2(), invoices: number2(), payments: number2(), estimates: number2(), portalLink: boolean2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    return jobAttachmentSummary(db, job.id);
+  } }),
+  deleteJob: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ ok: literal(true), deletedDocuments: number2(), deletedPhotos: number2(), deletedFiles: number2(), unlinkedInvoices: number2(), unlinkedEstimates: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const jobId = job.id;
+    const summary = await jobAttachmentSummary(db, jobId);
+    const [docRows, photoRows, fileRows, receiptRows, voiceRows, selectionRows, shareRows, slideshowRows, scannedRows, incidentRows, messageRows, signoffRows] = await Promise.all([
+      db.select().from(documents).where(eq(documents.jobId, jobId)),
+      db.select({ blobKey: photos.blobKey }).from(photos).where(eq(photos.jobId, jobId)),
+      db.select({ blobKey: jobFiles.blobKey }).from(jobFiles).where(eq(jobFiles.jobId, jobId)),
+      db.select({ blobKey: receipts.blobKey }).from(receipts).where(eq(receipts.jobId, jobId)),
+      db.select({ blobKey: voiceNotes.blobKey }).from(voiceNotes).where(eq(voiceNotes.jobId, jobId)),
+      db.select({ photoBlobKey: selections.photoBlobKey }).from(selections).where(eq(selections.jobId, jobId)),
+      db.select({ blobKey: shareImages.blobKey }).from(shareImages).where(eq(shareImages.jobId, jobId)),
+      db.select({ blobKey: slideshowVideos.blobKey }).from(slideshowVideos).where(eq(slideshowVideos.jobId, jobId)),
+      db.select({ blobKey: scannedDocuments.blobKey }).from(scannedDocuments).where(eq(scannedDocuments.jobId, jobId)),
+      db.select({ photoBlobKey: incidents.photoBlobKey }).from(incidents).where(eq(incidents.jobId, jobId)),
+      db.select({ imageBlobKey: jobMessages.imageBlobKey, voiceBlobKey: jobMessages.voiceBlobKey }).from(jobMessages).where(eq(jobMessages.jobId, jobId)),
+      db.select({ customerSignatureBlobKey: punchSignoffs.customerSignatureBlobKey, contractorSignatureBlobKey: punchSignoffs.contractorSignatureBlobKey }).from(punchSignoffs).where(eq(punchSignoffs.jobId, jobId))
+    ]);
+    const blobKeys = new Set;
+    for (const doc of docRows)
+      for (const key of [doc.originalBlobKey, doc.signatureBlobKey, doc.clientSignatureBlobKey, doc.clientSignedPdfBlobKey])
+        if (key)
+          blobKeys.add(key);
+    for (const row of photoRows)
+      blobKeys.add(row.blobKey);
+    for (const row of fileRows)
+      blobKeys.add(row.blobKey);
+    for (const row of receiptRows)
+      blobKeys.add(row.blobKey);
+    for (const row of voiceRows)
+      blobKeys.add(row.blobKey);
+    for (const row of selectionRows)
+      if (row.photoBlobKey)
+        blobKeys.add(row.photoBlobKey);
+    for (const row of shareRows)
+      blobKeys.add(row.blobKey);
+    for (const row of slideshowRows)
+      blobKeys.add(row.blobKey);
+    for (const row of scannedRows)
+      blobKeys.add(row.blobKey);
+    for (const row of incidentRows)
+      if (row.photoBlobKey)
+        blobKeys.add(row.photoBlobKey);
+    for (const row of messageRows) {
+      if (row.imageBlobKey)
+        blobKeys.add(row.imageBlobKey);
+      if (row.voiceBlobKey)
+        blobKeys.add(row.voiceBlobKey);
+    }
+    for (const row of signoffRows) {
+      blobKeys.add(row.customerSignatureBlobKey);
+      blobKeys.add(row.contractorSignatureBlobKey);
+    }
+    const docIds = docRows.map((doc) => doc.id);
+    const linkFilter = docIds.length ? and(inArray(documentLinks.documentId, docIds), inArray(documentLinks.documentKind, ["contract", "change_order"])) : undefined;
+    const linkRows = linkFilter ? await db.select({ id: documentLinks.id }).from(documentLinks).where(linkFilter) : [];
+    const tokenIdRows = await db.select({ id: portalTokens.id }).from(portalTokens).where(eq(portalTokens.jobId, jobId));
+    const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
+    const cascade = [
+      ...linkRows.length ? [db.delete(documentLinkEvents).where(inArray(documentLinkEvents.linkId, linkRows.map((link) => link.id)))] : [],
+      ...linkFilter ? [db.delete(documentLinks).where(linkFilter)] : [],
+      ...tokenIdRows.length ? [db.delete(portalLinkEvents).where(inArray(portalLinkEvents.linkId, tokenIdRows.map((row) => row.id)))] : [],
+      db.delete(userNotifications).where(inArray(userNotifications.link, notificationLinks)),
+      db.update(quotes).set({ jobId: null, updatedAt: new Date }).where(eq(quotes.jobId, jobId)),
+      db.update(invoices).set({ jobId: null, updatedAt: new Date }).where(eq(invoices.jobId, jobId)),
+      db.update(appointments).set({ jobId: null, updatedAt: new Date }).where(eq(appointments.jobId, jobId)),
+      db.update(mileageTrips).set({ jobId: null }).where(eq(mileageTrips.jobId, jobId)),
+      db.update(businessExpenses).set({ jobId: null }).where(eq(businessExpenses.jobId, jobId)),
+      db.update(supplierQuotes).set({ jobId: null }).where(eq(supplierQuotes.jobId, jobId)),
+      db.update(purchaseOrders).set({ jobId: null }).where(eq(purchaseOrders.jobId, jobId)),
+      db.update(maintenancePlans).set({ lastJobId: null, updatedAt: new Date }).where(eq(maintenancePlans.lastJobId, jobId)),
+      db.delete(photoPairs).where(eq(photoPairs.jobId, jobId)),
+      db.delete(photos).where(eq(photos.jobId, jobId)),
+      db.delete(documents).where(eq(documents.jobId, jobId)),
+      db.delete(jobFiles).where(eq(jobFiles.jobId, jobId)),
+      db.delete(portalTokens).where(eq(portalTokens.jobId, jobId)),
+      db.delete(jobMessages).where(eq(jobMessages.jobId, jobId)),
+      db.delete(punchItems).where(eq(punchItems.jobId, jobId)),
+      db.delete(punchSignoffs).where(eq(punchSignoffs.jobId, jobId)),
+      db.delete(progressUpdates).where(eq(progressUpdates.jobId, jobId)),
+      db.delete(timeEntries).where(eq(timeEntries.jobId, jobId)),
+      db.delete(receipts).where(eq(receipts.jobId, jobId)),
+      db.delete(crewTasks).where(eq(crewTasks.jobId, jobId)),
+      db.delete(voiceNotes).where(eq(voiceNotes.jobId, jobId)),
+      db.delete(completionCertificates).where(eq(completionCertificates.jobId, jobId)),
+      db.delete(selections).where(eq(selections.jobId, jobId)),
+      db.delete(dailyLogs).where(eq(dailyLogs.jobId, jobId)),
+      db.delete(internalNotes).where(eq(internalNotes.jobId, jobId)),
+      db.delete(paymentMilestones).where(eq(paymentMilestones.jobId, jobId)),
+      db.delete(subcontractors).where(eq(subcontractors.jobId, jobId)),
+      db.delete(shareImages).where(eq(shareImages.jobId, jobId)),
+      db.delete(warranties).where(eq(warranties.jobId, jobId)),
+      db.delete(slideshowVideos).where(eq(slideshowVideos.jobId, jobId)),
+      db.delete(scannedDocuments).where(eq(scannedDocuments.jobId, jobId)),
+      db.delete(safetyTalks).where(eq(safetyTalks.jobId, jobId)),
+      db.delete(incidents).where(eq(incidents.jobId, jobId)),
+      db.delete(completionOverrides).where(eq(completionOverrides.jobId, jobId)),
+      db.delete(jobs).where(eq(jobs.id, jobId))
+    ];
+    await db.batch(cascade);
+    for (const key of blobKeys) {
+      try {
+        await ctx.blobs.delete(key);
+      } catch {}
+    }
+    ctx.invalidateQueries();
+    return { ok: true, deletedDocuments: summary.documents, deletedPhotos: summary.photos, deletedFiles: summary.files, unlinkedInvoices: summary.invoices, unlinkedEstimates: summary.estimates };
   } }),
   listJobs: defineAction({ request: object({ search: string2().max(120).default("") }), response: object({ jobs: array(jobSchema) }), async handler(ctx, args) {
     const db = ctx.db();
