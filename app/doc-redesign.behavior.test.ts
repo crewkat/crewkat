@@ -32,7 +32,7 @@ describe("section switch + money strip", () => {
     expect(APP).toContain("<strong>{periodQuotes.length}</strong>");
     expect(CSS).toContain(".doc-strip {");
     expect(CSS).toContain("linear-gradient(120deg, var(--navy-900), var(--navy-700))");
-    expect(CSS).toContain(".doc-strip-num { font-size: 27px;");
+    expect(CSS).toContain(".doc-strip-num { font-size: 36px;");
   });
 
   test("old carousel and slab are gone from the hub", () => {
@@ -73,6 +73,42 @@ describe("Year | Month period behavior", () => {
     expect(APP).toContain(
       "sum + Math.max(0, money(invoice.totalWithLateFee) - money(invoice.balanceRemaining))",
     );
+  });
+});
+
+describe("bigger period total + month swipe strip (Danny 2026-10-24)", () => {
+  test("the period total is the 36px hero; stats stay subordinate", () => {
+    expect(CSS).toContain(".doc-strip-num { font-size: 36px;");
+    expect(CSS).not.toContain(".doc-strip-num { font-size: 27px;");
+    // small screens step down a notch, still well above the old 24px
+    expect(CSS).toContain(".doc-strip-num { font-size: 31px;");
+    // subordinate stats keep their sizes and the gradient is untouched
+    expect(CSS).toContain(".doc-strip-stat strong { font-size: 12.5px;");
+    expect(CSS).toContain("linear-gradient(120deg, var(--navy-900), var(--navy-700))");
+  });
+
+  test("in month mode the strip is a swipe pager over the same monthKey state", () => {
+    // handlers ride on the strip section itself
+    expect(APP).toContain("onTouchStart={onStripTouchStart} onTouchMove={onStripTouchMove} onTouchEnd={onStripTouchEnd}");
+    // swipes call the stepper's own shiftMonth — strip, stepper label,
+    // totals and the month-filtered feed all read the one monthKey
+    expect(APP).toContain("if (dx <= -48 && monthKey < month) { buzz(8); shiftMonth(1); }");
+    expect(APP).toContain("else if (dx >= 48) { buzz(8); shiftMonth(-1); }");
+    expect(APP).toContain("const visibleInvoices = period === \"month\" ? searchedInvoices.filter((invoice) => invMonthKey(invoice) === monthKey) : searchedInvoices;");
+    expect(APP).toContain("const visibleQuotes = period === \"month\" ? searchedQuotes.filter((quote) => quoteMonthKey(quote) === monthKey) : searchedQuotes;");
+    // month name + year stay labeled on the strip next to the stepper
+    expect(APP).toContain("<span>{monthLabel(monthKey)}</span>");
+    // the forward bound matches the stepper's disabled state exactly
+    expect(APP).toContain("disabled={monthKey >= month}");
+  });
+
+  test("the swipe cannot fight vertical scroll and cannot trigger in year mode", () => {
+    // SwipeRow's dominance rule: vertical-dominant drags abandon the gesture
+    expect(APP).toContain("if (Math.abs(dy) > Math.abs(dx) * 1.2) stripTouch.current = null; // vertical scroll wins");
+    expect(APP).toContain("if (Math.abs(dy) > Math.abs(dx) * 1.2) return;");
+    // year mode: every entry point returns before any month can shift
+    expect(APP).toContain('const onStripTouchStart = (event: React.TouchEvent) => {\n    if (period !== "month") return;');
+    expect(APP).toContain('if (period !== "month" || !stripTouch.current) return;');
   });
 });
 

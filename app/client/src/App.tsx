@@ -17593,6 +17593,41 @@ function InvoicesScreen({
     const d = new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)) - 1 + delta, 1);
     setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   };
+  // Month mode (Danny 2026-10-24): the money strip itself is the month
+  // pager — a sideways swipe on it shifts the month through the same
+  // shiftMonth the ‹ › stepper calls, so the strip totals, the stepper
+  // label, and the month-filtered feed below can never disagree. The
+  // gesture rule matches SwipeRow's: a vertical-dominant drag is page
+  // scroll and the gesture is abandoned, never fought. Bounds match
+  // the stepper: forward stops at the current month, back is unbounded.
+  // Year mode is a single static strip — the handlers return at once.
+  const stripTouch = useRef<{ x: number; y: number } | null>(null);
+  const onStripTouchStart = (event: React.TouchEvent) => {
+    if (period !== "month") return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    stripTouch.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const onStripTouchMove = (event: React.TouchEvent) => {
+    if (!stripTouch.current) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const dx = touch.clientX - stripTouch.current.x;
+    const dy = touch.clientY - stripTouch.current.y;
+    if (Math.abs(dy) > Math.abs(dx) * 1.2) stripTouch.current = null; // vertical scroll wins
+  };
+  const onStripTouchEnd = (event: React.TouchEvent) => {
+    if (period !== "month" || !stripTouch.current) return;
+    const startAt = stripTouch.current;
+    stripTouch.current = null;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - startAt.x;
+    const dy = touch.clientY - startAt.y;
+    if (Math.abs(dy) > Math.abs(dx) * 1.2) return;
+    if (dx <= -48 && monthKey < month) { buzz(8); shiftMonth(1); }
+    else if (dx >= 48) { buzz(8); shiftMonth(-1); }
+  };
   const heroLabel = period === "year"
     ? (lang === "es" ? `TOTAL ${month.slice(0, 4)}` : `${month.slice(0, 4)} TOTAL`)
     : (lang === "es" ? `TOTAL DE ${monthName(monthKey).toUpperCase()}` : `${monthName(monthKey).toUpperCase()} TOTAL`);
@@ -17608,7 +17643,7 @@ function InvoicesScreen({
         <button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}><Icon size={16}><path d="M6 3.5h12V20l-2-1.4L14 20l-2-1.4L10 20l-2-1.4L6 20z" /><path d="M9 8h6M9 11.5h6" /></Icon>{lang === "es" ? "Facturas" : "Invoices"}</button>
         <button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}><Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9.5 4a2.5 2.5 0 0 1 5 0" /><path d="M9 11h6M9 14.5h4" /></Icon>{estimateWord}</button>
       </nav>
-      <section className={`doc-strip${period === "month" ? " is-month" : ""}`} aria-label={lang === "es" ? "Totales del periodo" : "Period totals"}>
+      <section className={`doc-strip${period === "month" ? " is-month" : ""}`} aria-label={lang === "es" ? "Totales del periodo" : "Period totals"} onTouchStart={onStripTouchStart} onTouchMove={onStripTouchMove} onTouchEnd={onStripTouchEnd} onTouchCancel={() => { stripTouch.current = null; }}>
         <div className="doc-strip-top">
           {period === "month" && (
             <span className="doc-month-pick">
