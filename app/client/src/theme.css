@@ -6219,7 +6219,21 @@ button.profit-strip-link:hover{border-color:var(--green)}
    isolation does not trap position: fixed). Dark theme raises the
    alphas a touch since the blobs sit on a near-black ground.
    prefers-reduced-motion pauses the drift entirely; the static
-   tint remains. */
+   tint remains.
+   Round 3 (2026-10-24, Danny's pick: "Make the movement
+   obvious"): the tint above is approved and frozen byte-for-byte;
+   only the motion changed. The 26s/34s ease-in-out alternate
+   loops still didn't read — ease-in-out sits at ~zero velocity
+   near its endpoints and alternate doubles back over the same
+   short path, so the layers were near-still almost all the time.
+   Now each layer traces a closed elliptical orbit (8 stops at
+   45° steps, 100% === 0%) at a constant linear pace — velocity
+   never parks, and the loop has no reversal pause. 16s vs 22s,
+   opposite orbit senses, different ellipse proportions (11%×8%
+   vs 10%×7% peak-to-peak), so the two layers never sync up:
+   the drift is catchable within a second or two of looking,
+   while still reading as slow glow, not a screensaver. The old
+   scale "breath" is gone — it fought the orbit. */
 .app-shell { isolation: isolate; }
 .app-shell.has-bottom-nav::before, .app-shell.master-nav-hidden::before {
   content: ""; position: fixed; inset: -14%; z-index: -1; pointer-events: none;
@@ -6227,14 +6241,14 @@ button.profit-strip-link:hover{border-color:var(--green)}
     radial-gradient(58vmax 58vmax at 10% 6%, rgba(18, 57, 92, .28), transparent 62%),
     radial-gradient(48vmax 48vmax at 90% 20%, rgba(88, 138, 198, .17), transparent 60%),
     radial-gradient(40vmax 40vmax at 76% 90%, rgba(18, 57, 92, .26), transparent 60%);
-  animation: haze-drift-a 26s ease-in-out infinite alternate;
+  animation: haze-drift-a 16s linear infinite;
 }
 .app-shell.has-bottom-nav::after, .app-shell.master-nav-hidden::after {
   content: ""; position: fixed; inset: -14%; z-index: -1; pointer-events: none;
   background-image:
     radial-gradient(46vmax 46vmax at 6% 84%, rgba(242, 118, 46, .22), transparent 62%),
     radial-gradient(36vmax 36vmax at 56% 44%, rgba(242, 158, 66, .12), transparent 60%);
-  animation: haze-drift-b 34s ease-in-out infinite alternate-reverse;
+  animation: haze-drift-b 22s linear infinite;
 }
 :root[data-theme="dark"] .app-shell.has-bottom-nav::before, :root[data-theme="dark"] .app-shell.master-nav-hidden::before {
   background-image:
@@ -6260,8 +6274,28 @@ button.profit-strip-link:hover{border-color:var(--green)}
       radial-gradient(36vmax 36vmax at 56% 44%, rgba(242, 158, 66, .15), transparent 60%);
   }
 }
-@keyframes haze-drift-a { from { transform: translate3d(-4.5%, -3%, 0) scale(1); } to { transform: translate3d(4.5%, 3.2%, 0) scale(1.08); } }
-@keyframes haze-drift-b { from { transform: translate3d(4.2%, 3%, 0) scale(1.05); } to { transform: translate3d(-4.2%, -3.2%, 0) scale(1); } }
+@keyframes haze-drift-a {
+  0% { transform: translate3d(5.5%, 0, 0); }
+  12.5% { transform: translate3d(3.9%, 2.8%, 0); }
+  25% { transform: translate3d(0, 4%, 0); }
+  37.5% { transform: translate3d(-3.9%, 2.8%, 0); }
+  50% { transform: translate3d(-5.5%, 0, 0); }
+  62.5% { transform: translate3d(-3.9%, -2.8%, 0); }
+  75% { transform: translate3d(0, -4%, 0); }
+  87.5% { transform: translate3d(3.9%, -2.8%, 0); }
+  100% { transform: translate3d(5.5%, 0, 0); }
+}
+@keyframes haze-drift-b {
+  0% { transform: translate3d(-5%, 0, 0); }
+  12.5% { transform: translate3d(-3.5%, -2.5%, 0); }
+  25% { transform: translate3d(0, -3.5%, 0); }
+  37.5% { transform: translate3d(3.5%, -2.5%, 0); }
+  50% { transform: translate3d(5%, 0, 0); }
+  62.5% { transform: translate3d(3.5%, 2.5%, 0); }
+  75% { transform: translate3d(0, 3.5%, 0); }
+  87.5% { transform: translate3d(-3.5%, 2.5%, 0); }
+  100% { transform: translate3d(-5%, 0, 0); }
+}
 @media (prefers-reduced-motion: reduce) {
   .app-shell.has-bottom-nav::before, .app-shell.master-nav-hidden::before,
   .app-shell.has-bottom-nav::after, .app-shell.master-nav-hidden::after { animation: none; }
