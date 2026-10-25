@@ -34304,6 +34304,118 @@ var require_pako = __commonJS(function(exports, module) {
   module.exports = pako;
 });
 
+// src/schema.ts
+var exports_schema = {};
+__export(exports_schema, {
+  accountDeletionCodes: () => accountDeletionCodes,
+  adminAuditLog: () => adminAuditLog,
+  adminParameters: () => adminParameters,
+  adminTeamRoles: () => adminTeamRoles,
+  adminTotpSecrets: () => adminTotpSecrets,
+  appUserExitFeedback: () => appUserExitFeedback,
+  appUsers: () => appUsers,
+  appointments: () => appointments,
+  authLoginAttempts: () => authLoginAttempts,
+  authSessions: () => authSessions,
+  authTokens: () => authTokens,
+  authUsers: () => authUsers,
+  automationLogs: () => automationLogs,
+  backupRuns: () => backupRuns,
+  bidBoardItems: () => bidBoardItems,
+  blockedSenders: () => blockedSenders,
+  broadcastLog: () => broadcastLog,
+  businessExpenses: () => businessExpenses,
+  businessVerifications: () => businessVerifications,
+  cancellationFeedback: () => cancellationFeedback,
+  clients: () => clients,
+  companies: () => companies,
+  completionCertificates: () => completionCertificates,
+  completionOverrides: () => completionOverrides,
+  credentials: () => credentials,
+  crewPayRates: () => crewPayRates,
+  crewTasks: () => crewTasks,
+  dailyGameScores: () => dailyGameScores,
+  dailyLogs: () => dailyLogs,
+  documentAttachments: () => documentAttachments,
+  documentLinkEvents: () => documentLinkEvents,
+  documentLinks: () => documentLinks,
+  documents: () => documents,
+  equipment: () => equipment,
+  featureFlags: () => featureFlags,
+  financialDocumentSignatures: () => financialDocumentSignatures,
+  incidents: () => incidents,
+  internalNotes: () => internalNotes,
+  invoices: () => invoices,
+  jobFiles: () => jobFiles,
+  jobMessages: () => jobMessages,
+  jobs: () => jobs,
+  leadActivities: () => leadActivities,
+  leads: () => leads,
+  listingBumpPurchases: () => listingBumpPurchases,
+  maintenancePlans: () => maintenancePlans,
+  marketplaceAlerts: () => marketplaceAlerts,
+  marketplaceBookingRequests: () => marketplaceBookingRequests,
+  marketplaceConversations: () => marketplaceConversations,
+  marketplaceCreditPurchases: () => marketplaceCreditPurchases,
+  marketplaceCredits: () => marketplaceCredits,
+  marketplaceFlags: () => marketplaceFlags,
+  marketplaceListingPhotos: () => marketplaceListingPhotos,
+  marketplaceListings: () => marketplaceListings,
+  marketplaceMessages: () => marketplaceMessages,
+  marketplaceProQuota: () => marketplaceProQuota,
+  marketplaceUnlocks: () => marketplaceUnlocks,
+  materialCostItems: () => materialCostItems,
+  mileageTrips: () => mileageTrips,
+  moderationKeywordRules: () => moderationKeywordRules,
+  onboardingChecklist: () => onboardingChecklist,
+  paymentMilestones: () => paymentMilestones,
+  payments: () => payments,
+  photoPairs: () => photoPairs,
+  photos: () => photos,
+  platformPolicyVersions: () => platformPolicyVersions,
+  platformSettings: () => platformSettings,
+  platformSupportNotes: () => platformSupportNotes,
+  platformSupportReplies: () => platformSupportReplies,
+  platformSupportReports: () => platformSupportReports,
+  playBillingPurchases: () => playBillingPurchases,
+  portalLinkEvents: () => portalLinkEvents,
+  portalTokens: () => portalTokens,
+  priceBookItems: () => priceBookItems,
+  progressUpdates: () => progressUpdates,
+  promoCodeLog: () => promoCodeLog,
+  punchItems: () => punchItems,
+  punchSignoffs: () => punchSignoffs,
+  purchaseOrders: () => purchaseOrders,
+  pushSubscriptions: () => pushSubscriptions,
+  quoteTemplates: () => quoteTemplates,
+  quotes: () => quotes,
+  rateLimitEvents: () => rateLimitEvents,
+  receipts: () => receipts,
+  recurringInvoiceSchedules: () => recurringInvoiceSchedules,
+  referralEvents: () => referralEvents,
+  safetyTalks: () => safetyTalks,
+  scannedDocuments: () => scannedDocuments,
+  selections: () => selections,
+  sendCaps: () => sendCaps,
+  sendUsage: () => sendUsage,
+  settings: () => settings,
+  shareImages: () => shareImages,
+  slideshowVideos: () => slideshowVideos,
+  stripeWebhookEvents: () => stripeWebhookEvents,
+  subcontractors: () => subcontractors,
+  subscriptionEvents: () => subscriptionEvents,
+  supplierQuotes: () => supplierQuotes,
+  suppliers: () => suppliers,
+  supportReports: () => supportReports,
+  timeEntries: () => timeEntries,
+  userHomePins: () => userHomePins,
+  userNotifications: () => userNotifications,
+  userReports: () => userReports,
+  voiceNotes: () => voiceNotes,
+  warranties: () => warranties,
+  weeklyGameChampions: () => weeklyGameChampions
+});
+
 // ../node_modules/zod/v4/core/core.js
 var _a;
 function $constructor(name, initializer, params) {
@@ -40403,115 +40515,6 @@ import { tmpdir } from "os";
 import { basename, join } from "path";
 import { promisify } from "util";
 
-// src/schema.ts
-var exports_schema = {};
-__export(exports_schema, {
-  accountDeletionCodes: () => accountDeletionCodes,
-  adminAuditLog: () => adminAuditLog,
-  adminParameters: () => adminParameters,
-  adminTeamRoles: () => adminTeamRoles,
-  adminTotpSecrets: () => adminTotpSecrets,
-  appUserExitFeedback: () => appUserExitFeedback,
-  appUsers: () => appUsers,
-  appointments: () => appointments,
-  authLoginAttempts: () => authLoginAttempts,
-  authSessions: () => authSessions,
-  authTokens: () => authTokens,
-  authUsers: () => authUsers,
-  automationLogs: () => automationLogs,
-  backupRuns: () => backupRuns,
-  bidBoardItems: () => bidBoardItems,
-  blockedSenders: () => blockedSenders,
-  broadcastLog: () => broadcastLog,
-  businessExpenses: () => businessExpenses,
-  businessVerifications: () => businessVerifications,
-  cancellationFeedback: () => cancellationFeedback,
-  clients: () => clients,
-  completionCertificates: () => completionCertificates,
-  completionOverrides: () => completionOverrides,
-  credentials: () => credentials,
-  crewPayRates: () => crewPayRates,
-  crewTasks: () => crewTasks,
-  dailyGameScores: () => dailyGameScores,
-  dailyLogs: () => dailyLogs,
-  documentAttachments: () => documentAttachments,
-  documentLinkEvents: () => documentLinkEvents,
-  documentLinks: () => documentLinks,
-  documents: () => documents,
-  equipment: () => equipment,
-  featureFlags: () => featureFlags,
-  financialDocumentSignatures: () => financialDocumentSignatures,
-  incidents: () => incidents,
-  internalNotes: () => internalNotes,
-  invoices: () => invoices,
-  jobMessages: () => jobMessages,
-  jobs: () => jobs,
-  leads: () => leads,
-  listingBumpPurchases: () => listingBumpPurchases,
-  maintenancePlans: () => maintenancePlans,
-  marketplaceAlerts: () => marketplaceAlerts,
-  marketplaceBookingRequests: () => marketplaceBookingRequests,
-  marketplaceConversations: () => marketplaceConversations,
-  marketplaceCreditPurchases: () => marketplaceCreditPurchases,
-  marketplaceCredits: () => marketplaceCredits,
-  marketplaceFlags: () => marketplaceFlags,
-  marketplaceListingPhotos: () => marketplaceListingPhotos,
-  marketplaceListings: () => marketplaceListings,
-  marketplaceMessages: () => marketplaceMessages,
-  marketplaceProQuota: () => marketplaceProQuota,
-  marketplaceUnlocks: () => marketplaceUnlocks,
-  materialCostItems: () => materialCostItems,
-  mileageTrips: () => mileageTrips,
-  moderationKeywordRules: () => moderationKeywordRules,
-  onboardingChecklist: () => onboardingChecklist,
-  paymentMilestones: () => paymentMilestones,
-  payments: () => payments,
-  photoPairs: () => photoPairs,
-  photos: () => photos,
-  platformPolicyVersions: () => platformPolicyVersions,
-  platformSettings: () => platformSettings,
-  platformSupportNotes: () => platformSupportNotes,
-  platformSupportReplies: () => platformSupportReplies,
-  platformSupportReports: () => platformSupportReports,
-  playBillingPurchases: () => playBillingPurchases,
-  portalLinkEvents: () => portalLinkEvents,
-  portalTokens: () => portalTokens,
-  priceBookItems: () => priceBookItems,
-  progressUpdates: () => progressUpdates,
-  promoCodeLog: () => promoCodeLog,
-  punchItems: () => punchItems,
-  punchSignoffs: () => punchSignoffs,
-  purchaseOrders: () => purchaseOrders,
-  pushSubscriptions: () => pushSubscriptions,
-  quoteTemplates: () => quoteTemplates,
-  quotes: () => quotes,
-  rateLimitEvents: () => rateLimitEvents,
-  receipts: () => receipts,
-  recurringInvoiceSchedules: () => recurringInvoiceSchedules,
-  referralEvents: () => referralEvents,
-  safetyTalks: () => safetyTalks,
-  scannedDocuments: () => scannedDocuments,
-  selections: () => selections,
-  sendCaps: () => sendCaps,
-  sendUsage: () => sendUsage,
-  settings: () => settings,
-  shareImages: () => shareImages,
-  slideshowVideos: () => slideshowVideos,
-  stripeWebhookEvents: () => stripeWebhookEvents,
-  subcontractors: () => subcontractors,
-  subscriptionEvents: () => subscriptionEvents,
-  supplierQuotes: () => supplierQuotes,
-  suppliers: () => suppliers,
-  supportReports: () => supportReports,
-  timeEntries: () => timeEntries,
-  userHomePins: () => userHomePins,
-  userNotifications: () => userNotifications,
-  userReports: () => userReports,
-  voiceNotes: () => voiceNotes,
-  warranties: () => warranties,
-  weeklyGameChampions: () => weeklyGameChampions
-});
-
 // ../node_modules/drizzle-orm/sqlite-core/foreign-keys.js
 class ForeignKeyBuilder {
   static [entityKind] = "SQLiteForeignKeyBuilder";
@@ -41119,6 +41122,7 @@ var jobs = sqliteTable("jobs", {
   jobDate: text("job_date").notNull(),
   appointmentAt: text("appointment_at").notNull().default(""),
   amountDue: text("amount_due").notNull().default(""),
+  contractSum: text("contract_sum").notNull().default(""),
   dueDate: text("due_date").notNull().default(""),
   depositAmount: text("deposit_amount").notNull().default(""),
   paymentNotes: text("payment_notes").notNull().default(""),
@@ -41180,7 +41184,21 @@ var documents = sqliteTable("documents", {
   clientSignatureHash: text("client_signature_hash").notNull().default(""),
   clientSignedUserAgent: text("client_signed_user_agent").notNull().default(""),
   signatureFieldsJson: text("signature_fields_json").notNull().default("{}"),
+  fillFieldsJson: text("fill_fields_json").notNull().default("[]"),
+  fillValuesJson: text("fill_values_json").notNull().default("{}"),
   signedAt: integer2("signed_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var jobFiles = sqliteTable("job_files", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default(""),
+  filename: text("filename").notNull().default(""),
+  blobKey: text("blob_key").notNull(),
+  contentType: text("content_type").notNull().default("application/pdf"),
+  sizeBytes: integer2("size_bytes").notNull().default(0),
+  sharedWithClient: integer2("shared_with_client", { mode: "boolean" }).notNull().default(true),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var quotes = sqliteTable("quotes", {
@@ -41388,6 +41406,7 @@ var settings = sqliteTable("settings", {
   notifyDocSigned: integer2("notify_doc_signed", { mode: "boolean" }).notNull().default(true),
   notifyInvoiceViewed: integer2("notify_invoice_viewed", { mode: "boolean" }).notNull().default(true),
   notifyEstimateViewed: integer2("notify_estimate_viewed", { mode: "boolean" }).notNull().default(true),
+  notifyContractViewed: integer2("notify_contract_viewed", { mode: "boolean" }).notNull().default(true),
   reviewRequestsEnabled: integer2("review_requests_enabled", { mode: "boolean" }).notNull().default(true),
   reviewRequestDelayDays: integer2("review_request_delay_days").notNull().default(3),
   weeklyProgressEnabled: integer2("weekly_progress_enabled", { mode: "boolean" }).notNull().default(true),
@@ -41496,6 +41515,7 @@ var leads = sqliteTable("leads", {
   preferredContactTime: text("preferred_contact_time").notNull().default(""),
   notes: text("notes").notNull().default(""),
   stage: text("stage", { enum: ["new", "contacted", "quoted", "won", "lost"] }).notNull().default("new"),
+  estimatedValue: text("estimated_value").notNull().default("0"),
   clientId: integer2("client_id").references(() => clients.id, { onDelete: "set null" }),
   quoteId: integer2("quote_id").references(() => quotes.id, { onDelete: "set null" }),
   projectSize: text("project_size", { enum: ["small", "medium", "large"] }).notNull().default("medium"),
@@ -41504,6 +41524,16 @@ var leads = sqliteTable("leads", {
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var leadActivities = sqliteTable("lead_activities", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  leadId: integer2("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["note", "call", "email", "text", "stage", "system"] }).notNull().default("note"),
+  body: text("body").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("lead_activities_lead_idx").on(table.leadId)
+]);
 var selections = sqliteTable("selections", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -41967,6 +41997,13 @@ var marketplaceBookingRequests = sqliteTable("marketplace_booking_requests", {
   status: text("status", { enum: ["requested", "confirmed", "declined"] }).notNull().default("requested"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var companies = sqliteTable("companies", {
+  id: integer2("id").primaryKey(),
+  crewCode: text("crew_code").unique(),
+  tier: text("tier", { enum: ["app", "office"] }).notNull().default("office"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
 var authUsers = sqliteTable("auth_users", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -41976,7 +42013,12 @@ var authUsers = sqliteTable("auth_users", {
   passwordIterations: integer2("password_iterations").notNull().default(210000),
   emailVerifiedAt: integer2("email_verified_at", { mode: "timestamp_ms" }),
   companyId: integer2("company_id").notNull().default(1),
-  role: text("role", { enum: ["owner"] }).notNull().default("owner"),
+  role: text("role", { enum: ["owner", "admin", "office", "field"] }).notNull().default("owner"),
+  deactivatedAt: integer2("deactivated_at", { mode: "timestamp_ms" }),
+  credentialType: text("credential_type", { enum: ["email", "crew_pin"] }).notNull().default("email"),
+  pinHash: text("pin_hash"),
+  pinSalt: text("pin_salt"),
+  accessOverrides: text("access_overrides"),
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
@@ -42266,6 +42308,7 @@ var platformSupportReports = sqliteTable("platform_support_reports", {
   kind: text("kind", { enum: ["support", "problem", "question", "general", "feature"] }).notNull(),
   subject: text("subject").notNull(),
   message: text("message").notNull(),
+  screenshotKeysJson: text("screenshot_keys").notNull().default("[]"),
   language: text("language", { enum: ["en", "es"] }).notNull().default("en"),
   status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
   isUnread: integer2("is_unread", { mode: "boolean" }).notNull().default(true),
@@ -55896,24 +55939,21 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
         doc.rect(x + bw * i / steps, y, bw / steps + 0.75, bh, "F");
     }
   };
-  const bandH = theme === "bold" ? 72 : 56;
+  const headerH = theme === "bold" ? 76 : 66;
   const inBand = theme === "bold" || theme === "classic";
+  const centeredTitle = inBand;
   if (theme === "bold") {
-    fillBand(0, 0, w, bandH, [r, g, b]);
-    doc.setTextColor(255, 255, 255);
+    fillBand(0, 0, w, headerH, [r, g, b]);
   } else if (theme === "modern") {
     fillBand(0, 0, 12, 792, [r, g, b], true);
-    doc.setTextColor(r, g, b);
   } else if (theme === "classic") {
-    fillBand(0, 0, w, bandH, [23, 26, 28]);
-    doc.setTextColor(255, 255, 255);
-  } else
-    doc.setTextColor(r, g, b);
+    fillBand(0, 0, w, headerH, [23, 26, 28]);
+  }
   if (logo) {
     try {
       const boxW = { huge: 72, big: 58, medium: 40, small: 28 }[custom.logoSize];
       const boxH = { huge: 45, big: 36, medium: 25, small: 18 }[custom.logoSize];
-      const boxY = inBand ? 12 : 18;
+      const boxY = (headerH - boxH) / 2;
       let drawW = boxW;
       let drawH = boxH;
       try {
@@ -55924,97 +55964,127 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
           drawH = props.height * scale;
         }
       } catch {}
+      if (theme === "bold") {
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(margin - 5, boxY - 5, boxW + 10, boxH + 10, 4, 4, "F");
+      }
       doc.addImage(logo, logo.startsWith("data:image/png") ? "PNG" : "JPEG", margin, boxY + (boxH - drawH) / 2, drawW, drawH, undefined, "FAST");
     } catch {}
   }
-  doc.setFont(font, "bold");
-  if (document2.showCompanyInfo && inBand) {
-    doc.setFontSize(F(theme === "bold" ? 11 : theme === "classic" ? 10.5 : 9));
-    if (custom.showBusinessName)
-      doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", w - margin, 22, { align: "right" });
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(7));
-    doc.setTextColor(...bandDimInk);
+  if (document2.showCompanyInfo) {
+    const stackLines = [];
+    if (custom.showBusinessName) {
+      const nameText = custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "";
+      if (nameText)
+        stackLines.push({ text: nameText, name: true });
+    }
     const infoBits = [settings?.phone, custom.showLicenseNumber ? settings?.licenseNumber : "", settings?.website].filter(Boolean);
     if (infoBits.length)
-      doc.text(infoBits.join("  \xB7  "), w - margin, 33, { align: "right" });
+      stackLines.push({ text: infoBits.join("  \xB7  ") });
     if (settings?.address)
-      doc.text(settings.address, w - margin, 43, { align: "right" });
-  } else if (document2.showCompanyInfo) {
-    doc.setFontSize(F(11));
-    doc.setTextColor(...ink);
-    if (custom.showBusinessName)
-      doc.text(custom.showShortBusinessName ? (settings?.companyName || "").split(/\s+/).slice(0, 2).join(" ") : settings?.companyName || "", logo ? margin + 50 : margin, 30);
+      stackLines.push({ text: settings.address });
+    if (settings?.email)
+      stackLines.push({ text: settings.email });
+    const stackStep = 11;
+    let stackY = headerH / 2 - (stackLines.length - 1) * stackStep / 2 + 3;
+    for (const line of stackLines) {
+      if (line.name) {
+        doc.setFont(font, "bold");
+        doc.setFontSize(F(theme === "bold" ? 12 : 11));
+        if (inBand)
+          doc.setTextColor(255, 255, 255);
+        else
+          doc.setTextColor(...ink);
+      } else {
+        doc.setFont(font, "normal");
+        doc.setFontSize(F(7.5));
+        if (inBand)
+          doc.setTextColor(...bandDimInk);
+        else
+          doc.setTextColor(...dimInk);
+      }
+      doc.text(line.text, w - margin, stackY, { align: "right" });
+      stackY += stackStep;
+    }
   }
-  const titleY = theme === "bold" ? 58 : inBand ? bandH + 26 : 82;
+  if (!inBand) {
+    doc.setDrawColor(theme === "modern" ? 205 : 226, theme === "modern" ? 212 : 230, theme === "modern" ? 209 : 228);
+    doc.setLineWidth(0.75);
+    doc.line(margin, headerH, w - margin, headerH);
+  }
+  const titleY = headerH + 40;
   doc.setFont(font, "bold");
-  doc.setFontSize(F(theme === "bold" ? 14 : theme === "minimal" ? 18 : theme === "classic" ? 24 : 20));
-  if (theme === "bold")
-    doc.setTextColor(255, 255, 255);
+  doc.setFontSize(F(theme === "bold" ? 30 : theme === "modern" ? 26 : 24));
+  doc.setTextColor(...ink);
+  if (centeredTitle)
+    doc.text(docTitle, w / 2, titleY, { align: "center" });
   else
-    doc.setTextColor(...ink);
-  doc.text(docTitle, margin, titleY);
-  if (custom.colorMode === "gradient" && theme !== "bold") {
-    fillBand(margin, titleY + 9 - 1.25, 46, 2.5, [r, g, b]);
+    doc.text(docTitle, margin, titleY);
+  const titleDate = document2.issueDate ? formatDocumentDate(document2.issueDate, custom.dateFormat, lang).toUpperCase() : "";
+  const dateY = titleY + 17;
+  if (titleDate) {
+    doc.setFont(font, "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...dimInk);
+    if (centeredTitle)
+      doc.text(titleDate, w / 2, dateY, { align: "center", charSpace: 1 });
+    else
+      doc.text(titleDate, margin, dateY, { charSpace: 1 });
+  }
+  const ruleY = (titleDate ? dateY : titleY) + 11;
+  if (custom.colorMode === "gradient") {
+    fillBand(centeredTitle ? w / 2 - 24 : margin, ruleY - 1.25, 48, 2.5, [r, g, b]);
   } else {
     doc.setLineWidth(2.5);
-    if (theme === "bold")
-      doc.setDrawColor(255, 255, 255);
+    doc.setDrawColor(r, g, b);
+    if (centeredTitle)
+      doc.line(w / 2 - 24, ruleY, w / 2 + 24, ruleY);
     else
-      doc.setDrawColor(r, g, b);
-    doc.line(margin, titleY + 9, margin + 46, titleY + 9);
+      doc.line(margin, ruleY, margin + 48, ruleY);
   }
-  doc.setFont(font, "normal");
-  doc.setFontSize(F(8));
-  if (theme === "bold")
-    doc.setTextColor(255, 255, 255);
-  else
-    doc.setTextColor(...dimInk);
-  if (docNumber)
-    doc.text(docNumber, w - margin, titleY, { align: "right" });
-  const infoY = titleY + 24;
+  const infoY = ruleY + 25;
   const clientPad = theme === "modern" ? 12 : 0;
-  if (theme === "modern") {
-    doc.setFillColor(241, 244, 243);
-    doc.roundedRect(margin, infoY - 12, w - margin * 2, 68, 6, 6, "F");
-  }
   const clientX = margin + clientPad;
   const rightX = w - margin - clientPad;
-  doc.setTextColor(...ink);
-  doc.setFont(font, "bold");
-  doc.setFontSize(F(9));
-  doc.text(`${labels.billTo}: ${document2.clientName}`, clientX, infoY);
-  doc.setFont(font, "normal");
-  doc.setFontSize(F(8));
-  doc.setTextColor(...dimInk);
   const clientSub = [document2.jobType, document2.jobAddress, document2.shippingAddress].filter((s) => s && s.trim()).join("  \xB7  ");
   const clientLines = clientSub ? doc.splitTextToSize(clientSub, (w - margin * 2) * 0.58).slice(0, 3) : [];
-  if (clientLines.length)
-    doc.text(clientLines, clientX, infoY + 13);
-  let ry = infoY;
-  doc.setFont(font, "bold");
-  doc.setFontSize(F(8));
-  doc.setTextColor(...ink);
-  if (docNumber) {
-    doc.text(`${labels.number}: ${docNumber}`, rightX, ry, { align: "right" });
-    ry += metaStep;
-  }
-  if (document2.issueDate) {
-    doc.setFont(font, "normal");
-    doc.text(`${labels.date}: ${formatDocumentDate(document2.issueDate, custom.dateFormat, lang)}`, rightX, ry, {
-      align: "right"
-    });
-    ry += metaStep;
-  }
   const metaDueDate = kind === "invoice" ? document2.dueDate : document2.expiryDate;
-  if (custom.showDueDate && metaDueDate) {
+  const metaTexts = [];
+  if (docNumber)
+    metaTexts.push({ text: `${labels.number}: ${docNumber}`, strong: true });
+  if (document2.issueDate)
+    metaTexts.push({ text: `${labels.date}: ${formatDocumentDate(document2.issueDate, custom.dateFormat, lang)}` });
+  if (custom.showDueDate && metaDueDate)
+    metaTexts.push({ text: `${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}` });
+  const clientBlockH = 27 + clientLines.length * 10 * FONT_SCALE;
+  const rightBlockH = metaTexts.length ? (metaTexts.length - 1) * metaStep + 4 : 0;
+  if (theme === "modern") {
+    doc.setFillColor(241, 244, 243);
+    doc.roundedRect(margin, infoY - 12, w - margin * 2, Math.max(clientBlockH, rightBlockH) + 24, 6, 6, "F");
+  }
+  doc.setFont(font, "bold");
+  doc.setFontSize(F(7.5));
+  doc.setTextColor(...dimInk);
+  doc.text(labels.billTo, clientX, infoY);
+  doc.setFont(font, "bold");
+  doc.setFontSize(F(11));
+  doc.setTextColor(...ink);
+  doc.text(document2.clientName || "\u2014", clientX, infoY + 14);
+  if (clientLines.length) {
     doc.setFont(font, "normal");
-    doc.text(`${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}`, rightX, ry, {
-      align: "right"
-    });
+    doc.setFontSize(F(8));
+    doc.setTextColor(...dimInk);
+    doc.text(clientLines, clientX, infoY + 27);
+  }
+  let ry = infoY;
+  for (const row of metaTexts) {
+    doc.setFont(font, row.strong ? "bold" : "normal");
+    doc.setFontSize(F(8.5));
+    doc.setTextColor(...ink);
+    doc.text(row.text, rightX, ry, { align: "right" });
     ry += metaStep;
   }
-  let y = Math.max(infoY + 13 + clientLines.length * 10 * FONT_SCALE + 14, ry + 10);
+  let y = Math.max(infoY + clientBlockH + 10, ry + 6);
   const PAGE_BOTTOM = 648;
   const FRESH_ITEMS_Y = 66;
   const drawTableHeaderRow = () => {
@@ -56031,6 +56101,12 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
         doc.setTextColor(255, 255, 255);
       else
         doc.setTextColor(...ink);
+    }
+    if (theme === "minimal") {
+      doc.setDrawColor(...ink);
+      doc.setLineWidth(1.4);
+      doc.line(margin, y + 7, w - margin, y + 7);
+      doc.setTextColor(...ink);
     }
     doc.setFont(font, "bold");
     doc.setFontSize(F(9));
@@ -56131,6 +56207,12 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   y += 6;
   const totals = financialTotals(document2.lineItems, document2.discountType, document2.discountValue, document2.taxType, document2.taxValue);
+  const depType = document2.depositType === "percent" || document2.depositType === "fixed" ? document2.depositType : "none";
+  const depVal = Number(document2.depositValue ?? "0");
+  const depTotalNum = money(kind === "invoice" ? String(document2.totalWithLateFee ?? document2.total) : String(totals.total));
+  const depAmount = depType === "percent" && depVal > 0 ? depTotalNum * depVal / 100 : depType === "fixed" && depVal > 0 ? depVal : 0;
+  const depDetail = depType === "percent" && depVal > 0 ? ` (${depVal}%)` : "";
+  const depInPanel = custom.showSummaryInfo && depAmount > 0;
   if (custom.showSummaryInfo) {
     const panelW = 262;
     const panelX = w - margin - panelW;
@@ -56154,7 +56236,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     if (lateFee > 0)
       rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
     const totalRowH = custom.showAmount ? 24 : 0;
-    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + 8;
+    const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + (depInPanel ? 35 : 0) + 8;
     ensureSpace(panelH + 6);
     doc.setFillColor(249, 251, 250);
     doc.setDrawColor(219, 223, 221);
@@ -56175,20 +56257,18 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       doc.line(panelX + 12, by - 9, panelX + panelW - 12, by - 9);
       by += 6;
     }
-    if (custom.showAmount && theme === "classic") {
-      fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
+    if (custom.showAmount) {
+      if (theme === "minimal")
+        fillBand(panelX, by - 12, panelW, 22, [24, 32, 30]);
+      else if (theme === "classic")
+        fillBand(panelX + 6, by - 12, 250, 22, [23, 26, 28]);
+      else
+        fillBand(panelX + 6, by - 12, 250, 22, [r, g, b]);
       doc.setTextColor(255, 255, 255);
       doc.setFont(font, "bold");
       doc.setFontSize(F(13));
-      doc.text(`${totalLabel}:`, panelX + 16, by + 3);
-      doc.text(totalValue, panelX + panelW - 14, by + 3, { align: "right" });
-      by += 24;
-    } else if (custom.showAmount) {
-      doc.setFont(font, "bold");
-      doc.setFontSize(F(12.5));
-      doc.setTextColor(r, g, b);
-      doc.text(`${totalLabel}:`, panelX + 12, by + 3);
-      doc.text(totalValue, panelX + panelW - 12, by + 3, { align: "right" });
+      doc.text(`${totalLabel}:`, theme === "minimal" ? panelX + 10 : panelX + 16, by + 3);
+      doc.text(totalValue, theme === "minimal" ? panelX + panelW - 10 : panelX + panelW - 14, by + 3, { align: "right" });
       by += 24;
     }
     if (showBalance) {
@@ -56202,71 +56282,128 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       doc.text(usd(balanceDue), panelX + panelW - 12, by + 4, { align: "right" });
       by += 19;
     }
+    if (depInPanel) {
+      doc.setDrawColor(224, 227, 226);
+      doc.setLineWidth(0.5);
+      doc.line(panelX + 12, by + 1, panelX + panelW - 12, by + 1);
+      by += 14;
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(r, g, b);
+      doc.text(`${lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}${depDetail}:`, panelX + 12, by);
+      doc.text(usd(depAmount), panelX + panelW - 12, by, { align: "right" });
+      by += 14;
+      doc.setFont(font, "normal");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(...ink);
+      doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}:`, panelX + 12, by);
+      doc.text(usd(Math.max(0, depTotalNum - depAmount)), panelX + panelW - 12, by, { align: "right" });
+      by += 6;
+    }
     y += panelH;
   }
   const optionItems = kind === "quote" ? document2.lineItems.filter((item) => item.optional) : [];
-  if (optionItems.length) {
-    const optionsSum = lineItemsTotal(optionItems);
-    y += 16;
-    ensureSpace(46);
-    doc.setFont(font, "bold");
-    doc.setFontSize(F(10.5));
-    doc.setTextColor(r, g, b);
-    doc.text(lang === "es" ? "OPCIONES" : "OPTIONS", margin, y);
-    y += 12 * FONT_SCALE;
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(8));
-    doc.setTextColor(...dimInk);
-    const optionsNote = lang === "es" ? "Complementos opcionales \u2014 no est\xE1n incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons \u2014 not included in the estimate total unless selected.";
-    const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2);
-    doc.text(optionsNoteLines, margin, y);
-    y += optionsNoteLines.length * noteStep + 6;
-    doc.setTextColor(...ink);
-    for (const item of optionItems) {
-      const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
-      const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
-      doc.setFontSize(F(9));
-      const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
-      const rowH = Math.max(20, richLines.length * descStep + 6);
-      ensureSpace(rowH);
-      doc.setTextColor(...ink);
-      doc.setFontSize(F(9));
-      richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
-      if (custom.showAmount) {
-        doc.setFont(font, "normal");
-        doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+  const acceptedSnap = kind === "quote" ? document2.optionSelection?.accepted ?? null : null;
+  if (optionItems.length || acceptedSnap) {
+    const acceptedKeys = new Set((acceptedSnap?.items ?? []).map((item) => item.key));
+    const remainingOptions = optionItems.filter((item) => !acceptedKeys.has(item.id ?? ""));
+    const drawOptionsBand = (text) => {
+      ensureSpace(48);
+      if (theme === "classic") {
+        fillBand(margin, y - 13, w - margin * 2, 20, [23, 26, 28]);
+        doc.setTextColor(255, 255, 255);
+      } else if (theme === "bold") {
+        fillBand(margin, y - 13, w - margin * 2, 20, [r, g, b]);
+        doc.setTextColor(255, 255, 255);
+      } else if (theme === "modern") {
+        doc.setFillColor(238, 241, 240);
+        doc.rect(margin, y - 13, w - margin * 2, 20, "F");
+        doc.setTextColor(...ink);
+      } else {
+        doc.setDrawColor(...ink);
+        doc.setLineWidth(1.4);
+        doc.line(margin, y + 7, w - margin, y + 7);
+        doc.setTextColor(...ink);
       }
-      doc.setDrawColor(224, 227, 226);
-      doc.setLineWidth(0.5);
-      doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
-      y += rowH;
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10.5));
+      doc.text(text, margin + 8, y);
+      doc.setTextColor(...ink);
+      y += 24;
+    };
+    const drawOptionRows = (items) => {
+      for (const item of items) {
+        const itemLabel = [item.name, item.description].filter(Boolean).join(" \u2014 ");
+        const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
+        doc.setFontSize(F(9));
+        const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
+        const rowH = Math.max(20, richLines.length * descStep + 6);
+        ensureSpace(rowH);
+        doc.setTextColor(...ink);
+        doc.setFontSize(F(9));
+        richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+        if (custom.showAmount) {
+          doc.setFont(font, "normal");
+          doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
+        }
+        doc.setDrawColor(224, 227, 226);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y + rowH - 7, w - margin, y + rowH - 7);
+        y += rowH;
+      }
+    };
+    const drawOptionsSubtotal = (label, value) => {
+      ensureSpace(30);
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(9.5));
+      doc.setTextColor(...ink);
+      doc.text(`${label}:`, margin + 8, y + 4);
+      doc.text(usd(value), w - margin - 8, y + 4, { align: "right" });
+      y += 15 * FONT_SCALE;
+    };
+    y += 16;
+    if (acceptedSnap) {
+      drawOptionsBand(lang === "es" ? "OPCIONES ACEPTADAS" : "ACCEPTED OPTIONS");
+      drawOptionRows(acceptedSnap.items);
+      drawOptionsSubtotal(lang === "es" ? "Total de opciones" : "Options total", money(acceptedSnap.optionsTotal));
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10));
+      doc.setTextColor(r, g, b);
+      doc.text(`${lang === "es" ? "Total con opciones aceptadas" : "Total with accepted options"}: ${usd(money(acceptedSnap.totalWithOptions))}`, margin + 8, y + 4);
+      doc.setTextColor(...ink);
+      y += 16;
     }
-    ensureSpace(30);
-    doc.setFont(font, "bold");
-    doc.setFontSize(F(9.5));
-    doc.setTextColor(...ink);
-    doc.text(`${lang === "es" ? "Total de opciones" : "Options total"}:`, margin + 8, y + 4);
-    doc.text(usd(optionsSum), w - margin - 8, y + 4, { align: "right" });
-    y += 15 * FONT_SCALE;
-    doc.setFont(font, "normal");
-    doc.setFontSize(F(8.5));
-    doc.setTextColor(...dimInk);
-    doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
-    y += 8;
+    if (remainingOptions.length) {
+      if (acceptedSnap)
+        y += 8;
+      drawOptionsBand(lang === "es" ? "OPCIONES" : "OPTIONS");
+      doc.setFont(font, "normal");
+      doc.setFontSize(F(8));
+      doc.setTextColor(...dimInk);
+      const optionsNote = lang === "es" ? "Complementos opcionales \u2014 no est\xE1n incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons \u2014 not included in the estimate total unless selected.";
+      const optionsNoteLines = doc.splitTextToSize(optionsNote, w - margin * 2);
+      doc.text(optionsNoteLines, margin + 8, y);
+      y += optionsNoteLines.length * noteStep + 6;
+      doc.setTextColor(...ink);
+      drawOptionRows(remainingOptions);
+      const optionsSum = lineItemsTotal(remainingOptions);
+      drawOptionsSubtotal(acceptedSnap ? lang === "es" ? "Total de opciones disponibles" : "Available options total" : lang === "es" ? "Total de opciones" : "Options total", optionsSum);
+      if (!acceptedSnap) {
+        doc.setFont(font, "normal");
+        doc.setFontSize(F(8.5));
+        doc.setTextColor(...dimInk);
+        doc.text(`${lang === "es" ? "Total con todas las opciones" : "Total with all options selected"}: ${usd(totals.total + optionsSum)}`, margin + 8, y + 4);
+        y += 8;
+      }
+    }
   }
-  const depType = document2.depositType === "percent" || document2.depositType === "fixed" ? document2.depositType : "none";
-  const depVal = Number(document2.depositValue ?? "0");
-  if (depType !== "none" && depVal > 0) {
-    const totalNum = money(kind === "invoice" ? String(document2.totalWithLateFee ?? document2.total) : String(totals.total));
-    const depAmount = depType === "percent" ? totalNum * depVal / 100 : depVal;
-    const depLabel = lang === "es" ? "Anticipo requerido" : "Deposit due";
-    const depDetail = depType === "percent" ? ` (${depVal}%)` : "";
+  if (depAmount > 0 && !depInPanel) {
     y += 16 * FONT_SCALE;
     doc.setFont(font, "normal");
     doc.setFontSize(F(10));
     doc.setTextColor(...dimInk);
-    doc.text(`${depLabel}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
-    const balance = Math.max(0, totalNum - depAmount);
+    doc.text(`${lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}${depDetail}: ${usd(depAmount)}`, w - margin, y, { align: "right" });
+    const balance = Math.max(0, depTotalNum - depAmount);
     y += 14 * FONT_SCALE;
     doc.setFont(font, "bold");
     doc.setFontSize(F(10));
@@ -56397,6 +56534,386 @@ async function buildQuotePdf(quote, settings, lang, strings) {
 }
 async function buildInvoicePdf(invoice, settings, lang, strings) {
   return buildFinancialPdf(invoice, settings, lang, "invoice", strings);
+}
+function changeOrderStrings(lang) {
+  return lang === "es" ? {
+    title: (n) => `Orden de cambio #${n}`,
+    date: "Fecha",
+    client: "Cliente",
+    job: "Trabajo",
+    address: "Direcci\xF3n",
+    reference: "Referencia",
+    referenceText: (ref) => `Esta orden de cambio modifica el contrato original de este trabajo${ref ? `: "${ref}"` : ""}. Forma parte de ese contrato y se rige por sus t\xE9rminos.`,
+    scope: "ALCANCE DEL CAMBIO",
+    price: "PRECIO",
+    sumBefore: "Suma del contrato antes de esta orden de cambio",
+    thisChange: "Monto de esta orden de cambio",
+    newSum: "Nueva suma del contrato",
+    schedule: "PLAZO",
+    scheduleText: "Sin cambio al plazo del contrato. Esta orden de cambio no modifica la fecha de terminaci\xF3n del contrato original.",
+    payment: "PAGO",
+    paymentText: "El monto de esta orden de cambio vence seg\xFAn los t\xE9rminos de pago del contrato original.",
+    terms: "T\xC9RMINOS",
+    termsText: "Todos los dem\xE1s t\xE9rminos y condiciones del contrato original permanecen sin cambios y en pleno vigor.",
+    contractor: "Contratista",
+    clientSignature: "Firma del cliente",
+    contractorSignature: "Firma del contratista",
+    signature: "Firma",
+    printedName: "Nombre",
+    signedDate: "Fecha",
+    onBehalfOf: (company) => `en nombre de ${company}`,
+    page: "P\xE1gina",
+    of: "de"
+  } : {
+    title: (n) => `Change Order #${n}`,
+    date: "Date",
+    client: "Client",
+    job: "Job",
+    address: "Address",
+    reference: "Reference",
+    referenceText: (ref) => `This change order modifies the original contract for this job${ref ? `: "${ref}"` : ""}. It is part of that contract and is governed by its terms.`,
+    scope: "SCOPE OF CHANGE",
+    price: "PRICE",
+    sumBefore: "Contract sum before this change order",
+    thisChange: "Amount of this change order",
+    newSum: "New contract sum",
+    schedule: "SCHEDULE",
+    scheduleText: "No change to the contract time. This change order does not change the completion date under the original contract.",
+    payment: "PAYMENT",
+    paymentText: "The amount of this change order is due in accordance with the payment terms of the original contract.",
+    terms: "TERMS",
+    termsText: "All other terms and conditions of the original contract remain unchanged and in full effect.",
+    contractor: "Contractor",
+    clientSignature: "Client signature",
+    contractorSignature: "Contractor signature",
+    signature: "Signature",
+    printedName: "Printed name",
+    signedDate: "Date",
+    onBehalfOf: (company) => `on behalf of ${company}`,
+    page: "Page",
+    of: "of"
+  };
+}
+function coDateLabel(iso, lang) {
+  if (!iso)
+    return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()))
+    return String(iso).slice(0, 10);
+  return new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+async function buildChangeOrderPdf(data, settings, lang) {
+  const s = changeOrderStrings(lang);
+  const doc = new E2({ unit: "pt", format: "letter" });
+  const w = 612;
+  const h = 792;
+  const margin = 54;
+  const contentW = w - margin * 2;
+  const ink = [24, 32, 30];
+  const dim = [96, 106, 103];
+  const faint = [120, 128, 125];
+  const accent = hexRgb(settings?.accentColor || "#1f5a4a");
+  const companyName = settings?.companyName || "";
+  let y = 0;
+  const ensure = (need) => {
+    if (y + need <= h - 64)
+      return;
+    doc.addPage();
+    y = 54;
+  };
+  const wrapped = (text, size, fontStyle = "normal") => {
+    doc.setFont("helvetica", fontStyle);
+    doc.setFontSize(size);
+    return doc.splitTextToSize(text, contentW);
+  };
+  const paragraph = (text, size = 10.5, gap = 14, color = ink) => {
+    if (!text.trim())
+      return;
+    const lines = wrapped(text, size);
+    ensure(lines.length * (size + 3.5) + gap);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.text(lines, margin, y);
+    y += lines.length * (size + 3.5) + gap;
+  };
+  const sectionHead = (label) => {
+    ensure(30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...accent);
+    doc.text(label, margin, y);
+    y += 5;
+    doc.setDrawColor(...accent);
+    doc.setLineWidth(1);
+    doc.line(margin, y, margin + 34, y);
+    y += 15;
+  };
+  const headerH = 66;
+  doc.setFillColor(23, 26, 28);
+  doc.rect(0, 0, w, headerH, "F");
+  if (data.logoDataUrl) {
+    try {
+      const props = doc.getImageProperties(data.logoDataUrl);
+      const boxW = 58;
+      const boxH = 40;
+      let drawW = boxW;
+      let drawH = boxH;
+      if (props.width > 0 && props.height > 0) {
+        const scale = Math.min(boxW / props.width, boxH / props.height);
+        drawW = props.width * scale;
+        drawH = props.height * scale;
+      }
+      doc.addImage(data.logoDataUrl, data.logoDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG", margin, (headerH - drawH) / 2, drawW, drawH, undefined, "FAST");
+    } catch {}
+  }
+  const stack = [];
+  if (companyName)
+    stack.push({ text: companyName, name: true });
+  const bits = [settings?.phone, settings?.licenseNumber, settings?.website].filter(Boolean);
+  if (bits.length)
+    stack.push({ text: bits.join("  \xB7  ") });
+  if (settings?.address)
+    stack.push({ text: settings.address });
+  if (settings?.email)
+    stack.push({ text: settings.email });
+  let stackY = headerH / 2 - (stack.length - 1) * 11 / 2 + 3;
+  for (const line of stack) {
+    doc.setFont("helvetica", line.name ? "bold" : "normal");
+    doc.setFontSize(line.name ? 11.5 : 7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(line.text, w - margin, stackY, { align: "right" });
+    stackY += 11;
+  }
+  y = headerH + 40;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(21);
+  doc.setTextColor(...ink);
+  doc.text(s.title(data.coNumber), w / 2, y, { align: "center" });
+  y += 19;
+  const dateText = coDateLabel(data.dateIso ? `${data.dateIso}T12:00:00` : null, lang);
+  if (dateText) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...dim);
+    doc.text(`${s.date}: ${dateText}`, w / 2, y, { align: "center" });
+    y += 10;
+  }
+  y += 16;
+  const meta = [];
+  if (companyName.trim())
+    meta.push([s.contractor, companyName]);
+  if (data.clientName.trim())
+    meta.push([s.client, data.clientName]);
+  if (data.jobType.trim())
+    meta.push([s.job, data.jobType]);
+  if (data.jobAddress.trim())
+    meta.push([s.address, data.jobAddress]);
+  for (const [label, value] of meta) {
+    ensure(16);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...dim);
+    doc.text(`${label}:`, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...ink);
+    const lines = doc.splitTextToSize(value, contentW - 92);
+    doc.text(lines, margin + 92, y);
+    y += Math.max(1, lines.length) * 13 + 3;
+  }
+  y += 4;
+  paragraph(`${s.reference}: ${s.referenceText(data.referenceContract)}`, 10, 16, dim);
+  sectionHead(s.scope);
+  paragraph(data.scope, 10.5, 8);
+  if (data.bodyText.trim() && data.bodyText.trim() !== data.scope.trim()) {
+    paragraph(data.bodyText, 10.5, 14);
+  } else {
+    y += 6;
+  }
+  sectionHead(s.price);
+  const priceRow = (label, value, bold = false, band = false) => {
+    ensure(24);
+    if (band) {
+      doc.setFillColor(23, 26, 28);
+      doc.rect(margin, y - 13, contentW, 24, "F");
+    }
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(bold ? 11.5 : 10.5);
+    if (band)
+      doc.setTextColor(255, 255, 255);
+    else
+      doc.setTextColor(...ink);
+    doc.text(label, margin + (band ? 8 : 0), y);
+    doc.text(value, w - margin - (band ? 8 : 0), y, { align: "right" });
+    y += 24;
+  };
+  priceRow(s.sumBefore, usd(money(data.contractSumBefore)));
+  priceRow(s.thisChange, usd(money(data.amount)));
+  priceRow(s.newSum, usd(money(data.newContractSum)), true, true);
+  y += 4;
+  sectionHead(s.schedule);
+  paragraph(s.scheduleText, 10.5, 14);
+  sectionHead(s.payment);
+  paragraph(s.paymentText, 10.5, 14);
+  sectionHead(s.terms);
+  paragraph(s.termsText, 10.5, 18);
+  ensure(120);
+  y += 6;
+  const colW = (contentW - 28) / 2;
+  const block = (x, heading, signatureDataUrl, printedName, behalfLine, signedAtIso) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...dim);
+    doc.text(heading.toUpperCase(), x, y);
+    const sigTop = y + 8;
+    if (signatureDataUrl) {
+      try {
+        doc.addImage(signatureDataUrl, "PNG", x, sigTop, 150, 38, undefined, "FAST");
+      } catch {}
+    }
+    const ruleY = sigTop + 46;
+    doc.setDrawColor(150, 158, 155);
+    doc.setLineWidth(0.75);
+    doc.line(x, ruleY, x + colW, ruleY);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...faint);
+    doc.text(s.signature, x, ruleY + 11);
+    doc.setFontSize(10);
+    doc.setTextColor(...ink);
+    let lineY = ruleY + 27;
+    if (printedName) {
+      doc.text(`${s.printedName}: ${printedName}`, x, lineY);
+      lineY += 13;
+    }
+    if (behalfLine) {
+      doc.setFontSize(9);
+      doc.setTextColor(...dim);
+      const behalfLines = doc.splitTextToSize(behalfLine, colW);
+      doc.text(behalfLines, x, lineY);
+      lineY += behalfLines.length * 11;
+      doc.setFontSize(10);
+      doc.setTextColor(...ink);
+    }
+    const dateLabel = coDateLabel(signedAtIso, lang);
+    if (dateLabel)
+      doc.text(`${s.signedDate}: ${dateLabel}`, x, lineY);
+  };
+  block(margin, s.contractorSignature, data.contractorSignatureDataUrl, data.contractorSignerName, companyName ? s.onBehalfOf(companyName) : "", data.contractorSignedAtIso);
+  block(margin + colW + 28, s.clientSignature, data.clientSignatureDataUrl, data.clientSignerName, "", data.clientSignedAtIso);
+  y += 140;
+  const pageCount = doc.getNumberOfPages();
+  const footerParts = [settings?.licenseNumber, settings?.phone, settings?.email, settings?.website].filter(Boolean);
+  while (footerParts.length > 1 && doc.getTextWidth(footerParts.join(" \xB7 ")) > 425)
+    footerParts.pop();
+  for (let page = 1;page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setDrawColor(224, 227, 226);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 758, w - margin, 758);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(...faint);
+    if (footerParts.length)
+      doc.text(footerParts.join(" \xB7 "), margin, 770);
+    doc.text(`${s.page} ${page} ${s.of} ${pageCount}`, w - margin, 770, { align: "right" });
+  }
+  return doc.output("blob");
+}
+
+// src/changeOrders.ts
+function parseMoneyLoose(value) {
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function moneyString(value) {
+  return (Math.round(value * 100) / 100).toFixed(2);
+}
+async function jobDocumentsOrdered(db, jobId) {
+  return db.select().from(documents).where(eq(documents.jobId, jobId)).orderBy(asc(documents.createdAt), asc(documents.id));
+}
+function changeOrderNumbers(docs) {
+  const out = new Map;
+  docs.filter((d) => d.kind === "change_order").forEach((d, i) => out.set(d.id, i + 1));
+  return out;
+}
+function originalContractAmount(job, docs) {
+  const explicit = parseMoneyLoose(job.contractSum);
+  if (explicit > 0)
+    return explicit;
+  for (const doc of docs) {
+    if (doc.kind !== "contract")
+      continue;
+    const amount = parseMoneyLoose(doc.amount);
+    if (amount > 0)
+      return amount;
+  }
+  const due = parseMoneyLoose(job.amountDue);
+  return due > 0 ? due : 0;
+}
+function referenceContractTitle(docs) {
+  const contract = docs.find((d) => d.kind === "contract");
+  return contract?.title ?? "";
+}
+function changeOrderChain(job, docs) {
+  const base = originalContractAmount(job, docs);
+  const numbers = changeOrderNumbers(docs);
+  const out = new Map;
+  let running = base;
+  for (const doc of docs) {
+    if (doc.kind !== "change_order")
+      continue;
+    const amount = parseMoneyLoose(doc.amount);
+    const before = running;
+    const after = before + amount;
+    const signed = !!doc.clientSignedAt;
+    out.set(doc.id, {
+      number: numbers.get(doc.id) ?? 0,
+      baseAmount: moneyString(base),
+      contractSumBefore: moneyString(before),
+      amount: moneyString(amount),
+      newContractSum: moneyString(after),
+      signed
+    });
+    if (signed)
+      running = after;
+  }
+  return out;
+}
+function contractSummaryForJob(job, docs) {
+  const base = originalContractAmount(job, docs);
+  let signedTotal = 0;
+  let pendingTotal = 0;
+  for (const doc of docs) {
+    if (doc.kind !== "change_order")
+      continue;
+    if (doc.clientSignedAt)
+      signedTotal += parseMoneyLoose(doc.amount);
+    else
+      pendingTotal += parseMoneyLoose(doc.amount);
+  }
+  return {
+    baseAmount: moneyString(base),
+    contractSum: parseMoneyLoose(job.contractSum) > 0 ? moneyString(parseMoneyLoose(job.contractSum)) : "",
+    signedChangeOrdersTotal: moneyString(signedTotal),
+    revisedTotal: moneyString(base + signedTotal),
+    pendingChangeOrdersTotal: moneyString(pendingTotal)
+  };
+}
+function changeOrderScopeLabel(doc) {
+  const line = (doc.description || "").split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0);
+  if (!line)
+    return "";
+  return line.length > 72 ? `${line.slice(0, 69).trimEnd()}\u2026` : line;
+}
+function changeOrderDisplayTitle(doc, number, lang = "en") {
+  const base = lang === "es" ? `Orden de cambio #${number}` : `Change Order #${number}`;
+  const scope = changeOrderScopeLabel(doc);
+  return scope ? `${base} \u2014 ${scope}` : base;
 }
 
 // ../node_modules/tslib/modules/index.js
@@ -71408,20 +71925,33 @@ function fitInCell(imgW, imgH, cellW, cellH) {
   const scale = Math.min(cellW / imgW, cellH / imgH, 1);
   return { w: imgW * scale, h: imgH * scale };
 }
-async function appendAttachmentsToPdf(mainPdfBytes, attachments, imagesPerPage) {
+async function appendAttachmentsToPdf(mainPdfBytes, attachments, imagesPerPage, options) {
   const images = attachments.filter((a) => a.kind === "image" && (a.contentType === "image/jpeg" || a.contentType === "image/png"));
   const pdfs = attachments.filter((a) => a.kind === "pdf");
   if (images.length === 0 && pdfs.length === 0)
     return mainPdfBytes;
   const out = await PDFDocument_default.load(mainPdfBytes, { ignoreEncryption: true });
+  const headerH = 46;
+  const areaTop = PAGE_H - headerH - 18;
+  const headerFont = images.length ? await out.embedFont(StandardFonts.HelveticaBold) : null;
   const perPage = imagesPerPage === 2 ? 2 : imagesPerPage === 4 ? 4 : 1;
   const cols = perPage === 4 ? 2 : 1;
   const rows = perPage === 4 ? 2 : perPage;
   for (let i = 0;i < images.length; i += perPage) {
     const group = images.slice(i, i + perPage);
     const page = out.addPage([PAGE_W, PAGE_H]);
+    if (headerFont) {
+      page.drawRectangle({ x: 0, y: PAGE_H - headerH, width: PAGE_W, height: headerH, color: rgb2(0.09, 0.102, 0.11) });
+      page.drawText(options?.lang === "es" ? "Fotos del proyecto" : "Project photos", {
+        x: MARGIN,
+        y: PAGE_H - 30,
+        size: 13,
+        font: headerFont,
+        color: rgb2(1, 1, 1)
+      });
+    }
     const cellW0 = (PAGE_W - MARGIN * 2 - (cols - 1) * 12) / cols;
-    const cellH0 = (PAGE_H - MARGIN * 2 - (rows - 1) * 12) / rows;
+    const cellH0 = (areaTop - MARGIN - (rows - 1) * 12) / rows;
     const cellW = perPage === 1 ? Math.min(cellW0, 468) : cellW0;
     const cellH = perPage === 1 ? Math.min(cellH0, 528) : cellH0;
     for (let g = 0;g < group.length; g++) {
@@ -71436,7 +71966,7 @@ async function appendAttachmentsToPdf(mainPdfBytes, attachments, imagesPerPage) 
       const col = g % cols;
       const row = Math.floor(g / cols);
       const x = MARGIN + col * (cellW0 + 12) + (cellW0 - cellW) / 2 + (cellW - w) / 2;
-      const topY = PAGE_H - MARGIN - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
+      const topY = areaTop - row * (cellH0 + 12) - (cellH0 - cellH) / 2;
       const y = topY - cellH + (cellH - h) / 2;
       page.drawImage(embedded, { x, y, width: w, height: h });
     }
@@ -71497,8 +72027,10 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
       quantity: li.quantity ?? 1,
       discount: li.discount ?? "0",
       unit: li.unit === "days" || li.unit === "hours" ? li.unit : "none",
-      optional: li.optional === true
+      optional: li.optional === true,
+      id: li.id
     })),
+    optionSelection: payload.acceptedOptions ? { selectedKeys: payload.selectedOptionKeys ?? [], accepted: payload.acceptedOptions } : undefined,
     invoiceNumber: payload.invoiceNumber || undefined,
     subtotal: payload.subtotal,
     discountType: payload.discountType === "fixed" ? "fixed" : "percent",
@@ -71562,11 +72094,75 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
           } catch {}
         }
         const perPage = docRow.imagesPerPage === 2 ? 2 : docRow.imagesPerPage === 4 ? 4 : 1;
-        const merged = await appendAttachmentsToPdf(bytes, atts, perPage);
+        const merged = await appendAttachmentsToPdf(bytes, atts, perPage, { lang });
         return { bytes: merged, filename };
       }
     }
   } catch {}
+  return { bytes, filename };
+}
+async function buildChangeOrderPdfForDocument(ctx, documentId, lang) {
+  const db = ctx.db();
+  const doc = (await db.select().from(documents).where(eq(documents.id, documentId)).limit(1))[0];
+  if (!doc || doc.kind !== "change_order")
+    throw new Error("Change order not found.");
+  const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
+  if (!job)
+    throw new Error("Job not found.");
+  const settings2 = (await db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1))[0] ?? (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
+  const docs = await jobDocumentsOrdered(db, job.id);
+  const math = changeOrderChain(job, docs).get(doc.id);
+  if (!math)
+    throw new Error("Change order not found.");
+  const imageDataUrl = async (key) => {
+    if (!key)
+      return null;
+    try {
+      const bytes = await ctx.blobs.get(key);
+      if (!bytes || bytes.length === 0)
+        return null;
+      const head = await ctx.blobs.head(key).catch(() => null);
+      return `data:${head?.contentType || "image/png"};base64,${Buffer.from(bytes).toString("base64")}`;
+    } catch {
+      return null;
+    }
+  };
+  const data = {
+    coNumber: math.number,
+    dateIso: doc.createdAt.toISOString().slice(0, 10),
+    clientName: job.clientName,
+    jobType: job.jobType,
+    jobAddress: job.jobAddress,
+    referenceContract: referenceContractTitle(docs),
+    scope: doc.description,
+    bodyText: doc.bodyText,
+    contractSumBefore: math.contractSumBefore,
+    amount: math.amount,
+    newContractSum: math.newContractSum,
+    contractorSignerName: doc.signerName,
+    contractorSignatureDataUrl: await imageDataUrl(doc.signatureBlobKey),
+    contractorSignedAtIso: doc.signedAt ? doc.signedAt.toISOString() : null,
+    clientSignerName: doc.clientSignerName,
+    clientSignatureDataUrl: await imageDataUrl(doc.clientSignatureBlobKey),
+    clientSignedAtIso: doc.clientSignedAt ? doc.clientSignedAt.toISOString() : null,
+    logoDataUrl: settings2?.logoBlobKey ? await imageDataUrl(settings2.logoBlobKey) : null
+  };
+  const companySettings = {
+    companyName: settings2?.companyName ?? "",
+    phone: settings2?.phone ?? "",
+    email: settings2?.email ?? "",
+    website: settings2?.website ?? "",
+    address: settings2?.address ?? "",
+    licenseNumber: settings2?.licenseNumber ?? "",
+    logoUrl: null,
+    accentColor: settings2?.accentColor ?? "#1f5a4a"
+  };
+  const blob = await buildChangeOrderPdf(data, companySettings, asPdfLang(lang));
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length < 100 || String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") {
+    throw new Error("The document PDF could not be generated.");
+  }
+  const filename = lang === "es" ? `orden-de-cambio-${math.number}.pdf` : `change-order-${math.number}.pdf`;
   return { bytes, filename };
 }
 
@@ -71699,6 +72295,29 @@ var privileged = definePrivilegedContracts({
         description: string2().nullable()
       }))
     }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  listStripeInvoices: {
+    request: object({ customerId: string2().min(1).max(200), limit: number2().int().min(1).max(25).default(25) }),
+    response: object({
+      configured: boolean2(),
+      invoices: array(object({
+        id: string2(),
+        created: number2().int(),
+        description: string2().nullable(),
+        amountCents: number2().int(),
+        currency: string2(),
+        status: string2(),
+        receiptUrl: string2().nullable()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createBillingPortalSession: {
+    request: object({ customerId: string2().min(1).max(200), returnUrl: string2().url().max(500) }),
+    response: object({ url: string2().nullable(), errorCode: _enum(["portal_not_configured", "stripe_unconfigured"]).nullable() }),
     capabilities: [],
     timeoutMs: 20000
   },
@@ -72556,6 +73175,464 @@ var platformAdminActions = {
   })
 };
 var revenueCache = null;
+
+// src/permissions.ts
+function productRoleOf(stored) {
+  if (stored === "office")
+    return "office";
+  if (stored === "field")
+    return "field";
+  return "admin";
+}
+var ADMIN_ACTIONS = new Set([
+  "listTeamMembers",
+  "createStaffAccount",
+  "updateStaffMember",
+  "createCrewLogin",
+  "resetCrewPin",
+  "setMemberAccess",
+  "addAppUser",
+  "updateAppUser",
+  "deleteAppUser",
+  "getAdminConsole",
+  "updateAdminParameters",
+  "updateSupportReport",
+  "saveCrewPayRate",
+  "updateSettings",
+  "uploadLogo",
+  "uploadCompanyCover",
+  "getBillingOverview",
+  "getSubscription",
+  "createBillingPortalSession",
+  "startPremiumCheckout",
+  "createCreditPackCheckout",
+  "startListingBumpCheckout",
+  "verifyPlaySubscription",
+  "refreshPlaySubscription",
+  "exportBackup",
+  "restoreBackup",
+  "verifyBackupRoundTrip",
+  "getBackupStatus",
+  "runAutomatedBackup",
+  "deleteClient",
+  "deleteLead",
+  "deleteBusinessExpense",
+  "deleteMaterialCost",
+  "deletePriceBookItem",
+  "deleteQuoteTemplate",
+  "deleteSubcontractor",
+  "deleteMileageTrip",
+  "deleteFieldTestRecord",
+  "loadSampleData",
+  "deleteAppointment",
+  "deleteBidBoardItem",
+  "deleteCrewTask",
+  "deleteDocument",
+  "deleteDocumentAttachment",
+  "deleteInvoice",
+  "deleteJobFile",
+  "deleteMarketplaceAlert",
+  "deleteMarketplaceListing",
+  "deletePayment",
+  "deletePhoto",
+  "deletePhotoPair",
+  "deleteProgressUpdate",
+  "deletePunchItem",
+  "deleteQuote",
+  "deleteReceipt",
+  "deleteShareImage",
+  "deleteTimeEntry",
+  "deleteVoiceNote"
+]);
+var OFFICE_ACTIONS = new Set([
+  "acceptQuoteVersion",
+  "addLeadActivity",
+  "addPayment",
+  "cancelRecurringInvoice",
+  "cancelRecurringSchedule",
+  "completeMaintenancePlan",
+  "convertLeadToJob",
+  "createMarketplaceListing",
+  "createPortalLink",
+  "createPurchaseOrder",
+  "createQuoteVersion",
+  "createRecurringSchedule",
+  "generateRecurringInvoice",
+  "getCrewClockStatus",
+  "getCrewDayView",
+  "getDashboard",
+  "getDocumentParameters",
+  "getExpansionSuite",
+  "getFieldIntelligence",
+  "getGrowthToolkit",
+  "getJobOperations",
+  "getLeadActivities",
+  "getListingBumpStatus",
+  "getMarketplaceProProfile",
+  "getOfficeDashboard",
+  "getOfficeSearch",
+  "getQuoteVersions",
+  "getTaxExport",
+  "invoiceMilestone",
+  "listBidBoard",
+  "listLeads",
+  "listMaterialCosts",
+  "listRecurringSchedules",
+  "listShareImages",
+  "listSubcontractors",
+  "markMarketplaceConversationRead",
+  "marketplaceConversation",
+  "marketplaceConversations",
+  "moveBidBoardItem",
+  "prepareLeadQuote",
+  "processRecurringInvoices",
+  "receivePurchaseOrder",
+  "renewCredential",
+  "renewQuote",
+  "reopenJob",
+  "revokePortalLink",
+  "rotatePortalLink",
+  "saveBidBoardItem",
+  "saveBusinessExpense",
+  "saveCredential",
+  "saveDocumentDesignDefault",
+  "saveInternalNote",
+  "saveLead",
+  "saveMaintenancePlan",
+  "saveMaterialCost",
+  "saveMileageTrip",
+  "saveMilestone",
+  "savePriceBookItem",
+  "saveQuoteTemplate",
+  "saveSelection",
+  "saveShareImage",
+  "saveSlideshowVideo",
+  "saveSubcontractor",
+  "saveSupplier",
+  "saveSupplierQuote",
+  "saveWarranty",
+  "sendMarketplaceMessage",
+  "sendQuoteVersion",
+  "sendReviewRequest",
+  "setJobContractSum",
+  "setJobPhotoRequirements",
+  "startMarketplaceConversation",
+  "toggleInternalNote",
+  "toggleInvoicePaid",
+  "unacceptQuote",
+  "unlockMarketplaceContact",
+  "updateAppearance",
+  "updateInvoiceRecurrence",
+  "updateInvoiceStatus",
+  "updateLead",
+  "updateLeadStage",
+  "updateMarketplaceListing",
+  "updateMilestoneStatus",
+  "updatePurchaseOrderStatus",
+  "updateQuoteAutomationStatus",
+  "updateQuoteVersion",
+  "updateSelectionLeadTime",
+  "updateSelectionStatus",
+  "verifyMarketplacePhone"
+]);
+var PLATFORM_ACTIONS = new Set([
+  "adminAbuseCapSet",
+  "adminAbuseDefaultsSet",
+  "adminAbuseOverview",
+  "adminAnalyticsCharts",
+  "adminAnalyticsOverview",
+  "adminAuditLog",
+  "adminAuditLogSearch",
+  "adminAutomodCapSet",
+  "adminBlockUser",
+  "adminBrandLogoUpload",
+  "adminBrandingColorSet",
+  "adminBroadcastHistory",
+  "adminBroadcastSend",
+  "adminCancellationStats",
+  "adminContentHide",
+  "adminContentUnhide",
+  "adminFailedPayments",
+  "adminFeatureFlagSet",
+  "adminFeatureFlags",
+  "adminGrowthMetrics",
+  "adminImpersonateEnd",
+  "adminImpersonateStart",
+  "adminKeywordRuleAdd",
+  "adminKeywordRuleDelete",
+  "adminKeywordRulesList",
+  "adminListingDecision",
+  "adminMaintenanceSet",
+  "adminMarketplaceOverview",
+  "adminModerationQueue",
+  "adminMyTeamRole",
+  "adminPaymentsList",
+  "adminPlansGet",
+  "adminPlansUpdate",
+  "adminPolicyVersionPublish",
+  "adminPolicyVersionsList",
+  "adminPromoCodeCreate",
+  "adminPromoCodeDelete",
+  "adminPromoCodesList",
+  "adminRecentActivity",
+  "adminRefund",
+  "adminRefundPreview",
+  "adminRevenueDashboard",
+  "adminSettingsGet",
+  "adminSettingsSet",
+  "adminSubscriptionsList",
+  "adminSupportNoteAdd",
+  "adminSupportNotesList",
+  "adminSupportTicketAssign",
+  "adminSupportTicketPriority",
+  "adminSupportView",
+  "adminTeamList",
+  "adminTeamRemoveRole",
+  "adminTeamSetRole",
+  "adminTotpDisable",
+  "adminTotpRequiredSet",
+  "adminTotpSetupStart",
+  "adminTotpSetupVerify",
+  "adminTotpStatus",
+  "adminUnblockUser",
+  "adminUserDelete",
+  "adminUserDetail",
+  "adminUserGrantFounder",
+  "adminUserReportDecide",
+  "adminUserReports",
+  "adminUserRevokeFounder",
+  "adminUserRevokeSessions",
+  "adminUserSetTier",
+  "adminUserSuspend",
+  "adminUserUnsuspend",
+  "adminUsersList",
+  "adminVerificationList",
+  "adminVerificationSet",
+  "platformSupportInbox",
+  "platformSupportThread",
+  "updatePlatformSupportReport",
+  "replyToSupportReport"
+]);
+var ALL_ROLE_ACTIONS = new Set([
+  "acceptMarketplaceTerms",
+  "addPhoto",
+  "addPunchItem",
+  "addReceipt",
+  "addVoiceNote",
+  "appendClientAddress",
+  "checkSmsCap",
+  "clockInCrew",
+  "clockOutCrew",
+  "completeEquipmentMaintenance",
+  "completeJob",
+  "convertQuoteToInvoice",
+  "convertQuoteToJob",
+  "craneRunGetChampion",
+  "craneRunGetLeaderboard",
+  "craneRunSetOptIn",
+  "craneRunSubmitScore",
+  "createDocumentLink",
+  "createJob",
+  "createMarketplaceBooking",
+  "createPhotoPair",
+  "deleteMyAccount",
+  "dismissOnboardingChecklist",
+  "duplicateInvoice",
+  "duplicateQuote",
+  "getAutomationCenter",
+  "getClient",
+  "getDocumentLinkInfo",
+  "getDocumentPdf",
+  "getDocumentTimeline",
+  "getFinancialSignature",
+  "getFoundingMemberAvailability",
+  "getJob",
+  "getMarketplaceListing",
+  "getMarketplaceUnlockStatus",
+  "getOnMyWayStatus",
+  "getOnboardingChecklist",
+  "getPlayBillingConfig",
+  "getPortalLinkInfo",
+  "getReferralStats",
+  "getSettings",
+  "getUsageLimits",
+  "getVapidPublicKey",
+  "getWeatherOutlook",
+  "globalSearch",
+  "linkDocumentToJob",
+  "linkInvoiceToJob",
+  "listAppointments",
+  "listClients",
+  "listDocumentAttachments",
+  "listDocuments",
+  "listInvoices",
+  "listJobMessages",
+  "listJobs",
+  "listMarketplaceAlerts",
+  "listMarketplaceBookings",
+  "listMarketplaceListings",
+  "listNotifications",
+  "listPhotoPairs",
+  "listPinnedTools",
+  "listPunchItems",
+  "listQuotes",
+  "logAutomationSend",
+  "markJobMessagesRead",
+  "markNotificationsRead",
+  "marketplaceGate",
+  "marketplaceListingFlag",
+  "pendingCancellationFeedback",
+  "pinTool",
+  "removePushSubscription",
+  "renderPdfPreview",
+  "replyToOwnSupportReport",
+  "requestAccountDeletion",
+  "revokeDocumentLink",
+  "revokeOnMyWay",
+  "saveAppointment",
+  "saveCertificate",
+  "saveClient",
+  "saveCrewTask",
+  "saveDailyLog",
+  "saveDocument",
+  "saveDocumentFillFields",
+  "saveDocumentSignatureFields",
+  "saveEquipment",
+  "saveFinancialSignature",
+  "saveIncident",
+  "saveInvoice",
+  "saveMarketplaceAlert",
+  "saveProgressUpdate",
+  "savePunchSignoff",
+  "savePushSubscription",
+  "saveQuote",
+  "saveQuoteMaterials",
+  "saveSafetyTalk",
+  "saveScannedDocument",
+  "sendJobMessage",
+  "setDocumentImagesPerPage",
+  "setEquipmentCheckout",
+  "setJobClient",
+  "setJobFileShared",
+  "shareOnMyWay",
+  "signDocumentWithDrawnSignature",
+  "startTimer",
+  "stopTimer",
+  "submitCancellationFeedback",
+  "submitPlatformSupportReport",
+  "submitSupportReport",
+  "suggestJobsByLocation",
+  "togglePhotoSocial",
+  "togglePunchItem",
+  "unpinTool",
+  "updateDocument",
+  "updateInvoiceDesign",
+  "updateInvoiceDocument",
+  "updateJob",
+  "updateJobInfo",
+  "updateJobSiteLocation",
+  "updateOnMyWay",
+  "updatePhoto",
+  "updatePhotoPair",
+  "updateProfileName",
+  "updateQuoteDesign",
+  "updateQuoteDocument",
+  "uploadDocumentAttachment",
+  "uploadJobFile",
+  "uploadSupportScreenshot",
+  "userSupportThread",
+  "userSupportThreads"
+]);
+var ROLE_RANK = { field: 0, office: 1, admin: 2 };
+function minRoleForAction(actionName) {
+  if (ADMIN_ACTIONS.has(actionName))
+    return "admin";
+  if (OFFICE_ACTIONS.has(actionName))
+    return "office";
+  return "field";
+}
+function roleCan(role, actionName) {
+  return ROLE_RANK[role] >= ROLE_RANK[minRoleForAction(actionName)];
+}
+function assertRoleCan(role, actionName) {
+  if (!roleCan(role, actionName)) {
+    throw new Error(role === "field" ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through." : "Your Office role doesn't include that \u2014 it's an admin action. Ask your company's admin.");
+  }
+}
+var ACCESS_SWITCHES = [
+  "seeMoney",
+  "seeClientContact",
+  "sendDocuments",
+  "seeAllJobs",
+  "recordPayments"
+];
+var ROLE_ACCESS_PRESETS = {
+  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false }
+};
+function parseAccessOverrides(json) {
+  if (!json)
+    return {};
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
+    const out = {};
+    for (const key of ACCESS_SWITCHES) {
+      const value = parsed[key];
+      if (typeof value === "boolean")
+        out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function serializeAccessOverrides(overrides) {
+  const clean = {};
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      clean[key] = overrides[key];
+  }
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+function effectiveAccess(role, overrides) {
+  const preset = ROLE_ACCESS_PRESETS[role];
+  if (role === "admin")
+    return { ...preset };
+  const out = { ...preset };
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      out[key] = overrides[key];
+  }
+  return out;
+}
+var SEND_DOCUMENT_ACTIONS = new Set([
+  "createDocumentLink",
+  "createPortalLink",
+  "rotatePortalLink",
+  "sendQuoteVersion"
+]);
+var RECORD_PAYMENT_ACTIONS = new Set([
+  "addPayment",
+  "toggleInvoicePaid"
+]);
+var SWITCH_LABELS = {
+  seeMoney: "seeing money totals",
+  seeClientContact: "seeing client contact details",
+  sendDocuments: "sending documents to clients",
+  seeAllJobs: "seeing every company job",
+  recordPayments: "recording payments"
+};
+function assertAccessAllowed(access, actionName) {
+  if (SEND_DOCUMENT_ACTIONS.has(actionName) && !access.sendDocuments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.sendDocuments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
+  }
+}
 
 // src/platform-admin-phase1.ts
 import { createHash, randomBytes as randomBytes2 } from "crypto";
@@ -73709,13 +74786,22 @@ var platformAdminPhase2SettingsActions = {
         name: string2(),
         email: string2(),
         companyId: number2(),
-        role: literal("owner"),
+        role: _enum(["owner", "admin", "office", "field"]),
+        teamRole: _enum(["admin", "office", "field"]),
         tier: _enum(["free", "premium"]),
         isPlatformAdmin: boolean2(),
         marketplaceTermsAcceptedAt: string2().nullable(),
         marketplaceTermsVersion: string2().nullable(),
         announcementBanner: string2(),
-        createdAt: string2()
+        createdAt: string2(),
+        credentialType: _enum(["email", "crew_pin"]),
+        access: object({
+          seeMoney: boolean2(),
+          seeClientContact: boolean2(),
+          sendDocuments: boolean2(),
+          seeAllJobs: boolean2(),
+          recordPayments: boolean2()
+        })
       }),
       setCookies: array(string2()),
       totpRequired: boolean2().default(false)
@@ -73733,6 +74819,8 @@ var platformAdminPhase2SettingsActions = {
         throw new Error("Sign in to continue.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
       if (!totp?.verified)
         throw new Error("Two-factor authentication is not set up for this account.");
@@ -73972,7 +75060,21 @@ async function compositeSignatureStamps(originalBytes, fields, stamps) {
   const pdf = await PDFDocument_default.load(originalBytes);
   const pageCount = pdf.getPageCount();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const drawBacking = (target, x, topY, w, h, pad) => {
+    const { width: pw, height: ph } = target.getSize();
+    const rx = Math.max(0, x - pad);
+    const ry = Math.max(0, topY - h - pad);
+    target.drawRectangle({
+      x: rx,
+      y: ry,
+      width: Math.min(pw, x + w + pad) - rx,
+      height: Math.min(ph, topY + pad) - ry,
+      color: rgb2(1, 1, 1)
+    });
+  };
   for (const stamp of stamps) {
+    const signaturePlaced = !!(stamp.role === "client" ? fields.clientSignature : fields.contractorSignature);
+    const datePlaced = !!(stamp.role === "client" ? fields.clientDate : fields.contractorDate);
     const field = resolveSignatureField(fields, stamp.role, pageCount);
     const page = pdf.getPage(field.page - 1);
     const { width: pageW, height: pageH } = page.getSize();
@@ -73981,6 +75083,8 @@ async function compositeSignatureStamps(originalBytes, fields, stamps) {
     const boxH = clamp01(field.hPct) * pageH;
     const boxTopY = pageH - clamp01(field.yPct) * pageH;
     if (stamp.imageBytes && stamp.imageBytes.length > 0) {
+      if (!signaturePlaced)
+        drawBacking(page, boxX, boxTopY, boxW, boxH, 6);
       const image = stamp.imageFormat === "jpg" ? await pdf.embedJpg(stamp.imageBytes) : await pdf.embedPng(stamp.imageBytes);
       const scale = Math.min(boxW / image.width, boxH / image.height);
       const drawW = image.width * scale;
@@ -74000,16 +75104,181 @@ async function compositeSignatureStamps(originalBytes, fields, stamps) {
       const dH = clamp01(dateField.hPct) * size.height;
       const dX = clamp01(dateField.xPct) * size.width;
       const dTopY = size.height - clamp01(dateField.yPct) * size.height;
-      const fontSize = Math.max(6, Math.min(14, dH * 0.55));
+      let fontSize = Math.max(6, Math.min(14, dH * 0.55));
+      const maxDateWidth = Math.max(1, dW - 2);
+      while (fontSize > 6 && font.widthOfTextAtSize(stamp.dateText, fontSize) > maxDateWidth)
+        fontSize -= 0.5;
+      if (!datePlaced && !signaturePlaced)
+        drawBacking(datePage, dX, dTopY, dW, dH, 4);
       datePage.drawText(stamp.dateText, {
         x: dX,
         y: dTopY - dH + (dH - fontSize) / 2,
         size: fontSize,
         font,
-        color: rgb2(0.09, 0.13, 0.12),
-        maxWidth: dW
+        color: rgb2(0.09, 0.13, 0.12)
       });
     }
+  }
+  return pdf.save();
+}
+var MAX_FILL_FIELDS = 30;
+var FILL_FIELD_ID_RE = /^[a-z0-9-]{1,40}$/;
+var FILL_KINDS = ["text", "initials", "checkbox"];
+var FILL_ROLES = ["client", "contractor"];
+var FILL_KIND_DEFAULT_LABELS = {
+  text: "Text field",
+  initials: "Initials",
+  checkbox: "Checkbox"
+};
+function cleanFillField(value) {
+  if (!value || typeof value !== "object")
+    return;
+  const v = value;
+  const id = typeof v.id === "string" ? v.id : "";
+  if (!FILL_FIELD_ID_RE.test(id))
+    return;
+  const kind = FILL_KINDS.includes(v.kind) ? v.kind : undefined;
+  if (!kind)
+    return;
+  const role = FILL_ROLES.includes(v.role) ? v.role : undefined;
+  if (!role)
+    return;
+  const placement = cleanPlacement(v);
+  if (!placement)
+    return;
+  const labelRaw = typeof v.label === "string" ? v.label.trim().slice(0, 80) : "";
+  const label = labelRaw || FILL_KIND_DEFAULT_LABELS[kind];
+  const required = typeof v.required === "boolean" ? v.required : kind !== "checkbox";
+  const out = { id, kind, role, label, required, ...placement };
+  if (typeof v.value === "string" && v.value.length > 0)
+    out.value = v.value.slice(0, 500);
+  if (typeof v.checked === "boolean")
+    out.checked = v.checked;
+  return out;
+}
+function parseFillFields(json) {
+  if (!json)
+    return [];
+  try {
+    const raw = JSON.parse(json);
+    if (!Array.isArray(raw))
+      return [];
+    const out = [];
+    const seen = new Set;
+    for (const entry of raw) {
+      const field = cleanFillField(entry);
+      if (!field || seen.has(field.id))
+        continue;
+      seen.add(field.id);
+      out.push(field);
+      if (out.length >= MAX_FILL_FIELDS)
+        break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+function serializeFillFields(fields) {
+  const out = [];
+  const seen = new Set;
+  for (const entry of fields ?? []) {
+    const field = cleanFillField(entry);
+    if (!field || seen.has(field.id))
+      continue;
+    seen.add(field.id);
+    out.push(field);
+    if (out.length >= MAX_FILL_FIELDS)
+      break;
+  }
+  return JSON.stringify(out);
+}
+function parseFillValues(json) {
+  if (!json)
+    return {};
+  try {
+    const raw = JSON.parse(json);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      return {};
+    const out = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (key.length > 40)
+        continue;
+      if (typeof value === "string") {
+        if (value.length > 500)
+          continue;
+        out[key] = value;
+      } else if (typeof value === "boolean") {
+        out[key] = value;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function resolveFillValue(field, values) {
+  if (Object.prototype.hasOwnProperty.call(values, field.id))
+    return values[field.id];
+  return field.kind === "checkbox" ? field.checked : field.value;
+}
+function winAnsiSafe(text) {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code >= 32 && code <= 126 || code >= 160 && code <= 255 || [8216, 8217, 8218, 8220, 8221, 8222, 8211, 8212, 8224, 8225, 8226, 8230, 8240, 8249, 8250, 8364, 8482].includes(code)) {
+      out += ch;
+    }
+  }
+  return out;
+}
+async function compositeFillFields(pdfBytes, fields, values) {
+  const pdf = await PDFDocument_default.load(pdfBytes);
+  const pageCount = pdf.getPageCount();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const ink = rgb2(0.09, 0.13, 0.12);
+  for (const field of fields) {
+    if (field.page < 1 || field.page > pageCount)
+      continue;
+    const effective = resolveFillValue(field, values);
+    if (effective === undefined || effective === "")
+      continue;
+    const page = pdf.getPage(field.page - 1);
+    const { width: pageW, height: pageH } = page.getSize();
+    const boxX = clamp01(field.xPct) * pageW;
+    const boxW = clamp01(field.wPct) * pageW;
+    const boxH = clamp01(field.hPct) * pageH;
+    const boxBottomY = pageH - (clamp01(field.yPct) + clamp01(field.hPct)) * pageH;
+    if (field.kind === "checkbox") {
+      if (effective !== true)
+        continue;
+      const thickness = Math.max(1.5, boxW * 0.06);
+      const x1 = boxX + boxW * 0.2;
+      const y1 = boxBottomY + boxH * 0.42;
+      const x2 = boxX + boxW * 0.42;
+      const y2 = boxBottomY + boxH * 0.18;
+      const x3 = boxX + boxW * 0.82;
+      const y3 = boxBottomY + boxH * 0.8;
+      page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness, color: ink });
+      page.drawLine({ start: { x: x2, y: y2 }, end: { x: x3, y: y3 }, thickness, color: ink });
+      continue;
+    }
+    const text = winAnsiSafe(String(effective)).trim();
+    if (!text)
+      continue;
+    let fontSize = Math.min(boxH * 0.62, 16);
+    const maxWidth = Math.max(1, boxW - 4);
+    while (fontSize > 6 && font.widthOfTextAtSize(text, fontSize) > maxWidth)
+      fontSize -= 0.5;
+    if (font.widthOfTextAtSize(text, fontSize) > maxWidth) {}
+    page.drawText(text, {
+      x: boxX + 2,
+      y: boxBottomY + boxH * 0.28,
+      size: fontSize,
+      font,
+      color: ink,
+      maxWidth
+    });
   }
   return pdf.save();
 }
@@ -74037,6 +75306,7 @@ var jobSchema = object({
   jobDate: string2(),
   appointmentAt: string2(),
   amountDue: string2(),
+  contractSum: string2(),
   dueDate: string2(),
   depositAmount: string2(),
   paymentNotes: string2(),
@@ -74076,6 +75346,22 @@ var signatureFieldsSchema = object({
   contractorSignature: signaturePlacementSchema.optional(),
   contractorDate: signaturePlacementSchema.optional()
 });
+var fillFieldSchema = object({
+  id: string2().min(1).max(40).regex(/^[a-z0-9-]+$/),
+  kind: _enum(["text", "initials", "checkbox"]),
+  role: _enum(["client", "contractor"]),
+  label: string2().trim().max(80),
+  required: boolean2(),
+  page: signaturePlacementSchema.shape.page,
+  xPct: signaturePlacementSchema.shape.xPct,
+  yPct: signaturePlacementSchema.shape.yPct,
+  wPct: signaturePlacementSchema.shape.wPct,
+  hPct: signaturePlacementSchema.shape.hPct,
+  value: string2().max(500).optional(),
+  checked: boolean2().optional()
+});
+var fillFieldsSchema = array(fillFieldSchema).max(30);
+var fillValuesSchema = record(string2().max(40), union([string2().max(500), boolean2()]));
 var documentSchema = object({
   id: number2(),
   jobId: number2(),
@@ -74093,7 +75379,14 @@ var documentSchema = object({
   clientSignedAt: string2().nullable(),
   clientSignatureHash: string2(),
   signedPdfUrl: string2().nullable(),
-  signatureFields: signatureFieldsSchema
+  coNumber: number2().nullable().default(null),
+  displayTitle: string2().default(""),
+  contractSumBefore: string2().default(""),
+  newContractSum: string2().default(""),
+  signatureFields: signatureFieldsSchema,
+  fillFields: fillFieldsSchema.default([]),
+  fillValues: fillValuesSchema.default({}),
+  linkView: object({ viewCount: number2(), firstViewedAt: string2().nullable() }).nullable()
 });
 var punchItemSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2() });
 var punchSignoffSchema = object({ id: number2(), jobId: number2(), customerName: string2(), customerSignatureUrl: string2(), contractorName: string2(), contractorSignatureUrl: string2(), signedAt: string2() });
@@ -74123,11 +75416,12 @@ var paymentSchema = object({ id: number2(), invoiceId: number2(), amount: string
 var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var timeEntrySchema = object({ id: number2(), jobId: number2(), crewMember: string2(), startedAt: string2(), endedAt: string2().nullable(), note: string2(), durationSeconds: number2() });
 var receiptSchema = object({ id: number2(), jobId: number2(), vendor: string2(), amount: string2(), purchaseDate: string2(), note: string2(), filename: string2(), url: string2(), createdAt: string2() });
+var jobFileSchema = object({ id: number2(), jobId: number2(), title: string2(), filename: string2(), contentType: string2(), sizeBytes: number2(), sharedWithClient: boolean2(), url: string2(), createdAt: string2() });
 var crewTaskSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2(), createdAt: string2(), updatedAt: string2() });
 var voiceNoteSchema = object({ id: number2(), jobId: number2(), title: string2(), url: string2(), durationSeconds: number2(), createdAt: string2() });
 var certificateSchema = object({ id: number2(), jobId: number2(), completionDate: string2(), warrantyTerms: string2(), createdAt: string2(), updatedAt: string2() });
-var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), themeMode: _enum(["light", "dark", "system"]), uiAccent: _enum(["orange", "blue", "green", "purple", "red"]), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), reviewRequestsEnabled: boolean2().default(true), reviewRequestDelayDays: number2().int().min(0).max(30).default(3), weeklyProgressEnabled: boolean2().default(true), simpleMode: boolean2() });
-var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable(), savedSignatureUrl: string2().nullable() });
+var settingsInputSchema = object({ companyName: string2().trim().max(180), licenseNumber: string2().trim().max(80), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), website: string2().trim().max(300), address: string2().trim().max(500), profileDescription: string2().trim().max(3000), serviceArea: string2().trim().max(500), facebookUrl: string2().trim().max(600), instagramUrl: string2().trim().max(600), youtubeUrl: string2().trim().max(600), reviewUrl: string2().trim().max(600), paymentInstructions: string2().trim().max(1500), quoteFollowUpDays: number2().int().min(1).max(60), offersFreeEstimates: boolean2(), socialWatermark: boolean2(), language: languageSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), themeMode: _enum(["light", "dark", "system"]), uiAccent: _enum(["orange", "blue", "green", "purple", "red"]), defaultQuoteTheme: quoteThemeSchema, defaultDocumentFont: documentFontSchema, defaultShowTaxLine: boolean2(), defaultShowDiscountLine: boolean2(), defaultShowPaidLine: boolean2(), defaultShowPaymentTerms: boolean2(), defaultShowFooterNotes: boolean2(), defaultShowLogo: boolean2(), defaultShowCompanyInfo: boolean2(), defaultCustomizeJson: customizeJsonSchema, defaultFootnote: string2().trim().max(3000), warrantyTerms: string2().trim().max(5000), hourlyCostRate: string2().trim().max(80), lateFeeType: _enum(["flat", "percent"]), lateFeeValue: string2().trim().max(80), lateFeeGraceDays: number2().int().min(0).max(365), costAlertPercent: number2().int().min(50).max(100), paymentRemindersEnabled: boolean2(), onlineSignatureEnabled: boolean2(), overdueInvoiceRemindersEnabled: boolean2(), overdueReminderDays: number2().int().min(1).max(90), invoiceGroupBy: _enum(["creation_date", "due_date", "client"]), addShippingAddress: boolean2(), addJobSiteAddress: boolean2(), convertToQuote: boolean2(), notificationsEnabled: boolean2(), notifyNewMessage: boolean2().default(true), notifyDocSigned: boolean2().default(true), notifyInvoiceViewed: boolean2().default(true), notifyEstimateViewed: boolean2().default(true), notifyContractViewed: boolean2().default(true), reviewRequestsEnabled: boolean2().default(true), reviewRequestDelayDays: number2().int().min(0).max(30).default(3), weeklyProgressEnabled: boolean2().default(true), simpleMode: boolean2() });
+var settingsSchema = settingsInputSchema.extend({ logoUrl: string2().nullable(), coverUrl: string2().nullable() });
 var clientAddressInputSchema = object({ label: string2().trim().max(60).default(""), address: string2().trim().max(240).default(""), primary: boolean2().default(false) });
 var clientInputSchema = object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), email: string2().trim().email().max(200).or(literal("")), address: string2().trim().max(240), addresses: array(clientAddressInputSchema).max(20).default([]), notes: string2().trim().max(2000), tags: array(string2().trim().min(1).max(40)).max(12).default([]), referredByClientId: number2().int().positive().nullable().default(null) });
 function normalizeClientTags(tags) {
@@ -74224,11 +75518,13 @@ var subcontractorSchema = object({ id: number2(), jobId: number2(), name: string
 var shareImageSchema = object({ id: number2(), jobId: number2(), beforePhotoId: number2(), afterPhotoId: number2(), branded: boolean2(), filename: string2(), url: string2(), createdAt: string2() });
 var photoPairPhotoSchema = object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() });
 var photoPairSchema = object({ id: number2(), jobId: number2(), label: string2(), before: photoPairPhotoSchema, after: photoPairPhotoSchema, createdAt: string2() });
-var leadSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), serviceType: string2(), preferredContactTime: string2(), source: string2(), notes: string2(), stage: leadStageSchema, projectSize: _enum(["small", "medium", "large"]), engagement: _enum(["slow", "normal", "fast"]), score: number2(), clientId: number2().nullable(), quoteId: number2().nullable(), createdAt: string2() });
+var leadSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), serviceType: string2(), preferredContactTime: string2(), source: string2(), notes: string2(), stage: leadStageSchema, estimatedValue: string2(), projectSize: _enum(["small", "medium", "large"]), engagement: _enum(["slow", "normal", "fast"]), score: number2(), clientId: number2().nullable(), quoteId: number2().nullable(), createdAt: string2() });
+var leadActivityKindSchema = _enum(["note", "call", "email", "text", "stage", "system"]);
+var leadActivitySchema = object({ id: number2(), leadId: number2(), kind: leadActivityKindSchema, body: string2(), createdAt: string2() });
 var selectionSchema = object({ id: number2(), jobId: number2(), category: string2(), item: string2(), vendor: string2(), photoUrl: string2().nullable(), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2(), estimatedCost: string2(), actualCost: string2(), createdAt: string2() });
 var dailyLogSchema = object({ id: number2(), jobId: number2(), logDate: string2(), crew: string2(), hours: string2(), photoIds: array(number2()), notes: string2(), blockers: string2(), clientSummary: string2(), sharedWithClient: boolean2(), createdAt: string2() });
 var internalNoteSchema = object({ id: number2(), jobId: number2().nullable(), clientId: number2().nullable(), note: string2(), reminderDate: string2(), completed: boolean2(), createdAt: string2() });
-var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: number2().nullable(), label: string2(), amount: string2(), percentage: string2(), dueDate: string2(), status: _enum(["pending", "paid"]), createdAt: string2() });
+var milestoneSchema = object({ id: number2(), jobId: number2(), invoiceId: number2().nullable(), invoiceNumber: string2().nullable(), invoiceStatus: invoiceStatusSchema.nullable(), label: string2(), amount: string2(), percentage: string2(), dueDate: string2(), status: _enum(["pending", "paid"]), createdAt: string2() });
 var marketplaceCategorySchema = _enum(["kitchens", "bathrooms", "plumbing", "electrical", "hvac", "roofing", "tile_flooring", "painting", "concrete", "landscaping", "handyman", "equipment", "materials", "other"]);
 var moderationStatusSchema = _enum(["active", "auto_rejected", "pending_review", "removed"]);
 var marketplacePhotoSchema = object({ id: number2(), url: string2(), filename: string2() });
@@ -74243,7 +75539,7 @@ var marketplaceBookingSchema = object({ id: number2(), listingId: number2(), sta
 function jobShape(row, photoCount = 0, photoStages = []) {
   const requiredPhotoStages = row.requiredPhotoStages.split(",").filter((stage) => stage === "before" || stage === "during" || stage === "after");
   const complete = requiredPhotoStages.filter((stage) => photoStages.includes(stage)).length;
-  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, contractSum: row.contractSum, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function normalizedPhone(value) {
   return value.replace(/\D/g, "");
@@ -74303,6 +75599,9 @@ async function upsertClient(ctx, input) {
   const made = await db.insert(clients).values({ name: input.name, phone: input.phone, email: input.email, address: input.address, addressesJson: input.address.trim() ? JSON.stringify([{ label: "", address: input.address.trim(), primary: true }]) : "[]", notes: "", createdAt: now, updatedAt: now }).returning({ id: clients.id });
   return made[0]?.id ?? null;
 }
+async function logLeadActivity(db, leadId, kind, body) {
+  await db.insert(leadActivities).values({ leadId, kind, body, createdAt: new Date });
+}
 async function hashPortalToken(token) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(bytes)).map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -74323,6 +75622,19 @@ async function getActiveDocumentLinkRow(ctx, kind, id) {
   const db = ctx.db();
   const rows = await db.select().from(documentLinks).where(and(eq(documentLinks.documentKind, kind), eq(documentLinks.documentId, id), isNull(documentLinks.revokedAt))).orderBy(desc(documentLinks.createdAt));
   return rows[0] ?? null;
+}
+async function getDocumentLinkViews(ctx, docs) {
+  const views = new Map;
+  if (!docs.length)
+    return views;
+  const db = ctx.db();
+  const rows = await db.select({ documentKind: documentLinks.documentKind, documentId: documentLinks.documentId, viewCount: documentLinks.viewCount, firstViewedAt: documentLinks.firstViewedAt }).from(documentLinks).where(and(inArray(documentLinks.documentKind, [...new Set(docs.map((d) => d.kind))]), inArray(documentLinks.documentId, docs.map((d) => d.id)), isNull(documentLinks.revokedAt))).orderBy(desc(documentLinks.createdAt));
+  for (const r of rows) {
+    const key = `${r.documentKind}:${r.documentId}`;
+    if (!views.has(key))
+      views.set(key, { viewCount: r.viewCount, firstViewedAt: r.firstViewedAt?.toISOString() ?? null });
+  }
+  return views;
 }
 async function resolveDocumentLinkToken(ctx, token) {
   const db = ctx.db();
@@ -74664,6 +75976,7 @@ var BACKUP_TABLES = [
   "photos",
   "photo_pairs",
   "documents",
+  "job_files",
   "quotes",
   "invoices",
   "financial_document_signatures",
@@ -74679,6 +75992,7 @@ var BACKUP_TABLES = [
   "completion_certificates",
   "appointments",
   "leads",
+  "lead_activities",
   "selections",
   "daily_logs",
   "internal_notes",
@@ -74810,7 +76124,44 @@ var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
 var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
-var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2(), createdAt: string2() });
+var accessOverridesSchema = object({
+  seeMoney: boolean2().optional(),
+  seeClientContact: boolean2().optional(),
+  sendDocuments: boolean2().optional(),
+  seeAllJobs: boolean2().optional(),
+  recordPayments: boolean2().optional()
+});
+var accessOverridesPatchSchema = object({
+  seeMoney: boolean2().nullable().optional(),
+  seeClientContact: boolean2().nullable().optional(),
+  sendDocuments: boolean2().nullable().optional(),
+  seeAllJobs: boolean2().nullable().optional(),
+  recordPayments: boolean2().nullable().optional()
+});
+var effectiveAccessSchema = object({
+  seeMoney: boolean2(),
+  seeClientContact: boolean2(),
+  sendDocuments: boolean2(),
+  seeAllJobs: boolean2(),
+  recordPayments: boolean2()
+});
+var authUserSchema = object({
+  id: number2(),
+  name: string2(),
+  email: string2(),
+  companyId: number2(),
+  role: _enum(["owner", "admin", "office", "field"]),
+  teamRole: _enum(["admin", "office", "field"]),
+  tier: _enum(["free", "premium"]),
+  isPlatformAdmin: boolean2(),
+  marketplaceTermsAcceptedAt: string2().nullable(),
+  marketplaceTermsVersion: string2().nullable(),
+  announcementBanner: string2(),
+  createdAt: string2(),
+  credentialType: _enum(["email", "crew_pin"]),
+  access: effectiveAccessSchema
+});
+var teamMemberSchema = object({ id: number2(), name: string2(), email: string2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), active: boolean2(), isSelf: boolean2(), createdAt: string2(), credentialType: _enum(["email", "crew_pin"]), overrides: accessOverridesSchema, access: effectiveAccessSchema });
 var authCodeDeliverySchema = _enum(["sent", "fallback", "failed"]);
 function authMeta(ctx) {
   return ctx;
@@ -74888,6 +76239,8 @@ async function requireSession(ctx, token) {
     throw new Error("Sign in to continue.");
   if (user.suspendedAt)
     throw new Error("This account has been suspended. Contact support for help.");
+  if (user.deactivatedAt)
+    throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
   const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60000;
   if (stale && session.tokenType === "legacy") {
     await db.update(authSessions).set({ lastSeenAt: new Date, expiresAt: new Date(Date.now() + AUTH_SESSION_DAYS * 24 * 60 * 60000) }).where(eq(authSessions.id, session.id));
@@ -74962,7 +76315,7 @@ async function derivePassword(password, saltHex, iterations) {
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 function authUserShape(row, announcementBanner) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", access: effectiveAccess(productRoleOf(row.role), parseAccessOverrides(row.accessOverrides)) };
 }
 async function issueAuthCode(ctx, userId, purpose) {
   const db = ctx.db();
@@ -75095,7 +76448,8 @@ function withWorkspace(ctx, user) {
     unscopedDb: { value: rawDb },
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
-    workspaceTier: { value: user.tier }
+    workspaceTier: { value: user.tier },
+    workspaceRole: { value: productRoleOf(user.role) }
   });
   return scoped;
 }
@@ -75113,11 +76467,275 @@ async function requirePlatformAdmin(ctx) {
     throw new Error("Platform admin access required.");
   return { identity, admin: user };
 }
+async function requireCompanyAdmin(ctx) {
+  const identity = workspaceIdentity(ctx);
+  const db = platformDb(ctx);
+  const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user || user.companyId !== identity.workspaceCompanyId || productRoleOf(user.role) !== "admin") {
+    throw new Error("Admin access required. Only your company's admin can manage the team.");
+  }
+  return { identity, admin: user };
+}
+var CREW_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function normalizeCrewCode(raw) {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function crewCodeDisplay(normalized) {
+  return normalized.length === 8 ? `${normalized.slice(0, 4)}-${normalized.slice(4)}` : normalized;
+}
+function makeCrewCode() {
+  let code = "";
+  for (let i = 0;i < 8; i++)
+    code += CREW_CODE_ALPHABET[randomInt(CREW_CODE_ALPHABET.length)];
+  return crewCodeDisplay(code);
+}
+async function uniqueCrewCode(db) {
+  for (let attempt = 0;attempt < 25; attempt++) {
+    const code = makeCrewCode();
+    const existing = (await db.select({ id: companies.id }).from(companies).where(eq(companies.crewCode, code)).limit(1))[0];
+    if (!existing)
+      return code;
+  }
+  throw new Error("Could not generate a crew code. Try again.");
+}
+async function ensureCompanyRow(db, companyId) {
+  const existing = (await db.select().from(companies).where(eq(companies.id, companyId)).limit(1))[0];
+  if (existing) {
+    if (existing.crewCode)
+      return existing;
+    const crewCode = await uniqueCrewCode(db);
+    await db.update(companies).set({ crewCode, updatedAt: new Date }).where(eq(companies.id, companyId));
+    return { ...existing, crewCode };
+  }
+  const now = new Date;
+  const crewCode = await uniqueCrewCode(db);
+  const made = (await db.insert(companies).values({ id: companyId, crewCode, tier: "office", createdAt: now, updatedAt: now }).returning())[0];
+  if (!made)
+    throw new Error("The company record could not be created.");
+  return made;
+}
+async function assertOfficeTier(db, companyId) {
+  const company = await ensureCompanyRow(db, companyId);
+  if (company.tier !== "office") {
+    throw new Error("Team logins are part of the Crewkat Office plan. Upgrade this company to Office to add staff and crew logins.");
+  }
+}
+async function pinMatches(pin, row) {
+  if (!row.pinHash || !row.pinSalt)
+    return false;
+  return await derivePassword(pin, row.pinSalt, AUTH_PASSWORD_ITERATIONS) === row.pinHash;
+}
+async function generateUniqueCrewPin(db, companyId, excludeUserId) {
+  const members = await db.select({ id: authUsers.id, pinHash: authUsers.pinHash, pinSalt: authUsers.pinSalt }).from(authUsers).where(and(eq(authUsers.companyId, companyId), eq(authUsers.credentialType, "crew_pin")));
+  for (let attempt = 0;attempt < 50; attempt++) {
+    const pin = randomCode();
+    let clash = false;
+    for (const member of members) {
+      if (excludeUserId !== undefined && member.id === excludeUserId)
+        continue;
+      if (await pinMatches(pin, member)) {
+        clash = true;
+        break;
+      }
+    }
+    if (!clash)
+      return pin;
+  }
+  throw new Error("Could not generate a crew PIN. Try again.");
+}
+var CREW_LOGIN_MAX_FAILURES = 10;
+var CREW_LOGIN_WINDOW_MS = 15 * 60000;
+async function crewLoginLocked(db, companyId) {
+  const windowStart = new Date(Date.now() - CREW_LOGIN_WINDOW_MS);
+  const hits = await db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "crew-login:fail"), eq(rateLimitEvents.key, String(companyId)), gte(rateLimitEvents.occurredAt, windowStart)));
+  return hits.length >= CREW_LOGIN_MAX_FAILURES;
+}
+async function recordCrewLoginFailure(db, companyId) {
+  await db.insert(rateLimitEvents).values({ scope: "crew-login:fail", key: String(companyId), occurredAt: new Date });
+}
+async function clearCrewLoginFailures(db, companyId) {
+  await db.delete(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "crew-login:fail"), eq(rateLimitEvents.key, String(companyId))));
+}
+async function assignedJobIds(db, user) {
+  const ids = new Set;
+  const nameKey = user.name.trim().toLowerCase();
+  if (!nameKey)
+    return ids;
+  const appts = await db.select({ jobId: appointments.jobId, crewMember: appointments.crewMember }).from(appointments).where(eq(appointments.companyId, user.companyId));
+  for (const a of appts) {
+    if (a.jobId != null && a.crewMember.trim().toLowerCase() === nameKey)
+      ids.add(a.jobId);
+  }
+  const times = await db.select({ jobId: timeEntries.jobId, crewMember: timeEntries.crewMember }).from(timeEntries).where(eq(timeEntries.companyId, user.companyId));
+  for (const t of times) {
+    if (t.crewMember.trim().toLowerCase() === nameKey)
+      ids.add(t.jobId);
+  }
+  return ids;
+}
+function stripLineItemAmounts(holder) {
+  if (Array.isArray(holder.lineItems)) {
+    holder.lineItems = holder.lineItems.map((item) => ({ ...item, amount: "" }));
+  }
+  if (Array.isArray(holder.materials)) {
+    holder.materials = holder.materials.map((item) => item && typeof item === "object" && ("amount" in item) ? { ...item, amount: "" } : item);
+  }
+}
+function stripQuoteMoney(quote) {
+  const out = { ...quote, subtotal: "", total: "", discountValue: "", taxValue: "" };
+  stripLineItemAmounts(out);
+  return out;
+}
+function stripInvoiceMoney(invoice) {
+  const out = {
+    ...invoice,
+    subtotal: "",
+    total: "",
+    discountValue: "",
+    taxValue: "",
+    paidToDate: "",
+    balanceRemaining: "",
+    lateFeeAccrued: "",
+    totalWithLateFee: "",
+    payments: Array.isArray(invoice.payments) ? invoice.payments.map((p) => ({ ...p, amount: "" })) : invoice.payments
+  };
+  stripLineItemAmounts(out);
+  return out;
+}
+function stripJobMoney(job) {
+  return { ...job, amountDue: "", contractSum: "", depositAmount: "", paymentNotes: "" };
+}
+function stripContact(holder) {
+  return { ...holder, clientPhone: "", clientEmail: "" };
+}
+async function applyAccessShaping(db, user, access, actionName, result) {
+  if (!result || typeof result !== "object")
+    return result;
+  const out = result;
+  if (actionName === "listInvoices" && Array.isArray(out.invoices)) {
+    if (!access.seeMoney)
+      out.invoices = out.invoices.map(stripInvoiceMoney);
+    if (!access.seeClientContact)
+      out.invoices = out.invoices.map(stripContact);
+    return out;
+  }
+  if (actionName === "listQuotes" && Array.isArray(out.quotes)) {
+    if (!access.seeMoney)
+      out.quotes = out.quotes.map(stripQuoteMoney);
+    if (!access.seeClientContact)
+      out.quotes = out.quotes.map(stripContact);
+    return out;
+  }
+  if (actionName === "listClients" && Array.isArray(out.clients)) {
+    out.clients = out.clients.map((client) => {
+      let shaped = client;
+      if (!access.seeClientContact)
+        shaped = { ...shaped, phone: "", email: "" };
+      if (!access.seeMoney)
+        shaped = { ...shaped, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+      return shaped;
+    });
+    return out;
+  }
+  if (actionName === "getClient") {
+    if (out.client) {
+      if (!access.seeClientContact)
+        out.client = { ...out.client, phone: "", email: "" };
+      if (!access.seeMoney)
+        out.client = { ...out.client, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+    }
+    if (Array.isArray(out.jobs)) {
+      out.jobs = out.jobs.map((job) => {
+        let shaped = job;
+        if (!access.seeMoney)
+          shaped = stripJobMoney(shaped);
+        if (!access.seeClientContact)
+          shaped = stripContact(shaped);
+        return shaped;
+      });
+    }
+    if (Array.isArray(out.quotes) && !access.seeMoney)
+      out.quotes = out.quotes.map(stripQuoteMoney);
+    return out;
+  }
+  if (actionName === "listJobs" && Array.isArray(out.jobs)) {
+    let jobs2 = out.jobs;
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs2 = jobs2.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney)
+      jobs2 = jobs2.map(stripJobMoney);
+    if (!access.seeClientContact)
+      jobs2 = jobs2.map(stripContact);
+    out.jobs = jobs2;
+    return out;
+  }
+  if (actionName === "listAppointments" && Array.isArray(out.appointments)) {
+    let appts = out.appointments;
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      const nameKey = user.name.trim().toLowerCase();
+      appts = appts.filter((a) => a.jobId != null && mine.has(a.jobId) || typeof a.crewMember === "string" && a.crewMember.trim().toLowerCase() === nameKey && nameKey !== "");
+    }
+    if (!access.seeClientContact) {
+      appts = appts.map((a) => ({ ...a, clientPhone: "" }));
+    }
+    out.appointments = appts;
+    return out;
+  }
+  if (actionName === "getJob") {
+    if (out.job) {
+      if (!access.seeAllJobs) {
+        const mine = await assignedJobIds(db, user);
+        if (!mine.has(out.job.id)) {
+          throw new Error("That job isn't on your schedule. Ask your admin or office if it should be.");
+        }
+      }
+      if (!access.seeMoney) {
+        out.job = stripJobMoney(out.job);
+        if (Array.isArray(out.documents)) {
+          out.documents = out.documents.map((doc) => ({ ...doc, amount: "" }));
+        }
+        if (Array.isArray(out.receipts)) {
+          out.receipts = out.receipts.map((receipt) => ({ ...receipt, amount: "" }));
+        }
+        out.contractSummary = null;
+      }
+      if (!access.seeClientContact)
+        out.job = stripContact(out.job);
+    }
+    return out;
+  }
+  return result;
+}
 async function isPlatformTeamMember(db, user) {
   if (user.isPlatformAdmin)
     return true;
   const row = (await db.select({ userId: adminTeamRoles.userId }).from(adminTeamRoles).where(eq(adminTeamRoles.userId, user.id)).limit(1))[0];
   return !!row;
+}
+function parseScreenshotKeys(json) {
+  if (!json)
+    return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((key) => typeof key === "string" && key.length > 0).slice(0, 4) : [];
+  } catch {
+    return [];
+  }
+}
+async function hydrateScreenshots(ctx, json) {
+  const keys = parseScreenshotKeys(json);
+  return Promise.all(keys.map(async (key) => {
+    let url = null;
+    try {
+      url = await ctx.blobs.getUrl(key);
+    } catch {
+      url = null;
+    }
+    return { key, url };
+  }));
 }
 function platformDb(ctx) {
   const scoped = ctx;
@@ -75859,6 +77477,7 @@ async function getNotifyPrefs(db, companyId) {
     notifyDocSigned: row?.notifyDocSigned ?? true,
     notifyInvoiceViewed: row?.notifyInvoiceViewed ?? true,
     notifyEstimateViewed: row?.notifyEstimateViewed ?? true,
+    notifyContractViewed: row?.notifyContractViewed ?? true,
     language: row?.language === "es" ? "es" : "en"
   };
 }
@@ -76069,7 +77688,7 @@ async function getDocumentLinkPayload(ctx, token) {
   const db = ctx.db();
   const link = await resolveDocumentLinkToken(ctx, token);
   const settings2 = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
-  const company = { name: settings2?.companyName ?? "", phone: settings2?.phone ?? "", email: settings2?.email ?? "", website: settings2?.website ?? "", licenseNumber: settings2?.licenseNumber ?? "", logoUrl: settings2?.logoBlobKey ? await ctx.blobs.getUrl(settings2.logoBlobKey) : null };
+  const company = { name: settings2?.companyName ?? "", phone: settings2?.phone ?? "", email: settings2?.email ?? "", website: settings2?.website ?? "", address: settings2?.address ?? "", licenseNumber: settings2?.licenseNumber ?? "", accentColor: settings2?.accentColor ?? "#1f5a4a", logoUrl: settings2?.logoBlobKey ? await ctx.blobs.getUrl(settings2.logoBlobKey) : null };
   const base = {
     kind: link.documentKind,
     documentId: link.documentId,
@@ -76096,6 +77715,11 @@ async function getDocumentLinkPayload(ctx, token) {
     hasOriginalPdf: false,
     originalFilename: "",
     signatureFields: {},
+    fillFields: [],
+    fillValues: {},
+    clientSignerName: "",
+    clientSignedAt: null,
+    changeOrder: null,
     invoiceNumber: "",
     issueDate: "",
     dueDate: "",
@@ -76144,7 +77768,33 @@ async function getDocumentLinkPayload(ctx, token) {
   if (!doc || doc.kind !== link.documentKind)
     throw new Error("This document is no longer available.");
   const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), signatureFields: (() => {
+  let changeOrder = null;
+  let payloadPdfVersion = doc.clientSignedPdfBlobKey ?? "";
+  if (doc.kind === "change_order" && job) {
+    const docs = await jobDocumentsOrdered(db, job.id);
+    const math = changeOrderChain(job, docs).get(doc.id);
+    if (math) {
+      changeOrder = {
+        number: math.number,
+        displayTitle: changeOrderDisplayTitle(doc, math.number),
+        scopeLabel: doc.description.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? "",
+        dateIso: doc.createdAt.toISOString().slice(0, 10),
+        referenceContract: referenceContractTitle(docs),
+        contractSumBefore: math.contractSumBefore,
+        amount: math.amount,
+        newContractSum: math.newContractSum,
+        contractorSignatureUrl: doc.signatureBlobKey ? await ctx.blobs.getUrl(doc.signatureBlobKey) : null,
+        contractorSignedAt: doc.signedAt ? doc.signedAt.toISOString() : null,
+        clientSignatureUrl: doc.clientSignatureBlobKey ? await ctx.blobs.getUrl(doc.clientSignatureBlobKey) : null
+      };
+      if (!doc.originalBlobKey && doc.clientSignedAt && !doc.clientSignedPdfBlobKey) {
+        await refreshChangeOrderCanonicalPdf(ctx, doc);
+        const after = (await db.select({ key: documents.clientSignedPdfBlobKey }).from(documents).where(eq(documents.id, doc.id)).limit(1))[0];
+        payloadPdfVersion = after?.key ?? "";
+      }
+    }
+  }
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => {
     const all = parseSignatureFields(doc.signatureFieldsJson);
     const pub = {};
     if (all.clientSignature)
@@ -76152,7 +77802,7 @@ async function getDocumentLinkPayload(ctx, token) {
     if (all.clientDate)
       pub.clientDate = all.clientDate;
     return pub;
-  })() } };
+  })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
 }
 var docPdfCache = new Map;
 var DOC_PDF_CACHE_MAX = 30;
@@ -76162,14 +77812,32 @@ async function documentLinkPdfBase64(ctx, token, lang) {
   if (kind === "contract" || kind === "change_order") {
     const db = ctx.db();
     const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
-    const blobKey = doc?.clientSignedPdfBlobKey ?? doc?.originalBlobKey ?? null;
-    if (!doc || !blobKey)
+    if (!doc)
       throw new Error("This document is only available as a web page.");
+    const blobKey = doc.clientSignedPdfBlobKey ?? doc.originalBlobKey ?? null;
+    if (!blobKey) {
+      if (kind !== "change_order")
+        throw new Error("This document is only available as a web page.");
+      const cacheKey = `change_order:${payload.documentId}:${lang}:${payload.changeOrder?.contractSumBefore ?? ""}:${payload.amount}:${(payload.description ?? "").length}:${(payload.bodyText ?? "").length}`;
+      const hit = docPdfCache.get(cacheKey);
+      if (hit && hit.updatedAtMs === payload.updatedAtMs) {
+        return { pdfBase64: hit.pdfBase64, filename: hit.filename, kind };
+      }
+      const { bytes, filename } = await buildChangeOrderPdfForDocument(ctx, doc.id, lang);
+      const pdfBase64 = Buffer.from(bytes).toString("base64");
+      if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
+        const oldest = docPdfCache.keys().next().value;
+        if (oldest)
+          docPdfCache.delete(oldest);
+      }
+      docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: payload.updatedAtMs ?? 0 });
+      return { pdfBase64, filename, kind };
+    }
     const bytes = await ctx.blobs.get(blobKey);
     if (!bytes || bytes.length === 0)
       throw new Error("This document is only available as a web page.");
     const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
-    const filename = doc.clientSignedPdfBlobKey ? `${safeTitle}-signed.pdf` : doc.originalFilename || `${safeTitle}.pdf`;
+    const filename = doc.clientSignedAt ? `${safeTitle}-signed.pdf` : doc.originalFilename || `${safeTitle}.pdf`;
     return { pdfBase64: Buffer.from(bytes).toString("base64"), filename, kind };
   }
   if (kind !== "invoice" && kind !== "quote")
@@ -76188,6 +77856,162 @@ async function documentLinkPdfBase64(ctx, token, lang) {
   }
   docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: payload.updatedAtMs ?? 0 });
   return { pdfBase64, filename, kind };
+}
+function signedPdfFilename(title) {
+  const safeTitle = title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+  return `${safeTitle}-signed.pdf`;
+}
+async function loadClientSignedPdf(ctx, token) {
+  const db = ctx.db();
+  const link = await resolveDocumentLinkToken(ctx, token);
+  if (link.documentKind !== "contract" && link.documentKind !== "change_order")
+    throw new Error("This document is only available as a web page.");
+  const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
+  if (!doc || doc.kind !== link.documentKind)
+    throw new Error("This document is no longer available.");
+  if (!doc.clientSignedAt || !doc.clientSignedPdfBlobKey)
+    throw new Error("This document has not been signed yet.");
+  const bytes = await ctx.blobs.get(doc.clientSignedPdfBlobKey);
+  if (!bytes || bytes.length === 0)
+    throw new Error("This document is only available as a web page.");
+  return { link, doc, bytes: Buffer.from(bytes), filename: signedPdfFilename(doc.title) };
+}
+async function documentDateLocale(ctx, companyId) {
+  try {
+    const pdb = platformDb(ctx);
+    const row = (await pdb.select({ language: settings.language }).from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+    return row?.language === "es" ? "es-US" : "en-US";
+  } catch {
+    return "en-US";
+  }
+}
+async function composeCanonicalDocumentPdf(ctx, doc, opts) {
+  if (!doc.originalBlobKey)
+    return null;
+  const original = await ctx.blobs.get(doc.originalBlobKey);
+  if (!original)
+    return null;
+  const locale = opts?.locale ?? "en-US";
+  const fmt = (d) => new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(d);
+  const stamps = [];
+  const contractorBytes = opts?.contractorImageBytes ?? await ctx.blobs.get(doc.signatureBlobKey).catch(() => null);
+  if (contractorBytes && contractorBytes.length > 0) {
+    stamps.push({ role: "contractor", imageBytes: new Uint8Array(contractorBytes), imageFormat: "png", dateText: fmt(opts?.contractorSignedAt ?? doc.signedAt) });
+  }
+  const clientSignedAt = opts?.clientSignedAt !== undefined ? opts.clientSignedAt : doc.clientSignedAt;
+  if (clientSignedAt) {
+    const clientBytes = opts?.clientImageBytes ?? (doc.clientSignatureBlobKey ? await ctx.blobs.get(doc.clientSignatureBlobKey).catch(() => null) : null);
+    if (clientBytes && clientBytes.length > 0) {
+      stamps.push({ role: "client", imageBytes: new Uint8Array(clientBytes), imageFormat: "png", dateText: fmt(clientSignedAt) });
+    }
+  }
+  let bytes = new Uint8Array(original);
+  if (stamps.length)
+    bytes = await compositeSignatureStamps(bytes, parseSignatureFields(doc.signatureFieldsJson), stamps);
+  if (clientSignedAt) {
+    const fillFields = parseFillFields(doc.fillFieldsJson);
+    if (fillFields.length)
+      bytes = await compositeFillFields(bytes, fillFields, opts?.fillValues ?? parseFillValues(doc.fillValuesJson));
+  }
+  return bytes;
+}
+async function refreshDocumentCanonicalPdf(ctx, doc, opts) {
+  try {
+    const bytes = await composeCanonicalDocumentPdf(ctx, doc, opts);
+    if (!bytes)
+      return;
+    const key = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
+    await ctx.blobs.put(key, Buffer.from(bytes), { contentType: "application/pdf" });
+    const db = ctx.db();
+    await db.update(documents).set({ clientSignedPdfBlobKey: key }).where(eq(documents.id, doc.id));
+    if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== key) {
+      try {
+        await ctx.blobs.delete(doc.clientSignedPdfBlobKey);
+      } catch {}
+    }
+  } catch {}
+}
+async function refreshChangeOrderCanonicalPdf(ctx, doc, lang = "en") {
+  try {
+    if (doc.kind !== "change_order" || doc.originalBlobKey || !doc.clientSignedAt)
+      return null;
+    const { bytes } = await buildChangeOrderPdfForDocument(ctx, doc.id, lang);
+    const key = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
+    await ctx.blobs.put(key, Buffer.from(bytes), { contentType: "application/pdf" });
+    const db = ctx.db();
+    await db.update(documents).set({ clientSignedPdfBlobKey: key }).where(eq(documents.id, doc.id));
+    if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== key) {
+      try {
+        await ctx.blobs.delete(doc.clientSignedPdfBlobKey);
+      } catch {}
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+async function coInfoByDocId(db, rows) {
+  const out = new Map;
+  const coRows = rows.filter((r) => r.kind === "change_order");
+  if (!coRows.length)
+    return out;
+  const jobIds = [...new Set(coRows.map((r) => r.jobId))];
+  const jobs2 = await db.select().from(jobs).where(inArray(jobs.id, jobIds));
+  const jobById = new Map(jobs2.map((j) => [j.id, j]));
+  const allDocs = await db.select().from(documents).where(inArray(documents.jobId, jobIds)).orderBy(asc(documents.createdAt), asc(documents.id));
+  const docsByJob = new Map;
+  for (const d of allDocs) {
+    const list = docsByJob.get(d.jobId) ?? [];
+    list.push(d);
+    docsByJob.set(d.jobId, list);
+  }
+  for (const [jobId, docs] of docsByJob) {
+    const job = jobById.get(jobId);
+    if (!job)
+      continue;
+    const chain = changeOrderChain(job, docs);
+    for (const doc of docs) {
+      const math = chain.get(doc.id);
+      if (!math)
+        continue;
+      out.set(doc.id, {
+        number: math.number,
+        displayTitle: changeOrderDisplayTitle(doc, math.number),
+        contractSumBefore: math.contractSumBefore,
+        newContractSum: math.newContractSum
+      });
+    }
+  }
+  return out;
+}
+function coSchemaFields(info, fallbackTitle) {
+  return {
+    coNumber: info?.number ?? null,
+    displayTitle: info?.displayTitle ?? fallbackTitle,
+    contractSumBefore: info?.contractSumBefore ?? "",
+    newContractSum: info?.newContractSum ?? ""
+  };
+}
+var DOC_LINK_EMAIL_LIMIT_PER_TOKEN_HOUR = 5;
+var DOC_LINK_EMAIL_LIMIT_PER_IP_HOUR = 10;
+async function checkDocLinkEmailRateLimit(ctx, token) {
+  const db = ctx.db();
+  const now = Date.now();
+  const ip = (ctx.clientIp ?? "").trim() || "unknown";
+  const tokenHash = await hashLinkToken(token);
+  await db.delete(rateLimitEvents).where(lt(rateLimitEvents.occurredAt, new Date(now - 3600000)));
+  const windowStart = new Date(now - 3600000);
+  const [tokenHits, ipHits] = await Promise.all([
+    db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "doclink-email:token"), eq(rateLimitEvents.key, tokenHash), gte(rateLimitEvents.occurredAt, windowStart))),
+    db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "doclink-email:ip"), eq(rateLimitEvents.key, ip), gte(rateLimitEvents.occurredAt, windowStart)))
+  ]);
+  if (tokenHits.length >= DOC_LINK_EMAIL_LIMIT_PER_TOKEN_HOUR || ipHits.length >= DOC_LINK_EMAIL_LIMIT_PER_IP_HOUR) {
+    throw new Error("Too many email requests. Try again later.");
+  }
+  await db.batch([
+    db.insert(rateLimitEvents).values({ scope: "doclink-email:token", key: tokenHash, occurredAt: new Date }),
+    db.insert(rateLimitEvents).values({ scope: "doclink-email:ip", key: ip, occurredAt: new Date })
+  ]);
 }
 var docPdfPagesCache = new Map;
 var DOC_PDF_PAGES_CACHE_MAX = 8;
@@ -76363,6 +78187,9 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
       if (!made)
         throw new Error("The account could not be created.");
+      try {
+        await ensureCompanyRow(db, companyId);
+      } catch {}
       if (args.language) {
         const existingSettings = (await db.select({ id: settings.id }).from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
         if (existingSettings)
@@ -76451,6 +78278,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
         throw new Error("Verify your email before signing in.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       await db.delete(authLoginAttempts).where(eq(authLoginAttempts.email, email));
       if (await getPlatformSetting(db, "admin_2fa_required", "0") === "1" && await isPlatformTeamMember(db, user)) {
         const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
@@ -76475,6 +78304,43 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       }
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
+    }
+  }),
+  crewLogin: defineAction({
+    request: object({ companyCode: string2().trim().min(4).max(16), pin: string2().regex(/^\d{4,6}$/) }),
+    response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()), totpRequired: boolean2().default(false) }),
+    async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
+      const db = ctx.db();
+      const codeKey = normalizeCrewCode(args.companyCode);
+      const candidates = await db.select({ id: companies.id, crewCode: companies.crewCode }).from(companies);
+      const company = candidates.find((row) => row.crewCode && normalizeCrewCode(row.crewCode) === codeKey);
+      if (!company)
+        throw new Error("Company code or PIN is incorrect.");
+      if (await crewLoginLocked(db, company.id)) {
+        throw new Error("Too many crew sign-in attempts for this company. Try again in 15 minutes.");
+      }
+      const members = await db.select().from(authUsers).where(and(eq(authUsers.companyId, company.id), eq(authUsers.credentialType, "crew_pin")));
+      let matched;
+      for (const member of members) {
+        if (await pinMatches(args.pin, member)) {
+          matched = member;
+          break;
+        }
+      }
+      if (!matched) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("Company code or PIN is incorrect.");
+      }
+      if (matched.deactivatedAt) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
+      }
+      if (matched.suspendedAt)
+        throw new Error("This account has been suspended. Contact support for help.");
+      await clearCrewLoginFailures(db, company.id);
+      const session = await issueSession(ctx, matched.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(matched, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
     }
   }),
   getGoogleClientId: defineAction({
@@ -76536,6 +78402,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       }
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     }
@@ -76565,6 +78433,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
               throw new Error("Sign in to continue.");
             if (user.suspendedAt)
               throw new Error("This account has been suspended. Contact support for help.");
+            if (user.deactivatedAt)
+              throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
             return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
@@ -76609,6 +78479,8 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("Sign in to continue.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
       return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
@@ -76727,6 +78599,72 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("Sign in to continue.");
       const provider = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : user.subscriptionStatus === "founder" ? "founder" : user.subscriptionStatus === "manual" ? "manual" : "none";
       return { tier: user.tier, status: user.subscriptionStatus, cancelAtPeriodEnd: user.cancelAtPeriodEnd, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, provider };
+    }
+  }),
+  getBillingOverview: defineAction({
+    request: object({}),
+    response: object({
+      plan: object({ tier: _enum(["free", "premium"]), status: string2(), provider: _enum(["stripe", "play", "none"]), currentPeriodEnd: string2().nullable(), cancelAtPeriodEnd: boolean2() }),
+      payments: array(object({ id: string2(), source: _enum(["subscription", "promotion"]), date: string2(), description: string2(), amountCents: number2().int().nullable(), currency: string2(), status: string2(), receiptUrl: string2().nullable() })),
+      manage: object({ kind: _enum(["stripe", "play", "none"]) })
+    }),
+    privileged: [privileged.listStripeInvoices],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      const provider = user.playPurchaseToken ? "play" : user.stripeSubscriptionId ? "stripe" : "none";
+      const payments2 = [];
+      if (user.stripeCustomerId) {
+        try {
+          const result = await ctx.executePrivileged(privileged.listStripeInvoices, { customerId: user.stripeCustomerId, limit: 25 });
+          for (const invoice of result.invoices) {
+            payments2.push({ id: `stripe:${invoice.id}`, source: "subscription", date: new Date(invoice.created * 1000).toISOString(), description: invoice.description ?? "Crewkat Premium", amountCents: invoice.amountCents, currency: invoice.currency, status: invoice.status, receiptUrl: invoice.receiptUrl });
+          }
+        } catch {}
+      }
+      const bumpRows = await db.select({ id: listingBumpPurchases.id, purchasedAt: listingBumpPurchases.purchasedAt, listingTitle: marketplaceListings.title }).from(listingBumpPurchases).leftJoin(marketplaceListings, eq(listingBumpPurchases.listingId, marketplaceListings.id)).where(eq(listingBumpPurchases.companyId, identity.workspaceCompanyId)).orderBy(desc(listingBumpPurchases.purchasedAt)).limit(25);
+      for (const bump of bumpRows) {
+        payments2.push({ id: `bump:${bump.id}`, source: "promotion", date: bump.purchasedAt.toISOString(), description: bump.listingTitle ?? "Listing promotion", amountCents: null, currency: "usd", status: "completed", receiptUrl: null });
+      }
+      const packRows = await db.select().from(marketplaceCreditPurchases).where(eq(marketplaceCreditPurchases.companyId, identity.workspaceCompanyId)).orderBy(desc(marketplaceCreditPurchases.createdAt)).limit(25);
+      for (const pack of packRows) {
+        payments2.push({ id: `credits:${pack.id}`, source: "promotion", date: pack.createdAt.toISOString(), description: `Marketplace credits \u2014 ${pack.packSize} pack`, amountCents: pack.amountCents, currency: "usd", status: pack.status, receiptUrl: null });
+      }
+      payments2.sort((a, b) => b.date.localeCompare(a.date));
+      const manageKind = user.stripeCustomerId ? "stripe" : user.playPurchaseToken ? "play" : "none";
+      return {
+        plan: { tier: user.tier, status: user.subscriptionStatus, provider, currentPeriodEnd: user.subscriptionCurrentPeriodEnd?.toISOString() ?? null, cancelAtPeriodEnd: user.cancelAtPeriodEnd },
+        payments: payments2.slice(0, 25),
+        manage: { kind: manageKind }
+      };
+    }
+  }),
+  createBillingPortalSession: defineAction({
+    request: object({}),
+    response: object({ url: string2().nullable(), error: _enum(["no_stripe_customer", "portal_not_configured", "billing_unavailable"]).nullable() }),
+    privileged: [privileged.createBillingPortalSession],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const user = (await db.select({ stripeCustomerId: authUsers.stripeCustomerId }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      if (!user.stripeCustomerId)
+        return { url: null, error: "no_stripe_customer" };
+      const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+      if (!publicUrl)
+        return { url: null, error: "billing_unavailable" };
+      try {
+        const result = await ctx.executePrivileged(privileged.createBillingPortalSession, { customerId: user.stripeCustomerId, returnUrl: `${publicUrl}/app/?billing=return` });
+        if (result.url)
+          return { url: result.url, error: null };
+        return { url: null, error: result.errorCode === "portal_not_configured" ? "portal_not_configured" : "billing_unavailable" };
+      } catch {
+        return { url: null, error: "billing_unavailable" };
+      }
     }
   }),
   getUsageLimits: defineAction({
@@ -76985,13 +78923,13 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
     return { jobs: rows.map((row) => jobShape(row, map.get(row.id) ?? 0, stages.get(row.id) ?? [])) };
   } }),
-  getJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ job: jobSchema.nullable(), photos: array(photoSchema), documents: array(documentSchema), punchItems: array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: array(progressSchema), timeEntries: array(timeEntrySchema), receipts: array(receiptSchema), crewTasks: array(crewTaskSchema), voiceNotes: array(voiceNoteSchema), certificate: certificateSchema.nullable() }), async handler(ctx, args) {
+  getJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ job: jobSchema.nullable(), photos: array(photoSchema), documents: array(documentSchema), punchItems: array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: array(progressSchema), timeEntries: array(timeEntrySchema), receipts: array(receiptSchema), crewTasks: array(crewTaskSchema), voiceNotes: array(voiceNoteSchema), certificate: certificateSchema.nullable(), jobFiles: array(jobFileSchema), contractSummary: object({ baseAmount: string2(), contractSum: string2(), signedChangeOrdersTotal: string2(), revisedTotal: string2(), pendingChangeOrdersTotal: string2() }).nullable().default(null) }), async handler(ctx, args) {
     const db = ctx.db();
     const rows = await db.select().from(jobs).where(eq(jobs.id, args.id)).limit(1);
     const row = rows[0];
     if (!row)
-      return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null };
-    const [photoRows, documentRows, punchRows, signoffRows, progressRows, timeRows, receiptRows, crewRows, voiceRows, certificateRows] = await Promise.all([
+      return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null, jobFiles: [], contractSummary: null };
+    const [photoRows, documentRows, punchRows, signoffRows, progressRows, timeRows, receiptRows, crewRows, voiceRows, certificateRows, jobFileRows] = await Promise.all([
       db.select().from(photos).where(eq(photos.jobId, args.id)).orderBy(photos.createdAt, photos.id),
       db.select().from(documents).where(eq(documents.jobId, args.id)).orderBy(desc(documents.signedAt)),
       db.select().from(punchItems).where(eq(punchItems.jobId, args.id)).orderBy(punchItems.id),
@@ -77001,15 +78939,19 @@ If that was you, just sign in again. If not, we recommend changing your password
       db.select().from(receipts).where(eq(receipts.jobId, args.id)).orderBy(desc(receipts.createdAt)),
       db.select().from(crewTasks).where(eq(crewTasks.jobId, args.id)).orderBy(crewTasks.id),
       db.select().from(voiceNotes).where(eq(voiceNotes.jobId, args.id)).orderBy(desc(voiceNotes.createdAt)),
-      db.select().from(completionCertificates).where(eq(completionCertificates.jobId, args.id)).orderBy(desc(completionCertificates.createdAt)).limit(1)
+      db.select().from(completionCertificates).where(eq(completionCertificates.jobId, args.id)).orderBy(desc(completionCertificates.createdAt)).limit(1),
+      db.select().from(jobFiles).where(eq(jobFiles.jobId, args.id)).orderBy(desc(jobFiles.createdAt), desc(jobFiles.id))
     ]);
     const hydratedPhotos = await Promise.all(photoRows.map(async (p) => ({ id: p.id, jobId: p.jobId, stage: p.stage, caption: p.caption, filename: p.filename, contentType: p.contentType, url: await ctx.blobs.getUrl(p.blobKey), galleryPick: p.galleryPick, excludeFromSocial: p.excludeFromSocial, annotatedFromId: p.annotatedFromId, capturedAt: (p.capturedAt ?? p.createdAt).toISOString(), createdAt: p.createdAt.toISOString() })));
-    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson) })));
+    const docLinkViews = await getDocumentLinkViews(ctx, documentRows);
+    const coInfo = await coInfoByDocId(ctx.db(), documentRows);
+    const hydratedDocs = await Promise.all(documentRows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, ...coSchemaFields(coInfo.get(d.id), d.title), signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson), linkView: docLinkViews.get(`${d.kind}:${d.id}`) ?? null })));
     const signoff = signoffRows[0];
     const receiptData = await Promise.all(receiptRows.map(async (p) => ({ id: p.id, jobId: p.jobId, vendor: p.vendor, amount: p.amount, purchaseDate: p.purchaseDate, note: p.note, filename: p.filename, url: await ctx.blobs.getUrl(p.blobKey), createdAt: p.createdAt.toISOString() })));
     const voiceData = await Promise.all(voiceRows.map(async (p) => ({ id: p.id, jobId: p.jobId, title: p.title, url: await ctx.blobs.getUrl(p.blobKey), durationSeconds: p.durationSeconds, createdAt: p.createdAt.toISOString() })));
+    const jobFileData = await Promise.all(jobFileRows.map(async (f) => ({ id: f.id, jobId: f.jobId, title: f.title, filename: f.filename, contentType: f.contentType, sizeBytes: f.sizeBytes, sharedWithClient: f.sharedWithClient, url: await ctx.blobs.getUrl(f.blobKey), createdAt: f.createdAt.toISOString() })));
     const cert = certificateRows[0];
-    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson), status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null };
+    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson), status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null, jobFiles: jobFileData, contractSummary: contractSummaryForJob(row, await jobDocumentsOrdered(ctx.db(), row.id)) };
   } }),
   createJob: defineAction({ request: object({ clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80).default(""), clientEmail: string2().trim().email().max(200).or(literal("")).default(""), jobAddress: string2().trim().min(1).max(240), jobType: string2().trim().min(1).max(120), notes: string2().trim().max(3000).default(""), jobDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: string2().max(40).default(""), amountDue: string2().trim().max(80).default(""), dueDate: string2().max(10).default(""), depositAmount: string2().trim().max(80).default(""), paymentNotes: string2().trim().max(1000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -77030,6 +78972,19 @@ If that was you, just sign in again. If not, we recommend changing your password
     await ctx.db().update(jobs).set({ ...values, clientId, amountDue: normalizeMoney(args.amountDue), depositAmount: normalizeMoney(args.depositAmount), updatedAt: new Date }).where(eq(jobs.id, id));
     ctx.invalidateQueries();
     return { ok: true };
+  } }),
+  setJobContractSum: defineAction({ request: object({ jobId: number2().int().positive(), contractSum: string2().trim().max(80) }), response: object({ ok: literal(true), contractSum: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const normalized = normalizeMoney(args.contractSum);
+    await db.update(jobs).set({ contractSum: normalized, updatedAt: new Date }).where(eq(jobs.id, job.id));
+    const docs = await jobDocumentsOrdered(db, job.id);
+    for (const doc of docs) {
+      if (doc.kind === "change_order" && !doc.originalBlobKey && doc.clientSignedAt)
+        await refreshChangeOrderCanonicalPdf(ctx, doc);
+    }
+    ctx.invalidateQueries();
+    return { ok: true, contractSum: normalized };
   } }),
   setJobClient: defineAction({ request: object({ jobId: number2().int().positive(), clientId: number2().int().positive().nullable() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
@@ -77068,8 +79023,54 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   listDocuments: defineAction({ request: object({}), response: object({ documents: array(documentSchema) }), async handler(ctx) {
     const rows = await ctx.db().select().from(documents).orderBy(desc(documents.signedAt));
-    const documents2 = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, signatureFields: parseSignatureFields(d.signatureFieldsJson) })));
+    const linkViews = await getDocumentLinkViews(ctx, rows);
+    const coInfo = await coInfoByDocId(ctx.db(), rows);
+    const documents2 = await Promise.all(rows.map(async (d) => ({ id: d.id, jobId: d.jobId, kind: d.kind, title: d.title, bodyText: d.bodyText, originalFilename: d.originalFilename, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, description: d.description, amount: d.amount, signerName: d.signerName, signatureUrl: await ctx.blobs.getUrl(d.signatureBlobKey), signedAt: d.signedAt.toISOString(), clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, clientSignatureHash: d.clientSignatureHash, signedPdfUrl: d.clientSignedPdfBlobKey ? await ctx.blobs.getUrl(d.clientSignedPdfBlobKey) : null, ...coSchemaFields(coInfo.get(d.id), d.title), signatureFields: parseSignatureFields(d.signatureFieldsJson), fillFields: parseFillFields(d.fillFieldsJson), fillValues: parseFillValues(d.fillValuesJson), linkView: linkViews.get(`${d.kind}:${d.id}`) ?? null })));
     return { documents: documents2 };
+  } }),
+  getDocumentPdf: defineAction({ request: object({ documentId: number2().int().positive() }), response: object({ pdfBase64: string2(), filename: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
+    if (!doc)
+      throw new Error("Document not found.");
+    if (!doc.originalBlobKey) {
+      if (doc.kind !== "change_order")
+        throw new Error("This document has no uploaded PDF.");
+      if (doc.clientSignedAt && doc.clientSignedPdfBlobKey) {
+        const stored = await ctx.blobs.get(doc.clientSignedPdfBlobKey);
+        if (stored && stored.length > 0)
+          return { pdfBase64: Buffer.from(stored).toString("base64"), filename: signedPdfFilename(doc.title) };
+      }
+      if (doc.clientSignedAt && !doc.clientSignedPdfBlobKey) {
+        await refreshChangeOrderCanonicalPdf(ctx, doc);
+        const refreshed = (await db.select().from(documents).where(eq(documents.id, doc.id)).limit(1))[0];
+        if (refreshed?.clientSignedPdfBlobKey) {
+          const bytes = await ctx.blobs.get(refreshed.clientSignedPdfBlobKey);
+          if (bytes && bytes.length > 0)
+            return { pdfBase64: Buffer.from(bytes).toString("base64"), filename: signedPdfFilename(doc.title) };
+        }
+      }
+      const built = await buildChangeOrderPdfForDocument(ctx, doc.id, "en");
+      return { pdfBase64: Buffer.from(built.bytes).toString("base64"), filename: built.filename };
+    }
+    const safeTitle = doc.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+    const filename = doc.clientSignedAt ? `${safeTitle}-signed.pdf` : doc.originalFilename || `${safeTitle}.pdf`;
+    if (doc.clientSignedPdfBlobKey) {
+      const stored = await ctx.blobs.get(doc.clientSignedPdfBlobKey);
+      if (stored && stored.length > 0)
+        return { pdfBase64: Buffer.from(stored).toString("base64"), filename };
+    }
+    await refreshDocumentCanonicalPdf(ctx, doc, { locale: await documentDateLocale(ctx, doc.companyId) });
+    const refreshed = (await db.select().from(documents).where(eq(documents.id, doc.id)).limit(1))[0];
+    if (refreshed?.clientSignedPdfBlobKey) {
+      const bytes = await ctx.blobs.get(refreshed.clientSignedPdfBlobKey);
+      if (bytes && bytes.length > 0)
+        return { pdfBase64: Buffer.from(bytes).toString("base64"), filename };
+    }
+    const original = await ctx.blobs.get(doc.originalBlobKey);
+    if (!original || original.length === 0)
+      throw new Error("The document file could not be loaded.");
+    return { pdfBase64: Buffer.from(original).toString("base64"), filename };
   } }),
   linkDocumentToJob: defineAction({ request: object({ documentId: number2().int().positive(), jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
@@ -77129,6 +79130,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     const made = rows[0];
     if (!made)
       throw new Error("Could not save document.");
+    if (originalBlobKey) {
+      const created = (await db.select().from(documents).where(eq(documents.id, made.id)).limit(1))[0];
+      if (created)
+        await refreshDocumentCanonicalPdf(ctx, created, { locale: await documentDateLocale(ctx, created.companyId) });
+    }
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
@@ -77165,6 +79171,8 @@ If that was you, just sign in again. If not, we recommend changing your password
         patch.originalBlobKey = key;
         patch.originalFilename = args.originalFilename || existing.originalFilename;
         patch.signatureFieldsJson = "{}";
+        patch.fillFieldsJson = "[]";
+        patch.fillValuesJson = "{}";
       } else if (args.originalFilename !== undefined) {
         patch.originalFilename = args.originalFilename;
       }
@@ -77175,6 +79183,12 @@ If that was you, just sign in again. If not, we recommend changing your password
             await ctx.blobs.delete(replacedBlobKey);
           } catch {}
         }
+      }
+      if (replacedBlobKey) {
+        const nextDoc = { ...existing, ...patch };
+        await refreshDocumentCanonicalPdf(ctx, nextDoc, { locale: await documentDateLocale(ctx, nextDoc.companyId) });
+      } else if (existing.kind === "change_order" && !existing.originalBlobKey && existing.clientSignatureBlobKey) {
+        await refreshChangeOrderCanonicalPdf(ctx, { ...existing, ...patch });
       }
       ctx.invalidateQueries?.();
       return { ok: true };
@@ -77187,41 +79201,47 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("Document not found.");
     if (!doc.originalBlobKey)
       throw new Error("Signature fields need an uploaded PDF document.");
-    await db.update(documents).set({ signatureFieldsJson: serializeSignatureFields(args.fields) }).where(eq(documents.id, doc.id));
+    const fieldsJson = serializeSignatureFields(args.fields);
+    await db.update(documents).set({ signatureFieldsJson: fieldsJson }).where(eq(documents.id, doc.id));
+    await refreshDocumentCanonicalPdf(ctx, { ...doc, signatureFieldsJson: fieldsJson }, { locale: await documentDateLocale(ctx, doc.companyId) });
     ctx.invalidateQueries();
     return { ok: true };
   } }),
-  signDocumentWithSavedSignature: defineAction({ request: object({ documentId: number2().int().positive() }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
+  saveDocumentFillFields: defineAction({ request: object({ documentId: number2().int().positive(), fields: fillFieldsSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
-    const pdb = platformDb(ctx);
-    const settingsRow = (await pdb.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
-    if (!settingsRow?.signatureBlobKey)
-      throw new Error("Save your signature in Settings first, then tap to sign.");
-    const saved = await ctx.blobs.get(settingsRow.signatureBlobKey);
-    if (!saved)
-      throw new Error("Your saved signature could not be loaded. Draw it again in Settings.");
     const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
     if (!doc)
       throw new Error("Document not found.");
+    if (!doc.originalBlobKey)
+      throw new Error("Fill-in fields need an uploaded PDF document.");
+    const fieldsJson = serializeFillFields(args.fields);
+    await db.update(documents).set({ fillFieldsJson: fieldsJson }).where(eq(documents.id, doc.id));
+    await refreshDocumentCanonicalPdf(ctx, { ...doc, fillFieldsJson: fieldsJson }, { locale: await documentDateLocale(ctx, doc.companyId) });
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  signDocumentWithDrawnSignature: defineAction({ request: object({ documentId: number2().int().positive(), signatureDataBase64: string2().min(1).max(5000000), signerName: string2().trim().min(1).max(160).optional() }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const drawnBytes = Buffer.from(args.signatureDataBase64, "base64");
+    if (drawnBytes.length === 0)
+      throw new Error("Draw your signature to sign.");
+    const doc = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
+    if (!doc)
+      throw new Error("Document not found.");
+    const pdb = platformDb(ctx);
+    const settingsRow = (await pdb.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
     const signedAt = new Date;
-    const savedBytes = Buffer.from(saved);
     const key = `signatures/${doc.jobId}/${crypto.randomUUID()}.png`;
-    await ctx.blobs.put(key, savedBytes, { contentType: "image/png" });
+    await ctx.blobs.put(key, drawnBytes, { contentType: "image/png" });
     const patch = { signatureBlobKey: key, signedAt };
+    if (args.signerName)
+      patch.signerName = args.signerName;
     if (doc.originalBlobKey) {
-      const original = await ctx.blobs.get(doc.originalBlobKey);
-      if (original) {
-        const locale = settingsRow.language === "es" ? "es-US" : "en-US";
-        const fmt = (d) => new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(d);
-        const stamps = [{ role: "contractor", imageBytes: new Uint8Array(savedBytes), imageFormat: "png", dateText: fmt(signedAt) }];
-        if (doc.clientSignatureBlobKey && doc.clientSignedAt) {
-          const clientBytes = await ctx.blobs.get(doc.clientSignatureBlobKey);
-          if (clientBytes)
-            stamps.push({ role: "client", imageBytes: new Uint8Array(clientBytes), imageFormat: "png", dateText: fmt(doc.clientSignedAt) });
-        }
-        const finalBytes = await compositeSignatureStamps(new Uint8Array(original), parseSignatureFields(doc.signatureFieldsJson), stamps);
+      const locale = settingsRow?.language === "es" ? "es-US" : "en-US";
+      const canonical = await composeCanonicalDocumentPdf(ctx, doc, { contractorImageBytes: new Uint8Array(drawnBytes), contractorSignedAt: signedAt, locale });
+      if (canonical) {
         const finalKey = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
-        await ctx.blobs.put(finalKey, Buffer.from(finalBytes), { contentType: "application/pdf" });
+        await ctx.blobs.put(finalKey, Buffer.from(canonical), { contentType: "application/pdf" });
         patch.clientSignedPdfBlobKey = finalKey;
         if (doc.clientSignedPdfBlobKey && doc.clientSignedPdfBlobKey !== finalKey) {
           try {
@@ -77231,6 +79251,9 @@ If that was you, just sign in again. If not, we recommend changing your password
       }
     }
     await db.update(documents).set(patch).where(eq(documents.id, doc.id));
+    if (doc.kind === "change_order" && !doc.originalBlobKey && doc.clientSignedAt) {
+      await refreshChangeOrderCanonicalPdf(ctx, { ...doc, signatureBlobKey: key, signedAt, signerName: patch.signerName ?? doc.signerName });
+    }
     if (doc.signatureBlobKey && doc.signatureBlobKey !== key) {
       try {
         await ctx.blobs.delete(doc.signatureBlobKey);
@@ -77598,6 +79621,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       await ctx.blobs.delete(a.blobKey);
     }
     await db.delete(documentAttachments).where(and(eq(documentAttachments.docType, "invoice"), eq(documentAttachments.docId, args.id)));
+    await db.update(paymentMilestones).set({ invoiceId: null, updatedAt: new Date }).where(eq(paymentMilestones.invoiceId, args.id));
     await db.delete(invoices).where(eq(invoices.id, args.id));
     ctx.invalidateQueries();
     return { ok: true };
@@ -78007,23 +80031,113 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(leads).orderBy(desc(leads.score), desc(leads.updatedAt));
     const decided = rows.filter((row) => row.stage === "won" || row.stage === "lost");
     const won = decided.filter((row) => row.stage === "won").length;
-    return { leads: rows.map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, serviceType: row.serviceType, preferredContactTime: row.preferredContactTime, source: row.source, notes: row.notes, stage: row.stage, projectSize: row.projectSize, engagement: row.engagement, score: row.score, clientId: row.clientId, quoteId: row.quoteId, createdAt: row.createdAt.toISOString() })), winRate: decided.length ? Math.round(won / decided.length * 100) : 0 };
+    return { leads: rows.map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, serviceType: row.serviceType, preferredContactTime: row.preferredContactTime, source: row.source, notes: row.notes, stage: row.stage, estimatedValue: row.estimatedValue, projectSize: row.projectSize, engagement: row.engagement, score: row.score, clientId: row.clientId, quoteId: row.quoteId, createdAt: row.createdAt.toISOString() })), winRate: decided.length ? Math.round(won / decided.length * 100) : 0 };
   } }),
-  saveLead: defineAction({ request: object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), source: string2().trim().max(160), notes: string2().trim().max(2000), projectSize: _enum(["small", "medium", "large"]).default("medium"), engagement: _enum(["slow", "normal", "fast"]).default("normal"), serviceType: string2().trim().max(120).default("") }), response: object({ id: number2(), score: number2() }), async handler(ctx, args) {
+  saveLead: defineAction({ request: object({ name: string2().trim().min(1).max(160), phone: string2().trim().max(80), source: string2().trim().max(160), notes: string2().trim().max(2000), projectSize: _enum(["small", "medium", "large"]).default("medium"), engagement: _enum(["slow", "normal", "fast"]).default("normal"), serviceType: string2().trim().max(120).default(""), estimatedValue: string2().trim().max(80).optional() }), response: object({ id: number2(), score: number2() }), async handler(ctx, args) {
     const source = args.source.toLowerCase();
     const service = args.serviceType.toLowerCase();
     const score = Math.min(100, (args.projectSize === "large" ? 35 : args.projectSize === "medium" ? 24 : 12) + (args.engagement === "fast" ? 30 : args.engagement === "normal" ? 18 : 8) + (/referral|google|website/.test(source) ? 20 : 10) + (/kitchen|bath|addition|remodel|paint/.test(service) ? 15 : 8));
-    const rows = await ctx.db().insert(leads).values({ ...args, score, stage: "new", createdAt: new Date, updatedAt: new Date }).returning({ id: leads.id });
+    const db = ctx.db();
+    const rows = await db.insert(leads).values({ ...args, estimatedValue: normalizeMoney(args.estimatedValue ?? "", "0"), score, stage: "new", createdAt: new Date, updatedAt: new Date }).returning({ id: leads.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save lead.");
+    await logLeadActivity(db, made.id, "system", "Lead created");
     ctx.invalidateQueries();
     return { id: made.id, score };
   } }),
   updateLeadStage: defineAction({ request: object({ id: number2().int().positive(), stage: leadStageSchema }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    await ctx.db().update(leads).set({ stage: args.stage, updatedAt: new Date }).where(eq(leads.id, args.id));
+    const db = ctx.db();
+    const existing = (await db.select({ stage: leads.stage }).from(leads).where(eq(leads.id, args.id)).limit(1))[0];
+    await db.update(leads).set({ stage: args.stage, updatedAt: new Date }).where(eq(leads.id, args.id));
+    if (existing && existing.stage !== args.stage)
+      await logLeadActivity(db, args.id, "stage", `Stage: ${existing.stage} \u2192 ${args.stage}`);
     ctx.invalidateQueries();
     return { ok: true };
+  } }),
+  updateLead: defineAction({ request: object({ id: number2().int().positive(), name: string2().trim().min(1).max(160), phone: string2().trim().max(80).default(""), email: string2().trim().max(200).default(""), address: string2().trim().max(240).default(""), serviceType: string2().trim().max(120).default(""), source: string2().trim().max(160).default(""), notes: string2().trim().max(2000).default(""), projectSize: _enum(["small", "medium", "large"]).default("medium"), engagement: _enum(["slow", "normal", "fast"]).default("normal"), estimatedValue: string2().trim().max(80).default("0") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const lead = (await db.select({ id: leads.id }).from(leads).where(eq(leads.id, args.id)).limit(1))[0];
+    if (!lead)
+      throw new Error("Lead not found.");
+    await db.update(leads).set({ name: args.name, phone: args.phone, email: args.email, address: args.address, serviceType: args.serviceType, source: args.source, notes: args.notes, projectSize: args.projectSize, engagement: args.engagement, estimatedValue: normalizeMoney(args.estimatedValue, "0"), updatedAt: new Date }).where(eq(leads.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  deleteLead: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    await db.delete(leadActivities).where(eq(leadActivities.leadId, args.id));
+    await db.delete(leads).where(eq(leads.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  getLeadActivities: defineAction({ request: object({ leadId: number2().int().positive() }), response: object({ activities: array(leadActivitySchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const rows = await db.select().from(leadActivities).where(eq(leadActivities.leadId, args.leadId)).orderBy(desc(leadActivities.createdAt), desc(leadActivities.id));
+    return { activities: rows.map((row) => ({ id: row.id, leadId: row.leadId, kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) };
+  } }),
+  addLeadActivity: defineAction({ request: object({ leadId: number2().int().positive(), kind: _enum(["note", "call", "email", "text"]), body: string2().trim().min(1).max(4000) }), response: object({ id: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const lead = (await db.select({ id: leads.id }).from(leads).where(eq(leads.id, args.leadId)).limit(1))[0];
+    if (!lead)
+      throw new Error("Lead not found.");
+    const rows = await db.insert(leadActivities).values({ leadId: args.leadId, kind: args.kind, body: args.body, createdAt: new Date }).returning({ id: leadActivities.id });
+    const made = rows[0];
+    if (!made)
+      throw new Error("Could not save activity.");
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  convertLeadToJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ clientId: number2(), jobId: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const lead = (await db.select().from(leads).where(eq(leads.id, args.id)).limit(1))[0];
+    if (!lead)
+      throw new Error("Lead not found.");
+    const prior = (await db.select({ id: leadActivities.id }).from(leadActivities).where(and(eq(leadActivities.leadId, lead.id), eq(leadActivities.kind, "system"), eq(leadActivities.body, "Converted to client + job"))).limit(1))[0];
+    if (prior)
+      throw new Error("This lead has already been converted to a job.");
+    const clientId = await upsertClient(ctx, { clientId: lead.clientId, name: lead.name, phone: lead.phone, email: lead.email, address: lead.address });
+    if (!clientId)
+      throw new Error("Could not create client.");
+    const now = new Date;
+    const jobRows = await db.insert(jobs).values({ companyId: lead.companyId, clientId, clientName: lead.name, clientPhone: lead.phone, clientEmail: lead.email, jobAddress: lead.address, jobType: lead.serviceType, notes: lead.notes, jobDate: now.toISOString().slice(0, 10), createdAt: now, updatedAt: now }).returning({ id: jobs.id });
+    const job = jobRows[0];
+    if (!job)
+      throw new Error("Could not create job.");
+    await db.update(leads).set({ stage: "won", clientId, updatedAt: now }).where(eq(leads.id, lead.id));
+    await logLeadActivity(db, lead.id, "system", "Converted to client + job");
+    ctx.invalidateQueries();
+    return { clientId, jobId: job.id };
+  } }),
+  getOfficeDashboard: defineAction({ request: object({}), response: object({ pipelineValue: number2(), openLeads: number2(), leadsByStage: object({ new: number2(), contacted: number2(), quoted: number2(), won: number2(), lost: number2() }), activeJobs: number2(), invoicedMonth: number2(), collectedMonth: number2(), outstanding: number2(), overdueInvoices: array(object({ id: number2(), invoiceNumber: string2(), clientName: string2(), total: string2(), dueDate: string2() })), followUps: array(object({ id: number2(), note: string2(), reminderDate: string2(), jobId: number2().nullable(), clientId: number2().nullable() })), recentActivity: array(object({ id: number2(), leadId: number2(), leadName: string2(), kind: leadActivityKindSchema, body: string2(), createdAt: string2() })) }), async handler(ctx) {
+    const db = ctx.db();
+    const [leadRows, jobRows, invoiceRows, paymentRows, noteRows, activityRows] = await Promise.all([db.select().from(leads), db.select().from(jobs), db.select().from(invoices), db.select().from(payments), db.select().from(internalNotes).orderBy(internalNotes.reminderDate), db.select().from(leadActivities).orderBy(desc(leadActivities.createdAt), desc(leadActivities.id)).limit(10)]);
+    const now = new Date;
+    const today = now.toISOString().slice(0, 10);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const money = (value) => Number(String(value).replace(/[^0-9.-]/g, "") || 0);
+    const open2 = leadRows.filter((row) => row.stage !== "won" && row.stage !== "lost");
+    const pipelineValue = open2.reduce((sum, row) => sum + money(row.estimatedValue), 0);
+    const leadsByStage = { new: 0, contacted: 0, quoted: 0, won: 0, lost: 0 };
+    for (const row of leadRows)
+      leadsByStage[row.stage]++;
+    const invoicedMonth = invoiceRows.filter((row) => row.issueDate && new Date(`${row.issueDate}T12:00:00`).getTime() >= monthStart).reduce((sum, row) => sum + money(row.total), 0);
+    const collectedMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + money(p.amount), 0);
+    const outstanding = invoiceRows.reduce((sum, invoice) => {
+      const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + money(p.amount), 0);
+      return sum + Math.max(0, money(invoice.total) - paid);
+    }, 0);
+    const leadNameById = new Map(leadRows.map((row) => [row.id, row.name]));
+    return { pipelineValue, openLeads: open2.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) };
+  } }),
+  getOfficeSearch: defineAction({ request: object({ query: string2().trim().max(120) }), response: object({ leads: array(object({ id: number2(), name: string2(), phone: string2(), stage: leadStageSchema })), clients: array(object({ id: number2(), name: string2(), phone: string2(), email: string2() })), jobs: array(object({ id: number2(), clientName: string2(), jobAddress: string2(), jobType: string2() })) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const term = args.query.toLowerCase();
+    if (!term)
+      return { leads: [], clients: [], jobs: [] };
+    const [leadRows, clientRows, jobRows] = await Promise.all([db.select().from(leads), db.select().from(clients), db.select().from(jobs)]);
+    const hit = (values) => values.some((value) => value.toLowerCase().includes(term));
+    return { leads: leadRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, stage: row.stage })), clients: clientRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email })), jobs: jobRows.filter((row) => hit([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType])).slice(0, 8).map((row) => ({ id: row.id, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType })) };
   } }),
   prepareLeadQuote: defineAction({ request: object({ id: number2().int().positive() }), response: object({ clientId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -78055,7 +80169,10 @@ If that was you, just sign in again. If not, we recommend changing your password
     const changeOrdersTotal = documentRows.reduce((sum, row) => sum + Number(String(row.amount).replace(/[^0-9.-]/g, "") || 0), 0);
     const selectionBudget = selectionRows.reduce((sum, row) => sum + Number(String(row.estimatedCost).replace(/[^0-9.-]/g, "") || 0), 0);
     const selectionActual = selectionRows.reduce((sum, row) => sum + Number(String(row.actualCost).replace(/[^0-9.-]/g, "") || 0), 0);
-    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, estimatedCost: row.estimatedCost, actualCost: row.actualCost, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => ({ id: row.id, jobId: row.jobId, invoiceId: row.invoiceId, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() })), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0, changeOrdersTotal, selectionBudget, selectionActual, budgetTotal: quoted + changeOrdersTotal } };
+    return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, estimatedCost: row.estimatedCost, actualCost: row.actualCost, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson), notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => {
+      const linked = row.invoiceId ? invoiceRows.find((inv) => inv.id === row.invoiceId) : undefined;
+      return { id: row.id, jobId: row.jobId, invoiceId: linked ? row.invoiceId : null, invoiceNumber: linked ? linked.invoiceNumber || `INV-${String(linked.id).padStart(4, "0")}` : null, invoiceStatus: linked ? linked.status : null, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() };
+    }), profitability: { quoted, invoiced, variance: invoiced - quoted, variancePercent: quoted > 0 ? (invoiced - quoted) / quoted * 100 : null, materials, expenses, subcontractors: subcontractors2, laborHours, laborCost, profit, margin: invoiced > 0 ? profit / invoiced * 100 : 0, changeOrdersTotal, selectionBudget, selectionActual, budgetTotal: quoted + changeOrdersTotal } };
   } }),
   saveSelection: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), jobId: number2().int().positive(), category: string2().trim().min(1).max(160), item: string2().trim().min(1).max(300), vendor: string2().trim().max(160), approvalStatus: _enum(["pending", "approved", "rejected"]), leadTimeDays: number2().int().min(0).max(730).default(0), estimatedCost: string2().trim().max(80).default("0"), actualCost: string2().trim().max(80).default("0"), photoFilename: string2().max(240).default(""), photoContentType: _enum(["", "image/jpeg", "image/png", "image/webp"]), photoDataBase64: string2().max(20000000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -78132,17 +80249,15 @@ If that was you, just sign in again. If not, we recommend changing your password
     const milestone = milestones[0];
     if (!milestone)
       throw new Error("Milestone not found.");
+    const { job } = await requireJobCompany(ctx, db, milestone.jobId);
     if (milestone.invoiceId)
       return { invoiceId: milestone.invoiceId };
-    const jobs2 = await db.select().from(jobs).where(eq(jobs.id, milestone.jobId)).limit(1);
-    const job = jobs2[0];
-    if (!job)
-      throw new Error("Job not found.");
     const settingRows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const setting = settingRows[0];
     const amount = milestone.amount || "0";
     const now = new Date;
-    const rows = await db.insert(invoices).values({ companyId: job.companyId, jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: clientToday(args), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const invoiceNumber = await nextInvoiceNumber(db);
+    const rows = await db.insert(invoices).values({ companyId: job.companyId, invoiceNumber, jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: clientToday(args), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -78966,6 +81081,182 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  listTeamMembers: defineAction({
+    request: object({}),
+    response: object({ members: array(teamMemberSchema), crewCode: string2(), tier: _enum(["app", "office"]) }),
+    async handler(ctx) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const rows = await db.select().from(authUsers).where(eq(authUsers.companyId, identity.workspaceCompanyId)).orderBy(authUsers.createdAt, authUsers.id);
+      return {
+        crewCode: company.crewCode ?? "",
+        tier: company.tier,
+        members: rows.map((row) => {
+          const overrides = parseAccessOverrides(row.accessOverrides);
+          const teamRole = productRoleOf(row.role);
+          return { id: row.id, name: row.name, email: row.email, role: row.role, teamRole, active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", overrides, access: effectiveAccess(teamRole, overrides) };
+        })
+      };
+    }
+  }),
+  createStaffAccount: defineAction({
+    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), role: _enum(["admin", "office", "field"]) }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const email = normalizedEmail(args.email);
+      const duplicate = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email)).limit(1))[0];
+      if (duplicate)
+        throw new Error("An account with this email already exists. They should sign in with that email instead.");
+      const now = new Date;
+      const salt = randomHex2(16);
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(authUsers).values({
+        name: args.name.trim(),
+        email,
+        passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt: salt,
+        passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: args.role,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now,
+        marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode,
+        createdAt: now,
+        updatedAt: now
+      }).returning({ id: authUsers.id }))[0];
+      if (!made)
+        throw new Error("The staff account could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  updateStaffMember: defineAction({
+    request: object({ userId: number2().int().positive(), role: _enum(["admin", "office", "field"]).optional(), active: boolean2().optional() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId)
+        throw new Error("Team member not found.");
+      if (target.id === admin.id)
+        throw new Error("You can't change your own role or deactivate your own login.");
+      if (target.role === "owner")
+        throw new Error("The account owner's role can't be changed from here.");
+      const nextRole = args.role ?? target.role;
+      const nextActive = args.active ?? !target.deactivatedAt;
+      const removesAdmin = productRoleOf(target.role) === "admin" && !target.deactivatedAt && !(productRoleOf(nextRole) === "admin" && nextActive);
+      if (removesAdmin) {
+        const others = await db.select({ id: authUsers.id, role: authUsers.role }).from(authUsers).where(and(eq(authUsers.companyId, identity.workspaceCompanyId), ne(authUsers.id, target.id), isNull(authUsers.deactivatedAt)));
+        if (!others.some((row) => productRoleOf(row.role) === "admin")) {
+          throw new Error("Your company needs at least one active admin \u2014 promote someone else first.");
+        }
+      }
+      const patch = { updatedAt: new Date };
+      if (args.role !== undefined)
+        patch.role = args.role;
+      if (args.active !== undefined)
+        patch.deactivatedAt = args.active ? null : new Date;
+      await db.update(authUsers).set(patch).where(eq(authUsers.id, target.id));
+      if (args.active === false) {
+        await db.update(authSessions).set({ revokedAt: new Date }).where(and(eq(authSessions.userId, target.id), isNull(authSessions.revokedAt)));
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  createCrewLogin: defineAction({
+    request: object({ name: string2().trim().min(2).max(120), overrides: accessOverridesSchema.default({}) }),
+    response: object({ id: number2(), pin: string2(), crewCode: string2() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const now = new Date;
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId);
+      const pinSalt = randomHex2(16);
+      const passwordSalt = randomHex2(16);
+      const referralCode = await uniqueReferralCode(db);
+      const overrides = serializeAccessOverrides(args.overrides);
+      const made = (await db.insert(authUsers).values({
+        name: args.name.trim(),
+        email: `crew-${identity.workspaceCompanyId}-${randomHex2(6)}@crew.invalid`,
+        passwordHash: await derivePassword(randomHex2(32), passwordSalt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt,
+        passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: "field",
+        credentialType: "crew_pin",
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        accessOverrides: overrides,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now,
+        marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode,
+        createdAt: now,
+        updatedAt: now
+      }).returning({ id: authUsers.id }))[0];
+      if (!made)
+        throw new Error("The crew login could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id, pin, crewCode: company.crewCode ?? "" };
+    }
+  }),
+  resetCrewPin: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ pin: string2() }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId || target.credentialType !== "crew_pin") {
+        throw new Error("Crew member not found.");
+      }
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId, target.id);
+      const pinSalt = randomHex2(16);
+      await db.update(authUsers).set({
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        updatedAt: new Date
+      }).where(eq(authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { pin };
+    }
+  }),
+  setMemberAccess: defineAction({
+    request: object({ userId: number2().int().positive(), overrides: accessOverridesPatchSchema }),
+    response: object({ ok: literal(true), overrides: accessOverridesSchema, access: effectiveAccessSchema }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId)
+        throw new Error("Team member not found.");
+      if (target.role === "owner")
+        throw new Error("The account owner's access can't be limited \u2014 owners always have full access.");
+      const next = { ...parseAccessOverrides(target.accessOverrides) };
+      for (const key of ACCESS_SWITCHES) {
+        const value = args.overrides[key];
+        if (value === null)
+          delete next[key];
+        else if (typeof value === "boolean")
+          next[key] = value;
+      }
+      await db.update(authUsers).set({ accessOverrides: serializeAccessOverrides(next), updatedAt: new Date }).where(eq(authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { ok: true, overrides: next, access: effectiveAccess(productRoleOf(target.role), next) };
+    }
+  }),
   createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), shortCode: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
@@ -79011,15 +81302,37 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { token, shortCode, route: `p/${encodeURIComponent(shortCode)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
-  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), photoPairs: array(object({ id: number2(), label: string2(), before: object({ url: string2(), caption: string2() }), after: object({ url: string2(), caption: string2() }) })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), amount: string2(), originalUrl: string2().nullable(), clientSignerName: string2(), clientSignedAt: string2().nullable() })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })), options: array(quoteOptionRowSchema), selectedOptionKeys: array(string2()), acceptedOptions: acceptedOptionsSchema.nullable(), optionsTotal: string2(), totalWithOptions: string2() })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2() })) }), async handler(ctx, args) {
+  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), address: string2(), licenseNumber: string2(), accentColor: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), photoPairs: array(object({ id: number2(), label: string2(), before: object({ url: string2(), caption: string2() }), after: object({ url: string2(), caption: string2() }) })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), bodyText: string2().default(""), amount: string2(), originalUrl: string2().nullable(), contractorSignerName: string2().default(""), contractorSignatureUrl: string2().nullable().default(null), contractorSignedAt: string2().nullable().default(null), clientSignerName: string2(), clientSignatureUrl: string2().nullable().default(null), clientSignedAt: string2().nullable(), coNumber: number2().nullable().default(null), displayTitle: string2().default(""), contractSumBefore: string2().default(""), newContractSum: string2().default(""), referenceContract: string2().default(""), dateIso: string2().default(""), href: string2().nullable().default(null) })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })), options: array(quoteOptionRowSchema), selectedOptionKeys: array(string2()), acceptedOptions: acceptedOptionsSchema.nullable(), optionsTotal: string2(), totalWithOptions: string2(), href: string2().nullable() })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2(), href: string2().nullable(), payments: array(object({ id: number2(), amount: string2(), paymentDate: string2(), method: string2() })) })), jobDocuments: array(object({ id: number2(), kind: _enum(["contract", "change_order"]), title: string2(), displayTitle: string2().default(""), amount: string2().default(""), coNumber: number2().nullable().default(null), clientSignedAt: string2().nullable(), href: string2().nullable() })), files: array(object({ id: number2(), title: string2(), filename: string2(), url: string2(), createdAt: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
     if (!job)
       throw new Error("Job not found.");
     const portalSettings = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
-    const portalCompany = { name: portalSettings?.companyName ?? "", phone: portalSettings?.phone ?? "", logoUrl: portalSettings?.logoBlobKey ? await ctx.blobs.getUrl(portalSettings.logoBlobKey) : null };
-    const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2, photoPairRows] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments), db.select().from(photoPairs).where(eq(photoPairs.jobId, job.id)).orderBy(asc(photoPairs.createdAt))]);
+    const portalCompany = { name: portalSettings?.companyName ?? "", phone: portalSettings?.phone ?? "", email: portalSettings?.email ?? "", website: portalSettings?.website ?? "", address: portalSettings?.address ?? "", licenseNumber: portalSettings?.licenseNumber ?? "", accentColor: portalSettings?.accentColor ?? "#1f5a4a", logoUrl: portalSettings?.logoBlobKey ? await ctx.blobs.getUrl(portalSettings.logoBlobKey) : null };
+    const [photos2, appointments2, selections2, documents2, quotes2, invoices2, payments2, photoPairRows, jobFileRows] = await Promise.all([db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(photos.createdAt), db.select().from(appointments).where(eq(appointments.jobId, job.id)).orderBy(appointments.startsAt), db.select().from(selections).where(eq(selections.jobId, job.id)).orderBy(selections.id), db.select().from(documents).where(eq(documents.jobId, job.id)).orderBy(desc(documents.createdAt)), db.select().from(quotes).where(and(eq(quotes.jobId, job.id), eq(quotes.superseded, false))).orderBy(desc(quotes.createdAt)), db.select().from(invoices).where(eq(invoices.jobId, job.id)).orderBy(desc(invoices.createdAt)), db.select().from(payments), db.select().from(photoPairs).where(eq(photoPairs.jobId, job.id)).orderBy(asc(photoPairs.createdAt)), db.select().from(jobFiles).where(eq(jobFiles.jobId, job.id)).orderBy(desc(jobFiles.createdAt), desc(jobFiles.id))]);
+    const portalLinkKinds = [...documents2.map((d) => d.kind), "quote", "invoice"];
+    const portalLinkIds = [...documents2.map((d) => d.id), ...quotes2.map((q) => q.id), ...invoices2.map((i) => i.id)];
+    const hrefByKey = new Map;
+    if (portalLinkIds.length) {
+      const linkRows = await db.select().from(documentLinks).where(and(inArray(documentLinks.documentKind, [...new Set(portalLinkKinds)]), inArray(documentLinks.documentId, portalLinkIds), isNull(documentLinks.revokedAt))).orderBy(desc(documentLinks.createdAt));
+      const nowMs = Date.now();
+      for (const r of linkRows) {
+        if (!r.shortCode || r.expiresAt.getTime() <= nowMs)
+          continue;
+        const key = `${r.documentKind}:${r.documentId}`;
+        if (!hrefByKey.has(key))
+          hrefByKey.set(key, `/d/${r.shortCode}`);
+      }
+    }
+    const docHref = (kind, id) => hrefByKey.get(`${kind}:${id}`) ?? null;
+    const coOrdered = [...documents2].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id);
+    const coChain = changeOrderChain(job, coOrdered);
+    const coRef = referenceContractTitle(coOrdered);
+    const coDisplay = (d) => {
+      const m = coChain.get(d.id);
+      return d.kind === "change_order" && m ? changeOrderDisplayTitle(d, m.number) : d.title;
+    };
     const today = new Date().toISOString();
     return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), photoPairs: await (async () => {
       const byId = new Map(photos2.map((p) => [p.id, p]));
@@ -79032,14 +81345,29 @@ If that was you, just sign in again. If not, we recommend changing your password
         out.push({ id: row.id, label: row.label, before: { url: await ctx.blobs.getUrl(b.blobKey), caption: b.caption }, after: { url: await ctx.blobs.getUrl(a.blobKey), caption: a.caption } });
       }
       return out;
-    })(), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => ({ id: d.id, title: d.title, description: d.description, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, clientSignerName: d.clientSignerName, clientSignedAt: d.clientSignedAt?.toISOString() ?? null }))), estimates: quotes2.map((q) => {
+    })(), appointments: appointments2.filter((a) => a.startsAt >= today).map((a) => ({ id: a.id, startsAt: a.startsAt, notes: a.notes })), selections: await Promise.all(selections2.map(async (s) => ({ id: s.id, jobId: s.jobId, category: s.category, item: s.item, vendor: s.vendor, photoUrl: s.photoBlobKey ? await ctx.blobs.getUrl(s.photoBlobKey) : null, approvalStatus: s.approvalStatus, leadTimeDays: s.leadTimeDays, estimatedCost: s.estimatedCost, actualCost: s.actualCost, createdAt: s.createdAt.toISOString() }))), changeOrders: await Promise.all(documents2.filter((d) => d.kind === "change_order").map(async (d) => {
+      const m = coChain.get(d.id);
+      return { id: d.id, title: d.title, description: d.description, bodyText: d.bodyText, amount: d.amount, originalUrl: d.originalBlobKey ? await ctx.blobs.getUrl(d.originalBlobKey) : null, contractorSignerName: d.signerName, contractorSignatureUrl: d.signatureBlobKey ? await ctx.blobs.getUrl(d.signatureBlobKey) : null, contractorSignedAt: d.signedAt?.toISOString() ?? null, clientSignerName: d.clientSignerName, clientSignatureUrl: d.clientSignatureBlobKey ? await ctx.blobs.getUrl(d.clientSignatureBlobKey) : null, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, coNumber: m?.number ?? null, displayTitle: m ? changeOrderDisplayTitle(d, m.number) : d.title, contractSumBefore: m?.contractSumBefore ?? "", newContractSum: m?.newContractSum ?? "", referenceContract: coRef, dateIso: d.createdAt.toISOString().slice(0, 10), href: docHref("change_order", d.id) };
+    })), estimates: quotes2.map((q) => {
       const payload = quoteOptionsPayload(q);
-      return { id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).filter((i) => !i.optional).map((i) => ({ description: i.description, amount: i.amount })), options: payload.options, selectedOptionKeys: payload.selectedOptionKeys, acceptedOptions: payload.acceptedOptions, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions };
+      return { id: q.id, total: q.total, sentAt: q.sentAt, accepted: q.accepted, lineItems: JSON.parse(q.lineItemsJson).filter((i) => !i.optional).map((i) => ({ description: i.description, amount: i.amount })), options: payload.options, selectedOptionKeys: payload.selectedOptionKeys, acceptedOptions: payload.acceptedOptions, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions, href: docHref("quote", q.id) };
     }), invoices: invoices2.map((inv) => {
-      const paid = payments2.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
+      const invPayments = payments2.filter((p) => p.invoiceId === inv.id).sort((a, b) => a.paymentDate < b.paymentDate ? -1 : a.paymentDate > b.paymentDate ? 1 : a.id - b.id);
+      const paid = invPayments.reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
-      return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2) };
-    }) };
+      return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2), href: docHref("invoice", inv.id), payments: invPayments.map((p) => ({ id: p.id, amount: p.amount, paymentDate: p.paymentDate, method: p.method })) };
+    }), jobDocuments: documents2.map((d) => ({ id: d.id, kind: d.kind, title: d.title, displayTitle: coDisplay(d), amount: d.amount, coNumber: coChain.get(d.id)?.number ?? null, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, href: docHref(d.kind, d.id) })), files: await Promise.all(jobFileRows.filter((f) => f.sharedWithClient).map(async (f) => ({ id: f.id, title: f.title, filename: f.filename, url: await ctx.blobs.getUrl(f.blobKey), createdAt: f.createdAt.toISOString() }))) };
+  } }),
+  getPortalPhotoDownload: defineAction({ request: object({ token: string2().min(8).max(200), photoId: number2().int().positive() }), response: object({ filename: string2(), contentType: string2(), dataBase64: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
+    const photo = (await db.select().from(photos).where(eq(photos.id, args.photoId)).limit(1))[0];
+    if (!photo || photo.jobId !== access.jobId || photo.excludeFromSocial)
+      throw new Error("Photo not found.");
+    const bytes = await ctx.blobs.get(photo.blobKey);
+    if (!bytes)
+      throw new Error("Photo not found.");
+    return { filename: photo.filename, contentType: photo.contentType, dataBase64: Buffer.from(bytes).toString("base64") };
   } }),
   portalUpdateSelection: defineAction({ request: object({ token: string2().min(8).max(200), selectionId: number2().int().positive(), status: _enum(["approved", "rejected"]) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
@@ -79090,7 +81418,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       return { ok: true, selectedOptionKeys: payload.selectedOptionKeys, optionsTotal: payload.optionsTotal, totalWithOptions: payload.totalWithOptions };
     }
   }),
-  portalSignChangeOrder: defineAction({ request: object({ token: string2().min(8).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+  portalSignChangeOrder: defineAction({ request: object({ token: string2().min(8).max(200), documentId: number2().int().positive(), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000), lang: _enum(["en", "es"]).default("en") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: false });
     const document2 = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
@@ -79100,13 +81428,36 @@ If that was you, just sign in again. If not, we recommend changing your password
       return { ok: true };
     const key = `client-signatures/${access.jobId}/${crypto.randomUUID()}.png`;
     await ctx.blobs.put(key, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
-    await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: new Date }).where(eq(documents.id, document2.id));
+    const portalSignedAt = new Date;
+    await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: portalSignedAt }).where(eq(documents.id, document2.id));
+    if (document2.originalBlobKey) {
+      await refreshDocumentCanonicalPdf(ctx, { ...document2, clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: portalSignedAt }, { clientImageBytes: new Uint8Array(Buffer.from(args.signatureDataBase64, "base64")), clientSignedAt: portalSignedAt, locale: await documentDateLocale(ctx, document2.companyId) });
+    } else {
+      await refreshChangeOrderCanonicalPdf(ctx, { ...document2, clientSignerName: args.signerName, clientSignatureBlobKey: key, clientSignedAt: portalSignedAt }, args.lang);
+    }
     await logPortalEvent(ctx, access.id, "sign");
     const jobCompany = (await db.select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, document2.jobId)).limit(1))[0];
     if (jobCompany)
       await notifyCompanyEvent(ctx, jobCompany.companyId, "notifyDocSigned", "document-signed", `Client signed "${document2.title}"`, "Un cliente firm\xF3 tu documento", `doc-signed:${document2.id}`);
     ctx.invalidateQueries();
     return { ok: true };
+  } }),
+  getPortalChangeOrderPdf: defineAction({ request: object({ token: string2().min(8).max(200), documentId: number2().int().positive(), lang: _enum(["en", "es"]).default("en") }), response: object({ pdfBase64: string2(), filename: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const access = await requirePortalAccess(ctx, args.token, { logView: false });
+    const document2 = (await db.select().from(documents).where(eq(documents.id, args.documentId)).limit(1))[0];
+    if (!document2 || document2.jobId !== access.jobId || document2.kind !== "change_order")
+      throw new Error("Change order not found.");
+    const blobKey = document2.clientSignedPdfBlobKey ?? document2.originalBlobKey ?? null;
+    if (blobKey) {
+      const bytes = await ctx.blobs.get(blobKey);
+      if (bytes && bytes.length > 0) {
+        const safeTitle = document2.title.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "document";
+        return { pdfBase64: Buffer.from(bytes).toString("base64"), filename: document2.clientSignedAt ? `${safeTitle}-signed.pdf` : document2.originalFilename || `${safeTitle}.pdf` };
+      }
+    }
+    const built = await buildChangeOrderPdfForDocument(ctx, document2.id, args.lang);
+    return { pdfBase64: Buffer.from(built.bytes).toString("base64"), filename: built.filename };
   } }),
   createDocumentLink: defineAction({ request: object({ kind: documentKindSchema, id: number2().int().positive() }), response: object({ token: string2(), shortCode: string2(), hint: string2(), expiresAt: string2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -79149,12 +81500,53 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  uploadJobFile: defineAction({ request: object({ jobId: number2().int().positive(), title: string2().trim().max(120).default(""), filename: string2().trim().min(1).max(240), contentType: _enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]), dataBase64: string2().min(1).max(24000000) }), response: object({ id: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(args.contentType))
+      throw new Error("Only PDF, JPEG, PNG, or WebP files are supported.");
+    const bytes = Buffer.from(args.dataBase64, "base64");
+    if (bytes.length > 15000000)
+      throw new Error("File is too large (max 15 MB).");
+    if (bytes.length < 10)
+      throw new Error("That file looks empty.");
+    const job = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+    if (!job)
+      throw new Error("Job not found.");
+    const safeName = args.filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const key = `job-files/${args.jobId}/${crypto.randomUUID()}-${safeName}`;
+    await ctx.blobs.put(key, bytes, { contentType: args.contentType });
+    const rows = await db.insert(jobFiles).values({ jobId: args.jobId, title: args.title || args.filename, filename: args.filename, blobKey: key, contentType: args.contentType, sizeBytes: bytes.length, createdAt: new Date }).returning({ id: jobFiles.id });
+    const made = rows[0];
+    if (!made) {
+      await ctx.blobs.delete(key);
+      throw new Error("Could not save file.");
+    }
+    ctx.invalidateQueries();
+    return { id: made.id };
+  } }),
+  setJobFileShared: defineAction({ request: object({ id: number2().int().positive(), shared: boolean2() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    await ctx.db().update(jobFiles).set({ sharedWithClient: args.shared }).where(eq(jobFiles.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  deleteJobFile: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const file = (await db.select().from(jobFiles).where(eq(jobFiles.id, args.id)).limit(1))[0];
+    if (!file)
+      throw new Error("File not found.");
+    await db.delete(jobFiles).where(eq(jobFiles.id, args.id));
+    try {
+      await ctx.blobs.delete(file.blobKey);
+    } catch {}
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
   resolveDocumentLink: defineAction({ request: object({ token: string2().min(8).max(200), userAgent: string2().max(500).default("") }), response: object({
     kind: documentKindSchema,
     documentId: number2(),
     signable: boolean2(),
     alreadySigned: boolean2(),
-    company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), licenseNumber: string2(), logoUrl: string2().nullable() }),
+    company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), address: string2(), licenseNumber: string2(), accentColor: string2(), logoUrl: string2().nullable() }),
     title: string2(),
     clientName: string2(),
     jobAddress: string2(),
@@ -79179,6 +81571,11 @@ If that was you, just sign in again. If not, we recommend changing your password
     hasOriginalPdf: boolean2().default(false),
     originalFilename: string2().default(""),
     signatureFields: signatureFieldsSchema.default({}),
+    fillFields: fillFieldsSchema.default([]),
+    fillValues: fillValuesSchema.default({}),
+    clientSignerName: string2().default(""),
+    clientSignedAt: string2().nullable().default(null),
+    changeOrder: object({ number: number2(), displayTitle: string2(), scopeLabel: string2(), dateIso: string2(), referenceContract: string2(), contractSumBefore: string2(), amount: string2(), newContractSum: string2(), contractorSignatureUrl: string2().nullable(), contractorSignedAt: string2().nullable(), clientSignatureUrl: string2().nullable().default(null) }).nullable().default(null),
     invoiceNumber: string2(),
     issueDate: string2(),
     dueDate: string2(),
@@ -79207,16 +81604,67 @@ If that was you, just sign in again. If not, we recommend changing your password
     const dayAgo = new Date(now.getTime() - 24 * 3600000);
     const recentView = (await db.select({ id: documentLinkEvents.id }).from(documentLinkEvents).where(and(eq(documentLinkEvents.linkId, link.id), eq(documentLinkEvents.eventType, "view"), gte(documentLinkEvents.occurredAt, dayAgo))).limit(1))[0];
     const notifyView = !recentView && (link.documentKind === "invoice" || link.documentKind === "quote");
-    await db.update(documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(documentLinks.id, link.id));
+    const isSignableDoc = link.documentKind === "contract" || link.documentKind === "change_order";
+    let claimedFirstDocView = false;
+    if (isSignableDoc && link.viewCount === 0) {
+      const claimed = await db.update(documentLinks).set({ viewCount: 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(and(eq(documentLinks.id, link.id), eq(documentLinks.viewCount, 0))).returning({ id: documentLinks.id });
+      claimedFirstDocView = claimed.length > 0;
+    }
+    if (!claimedFirstDocView) {
+      await db.update(documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(documentLinks.id, link.id));
+    }
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
     if (notifyView && link.documentKind === "invoice")
       await notifyCompanyEvent(ctx, link.companyId, "notifyInvoiceViewed", "document-viewed", `Client viewed invoice #${payload.documentId}`, "Un cliente vio tu factura", `invoice:${payload.documentId}`);
     if (notifyView && link.documentKind === "quote")
       await notifyCompanyEvent(ctx, link.companyId, "notifyEstimateViewed", "document-viewed", `Client viewed estimate #${payload.documentId}`, "Un cliente vio tu estimado", `quote:${payload.documentId}`);
+    if (claimedFirstDocView) {
+      const who = payload.clientName.trim();
+      if (link.documentKind === "contract") {
+        await notifyCompanyEvent(ctx, link.companyId, "notifyContractViewed", "document-opened", who ? `${who} opened the contract "${payload.title}"` : `Client opened the contract "${payload.title}"`, who ? `${who} abri\xF3 el contrato "${payload.title}"` : `Un cliente abri\xF3 el contrato "${payload.title}"`, `doc-opened:${link.documentId}`);
+      } else {
+        await notifyCompanyEvent(ctx, link.companyId, "notifyContractViewed", "document-opened", who ? `${who} opened the change order "${payload.title}"` : `Client opened the change order "${payload.title}"`, who ? `${who} abri\xF3 la orden de cambio "${payload.title}"` : `Un cliente abri\xF3 la orden de cambio "${payload.title}"`, `doc-opened:${link.documentId}`);
+      }
+    }
     return payload;
   } }),
   getDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pdfBase64: string2(), filename: string2(), kind: string2() }), async handler(ctx, args) {
     return documentLinkPdfBase64(ctx, args.token, args.lang);
+  } }),
+  getDocumentLinkSignedPdf: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pdfBase64: string2(), filename: string2(), kind: string2() }), async handler(ctx, args) {
+    const { link, bytes, filename } = await loadClientSignedPdf(ctx, args.token);
+    return { pdfBase64: bytes.toString("base64"), filename, kind: link.documentKind };
+  } }),
+  emailDocumentLinkSignedCopy: defineAction({ request: object({ token: string2().min(8).max(200), email: string2().trim().email().max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email))
+      throw new Error("Enter a valid email address.");
+    await checkDocLinkEmailRateLimit(ctx, args.token);
+    const { link, doc, bytes, filename } = await loadClientSignedPdf(ctx, args.token);
+    const db = ctx.db();
+    const settings2 = (await db.select().from(settings).where(eq(settings.companyId, link.companyId)).limit(1))[0] ?? (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
+    const companyName = settings2?.companyName ?? "";
+    const es = args.lang === "es";
+    const result = await ctx.executePrivileged(privileged.sendBackupEmail, {
+      to: args.email,
+      subject: es ? `Tu copia firmada de "${doc.title}"` : `Your signed copy of "${doc.title}"`,
+      text: es ? `Hola,
+
+Adjuntamos la copia firmada de "${doc.title}"${companyName ? ` de ${companyName}` : ""}.
+
+Gu\xE1rdala para tus registros.
+
+\u2014 ${companyName || "Crewkat"}` : `Hi,
+
+Your signed copy of "${doc.title}"${companyName ? ` from ${companyName}` : ""} is attached.
+
+Keep it for your records.
+
+\u2014 ${companyName || "Crewkat"}`,
+      attachments: [{ filename, contentType: "application/pdf", dataBase64: bytes.toString("base64") }]
+    });
+    if (!result || result.delivery !== "sent")
+      throw new Error("We couldn't send the email. Please try again.");
+    return { ok: true };
   } }),
   getDocumentLinkPdfPages: defineAction({ request: object({ token: string2().min(8).max(200), lang: _enum(["en", "es"]).default("en") }), response: object({ pagesBase64: array(string2()).max(20), filename: string2(), kind: string2() }), privileged: [privileged.renderPdfPages], async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
@@ -79225,8 +81673,9 @@ If that was you, just sign in again. If not, we recommend changing your password
       throw new Error("This document is only available as a web page.");
     const cacheKey = `${kind}:${payload.documentId}:${args.lang}`;
     const updatedAtMs = payload.updatedAtMs ?? 0;
+    const pdfVersion = payload.pdfVersion ?? "";
     const hit = docPdfPagesCache.get(cacheKey);
-    if (hit && hit.updatedAtMs === updatedAtMs) {
+    if (hit && hit.updatedAtMs === updatedAtMs && (hit.pdfVersion ?? "") === pdfVersion) {
       return { pagesBase64: hit.pagesBase64, filename: hit.filename, kind };
     }
     const { pdfBase64, filename } = await documentLinkPdfBase64(ctx, args.token, args.lang);
@@ -79236,19 +81685,21 @@ If that was you, just sign in again. If not, we recommend changing your password
       if (oldest)
         docPdfPagesCache.delete(oldest);
     }
-    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs });
+    docPdfPagesCache.set(cacheKey, { pagesBase64, filename, updatedAtMs, pdfVersion });
     return { pagesBase64, filename, kind };
   } }),
   validateDocumentLinkPdf: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ ok: literal(true), kind: string2() }), async handler(ctx, args) {
     const { payload } = await getDocumentLinkPayload(ctx, args.token);
     const kind = payload.kind;
     if (kind !== "invoice" && kind !== "quote") {
-      if (!((kind === "contract" || kind === "change_order") && (payload.hasOriginalPdf || payload.alreadySigned)))
+      if (!((kind === "contract" || kind === "change_order") && (kind === "change_order" || payload.hasOriginalPdf || payload.alreadySigned)))
         throw new Error("This document is only available as a web page.");
     }
     return { ok: true, kind };
   } }),
-  submitDocumentSignature: defineAction({ request: object({ token: string2().min(8).max(200), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000), signedPdfDataBase64: string2().min(1).max(30000000), userAgent: string2().max(500).default("") }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
+  submitDocumentSignature: defineAction({ request: object({ token: string2().min(8).max(200), signerName: string2().trim().min(1).max(160), signatureDataBase64: string2().min(1).max(5000000), signedPdfDataBase64: string2().min(1).max(30000000), userAgent: string2().max(500).default(""), fillValues: fillValuesSchema.optional(), consented: literal(true) }), response: object({ ok: literal(true), signedAt: string2() }), async handler(ctx, args) {
+    if (args.consented !== true)
+      throw new Error("Please agree to sign electronically before signing.");
     const db = ctx.db();
     const link = await resolveDocumentLinkToken(ctx, args.token);
     if (link.documentKind !== "contract" && link.documentKind !== "change_order")
@@ -79261,16 +81712,75 @@ If that was you, just sign in again. If not, we recommend changing your password
     const pdfBytes = Buffer.from(args.signedPdfDataBase64, "base64");
     if (pdfBytes.length < 100)
       throw new Error("The signed file looks invalid.");
-    const digest = await crypto.subtle.digest("SHA-256", pdfBytes);
+    const fillFields = parseFillFields(doc.fillFieldsJson);
+    const clientFillFields = fillFields.filter((f) => f.role === "client");
+    const acceptedFill = {};
+    if (args.fillValues) {
+      for (const f of clientFillFields) {
+        const v = args.fillValues[f.id];
+        if (v !== undefined)
+          acceptedFill[f.id] = v;
+      }
+    }
+    for (const f of clientFillFields) {
+      if (!f.required)
+        continue;
+      const v = acceptedFill[f.id];
+      const ok = f.kind === "checkbox" ? v === true : typeof v === "string" && v.trim().length > 0;
+      if (!ok)
+        throw new Error("Please complete all required fields before signing.");
+    }
+    const mergedFill = { ...parseFillValues(doc.fillValuesJson), ...acceptedFill };
+    let finalPdfBytes = pdfBytes;
+    if (fillFields.length && doc.originalBlobKey) {
+      finalPdfBytes = Buffer.from(await compositeFillFields(pdfBytes, fillFields, mergedFill));
+    }
+    const digest = await crypto.subtle.digest("SHA-256", finalPdfBytes);
     const hash = Array.from(new Uint8Array(digest)).map((v) => v.toString(16).padStart(2, "0")).join("");
     const now = new Date;
     const sigKey = `client-signatures/${doc.jobId}/${crypto.randomUUID()}.png`;
     const pdfKey = `client-signed-pdfs/${doc.jobId}/${crypto.randomUUID()}.pdf`;
     await ctx.blobs.put(sigKey, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
-    await ctx.blobs.put(pdfKey, pdfBytes, { contentType: "application/pdf" });
-    await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: sigKey, clientSignedAt: now, clientSignedPdfBlobKey: pdfKey, clientSignatureHash: hash, clientSignedUserAgent: args.userAgent.slice(0, 300) }).where(eq(documents.id, doc.id));
+    await ctx.blobs.put(pdfKey, finalPdfBytes, { contentType: "application/pdf" });
+    await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: sigKey, clientSignedAt: now, clientSignedPdfBlobKey: pdfKey, clientSignatureHash: hash, clientSignedUserAgent: args.userAgent.slice(0, 300), fillValuesJson: JSON.stringify(mergedFill) }).where(eq(documents.id, doc.id));
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "sign", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
     await notifyCompanyEvent(ctx, link.companyId, "notifyDocSigned", "document-signed", `Client signed "${doc.title}"`, "Un cliente firm\xF3 tu documento", `doc-signed:${doc.id}`);
+    try {
+      const signedAttachment = { filename: signedPdfFilename(doc.title), contentType: "application/pdf", dataBase64: finalPdfBytes.toString("base64") };
+      const owners = await db.select({ email: authUsers.email, name: authUsers.name }).from(authUsers).where(eq(authUsers.companyId, link.companyId));
+      for (const owner of owners) {
+        if (!owner.email)
+          continue;
+        try {
+          await ctx.executePrivileged(privileged.sendBackupEmail, {
+            to: owner.email,
+            subject: `${args.signerName} signed "${doc.title}"`,
+            text: `Hi ${owner.name || "there"},
+
+${args.signerName} just signed "${doc.title}" through your Crewkat document link. The signed PDF is attached, and the signed copy is filed on the document in your app.
+
+\u2014 The Crewkat team`,
+            attachments: [signedAttachment]
+          });
+        } catch {}
+      }
+      const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
+      const clientEmail = (job?.clientEmail ?? "").trim();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+        try {
+          await ctx.executePrivileged(privileged.sendBackupEmail, {
+            to: clientEmail,
+            subject: `Your signed copy of "${doc.title}"`,
+            text: `Hi ${job?.clientName || "there"},
+
+Thanks for signing "${doc.title}". Your signed copy is attached \u2014 keep it for your records.
+
+\u2014 The Crewkat team`,
+            attachments: [signedAttachment]
+          });
+        } catch {}
+      }
+    } catch {}
     ctx.invalidateQueries();
     return { ok: true, signedAt: now.toISOString() };
   } }),
@@ -79344,19 +81854,20 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx) {
       const identity = workspaceIdentity(ctx);
       const db = ctx.db();
-      const [clients2, jobs2, quotes2, invoices2, payments2] = await Promise.all([
+      const [clients2, jobs2, quotes2, invoices2, payments2, paidInvoices] = await Promise.all([
         db.select({ id: clients.id }).from(clients).limit(1),
         db.select({ id: jobs.id }).from(jobs).limit(1),
         db.select({ sentAt: quotes.sentAt }).from(quotes).where(ne(quotes.sentAt, "")).limit(1),
         db.select({ id: invoices.id }).from(invoices).limit(1),
-        db.select({ id: payments.id }).from(payments).limit(1)
+        db.select({ id: payments.id }).from(payments).limit(1),
+        db.select({ id: invoices.id }).from(invoices).where(eq(invoices.status, "paid")).limit(1)
       ]);
       const steps = [
         { key: "add_client", titleEn: "Add your first client", titleEs: "Agrega tu primer cliente", done: clients2.length > 0 },
         { key: "create_job", titleEn: "Create a job", titleEs: "Crea un trabajo", done: jobs2.length > 0 },
         { key: "send_estimate", titleEn: "Send an estimate", titleEs: "Env\xEDa un presupuesto", done: quotes2.length > 0 },
         { key: "send_invoice", titleEn: "Send an invoice", titleEs: "Env\xEDa una factura", done: invoices2.length > 0 },
-        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments2.length > 0 }
+        { key: "receive_payment", titleEn: "Record a payment", titleEs: "Registra un pago", done: payments2.length > 0 || paidInvoices.length > 0 }
       ];
       const row = (await db.select().from(onboardingChecklist).where(eq(onboardingChecklist.userId, identity.workspaceUserId)).limit(1))[0];
       const dismissed = !!row?.dismissedAt;
@@ -81269,8 +83780,23 @@ If that was you, just sign in again. If not, we recommend changing your password
       };
     }
   }),
+  uploadSupportScreenshot: defineAction({
+    request: object({ filename: string2().min(1).max(240), contentType: _enum(["image/jpeg", "image/png", "image/webp"]), dataBase64: string2().min(1).max(14000000) }),
+    response: object({ key: string2() }),
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const user = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      const safeName = args.filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const key = `support-screenshots/${user.id}/${crypto.randomUUID()}-${safeName}`;
+      await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType });
+      return { key };
+    }
+  }),
   submitPlatformSupportReport: defineAction({
-    request: object({ kind: _enum(["support", "problem", "question", "general", "feature"]), subject: string2().trim().min(1).max(160), message: string2().trim().min(1).max(5000), language: languageSchema }),
+    request: object({ kind: _enum(["support", "problem", "question", "general", "feature"]), subject: string2().trim().min(1).max(160), message: string2().trim().min(1).max(5000), language: languageSchema, screenshots: array(string2().min(1).max(300)).max(4).default([]) }),
     response: object({ id: number2(), sentAt: string2() }),
     async handler(ctx, args) {
       const identity = workspaceIdentity(ctx);
@@ -81278,8 +83804,14 @@ If that was you, just sign in again. If not, we recommend changing your password
       const user = (await db.select({ id: authUsers.id, name: authUsers.name, email: authUsers.email }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
       if (!user)
         throw new Error("Sign in to continue.");
+      const screenshots = args.screenshots ?? [];
+      if (screenshots.length > 4)
+        throw new Error("Attach at most 4 screenshots.");
+      const ownPrefix = `support-screenshots/${user.id}/`;
+      if (screenshots.some((key) => typeof key !== "string" || !key.startsWith(ownPrefix)))
+        throw new Error("Those screenshots could not be attached.");
       const now = new Date;
-      const made = (await db.insert(platformSupportReports).values({ userId: user.id, userName: user.name, userEmail: user.email, kind: args.kind, subject: args.subject, message: args.message, language: args.language, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: platformSupportReports.id }))[0];
+      const made = (await db.insert(platformSupportReports).values({ userId: user.id, userName: user.name, userEmail: user.email, kind: args.kind, subject: args.subject, message: args.message, screenshotKeysJson: JSON.stringify(screenshots), language: args.language, status: "open", isUnread: true, createdAt: now, updatedAt: now }).returning({ id: platformSupportReports.id }))[0];
       if (!made)
         throw new Error("The report could not be sent.");
       ctx.invalidateQueries();
@@ -81361,7 +83893,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   platformSupportThread: defineAction({
     request: object({ reportId: number2().int().positive() }),
     response: object({
-      report: object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), language: string2(), status: string2(), isUnread: boolean2(), createdAt: string2(), resolvedAt: string2().nullable(), priority: string2(), assignedTo: object({ id: number2(), name: string2() }).nullable() }),
+      report: object({ id: number2(), userName: string2(), userEmail: string2(), kind: string2(), subject: string2(), message: string2(), screenshots: array(object({ key: string2(), url: string2().nullable() })), language: string2(), status: string2(), isUnread: boolean2(), createdAt: string2(), resolvedAt: string2().nullable(), priority: string2(), assignedTo: object({ id: number2(), name: string2() }).nullable() }),
       replies: array(object({ id: number2(), sender: string2(), message: string2(), createdAt: string2() }))
     }),
     async handler(ctx, args) {
@@ -81373,7 +83905,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const assignee = report.assignedTo != null ? (await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(eq(authUsers.id, report.assignedTo)).limit(1))[0] : undefined;
       const replies = await db.select().from(platformSupportReplies).where(eq(platformSupportReplies.reportId, report.id)).orderBy(platformSupportReplies.createdAt, platformSupportReplies.id);
       return {
-        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
+        report: { id: report.id, userName: report.userName, userEmail: report.userEmail, kind: report.kind, subject: report.subject, message: report.message, screenshots: await hydrateScreenshots(ctx, report.screenshotKeysJson), language: report.language, status: report.status, isUnread: report.isUnread, createdAt: report.createdAt.toISOString(), resolvedAt: report.resolvedAt?.toISOString() ?? null, priority: report.priority, assignedTo: assignee ? { id: assignee.id, name: assignee.name } : null },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() }))
       };
     }
@@ -81470,7 +84002,7 @@ If that was you, just sign in again. If not, we recommend changing your password
   userSupportThread: defineAction({
     request: object({ reportId: number2().int().positive() }),
     response: object({
-      report: object({ id: number2(), kind: string2(), subject: string2(), message: string2(), status: string2(), createdAt: string2() }),
+      report: object({ id: number2(), kind: string2(), subject: string2(), message: string2(), screenshots: array(object({ key: string2(), url: string2().nullable() })), status: string2(), createdAt: string2() }),
       replies: array(object({ id: number2(), sender: string2(), message: string2(), createdAt: string2() }))
     }),
     async handler(ctx, args) {
@@ -81481,7 +84013,7 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("Report not found.");
       const replies = await db.select().from(platformSupportReplies).where(eq(platformSupportReplies.reportId, report.id)).orderBy(platformSupportReplies.createdAt, platformSupportReplies.id);
       return {
-        report: { id: report.id, kind: report.kind, subject: report.subject, message: report.message, status: report.status, createdAt: report.createdAt.toISOString() },
+        report: { id: report.id, kind: report.kind, subject: report.subject, message: report.message, screenshots: await hydrateScreenshots(ctx, report.screenshotKeysJson), status: report.status, createdAt: report.createdAt.toISOString() },
         replies: replies.map((r) => ({ id: r.id, sender: r.sender, message: r.message, createdAt: r.createdAt.toISOString() }))
       };
     }
@@ -81517,8 +84049,8 @@ If that was you, just sign in again. If not, we recommend changing your password
     const rows = await ctx.db().select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const row = rows[0];
     if (!row)
-      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null, savedSignatureUrl: null };
-    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null, savedSignatureUrl: row.signatureBlobKey ? await ctx.blobs.getUrl(row.signatureBlobKey) : null };
+      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, notifyContractViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
+    return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, notifyContractViewed: row.notifyContractViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = platformDb(ctx);
@@ -81553,32 +84085,6 @@ If that was you, just sign in again. If not, we recommend changing your password
       await db.insert(settings).values({ companyName: "", logoBlobKey: key, updatedAt: new Date });
     if (old?.logoBlobKey)
       await ctx.blobs.delete(old.logoBlobKey);
-    ctx.invalidateQueries();
-    return { ok: true };
-  } }),
-  saveContractorSignature: defineAction({ request: object({ signatureDataBase64: string2().min(100).max(4000000) }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    const db = platformDb(ctx);
-    const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
-    const old = rows[0];
-    const key = `branding/signatures/${crypto.randomUUID()}.png`;
-    await ctx.blobs.put(key, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
-    if (old)
-      await db.update(settings).set({ signatureBlobKey: key, updatedAt: new Date }).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId));
-    else
-      await db.insert(settings).values({ companyName: "", signatureBlobKey: key, updatedAt: new Date });
-    if (old?.signatureBlobKey)
-      await ctx.blobs.delete(old.signatureBlobKey);
-    ctx.invalidateQueries();
-    return { ok: true };
-  } }),
-  clearContractorSignature: defineAction({ request: object({}), response: object({ ok: literal(true) }), async handler(ctx) {
-    const db = platformDb(ctx);
-    const rows = await db.select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
-    const old = rows[0];
-    if (old?.signatureBlobKey) {
-      await db.update(settings).set({ signatureBlobKey: null, updatedAt: new Date }).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId));
-      await ctx.blobs.delete(old.signatureBlobKey);
-    }
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -81842,17 +84348,22 @@ var PUBLIC_ACTIONS = new Set([
   "requestPasswordReset",
   "resetPassword",
   "handleStripeWebhook",
+  "crewLogin",
   "getGoogleClientId",
   "googleSignIn",
   "getPortalData",
+  "getPortalPhotoDownload",
   "portalUpdateSelection",
   "portalSignChangeOrder",
+  "getPortalChangeOrderPdf",
   "saveQuoteOptionSelection",
   "resolveDocumentLink",
   "getDocumentLinkPdf",
   "getDocumentLinkPdfPages",
   "validateDocumentLinkPdf",
   "submitDocumentSignature",
+  "getDocumentLinkSignedPdf",
+  "emailDocumentLinkSignedCopy",
   "submitEstimateRequest",
   "portalListJobMessages",
   "portalSendJobMessage",
@@ -81935,9 +84446,14 @@ function protectActions(actions) {
       handler: async (ctx, args) => {
         const envelope = authEnvelopeSchema.parse(args);
         const user = await requireSession(ctx, envelope._sessionToken);
+        const role = productRoleOf(user.role);
+        assertRoleCan(role, name);
+        const access = effectiveAccess(role, parseAccessOverrides(user.accessOverrides));
+        assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium")
           throw new Error("Premium required. Upgrade to unlock this Pro tool.");
-        return original(withWorkspace(ctx, user), args);
+        const result = await original(withWorkspace(ctx, user), args);
+        return applyAccessShaping(ctx.db(), user, access, name, result);
       }
     };
     return [name, protectedAction];
@@ -81948,23 +84464,32 @@ var Actions = protectActions(BaseActions);
 export {
   Actions,
   BaseActions,
+  PUBLIC_ACTIONS,
   alertMatchesListing,
+  applyAccessShaping,
+  assertOfficeTier,
+  assignedJobIds,
   authEnvelopeSchema,
   authUserShape,
   consumeMarketplaceUnlock,
   deleteUserAccount,
+  ensureCompanyRow,
   getPlatformSetting,
   googleAuth,
+  hydrateScreenshots,
   isPlatformTeamMember,
   issueSession,
   logAdminAction,
   marketplaceZipCodeSchema,
+  normalizeCrewCode,
   normalizeZipCode,
   notifyAlertMatches,
+  parseScreenshotKeys,
   performBackup,
   performMonthlyVerify,
   platformDb,
   recoverStaleBackupRuns,
+  requireCompanyAdmin,
   requirePlatformAdmin,
   requireSession,
   runEstimateNudgeTick,

@@ -4547,6 +4547,29 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  listStripeInvoices: {
+    request: object({ customerId: string2().min(1).max(200), limit: number2().int().min(1).max(25).default(25) }),
+    response: object({
+      configured: boolean2(),
+      invoices: array(object({
+        id: string2(),
+        created: number2().int(),
+        description: string2().nullable(),
+        amountCents: number2().int(),
+        currency: string2(),
+        status: string2(),
+        receiptUrl: string2().nullable()
+      }))
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createBillingPortalSession: {
+    request: object({ customerId: string2().min(1).max(200), returnUrl: string2().url().max(500) }),
+    response: object({ url: string2().nullable(), errorCode: _enum(["portal_not_configured", "stripe_unconfigured"]).nullable() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   issueStripeRefund: {
     request: object({ chargeId: string2().min(1).max(200), amountCents: number2().int().positive().max(1e7).optional(), reason: string2().trim().max(500).default("") }),
     response: object({ id: string2(), amount: number2().int(), currency: string2(), status: string2() }),
@@ -5083,6 +5106,64 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       description: typeof charge.description === "string" ? charge.description : null
     })).filter((charge) => charge.id);
     return { charges };
+  },
+  async listStripeInvoices(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { configured: false, invoices: [] };
+    const params = new URLSearchParams({ customer: args.customerId, limit: String(args.limit) });
+    const response = await fetch(`https://api.stripe.com/v1/invoices?${params}`, {
+      method: "GET",
+      headers: { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Could not load Stripe invoices.");
+    const result = await response.json();
+    const invoices = (result.data ?? []).map((invoice) => {
+      const amountPaid = typeof invoice.amount_paid === "number" ? Math.round(invoice.amount_paid) : 0;
+      const amountDue = typeof invoice.amount_due === "number" ? Math.round(invoice.amount_due) : 0;
+      const lineDescription = invoice.lines?.data?.[0]?.description;
+      return {
+        id: typeof invoice.id === "string" ? invoice.id : "",
+        created: typeof invoice.created === "number" ? Math.round(invoice.created) : 0,
+        description: typeof invoice.description === "string" && invoice.description ? invoice.description : typeof lineDescription === "string" && lineDescription ? lineDescription : null,
+        amountCents: amountPaid > 0 ? amountPaid : amountDue,
+        currency: typeof invoice.currency === "string" ? invoice.currency : "usd",
+        status: typeof invoice.status === "string" ? invoice.status : "unknown",
+        receiptUrl: typeof invoice.hosted_invoice_url === "string" && invoice.hosted_invoice_url ? invoice.hosted_invoice_url : typeof invoice.invoice_pdf === "string" && invoice.invoice_pdf ? invoice.invoice_pdf : null
+      };
+    }).filter((invoice) => invoice.id && invoice.status !== "draft");
+    return { configured: true, invoices };
+  },
+  async createBillingPortalSession(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { url: null, errorCode: "stripe_unconfigured" };
+    const body = new URLSearchParams({ customer: args.customerId, return_url: args.returnUrl });
+    const response = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) {
+      let message = "";
+      try {
+        const err = await response.json();
+        if (typeof err.error?.message === "string")
+          message = err.error.message;
+      } catch {}
+      if (/configuration/i.test(message))
+        return { url: null, errorCode: "portal_not_configured" };
+      throw new Error(message || "Stripe could not open the billing portal.");
+    }
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\/billing\.stripe\.com\//.test(result.url))
+      throw new Error("Stripe did not return a valid billing portal page.");
+    return { url: result.url, errorCode: null };
   },
   async issueStripeRefund(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();

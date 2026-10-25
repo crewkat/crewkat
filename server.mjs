@@ -260,6 +260,61 @@ console.log("[crewkat] verifying fill fields (0082) + shared files (0083) ...");
 }
 console.log("[crewkat] fill fields + shared files schema verified.");
 
+// Repair (Track 1c): migration 0088 adds auth_users.deactivated_at (staff
+// login deactivation). Same self-heal pattern: if the migration was ever
+// skipped, team-role checks in the action layer would fail on the missing
+// column for EVERY account. Idempotent PRAGMA check first.
+console.log("[crewkat] verifying team roles (0088) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`auth_users`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  if (!existing.has("deactivated_at")) {
+    console.log("[crewkat] repair: adding missing column auth_users.deactivated_at");
+    await libsql.execute("ALTER TABLE `auth_users` ADD COLUMN `deactivated_at` integer");
+  }
+}
+console.log("[crewkat] team roles schema verified.");
+
+// Repair (Tier 2): migration 0089 adds the crew-login columns on
+// auth_users (credential_type / pin_hash / pin_salt / access_overrides)
+// and the companies table (crew code + tier flag). Same self-heal
+// pattern: if the migration was ever skipped, crew sign-in and the
+// override checks in the action layer would fail on the missing
+// columns for EVERY account. Idempotent PRAGMA / sqlite_master checks
+// first; the companies backfill mirrors the migration (every existing
+// company starts on the "office" tier so nobody is locked out).
+console.log("[crewkat] verifying crew tier2 (0089) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`auth_users`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  const additions = [
+    ["credential_type", "ALTER TABLE `auth_users` ADD COLUMN `credential_type` text DEFAULT 'email' NOT NULL"],
+    ["pin_hash", "ALTER TABLE `auth_users` ADD COLUMN `pin_hash` text"],
+    ["pin_salt", "ALTER TABLE `auth_users` ADD COLUMN `pin_salt` text"],
+    ["access_overrides", "ALTER TABLE `auth_users` ADD COLUMN `access_overrides` text"],
+  ];
+  for (const [column, ddl] of additions) {
+    if (!existing.has(column)) {
+      console.log(`[crewkat] repair: adding missing column auth_users.${column}`);
+      await libsql.execute(ddl);
+    }
+  }
+  const tables = await libsql.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'");
+  if (tables.rows.length === 0) {
+    console.log("[crewkat] repair: creating missing table companies");
+    await libsql.execute(`CREATE TABLE \`companies\` (
+      \`id\` integer PRIMARY KEY NOT NULL,
+      \`crew_code\` text,
+      \`tier\` text DEFAULT 'office' NOT NULL,
+      \`created_at\` integer NOT NULL,
+      \`updated_at\` integer NOT NULL
+    )`);
+    await libsql.execute("CREATE UNIQUE INDEX `companies_crew_code_unique` ON `companies` (`crew_code`)");
+  }
+  await libsql.execute("INSERT OR IGNORE INTO `companies` (`id`, `tier`, `created_at`, `updated_at`) SELECT DISTINCT `company_id`, 'office', 0, 0 FROM `auth_users`");
+}
+console.log("[crewkat] crew tier2 schema verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------
@@ -532,6 +587,8 @@ async function readBody(req, { raw = false } = {}) {
 
 const CLIENT_DIST = join(APP_DIR, "client/dist");
 
+const OFFICE_DIST = join(APP_DIR, "office/dist");
+
 const MARKETING_DIST = join(CLIENT_DIST, "marketing");
 
 async function sendFile(res, filePath, cacheControl) {
@@ -622,6 +679,38 @@ async function serveStatic(res, urlPath) {
     // otherwise a deploy can sit invisible behind a stale shell/SW for hours.
     // Hashed /assets/* files are content-addressed, so they cache for a year.
     const noStore = relative === "/index.html" || relative === "/sw.js"
+      ? "no-store"
+      : relative.startsWith("/assets/")
+        ? "public, max-age=31536000, immutable"
+        : undefined;
+    return sendFile(res, filePath, noStore);
+  }
+  // Crewkat Office (desktop CRM): SPA bundle at /office/*, same semantics
+  // as /app/* — SPA fallback to the office index for client-side routes,
+  // real 404 for missing files under /office/assets/.
+  if (urlPath === "/office" || urlPath.startsWith("/office/")) {
+    const relative = urlPath === "/office" ? "/index.html" : urlPath.slice(7) || "/index.html";
+    const filePath = safeJoin(OFFICE_DIST, relative);
+    if (!filePath) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    let fileStat;
+    try {
+      fileStat = await stat(filePath);
+    } catch {
+      fileStat = null;
+    }
+    if (!fileStat || !fileStat.isFile()) {
+      if (relative.startsWith("/assets/")) {
+        res.writeHead(404, { "x-content-type-options": "nosniff" });
+        res.end();
+        return;
+      }
+      return sendFile(res, join(OFFICE_DIST, "index.html"), "no-store");
+    }
+    const noStore = relative === "/index.html"
       ? "no-store"
       : relative.startsWith("/assets/")
         ? "public, max-age=31536000, immutable"

@@ -22,6 +22,18 @@ import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
 import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
+import {
+  ACCESS_SWITCHES,
+  assertAccessAllowed,
+  assertRoleCan,
+  effectiveAccess,
+  parseAccessOverrides,
+  productRoleOf,
+  serializeAccessOverrides,
+  type AccessOverrides,
+  type EffectiveAccess,
+  type ProductRole,
+} from "./permissions";
 import { platformAdminPhase1Actions } from "./platform-admin-phase1";
 import { platformAdminPhase2Actions } from "./platform-admin-phase2";
 import { scanListingText } from "./moderation";
@@ -224,7 +236,10 @@ const shareImageSchema = z.object({ id: z.number(), jobId: z.number(), beforePho
 // Photo Proof Pack (0080): a Before/After pair hydrated with both photos.
 const photoPairPhotoSchema = z.object({ id: z.number(), stage: stageSchema, caption: z.string(), url: z.string() });
 const photoPairSchema = z.object({ id: z.number(), jobId: z.number(), label: z.string(), before: photoPairPhotoSchema, after: photoPairPhotoSchema, createdAt: z.string() });
-const leadSchema = z.object({ id: z.number(), name: z.string(), phone: z.string(), email: z.string(), address: z.string(), serviceType: z.string(), preferredContactTime: z.string(), source: z.string(), notes: z.string(), stage: leadStageSchema, projectSize: z.enum(["small","medium","large"]), engagement: z.enum(["slow","normal","fast"]), score: z.number(), clientId: z.number().nullable(), quoteId: z.number().nullable(), createdAt: z.string() });
+const leadSchema = z.object({ id: z.number(), name: z.string(), phone: z.string(), email: z.string(), address: z.string(), serviceType: z.string(), preferredContactTime: z.string(), source: z.string(), notes: z.string(), stage: leadStageSchema, estimatedValue: z.string(), projectSize: z.enum(["small","medium","large"]), engagement: z.enum(["slow","normal","fast"]), score: z.number(), clientId: z.number().nullable(), quoteId: z.number().nullable(), createdAt: z.string() });
+// 0087 (Office CRM): one entry on a lead's activity timeline.
+const leadActivityKindSchema = z.enum(["note", "call", "email", "text", "stage", "system"]);
+const leadActivitySchema = z.object({ id: z.number(), leadId: z.number(), kind: leadActivityKindSchema, body: z.string(), createdAt: z.string() });
 const selectionSchema = z.object({ id: z.number(), jobId: z.number(), category: z.string(), item: z.string(), vendor: z.string(), photoUrl: z.string().nullable(), approvalStatus: z.enum(["pending", "approved", "rejected"]), leadTimeDays: z.number(), estimatedCost: z.string(), actualCost: z.string(), createdAt: z.string() });
 const dailyLogSchema = z.object({ id: z.number(), jobId: z.number(), logDate: z.string(), crew: z.string(), hours: z.string(), photoIds: z.array(z.number()), notes: z.string(), blockers: z.string(), clientSummary: z.string(), sharedWithClient: z.boolean(), createdAt: z.string() });
 const internalNoteSchema = z.object({ id: z.number(), jobId: z.number().nullable(), clientId: z.number().nullable(), note: z.string(), reminderDate: z.string(), completed: z.boolean(), createdAt: z.string() });
@@ -313,6 +328,10 @@ async function upsertClient(ctx: Ctx, input: { clientId?: number | null; name: s
   };
   if (match) { await db.update(schema.clients).set({ name: input.name, phone: input.phone, email: input.email, address: input.address, ...(input.address.trim() ? { addressesJson: syncPrimary(match, input.address.trim()) } : {}), updatedAt: now }).where(eq(schema.clients.id, match.id)); return match.id; }
   const made = await db.insert(schema.clients).values({ name: input.name, phone: input.phone, email: input.email, address: input.address, addressesJson: input.address.trim() ? JSON.stringify([{ label: "", address: input.address.trim(), primary: true }]) : "[]", notes: "", createdAt: now, updatedAt: now }).returning({ id: schema.clients.id }); return made[0]?.id ?? null;
+}
+// 0087 (Office CRM): append one entry to a lead's activity timeline.
+async function logLeadActivity(db: ReturnType<Ctx["db"]>, leadId: number, kind: "note" | "call" | "email" | "text" | "stage" | "system", body: string) {
+  await db.insert(schema.leadActivities).values({ leadId, kind, body, createdAt: new Date() });
 }
 async function hashPortalToken(token: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
@@ -742,7 +761,7 @@ type BackupPayload = {
 const BACKUP_TABLES = [
   "clients", "jobs", "photos", "photo_pairs", "documents", "job_files", "quotes", "invoices", "financial_document_signatures",
   "punch_items", "punch_signoffs", "progress_updates", "settings", "time_entries", "receipts", "crew_tasks",
-  "voice_notes", "payments", "completion_certificates", "appointments", "leads", "selections", "daily_logs",
+  "voice_notes", "payments", "completion_certificates", "appointments", "leads", "lead_activities", "selections", "daily_logs",
   "internal_notes", "payment_milestones", "automation_logs", "support_reports", "price_book_items", "quote_templates",
   "mileage_trips", "business_expenses", "subcontractors", "share_images", "warranties", "slideshow_videos",
   "scanned_documents", "suppliers", "maintenance_plans", "app_users", "admin_parameters", "portal_tokens",
@@ -840,7 +859,37 @@ const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
 export { authEnvelopeSchema };
-const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string() });
+// Tier 2 (0089): the five per-member access switches. In requests, each
+// switch is optional (absent = inherit the role preset); in
+// setMemberAccess, null clears an override back to the preset.
+const accessOverridesSchema = z.object({
+  seeMoney: z.boolean().optional(),
+  seeClientContact: z.boolean().optional(),
+  sendDocuments: z.boolean().optional(),
+  seeAllJobs: z.boolean().optional(),
+  recordPayments: z.boolean().optional(),
+});
+const accessOverridesPatchSchema = z.object({
+  seeMoney: z.boolean().nullable().optional(),
+  seeClientContact: z.boolean().nullable().optional(),
+  sendDocuments: z.boolean().nullable().optional(),
+  seeAllJobs: z.boolean().nullable().optional(),
+  recordPayments: z.boolean().nullable().optional(),
+});
+const effectiveAccessSchema = z.object({
+  seeMoney: z.boolean(), seeClientContact: z.boolean(), sendDocuments: z.boolean(), seeAllJobs: z.boolean(), recordPayments: z.boolean(),
+});
+const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string(),
+  // Tier 2: how this login authenticates ("crew_pin" = company code +
+  // PIN, no email) and the member's EFFECTIVE access switches (role
+  // preset + admin overrides resolved server-side). The phone client
+  // keys its crew-shaped home off these two fields.
+  credentialType: z.enum(["email", "crew_pin"]), access: effectiveAccessSchema });
+// Track 1c: one row of the company team list (Office Team section).
+// Tier 2 adds the credential type, the stored overrides, and the
+// resolved effective access so the Team section can render the switch
+// panel and a plain-language access summary per member.
+const teamMemberSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), active: z.boolean(), isSelf: z.boolean(), createdAt: z.string(), credentialType: z.enum(["email", "crew_pin"]), overrides: accessOverridesSchema, access: effectiveAccessSchema });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
 // refreshToken = raw refresh token from the HttpOnly cookie (if present).
@@ -916,6 +965,9 @@ export async function requireSession(ctx: Ctx, token: string) {
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
   if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
   if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+  // Track 1c: a company admin can deactivate a staff login. Enforced here
+  // (not just at login) so an already-issued proof dies on its next call.
+  if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
   // Dual-mode: legacy 30-day tokens keep their sliding renewal. Proof tokens
   // have a hard 15-minute expiry and are never extended.
   const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60_000;
@@ -987,7 +1039,7 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 export function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", access: effectiveAccess(productRoleOf(row.role), parseAccessOverrides(row.accessOverrides)) };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
   const db = ctx.db<typeof schema>();
@@ -1049,7 +1101,7 @@ function appPublicUrl(): string {
   return configured || "https://crewkat.com";
 }
 
-type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; unscopedDb?: () => ReturnType<Ctx["db"]> };
+type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; workspaceRole?: ProductRole; unscopedDb?: () => ReturnType<Ctx["db"]> };
 const GLOBAL_MARKETPLACE_READ_TABLES = new Set<unknown>([
   schema.marketplaceListings,
   schema.marketplaceListingPhotos,
@@ -1134,6 +1186,7 @@ function withWorkspace(ctx: Ctx, user: typeof schema.authUsers.$inferSelect): Wo
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
     workspaceTier: { value: user.tier },
+    workspaceRole: { value: productRoleOf(user.role) },
   });
   return scoped;
 }
@@ -1154,6 +1207,296 @@ export async function requirePlatformAdmin(ctx: Ctx) {
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
   if (!user?.isPlatformAdmin) throw new Error("Platform admin access required.");
   return { identity, admin: user };
+}
+
+// Track 1c: company-admin guard for the team-management actions. The
+// role map in protectActions already gates these action names to Admin;
+// this is the in-handler second lock (same pattern as the legacy
+// app_users owner checks), re-resolving the caller from the database so
+// a stale workspace role can never slip a team change through.
+export async function requireCompanyAdmin(ctx: Ctx) {
+  const identity = workspaceIdentity(ctx);
+  const db = platformDb(ctx);
+  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user || user.companyId !== identity.workspaceCompanyId || productRoleOf(user.role) !== "admin") {
+    throw new Error("Admin access required. Only your company's admin can manage the team.");
+  }
+  return { identity, admin: user };
+}
+
+// ---------------------------------------------------------------------------
+// Tier 2 (0089): companies, crew PIN credentials, tier gating, and the
+// payload shaping that enforces the per-member access switches.
+// ---------------------------------------------------------------------------
+
+export type CompanyTier = "app" | "office";
+
+// Crew codes use the referral-code alphabet (no confusable 0/O/1/I/L).
+const CREW_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+export function normalizeCrewCode(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function crewCodeDisplay(normalized: string): string {
+  return normalized.length === 8 ? `${normalized.slice(0, 4)}-${normalized.slice(4)}` : normalized;
+}
+
+function makeCrewCode(): string {
+  let code = "";
+  for (let i = 0; i < 8; i++) code += CREW_CODE_ALPHABET[randomInt(CREW_CODE_ALPHABET.length)];
+  return crewCodeDisplay(code);
+}
+
+async function uniqueCrewCode(db: ReturnType<Ctx["db"]>): Promise<string> {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const code = makeCrewCode();
+    const existing = (await db.select({ id: schema.companies.id }).from(schema.companies).where(eq(schema.companies.crewCode, code)).limit(1))[0];
+    if (!existing) return code;
+  }
+  throw new Error("Could not generate a crew code. Try again.");
+}
+
+// Companies were implicit before 0089 (just a company_id integer), so
+// rows are created lazily: the first Team-surface call for a company
+// mints its row (tier "office" — the grandfathered default) and its
+// crew code. signUp also calls this for brand-new companies.
+export async function ensureCompanyRow(db: ReturnType<Ctx["db"]>, companyId: number): Promise<typeof schema.companies.$inferSelect> {
+  const existing = (await db.select().from(schema.companies).where(eq(schema.companies.id, companyId)).limit(1))[0];
+  if (existing) {
+    if (existing.crewCode) return existing;
+    const crewCode = await uniqueCrewCode(db);
+    await db.update(schema.companies).set({ crewCode, updatedAt: new Date() }).where(eq(schema.companies.id, companyId));
+    return { ...existing, crewCode };
+  }
+  const now = new Date();
+  const crewCode = await uniqueCrewCode(db);
+  const made = (await db.insert(schema.companies).values({ id: companyId, crewCode, tier: "office", createdAt: now, updatedAt: now }).returning())[0];
+  if (!made) throw new Error("The company record could not be created.");
+  return made;
+}
+
+// Tier gate for the Office-tier capabilities (staff accounts, crew
+// logins, override switches — the whole Team surface). Companies on the
+// "app" tier are single-user: creating or re-scoping logins is refused
+// with an upgrade message. Deactivation is deliberately NOT gated (see
+// updateStaffMember) — an off switch must always work.
+export async function assertOfficeTier(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  const company = await ensureCompanyRow(db, companyId);
+  if (company.tier !== "office") {
+    throw new Error("Team logins are part of the Crewkat Office plan. Upgrade this company to Office to add staff and crew logins.");
+  }
+}
+
+// --- Crew PINs -------------------------------------------------------------
+// A PIN identifies a member only together with the company code, and
+// must be unique among the company's crew logins (the login supplies
+// nothing else). PINs are 6 digits, PBKDF2-hashed like passwords.
+
+async function pinMatches(pin: string, row: { pinHash: string | null; pinSalt: string | null }): Promise<boolean> {
+  if (!row.pinHash || !row.pinSalt) return false;
+  return (await derivePassword(pin, row.pinSalt, AUTH_PASSWORD_ITERATIONS)) === row.pinHash;
+}
+
+async function generateUniqueCrewPin(db: ReturnType<Ctx["db"]>, companyId: number, excludeUserId?: number): Promise<string> {
+  const members = await db.select({ id: schema.authUsers.id, pinHash: schema.authUsers.pinHash, pinSalt: schema.authUsers.pinSalt })
+    .from(schema.authUsers)
+    .where(and(eq(schema.authUsers.companyId, companyId), eq(schema.authUsers.credentialType, "crew_pin")));
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const pin = randomCode();
+    let clash = false;
+    for (const member of members) {
+      if (excludeUserId !== undefined && member.id === excludeUserId) continue;
+      if (await pinMatches(pin, member)) { clash = true; break; }
+    }
+    if (!clash) return pin;
+  }
+  throw new Error("Could not generate a crew PIN. Try again.");
+}
+
+// Crew sign-in lockout: failed attempts are recorded per company in
+// rate_limit_events (scope "crew-login:fail"); 10 failures inside 15
+// minutes locks crew sign-in for the whole company until they age out.
+// A successful sign-in clears the counter. Per-company (not per-member)
+// because the login attempt itself doesn't say which member it targets
+// until the PIN matches.
+const CREW_LOGIN_MAX_FAILURES = 10;
+const CREW_LOGIN_WINDOW_MS = 15 * 60_000;
+
+async function crewLoginLocked(db: ReturnType<Ctx["db"]>, companyId: number): Promise<boolean> {
+  const windowStart = new Date(Date.now() - CREW_LOGIN_WINDOW_MS);
+  const hits = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "crew-login:fail"), eq(schema.rateLimitEvents.key, String(companyId)), gte(schema.rateLimitEvents.occurredAt, windowStart)));
+  return hits.length >= CREW_LOGIN_MAX_FAILURES;
+}
+
+async function recordCrewLoginFailure(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  await db.insert(schema.rateLimitEvents).values({ scope: "crew-login:fail", key: String(companyId), occurredAt: new Date() });
+}
+
+async function clearCrewLoginFailures(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  await db.delete(schema.rateLimitEvents).where(and(eq(schema.rateLimitEvents.scope, "crew-login:fail"), eq(schema.rateLimitEvents.key, String(companyId))));
+}
+
+// --- Access shaping ----------------------------------------------------------
+// The jobs a member "has": jobs with an appointment whose crewMember
+// text names them (the app's existing free-text crew assignment), plus
+// jobs they have clocked time on. Used when seeAllJobs is off.
+export async function assignedJobIds(db: ReturnType<Ctx["db"]>, user: { name: string; companyId: number }): Promise<Set<number>> {
+  const ids = new Set<number>();
+  const nameKey = user.name.trim().toLowerCase();
+  if (!nameKey) return ids;
+  const appts = await db.select({ jobId: schema.appointments.jobId, crewMember: schema.appointments.crewMember })
+    .from(schema.appointments).where(eq(schema.appointments.companyId, user.companyId));
+  for (const a of appts) {
+    if (a.jobId != null && a.crewMember.trim().toLowerCase() === nameKey) ids.add(a.jobId);
+  }
+  const times = await db.select({ jobId: schema.timeEntries.jobId, crewMember: schema.timeEntries.crewMember })
+    .from(schema.timeEntries).where(eq(schema.timeEntries.companyId, user.companyId));
+  for (const t of times) {
+    if (t.crewMember.trim().toLowerCase() === nameKey) ids.add(t.jobId);
+  }
+  return ids;
+}
+
+type AnyRecord = Record<string, any>;
+
+function stripLineItemAmounts(holder: AnyRecord): void {
+  if (Array.isArray(holder.lineItems)) {
+    holder.lineItems = holder.lineItems.map((item: AnyRecord) => ({ ...item, amount: "" }));
+  }
+  if (Array.isArray(holder.materials)) {
+    holder.materials = holder.materials.map((item: any) => (
+      item && typeof item === "object" && "amount" in item ? { ...item, amount: "" } : item
+    ));
+  }
+}
+
+// Money VALUES are blanked/zeroed in place (payload shapes — and the
+// clients' zod response contracts — stay identical; the numbers simply
+// never reach a member whose seeMoney switch is off).
+function stripQuoteMoney(quote: AnyRecord): AnyRecord {
+  const out = { ...quote, subtotal: "", total: "", discountValue: "", taxValue: "" };
+  // Line items include the tickable option rows — their amounts are
+  // money too, so they blank with the rest.
+  stripLineItemAmounts(out);
+  return out;
+}
+
+function stripInvoiceMoney(invoice: AnyRecord): AnyRecord {
+  const out = {
+    ...invoice,
+    subtotal: "", total: "", discountValue: "", taxValue: "",
+    paidToDate: "", balanceRemaining: "", lateFeeAccrued: "", totalWithLateFee: "",
+    payments: Array.isArray(invoice.payments) ? invoice.payments.map((p: AnyRecord) => ({ ...p, amount: "" })) : invoice.payments,
+  };
+  stripLineItemAmounts(out);
+  return out;
+}
+
+function stripJobMoney(job: AnyRecord): AnyRecord {
+  return { ...job, amountDue: "", contractSum: "", depositAmount: "", paymentNotes: "" };
+}
+
+function stripContact(holder: AnyRecord): AnyRecord {
+  return { ...holder, clientPhone: "", clientEmail: "" };
+}
+
+// Post-handler payload shaping for the access switches, run inside
+// protectActions. Only the payloads a Field/Office member can already
+// reach are shaped; role-gated surfaces never get here for them.
+export async function applyAccessShaping(
+  db: ReturnType<Ctx["db"]>,
+  user: typeof schema.authUsers.$inferSelect,
+  access: EffectiveAccess,
+  actionName: string,
+  result: unknown,
+): Promise<unknown> {
+  if (!result || typeof result !== "object") return result;
+  const out = result as AnyRecord;
+
+  if (actionName === "listInvoices" && Array.isArray(out.invoices)) {
+    if (!access.seeMoney) out.invoices = out.invoices.map(stripInvoiceMoney);
+    if (!access.seeClientContact) out.invoices = out.invoices.map(stripContact);
+    return out;
+  }
+  if (actionName === "listQuotes" && Array.isArray(out.quotes)) {
+    if (!access.seeMoney) out.quotes = out.quotes.map(stripQuoteMoney);
+    if (!access.seeClientContact) out.quotes = out.quotes.map(stripContact);
+    return out;
+  }
+  if (actionName === "listClients" && Array.isArray(out.clients)) {
+    out.clients = out.clients.map((client: AnyRecord) => {
+      let shaped = client;
+      if (!access.seeClientContact) shaped = { ...shaped, phone: "", email: "" };
+      if (!access.seeMoney) shaped = { ...shaped, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+      return shaped;
+    });
+    return out;
+  }
+  if (actionName === "getClient") {
+    if (out.client) {
+      if (!access.seeClientContact) out.client = { ...out.client, phone: "", email: "" };
+      if (!access.seeMoney) out.client = { ...out.client, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+    }
+    if (Array.isArray(out.jobs)) {
+      out.jobs = out.jobs.map((job: AnyRecord) => {
+        let shaped = job;
+        if (!access.seeMoney) shaped = stripJobMoney(shaped);
+        if (!access.seeClientContact) shaped = stripContact(shaped);
+        return shaped;
+      });
+    }
+    if (Array.isArray(out.quotes) && !access.seeMoney) out.quotes = out.quotes.map(stripQuoteMoney);
+    return out;
+  }
+  if (actionName === "listJobs" && Array.isArray(out.jobs)) {
+    let jobs = out.jobs as AnyRecord[];
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs = jobs.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney) jobs = jobs.map(stripJobMoney);
+    if (!access.seeClientContact) jobs = jobs.map(stripContact);
+    out.jobs = jobs;
+    return out;
+  }
+  if (actionName === "listAppointments" && Array.isArray(out.appointments)) {
+    let appts = out.appointments as AnyRecord[];
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      const nameKey = user.name.trim().toLowerCase();
+      appts = appts.filter((a) => (a.jobId != null && mine.has(a.jobId)) || (typeof a.crewMember === "string" && a.crewMember.trim().toLowerCase() === nameKey && nameKey !== ""));
+    }
+    if (!access.seeClientContact) {
+      appts = appts.map((a) => ({ ...a, clientPhone: "" }));
+    }
+    out.appointments = appts;
+    return out;
+  }
+  if (actionName === "getJob") {
+    if (out.job) {
+      if (!access.seeAllJobs) {
+        const mine = await assignedJobIds(db, user);
+        if (!mine.has(out.job.id)) {
+          throw new Error("That job isn't on your schedule. Ask your admin or office if it should be.");
+        }
+      }
+      if (!access.seeMoney) {
+        out.job = stripJobMoney(out.job);
+        if (Array.isArray(out.documents)) {
+          out.documents = out.documents.map((doc: AnyRecord) => ({ ...doc, amount: "" }));
+        }
+        if (Array.isArray(out.receipts)) {
+          out.receipts = out.receipts.map((receipt: AnyRecord) => ({ ...receipt, amount: "" }));
+        }
+        out.contractSummary = null;
+      }
+      if (!access.seeClientContact) out.job = stripContact(out.job);
+    }
+    return out;
+  }
+  return result;
 }
 
 // Admin panel Phase 2: platform-team membership = is_platform_admin OR a row
@@ -2948,6 +3291,10 @@ export const BaseActions = {
       const referralCode = await uniqueReferralCode(db);
       const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
+      // Tier 2: mint the company's row (crew code + tier flag) up front;
+      // best-effort — ensureCompanyRow also creates it lazily on the
+      // first Team-surface call, so a failure here never fails signup.
+      try { await ensureCompanyRow(db, companyId); } catch { /* lazy creation covers it */ }
       // Auth-screen language choice (EN/ES toggle): persist it on the new
       // company's settings so the first signed-in session opens in the
       // language the owner picked while signing up.
@@ -3029,6 +3376,7 @@ export const BaseActions = {
       if (!user || !valid) { await db.insert(schema.authLoginAttempts).values({ email, attemptedAt: new Date() }); throw new Error("Email or password is incorrect."); }
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
       // Admin panel Phase 2: platform-team TOTP 2FA. When required and the
       // caller is platform team with a verified secret, issue a 5-minute
@@ -3051,6 +3399,53 @@ export const BaseActions = {
       }
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
+    },
+  }),
+  // Tier 2: crew sign-in. A crew member has NO email and NO password —
+  // the admin created their login in the Office Team section and handed
+  // them the company's crew code + a personal PIN. The pair identifies
+  // the member (PINs are unique within a company), and success issues
+  // exactly the same session as an email login, so everything
+  // downstream (role map, access switches, deactivation) applies
+  // unchanged. Failure handling mirrors email login's caution: a
+  // generic error for bad credentials, a per-company failure counter
+  // with a 15-minute lockout after 10 misses, and the shared per-IP
+  // limiter in front.
+  crewLogin: defineAction({
+    request: z.object({ companyCode: z.string().trim().min(4).max(16), pin: z.string().regex(/^\d{4,6}$/) }),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()), totpRequired: z.boolean().default(false) }),
+    async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
+      const db = ctx.db<typeof schema>();
+      const codeKey = normalizeCrewCode(args.companyCode);
+      const candidates = await db.select({ id: schema.companies.id, crewCode: schema.companies.crewCode })
+        .from(schema.companies);
+      const company = candidates.find((row) => row.crewCode && normalizeCrewCode(row.crewCode) === codeKey);
+      if (!company) throw new Error("Company code or PIN is incorrect.");
+      if (await crewLoginLocked(db, company.id)) {
+        throw new Error("Too many crew sign-in attempts for this company. Try again in 15 minutes.");
+      }
+      const members = await db.select().from(schema.authUsers)
+        .where(and(eq(schema.authUsers.companyId, company.id), eq(schema.authUsers.credentialType, "crew_pin")));
+      let matched: typeof schema.authUsers.$inferSelect | undefined;
+      for (const member of members) {
+        if (await pinMatches(args.pin, member)) { matched = member; break; }
+      }
+      if (!matched) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("Company code or PIN is incorrect.");
+      }
+      // The PIN identified the member; account-state refusals mirror
+      // email login (and deactivation — set by the company admin — is
+      // also re-checked on every later call by requireSession).
+      if (matched.deactivatedAt) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
+      }
+      if (matched.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      await clearCrewLoginFailures(db, company.id);
+      const session = await issueSession(ctx, matched.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(matched, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
     },
   }),
   // Public client-ID lookup (same pattern as getVapidPublicKey): the OAuth
@@ -3111,6 +3506,7 @@ export const BaseActions = {
         user = made;
       }
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     },
@@ -3138,6 +3534,7 @@ export const BaseActions = {
             const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, successor.userId)).limit(1))[0];
             if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
             if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+            if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
             return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
@@ -3192,6 +3589,7 @@ export const BaseActions = {
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
       if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60_000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
       return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
@@ -4017,9 +4415,30 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   revokeOnMyWay: defineAction({ request: z.object({ appointmentId: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const companyId = workspaceIdentity(ctx).workspaceCompanyId; await db.update(schema.appointments).set({ shareTokenHash: null, shareTokenHint: "", updatedAt: new Date() }).where(and(eq(schema.appointments.id, args.appointmentId), eq(schema.appointments.companyId, companyId))); ctx.invalidateQueries(); return { ok: true }; } }),
   getOnMyWayStatus: defineAction({ request: z.object({ token: z.string().min(32).max(200) }), response: z.object({ clientName: z.string(), jobType: z.string(), jobAddress: z.string(), status: z.string(), etaMinutes: z.number().nullable(), crewMember: z.string(), updatedAt: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const hash = await hashPortalToken(args.token); const appt = (await db.select().from(schema.appointments).where(eq(schema.appointments.shareTokenHash, hash)).limit(1))[0]; if (!appt) throw new Error("This link is no longer active."); const job = appt.jobId ? (await db.select({ jobType: schema.jobs.jobType, jobAddress: schema.jobs.jobAddress }).from(schema.jobs).where(eq(schema.jobs.id, appt.jobId)).limit(1))[0] : null; return { clientName: appt.clientName, jobType: job?.jobType ?? "", jobAddress: job?.jobAddress ?? "", status: appt.status, etaMinutes: appt.etaMinutes, crewMember: appt.crewMember, updatedAt: appt.updatedAt.toISOString() }; } }),
   updateOnMyWay: defineAction({ request: z.object({ appointmentId: z.number().int().positive(), status: z.enum(["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"]), etaMinutes: z.number().int().min(1).max(480).nullable().default(null) }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const companyId = workspaceIdentity(ctx).workspaceCompanyId; const appt = (await db.select().from(schema.appointments).where(and(eq(schema.appointments.id, args.appointmentId), eq(schema.appointments.companyId, companyId))).limit(1))[0]; if (!appt) throw new Error("Appointment not found."); await db.update(schema.appointments).set({ status: args.status, etaMinutes: args.etaMinutes, updatedAt: new Date() }).where(eq(schema.appointments.id, appt.id)); if (appt.jobId && (args.status === "on_my_way" || args.status === "arrived")) { const etaText = args.etaMinutes ? ` (~${args.etaMinutes} min)` : ""; const en = args.status === "on_my_way" ? `On the way${etaText}` : "Arrived on site"; const es = args.status === "on_my_way" ? `En camino${etaText}` : "Llegó al sitio"; await logJobSystemMessage(db, appt.jobId, en, es); } ctx.invalidateQueries(); return { ok: true }; } }),
-  listLeads: defineAction({ request: z.object({}), response: z.object({ leads: z.array(leadSchema), winRate: z.number() }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.leads).orderBy(desc(schema.leads.score), desc(schema.leads.updatedAt)); const decided = rows.filter((row) => row.stage === "won" || row.stage === "lost"); const won = decided.filter((row) => row.stage === "won").length; return { leads: rows.map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, serviceType: row.serviceType, preferredContactTime: row.preferredContactTime, source: row.source, notes: row.notes, stage: row.stage, projectSize: row.projectSize, engagement: row.engagement, score: row.score, clientId: row.clientId, quoteId: row.quoteId, createdAt: row.createdAt.toISOString() })), winRate: decided.length ? Math.round((won / decided.length) * 100) : 0 }; }}),
-  saveLead: defineAction({ request: z.object({ name: z.string().trim().min(1).max(160), phone: z.string().trim().max(80), source: z.string().trim().max(160), notes: z.string().trim().max(2000), projectSize: z.enum(["small","medium","large"]).default("medium"), engagement: z.enum(["slow","normal","fast"]).default("normal"), serviceType: z.string().trim().max(120).default("") }), response: z.object({ id: z.number(), score: z.number() }), async handler(ctx, args) { const source=args.source.toLowerCase(); const service=args.serviceType.toLowerCase(); const score=Math.min(100,(args.projectSize==="large"?35:args.projectSize==="medium"?24:12)+(args.engagement==="fast"?30:args.engagement==="normal"?18:8)+(/referral|google|website/.test(source)?20:10)+(/kitchen|bath|addition|remodel|paint/.test(service)?15:8)); const rows = await ctx.db<typeof schema>().insert(schema.leads).values({ ...args, score, stage: "new", createdAt: new Date(), updatedAt: new Date() }).returning({ id: schema.leads.id }); const made = rows[0]; if (!made) throw new Error("Could not save lead."); ctx.invalidateQueries(); return { id: made.id, score }; }}),
-  updateLeadStage: defineAction({ request: z.object({ id: z.number().int().positive(), stage: leadStageSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().update(schema.leads).set({ stage: args.stage, updatedAt: new Date() }).where(eq(schema.leads.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+  listLeads: defineAction({ request: z.object({}), response: z.object({ leads: z.array(leadSchema), winRate: z.number() }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.leads).orderBy(desc(schema.leads.score), desc(schema.leads.updatedAt)); const decided = rows.filter((row) => row.stage === "won" || row.stage === "lost"); const won = decided.filter((row) => row.stage === "won").length; return { leads: rows.map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, serviceType: row.serviceType, preferredContactTime: row.preferredContactTime, source: row.source, notes: row.notes, stage: row.stage, estimatedValue: row.estimatedValue, projectSize: row.projectSize, engagement: row.engagement, score: row.score, clientId: row.clientId, quoteId: row.quoteId, createdAt: row.createdAt.toISOString() })), winRate: decided.length ? Math.round((won / decided.length) * 100) : 0 }; }}),
+  saveLead: defineAction({ request: z.object({ name: z.string().trim().min(1).max(160), phone: z.string().trim().max(80), source: z.string().trim().max(160), notes: z.string().trim().max(2000), projectSize: z.enum(["small","medium","large"]).default("medium"), engagement: z.enum(["slow","normal","fast"]).default("normal"), serviceType: z.string().trim().max(120).default(""), estimatedValue: z.string().trim().max(80).optional() }), response: z.object({ id: z.number(), score: z.number() }), async handler(ctx, args) { const source=args.source.toLowerCase(); const service=args.serviceType.toLowerCase(); const score=Math.min(100,(args.projectSize==="large"?35:args.projectSize==="medium"?24:12)+(args.engagement==="fast"?30:args.engagement==="normal"?18:8)+(/referral|google|website/.test(source)?20:10)+(/kitchen|bath|addition|remodel|paint/.test(service)?15:8)); const db = ctx.db<typeof schema>(); const rows = await db.insert(schema.leads).values({ ...args, estimatedValue: normalizeMoney(args.estimatedValue ?? "", "0"), score, stage: "new", createdAt: new Date(), updatedAt: new Date() }).returning({ id: schema.leads.id }); const made = rows[0]; if (!made) throw new Error("Could not save lead."); await logLeadActivity(db, made.id, "system", "Lead created"); ctx.invalidateQueries(); return { id: made.id, score }; }}),
+  updateLeadStage: defineAction({ request: z.object({ id: z.number().int().positive(), stage: leadStageSchema }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const existing = (await db.select({ stage: schema.leads.stage }).from(schema.leads).where(eq(schema.leads.id, args.id)).limit(1))[0]; await db.update(schema.leads).set({ stage: args.stage, updatedAt: new Date() }).where(eq(schema.leads.id, args.id)); if (existing && existing.stage !== args.stage) await logLeadActivity(db, args.id, "stage", `Stage: ${existing.stage} → ${args.stage}`); ctx.invalidateQueries(); return { ok: true }; }}),
+  // 0087 (Office CRM): full lead edit from the office pipeline/detail views.
+  updateLead: defineAction({ request: z.object({ id: z.number().int().positive(), name: z.string().trim().min(1).max(160), phone: z.string().trim().max(80).default(""), email: z.string().trim().max(200).default(""), address: z.string().trim().max(240).default(""), serviceType: z.string().trim().max(120).default(""), source: z.string().trim().max(160).default(""), notes: z.string().trim().max(2000).default(""), projectSize: z.enum(["small","medium","large"]).default("medium"), engagement: z.enum(["slow","normal","fast"]).default("normal"), estimatedValue: z.string().trim().max(80).default("0") }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const lead = (await db.select({ id: schema.leads.id }).from(schema.leads).where(eq(schema.leads.id, args.id)).limit(1))[0]; if (!lead) throw new Error("Lead not found."); await db.update(schema.leads).set({ name: args.name, phone: args.phone, email: args.email, address: args.address, serviceType: args.serviceType, source: args.source, notes: args.notes, projectSize: args.projectSize, engagement: args.engagement, estimatedValue: normalizeMoney(args.estimatedValue, "0"), updatedAt: new Date() }).where(eq(schema.leads.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+  deleteLead: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); // Activities cascade on the FK; sweep them explicitly too so the
+  // timeline never outlives the lead even on a connection without FK
+  // enforcement enabled.
+  await db.delete(schema.leadActivities).where(eq(schema.leadActivities.leadId, args.id)); await db.delete(schema.leads).where(eq(schema.leads.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
+  getLeadActivities: defineAction({ request: z.object({ leadId: z.number().int().positive() }), response: z.object({ activities: z.array(leadActivitySchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.leadActivities).where(eq(schema.leadActivities.leadId, args.leadId)).orderBy(desc(schema.leadActivities.createdAt), desc(schema.leadActivities.id)); return { activities: rows.map((row) => ({ id: row.id, leadId: row.leadId, kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) }; }}),
+  addLeadActivity: defineAction({ request: z.object({ leadId: z.number().int().positive(), kind: z.enum(["note", "call", "email", "text"]), body: z.string().trim().min(1).max(4000) }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const lead = (await db.select({ id: schema.leads.id }).from(schema.leads).where(eq(schema.leads.id, args.leadId)).limit(1))[0]; if (!lead) throw new Error("Lead not found."); const rows = await db.insert(schema.leadActivities).values({ leadId: args.leadId, kind: args.kind, body: args.body, createdAt: new Date() }).returning({ id: schema.leadActivities.id }); const made = rows[0]; if (!made) throw new Error("Could not save activity."); ctx.invalidateQueries(); return { id: made.id }; }}),
+  // 0087 (Office CRM): one-tap conversion — the lead becomes a client (with
+  // its REAL email + address, unlike prepareLeadQuote) and a job, and the
+  // lead is marked won. Guard: converting twice throws a clear error
+  // instead of creating duplicate clients/jobs — a prior conversion is
+  // detected by its "Converted to client + job" system activity.
+  convertLeadToJob: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ clientId: z.number(), jobId: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const lead = (await db.select().from(schema.leads).where(eq(schema.leads.id, args.id)).limit(1))[0]; if (!lead) throw new Error("Lead not found."); const prior = (await db.select({ id: schema.leadActivities.id }).from(schema.leadActivities).where(and(eq(schema.leadActivities.leadId, lead.id), eq(schema.leadActivities.kind, "system"), eq(schema.leadActivities.body, "Converted to client + job"))).limit(1))[0]; if (prior) throw new Error("This lead has already been converted to a job."); const clientId = await upsertClient(ctx, { clientId: lead.clientId, name: lead.name, phone: lead.phone, email: lead.email, address: lead.address }); if (!clientId) throw new Error("Could not create client."); const now = new Date(); const jobRows = await db.insert(schema.jobs).values({ companyId: lead.companyId, clientId, clientName: lead.name, clientPhone: lead.phone, clientEmail: lead.email, jobAddress: lead.address, jobType: lead.serviceType, notes: lead.notes, jobDate: now.toISOString().slice(0, 10), createdAt: now, updatedAt: now }).returning({ id: schema.jobs.id }); const job = jobRows[0]; if (!job) throw new Error("Could not create job."); await db.update(schema.leads).set({ stage: "won", clientId, updatedAt: now }).where(eq(schema.leads.id, lead.id)); await logLeadActivity(db, lead.id, "system", "Converted to client + job"); ctx.invalidateQueries(); return { clientId, jobId: job.id }; }}),
+  // 0087 (Office CRM): the office home dashboard — pipeline, money, and
+  // follow-up aggregates in one call. Money math mirrors getDashboard
+  // (payments summed by paymentDate month; outstanding = invoice totals
+  // minus payments, floored per invoice at 0).
+  getOfficeDashboard: defineAction({ request: z.object({}), response: z.object({ pipelineValue: z.number(), openLeads: z.number(), leadsByStage: z.object({ new: z.number(), contacted: z.number(), quoted: z.number(), won: z.number(), lost: z.number() }), activeJobs: z.number(), invoicedMonth: z.number(), collectedMonth: z.number(), outstanding: z.number(), overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })), followUps: z.array(z.object({ id: z.number(), note: z.string(), reminderDate: z.string(), jobId: z.number().nullable(), clientId: z.number().nullable() })), recentActivity: z.array(z.object({ id: z.number(), leadId: z.number(), leadName: z.string(), kind: leadActivityKindSchema, body: z.string(), createdAt: z.string() })) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [leadRows, jobRows, invoiceRows, paymentRows, noteRows, activityRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.jobs), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.leadActivities).orderBy(desc(schema.leadActivities.createdAt), desc(schema.leadActivities.id)).limit(10)]); const now = new Date(); const today = now.toISOString().slice(0, 10); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const money = (value: string) => Number(String(value).replace(/[^0-9.-]/g, "") || 0); const open = leadRows.filter((row) => row.stage !== "won" && row.stage !== "lost"); const pipelineValue = open.reduce((sum, row) => sum + money(row.estimatedValue), 0); const leadsByStage = { new: 0, contacted: 0, quoted: 0, won: 0, lost: 0 }; for (const row of leadRows) leadsByStage[row.stage]++; const invoicedMonth = invoiceRows.filter((row) => row.issueDate && new Date(`${row.issueDate}T12:00:00`).getTime() >= monthStart).reduce((sum, row) => sum + money(row.total), 0); const collectedMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + money(p.amount), 0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + money(p.amount), 0); return sum + Math.max(0, money(invoice.total) - paid); }, 0); const leadNameById = new Map(leadRows.map((row) => [row.id, row.name])); return { pipelineValue, openLeads: open.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) }; }}),
+  // 0087 (Office CRM): global office search across leads, clients, and jobs.
+  getOfficeSearch: defineAction({ request: z.object({ query: z.string().trim().max(120) }), response: z.object({ leads: z.array(z.object({ id: z.number(), name: z.string(), phone: z.string(), stage: leadStageSchema })), clients: z.array(z.object({ id: z.number(), name: z.string(), phone: z.string(), email: z.string() })), jobs: z.array(z.object({ id: z.number(), clientName: z.string(), jobAddress: z.string(), jobType: z.string() })) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const term = args.query.toLowerCase(); if (!term) return { leads: [], clients: [], jobs: [] }; const [leadRows, clientRows, jobRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.clients), db.select().from(schema.jobs)]); const hit = (values: string[]) => values.some((value) => value.toLowerCase().includes(term)); return { leads: leadRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, stage: row.stage })), clients: clientRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email })), jobs: jobRows.filter((row) => hit([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType])).slice(0, 8).map((row) => ({ id: row.id, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType })) }; }}),
   prepareLeadQuote: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ clientId: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.leads).where(eq(schema.leads.id, args.id)).limit(1); const lead = rows[0]; if (!lead) throw new Error("Lead not found."); const clientId = await upsertClient(ctx, { clientId: lead.clientId, name: lead.name, phone: lead.phone, email: "", address: "" }); if (!clientId) throw new Error("Could not create client."); await db.update(schema.leads).set({ clientId, stage: "quoted", updatedAt: new Date() }).where(eq(schema.leads.id, lead.id)); ctx.invalidateQueries(); return { clientId }; }}),
   getJobOperations: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ selections: z.array(selectionSchema), dailyLogs: z.array(dailyLogSchema), internalNotes: z.array(internalNoteSchema), milestones: z.array(milestoneSchema), profitability: z.object({ quoted: z.number(), invoiced: z.number(), variance: z.number(), variancePercent: z.number().nullable(), materials: z.number(), expenses: z.number(), subcontractors: z.number(), laborHours: z.number(), laborCost: z.number(), profit: z.number(), margin: z.number(), changeOrdersTotal: z.number(), selectionBudget: z.number(), selectionActual: z.number(), budgetTotal: z.number() }) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const jobId = job.id; const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows, documentRows] = await Promise.all([db.select().from(schema.selections).where(eq(schema.selections.jobId, jobId)).orderBy(desc(schema.selections.createdAt)), db.select().from(schema.dailyLogs).where(eq(schema.dailyLogs.jobId, jobId)).orderBy(desc(schema.dailyLogs.logDate)), db.select().from(schema.internalNotes).where(eq(schema.internalNotes.jobId, jobId)).orderBy(desc(schema.internalNotes.createdAt)), db.select().from(schema.paymentMilestones).where(eq(schema.paymentMilestones.jobId, jobId)).orderBy(schema.paymentMilestones.id), db.select().from(schema.invoices).where(eq(schema.invoices.jobId, jobId)), db.select().from(schema.receipts).where(eq(schema.receipts.jobId, jobId)), db.select().from(schema.timeEntries).where(eq(schema.timeEntries.jobId, jobId)), db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(schema.businessExpenses).where(eq(schema.businessExpenses.jobId, jobId)), db.select().from(schema.subcontractors).where(eq(schema.subcontractors.jobId, jobId)), db.select().from(schema.quotes).where(eq(schema.quotes.jobId, jobId)), db.select().from(schema.documents).where(and(eq(schema.documents.jobId, jobId), eq(schema.documents.kind, "change_order")))]); const now = Date.now(); const invoiced = invoiceRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0); const quoted = jobQuoteRows.reduce((sum,row)=>sum+Number(row.total.replace(/[^0-9.-]/g,"")||0),0); const materials = receiptRows.reduce((sum, row) => sum + Number(row.amount.replace(/[^0-9.-]/g, "") || 0), 0); const laborHours = timeRows.reduce((sum, row) => sum + Math.max(0, ((row.endedAt?.getTime() ?? now) - row.startedAt.getTime()) / 3600000), 0); const laborCost = laborHours * Number(settingRows[0]?.hourlyCostRate.replace(/[^0-9.-]/g, "") || 0); const expenses = expenseRows.reduce((sum,row)=>sum+Number(row.amount.replace(/[^0-9.-]/g,"")||0),0); const subcontractors = subcontractorRows.reduce((sum,row)=>sum+Number(row.agreedAmount.replace(/[^0-9.-]/g,"")||0),0); const profit = invoiced - materials - laborCost - expenses - subcontractors; const changeOrdersTotal = documentRows.reduce((sum,row)=>sum+Number(String(row.amount).replace(/[^0-9.-]/g,"")||0),0); const selectionBudget = selectionRows.reduce((sum,row)=>sum+Number(String(row.estimatedCost).replace(/[^0-9.-]/g,"")||0),0); const selectionActual = selectionRows.reduce((sum,row)=>sum+Number(String(row.actualCost).replace(/[^0-9.-]/g,"")||0),0); return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, estimatedCost: row.estimatedCost, actualCost: row.actualCost, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson) as number[], notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => { const linked = row.invoiceId ? invoiceRows.find((inv) => inv.id === row.invoiceId) : undefined; return { id: row.id, jobId: row.jobId, invoiceId: linked ? row.invoiceId : null, invoiceNumber: linked ? (linked.invoiceNumber || `INV-${String(linked.id).padStart(4, "0")}`) : null, invoiceStatus: linked ? linked.status : null, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() }; }), profitability: { quoted, invoiced, variance: invoiced-quoted, variancePercent: quoted>0?(invoiced-quoted)/quoted*100:null, materials, expenses, subcontractors, laborHours, laborCost, profit, margin: invoiced > 0 ? (profit / invoiced) * 100 : 0, changeOrdersTotal, selectionBudget, selectionActual, budgetTotal: quoted + changeOrdersTotal } }; }}),
   saveSelection: defineAction({ request: z.object({ id: z.number().int().positive().nullable().default(null), jobId: z.number().int().positive(), category: z.string().trim().min(1).max(160), item: z.string().trim().min(1).max(300), vendor: z.string().trim().max(160), approvalStatus: z.enum(["pending", "approved", "rejected"]), leadTimeDays: z.number().int().min(0).max(730).default(0), estimatedCost: z.string().trim().max(80).default("0"), actualCost: z.string().trim().max(80).default("0"), photoFilename: z.string().max(240).default(""), photoContentType: z.enum(["", "image/jpeg", "image/png", "image/webp"]), photoDataBase64: z.string().max(20_000_000).default("") }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); let photoBlobKey: string | null = null; if (args.photoDataBase64 && args.photoContentType) { photoBlobKey = `selections/${job.id}/${crypto.randomUUID()}`; await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType }); } if (args.id) { const existing = (await db.select().from(schema.selections).where(and(eq(schema.selections.id, args.id), eq(schema.selections.jobId, job.id))).limit(1))[0]; if (!existing) throw new Error("Selection not found."); await db.update(schema.selections).set({ category: args.category, item: args.item, vendor: args.vendor, approvalStatus: args.approvalStatus, leadTimeDays: args.leadTimeDays, estimatedCost: normalizeMoney(args.estimatedCost), actualCost: normalizeMoney(args.actualCost), ...(photoBlobKey ? { photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType } : {}), updatedAt: new Date() }).where(eq(schema.selections.id, args.id)); ctx.invalidateQueries(); return { id: args.id }; } const rows = await db.insert(schema.selections).values({ companyId: workspaceIdentity(ctx).workspaceCompanyId, jobId: job.id, category: args.category, item: args.item, vendor: args.vendor, approvalStatus: args.approvalStatus, leadTimeDays: args.leadTimeDays, estimatedCost: normalizeMoney(args.estimatedCost), actualCost: normalizeMoney(args.actualCost), photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType, createdAt: new Date(), updatedAt: new Date() }).returning({ id: schema.selections.id }); const made = rows[0]; if (!made) throw new Error("Could not save selection."); ctx.invalidateQueries(); return { id: made.id }; }}),
@@ -4459,6 +4878,210 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     return { ok: true };
   } }),
   updateAdminParameters: defineAction({ request: z.object({ paymentDay1:z.number().int().min(1).max(365),paymentDay2:z.number().int().min(1).max(365),paymentDay3:z.number().int().min(1).max(365),reviewDelayDays:z.number().int().min(0).max(90),reengagementMonth1:z.number().int().min(1).max(120),reengagementMonth2:z.number().int().min(1).max(120),quoteExpiryWarningDays:z.number().int().min(0).max(90),materialLeadTimeDays:z.number().int().min(0).max(730),defaultTaxRate:z.string().trim().max(20),hourlyLaborCost:z.string().trim().max(80) }), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{if(!(args.paymentDay1<args.paymentDay2&&args.paymentDay2<args.paymentDay3))throw new Error("Payment days must increase.");if(!(args.reengagementMonth1<args.reengagementMonth2))throw new Error("Re-engagement months must increase.");const db=ctx.db<typeof schema>();const current=(await db.select().from(schema.appUsers).where(eq(schema.appUsers.isCurrent,true)).limit(1))[0];if(!current||current.role!=="owner")throw new Error("Owner access required.");const exists=(await db.select().from(schema.adminParameters).where(eq(schema.adminParameters.id,1)).limit(1))[0];if(exists)await db.update(schema.adminParameters).set({...args,updatedAt:new Date()}).where(eq(schema.adminParameters.id,1));else await db.insert(schema.adminParameters).values({id:1,...args,updatedAt:new Date()});const setting=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0];if(setting)await db.update(schema.settings).set({hourlyCostRate:args.hourlyLaborCost,updatedAt:new Date()}).where(eq(schema.settings.id,1));ctx.invalidateQueries();return{ok:true};} }),
+
+  // ---------------------------------------------------------------------
+  // Track 1c: team & staff accounts. A company admin creates staff logins
+  // on the SAME company (same company_id — one system, one dataset),
+  // assigns each a role (admin / office / field), and can deactivate or
+  // reactivate them. Enforcement is NOT here alone: these action names
+  // sit in ADMIN_ACTIONS, so protectActions rejects non-admin callers
+  // before the handler runs, and requireCompanyAdmin re-checks inside.
+  // The owner row (role "owner") is never editable through this surface.
+  listTeamMembers: defineAction({
+    request: z.object({}),
+    // Tier 2: the response also carries the company's crew sign-in code
+    // and tier flag, so the Team section can show crew how to sign in
+    // and render the upgrade prompt on the "app" tier.
+    response: z.object({ members: z.array(teamMemberSchema), crewCode: z.string(), tier: z.enum(["app", "office"]) }),
+    async handler(ctx) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const rows = await db.select().from(schema.authUsers)
+        .where(eq(schema.authUsers.companyId, identity.workspaceCompanyId))
+        .orderBy(schema.authUsers.createdAt, schema.authUsers.id);
+      return {
+        crewCode: company.crewCode ?? "",
+        tier: company.tier,
+        members: rows.map((row) => {
+          const overrides = parseAccessOverrides(row.accessOverrides);
+          const teamRole = productRoleOf(row.role);
+          return { id: row.id, name: row.name, email: row.email, role: row.role, teamRole, active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", overrides, access: effectiveAccess(teamRole, overrides) };
+        }),
+      };
+    },
+  }),
+  createStaffAccount: defineAction({
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), role: z.enum(["admin", "office", "field"]) }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      // Tier 2 packaging: staff logins are an Office-tier capability.
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const email = normalizedEmail(args.email);
+      const duplicate = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.email, email)).limit(1))[0];
+      if (duplicate) throw new Error("An account with this email already exists. They should sign in with that email instead.");
+      const now = new Date();
+      const salt = randomHex(16);
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(schema.authUsers).values({
+        name: args.name.trim(), email,
+        passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        // The admin creates the login and vouches for the address, so the
+        // staff member can sign in immediately (no verification round
+        // trip). They can reset the password from the sign-in screen at
+        // any time.
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: args.role,
+        // Staff inherit the company's current plan tier at creation so
+        // premium-gated work actions behave the same for the whole team.
+        // (Billing itself stays on the owner's row — subscription fields
+        // are NOT copied; the staff row is not a subscriber.)
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode, createdAt: now, updatedAt: now,
+      }).returning({ id: schema.authUsers.id }))[0];
+      if (!made) throw new Error("The staff account could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+  updateStaffMember: defineAction({
+    request: z.object({ userId: z.number().int().positive(), role: z.enum(["admin", "office", "field"]).optional(), active: z.boolean().optional() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId) throw new Error("Team member not found.");
+      if (target.id === admin.id) throw new Error("You can't change your own role or deactivate your own login.");
+      if (target.role === "owner") throw new Error("The account owner's role can't be changed from here.");
+      const nextRole = args.role ?? target.role;
+      const nextActive = args.active ?? !target.deactivatedAt;
+      // The company must always keep at least one active admin login.
+      const removesAdmin = productRoleOf(target.role) === "admin" && !target.deactivatedAt && !(productRoleOf(nextRole) === "admin" && nextActive);
+      if (removesAdmin) {
+        const others = await db.select({ id: schema.authUsers.id, role: schema.authUsers.role }).from(schema.authUsers)
+          .where(and(eq(schema.authUsers.companyId, identity.workspaceCompanyId), ne(schema.authUsers.id, target.id), isNull(schema.authUsers.deactivatedAt)));
+        if (!others.some((row) => productRoleOf(row.role) === "admin")) {
+          throw new Error("Your company needs at least one active admin — promote someone else first.");
+        }
+      }
+      const patch: { role?: "admin" | "office" | "field"; deactivatedAt?: Date | null; updatedAt: Date } = { updatedAt: new Date() };
+      if (args.role !== undefined) patch.role = args.role;
+      if (args.active !== undefined) patch.deactivatedAt = args.active ? null : new Date();
+      await db.update(schema.authUsers).set(patch).where(eq(schema.authUsers.id, target.id));
+      if (args.active === false) {
+        // Kill live sessions now; requireSession's deactivatedAt check
+        // covers any proof that slips through in the meantime.
+        await db.update(schema.authSessions).set({ revokedAt: new Date() })
+          .where(and(eq(schema.authSessions.userId, target.id), isNull(schema.authSessions.revokedAt)));
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+
+  // Tier 2: create a CREW LOGIN — a Field-preset member with no email
+  // and no password. They sign in with the company crew code + the PIN
+  // minted here (crewLogin). The plaintext PIN is returned exactly
+  // once, in this response, for the admin to hand to the member; only
+  // its PBKDF2 hash is stored. The row's password fields hold an
+  // unusable random secret (same pattern as Google-created accounts),
+  // so the email login can never authenticate as this member.
+  createCrewLogin: defineAction({
+    request: z.object({ name: z.string().trim().min(2).max(120), overrides: accessOverridesSchema.default({}) }),
+    response: z.object({ id: z.number(), pin: z.string(), crewCode: z.string() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const now = new Date();
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId);
+      const pinSalt = randomHex(16);
+      const passwordSalt = randomHex(16);
+      const referralCode = await uniqueReferralCode(db);
+      const overrides = serializeAccessOverrides(args.overrides);
+      const made = (await db.insert(schema.authUsers).values({
+        name: args.name.trim(),
+        // Synthetic, non-deliverable address: the email column is NOT
+        // NULL UNIQUE, but a crew login has no email — this value is
+        // never displayed or mailed (the Team UI keys off
+        // credentialType) and can never receive a reset code.
+        email: `crew-${identity.workspaceCompanyId}-${randomHex(6)}@crew.invalid`,
+        passwordHash: await derivePassword(randomHex(32), passwordSalt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt, passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: "field",
+        credentialType: "crew_pin",
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        accessOverrides: overrides,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode, createdAt: now, updatedAt: now,
+      }).returning({ id: schema.authUsers.id }))[0];
+      if (!made) throw new Error("The crew login could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id, pin, crewCode: company.crewCode ?? "" };
+    },
+  }),
+  // Tier 2: re-issue a crew member's PIN (the old one stops working
+  // immediately). The new plaintext PIN is returned once, like at
+  // creation. Only crew logins have PINs; email logins reset through
+  // the normal password flow.
+  resetCrewPin: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({ pin: z.string() }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId || target.credentialType !== "crew_pin") {
+        throw new Error("Crew member not found.");
+      }
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId, target.id);
+      const pinSalt = randomHex(16);
+      await db.update(schema.authUsers).set({
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt, updatedAt: new Date(),
+      }).where(eq(schema.authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { pin };
+    },
+  }),
+  // Tier 2: set a member's access switches. The patch is per-switch:
+  // true/false stores an override, null clears it back to the role
+  // preset, absent leaves it untouched. Applies to staff accounts
+  // (office/field, either credential type) — never the owner's row
+  // (Admins are never switch-limited; see effectiveAccess).
+  setMemberAccess: defineAction({
+    request: z.object({ userId: z.number().int().positive(), overrides: accessOverridesPatchSchema }),
+    response: z.object({ ok: z.literal(true), overrides: accessOverridesSchema, access: effectiveAccessSchema }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId) throw new Error("Team member not found.");
+      if (target.role === "owner") throw new Error("The account owner's access can't be limited — owners always have full access.");
+      const next: AccessOverrides = { ...parseAccessOverrides(target.accessOverrides) };
+      for (const key of ACCESS_SWITCHES) {
+        const value = args.overrides[key];
+        if (value === null) delete next[key];
+        else if (typeof value === "boolean") next[key] = value;
+      }
+      await db.update(schema.authUsers).set({ accessOverrides: serializeAccessOverrides(next), updatedAt: new Date() })
+        .where(eq(schema.authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { ok: true as const, overrides: next, access: effectiveAccess(productRoleOf(target.role), next) };
+    },
+  }),
 
   createPortalLink: defineAction({ request: z.object({ jobId: z.number().int().positive(), expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.literal(0)]).default(90) }), response: z.object({ token: z.string(), shortCode: z.string(), route: z.string(), expiresAt: z.string().nullable() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,args.jobId)).limit(1))[0]; if(!job) throw new Error("Job not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashPortalToken(token); const shortCode=await uniquePortalShortCode(ctx); await db.update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))); const expiresAt=args.expiresInDays===0?null:new Date(Date.now()+args.expiresInDays*86400000); await db.insert(schema.portalTokens).values({jobId:args.jobId,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:new Date()}); ctx.invalidateQueries(); return{token,shortCode,route:`p/${encodeURIComponent(shortCode)}`,expiresAt:expiresAt?.toISOString()??null}; } }),
   revokePortalLink: defineAction({ request:z.object({jobId:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt)));ctx.invalidateQueries();return{ok:true};} }),
@@ -6731,8 +7354,11 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   }),
 } satisfies ActionsModule;
 
-const PUBLIC_ACTIONS = new Set([
+export const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
+  // Tier 2: crew sign-in (company code + PIN) IS a login — public like
+  // "login", with its own per-company failure lockout in the handler.
+  "crewLogin",
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
   "getGoogleClientId", "googleSignIn",
@@ -6774,8 +7400,23 @@ function protectActions<T extends ActionsModule>(actions: T): T {
       handler: async (ctx: Ctx, args: unknown) => {
         const envelope = authEnvelopeSchema.parse(args);
         const user = await requireSession(ctx, envelope._sessionToken);
+        // Track 1c: company team roles, enforced HERE — the single choke
+        // point every non-public action passes through — against the
+        // explicit map in server/src/permissions.ts. Runs before the
+        // premium gate so a role denial is never masked as an upsell.
+        const role = productRoleOf(user.role);
+        assertRoleCan(role, name);
+        // Tier 2: the member's per-person access switches sit directly
+        // under the role check — switch-gated action families are
+        // refused here, and switch-shaped payloads are stripped on the
+        // way out (applyAccessShaping). The user's row is re-read by
+        // requireSession on every call, so an admin's switch flip takes
+        // effect on the member's very next action.
+        const access = effectiveAccess(role, parseAccessOverrides(user.accessOverrides));
+        assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium") throw new Error("Premium required. Upgrade to unlock this Pro tool.");
-        return original(withWorkspace(ctx, user), args);
+        const result = await original(withWorkspace(ctx, user), args);
+        return applyAccessShaping(ctx.db<typeof schema>(), user, access, name, result);
       },
     };
     return [name, protectedAction] as const;

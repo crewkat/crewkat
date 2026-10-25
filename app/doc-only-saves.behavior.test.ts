@@ -175,7 +175,7 @@ check("job path: updateJob still keeps the client record current", (await client
 // --- 7. Static guards ---------------------------------------------------------------
 const serverSrc = await readFile("server/src/actions.ts", "utf8");
 const upsertCalls = serverSrc.match(/await upsertClient\(ctx/g) ?? [];
-check("static: exactly 3 upsertClient calls survive (createJob, updateJob, prepareLeadQuote)", upsertCalls.length === 3, String(upsertCalls.length));
+check("static: exactly 4 upsertClient calls survive (createJob, updateJob, prepareLeadQuote, convertLeadToJob)", upsertCalls.length === 4, String(upsertCalls.length));
 const quoteHandler = serverSrc.slice(serverSrc.indexOf("saveQuote: defineAction"), serverSrc.indexOf("convertQuoteToJob: defineAction"));
 const invoiceHandler = serverSrc.slice(serverSrc.indexOf("saveInvoice: defineAction"), serverSrc.indexOf("convertQuoteToInvoice: defineAction"));
 check("static: saveQuote handler makes no upsertClient call / clients-table write", !quoteHandler.includes("upsertClient(ctx") && !quoteHandler.includes("insert(schema.clients") && !quoteHandler.includes("update(schema.clients"));

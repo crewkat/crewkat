@@ -58,7 +58,7 @@ const journal = await import("./drizzle/meta/_journal.json");
 const entries = journal.entries;
 const last = entries[entries.length - 1];
 const prev = entries[entries.length - 2];
-check("newest migration tag is 0086_job_contract_sum", last.tag === "0086_job_contract_sum", last.tag);
+check("newest migration tag is 0089_crew_tier2", last.tag === "0089_crew_tier2", last.tag);
 check("newest when is strictly newer than previous (drizzle skips older)", last.when > prev.when, `${last.when} vs ${prev.when}`);
 
 // --- 3. Migration 0073 schema ----------------------------------------------------

@@ -603,6 +603,27 @@
       "when": 1791737800000,
       "tag": "0086_job_contract_sum",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "6",
+      "when": 1791737900000,
+      "tag": "0087_office_crm",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "6",
+      "when": 1791738000000,
+      "tag": "0088_team_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "6",
+      "when": 1791738100000,
+      "tag": "0089_crew_tier2",
+      "breakpoints": true
     }
   ]
 }

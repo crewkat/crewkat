@@ -46,6 +46,7 @@ import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, typ
 import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
+import { CrewHome } from "./CrewHome";
 import { ScreenErrorBoundary } from "./ErrorBoundary";
 import { signalBootReady } from "./SplashScreen";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
@@ -2064,6 +2065,10 @@ function authStrings(lang: Lang) {
     newCodeSent: (email: string) => `Enviamos un nuevo código de verificación a ${email}.`,
     googleFailed: "El inicio de sesión con Google no se completó. Inténtalo de nuevo o entra con tu contraseña.",
     languageLabel: "Idioma",
+    titleCrew: "Acceso del equipo",
+    introCrew: "Ingresa el código de tu empresa y tu PIN personal — tu administrador te los dio. Sin correo, sin contraseña.",
+    crewLink: "¿Parte del equipo? Entra con un código →",
+    companyCode: "Código de la empresa", pin: "Tu PIN", crewSignIn: "Entrar",
   };
   return {
     restoringIn: "Signing you back in…",
@@ -2111,6 +2116,10 @@ function authStrings(lang: Lang) {
     newCodeSent: (email: string) => `We emailed a new verification code to ${email}.`,
     googleFailed: "Google sign-in didn't complete. Try again, or sign in with your password.",
     languageLabel: "Language",
+    titleCrew: "Crew sign-in",
+    introCrew: "Enter your company code and your personal PIN — your admin gave them to you. No email, no password.",
+    crewLink: "Crew member? Sign in with a code →",
+    companyCode: "Company code", pin: "Your PIN", crewSignIn: "Sign in",
   };
 }
 
@@ -2244,10 +2253,13 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
     // panel has no toggle, so the initial language is the right one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onAuthenticated]);
-  const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset" | "totp">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "verify" | "forgot" | "reset" | "totp" | "crew">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Tier 2 crew sign-in: company code + personal PIN (no email/password).
+  const [crewCode, setCrewCode] = useState("");
+  const [crewPin, setCrewPin] = useState("");
   const [code, setCode] = useState("");
   const [devCode, setDevCode] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -2334,6 +2346,14 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
         const result = await api.verifyTotpLogin({ code });
         setActiveSessionToken(result.sessionToken);
         onAuthenticated(result.user);
+      } else if (mode === "crew") {
+        // Tier 2: crew sign-in issues the same session as an email login;
+        // the returned user's credentialType ("crew_pin") routes the app
+        // shell to the crew home (see App()).
+        const result = await api.crewLogin({ companyCode: crewCode.trim(), pin: crewPin });
+        if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
+        else persistLegacySessionToken(result.sessionToken);
+        onAuthenticated(result.user);
       } else {
         const result = await api.login({ email, password });
         if (result.totpRequired) {
@@ -2355,7 +2375,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
       setVerifyRecovery(mode === "login" && /verify your email|verifica tu correo/i.test(friendly));
     } finally { setBusy(false); }
   };
-  const title = mode === "totp" ? t.titleTotp : mode === "signup" ? t.titleSignup : mode === "verify" ? t.titleVerify : mode === "forgot" ? t.titleForgot : mode === "reset" ? t.titleReset : t.titleLogin;
+  const title = mode === "totp" ? t.titleTotp : mode === "crew" ? t.titleCrew : mode === "signup" ? t.titleSignup : mode === "verify" ? t.titleVerify : mode === "forgot" ? t.titleForgot : mode === "reset" ? t.titleReset : t.titleLogin;
   if (legalDocument) return <div className="app-shell"><LegalDocumentPage kind={legalDocument} lang={authLang} onBack={() => setLegalDocument(null)} /></div>;
   const langToggle = (
     <div className="auth-lang-row">
@@ -2384,13 +2404,15 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
         <span>Crewkat</span>
       </div>
       <h1>{title}</h1>
-      <p className="auth-intro">{mode === "login" ? t.introLogin : mode === "signup" ? t.introSignup : mode === "verify" ? t.introVerify(email) : mode === "totp" ? t.introTotp : t.introCode}</p>
+      <p className="auth-intro">{mode === "login" ? t.introLogin : mode === "crew" ? t.introCrew : mode === "signup" ? t.introSignup : mode === "verify" ? t.introVerify(email) : mode === "totp" ? t.introTotp : t.introCode}</p>
       {mode === "signup" && !signupsEnabled && <div className="auth-claim"><strong>{t.closedTitle}</strong><span>{t.closedBody}</span></div>}
       {mode === "signup" && bootstrap.data?.ownerClaimAvailable && (bootstrap.data.recordCounts.jobs + bootstrap.data.recordCounts.clients + bootstrap.data.recordCounts.invoices > 0) && <div className="auth-claim"><strong>{t.claimTitle}</strong><span>{t.claimCounts(bootstrap.data.recordCounts.jobs, bootstrap.data.recordCounts.clients, bootstrap.data.recordCounts.invoices)}</span><small>{t.claimNote}</small></div>}
       {mode === "signup" && referralCode && <div className="auth-claim"><strong>{t.referralTitle}</strong><span>{t.referralBody(referralCode)}</span></div>}
       <form className="auth-form" onSubmit={submit}>
         {mode === "signup" && <label><span>{t.name}</span><input autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} /></label>}
-        <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset" || mode === "totp"} /></label>
+        {mode === "crew" && <label><span>{t.companyCode}</span><input autoComplete="off" value={crewCode} onChange={(e) => setCrewCode(e.target.value.toUpperCase())} required minLength={4} placeholder="WK7P-2QXR" /></label>}
+        {mode === "crew" && <label><span>{t.pin}</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{4,6}" maxLength={6} value={crewPin} onChange={(e) => setCrewPin(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
+        {mode !== "crew" && <label><span>{t.email}</span><input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === "verify" || mode === "reset" || mode === "totp"} /></label>}
         {(mode === "login" || mode === "signup" || mode === "reset") && <label><span>{mode === "reset" ? t.newPassword : t.password}</span><input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "login" ? 1 : 10} readOnly={!pwEditable} onFocus={() => setPwEditable(true)} /><small>{mode !== "login" ? t.passwordHint : ""}</small></label>}
         {(mode === "verify" || mode === "reset" || mode === "totp") && <label><span>{t.code}</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>}
         {mode === "signup" && <div className="auth-consent"><input aria-label="Agree to the Terms of Service and Privacy Policy" type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required /><span>{t.consentTermsA}<button type="button" className="legal-inline-button" onClick={() => setLegalDocument("terms")}>{t.termsLabel}</button>{t.consentTermsB}<button type="button" className="legal-inline-button" onClick={() => setLegalDocument("privacy")}>{t.privacyLabel}</button>.</span></div>}
@@ -2399,7 +2421,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
         {notice && <p className="status auth-success">{notice}</p>}
         {error && <p className="status error">{error}</p>}
         {verifyRecovery && mode === "login" && <button type="button" className="secondary-button auth-verify-recovery" onClick={() => void startEmailVerify(email)}>{t.verifyInstead}</button>}
-        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? t.pleaseWait : mode === "signup" ? t.createAccount : mode === "verify" ? t.verifyEmailBtn : mode === "totp" ? t.verifyBtn : mode === "forgot" ? t.getResetCode : mode === "reset" ? t.savePassword : t.signIn}</button>
+        <button className="primary-button auth-submit" type="submit" disabled={busy || bootstrap.isLoading || (mode === "signup" && (!acceptedTerms || !acceptedMarketplaceTerms || !signupsEnabled))}>{busy ? t.pleaseWait : mode === "signup" ? t.createAccount : mode === "crew" ? t.crewSignIn : mode === "verify" ? t.verifyEmailBtn : mode === "totp" ? t.verifyBtn : mode === "forgot" ? t.getResetCode : mode === "reset" ? t.savePassword : t.signIn}</button>
       </form>
       {(mode === "login" || mode === "signup") && googleCfg.data?.clientId && <div className="auth-google">
         <div className="auth-divider" aria-hidden="true"><span>{t.orDivider}</span></div>
@@ -2414,8 +2436,9 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
         {mode === "login" && <button type="button" onClick={() => move("forgot")}>{t.forgotPassword}</button>}
         {mode === "login" && <button type="button" onClick={() => void startEmailVerify(email)}>{t.verifyResend}</button>}
         {mode === "login" && <button type="button" onClick={() => move("signup")}>{t.createCompanyAccount}</button>}
+        {mode === "login" && <button type="button" onClick={() => move("crew")}>{t.crewLink}</button>}
         {mode === "signup" && hasAccount && <button type="button" onClick={() => move("login")}>{t.alreadyHaveAccount}</button>}
-        {(mode === "forgot" || mode === "reset" || mode === "verify" || mode === "totp") && <button type="button" onClick={() => move("login")}>{t.backToSignIn}</button>}
+        {(mode === "forgot" || mode === "reset" || mode === "verify" || mode === "totp" || mode === "crew") && <button type="button" onClick={() => move("login")}>{t.backToSignIn}</button>}
         {mode === "verify" && <button type="button" onClick={async () => { setBusy(true); setError(""); try { const result = await api.resendVerification({ email }); setDevCode(result.verificationCode ?? ""); setNotice(result.emailDelivery === "fallback" ? t.newCodeTesting : result.emailDelivery === "failed" ? t.emailSendFailed : t.newCodeSent(email)); } catch (caught) { setError(actionErrorMessage(caught)); } finally { setBusy(false); } }}>{t.getNewCode}</button>}
       </div>
       <div className="auth-security"><p>{t.securityNote}</p><nav className="auth-legal-links" aria-label="Legal documents"><button type="button" onClick={() => setLegalDocument("terms")}>{t.termsLabel}</button><button type="button" onClick={() => setLegalDocument("privacy")}>{t.privacyLabel}</button><button type="button" onClick={() => setLegalDocument("marketplace")}>{t.marketplaceTermsLink}</button></nav></div>
@@ -2583,6 +2606,15 @@ export function App() {
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
   };
+  // Tier 2: crew logins (company code + PIN) land on the crew-shaped
+  // field home — today's jobs, photos, messages, daily log, schedule —
+  // instead of the full app. Everything else about the session (role
+  // map, access switches, payload shaping) is enforced server-side;
+  // this is purely which shell renders. Email logins, including email
+  // Field staff from Track 1c, keep the full app below.
+  if (user.credentialType === "crew_pin") {
+    return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewHome user={user} onSignOut={signOut} /></AuthContext.Provider>;
+  }
   return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewkatApplication onBootSettled={signalBootReady} /></AuthContext.Provider>;
 }
 
