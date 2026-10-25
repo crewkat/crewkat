@@ -75,6 +75,11 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // deletes that used to be Office doc ops live here now.
   "deleteAppointment", "deleteBidBoardItem", "deleteCrewTask",
   "deleteDocument", "deleteDocumentAttachment", "deleteInvoice",
+  // Job swipe-to-delete shipped on main while this map lived on the
+  // office branch (convergence): deleteJob is a record delete, and
+  // getJobDeletePreview exists only to feed its confirm dialog, so
+  // the whole delete flow is Admin-only end to end.
+  "deleteJob", "getJobDeletePreview",
   "deleteJobFile", "deleteMarketplaceAlert", "deleteMarketplaceListing",
   "deletePayment", "deletePhoto", "deletePhotoPair",
   "deleteProgressUpdate", "deletePunchItem", "deleteQuote",
