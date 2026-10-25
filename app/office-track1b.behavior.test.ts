@@ -30,11 +30,12 @@ function check(name: string, cond: boolean, detail = "") {
   }
 }
 
-// --- 1. No new migration: the journal still ends at 0087 ----------------------
+// --- 1. Migrations: Track 1b itself added none; Track 1c has since added
+// 0088_team_roles, which is now the journal's newest entry. ---------------
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("Track 1b adds no migration (newest is still 0087_office_crm)", last.tag === "0087_office_crm", last.tag);
+check("journal newest entry is 0088_team_roles (1b added no migration)", last.tag === "0088_team_roles", last.tag);
 
 // --- 2. Scratch DB + in-memory blob store --------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-1b-"));

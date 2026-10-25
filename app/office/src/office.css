@@ -674,3 +674,20 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   .cal-grid.week .cal-cell { min-height: 160px; }
   .photo-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- team & roles (Track 1c) ---------- */
+.team-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+.team-panel-head { padding: 12px 18px 0; }
+.team-table tbody tr { cursor: default; }
+.team-table .cell-person .chip { margin-left: 8px; }
+.team-role-select {
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 8px;
+  background: var(--surface); font-weight: 600; color: var(--ink-2);
+}
+.team-role-notes { border-top: 1px solid var(--line-soft); padding: 12px 18px 6px; }
+.team-role-notes p { margin: 0 0 6px; }
+.team-add-note { margin: 0 0 12px; }
+.team-role-desc { margin: 10px 0 0; }
+@media (max-width: 1280px) {
+  .team-grid { grid-template-columns: 1fr; }
+}

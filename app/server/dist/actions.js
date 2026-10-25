@@ -42005,7 +42005,8 @@ var authUsers = sqliteTable("auth_users", {
   passwordIterations: integer2("password_iterations").notNull().default(210000),
   emailVerifiedAt: integer2("email_verified_at", { mode: "timestamp_ms" }),
   companyId: integer2("company_id").notNull().default(1),
-  role: text("role", { enum: ["owner"] }).notNull().default("owner"),
+  role: text("role", { enum: ["owner", "admin", "office", "field"] }).notNull().default("owner"),
+  deactivatedAt: integer2("deactivated_at", { mode: "timestamp_ms" }),
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
@@ -73163,6 +73164,387 @@ var platformAdminActions = {
 };
 var revenueCache = null;
 
+// src/permissions.ts
+function productRoleOf(stored) {
+  if (stored === "office")
+    return "office";
+  if (stored === "field")
+    return "field";
+  return "admin";
+}
+var ADMIN_ACTIONS = new Set([
+  "listTeamMembers",
+  "createStaffAccount",
+  "updateStaffMember",
+  "addAppUser",
+  "updateAppUser",
+  "deleteAppUser",
+  "getAdminConsole",
+  "updateAdminParameters",
+  "updateSupportReport",
+  "saveCrewPayRate",
+  "updateSettings",
+  "uploadLogo",
+  "uploadCompanyCover",
+  "getBillingOverview",
+  "getSubscription",
+  "createBillingPortalSession",
+  "startPremiumCheckout",
+  "createCreditPackCheckout",
+  "startListingBumpCheckout",
+  "verifyPlaySubscription",
+  "refreshPlaySubscription",
+  "exportBackup",
+  "restoreBackup",
+  "verifyBackupRoundTrip",
+  "getBackupStatus",
+  "runAutomatedBackup",
+  "deleteClient",
+  "deleteLead",
+  "deleteBusinessExpense",
+  "deleteMaterialCost",
+  "deletePriceBookItem",
+  "deleteQuoteTemplate",
+  "deleteSubcontractor",
+  "deleteMileageTrip",
+  "deleteFieldTestRecord",
+  "loadSampleData"
+]);
+var OFFICE_ACTIONS = new Set([
+  "acceptQuoteVersion",
+  "addLeadActivity",
+  "addPayment",
+  "cancelRecurringInvoice",
+  "cancelRecurringSchedule",
+  "completeMaintenancePlan",
+  "convertLeadToJob",
+  "createMarketplaceListing",
+  "createPortalLink",
+  "createPurchaseOrder",
+  "createQuoteVersion",
+  "createRecurringSchedule",
+  "deleteAppointment",
+  "deleteBidBoardItem",
+  "deleteCrewTask",
+  "deleteDocument",
+  "deleteDocumentAttachment",
+  "deleteInvoice",
+  "deleteJobFile",
+  "deleteMarketplaceAlert",
+  "deleteMarketplaceListing",
+  "deletePayment",
+  "deletePhoto",
+  "deletePhotoPair",
+  "deleteProgressUpdate",
+  "deletePunchItem",
+  "deleteQuote",
+  "deleteReceipt",
+  "deleteShareImage",
+  "deleteTimeEntry",
+  "deleteVoiceNote",
+  "generateRecurringInvoice",
+  "getCrewClockStatus",
+  "getCrewDayView",
+  "getDashboard",
+  "getDocumentParameters",
+  "getExpansionSuite",
+  "getFieldIntelligence",
+  "getGrowthToolkit",
+  "getJobOperations",
+  "getLeadActivities",
+  "getListingBumpStatus",
+  "getMarketplaceProProfile",
+  "getOfficeDashboard",
+  "getOfficeSearch",
+  "getQuoteVersions",
+  "getTaxExport",
+  "invoiceMilestone",
+  "listBidBoard",
+  "listLeads",
+  "listMaterialCosts",
+  "listRecurringSchedules",
+  "listShareImages",
+  "listSubcontractors",
+  "markMarketplaceConversationRead",
+  "marketplaceConversation",
+  "marketplaceConversations",
+  "moveBidBoardItem",
+  "prepareLeadQuote",
+  "processRecurringInvoices",
+  "receivePurchaseOrder",
+  "renewCredential",
+  "renewQuote",
+  "reopenJob",
+  "revokePortalLink",
+  "rotatePortalLink",
+  "saveBidBoardItem",
+  "saveBusinessExpense",
+  "saveCredential",
+  "saveDocumentDesignDefault",
+  "saveInternalNote",
+  "saveLead",
+  "saveMaintenancePlan",
+  "saveMaterialCost",
+  "saveMileageTrip",
+  "saveMilestone",
+  "savePriceBookItem",
+  "saveQuoteTemplate",
+  "saveSelection",
+  "saveShareImage",
+  "saveSlideshowVideo",
+  "saveSubcontractor",
+  "saveSupplier",
+  "saveSupplierQuote",
+  "saveWarranty",
+  "sendMarketplaceMessage",
+  "sendQuoteVersion",
+  "sendReviewRequest",
+  "setJobContractSum",
+  "setJobPhotoRequirements",
+  "startMarketplaceConversation",
+  "toggleInternalNote",
+  "toggleInvoicePaid",
+  "unacceptQuote",
+  "unlockMarketplaceContact",
+  "updateAppearance",
+  "updateInvoiceRecurrence",
+  "updateInvoiceStatus",
+  "updateLead",
+  "updateLeadStage",
+  "updateMarketplaceListing",
+  "updateMilestoneStatus",
+  "updatePurchaseOrderStatus",
+  "updateQuoteAutomationStatus",
+  "updateQuoteVersion",
+  "updateSelectionLeadTime",
+  "updateSelectionStatus",
+  "verifyMarketplacePhone"
+]);
+var PLATFORM_ACTIONS = new Set([
+  "adminAbuseCapSet",
+  "adminAbuseDefaultsSet",
+  "adminAbuseOverview",
+  "adminAnalyticsCharts",
+  "adminAnalyticsOverview",
+  "adminAuditLog",
+  "adminAuditLogSearch",
+  "adminAutomodCapSet",
+  "adminBlockUser",
+  "adminBrandLogoUpload",
+  "adminBrandingColorSet",
+  "adminBroadcastHistory",
+  "adminBroadcastSend",
+  "adminCancellationStats",
+  "adminContentHide",
+  "adminContentUnhide",
+  "adminFailedPayments",
+  "adminFeatureFlagSet",
+  "adminFeatureFlags",
+  "adminGrowthMetrics",
+  "adminImpersonateEnd",
+  "adminImpersonateStart",
+  "adminKeywordRuleAdd",
+  "adminKeywordRuleDelete",
+  "adminKeywordRulesList",
+  "adminListingDecision",
+  "adminMaintenanceSet",
+  "adminMarketplaceOverview",
+  "adminModerationQueue",
+  "adminMyTeamRole",
+  "adminPaymentsList",
+  "adminPlansGet",
+  "adminPlansUpdate",
+  "adminPolicyVersionPublish",
+  "adminPolicyVersionsList",
+  "adminPromoCodeCreate",
+  "adminPromoCodeDelete",
+  "adminPromoCodesList",
+  "adminRecentActivity",
+  "adminRefund",
+  "adminRefundPreview",
+  "adminRevenueDashboard",
+  "adminSettingsGet",
+  "adminSettingsSet",
+  "adminSubscriptionsList",
+  "adminSupportNoteAdd",
+  "adminSupportNotesList",
+  "adminSupportTicketAssign",
+  "adminSupportTicketPriority",
+  "adminSupportView",
+  "adminTeamList",
+  "adminTeamRemoveRole",
+  "adminTeamSetRole",
+  "adminTotpDisable",
+  "adminTotpRequiredSet",
+  "adminTotpSetupStart",
+  "adminTotpSetupVerify",
+  "adminTotpStatus",
+  "adminUnblockUser",
+  "adminUserDelete",
+  "adminUserDetail",
+  "adminUserGrantFounder",
+  "adminUserReportDecide",
+  "adminUserReports",
+  "adminUserRevokeFounder",
+  "adminUserRevokeSessions",
+  "adminUserSetTier",
+  "adminUserSuspend",
+  "adminUserUnsuspend",
+  "adminUsersList",
+  "adminVerificationList",
+  "adminVerificationSet",
+  "platformSupportInbox",
+  "platformSupportThread",
+  "updatePlatformSupportReport",
+  "replyToSupportReport"
+]);
+var ALL_ROLE_ACTIONS = new Set([
+  "acceptMarketplaceTerms",
+  "addPhoto",
+  "addPunchItem",
+  "addReceipt",
+  "addVoiceNote",
+  "appendClientAddress",
+  "checkSmsCap",
+  "clockInCrew",
+  "clockOutCrew",
+  "completeEquipmentMaintenance",
+  "completeJob",
+  "convertQuoteToInvoice",
+  "convertQuoteToJob",
+  "craneRunGetChampion",
+  "craneRunGetLeaderboard",
+  "craneRunSetOptIn",
+  "craneRunSubmitScore",
+  "createDocumentLink",
+  "createJob",
+  "createMarketplaceBooking",
+  "createPhotoPair",
+  "deleteMyAccount",
+  "dismissOnboardingChecklist",
+  "duplicateInvoice",
+  "duplicateQuote",
+  "getAutomationCenter",
+  "getClient",
+  "getDocumentLinkInfo",
+  "getDocumentPdf",
+  "getDocumentTimeline",
+  "getFinancialSignature",
+  "getFoundingMemberAvailability",
+  "getJob",
+  "getMarketplaceListing",
+  "getMarketplaceUnlockStatus",
+  "getOnMyWayStatus",
+  "getOnboardingChecklist",
+  "getPlayBillingConfig",
+  "getPortalLinkInfo",
+  "getReferralStats",
+  "getSettings",
+  "getUsageLimits",
+  "getVapidPublicKey",
+  "getWeatherOutlook",
+  "globalSearch",
+  "linkDocumentToJob",
+  "linkInvoiceToJob",
+  "listAppointments",
+  "listClients",
+  "listDocumentAttachments",
+  "listDocuments",
+  "listInvoices",
+  "listJobMessages",
+  "listJobs",
+  "listMarketplaceAlerts",
+  "listMarketplaceBookings",
+  "listMarketplaceListings",
+  "listNotifications",
+  "listPhotoPairs",
+  "listPinnedTools",
+  "listPunchItems",
+  "listQuotes",
+  "logAutomationSend",
+  "markJobMessagesRead",
+  "markNotificationsRead",
+  "marketplaceGate",
+  "marketplaceListingFlag",
+  "pendingCancellationFeedback",
+  "pinTool",
+  "removePushSubscription",
+  "renderPdfPreview",
+  "replyToOwnSupportReport",
+  "requestAccountDeletion",
+  "revokeDocumentLink",
+  "revokeOnMyWay",
+  "saveAppointment",
+  "saveCertificate",
+  "saveClient",
+  "saveCrewTask",
+  "saveDailyLog",
+  "saveDocument",
+  "saveDocumentFillFields",
+  "saveDocumentSignatureFields",
+  "saveEquipment",
+  "saveFinancialSignature",
+  "saveIncident",
+  "saveInvoice",
+  "saveMarketplaceAlert",
+  "saveProgressUpdate",
+  "savePunchSignoff",
+  "savePushSubscription",
+  "saveQuote",
+  "saveQuoteMaterials",
+  "saveSafetyTalk",
+  "saveScannedDocument",
+  "sendJobMessage",
+  "setDocumentImagesPerPage",
+  "setEquipmentCheckout",
+  "setJobClient",
+  "setJobFileShared",
+  "shareOnMyWay",
+  "signDocumentWithDrawnSignature",
+  "startTimer",
+  "stopTimer",
+  "submitCancellationFeedback",
+  "submitPlatformSupportReport",
+  "submitSupportReport",
+  "suggestJobsByLocation",
+  "togglePhotoSocial",
+  "togglePunchItem",
+  "unpinTool",
+  "updateDocument",
+  "updateInvoiceDesign",
+  "updateInvoiceDocument",
+  "updateJob",
+  "updateJobInfo",
+  "updateJobSiteLocation",
+  "updateOnMyWay",
+  "updatePhoto",
+  "updatePhotoPair",
+  "updateProfileName",
+  "updateQuoteDesign",
+  "updateQuoteDocument",
+  "uploadDocumentAttachment",
+  "uploadJobFile",
+  "uploadSupportScreenshot",
+  "userSupportThread",
+  "userSupportThreads"
+]);
+var ROLE_RANK = { field: 0, office: 1, admin: 2 };
+function minRoleForAction(actionName) {
+  if (ADMIN_ACTIONS.has(actionName))
+    return "admin";
+  if (OFFICE_ACTIONS.has(actionName))
+    return "office";
+  return "field";
+}
+function roleCan(role, actionName) {
+  return ROLE_RANK[role] >= ROLE_RANK[minRoleForAction(actionName)];
+}
+function assertRoleCan(role, actionName) {
+  if (!roleCan(role, actionName)) {
+    throw new Error(role === "field" ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through." : "Your Office role doesn't include that \u2014 it's an admin action. Ask your company's admin.");
+  }
+}
+
 // src/platform-admin-phase1.ts
 import { createHash, randomBytes as randomBytes2 } from "crypto";
 function sha256Hex(value) {
@@ -74315,7 +74697,8 @@ var platformAdminPhase2SettingsActions = {
         name: string2(),
         email: string2(),
         companyId: number2(),
-        role: literal("owner"),
+        role: _enum(["owner", "admin", "office", "field"]),
+        teamRole: _enum(["admin", "office", "field"]),
         tier: _enum(["free", "premium"]),
         isPlatformAdmin: boolean2(),
         marketplaceTermsAcceptedAt: string2().nullable(),
@@ -74339,6 +74722,8 @@ var platformAdminPhase2SettingsActions = {
         throw new Error("Sign in to continue.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
       if (!totp?.verified)
         throw new Error("Two-factor authentication is not set up for this account.");
@@ -75510,6 +75895,7 @@ var BACKUP_TABLES = [
   "completion_certificates",
   "appointments",
   "leads",
+  "lead_activities",
   "selections",
   "daily_logs",
   "internal_notes",
@@ -75641,7 +76027,8 @@ var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
 var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
-var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: literal("owner"), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2(), createdAt: string2() });
+var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2(), createdAt: string2() });
+var teamMemberSchema = object({ id: number2(), name: string2(), email: string2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), active: boolean2(), isSelf: boolean2(), createdAt: string2() });
 var authCodeDeliverySchema = _enum(["sent", "fallback", "failed"]);
 function authMeta(ctx) {
   return ctx;
@@ -75719,6 +76106,8 @@ async function requireSession(ctx, token) {
     throw new Error("Sign in to continue.");
   if (user.suspendedAt)
     throw new Error("This account has been suspended. Contact support for help.");
+  if (user.deactivatedAt)
+    throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
   const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60000;
   if (stale && session.tokenType === "legacy") {
     await db.update(authSessions).set({ lastSeenAt: new Date, expiresAt: new Date(Date.now() + AUTH_SESSION_DAYS * 24 * 60 * 60000) }).where(eq(authSessions.id, session.id));
@@ -75793,7 +76182,7 @@ async function derivePassword(password, saltHex, iterations) {
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 function authUserShape(row, announcementBanner) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner", tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
 }
 async function issueAuthCode(ctx, userId, purpose) {
   const db = ctx.db();
@@ -75926,7 +76315,8 @@ function withWorkspace(ctx, user) {
     unscopedDb: { value: rawDb },
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
-    workspaceTier: { value: user.tier }
+    workspaceTier: { value: user.tier },
+    workspaceRole: { value: productRoleOf(user.role) }
   });
   return scoped;
 }
@@ -75942,6 +76332,15 @@ async function requirePlatformAdmin(ctx) {
   const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
   if (!user?.isPlatformAdmin)
     throw new Error("Platform admin access required.");
+  return { identity, admin: user };
+}
+async function requireCompanyAdmin(ctx) {
+  const identity = workspaceIdentity(ctx);
+  const db = platformDb(ctx);
+  const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user || user.companyId !== identity.workspaceCompanyId || productRoleOf(user.role) !== "admin") {
+    throw new Error("Admin access required. Only your company's admin can manage the team.");
+  }
   return { identity, admin: user };
 }
 async function isPlatformTeamMember(db, user) {
@@ -77510,6 +77909,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
         throw new Error("Verify your email before signing in.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       await db.delete(authLoginAttempts).where(eq(authLoginAttempts.email, email));
       if (await getPlatformSetting(db, "admin_2fa_required", "0") === "1" && await isPlatformTeamMember(db, user)) {
         const totp = (await db.select().from(adminTotpSecrets).where(eq(adminTotpSecrets.userId, user.id)).limit(1))[0];
@@ -77595,6 +77996,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       }
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     }
@@ -77624,6 +78027,8 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
               throw new Error("Sign in to continue.");
             if (user.suspendedAt)
               throw new Error("This account has been suspended. Contact support for help.");
+            if (user.deactivatedAt)
+              throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
             return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
@@ -77668,6 +78073,8 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("Sign in to continue.");
       if (user.suspendedAt)
         throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt)
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
       return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
@@ -80268,6 +80675,86 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  listTeamMembers: defineAction({
+    request: object({}),
+    response: object({ members: array(teamMemberSchema) }),
+    async handler(ctx) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const rows = await db.select().from(authUsers).where(eq(authUsers.companyId, identity.workspaceCompanyId)).orderBy(authUsers.createdAt, authUsers.id);
+      return { members: rows.map((row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, teamRole: productRoleOf(row.role), active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString() })) };
+    }
+  }),
+  createStaffAccount: defineAction({
+    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), role: _enum(["admin", "office", "field"]) }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const email = normalizedEmail(args.email);
+      const duplicate = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email)).limit(1))[0];
+      if (duplicate)
+        throw new Error("An account with this email already exists. They should sign in with that email instead.");
+      const now = new Date;
+      const salt = randomHex2(16);
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(authUsers).values({
+        name: args.name.trim(),
+        email,
+        passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt: salt,
+        passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: args.role,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now,
+        marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode,
+        createdAt: now,
+        updatedAt: now
+      }).returning({ id: authUsers.id }))[0];
+      if (!made)
+        throw new Error("The staff account could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  updateStaffMember: defineAction({
+    request: object({ userId: number2().int().positive(), role: _enum(["admin", "office", "field"]).optional(), active: boolean2().optional() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId)
+        throw new Error("Team member not found.");
+      if (target.id === admin.id)
+        throw new Error("You can't change your own role or deactivate your own login.");
+      if (target.role === "owner")
+        throw new Error("The account owner's role can't be changed from here.");
+      const nextRole = args.role ?? target.role;
+      const nextActive = args.active ?? !target.deactivatedAt;
+      const removesAdmin = productRoleOf(target.role) === "admin" && !target.deactivatedAt && !(productRoleOf(nextRole) === "admin" && nextActive);
+      if (removesAdmin) {
+        const others = await db.select({ id: authUsers.id, role: authUsers.role }).from(authUsers).where(and(eq(authUsers.companyId, identity.workspaceCompanyId), ne(authUsers.id, target.id), isNull(authUsers.deactivatedAt)));
+        if (!others.some((row) => productRoleOf(row.role) === "admin")) {
+          throw new Error("Your company needs at least one active admin \u2014 promote someone else first.");
+        }
+      }
+      const patch = { updatedAt: new Date };
+      if (args.role !== undefined)
+        patch.role = args.role;
+      if (args.active !== undefined)
+        patch.deactivatedAt = args.active ? null : new Date;
+      await db.update(authUsers).set(patch).where(eq(authUsers.id, target.id));
+      if (args.active === false) {
+        await db.update(authSessions).set({ revokedAt: new Date }).where(and(eq(authSessions.userId, target.id), isNull(authSessions.revokedAt)));
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
   createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), shortCode: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
@@ -83456,6 +83943,7 @@ function protectActions(actions) {
       handler: async (ctx, args) => {
         const envelope = authEnvelopeSchema.parse(args);
         const user = await requireSession(ctx, envelope._sessionToken);
+        assertRoleCan(productRoleOf(user.role), name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium")
           throw new Error("Premium required. Upgrade to unlock this Pro tool.");
         return original(withWorkspace(ctx, user), args);
@@ -83469,6 +83957,7 @@ var Actions = protectActions(BaseActions);
 export {
   Actions,
   BaseActions,
+  PUBLIC_ACTIONS,
   alertMatchesListing,
   authEnvelopeSchema,
   authUserShape,
@@ -83488,6 +83977,7 @@ export {
   performMonthlyVerify,
   platformDb,
   recoverStaleBackupRuns,
+  requireCompanyAdmin,
   requirePlatformAdmin,
   requireSession,
   runEstimateNudgeTick,

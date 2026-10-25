@@ -873,7 +873,15 @@ export const authUsers = sqliteTable("auth_users", {
   passwordIterations: integer("password_iterations").notNull().default(210000),
   emailVerifiedAt: integer("email_verified_at", { mode: "timestamp_ms" }),
   companyId: integer("company_id").notNull().default(1),
-  role: text("role", { enum: ["owner"] }).notNull().default("owner"),
+  // Track 1c (0088): team roles. "owner" is the account that signed up
+  // (every pre-1c row); staff logins created by a company admin carry
+  // "admin" | "office" | "field". Owner and admin are the same product
+  // role (Admin) — see server/src/permissions.ts.
+  role: text("role", { enum: ["owner", "admin", "office", "field"] }).notNull().default("owner"),
+  // Track 1c (0088): company-admin deactivation of a staff login. When
+  // set, requireSession rejects the user. Distinct from suspendedAt,
+  // which is a platform-level suspension.
+  deactivatedAt: integer("deactivated_at", { mode: "timestamp_ms" }),
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),

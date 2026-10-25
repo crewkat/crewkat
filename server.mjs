@@ -260,6 +260,21 @@ console.log("[crewkat] verifying fill fields (0082) + shared files (0083) ...");
 }
 console.log("[crewkat] fill fields + shared files schema verified.");
 
+// Repair (Track 1c): migration 0088 adds auth_users.deactivated_at (staff
+// login deactivation). Same self-heal pattern: if the migration was ever
+// skipped, team-role checks in the action layer would fail on the missing
+// column for EVERY account. Idempotent PRAGMA check first.
+console.log("[crewkat] verifying team roles (0088) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`auth_users`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  if (!existing.has("deactivated_at")) {
+    console.log("[crewkat] repair: adding missing column auth_users.deactivated_at");
+    await libsql.execute("ALTER TABLE `auth_users` ADD COLUMN `deactivated_at` integer");
+  }
+}
+console.log("[crewkat] team roles schema verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------

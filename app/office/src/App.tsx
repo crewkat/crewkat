@@ -23,6 +23,7 @@ import { MoneyView } from "./views/Money";
 import { PipelineView } from "./views/Pipeline";
 import { ScheduleView } from "./views/Schedule";
 import { SettingsView } from "./views/Settings";
+import { TeamView } from "./views/Team";
 import crewkatC from "./assets/crewkat-c.png";
 
 const NAV: { key: ViewKey; label: string; icon: string }[] = [
@@ -35,6 +36,9 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "marketplace", label: "Marketplace", icon: "🏪" },
   { key: "money", label: "Money & billing", icon: "$" },
   { key: "settings", label: "Settings", icon: "⚙" },
+  // Track 1c: Team is Admin-only — filtered out of the nav for other
+  // roles below (cosmetic; the server gates the team actions regardless).
+  { key: "team", label: "Team", icon: "👤" },
 ];
 
 const PHASE2_NAV = ["Reports", "Automations"];
@@ -129,7 +133,7 @@ export function App() {
           </div>
         </div>
         <nav className="nav" aria-label="Office">
-          {NAV.map((item) => (
+          {NAV.filter((item) => item.key !== "team" || user.teamRole === "admin").map((item) => (
             <button
               key={item.key}
               type="button"
@@ -185,6 +189,7 @@ export function App() {
           {view === "marketplace" ? <MarketplaceView /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView /> : null}
+          {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}
         </main>
       </div>
     </div>

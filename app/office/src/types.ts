@@ -102,12 +102,46 @@ export interface AuthUser {
   name: string;
   email: string;
   companyId: number;
-  role: "owner";
+  /** Stored role: "owner" is the account that signed up; staff logins are "admin" | "office" | "field". */
+  role: "owner" | "admin" | "office" | "field";
+  /** Product role (Track 1c): owner and admin are both "admin". Drives cosmetic UI gating only — the server enforces. */
+  teamRole: TeamRole;
   tier: "free" | "premium";
   isPlatformAdmin: boolean;
   marketplaceTermsAcceptedAt: string | null;
   marketplaceTermsVersion: string | null;
   announcementBanner: string;
+  createdAt: string;
+}
+
+/* ---------- Team & roles (Track 1c) ----------
+   Mirrors teamMemberSchema in server/src/actions.ts. Roles are enforced
+   server-side in the action layer (server/src/permissions.ts); Office
+   only shows/hides surfaces. */
+
+export type TeamRole = "admin" | "office" | "field";
+export type StaffRole = TeamRole;
+
+export const TEAM_ROLE_LABELS: Record<TeamRole, string> = {
+  admin: "Admin",
+  office: "Office",
+  field: "Field",
+};
+
+export const TEAM_ROLE_DESCRIPTIONS: Record<TeamRole, string> = {
+  admin: "Everything — billing, company settings, and managing this team.",
+  office: "Back office — pipeline, schedule, documents, and money views. No billing changes, no team management, no company-record deletes.",
+  field: "Phone-first — their jobs, appointments, photos, and documents. No money views, no deletes, no billing.",
+};
+
+export interface TeamMember {
+  id: number;
+  name: string;
+  email: string;
+  role: "owner" | "admin" | "office" | "field";
+  teamRole: TeamRole;
+  active: boolean;
+  isSelf: boolean;
   createdAt: string;
 }
 
@@ -147,7 +181,7 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings";
+export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings" | "team";
 
 /* ---------- Schedule (Track 1b) ----------
    Mirrors the server appointmentSchema — the same records the phone

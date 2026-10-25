@@ -418,7 +418,8 @@ export const platformAdminPhase2SettingsActions = {
       sessionToken: z.string(),
       expiresAt: z.string(),
       user: z.object({
-        id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"),
+        id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.enum(["owner", "admin", "office", "field"]),
+        teamRole: z.enum(["admin", "office", "field"]),
         tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(),
         marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(),
         announcementBanner: z.string(), createdAt: z.string(),
@@ -436,6 +437,7 @@ export const platformAdminPhase2SettingsActions = {
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, pending.userId)).limit(1))[0];
       if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const totp = (await db.select().from(schema.adminTotpSecrets).where(eq(schema.adminTotpSecrets.userId, user.id)).limit(1))[0];
       if (!totp?.verified) throw new Error("Two-factor authentication is not set up for this account.");
       if (!verifyTotpCode(totp.secret, args.code)) throw new Error("That code is not valid. Check your authenticator app and try again.");

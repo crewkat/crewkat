@@ -22,6 +22,7 @@ import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
 import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
+import { assertRoleCan, productRoleOf, type ProductRole } from "./permissions";
 import { platformAdminPhase1Actions } from "./platform-admin-phase1";
 import { platformAdminPhase2Actions } from "./platform-admin-phase2";
 import { scanListingText } from "./moderation";
@@ -847,7 +848,9 @@ const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
 export { authEnvelopeSchema };
-const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.literal("owner"), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string() });
+const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string() });
+// Track 1c: one row of the company team list (Office Team section).
+const teamMemberSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), active: z.boolean(), isSelf: z.boolean(), createdAt: z.string() });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
 // refreshToken = raw refresh token from the HttpOnly cookie (if present).
@@ -923,6 +926,9 @@ export async function requireSession(ctx: Ctx, token: string) {
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, session.userId)).limit(1))[0];
   if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
   if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+  // Track 1c: a company admin can deactivate a staff login. Enforced here
+  // (not just at login) so an already-issued proof dies on its next call.
+  if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
   // Dual-mode: legacy 30-day tokens keep their sliding renewal. Proof tokens
   // have a hard 15-minute expiry and are never extended.
   const stale = Date.now() - session.lastSeenAt.getTime() > 5 * 60_000;
@@ -994,7 +1000,7 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 export function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: "owner" as const, tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
   const db = ctx.db<typeof schema>();
@@ -1056,7 +1062,7 @@ function appPublicUrl(): string {
   return configured || "https://crewkat.com";
 }
 
-type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; unscopedDb?: () => ReturnType<Ctx["db"]> };
+type WorkspaceCtx = Ctx & { workspaceCompanyId: number; workspaceUserId: number; workspaceTier: "free" | "premium"; workspaceRole?: ProductRole; unscopedDb?: () => ReturnType<Ctx["db"]> };
 const GLOBAL_MARKETPLACE_READ_TABLES = new Set<unknown>([
   schema.marketplaceListings,
   schema.marketplaceListingPhotos,
@@ -1141,6 +1147,7 @@ function withWorkspace(ctx: Ctx, user: typeof schema.authUsers.$inferSelect): Wo
     workspaceCompanyId: { value: user.companyId },
     workspaceUserId: { value: user.id },
     workspaceTier: { value: user.tier },
+    workspaceRole: { value: productRoleOf(user.role) },
   });
   return scoped;
 }
@@ -1160,6 +1167,21 @@ export async function requirePlatformAdmin(ctx: Ctx) {
   const db = ctx.db<typeof schema>();
   const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
   if (!user?.isPlatformAdmin) throw new Error("Platform admin access required.");
+  return { identity, admin: user };
+}
+
+// Track 1c: company-admin guard for the team-management actions. The
+// role map in protectActions already gates these action names to Admin;
+// this is the in-handler second lock (same pattern as the legacy
+// app_users owner checks), re-resolving the caller from the database so
+// a stale workspace role can never slip a team change through.
+export async function requireCompanyAdmin(ctx: Ctx) {
+  const identity = workspaceIdentity(ctx);
+  const db = platformDb(ctx);
+  const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+  if (!user || user.companyId !== identity.workspaceCompanyId || productRoleOf(user.role) !== "admin") {
+    throw new Error("Admin access required. Only your company's admin can manage the team.");
+  }
   return { identity, admin: user };
 }
 
@@ -3000,6 +3022,7 @@ export const BaseActions = {
       if (!user || !valid) { await db.insert(schema.authLoginAttempts).values({ email, attemptedAt: new Date() }); throw new Error("Email or password is incorrect."); }
       if (!user.emailVerifiedAt) throw new Error("Verify your email before signing in.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       await db.delete(schema.authLoginAttempts).where(eq(schema.authLoginAttempts.email, email));
       // Admin panel Phase 2: platform-team TOTP 2FA. When required and the
       // caller is platform team with a verified secret, issue a 5-minute
@@ -3082,6 +3105,7 @@ export const BaseActions = {
         user = made;
       }
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies };
     },
@@ -3109,6 +3133,7 @@ export const BaseActions = {
             const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, successor.userId)).limit(1))[0];
             if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
             if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+            if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
             const issued = await issueProofForRefresh(ctx, db, successor, false);
             return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
           }
@@ -3163,6 +3188,7 @@ export const BaseActions = {
       const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.userId)).limit(1))[0];
       if (!user?.emailVerifiedAt) throw new Error("Sign in to continue.");
       if (user.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      if (user.deactivatedAt) throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
       const rotate = now - row.createdAt.getTime() >= AUTH_REFRESH_ROTATE_MINUTES * 60_000;
       const issued = await issueProofForRefresh(ctx, db, row, rotate);
       return { sessionToken: issued.proof, expiresAt: issued.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: issued.setCookies };
@@ -4350,6 +4376,98 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     return { ok: true };
   } }),
   updateAdminParameters: defineAction({ request: z.object({ paymentDay1:z.number().int().min(1).max(365),paymentDay2:z.number().int().min(1).max(365),paymentDay3:z.number().int().min(1).max(365),reviewDelayDays:z.number().int().min(0).max(90),reengagementMonth1:z.number().int().min(1).max(120),reengagementMonth2:z.number().int().min(1).max(120),quoteExpiryWarningDays:z.number().int().min(0).max(90),materialLeadTimeDays:z.number().int().min(0).max(730),defaultTaxRate:z.string().trim().max(20),hourlyLaborCost:z.string().trim().max(80) }), response:z.object({ok:z.literal(true)}), async handler(ctx,args):Promise<{ok:true}>{if(!(args.paymentDay1<args.paymentDay2&&args.paymentDay2<args.paymentDay3))throw new Error("Payment days must increase.");if(!(args.reengagementMonth1<args.reengagementMonth2))throw new Error("Re-engagement months must increase.");const db=ctx.db<typeof schema>();const current=(await db.select().from(schema.appUsers).where(eq(schema.appUsers.isCurrent,true)).limit(1))[0];if(!current||current.role!=="owner")throw new Error("Owner access required.");const exists=(await db.select().from(schema.adminParameters).where(eq(schema.adminParameters.id,1)).limit(1))[0];if(exists)await db.update(schema.adminParameters).set({...args,updatedAt:new Date()}).where(eq(schema.adminParameters.id,1));else await db.insert(schema.adminParameters).values({id:1,...args,updatedAt:new Date()});const setting=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0];if(setting)await db.update(schema.settings).set({hourlyCostRate:args.hourlyLaborCost,updatedAt:new Date()}).where(eq(schema.settings.id,1));ctx.invalidateQueries();return{ok:true};} }),
+
+  // ---------------------------------------------------------------------
+  // Track 1c: team & staff accounts. A company admin creates staff logins
+  // on the SAME company (same company_id — one system, one dataset),
+  // assigns each a role (admin / office / field), and can deactivate or
+  // reactivate them. Enforcement is NOT here alone: these action names
+  // sit in ADMIN_ACTIONS, so protectActions rejects non-admin callers
+  // before the handler runs, and requireCompanyAdmin re-checks inside.
+  // The owner row (role "owner") is never editable through this surface.
+  listTeamMembers: defineAction({
+    request: z.object({}),
+    response: z.object({ members: z.array(teamMemberSchema) }),
+    async handler(ctx) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const rows = await db.select().from(schema.authUsers)
+        .where(eq(schema.authUsers.companyId, identity.workspaceCompanyId))
+        .orderBy(schema.authUsers.createdAt, schema.authUsers.id);
+      return { members: rows.map((row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, teamRole: productRoleOf(row.role), active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString() })) };
+    },
+  }),
+  createStaffAccount: defineAction({
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), role: z.enum(["admin", "office", "field"]) }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const email = normalizedEmail(args.email);
+      const duplicate = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.email, email)).limit(1))[0];
+      if (duplicate) throw new Error("An account with this email already exists. They should sign in with that email instead.");
+      const now = new Date();
+      const salt = randomHex(16);
+      const referralCode = await uniqueReferralCode(db);
+      const made = (await db.insert(schema.authUsers).values({
+        name: args.name.trim(), email,
+        passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        // The admin creates the login and vouches for the address, so the
+        // staff member can sign in immediately (no verification round
+        // trip). They can reset the password from the sign-in screen at
+        // any time.
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: args.role,
+        // Staff inherit the company's current plan tier at creation so
+        // premium-gated work actions behave the same for the whole team.
+        // (Billing itself stays on the owner's row — subscription fields
+        // are NOT copied; the staff row is not a subscriber.)
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode, createdAt: now, updatedAt: now,
+      }).returning({ id: schema.authUsers.id }))[0];
+      if (!made) throw new Error("The staff account could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+  updateStaffMember: defineAction({
+    request: z.object({ userId: z.number().int().positive(), role: z.enum(["admin", "office", "field"]).optional(), active: z.boolean().optional() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId) throw new Error("Team member not found.");
+      if (target.id === admin.id) throw new Error("You can't change your own role or deactivate your own login.");
+      if (target.role === "owner") throw new Error("The account owner's role can't be changed from here.");
+      const nextRole = args.role ?? target.role;
+      const nextActive = args.active ?? !target.deactivatedAt;
+      // The company must always keep at least one active admin login.
+      const removesAdmin = productRoleOf(target.role) === "admin" && !target.deactivatedAt && !(productRoleOf(nextRole) === "admin" && nextActive);
+      if (removesAdmin) {
+        const others = await db.select({ id: schema.authUsers.id, role: schema.authUsers.role }).from(schema.authUsers)
+          .where(and(eq(schema.authUsers.companyId, identity.workspaceCompanyId), ne(schema.authUsers.id, target.id), isNull(schema.authUsers.deactivatedAt)));
+        if (!others.some((row) => productRoleOf(row.role) === "admin")) {
+          throw new Error("Your company needs at least one active admin — promote someone else first.");
+        }
+      }
+      const patch: { role?: "admin" | "office" | "field"; deactivatedAt?: Date | null; updatedAt: Date } = { updatedAt: new Date() };
+      if (args.role !== undefined) patch.role = args.role;
+      if (args.active !== undefined) patch.deactivatedAt = args.active ? null : new Date();
+      await db.update(schema.authUsers).set(patch).where(eq(schema.authUsers.id, target.id));
+      if (args.active === false) {
+        // Kill live sessions now; requireSession's deactivatedAt check
+        // covers any proof that slips through in the meantime.
+        await db.update(schema.authSessions).set({ revokedAt: new Date() })
+          .where(and(eq(schema.authSessions.userId, target.id), isNull(schema.authSessions.revokedAt)));
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
 
   createPortalLink: defineAction({ request: z.object({ jobId: z.number().int().positive(), expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.literal(0)]).default(90) }), response: z.object({ token: z.string(), shortCode: z.string(), route: z.string(), expiresAt: z.string().nullable() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,args.jobId)).limit(1))[0]; if(!job) throw new Error("Job not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashPortalToken(token); const shortCode=await uniquePortalShortCode(ctx); await db.update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))); const expiresAt=args.expiresInDays===0?null:new Date(Date.now()+args.expiresInDays*86400000); await db.insert(schema.portalTokens).values({jobId:args.jobId,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:new Date()}); ctx.invalidateQueries(); return{token,shortCode,route:`p/${encodeURIComponent(shortCode)}`,expiresAt:expiresAt?.toISOString()??null}; } }),
   revokePortalLink: defineAction({ request:z.object({jobId:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt)));ctx.invalidateQueries();return{ok:true};} }),
@@ -6622,7 +6740,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
   }),
 } satisfies ActionsModule;
 
-const PUBLIC_ACTIONS = new Set([
+export const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
@@ -6665,6 +6783,11 @@ function protectActions<T extends ActionsModule>(actions: T): T {
       handler: async (ctx: Ctx, args: unknown) => {
         const envelope = authEnvelopeSchema.parse(args);
         const user = await requireSession(ctx, envelope._sessionToken);
+        // Track 1c: company team roles, enforced HERE — the single choke
+        // point every non-public action passes through — against the
+        // explicit map in server/src/permissions.ts. Runs before the
+        // premium gate so a role denial is never masked as an upsell.
+        assertRoleCan(productRoleOf(user.role), name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium") throw new Error("Premium required. Upgrade to unlock this Pro tool.");
         return original(withWorkspace(ctx, user), args);
       },
