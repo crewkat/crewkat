@@ -5141,17 +5141,19 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .page.tools-home,
 .page.toolkit-page,
 .page.expansion-page { background: var(--beige); }
-/* build 3.0 item 5: marketplace surfaces back to pure white (revert beige test). */
-:root[data-theme="light"] .page.marketplace-page,
-:root[data-theme="light"] .page.marketplace-thread,
-:root[data-theme="light"] .page.marketplace-detail,
-:root[data-theme="light"] .page.marketplace-form-page { background:#ffffff; }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page, :root:not([data-theme]) .page.marketplace-thread, :root:not([data-theme]) .page.marketplace-detail, :root:not([data-theme]) .page.marketplace-form-page { background:#ffffff; } }
-/* Marketplace light pages force a pure-white page background above.
-   App look v2 (Danny 2026-10-24): the header does NOT match it — it
-   takes the same gradient navy band as every other header, at every
-   width and theme. The old solid-#fff marketplace header override is
-   gone for good; these scoped rules only restate the band so the
+/* build 3.0 item 5 painted marketplace surfaces pure white in light
+   theme — but that opaque page background also buried the app shell's
+   animated haze layers: on Marketplace the haze only peeked out as a
+   sliver below the page box at full scroll, while Home/Jobs (plain
+   .page, no background) show it through every gap. Removed
+   2026-10-24: marketplace pages stay transparent exactly like the
+   other main screens, so the shared haze (same layers, same tints)
+   shows through; listing cards keep their own opaque --surface
+   backgrounds, so card content and readability are unchanged. */
+/* App look v2 (Danny 2026-10-24): the marketplace header takes the
+   same gradient navy band as every other header, at every width and
+   theme. The old solid-#fff marketplace header override is gone for
+   good; these scoped rules only restate the band so the
    higher-specificity marketplace context can never pin it white. */
 :root[data-theme="light"] .page.marketplace-page .app-header,
 :root[data-theme="light"] .page.marketplace-thread .app-header,
