@@ -18,7 +18,11 @@ import { ClientsView } from "./views/Clients";
 import { DashboardView } from "./views/Dashboard";
 import { DocumentsView, type DocSelection } from "./views/Documents";
 import { JobsView } from "./views/Jobs";
+import { MarketplaceView } from "./views/Marketplace";
+import { MoneyView } from "./views/Money";
 import { PipelineView } from "./views/Pipeline";
+import { ScheduleView } from "./views/Schedule";
+import { SettingsView } from "./views/Settings";
 import crewkatC from "./assets/crewkat-c.png";
 
 const NAV: { key: ViewKey; label: string; icon: string }[] = [
@@ -27,9 +31,13 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "clients", label: "Clients", icon: "👥" },
   { key: "jobs", label: "Jobs", icon: "🛠" },
   { key: "documents", label: "Documents", icon: "📄" },
+  { key: "schedule", label: "Schedule", icon: "📅" },
+  { key: "marketplace", label: "Marketplace", icon: "🏪" },
+  { key: "money", label: "Money & billing", icon: "$" },
+  { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
-const PHASE2_NAV = ["Schedule", "Reports", "Automations"];
+const PHASE2_NAV = ["Reports", "Automations"];
 
 export function App() {
   const queryClient = useQueryClient();
@@ -173,6 +181,10 @@ export function App() {
               userName={user.name}
             />
           ) : null}
+          {view === "schedule" ? <ScheduleView onOpenJob={openJob} /> : null}
+          {view === "marketplace" ? <MarketplaceView /> : null}
+          {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
+          {view === "settings" ? <SettingsView /> : null}
         </main>
       </div>
     </div>

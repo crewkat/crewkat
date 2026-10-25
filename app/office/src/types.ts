@@ -147,7 +147,197 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents";
+export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings";
+
+/* ---------- Schedule (Track 1b) ----------
+   Mirrors the server appointmentSchema — the same records the phone
+   Operations / Dispatch screens read and write. */
+
+export type AppointmentStatus = "scheduled" | "confirmed" | "on_my_way" | "arrived" | "completed" | "cancelled";
+
+export const APPOINTMENT_STATUSES: AppointmentStatus[] = ["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"];
+
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  scheduled: "Scheduled",
+  confirmed: "Confirmed",
+  on_my_way: "On the way",
+  arrived: "Arrived",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+export interface Appointment {
+  id: number;
+  jobId: number | null;
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  startsAt: string;
+  notes: string;
+  exteriorWork: boolean;
+  status: AppointmentStatus;
+  crewMember: string;
+  etaMinutes: number | null;
+  hasShareLink: boolean;
+}
+
+/* ---------- Job photos (Track 1b) ----------
+   Mirrors photoSchema / photoPairSchema from getJob + listPhotoPairs. */
+
+export type PhotoStage = "before" | "during" | "after";
+
+export const PHOTO_STAGE_LABELS: Record<PhotoStage, string> = {
+  before: "Before",
+  during: "During",
+  after: "After",
+};
+
+export interface JobPhoto {
+  id: number;
+  jobId: number;
+  stage: PhotoStage;
+  caption: string;
+  filename: string;
+  contentType: string;
+  url: string;
+  galleryPick: boolean;
+  excludeFromSocial: boolean;
+  annotatedFromId: number | null;
+  capturedAt: string;
+  createdAt: string;
+}
+
+export interface PhotoPairPhoto {
+  id: number;
+  stage: PhotoStage;
+  caption: string;
+  url: string;
+}
+
+export interface PhotoPair {
+  id: number;
+  jobId: number;
+  label: string;
+  before: PhotoPairPhoto;
+  after: PhotoPairPhoto;
+  createdAt: string;
+}
+
+/* ---------- Money & billing (Track 1b) ----------
+   Mirrors getBillingOverview — the account's own plan + billing payment
+   history. Amounts arrive as integer cents from the server. */
+
+export interface BillingPayment {
+  id: string;
+  source: "subscription" | "promotion";
+  date: string;
+  description: string;
+  amountCents: number | null;
+  currency: string;
+  status: string;
+  receiptUrl: string | null;
+}
+
+export interface BillingOverview {
+  plan: {
+    tier: "free" | "premium";
+    status: string;
+    provider: "stripe" | "play" | "none";
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  };
+  payments: BillingPayment[];
+  manage: { kind: "stripe" | "play" | "none" };
+}
+
+/* ---------- Marketplace (Track 1b, read-only) ----------
+   Mirrors marketplaceListingSchema / marketplaceInboxRowSchema /
+   marketplaceMessageSchema / marketplaceBookingSchema. */
+
+export type MarketplaceCategory =
+  | "kitchens" | "bathrooms" | "plumbing" | "electrical" | "hvac" | "roofing"
+  | "tile_flooring" | "painting" | "concrete" | "landscaping" | "handyman"
+  | "equipment" | "materials" | "other";
+
+export const MARKETPLACE_CATEGORY_LABELS: Record<MarketplaceCategory, string> = {
+  kitchens: "Kitchens",
+  bathrooms: "Bathrooms",
+  plumbing: "Plumbing",
+  electrical: "Electrical",
+  hvac: "HVAC",
+  roofing: "Roofing",
+  tile_flooring: "Tile & flooring",
+  painting: "Painting",
+  concrete: "Concrete",
+  landscaping: "Landscaping",
+  handyman: "Handyman",
+  equipment: "Equipment",
+  materials: "Materials",
+  other: "Other",
+};
+
+export interface MarketplaceListing {
+  id: number;
+  title: string;
+  category: MarketplaceCategory;
+  intent: "need" | "offer";
+  neededBy: string;
+  employmentType: "full_time" | "part_time" | "temporary";
+  payUnit: "hourly" | "salary";
+  priceKind: "amount" | "free" | "contact";
+  price: string;
+  originalPrice: string;
+  description: string;
+  serviceArea: string;
+  zipCode: string;
+  companyName: string;
+  companyPhone: string;
+  contactUnlocked: boolean;
+  verified: boolean;
+  bookable: boolean;
+  dailyRate: string;
+  promoted: boolean;
+  featured: boolean;
+  featuredUntil: string | null;
+  isMine: boolean;
+  moderationStatus: "active" | "auto_rejected" | "pending_review" | "removed";
+  photos: { id: number; url: string; filename: string }[];
+  justListed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketplaceConversationRow {
+  id: number;
+  listingId: number;
+  listingTitle: string;
+  otherPartyName: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+  isInquiry: boolean;
+}
+
+export interface MarketplaceMessage {
+  id: number;
+  conversationId: number;
+  body: string;
+  imageUrl: string | null;
+  imageFilename: string;
+  outgoing: boolean;
+  senderName: string;
+  createdAt: string;
+}
+
+export interface MarketplaceBooking {
+  id: number;
+  listingId: number;
+  startDate: string;
+  endDate: string;
+  note: string;
+  status: "requested" | "confirmed" | "declined";
+  createdAt: string;
+}
 
 /* ---------- Documents (Track 1a) ----------
    Shapes mirror the server response schemas in server/src/actions.ts

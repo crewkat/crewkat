@@ -61,6 +61,25 @@ export function initials(name: string): string {
   return (first + second).toUpperCase();
 }
 
+/** Billing amounts arrive from the server as integer cents + a currency code. */
+export function formatCents(amountCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: (currency || "usd").toUpperCase() }).format(amountCents / 100);
+  } catch {
+    return `$${(amountCents / 100).toFixed(2)}`;
+  }
+}
+
+/** Trigger a browser download for a server-issued blob URL (job photos). */
+export function downloadUrl(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "photo";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 /** Turn an SDK action error into a short human message. */
 export function cleanError(caught: unknown): string {
   const raw = caught instanceof Error ? caught.message : String(caught ?? "Something went wrong.");
