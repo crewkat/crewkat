@@ -75,7 +75,7 @@ html = html.replace(
 );
 html = html.replace(
   '<link rel="icon" href="data:," />',
-  `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#ff6a00" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`
+  `<link rel="icon" href="data:," />\n    <meta name="theme-color" content="#0a2239" />\n    <link rel="manifest" href="/app/manifest.webmanifest" />\n    <link rel="apple-touch-icon" sizes="180x180" href="/app/icon-180.png" />\n    <link rel="apple-touch-icon" href="/app/icon-192.png" />`
 );
 await writeFile(indexHtmlPath, html);
 console.log("[build] PWA manifest + icons copied to dist/, links injected");
