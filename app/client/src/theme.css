@@ -17,23 +17,21 @@
   --bg: #f7f7f5;
   --surface: #ffffff;
   --surface-2: #e9e6df;
-  --text: #16232e;
+  --text: #171a1c;
   --dim: #5d6866;
   --border: #c9d1ce;
-  /* Navy reskin (Danny 2026-10-24): the app adopts the Crewkat Office
-     identity — deep navy brand accent, ink text, orange kept only as a
-     sparing highlight token. Supersedes the orange brand accent era.
-     The data-accent choices (blue/green/purple/red) are untouched: this
-     base is the default brand look they override. */
+  --accent: #f97316;
+  --accent-ink: #25120b;
+  /* App look v2 (Danny 2026-10-24, approved mockup after the wholesale
+     navy reskin 8ebe765 was rejected on his phone): the base stays the
+     pre-reskin light/orange look; the Crewkat Office navy survives ONLY
+     as these tokens, spent on a few named surfaces — the gradient
+     header band, the Home hero, the job Overview money strip — with
+     orange sparks. Everything else spends the orange accent above. */
   --navy-900: #0a2239;
   --navy-800: #0b2a44;
   --navy-700: #12395c;
-  --ink: #16232e;
-  --ink-2: #43536a;
-  --accent: #0b2a44;
-  --accent-ink: #ffffff;
   --accent-orange: #f2762e;
-  --accent-orange-dark: #d95f1a;
   --green: #1f5a4a;
   --danger: #a63a29;
   /* Build 0.7: saturated chart palette (platform-admin treatment). */
@@ -62,8 +60,8 @@
   --text: #f3f5f4;
   --dim: #a7b1ae;
   --border: #3b4543;
-  --accent: #4a86c5;
-  --accent-ink: #ffffff;
+  --accent: #ff7443;
+  --accent-ink: #1c0c07;
   --green: #5aa88e;
   --danger: #ff8d78;
 }
@@ -75,17 +73,12 @@
     --text: #f3f5f4;
     --dim: #a7b1ae;
     --border: #3b4543;
-    --accent: #4a86c5;
-    --accent-ink: #ffffff;
+    --accent: #ff7443;
+    --accent-ink: #1c0c07;
     --green: #5aa88e;
     --danger: #ff8d78;
   }
 }
-/* Navy reskin: section headings take the Office navy in light mode.
-   :where() keeps this at element specificity so component rules
-   (.app-header, .portal-v2-hero, document papers) always win. */
-:where(:root[data-theme="light"]) h1, :where(:root[data-theme="light"]) h2, :where(:root[data-theme="light"]) h3 { color: var(--navy-900); }
-@media (prefers-color-scheme: light) { :where(:root:not([data-theme])) h1, :where(:root:not([data-theme])) h2, :where(:root:not([data-theme])) h3 { color: var(--navy-900); } }
 * { box-sizing: border-box; }
 html, body, #root, [data-generated-space-root], .hatch-space-root { margin: 0; width: 100%; height: 100%; min-height: 0; overflow: hidden; overscroll-behavior: none; background: var(--bg); color: var(--text); }
 /* b07: light mode — soft static gradient wash (Invoice Fly feel), whiter at the bottom.
@@ -106,22 +99,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Screens with the floating pill nav need enough bottom clearance that the last
    row can scroll fully into view. Pill footprint ≈ 84-96px above the safe area. */
 .app-shell.has-bottom-nav .page { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-.app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-inline: -16px; padding: max(6px, env(safe-area-inset-top)) 16px 4px; background: linear-gradient(180deg, var(--navy-900), var(--navy-800)); border-bottom: 1px solid var(--navy-900); color: #fff; }
+.app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; min-height: 54px; margin-inline: -16px; padding: max(6px, env(safe-area-inset-top)) 16px 4px; background: linear-gradient(180deg, var(--navy-900), var(--navy-700)); border-bottom: 1px solid rgba(242, 118, 46, .45); color: #fff; }
 @media (min-width: 720px) { .app-header { margin-inline: -28px; padding-inline: 28px; } }
-/* Navy header (Danny 2026-10-24 — overrides his 2026-10-13 "plain
-   white header" call as part of the Crewkat Office identity reskin):
-   a deep-navy bar (navy-900 → navy-800), flush with the top of the
-   screen, white title and icons, one hairline bottom edge. The
-   full-bleed structure is unchanged from the white era: the element
-   bleeds past the .page column (margin-inline -16px, -28px at ≥720px
-   — the client-doc-brandbar technique) while its padding grows by
-   the same amount, so the background runs edge to edge but the
-   back/title/actions stay aligned to the column. The safe-area zone
-   is covered by the bar itself (padding-top max(6px,
-   safe-area-inset-top), the content row below it). The 2026-10-13
-   prohibitions still stand — no blur, no tint, no radius, no shadow,
-   no floating, no ::before layer; only the color changed.
-   .intelligence-page .page-header mirrors this rule. */
+/* Gradient navy header (app look v2, Danny 2026-10-24 — approved
+   mockup; supersedes BOTH the 2026-10-13 plain-white header below in
+   git history and the same-day wholesale navy reskin 8ebe765, which
+   he rejected on the phone): the header band ALONE takes the Crewkat
+   Office navy as a deep gradient (navy-900 → navy-700) with white
+   title/icons and a thin orange hairline on its bottom edge; the
+   rest of the app keeps the pre-reskin light base + orange accent.
+   Geometry is unchanged from the white era: the element bleeds past
+   the .page column (margin-inline -16px, -28px at ≥720px — the
+   client-doc-brandbar technique) while its padding grows by the same
+   amount, so the band runs edge to edge but the back/title/actions
+   stay aligned to the column. The safe-area zone is covered by the
+   bar itself (padding-top max(6px, safe-area-inset-top)). The
+   2026-10-13 prohibitions still stand — no blur, no tint, no radius,
+   no shadow, no floating, no ::before layer; the ONLY change is the
+   fill. .intelligence-page .page-header mirrors this rule, and the
+   marketplace header rules below spend the same gradient — there is
+   no white-header override anywhere anymore. */
 .app-header h1 { margin: 0; color: #fff; font-family: "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; font-size: 24px; line-height: 1; font-weight: 700; text-align: center; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-brand-lockup { min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; vertical-align: middle; }
 .app-brand-lockup img { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 9px; object-fit: cover; }
@@ -158,7 +155,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .empty-mark svg { width: 30px; height: 30px; }
 .empty-state h2 { margin: 0; font: 700 24px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; }
 .empty-state p { max-width: 260px; margin: 10px 0 0; color: var(--dim); }
-.text-button, .proof-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px; padding: 8px; border: 0; background: transparent; color: var(--accent); font-weight: 800; cursor: pointer; }
+.text-button, .proof-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px; padding: 8px; border: 0; background: transparent; color: var(--green); font-weight: 800; cursor: pointer; }
 .form-page { max-width: 640px; }
 .job-form, .inline-edit { display: grid; gap: 13px; padding: 16px 0 100px; }
 .job-form label, .inline-edit label { display: grid; gap: 5px; }
@@ -171,7 +168,7 @@ textarea { resize: vertical; }
 fieldset { padding: 0; border: 0; }
 .language-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .language-choice button { min-height: 50px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); font-weight: 700; }
-.language-choice button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+.language-choice button.active { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
 .sticky-submit { position: fixed; left: auto; right: 16px; bottom: calc(96px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); z-index: 90; width: auto; max-width: none; padding: 0 22px; min-height: 44px; font-size: 14px; border-radius: 10px; box-shadow:0 8px 26px rgba(0,0,0,.24); transition:bottom .14s ease-out; }
 /* Keyboard open: the bottom nav is hidden behind it, so hug the keyboard. */
 .keyboard-open .sticky-submit { bottom: calc(12px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px)); }
@@ -410,7 +407,7 @@ fieldset { padding: 0; border: 0; }
 .file-drop input { padding:9px; }
 .signature-field { display:grid; gap:7px; }
 .signature-head { display:flex; justify-content:space-between; align-items:center; color:var(--dim); font-size:13px; font-weight:800; }
-.signature-head button { border:0; background:transparent; color:var(--accent); font-weight:800; }
+.signature-head button { border:0; background:transparent; color:var(--green); font-weight:800; }
 .signature-field canvas { width:100%; height:140px; border:1px dashed var(--border); border-radius:10px; background:#fff; touch-action:none; }
 .inline-add { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; margin:18px 0; }
 .inline-add input { min-height:52px; padding:10px 12px; }
@@ -449,7 +446,7 @@ fieldset { padding: 0; border: 0; }
 .onboarding-icon svg { width:32px; height:32px; }
 .onboarding-dots { display:flex; gap:6px; justify-content:center; margin:16px 0 12px; }
 .onboarding-dots span { width:8px; height:8px; border-radius:50%; background:var(--border); }
-.onboarding-dots span.active { background:var(--accent); }
+.onboarding-dots span.active { background:var(--green); }
 .onboarding-nav { display:flex; gap:10px; justify-content:center; }
 .onboarding-nav .primary-button, .onboarding-nav .secondary-button { flex:1; }
 .sample-data-block { margin:12px 0 4px; }
@@ -718,7 +715,7 @@ fieldset { padding: 0; border: 0; }
 @media (min-width:720px) { .receipt-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .operations-panel { max-width:680px; margin-inline:auto; } }
 
 /* Operations suite */
-.dashboard-wrap{display:grid;gap:8px;margin:4px 0 14px}.dashboard-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.dashboard-strip article{display:grid;gap:3px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.dashboard-strip span{color:var(--dim);font-size:11px;font-weight:800}.dashboard-strip strong{font:800 20px/1.1 "IBM Plex Sans Condensed",sans-serif}.dashboard-alert{margin:0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--accent) 13%,var(--surface));font-size:12px;font-weight:750}.dashboard-upcoming{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px 12px;border-left:3px solid var(--green);background:var(--surface);font-size:12px}.dashboard-upcoming strong{grid-row:1/3;color:var(--green)}.profit-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 14px;padding:12px;border-radius:11px;background:var(--surface);border:1px solid var(--border)}.profit-strip div{display:grid;gap:3px}.profit-strip span{color:var(--dim);font-size:11px}.profit-strip strong{font-size:16px}.profit-strip .negative{color:var(--danger)}.profit-strip button{grid-column:1/-1}.operations-tabs,.job-ops-tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;padding:4px;margin:14px 0;background:var(--surface-2);border-radius:10px}.operations-tabs button,.job-ops-tabs button{min-height:46px;border:0;border-radius:7px;background:transparent;font-weight:800}.operations-tabs button.active,.job-ops-tabs button.active{background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.1);color:var(--accent)}.calendar-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;margin:16px 0}.calendar-toolbar>div{display:flex}.calendar-toolbar>div button{min-height:42px;padding:0 14px;border:1px solid var(--border);background:var(--surface);font-weight:700}.calendar-toolbar>div button:first-child{border-radius:8px 0 0 8px}.calendar-toolbar>div button:last-child{border-radius:0 8px 8px 0}.calendar-toolbar>div button.active{background:var(--accent);color:#fff}.calendar-toolbar input{min-height:44px;padding:8px}.calendar-toolbar>.primary-button{grid-column:1/-1}.operation-editor{margin-bottom:18px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.calendar-list{display:grid;gap:8px}.calendar-list article{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.calendar-list time{color:var(--green);font-size:12px;font-weight:800}.calendar-list p{margin:3px 0;color:var(--dim);font-size:13px}.calendar-list .row-actions{grid-column:1/-1}.lead-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:16px 0}.lead-toolbar>div{display:grid}.lead-toolbar>div span{color:var(--green);font:800 28px/1 "IBM Plex Sans Condensed",sans-serif}.kanban-board{display:grid;gap:14px}.kanban-column{display:grid;gap:8px;align-content:start}.kanban-column h2{display:flex;align-items:center;justify-content:space-between;margin:0;padding:9px 4px;border-bottom:2px solid var(--green);font-size:16px}.kanban-column h2 small{display:grid;place-items:center;min-width:26px;height:26px;border-radius:13px;background:var(--surface-2)}.kanban-column article{display:grid;gap:7px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.kanban-column article small,.kanban-column article p{margin:0;color:var(--dim);font-size:12px}.kanban-column article select{min-height:42px;padding:8px}.job-ops-tabs{grid-template-columns:repeat(2,1fr)}.profit-card{margin:18px 0;padding:18px;border-radius:12px;background:var(--green);color:#fff}.profit-card h2{margin:0 0 14px;font-size:20px;color:#fff}.profit-card>div{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.profit-card span{display:grid;gap:3px;font-size:11px;color:rgba(255,255,255,.75)}.profit-card span strong{font-size:17px;color:#fff}.profit-card .profit-total{grid-column:1/-1;padding-top:11px;border-top:1px solid rgba(255,255,255,.25);font-size:13px}.profit-card .profit-total strong{font-size:24px}.profit-card>small{display:block;margin-top:9px;color:rgba(255,255,255,.75)}.operation-module{padding:18px 0}.operation-module>h2,.module-heading h2{margin:0 0 12px;font:800 22px/1.1 "IBM Plex Sans Condensed",sans-serif}.module-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.module-heading .small-button{display:flex;align-items:center;gap:6px}.selection-list,.timeline-list,.private-note-list,.milestone-list{display:grid;gap:9px;margin-top:18px}.selection-list article{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.selection-list img{width:64px;height:64px;object-fit:cover;border-radius:7px}.selection-list article:not(:has(img)){grid-template-columns:minmax(0,1fr)}.selection-list div{display:grid;gap:2px}.selection-list small{color:var(--dim)}.selection-list select{grid-column:1/-1;min-height:42px;padding:8px}.timeline-list article{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;padding:14px;border-left:3px solid var(--green);background:var(--surface)}.timeline-list time{color:var(--green);font-size:12px;font-weight:800}.timeline-list p{margin:5px 0;white-space:pre-wrap}.timeline-list small{color:var(--dim)}.privacy-note{margin:-4px 0 14px;color:var(--dim);font-size:13px}.private-note-list label{display:grid;grid-template-columns:24px 1fr;gap:10px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.private-note-list input{width:22px;height:22px}.private-note-list span{display:grid;gap:3px}.private-note-list span.complete{text-decoration:line-through;color:var(--dim)}.private-note-list small{color:var(--dim)}.milestone-list article{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.milestone-list article>div:first-child{display:grid;gap:3px}.milestone-list span,.milestone-list small{color:var(--dim)}
+.dashboard-wrap{display:grid;gap:8px;margin:4px 0 14px}.dashboard-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.dashboard-strip article{display:grid;gap:3px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.dashboard-strip span{color:var(--dim);font-size:11px;font-weight:800}.dashboard-strip strong{font:800 20px/1.1 "IBM Plex Sans Condensed",sans-serif}.dashboard-alert{margin:0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--accent) 13%,var(--surface));font-size:12px;font-weight:750}.dashboard-upcoming{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px 12px;border-left:3px solid var(--green);background:var(--surface);font-size:12px}.dashboard-upcoming strong{grid-row:1/3;color:var(--green)}.profit-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 14px;padding:12px;border-radius:11px;background:var(--surface);border:1px solid var(--border)}.profit-strip div{display:grid;gap:3px}.profit-strip span{color:var(--dim);font-size:11px}.profit-strip strong{font-size:16px}.profit-strip .negative{color:var(--danger)}.profit-strip button{grid-column:1/-1}.operations-tabs,.job-ops-tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;padding:4px;margin:14px 0;background:var(--surface-2);border-radius:10px}.operations-tabs button,.job-ops-tabs button{min-height:46px;border:0;border-radius:7px;background:transparent;font-weight:800}.operations-tabs button.active,.job-ops-tabs button.active{background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.1);color:var(--green)}.calendar-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;margin:16px 0}.calendar-toolbar>div{display:flex}.calendar-toolbar>div button{min-height:42px;padding:0 14px;border:1px solid var(--border);background:var(--surface);font-weight:700}.calendar-toolbar>div button:first-child{border-radius:8px 0 0 8px}.calendar-toolbar>div button:last-child{border-radius:0 8px 8px 0}.calendar-toolbar>div button.active{background:var(--green);color:#fff}.calendar-toolbar input{min-height:44px;padding:8px}.calendar-toolbar>.primary-button{grid-column:1/-1}.operation-editor{margin-bottom:18px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.calendar-list{display:grid;gap:8px}.calendar-list article{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.calendar-list time{color:var(--green);font-size:12px;font-weight:800}.calendar-list p{margin:3px 0;color:var(--dim);font-size:13px}.calendar-list .row-actions{grid-column:1/-1}.lead-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:16px 0}.lead-toolbar>div{display:grid}.lead-toolbar>div span{color:var(--green);font:800 28px/1 "IBM Plex Sans Condensed",sans-serif}.kanban-board{display:grid;gap:14px}.kanban-column{display:grid;gap:8px;align-content:start}.kanban-column h2{display:flex;align-items:center;justify-content:space-between;margin:0;padding:9px 4px;border-bottom:2px solid var(--green);font-size:16px}.kanban-column h2 small{display:grid;place-items:center;min-width:26px;height:26px;border-radius:13px;background:var(--surface-2)}.kanban-column article{display:grid;gap:7px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.kanban-column article small,.kanban-column article p{margin:0;color:var(--dim);font-size:12px}.kanban-column article select{min-height:42px;padding:8px}.job-ops-tabs{grid-template-columns:repeat(2,1fr)}.profit-card{margin:18px 0;padding:18px;border-radius:12px;background:var(--green);color:#fff}.profit-card h2{margin:0 0 14px;font-size:20px}.profit-card>div{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.profit-card span{display:grid;gap:3px;font-size:11px;color:rgba(255,255,255,.75)}.profit-card span strong{font-size:17px;color:#fff}.profit-card .profit-total{grid-column:1/-1;padding-top:11px;border-top:1px solid rgba(255,255,255,.25);font-size:13px}.profit-card .profit-total strong{font-size:24px}.profit-card>small{display:block;margin-top:9px;color:rgba(255,255,255,.75)}.operation-module{padding:18px 0}.operation-module>h2,.module-heading h2{margin:0 0 12px;font:800 22px/1.1 "IBM Plex Sans Condensed",sans-serif}.module-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.module-heading .small-button{display:flex;align-items:center;gap:6px}.selection-list,.timeline-list,.private-note-list,.milestone-list{display:grid;gap:9px;margin-top:18px}.selection-list article{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.selection-list img{width:64px;height:64px;object-fit:cover;border-radius:7px}.selection-list article:not(:has(img)){grid-template-columns:minmax(0,1fr)}.selection-list div{display:grid;gap:2px}.selection-list small{color:var(--dim)}.selection-list select{grid-column:1/-1;min-height:42px;padding:8px}.timeline-list article{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;padding:14px;border-left:3px solid var(--green);background:var(--surface)}.timeline-list time{color:var(--green);font-size:12px;font-weight:800}.timeline-list p{margin:5px 0;white-space:pre-wrap}.timeline-list small{color:var(--dim)}.privacy-note{margin:-4px 0 14px;color:var(--dim);font-size:13px}.private-note-list label{display:grid;grid-template-columns:24px 1fr;gap:10px;padding:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.private-note-list input{width:22px;height:22px}.private-note-list span{display:grid;gap:3px}.private-note-list span.complete{text-decoration:line-through;color:var(--dim)}.private-note-list small{color:var(--dim)}.milestone-list article{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.milestone-list article>div:first-child{display:grid;gap:3px}.milestone-list span,.milestone-list small{color:var(--dim)}
 @media(min-width:720px){.dashboard-strip{grid-template-columns:repeat(4,1fr)}.calendar-toolbar{grid-template-columns:auto 190px 1fr}.calendar-toolbar>.primary-button{grid-column:auto;justify-self:end}.kanban-board{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.kanban-column article{padding:10px}.job-ops-tabs{grid-template-columns:repeat(4,1fr)}.selection-list{grid-template-columns:repeat(2,1fr)}}
 
 /* Rule-based automation center */
@@ -788,7 +785,7 @@ fieldset { padding: 0; border: 0; }
 .settings-heading p { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.45; }
 .appearance-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .appearance-picker > button { min-width: 0; min-height: 92px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 10px 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; }
-.appearance-picker > button.active { border: 2px solid var(--accent); padding: 9px 5px; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.appearance-picker > button.active { border: 2px solid var(--green); padding: 9px 5px; background: color-mix(in srgb, var(--green) 9%, var(--surface)); }
 .appearance-picker strong { font-size: 14px; }
 .appearance-picker small { min-height: 24px; color: var(--dim); font-size: 10px; line-height: 1.2; text-align: center; }
 .theme-preview { width: 48px; height: 30px; display: grid; grid-template-columns: 14px 1fr; gap: 4px; padding: 4px; border: 1px solid #aab3b0; border-radius: 5px; overflow: hidden; }
@@ -820,7 +817,7 @@ fieldset { padding: 0; border: 0; }
 .support-form input, .support-form textarea { min-height: 44px; padding: 9px 12px; }
 .support-kind { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 9px; background: var(--surface-2); }
 .support-kind button { min-height: 44px; padding: 7px; border: 0; border-radius: 7px; background: transparent; font-size: 12px; font-weight: 800; }
-.support-kind button.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 4px color-mix(in srgb, var(--text) 13%, transparent); }
+.support-kind button.active { background: var(--surface); color: var(--green); box-shadow: 0 1px 4px color-mix(in srgb, var(--text) 13%, transparent); }
 .support-form > .secondary-button { min-height: 48px; }
 .support-form .status { margin: 0; display: flex; align-items: center; gap: 7px; }
 .support-shots { display: grid; gap: 7px; }
@@ -864,7 +861,7 @@ fieldset { padding: 0; border: 0; }
 /* Admin panel Phase 2: the platform brand color (set on :root as
    --brand-accent by the client at boot) re-points the accent only inside the
    admin panel — the rest of the app keeps the default accent. */
-.pa-page { --accent: var(--brand-accent, #0b2a44); }
+.pa-page { --accent: var(--brand-accent, #f97316); }
 .pa-tabs { display:flex; gap:8px; overflow-x:auto; padding:2px 0 4px; }
 .pa-tabs button { flex:1 0 auto; min-height:40px; padding:8px 14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--dim); font:inherit; font-weight:700; font-size:14px; white-space:nowrap; }
 .pa-tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -1012,8 +1009,8 @@ fieldset { padding: 0; border: 0; }
 .month-picker button span { color:var(--dim); font-size:10px; font-weight:800; }
 .month-picker button strong { overflow-wrap:anywhere; font-size:12px; }
 .month-picker button small { color:var(--dim); font-size:10px; }
-.month-picker button.active { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--surface)); box-shadow:inset 0 0 0 1px var(--accent); }
-.month-picker button.active span,.month-picker button.active strong { color:var(--accent); }
+.month-picker button.active { border-color:var(--green); background:color-mix(in srgb,var(--green) 12%,var(--surface)); box-shadow:inset 0 0 0 1px var(--green); }
+.month-picker button.active span,.month-picker button.active strong { color:var(--green); }
 .month-detail { margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
 .month-detail h3 { margin:0 0 10px; font-size:16px; }
 .comparison-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -1581,7 +1578,7 @@ details.tool-group[open] .tool-group-chevron { transform:rotate(180deg); }
 @media (min-width:760px) { .pro-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); } .pro-directory > button { border:0; background:var(--bg); } }
 @media (max-width:390px) { .app-header { grid-template-columns:minmax(42px,auto) minmax(0,1fr) minmax(42px,auto); } .header-actions { gap:3px; } .pro-workspace-launch { grid-template-columns:52px minmax(0,1fr) 18px; padding-inline:10px; } .pro-launch-mark { width:50px; height:50px; } }
 
-.intelligence-page .page-header { position:sticky; top:0; z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-inline:-16px; padding:max(6px, env(safe-area-inset-top)) 16px 4px; background:linear-gradient(180deg, var(--navy-900), var(--navy-800)); border-bottom:1px solid var(--navy-900); color:#fff; }
+.intelligence-page .page-header { position:sticky; top:0; z-index:20; display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; min-height:54px; margin-inline:-16px; padding:max(6px, env(safe-area-inset-top)) 16px 4px; background:linear-gradient(180deg, var(--navy-900), var(--navy-700)); border-bottom:1px solid rgba(242, 118, 46, .45); color:#fff; }
 @media (min-width: 720px) { .intelligence-page .page-header { margin-inline:-28px; padding-inline:28px; } }
 .intelligence-page .page-header h1 { margin:0; color:#fff; overflow:hidden; font:700 22px/1 "IBM Plex Sans Condensed","Aptos Narrow",system-ui,sans-serif; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 
@@ -3534,7 +3531,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .activation-card header strong { display: block; font-size: 15px; }
 .activation-card header small { color: var(--dim); font-size: 12.5px; }
 .activation-progress { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 10px; }
-.activation-progress span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-orange)); transition: width .6s cubic-bezier(.3,.9,.35,1); }
+.activation-progress span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #f97316); transition: width .6s cubic-bezier(.3,.9,.35,1); }
 .activation-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .activation-card li button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--text); padding: 8px 4px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 10px; }
 .activation-card li button:disabled { opacity: .75; cursor: default; }
@@ -4646,7 +4643,7 @@ button, .market-card-main { -webkit-tap-highlight-color: transparent; }
    Renders the 38x22 slim pill identically on every browser. */
 .ck-switch { position:relative; flex:none; width:38px; height:22px; padding:0; border:0; border-radius:12px; background:var(--border); cursor:pointer; transition:background .15s ease; }
 .ck-switch-knob { position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.25); transition:transform .15s ease; pointer-events:none; }
-.ck-switch[aria-checked="true"] { background:var(--accent); }
+.ck-switch[aria-checked="true"] { background:var(--green); }
 .ck-switch[aria-checked="true"] .ck-switch-knob { transform:translateX(16px); }
 .ck-switch:disabled { opacity:.5; cursor:default; }
 @media (prefers-reduced-motion: reduce) { .ck-switch, .ck-switch-knob { transition:none; } }
@@ -5150,14 +5147,17 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 :root[data-theme="light"] .page.marketplace-detail,
 :root[data-theme="light"] .page.marketplace-form-page { background:#ffffff; }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page, :root:not([data-theme]) .page.marketplace-thread, :root:not([data-theme]) .page.marketplace-detail, :root:not([data-theme]) .page.marketplace-form-page { background:#ffffff; } }
-/* Marketplace light pages force a pure-white page background above; the
-   header used to match it (solid #fff) — since the 2026-10-24 navy
-   reskin it takes the same navy bar as every other header. */
+/* Marketplace light pages force a pure-white page background above.
+   App look v2 (Danny 2026-10-24): the header does NOT match it — it
+   takes the same gradient navy band as every other header, at every
+   width and theme. The old solid-#fff marketplace header override is
+   gone for good; these scoped rules only restate the band so the
+   higher-specificity marketplace context can never pin it white. */
 :root[data-theme="light"] .page.marketplace-page .app-header,
 :root[data-theme="light"] .page.marketplace-thread .app-header,
 :root[data-theme="light"] .page.marketplace-detail .app-header,
-:root[data-theme="light"] .page.marketplace-form-page .app-header { background:linear-gradient(180deg, var(--navy-900), var(--navy-800)); }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header, :root:not([data-theme]) .page.marketplace-thread .app-header, :root:not([data-theme]) .page.marketplace-detail .app-header, :root:not([data-theme]) .page.marketplace-form-page .app-header { background:linear-gradient(180deg, var(--navy-900), var(--navy-800)); } }
+:root[data-theme="light"] .page.marketplace-form-page .app-header { background:linear-gradient(180deg, var(--navy-900), var(--navy-700)); }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .page.marketplace-page .app-header, :root:not([data-theme]) .page.marketplace-thread .app-header, :root:not([data-theme]) .page.marketplace-detail .app-header, :root:not([data-theme]) .page.marketplace-form-page .app-header { background:linear-gradient(180deg, var(--navy-900), var(--navy-700)); } }
 
 /* --- 5c. Thread composer: bottom nav is hidden on marketplaceThread; anchor the composer --- */
 .app-shell.master-nav-hidden .page.marketplace-thread { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
@@ -6133,3 +6133,127 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .portal-feature-chevron { flex: none; font-size: 20px; line-height: 1; color: rgba(255, 255, 255, .85); transition: transform .16s ease; }
 .portal-feature-chevron.open { transform: rotate(90deg); }
 .portal-link-panel[hidden] { display: none; }
+
+/* ================================================================
+   APP LOOK v2 (Danny 2026-10-24, approved mockup — artifact
+   crewkat-app-look-mockup, ❤️ + "Build this look into the app").
+   The wholesale navy reskin (8ebe765) is REVERTED above: light
+   base, white cards, ink text, orange accent. This section spends
+   the navy ONLY where the mockup spends it: the Home hero, the job
+   Overview money strip, the current-step ring, the active tab —
+   plus the animated haze behind the main screens. The gradient
+   header band itself lives at .app-header (top of file) so the
+   cascade there stays the single source. Financials card colors,
+   portal pages, and document branding are untouched.
+   ================================================================ */
+
+/* ---- Home hero: navy gradient panel ----
+   Was a flat #1a2433 card whose numeral took var(--accent) — the
+   reskin's navy accent made it navy-on-navy and unreadable. Now:
+   the same navy family as the header (navy-900 → navy-700), the
+   big numeral in WHITE, and the orange spark as a dot on the label.
+   The crane line-art was already faint white (svg stroke #fff at
+   .5 opacity in .home-summary-art). Dark theme keeps its own
+   flatter hero fill (higher-specificity rules above); the white
+   numeral and white supporting text hold in both themes. */
+.home-summary-card { background: linear-gradient(155deg, var(--navy-900) 0%, var(--navy-700) 100%); }
+.home-summary-card > strong { color: #fff; }
+.home-summary-card > span, .home-summary-card > small { color: rgba(255, 255, 255, .72); }
+.home-summary-card > span::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--accent-orange); vertical-align: 1px; }
+
+/* ---- Job Overview money strip: navy gradient, white figures ----
+   Scoped to the strip itself (.profit-strip is used only by this
+   strip). The Financials tab's color-keyed figures are a different
+   component and keep their colors. Progress fill takes the orange
+   spark; the CTA goes orange so it reads on navy. */
+.profit-strip { background: linear-gradient(150deg, var(--navy-900) 0%, var(--navy-700) 100%); border-color: rgba(10, 34, 57, .35); color: #fff; }
+.profit-strip span { color: rgba(255, 255, 255, .7); }
+.profit-strip strong, .profit-strip .ps-contract, .profit-strip .ps-invoiced, .profit-strip .ps-balance { color: #fff; }
+.profit-strip .profit-strip-cta { color: var(--accent-orange); }
+.profit-strip .ps-bar { background: rgba(255, 255, 255, .25); }
+.profit-strip .ps-bar > span { background: var(--accent-orange); }
+.profit-strip .ps-progress small { color: rgba(255, 255, 255, .75); }
+
+/* ---- FlowStepper: current step ringed in orange ----
+   Overrides the slim-overhaul current rule (ink fill, no ring,
+   earlier in this file): the mockup's Jobs frame rings the current
+   step in orange. Done steps keep their accent check; the ring is
+   a crisp border + soft outer ring in the accent (orange in the
+   default theme), numeral in accent on the surface fill. */
+.flow-step.current .flow-dot { background: var(--surface); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
+.flow-step.current .flow-label { color: var(--text); font-weight: 800; }
+
+/* ---- Tab bar: light pill (unchanged), active = navy + orange dot ----
+   Light theme: active icon/label take navy-800 with a tiny orange
+   dot under the icon. Dark theme keeps a lifted steel-navy so the
+   active tab stays legible on the dark pill (navy-800 on the dark
+   surface would vanish). */
+:root[data-theme="light"] .bottom-nav > button.active { color: var(--navy-800); }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .bottom-nav > button.active { color: var(--navy-800); } }
+:root[data-theme="dark"] .bottom-nav > button.active { color: #8fb8e8; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .bottom-nav > button.active { color: #8fb8e8; } }
+.bottom-nav > button.active .bottom-nav-icon::after { content: ""; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); width: 5px; height: 5px; border-radius: 50%; background: var(--accent-orange); }
+
+/* ---- Animated haze background (main app screens only) ----
+   Two fixed layers inside the app shell, behind everything: huge
+   soft radial-gradient blobs (pale navy, pale steel, pale orange)
+   at very low opacity, drifting on slow alternate loops —
+   transform-only, so the compositor does the work and the scroll
+   thread never repaints them. NO filter: blur on giant elements
+   (the mockup used CSS blur in a static page; on mid-range phones
+   the gradients themselves are the soft edge). Scoped to the main
+   app shells (has-bottom-nav / master-nav-hidden): login, public
+   and portal shells keep their own approved backgrounds. The shell
+   gets isolation so the negative-z layers sit above the shell's
+   own background but below all content (no content rule needs a
+   z-index bump, and fixed/sticky descendants are unaffected —
+   isolation does not trap position: fixed). Dark theme raises the
+   alphas a touch since the blobs sit on a near-black ground.
+   prefers-reduced-motion pauses the drift entirely; the static
+   tint remains. */
+.app-shell { isolation: isolate; }
+.app-shell.has-bottom-nav::before, .app-shell.master-nav-hidden::before {
+  content: ""; position: fixed; inset: -14%; z-index: -1; pointer-events: none;
+  background-image:
+    radial-gradient(44vmax 44vmax at 10% 6%, rgba(18, 57, 92, .13), transparent 62%),
+    radial-gradient(36vmax 36vmax at 90% 20%, rgba(88, 138, 198, .09), transparent 60%),
+    radial-gradient(30vmax 30vmax at 76% 90%, rgba(18, 57, 92, .08), transparent 60%);
+  animation: haze-drift-a 52s ease-in-out infinite alternate;
+}
+.app-shell.has-bottom-nav::after, .app-shell.master-nav-hidden::after {
+  content: ""; position: fixed; inset: -14%; z-index: -1; pointer-events: none;
+  background-image:
+    radial-gradient(34vmax 34vmax at 6% 84%, rgba(242, 118, 46, .10), transparent 62%),
+    radial-gradient(26vmax 26vmax at 56% 44%, rgba(242, 158, 66, .05), transparent 60%);
+  animation: haze-drift-b 64s ease-in-out infinite alternate-reverse;
+}
+:root[data-theme="dark"] .app-shell.has-bottom-nav::before, :root[data-theme="dark"] .app-shell.master-nav-hidden::before {
+  background-image:
+    radial-gradient(44vmax 44vmax at 10% 6%, rgba(74, 134, 197, .16), transparent 62%),
+    radial-gradient(36vmax 36vmax at 90% 20%, rgba(88, 138, 198, .10), transparent 60%),
+    radial-gradient(30vmax 30vmax at 76% 90%, rgba(74, 134, 197, .09), transparent 60%);
+}
+:root[data-theme="dark"] .app-shell.has-bottom-nav::after, :root[data-theme="dark"] .app-shell.master-nav-hidden::after {
+  background-image:
+    radial-gradient(34vmax 34vmax at 6% 84%, rgba(242, 118, 46, .12), transparent 62%),
+    radial-gradient(26vmax 26vmax at 56% 44%, rgba(242, 158, 66, .06), transparent 60%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .app-shell.has-bottom-nav::before, :root:not([data-theme]) .app-shell.master-nav-hidden::before {
+    background-image:
+      radial-gradient(44vmax 44vmax at 10% 6%, rgba(74, 134, 197, .16), transparent 62%),
+      radial-gradient(36vmax 36vmax at 90% 20%, rgba(88, 138, 198, .10), transparent 60%),
+      radial-gradient(30vmax 30vmax at 76% 90%, rgba(74, 134, 197, .09), transparent 60%);
+  }
+  :root:not([data-theme]) .app-shell.has-bottom-nav::after, :root:not([data-theme]) .app-shell.master-nav-hidden::after {
+    background-image:
+      radial-gradient(34vmax 34vmax at 6% 84%, rgba(242, 118, 46, .12), transparent 62%),
+      radial-gradient(26vmax 26vmax at 56% 44%, rgba(242, 158, 66, .06), transparent 60%);
+  }
+}
+@keyframes haze-drift-a { from { transform: translate3d(-2.2%, -1.4%, 0) scale(1); } to { transform: translate3d(2.4%, 2%, 0) scale(1.07); } }
+@keyframes haze-drift-b { from { transform: translate3d(1.8%, 1%, 0) scale(1.04); } to { transform: translate3d(-2%, -1.8%, 0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.has-bottom-nav::before, .app-shell.master-nav-hidden::before,
+  .app-shell.has-bottom-nav::after, .app-shell.master-nav-hidden::after { animation: none; }
+}

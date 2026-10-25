@@ -158,7 +158,7 @@ check("Settings About shows the build id", appSrc.includes("appBuildId()") && ap
 check("Settings About flags a waiting update", appSrc.includes("Update ready") && appSrc.includes("updateAvailable={swUpdateAvailable}"));
 
 check("light theme sets light background", cssSrc.includes('[data-theme="light"]') && cssSrc.includes("--bg: #f7f7f5")); // b12: near-white (was #f4f2ed)
-check("default accent is the Crewkat navy (2026-10-24 Office-identity reskin)", cssSrc.includes("--accent: #0b2a44"));
+check("orange accent is a true orange", cssSrc.includes("--accent: #f97316"));
 check("red accent is distinct from orange", cssSrc.includes('--accent: #dc2626'));
 check("accent swatches match the theme colors", appSrc.includes('{ value: "orange", color: "#f97316"') && appSrc.includes('{ value: "red", color: "#dc2626"'));
 
