@@ -110,6 +110,45 @@ describe("controls row + compact rows", () => {
   });
 });
 
+describe("swipe panels hidden at rest (regression: Danny 2026-10-24 screenshots)", () => {
+  test("the swipe-content cover stays opaque in the doc list", () => {
+    // .swipe-actions is an absolutely-positioned underlay; the ONLY thing
+    // hiding it at rest is the opaque background of the .swipe-content
+    // layer above it. The redesign briefly made that layer transparent
+    // (the card white lives on the section), so the orange panel showed
+    // through on every row that has a swipe action.
+    expect(CSS).toContain(".doc-list-v2 .swipe-content { background: var(--surface); }");
+    expect(CSS).not.toContain(".doc-list-v2 .swipe-content { background: transparent; }");
+    // base mechanism intact: content is positioned above the underlay
+    expect(CSS).toContain(".swipe-content { position: relative; background: var(--bg);");
+    expect(CSS).toContain(".swipe-actions { position: absolute; inset: 0 0 0 auto;");
+    // the underlay renders before the cover in SwipeRow's DOM
+    expect(APP.indexOf('className="swipe-actions"')).toBeLessThan(APP.indexOf('className="swipe-content"'));
+    // no doc-list override restyles the underlay itself into view
+    expect(CSS).not.toContain(".doc-list-v2 .swipe-actions");
+  });
+
+  test("section / period switch remounts the list, resetting every row's swipe state", () => {
+    // both sections are keyed by tab + period + month: a switch unmounts
+    // the old list and every SwipeRow is recreated with offset 0
+    expect(APP).toContain("key={`inv-${period}-${monthKey}`}");
+    expect(APP).toContain("key={`est-${period}-${monthKey}`}");
+    expect(APP).toContain("const [offset, setOffset] = useState(0);");
+    // resting state carries no transform — the panel appears only after
+    // a real swipe moves the cover
+    expect(APP).toContain("style={{ transform: offset ? `translateX(${offset}px)` : undefined }}");
+  });
+
+  test("the first-row expansion does not expose the swipe panel", () => {
+    // expanded actions render inside the article (above the cover layer),
+    // independent of the swipe underlay; expansion state is per row key
+    expect(APP).toContain("expanded && <span className=\"ck-invoice-actions\">");
+    expect(APP).toContain("ck-doc-subrow");
+    expect(APP).toContain("isExpanded(rowKey, invoice === visibleInvoices[0])");
+    expect(APP).toContain("isExpanded(rowKey, quote === visibleQuotes[0])");
+  });
+});
+
 describe("tab bar indicator (app-wide)", () => {
   test("orange dot retired; tint pill + orange hairline under the active icon", () => {
     expect(CSS).toContain(

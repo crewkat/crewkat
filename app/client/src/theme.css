@@ -6348,7 +6348,12 @@ button.profit-strip-link:hover{border-color:var(--green)}
 /* One hairline-divided card of compact rows */
 .doc-list-v2 { gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(23, 34, 46, .05); }
 .doc-list-v2 .swipe-row { border-radius: 0; }
-.doc-list-v2 .swipe-content { background: transparent; }
+/* The swipe-content layer is the COVER over the row's swipe-actions
+   underlay: it must stay opaque (the list's own surface color), or the
+   orange action panel shows through at rest on every row. The white
+   living on the section card does not cover the underlay — only this
+   layer does (regression fix, Danny's 2026-10-24 screenshots). */
+.doc-list-v2 .swipe-content { background: var(--surface); }
 .doc-list-v2 article { padding: 10px 13px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; }
 .doc-list-v2 .swipe-row:last-of-type article { border-bottom: 0; }
 .doc-list-v2 .tap-target::after { content: none; }
