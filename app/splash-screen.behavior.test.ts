@@ -76,14 +76,14 @@ describe("failsafe", () => {
 
 describe("assets", () => {
   test("both brand images are copied into client assets and imported", () => {
-    expect(existsSync(join(import.meta.dir, "client/src/assets/mascot-peek.png"))).toBe(true);
+    expect(existsSync(join(import.meta.dir, "client/src/assets/mascot-peek.webp"))).toBe(true);
     expect(existsSync(join(import.meta.dir, "client/src/assets/crewkat-c-chevron.png"))).toBe(true);
-    expect(SPLASH).toContain('import splashCat from "./assets/mascot-peek.png";');
+    expect(SPLASH).toContain('import splashCat from "./assets/mascot-peek.webp";');
     expect(SPLASH).toContain('import splashLogo from "./assets/crewkat-c-chevron.png";');
   });
 
   test("both images exist in the built output and are referenced by the bundle", () => {
-    expect(distFiles.some((f) => /^mascot-peek-.+\.png$/.test(f))).toBe(true);
+    expect(distFiles.some((f) => /^mascot-peek-.+\.webp$/.test(f))).toBe(true);
     expect(distFiles.some((f) => /^crewkat-c-chevron-.+\.png$/.test(f))).toBe(true);
     expect(distJs).toContain("mascot-peek-");
     expect(distJs).toContain("crewkat-c-chevron-");

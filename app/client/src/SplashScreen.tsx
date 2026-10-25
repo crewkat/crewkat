@@ -20,7 +20,7 @@
 // URLs — the check below mirrors App's public-entry detection.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import splashLogo from "./assets/crewkat-c-chevron.png";
-import splashCat from "./assets/mascot-peek.png";
+import splashCat from "./assets/mascot-peek.webp";
 
 export const SPLASH_MAX_MS = 6000;
 const SPLASH_FADE_MS = 480;
