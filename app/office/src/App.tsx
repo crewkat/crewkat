@@ -25,6 +25,7 @@ import { ScheduleView } from "./views/Schedule";
 import { SettingsView } from "./views/Settings";
 import { TeamView } from "./views/Team";
 import crewkatC from "./assets/crewkat-c.png";
+import mascotIpad from "./assets/mascot-ipad.webp";
 
 const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: "▦" },
@@ -355,6 +356,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
       <form className="login-card" onSubmit={submit}>
         <img src={crewkatC} alt="Crewkat" className="login-logo" />
         <h1 className="login-wordmark">Crewkat <span>Office</span></h1>
+        <img src={mascotIpad} alt="Crewkat cat mascot holding a tablet with the Office dashboard" className="login-mascot" />
         <p className="login-sub">{crewMode ? "Crew member sign-in — use the company code and PIN your admin gave you." : "The desktop back office for your Crewkat account."}</p>
         {crewMode ? (
           <>

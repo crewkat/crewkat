@@ -6,7 +6,7 @@
 // sitemap lists everything, shared chrome interlinks all pages.
 // Run from app/:  bun test marketing-pages.behavior.test.ts
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MKT = join(import.meta.dir, "client", "marketing");
@@ -159,5 +159,41 @@ describe("sitemap + homepage chrome", () => {
     for (const cls of [".page-hero", ".check-list", ".step-card", ".compare-table", ".related-card", ".faq-lite", ".pricing-grid-3"]) {
       expect(CSS).toContain(cls);
     }
+  });
+});
+
+describe("brand mascot placements (2026-10-25)", () => {
+  test("homepage hero carries the phone cat beside the app phone mock", () => {
+    const img = /<img class="hero-mascot"[^>]*>/.exec(HOME)?.[0] ?? "";
+    expect(img).toContain('src="/marketing/mascot-phone.webp"');
+    expect(img).toContain('alt="Crewkat cat mascot');
+    // Anchored inside the phone stage, after the phone itself.
+    const stage = HOME.indexOf('class="phone-stage"');
+    const phone = HOME.indexOf('class="phone"', stage);
+    const cat = HOME.indexOf('class="hero-mascot"', stage);
+    expect(stage).toBeGreaterThan(-1);
+    expect(phone).toBeGreaterThan(stage);
+    expect(cat).toBeGreaterThan(phone);
+    expect(existsSync(join(MKT, "mascot-phone.webp"))).toBe(true);
+    expect(CSS).toContain(".hero-mascot");
+  });
+
+  test("estimates page carries the clipboard cat in the what-it-does section", () => {
+    const page = html("estimates");
+    const img = /<img class="mascot-float"[^>]*>/.exec(page)?.[0] ?? "";
+    expect(img).toContain('src="/marketing/mascot-clipboard.webp"');
+    expect(img).toContain('alt="Crewkat cat mascot holding a clipboard');
+    expect(img).toContain('loading="lazy"');
+    expect(existsSync(join(MKT, "mascot-clipboard.webp"))).toBe(true);
+    expect(CSS).toContain(".mascot-float");
+  });
+
+  test("no other marketing page carries a mascot image", () => {
+    for (const slug of SLUGS) {
+      if (slug === "estimates") continue;
+      expect(html(slug)).not.toContain("mascot");
+    }
+    expect(HOME).not.toContain("mascot-premium");
+    expect(HOME).not.toContain("mascot-ipad");
   });
 });
