@@ -54,6 +54,7 @@ import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
 import { MARKETPLACE_TERMS_EFFECTIVE_DATE, MARKETPLACE_TERMS_SECTIONS, MARKETPLACE_TERMS_VERSION } from "../../server/src/marketplace-terms";
 import crewkatLogo from "./assets/crewkat-wrench-cat.webp";
+import mascotPremium from "./assets/mascot-premium.webp";
 import crewkatC from "./assets/crewkat-c.png";
 
 type Lang = "en" | "es";
@@ -6823,6 +6824,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   return <main className={`page upgrade-page${showStickyBar ? " has-sticky-bar" : ""}`}>
     <PageHeader lang={lang} title={lang === "es" ? "Crewkat Premium" : "Crewkat Premium"} onBack={onBack} />
     <section className="upgrade-hero">
+      <img className="upgrade-hero-mascot" src={mascotPremium} alt={lang === "es" ? "El gato de Crewkat con detalles dorados, señalando hacia arriba con una tableta Premium" : "Crewkat cat in gold-trim gear pointing up, holding a Premium tablet"} />
       <span className="premium-plan-mark">PREMIUM</span>
       <h1>{isPremium ? (lang === "es" ? "Tu espacio Pro está activo" : "Your Pro workspace is active") : (lang === "es" ? "Todo el trabajo. Menos trabajo pesado." : "The whole operation. Less busywork.")}</h1>
       <p>{lang === "es" ? "Gratis: 3 trabajos activos y 5 facturas al mes. Premium desbloquea límites ilimitados y todas las herramientas Pro." : "Free: 3 active jobs and 5 invoices per month. Premium unlocks unlimited limits and every Pro tool."}</p>

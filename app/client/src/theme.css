@@ -2179,11 +2179,14 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 
 /* Freemium plan */
 .upgrade-page { padding-bottom:calc(34px + env(safe-area-inset-bottom)); }
-.upgrade-hero { margin:8px 0 22px; padding:24px 20px; border-radius:16px; background:#17211d; color:#fff; box-shadow:0 12px 28px rgba(12,22,17,.18); }
+.upgrade-hero { position:relative; overflow:hidden; margin:8px 0 22px; padding:24px 20px; border-radius:16px; background:#17211d; color:#fff; box-shadow:0 12px 28px rgba(12,22,17,.18); }
+.upgrade-hero-mascot { position:absolute; top:10px; right:6px; height:196px; width:auto; pointer-events:none; }
 .premium-plan-mark { display:inline-block; padding:5px 8px; border-radius:6px; background:var(--accent); color:#1d1710; font-size:11px; font-weight:900; letter-spacing:.08em; }
 .upgrade-hero h1 { margin:16px 0 8px; max-width:520px; font:800 32px/1.05 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; letter-spacing:-.02em; }
 .upgrade-hero p { margin:0; max-width:620px; color:#dce6e0; line-height:1.5; }
 .upgrade-hero .usage-line { margin-top:14px; color:var(--text); }
+@media (max-width:560px) { .upgrade-hero-mascot { height:158px; top:8px; right:2px; } .upgrade-hero h1 { max-width:62%; } .upgrade-hero p:not(.usage-line) { max-width:66%; } }
+@media (max-width:379px) { .upgrade-hero-mascot { display:none; } .upgrade-hero h1, .upgrade-hero p:not(.usage-line) { max-width:none; } }
 .upgrade-price { display:flex; align-items:baseline; gap:8px; margin-top:22px; }
 .upgrade-price strong { color:#fff; font:850 42px/1 "IBM Plex Sans Condensed", "Aptos Narrow", ui-sans-serif, sans-serif; }
 .upgrade-price span { color:#dce6e0; font-weight:700; }

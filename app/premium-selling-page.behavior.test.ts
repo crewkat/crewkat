@@ -106,6 +106,22 @@ const pageBarRule = rule(".upgrade-page.has-sticky-bar");
 check("page bottom padding grows when the bar shows", pageBarRule.includes("padding-bottom"), pageBarRule.trim());
 check("sticky bar reuses the Stripe checkout (no new wiring)", screen.includes("onClick={() => void startCheckout()}") && screen.includes("api.startPremiumCheckout"));
 
+// --- Premium mascot in the hero (2026-10-25) -----------------------------------
+// The gold-trim premium cat tops the dark hero card, right of the badge +
+// headline. Decorative layer: absolutely positioned, click-through, and
+// hidden on very narrow screens instead of squeezing the copy.
+import { existsSync } from "node:fs";
+check("premium cat asset copied into client assets", existsSync(join("client", "src", "assets", "mascot-premium.webp")));
+check("premium cat imported", appTsx.includes('import mascotPremium from "./assets/mascot-premium.webp";'));
+const mascotImgAt = screen.indexOf('className="upgrade-hero-mascot"');
+check("premium cat renders in the hero", mascotImgAt >= 0 && screen.includes("src={mascotPremium}"));
+check("premium cat sits above the PREMIUM badge in the hero", mascotImgAt >= 0 && mascotImgAt < screen.indexOf('className="premium-plan-mark"'));
+check("premium cat has localized alt text", screen.includes("Crewkat cat in gold-trim gear pointing up") && screen.includes("El gato de Crewkat con detalles dorados"));
+const mascotRule = rule(".upgrade-hero-mascot");
+check("premium cat is an absolute decorative layer", mascotRule.includes("position:absolute") && mascotRule.includes("pointer-events:none"), mascotRule.trim());
+check("hero clips the cat layer", rule(".upgrade-hero").includes("overflow:hidden"));
+check("premium cat yields on very narrow screens", css.includes("@media (max-width:379px)") && css.includes(".upgrade-hero-mascot { display:none; }"));
+
 // --- No invented features --------------------------------------------------------
 check("no card-payments claim (roadmap, not shipped)", !screen.includes("Pay now") && !screen.includes("Accept card payments"));
 
