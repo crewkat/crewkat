@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { Client } from "../types";
 import { formatDate, formatMoney, initials } from "../utils";
+import type { DocSelection } from "./Documents";
 
 type SortKey = "name" | "jobCount" | "totalInvoiced" | "balanceDue" | "createdAt";
 
@@ -10,10 +11,12 @@ export function ClientsView({
   selectedClientId,
   onSelectClient,
   onOpenJob,
+  onOpenDocument,
 }: {
   selectedClientId: number | null;
   onSelectClient: (id: number | null) => void;
   onOpenJob: (jobId: number) => void;
+  onOpenDocument: (sel: DocSelection) => void;
 }) {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -117,21 +120,26 @@ export function ClientsView({
           ) : null}
         </section>
 
-        {selected ? <ClientDetail client={selected} onClose={() => onSelectClient(null)} onOpenJob={onOpenJob} /> : null}
+        {selected ? <ClientDetail client={selected} onClose={() => onSelectClient(null)} onOpenJob={onOpenJob} onOpenDocument={onOpenDocument} /> : null}
       </div>
     </div>
   );
 }
 
-function ClientDetail({ client, onClose, onOpenJob }: { client: Client; onClose: () => void; onOpenJob: (jobId: number) => void }) {
+function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: Client; onClose: () => void; onOpenJob: (jobId: number) => void; onOpenDocument: (sel: DocSelection) => void }) {
   const detailQuery = useQuery({
     queryKey: ["client", client.id],
     queryFn: () => api.getClient({ id: client.id }),
   });
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const signablesQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const detail = detailQuery.data;
   const c = detail?.client ?? client;
   const jobs = detail?.jobs ?? [];
   const quotes = detail?.quotes ?? [];
+  const clientInvoices = (invoicesQuery.data?.invoices ?? []).filter((i) => i.clientId === client.id);
+  const jobIds = new Set(jobs.map((j) => j.id));
+  const clientSignables = (signablesQuery.data?.documents ?? []).filter((d) => jobIds.has(d.jobId));
 
   return (
     <aside className="panel detail-panel">
@@ -201,11 +209,37 @@ function ClientDetail({ client, onClose, onOpenJob }: { client: Client; onClose:
       </section>
 
       <section className="drawer-section">
-        <h3>Documents summary</h3>
-        <p className="muted">
-          {c.quoteCount} estimate{c.quoteCount === 1 ? "" : "s"} · {c.invoiceCount} invoice{c.invoiceCount === 1 ? "" : "s"}
-          {quotes.length > 0 ? ` · latest estimate ${formatDate(quotes[0]?.createdAt)}` : ""}
-        </p>
+        <h3>Documents ({quotes.length + clientInvoices.length + clientSignables.length})</h3>
+        {quotes.length + clientInvoices.length + clientSignables.length === 0 ? (
+          <p className="muted">No documents for this client yet — create one from the Documents section.</p>
+        ) : (
+          <ul className="link-list">
+            {clientSignables.map((d) => (
+              <li key={`doc-${d.id}`}>
+                <button type="button" onClick={() => onOpenDocument({ kind: d.kind, id: d.id })}>
+                  <span>{d.displayTitle || d.title}</span>
+                  <span className="feed-meta">{d.kind === "change_order" ? "Change order" : "Contract"} · {d.clientSignedAt ? "Signed" : "Awaiting client"} · {formatMoney(d.amount)}</span>
+                </button>
+              </li>
+            ))}
+            {clientInvoices.map((inv) => (
+              <li key={`inv-${inv.id}`}>
+                <button type="button" onClick={() => onOpenDocument({ kind: "invoice", id: inv.id })}>
+                  <span>{inv.invoiceNumber}</span>
+                  <span className="feed-meta">Invoice · {inv.status} · {formatMoney(inv.total)}</span>
+                </button>
+              </li>
+            ))}
+            {quotes.map((q) => (
+              <li key={`quote-${q.id}`}>
+                <button type="button" onClick={() => onOpenDocument({ kind: "quote", id: q.id })}>
+                  <span>Estimate #{q.id}{q.jobType ? ` — ${q.jobType}` : ""}</span>
+                  <span className="feed-meta">Estimate · {q.accepted ? "Accepted" : q.sentAt ? "Sent" : "Draft"} · {formatMoney(q.total)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </aside>
   );

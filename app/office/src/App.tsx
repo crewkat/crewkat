@@ -16,6 +16,7 @@ import { STAGE_LABELS } from "./types";
 import { cleanError, initials } from "./utils";
 import { ClientsView } from "./views/Clients";
 import { DashboardView } from "./views/Dashboard";
+import { DocumentsView, type DocSelection } from "./views/Documents";
 import { JobsView } from "./views/Jobs";
 import { PipelineView } from "./views/Pipeline";
 import crewkatC from "./assets/crewkat-c.png";
@@ -25,9 +26,10 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "pipeline", label: "Pipeline", icon: "▤" },
   { key: "clients", label: "Clients", icon: "👥" },
   { key: "jobs", label: "Jobs", icon: "🛠" },
+  { key: "documents", label: "Documents", icon: "📄" },
 ];
 
-const PHASE2_NAV = ["Schedule", "Documents", "Reports", "Automations"];
+const PHASE2_NAV = ["Schedule", "Reports", "Automations"];
 
 export function App() {
   const queryClient = useQueryClient();
@@ -37,6 +39,7 @@ export function App() {
   const [focusLeadId, setFocusLeadId] = useState<number | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<DocSelection | null>(null);
 
   // Session restore — mirrors the phone client (app/client/src/App.tsx
   // AuthScreen + api.ts): a legacy pre-cookie token if one is stored,
@@ -84,11 +87,13 @@ export function App() {
     setView("dashboard");
     setSelectedClientId(null);
     setSelectedJobId(null);
+    setSelectedDoc(null);
     setFocusLeadId(null);
   }, [queryClient]);
 
   const openJob = useCallback((jobId: number) => { setSelectedJobId(jobId); setView("jobs"); }, []);
   const openClient = useCallback((clientId: number) => { setSelectedClientId(clientId); setView("clients"); }, []);
+  const openDocument = useCallback((sel: DocSelection) => { setSelectedDoc(sel); setView("documents"); }, []);
   const openLead = useCallback((leadId: number) => { setFocusLeadId(leadId); setView("pipeline"); }, []);
   const consumeFocus = useCallback(() => setFocusLeadId(null), []);
 
@@ -154,10 +159,19 @@ export function App() {
             <PipelineView focusLeadId={focusLeadId} onOpenJob={openJob} onConsumeFocus={consumeFocus} />
           ) : null}
           {view === "clients" ? (
-            <ClientsView selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onOpenJob={openJob} />
+            <ClientsView selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onOpenJob={openJob} onOpenDocument={openDocument} />
           ) : null}
           {view === "jobs" ? (
-            <JobsView selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} />
+            <JobsView selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} onOpenDocument={openDocument} />
+          ) : null}
+          {view === "documents" ? (
+            <DocumentsView
+              selected={selectedDoc}
+              onSelect={setSelectedDoc}
+              onOpenJob={openJob}
+              onOpenClient={openClient}
+              userName={user.name}
+            />
           ) : null}
         </main>
       </div>

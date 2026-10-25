@@ -3,13 +3,16 @@ import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { Job } from "../types";
 import { formatDate, formatMoney, parseMoney } from "../utils";
+import type { DocSelection } from "./Documents";
 
 export function JobsView({
   selectedJobId,
   onSelectJob,
+  onOpenDocument,
 }: {
   selectedJobId: number | null;
   onSelectJob: (id: number | null) => void;
+  onOpenDocument: (sel: DocSelection) => void;
 }) {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -102,19 +105,23 @@ export function JobsView({
           ) : null}
         </section>
 
-        {selected ? <JobDetail jobId={selected.id} onClose={() => onSelectJob(null)} /> : null}
+        {selected ? <JobDetail jobId={selected.id} onClose={() => onSelectJob(null)} onOpenDocument={onOpenDocument} /> : null}
       </div>
     </div>
   );
 }
 
-function JobDetail({ jobId, onClose }: { jobId: number; onClose: () => void }) {
+function JobDetail({ jobId, onClose, onOpenDocument }: { jobId: number; onClose: () => void; onOpenDocument: (sel: DocSelection) => void }) {
   const detailQuery = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => api.getJob({ id: jobId }),
   });
+  const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const data = detailQuery.data;
   const job: Job | null = data?.job ?? null;
+  const jobQuotes = (quotesQuery.data?.quotes ?? []).filter((q) => q.jobId === jobId);
+  const jobInvoices = (invoicesQuery.data?.invoices ?? []).filter((i) => i.jobId === jobId);
 
   return (
     <aside className="panel detail-panel">
@@ -166,27 +173,51 @@ function JobDetail({ jobId, onClose }: { jobId: number; onClose: () => void }) {
           </section>
 
           <section className="drawer-section">
+            <h3>Documents</h3>
+            {(data?.documents.length ?? 0) + jobQuotes.length + jobInvoices.length === 0 ? (
+              <p className="muted">No documents on this job yet — create one from the Documents section.</p>
+            ) : (
+              <ul className="link-list">
+                {(data?.documents ?? []).map((doc) => (
+                  <li key={`doc-${doc.id}`}>
+                    <button type="button" onClick={() => onOpenDocument({ kind: doc.kind, id: doc.id })}>
+                      <span>{doc.displayTitle || doc.title}</span>
+                      <span className="feed-meta">
+                        {doc.kind === "change_order" ? "Change order" : "Contract"} · {doc.clientSignedAt ? `Signed ${formatDate(doc.clientSignedAt)}` : "Awaiting client"} · {formatMoney(doc.amount)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {jobInvoices.map((inv) => (
+                  <li key={`inv-${inv.id}`}>
+                    <button type="button" onClick={() => onOpenDocument({ kind: "invoice", id: inv.id })}>
+                      <span>{inv.invoiceNumber}</span>
+                      <span className="feed-meta">Invoice · {inv.status} · {formatMoney(inv.total)}</span>
+                    </button>
+                  </li>
+                ))}
+                {jobQuotes.map((q) => (
+                  <li key={`quote-${q.id}`}>
+                    <button type="button" onClick={() => onOpenDocument({ kind: "quote", id: q.id })}>
+                      <span>Estimate #{q.id}{q.jobType ? ` — ${q.jobType}` : ""}</span>
+                      <span className="feed-meta">Estimate · {q.accepted ? "Accepted" : q.sentAt ? "Sent" : "Draft"} · {formatMoney(q.total)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="drawer-section">
             <h3>Linked records</h3>
             <div className="mini-stats">
-              <div><span>Documents</span><strong>{data?.documents.length ?? 0}</strong></div>
+              <div><span>Documents</span><strong>{(data?.documents.length ?? 0) + jobQuotes.length + jobInvoices.length}</strong></div>
               <div><span>Files</span><strong>{data?.jobFiles.length ?? 0}</strong></div>
               <div><span>Punch items</span><strong>{data?.punchItems.length ?? 0}</strong></div>
               <div><span>Receipts</span><strong>{data?.receipts.length ?? 0}</strong></div>
               <div><span>Time entries</span><strong>{data?.timeEntries.length ?? 0}</strong></div>
               <div><span>Progress updates</span><strong>{data?.progressUpdates.length ?? 0}</strong></div>
             </div>
-            {(data?.documents.length ?? 0) > 0 ? (
-              <ul className="link-list static">
-                {(data?.documents ?? []).slice(0, 8).map((doc) => (
-                  <li key={doc.id}>
-                    <span>{doc.title}</span>
-                    <span className="feed-meta">{doc.kind === "change_order" ? "Change order" : "Contract"} · {formatDate(doc.signedAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No signed documents on this job yet.</p>
-            )}
           </section>
         </>
       ) : null}

@@ -76,6 +76,95 @@ export function cleanError(caught: unknown): string {
   return raw.replace(/^action \S+ (?:error: |failed: \d+ )/, "").trim() || "Something went wrong.";
 }
 
+/* ---------- Document money math ----------
+   Mirrors app/client/src/financialPdf.ts (money / lineItemsTotal /
+   financialTotals) line for line, so a document written from Office
+   carries exactly the subtotal/total the phone editor would compute. */
+
+export function moneyOf(value: string | null | undefined): number {
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export interface TotalsItem {
+  amount: string;
+  quantity?: number;
+  discount?: string;
+  optional?: boolean;
+}
+
+export function lineTotal(item: TotalsItem): number {
+  return Math.max(0, moneyOf(item.amount) * (item.quantity ?? 1) - moneyOf(item.discount ?? "0"));
+}
+
+export function lineItemsTotal(items: TotalsItem[]): number {
+  return items.reduce((sum, item) => sum + lineTotal(item), 0);
+}
+
+export interface FinancialTotals {
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+}
+
+/** Optional lines never enter the base subtotal (estimate options, 0076). */
+export function financialTotals(
+  items: TotalsItem[],
+  discountType: "percent" | "fixed",
+  discountValue: string,
+  taxType: "percent" | "fixed",
+  taxValue: string,
+): FinancialTotals {
+  const subtotal = lineItemsTotal(items.filter((item) => !item.optional));
+  const discountRaw = Math.max(0, moneyOf(discountValue));
+  const discount = Math.min(subtotal, discountType === "percent" ? (subtotal * discountRaw) / 100 : discountRaw);
+  const taxable = Math.max(0, subtotal - discount);
+  const taxRaw = Math.max(0, moneyOf(taxValue));
+  const tax = taxType === "percent" ? (taxable * taxRaw) / 100 : taxRaw;
+  return { subtotal, discount, tax, total: taxable + tax };
+}
+
+/** Plain "1234.56" money string — the server's normalizeMoney stores this form. */
+export function moneyString(value: number): string {
+  return (Math.round(value * 100) / 100).toFixed(2);
+}
+
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function isoPlusDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Read a File as raw base64 (no data: prefix) — the actions' expected form. */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Trigger a browser download for base64 bytes (canonical PDFs from getDocumentPdf). */
+export function downloadBase64(base64: string, filename: string, contentType = "application/pdf") {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 /** Defensive field pickers for the loosely-typed office dashboard rows. */
 export function pickString(row: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {

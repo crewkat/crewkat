@@ -147,4 +147,249 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs";
+export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents";
+
+/* ---------- Documents (Track 1a) ----------
+   Shapes mirror the server response schemas in server/src/actions.ts
+   (quoteSchema / invoiceSchema / documentSchema) exactly — Office reads
+   and writes the SAME records the phone app does. */
+
+export type DocKind = "quote" | "invoice" | "contract" | "change_order";
+
+export const DOC_KIND_LABELS: Record<DocKind, string> = {
+  quote: "Estimate",
+  invoice: "Invoice",
+  contract: "Contract",
+  change_order: "Change order",
+};
+
+export interface LineItem {
+  description: string;
+  amount: string;
+  name?: string;
+  quantity?: number;
+  discount?: string;
+  unit?: "none" | "days" | "hours";
+  id?: string;
+  optional?: boolean;
+}
+
+export interface MaterialItem {
+  name: string;
+  qty: string;
+  unit: string;
+  checked: boolean;
+}
+
+export interface AcceptedOptions {
+  items: { key: string; name: string; description: string; amount: string; quantity: number; discount: string; unit: string }[];
+  optionsTotal: string;
+  totalWithOptions: string;
+  acceptedAt: string;
+}
+
+export interface Quote {
+  id: number;
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  jobAddress: string;
+  shippingAddress: string;
+  jobType: string;
+  lineItems: LineItem[];
+  optionSelection: { selectedKeys: string[]; accepted: AcceptedOptions | null };
+  materials: MaterialItem[];
+  subtotal: string;
+  discountType: "percent" | "fixed";
+  discountValue: string;
+  taxType: "percent" | "fixed";
+  taxValue: string;
+  total: string;
+  footnote: string;
+  theme: string;
+  font: string;
+  accentColor: string;
+  customizeJson: string;
+  showTaxLine: boolean;
+  showDiscountLine: boolean;
+  showPaidLine: boolean;
+  showPaymentTerms: boolean;
+  showFooterNotes: boolean;
+  showLogo: boolean;
+  showCompanyInfo: boolean;
+  expiryDate: string;
+  sentAt: string;
+  automationStatus: "awaiting" | "won" | "lost";
+  lostReason: string | null;
+  lostNote: string;
+  jobId: number | null;
+  seriesId: number;
+  parentQuoteId: number | null;
+  versionNumber: number;
+  superseded: boolean;
+  accepted: boolean;
+  convertedToInvoiceId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoicePayment {
+  id: number;
+  invoiceId: number;
+  amount: string;
+  paymentDate: string;
+  method: string;
+  note: string;
+  createdAt: string;
+}
+
+export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
+
+export interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  quoteId: number | null;
+  jobId: number | null;
+  clientId: number | null;
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  jobAddress: string;
+  shippingAddress: string;
+  jobType: string;
+  lineItems: LineItem[];
+  subtotal: string;
+  discountType: "percent" | "fixed";
+  discountValue: string;
+  taxType: "percent" | "fixed";
+  taxValue: string;
+  total: string;
+  footnote: string;
+  theme: string;
+  font: string;
+  accentColor: string;
+  customizeJson: string;
+  showTaxLine: boolean;
+  showDiscountLine: boolean;
+  showPaidLine: boolean;
+  showPaymentTerms: boolean;
+  showFooterNotes: boolean;
+  showLogo: boolean;
+  showCompanyInfo: boolean;
+  issueDate: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  recurringFrequency: "none" | "daily" | "weekly" | "monthly" | "quarterly";
+  nextDueDate: string;
+  seriesId: number;
+  parentInvoiceId: number | null;
+  recurringEndDate: string;
+  recurringCancelled: boolean;
+  paidToDate: string;
+  balanceRemaining: string;
+  lateFeeAccrued: string;
+  totalWithLateFee: string;
+  payments: InvoicePayment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignaturePlacement {
+  page: number;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
+
+export interface SignatureFields {
+  clientSignature?: SignaturePlacement;
+  clientDate?: SignaturePlacement;
+  contractorSignature?: SignaturePlacement;
+  contractorDate?: SignaturePlacement;
+}
+
+export type SignatureFieldKey = keyof SignatureFields;
+
+export interface FillField {
+  id: string;
+  kind: "text" | "initials" | "checkbox";
+  role: "client" | "contractor";
+  label: string;
+  required: boolean;
+  page: number;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+  value?: string;
+  checked?: boolean;
+}
+
+/** A contract or change order (server `documents` table row shape). */
+export interface SignableDocument {
+  id: number;
+  jobId: number;
+  kind: "contract" | "change_order";
+  title: string;
+  bodyText: string;
+  originalFilename: string;
+  originalUrl: string | null;
+  description: string;
+  amount: string;
+  signerName: string;
+  signatureUrl: string;
+  signedAt: string;
+  clientSignerName: string;
+  clientSignedAt: string | null;
+  clientSignatureHash: string;
+  signedPdfUrl: string | null;
+  coNumber: number | null;
+  displayTitle: string;
+  contractSumBefore: string;
+  newContractSum: string;
+  signatureFields: SignatureFields;
+  fillFields: FillField[];
+  fillValues: Record<string, string | boolean>;
+  linkView: { viewCount: number; firstViewedAt: string | null } | null;
+}
+
+export interface DocumentLinkInfo {
+  hint: string;
+  shortCode: string | null;
+  expiresAt: string;
+  expired: boolean;
+  viewCount: number;
+  firstViewedAt: string | null;
+  lastViewedAt: string | null;
+  createdAt: string;
+}
+
+export interface PortalLinkInfo {
+  hint: string;
+  shortCode: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+  viewCount: number;
+  firstViewedAt: string | null;
+  lastViewedAt: string | null;
+  createdAt: string;
+}
+
+/** Settings fields the document editors seed new documents from. */
+export interface DocSettings {
+  companyName: string;
+  accentColor: string;
+  defaultQuoteTheme: string;
+  defaultDocumentFont: string;
+  defaultShowTaxLine: boolean;
+  defaultShowDiscountLine: boolean;
+  defaultShowPaidLine: boolean;
+  defaultShowPaymentTerms: boolean;
+  defaultShowFooterNotes: boolean;
+  defaultShowLogo: boolean;
+  defaultShowCompanyInfo: boolean;
+  defaultCustomizeJson: string;
+  defaultFootnote: string;
+}
