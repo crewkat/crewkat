@@ -56,6 +56,10 @@ describe("boot wiring", () => {
     expect(APP).toContain("onBootSettled?.();");
     // gate destinations (terms / maintenance) signal from App directly
     expect(APP).toContain("if (termsGatePending) signalBootReady();");
+    // crew destination (Tier 2 convergence): CrewHome replaces the app
+    // shell for crew_pin logins, so App signals from the same effect row
+    expect(APP).toContain("if (crewHomePending) signalBootReady();");
+    expect(APP).toContain('user.credentialType === "crew_pin"');
   });
 
   test("public link surfaces never arm the splash", () => {

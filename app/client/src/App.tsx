@@ -2565,6 +2565,16 @@ export function App() {
     const isTeamNow = user.isPlatformAdmin || (teamRoleQuery.data?.role ?? null) !== null;
     if (maintenanceQuery.data?.enabled && teamResolvedNow && !isTeamNow) signalBootReady();
   }, [user, termsGatePending, maintenanceQuery.data, teamRoleQuery.data]);
+  // Convergence (office-crm merge): crew logins land on CrewHome instead
+  // of CrewkatApplication, so the app shell never mounts to report its
+  // initial settings load — CrewHome IS the destination, so signal
+  // boot-ready from here once a crew user is past the gates above.
+  // (Without this, crew users would sit on the splash until the 6s
+  // failsafe on every cold open.)
+  const crewHomePending = !!user && !termsGatePending && user.credentialType === "crew_pin";
+  useEffect(() => {
+    if (crewHomePending) signalBootReady();
+  }, [crewHomePending]);
   const browserLang: Lang = useMemo(() => (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en"), []);
   // Public calculator funnel pages (/tools, /tools/<slug>): no-login pages
   // with shareable links and a signup CTA, rendered before any auth gate.
