@@ -34,17 +34,48 @@ const rule = (selector: string) => {
 };
 
 describe("What's New — data model", () => {
-  test("entries are curated data, newest first (Oct 15 above Oct 14)", () => {
+  test("entries are curated data, newest first (Oct 25 above Oct 15 above Oct 14)", () => {
     expect(dataStart).toBeGreaterThan(0);
+    const top = data.indexOf('"2026-10-25"');
     const a = data.indexOf('"2026-10-15"');
     const b = data.indexOf('"2026-10-14"');
-    expect(a).toBeGreaterThanOrEqual(0);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(a).toBeGreaterThan(top);
     expect(b).toBeGreaterThan(a);
   });
 
-  test("bug-fix counts are the honest seeded totals (4 and 5)", () => {
+  test("bug-fix counts are the honest seeded totals (2, 4 and 5)", () => {
+    expect(/"2026-10-25"[\s\S]*?bugFixes: 2/.test(data)).toBe(true);
     expect(/"2026-10-15"[\s\S]*?bugFixes: 4/.test(data)).toBe(true);
     expect(/"2026-10-14"[\s\S]*?bugFixes: 5/.test(data)).toBe(true);
+  });
+
+  test("Oct 25 entry is the newest, so existing users get the dot and stale seen-dates stay unread", () => {
+    // The component derives `newest` from WHATS_NEW_ENTRIES[0]; pin that the
+    // first date in the data block is the Oct 25 release.
+    const firstDate = data.match(/date: "(\d{4}-\d{2}-\d{2})"/)?.[1];
+    expect(firstDate).toBe("2026-10-25");
+    const isUnread = (newest: string, seen: string) => newest > seen;
+    expect(isUnread("2026-10-25", "2026-10-15")).toBe(true); // saw the previous release
+    expect(isUnread("2026-10-25", "2026-10-25")).toBe(false); // already opened this one
+  });
+
+  test("Oct 25 seeded EN lines are present", () => {
+    for (const line of [
+      "Invoices & Estimates, redesigned: cleaner rows and your totals big up top",
+      "Viewing by month? Swipe the top strip sideways to flip between months",
+      "A new loading screen — the Crewkat cat peeks in while the app opens",
+      "Background polish everywhere: the app's soft glow now flows through the Marketplace too",
+    ]) expect(data).toContain(line);
+  });
+
+  test("Oct 25 seeded ES lines are present", () => {
+    for (const line of [
+      "Facturas y estimados, rediseñados: filas más limpias y tus totales grandes arriba",
+      "¿Viendo por mes? Desliza la franja superior hacia los lados para cambiar de mes",
+      "Nueva pantalla de carga: el gato de Crewkat se asoma mientras la app abre",
+      "Fondos pulidos en toda la app: el brillo suave ahora también llega al Marketplace",
+    ]) expect(data).toContain(line);
   });
 
   test("seeded EN lines are present", () => {

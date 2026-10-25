@@ -11155,6 +11155,24 @@ type WhatsNewEntry = {
 };
 const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
   {
+    date: "2026-10-25",
+    features: {
+      en: [
+        "Invoices & Estimates, redesigned: cleaner rows and your totals big up top",
+        "Viewing by month? Swipe the top strip sideways to flip between months",
+        "A new loading screen — the Crewkat cat peeks in while the app opens",
+        "Background polish everywhere: the app's soft glow now flows through the Marketplace too",
+      ],
+      es: [
+        "Facturas y estimados, rediseñados: filas más limpias y tus totales grandes arriba",
+        "¿Viendo por mes? Desliza la franja superior hacia los lados para cambiar de mes",
+        "Nueva pantalla de carga: el gato de Crewkat se asoma mientras la app abre",
+        "Fondos pulidos en toda la app: el brillo suave ahora también llega al Marketplace",
+      ],
+    },
+    bugFixes: 2,
+  },
+  {
     date: "2026-10-15",
     features: {
       en: [
