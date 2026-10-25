@@ -47,6 +47,7 @@ import { fitPhotoBox, PROOF_PHOTO_MAX_HEIGHT } from "./pdfPhotoFit";
 import { PUSH_BANNER_SNOOZE_KEY, shouldShowPushBanner, snoozePushBannerUntil } from "./push-nudge";
 import { FieldIntelligenceScreen } from "./FieldIntelligence";
 import { ScreenErrorBoundary } from "./ErrorBoundary";
+import { signalBootReady } from "./SplashScreen";
 import { LegalDocumentPage, type LegalDocumentKind } from "./LegalPages";
 // Phase 4: Google Play Billing (Digital Goods API) for the TWA.
 import { canUsePlayBilling, getPlaySkuDetails, isPlayPurchaseCancelled, purchasePlaySku, type PlaySkuDetails } from "./playBilling";
@@ -2173,7 +2174,7 @@ function GoogleSignInButton({ clientId, disabled, lang, context }: {
   return <div ref={hostRef} className={`google-signin-host${disabled ? " is-disabled" : ""}`} aria-hidden={disabled || undefined} />;
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
+function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (user: AuthUser) => void; onRestoreSettled?: () => void }) {
   const bootstrap = useQuery({ queryKey: ["auth-bootstrap"], queryFn: () => api.getAuthBootstrap({}), retry: false });
   // Google Sign-In client ID (public by design). The Google button renders
   // only when this returns a client ID — unconfigured deploys show nothing.
@@ -2233,6 +2234,9 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => 
         }
       }
       if (googleFailedLanding) setError(authStrings(authLang).googleFailed);
+      // Boot splash: session restore has settled signed-out — the sign-in
+      // form below is the destination, so the splash can fade out over it.
+      onRestoreSettled?.();
       setRestoring(false);
     })();
     return () => { cancelled = true; };
@@ -2523,6 +2527,21 @@ export function App() {
   // to turn maintenance off.
   const maintenanceQuery = useQuery({ queryKey: ["platform-maintenance"], queryFn: () => api.getMaintenanceStatus({}), staleTime: 30000, retry: false, enabled: !!user });
   const teamRoleQuery = useQuery({ queryKey: ["pa-my-team-role"], queryFn: () => api.adminMyTeamRole({}), staleTime: 60000, retry: false, enabled: !!user });
+  // Boot splash (2026-10-24): when a signed-in user lands on a gate screen
+  // (Marketplace Terms, maintenance) instead of the app shell,
+  // CrewkatApplication never mounts to report its initial settings load —
+  // the gate IS the destination, so signal boot-ready from here once the
+  // gate state is known. (The splash's 6s failsafe covers any other path.)
+  const termsGatePending = !!user && (!user.marketplaceTermsAcceptedAt || user.marketplaceTermsVersion !== MARKETPLACE_TERMS_VERSION);
+  useEffect(() => {
+    if (termsGatePending) signalBootReady();
+  }, [termsGatePending]);
+  useEffect(() => {
+    if (!user || termsGatePending) return;
+    const teamResolvedNow = user.isPlatformAdmin || teamRoleQuery.data !== undefined;
+    const isTeamNow = user.isPlatformAdmin || (teamRoleQuery.data?.role ?? null) !== null;
+    if (maintenanceQuery.data?.enabled && teamResolvedNow && !isTeamNow) signalBootReady();
+  }, [user, termsGatePending, maintenanceQuery.data, teamRoleQuery.data]);
   const browserLang: Lang = useMemo(() => (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("es") ? "es" : "en"), []);
   // Public calculator funnel pages (/tools, /tools/<slug>): no-login pages
   // with shareable links and a signup CTA, rendered before any auth gate.
@@ -2540,7 +2559,7 @@ export function App() {
   if (publicToolSlug !== null) return <PublicEntry kind="tools" token={publicToolSlug} />;
   if (portalToken) return <PublicEntry kind="portal" token={portalToken} />;
   if (params.has("booking")) return <PublicEntry kind="booking" token="" />;
-  if (!user) return <AuthScreen onAuthenticated={setUser} />;
+  if (!user) return <AuthScreen onAuthenticated={setUser} onRestoreSettled={signalBootReady} />;
   // Existing users who signed up before the Marketplace Terms existed (or a
   // newer version shipped) must accept before they can use the app.
   if (!user.marketplaceTermsAcceptedAt || user.marketplaceTermsVersion !== MARKETPLACE_TERMS_VERSION) {
@@ -2564,7 +2583,7 @@ export function App() {
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
   };
-  return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewkatApplication /></AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewkatApplication onBootSettled={signalBootReady} /></AuthContext.Provider>;
 }
 
 function SampleDataButton({
@@ -2810,7 +2829,7 @@ function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
   );
 }
 
-function CrewkatApplication() {
+function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
   const client = useQueryClient();
   const auth = useContext(AuthContext);
   if (!auth) throw new Error("Authentication context is unavailable.");
@@ -3085,6 +3104,17 @@ function CrewkatApplication() {
     queryKey: ["settings"],
     queryFn: () => api.getSettings({}),
   });
+  // Boot splash (2026-10-24): the settings load is the app shell's initial
+  // data load (language + appearance sync hang off it). Once it settles —
+  // success OR error — the shell is the destination and the splash fades.
+  const bootSettledRef = useRef(false);
+  useEffect(() => {
+    if (bootSettledRef.current) return;
+    if (settings.isSuccess || settings.isError) {
+      bootSettledRef.current = true;
+      onBootSettled?.();
+    }
+  }, [settings.isSuccess, settings.isError, onBootSettled]);
   useEffect(() => {
     if (!settings.data) return;
     if (langIntentRef.current && langIntentRef.current !== settings.data.language) return;

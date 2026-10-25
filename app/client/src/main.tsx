@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { RootErrorBoundary } from "./ErrorBoundary";
+import { BootSplash } from "./SplashScreen";
 import "./theme.css";
 import "./app.css";
 
@@ -25,6 +26,11 @@ createRoot(rootEl).render(
       <div className="hatch-space-root" data-hatch-space-root>
         <RootErrorBoundary>
           <App />
+          {/* Boot splash (2026-10-24): sibling of <App /> so it mounts in
+              the first paint and never remounts across App's internal
+              auth/app swaps. Inside the boundary so a boot crash swaps it
+              out with the rest of the tree. See SplashScreen.tsx. */}
+          <BootSplash />
         </RootErrorBoundary>
       </div>
     </QueryClientProvider>

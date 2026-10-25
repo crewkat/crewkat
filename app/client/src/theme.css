@@ -6385,3 +6385,80 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .bottom-nav .bottom-nav-icon { padding-bottom: 3px; margin-bottom: 1px; border-bottom: 2.5px solid transparent; }
 .bottom-nav > button.active .bottom-nav-icon { border-bottom-color: var(--accent-orange); }
 .bottom-nav > button.active .bottom-nav-icon::after { content: none; }
+
+/* ---- Boot splash (Danny approved 2026-10-24; mockup:
+   brand-assets/loading-screen-mockup.png) ----
+   Full-viewport overlay rendered by main.tsx (SplashScreen.tsx) over
+   the boot window: navy gradient in the header tokens (navy-900 ->
+   navy-700), the haze treatment reused at low alpha as two drifting
+   tint layers (same closed-orbit keyframes as the app haze, tints
+   flipped to light-on-navy), the C + chevron brand artwork, an orange
+   arc spinner over CREWKAT letterspaced in the app font, and the peek
+   mascot gripping the bottom edge.
+   Z-index 45: above app chrome (header 20, dropdowns/scrims <= 41)
+   and below every layer that can appear during boot — sheet backdrops
+   start at 50, pdf modal 100, onboarding 120, toasts 400 — so nothing
+   interactive is ever buried under the splash.
+   Exit is an opacity fade (.leaving, 480ms — matches SPLASH_FADE_MS
+   in SplashScreen.tsx, which unmounts the node when it ends).
+   prefers-reduced-motion: the cat's idle bob, entrance rise and haze
+   drift stop; the fade and the spinner (the loading signal itself)
+   remain. */
+.boot-splash {
+  position: fixed; inset: 0; z-index: 45; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center;
+  background: linear-gradient(180deg, var(--navy-900), var(--navy-700));
+  color: #fff; opacity: 1; transition: opacity .48s ease;
+}
+.boot-splash.leaving { opacity: 0; pointer-events: none; }
+.boot-splash-haze {
+  position: absolute; inset: -14%; pointer-events: none;
+  background-image:
+    radial-gradient(58vmax 58vmax at 10% 6%, rgba(88, 138, 198, .16), transparent 62%),
+    radial-gradient(48vmax 48vmax at 90% 20%, rgba(140, 180, 230, .09), transparent 60%);
+  animation: haze-drift-a 16s linear infinite;
+}
+.boot-splash-haze.is-b {
+  background-image:
+    radial-gradient(46vmax 46vmax at 6% 84%, rgba(242, 118, 46, .13), transparent 62%),
+    radial-gradient(36vmax 36vmax at 56% 44%, rgba(242, 158, 66, .07), transparent 60%);
+  animation-name: haze-drift-b; animation-duration: 22s;
+}
+.boot-splash-center {
+  position: relative; z-index: 1; margin-top: 21vh;
+  display: flex; flex-direction: column; align-items: center; gap: 30px;
+}
+.boot-splash-logo { width: min(58vw, 300px); height: auto; display: block; }
+.boot-splash-spinner {
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, .15);
+  border-top-color: var(--accent-orange);
+  border-right-color: var(--accent-orange);
+  border-bottom-color: var(--accent-orange);
+  animation: boot-splash-spin 1s linear infinite;
+}
+@keyframes boot-splash-spin { to { transform: rotate(360deg); } }
+.boot-splash-word {
+  margin: 0; font-size: 15px; font-weight: 800; color: #fff;
+  letter-spacing: .42em; margin-right: -.42em;
+}
+.boot-splash-cat {
+  position: absolute; left: 50%; bottom: 0; z-index: 1;
+  width: min(78vw, 420px); height: auto; display: block;
+  transform: translateX(-50%);
+  animation:
+    boot-splash-cat-in .55s cubic-bezier(.22, .9, .3, 1) both,
+    boot-splash-cat-bob 3.4s ease-in-out .7s infinite;
+}
+@keyframes boot-splash-cat-in {
+  from { transform: translate(-50%, 14px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+@keyframes boot-splash-cat-bob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-splash-haze, .boot-splash-haze.is-b { animation: none; }
+  .boot-splash-cat { animation: none; }
+}
