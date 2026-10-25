@@ -45,6 +45,7 @@ RUN bun install --production --frozen-lockfile
 COPY server.mjs ./
 COPY --from=build /build/app/server/dist ./app/server/dist
 COPY --from=build /build/app/client/dist ./app/client/dist
+COPY --from=build /build/app/office/dist ./app/office/dist
 COPY --from=build /build/app/drizzle ./app/drizzle
 
 # /data is the Render persistent disk (see render.yaml): app.db + blobs live here.
