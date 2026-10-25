@@ -42,10 +42,13 @@ export function PipelineView({
   focusLeadId,
   onOpenJob,
   onConsumeFocus,
+  canDelete,
 }: {
   focusLeadId: number | null;
   onOpenJob: (jobId: number) => void;
   onConsumeFocus: () => void;
+  /** Deletes are Admin-only (Danny 2026-10-24); the server enforces, this only hides the buttons. */
+  canDelete: boolean;
 }) {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -176,6 +179,7 @@ export function PipelineView({
           onClose={() => setSelectedId(null)}
           onChanged={invalidate}
           onOpenJob={(jobId) => { setSelectedId(null); onOpenJob(jobId); }}
+          canDelete={canDelete}
         />
       ) : null}
     </div>
@@ -252,11 +256,13 @@ function LeadDrawer({
   onClose,
   onChanged,
   onOpenJob,
+  canDelete,
 }: {
   lead: Lead;
   onClose: () => void;
   onChanged: () => void;
   onOpenJob: (jobId: number) => void;
+  canDelete: boolean;
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<LeadForm>(() => formFromLead(lead));
@@ -422,18 +428,20 @@ function LeadDrawer({
             </div>
           </section>
 
-          <section className="drawer-section danger-zone">
-            <button
-              type="button"
-              className="btn btn-danger-ghost"
-              disabled={deleteMutation.isPending}
-              onClick={() => {
-                if (window.confirm(`Delete lead "${lead.name}"? This can't be undone.`)) deleteMutation.mutate();
-              }}
-            >
-              Delete lead
-            </button>
-          </section>
+          {canDelete ? (
+            <section className="drawer-section danger-zone">
+              <button
+                type="button"
+                className="btn btn-danger-ghost"
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  if (window.confirm(`Delete lead "${lead.name}"? This can't be undone.`)) deleteMutation.mutate();
+                }}
+              >
+                Delete lead
+              </button>
+            </section>
+          ) : null}
         </div>
       </aside>
     </div>

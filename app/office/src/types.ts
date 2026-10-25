@@ -129,9 +129,9 @@ export const TEAM_ROLE_LABELS: Record<TeamRole, string> = {
 };
 
 export const TEAM_ROLE_DESCRIPTIONS: Record<TeamRole, string> = {
-  admin: "Everything — billing, company settings, and managing this team.",
-  office: "Back office — pipeline, schedule, documents, and money views. No billing changes, no team management, no company-record deletes.",
-  field: "Phone-first — their jobs, appointments, photos, and documents. No money views, no deletes, no billing.",
+  admin: "Everything — billing, company settings, and managing this team. Only Admins can delete records.",
+  office: "Back office — pipeline, schedule, documents, and money. Creates and edits freely, but only Admins can delete records. No billing changes, no team management.",
+  field: "Phone-first — their jobs, appointments, photos, and documents. No money views, no billing, and no deletes — only Admins can delete records.",
 };
 
 export interface TeamMember {

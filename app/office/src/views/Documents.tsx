@@ -78,12 +78,15 @@ export function DocumentsView({
   onOpenJob,
   onOpenClient,
   userName,
+  canDelete,
 }: {
   selected: DocSelection | null;
   onSelect: (sel: DocSelection | null) => void;
   onOpenJob: (jobId: number) => void;
   onOpenClient: (clientId: number) => void;
   userName: string;
+  /** Deletes are Admin-only (Danny 2026-10-24); the server enforces, this only hides the buttons. */
+  canDelete: boolean;
 }) {
   const [kindFilter, setKindFilter] = useState<"" | DocKind>("");
   const [statusFilter, setStatusFilter] = useState<"" | StatusGroup>("");
@@ -261,6 +264,7 @@ export function DocumentsView({
             onEditFinancial={(t) => setFinancialTarget(t)}
             onEditContract={(t) => setContractTarget(t)}
             onSelect={onSelect}
+            canDelete={canDelete}
           />
         ) : null}
       </div>
@@ -299,6 +303,7 @@ function DocDetail({
   onEditFinancial,
   onEditContract,
   onSelect,
+  canDelete,
 }: {
   selection: DocSelection;
   quotes: Quote[];
@@ -312,6 +317,7 @@ function DocDetail({
   onEditFinancial: (t: FinancialEditorTarget) => void;
   onEditContract: (t: ContractEditorTarget) => void;
   onSelect: (sel: DocSelection | null) => void;
+  canDelete: boolean;
 }) {
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -412,7 +418,7 @@ function DocDetail({
           <InvoiceSummary invoice={invoice} onOpenJob={onOpenJob} onOpenClient={onOpenClient} />
           <LineItemsTable doc={invoice} />
           <TotalsBlock doc={invoice} extra={{ paid: invoice.paidToDate, balance: invoice.balanceRemaining, lateFee: invoice.lateFeeAccrued }} />
-          <PaymentsSection invoice={invoice} onError={setActionError} />
+          <PaymentsSection invoice={invoice} onError={setActionError} canDelete={canDelete} />
           <DocumentLinkPanel kind="invoice" id={invoice.id} />
           {invoice.jobId ? <PortalLinkPanel jobId={invoice.jobId} /> : <InvoiceJobLinker invoice={invoice} jobs={jobs} onError={setActionError} />}
         </>
@@ -496,17 +502,19 @@ function DocDetail({
             {signable ? (
               <button type="button" className="btn btn-ghost btn-small" onClick={() => onEditContract({ mode: "edit", doc: signable })}>Edit</button>
             ) : null}
-            {!confirmDelete ? (
-              <button type="button" className="btn btn-danger-ghost btn-small" onClick={() => setConfirmDelete(true)}>Delete</button>
-            ) : (
-              <>
-                <span className="feed-meta">Delete this document?</span>
-                <button type="button" className="btn btn-danger-ghost btn-small" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
-                  {deleteMutation.isPending ? "Deleting…" : "Yes, delete"}
-                </button>
-                <button type="button" className="btn btn-ghost btn-small" onClick={() => setConfirmDelete(false)}>Keep</button>
-              </>
-            )}
+            {canDelete ? (
+              !confirmDelete ? (
+                <button type="button" className="btn btn-danger-ghost btn-small" onClick={() => setConfirmDelete(true)}>Delete</button>
+              ) : (
+                <>
+                  <span className="feed-meta">Delete this document?</span>
+                  <button type="button" className="btn btn-danger-ghost btn-small" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
+                    {deleteMutation.isPending ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-small" onClick={() => setConfirmDelete(false)}>Keep</button>
+                </>
+              )
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -598,7 +606,7 @@ function TotalsBlock({ doc, extra }: { doc: Quote | Invoice; extra?: { paid: str
   );
 }
 
-function PaymentsSection({ invoice, onError }: { invoice: Invoice; onError: (msg: string) => void }) {
+function PaymentsSection({ invoice, onError, canDelete }: { invoice: Invoice; onError: (msg: string) => void; canDelete: boolean }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayIso());
@@ -626,8 +634,9 @@ function PaymentsSection({ invoice, onError }: { invoice: Invoice; onError: (msg
             <li key={p.id}>
               <span>{formatMoney(p.amount)} · {formatDate(p.paymentDate)}{p.method ? ` · ${p.method}` : ""}</span>
               <span className="feed-meta">
-                {p.note && p.note !== "__paid_toggle__" ? `${p.note} · ` : ""}{formatDateTime(p.createdAt)}{" "}
-                <button type="button" className="link-btn" onClick={() => deleteMutation.mutate(p.id)}>Remove</button>
+                {p.note && p.note !== "__paid_toggle__" ? `${p.note} · ` : ""}{formatDateTime(p.createdAt)}{canDelete ? (
+                  <> <button type="button" className="link-btn" onClick={() => deleteMutation.mutate(p.id)}>Remove</button></>
+                ) : null}
               </span>
             </li>
           ))}

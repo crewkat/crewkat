@@ -55,7 +55,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type EditorTarget = { appt: Appointment | null; dateKey: string };
 
-export function ScheduleView({ onOpenJob }: { onOpenJob: (jobId: number) => void }) {
+export function ScheduleView({ onOpenJob, canDelete }: { onOpenJob: (jobId: number) => void; canDelete: boolean }) {
   const [mode, setMode] = useState<"month" | "week">("month");
   const [anchor, setAnchor] = useState<string>(todayKey());
   const [selected, setSelected] = useState<string>(todayKey());
@@ -230,6 +230,7 @@ export function ScheduleView({ onOpenJob }: { onOpenJob: (jobId: number) => void
           jobs={jobs}
           onClose={() => setEditor(null)}
           onSaved={(key) => { setEditor(null); setSelected(key); setAnchor(key); }}
+          canDelete={canDelete}
         />
       ) : null}
     </div>
@@ -256,11 +257,13 @@ function AppointmentEditor({
   jobs,
   onClose,
   onSaved,
+  canDelete,
 }: {
   target: EditorTarget;
   jobs: Job[];
   onClose: () => void;
   onSaved: (dateKey: string) => void;
+  canDelete: boolean;
 }) {
   const queryClient = useQueryClient();
   const a = target.appt;
@@ -448,7 +451,7 @@ function AppointmentEditor({
 
           {error ? <p className="inline-error">{error}</p> : null}
           <div className="modal-actions appt-actions">
-            {form.id ? (
+            {form.id && canDelete ? (
               !confirmDelete ? (
                 <button type="button" className="btn btn-danger-ghost" onClick={() => setConfirmDelete(true)}>Delete</button>
               ) : (

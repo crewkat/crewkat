@@ -104,10 +104,17 @@ const unknownInMap = [...seen.keys()].filter((n) => !allActionNames.includes(n))
 check("permission map names no unknown actions", unknownInMap.length === 0, unknownInMap.join(", "));
 check("productRoleOf maps owner/admin -> admin", productRoleOf("owner") === "admin" && productRoleOf("admin") === "admin");
 check("productRoleOf maps office/field", productRoleOf("office") === "office" && productRoleOf("field") === "field");
-// Field gets NO record deletes (the one self-service exception is deleting
-// your own login), NO admin actions, NO office actions.
-const fieldDeletes = allActionNames.filter((n) => /^delete/.test(n) && n !== "deleteMyAccount" && roleCan("field", n));
+// Deletes (Danny 2026-10-24): EVERY record delete is Admin-only — Field
+// AND Office get none. The one self-service exception is deleteMyAccount:
+// deleting your OWN login (code-confirmed, Play-required) removes the
+// caller's own rows, not company records, so it stays open to all roles.
+const deleteClass = allActionNames.filter((n) => /^delete/.test(n) && n !== "deleteMyAccount");
+const fieldDeletes = deleteClass.filter((n) => roleCan("field", n));
 check("field role can call no delete* actions", fieldDeletes.length === 0, fieldDeletes.join(", "));
+const officeDeletes = deleteClass.filter((n) => roleCan("office", n));
+check("office role can call no delete* actions (all deletes are admin-only)", officeDeletes.length === 0, officeDeletes.join(", "));
+check("every delete* action is classified admin-only", deleteClass.every((n) => minRoleForAction(n) === "admin"), deleteClass.filter((n) => minRoleForAction(n) !== "admin").join(", "));
+check("admin retains every delete* action", deleteClass.every((n) => roleCan("admin", n)));
 check("field denied every admin action", [...ADMIN_ACTIONS].every((n) => !roleCan("field", n)));
 check("field denied every office action", [...OFFICE_ACTIONS].every((n) => !roleCan("field", n)));
 check("office denied every admin action", [...ADMIN_ACTIONS].every((n) => !roleCan("office", n)));
@@ -206,8 +213,10 @@ const officeDash = await A.getOfficeDashboard.handler(ctx, { _sessionToken: offi
 check("OFFICE can read the money dashboard", typeof officeDash.outstanding === "number");
 const officeLead = await A.saveLead.handler(ctx, { _sessionToken: officeToken, name: "Office Lead", phone: "813-555-0130", source: "web", notes: "", projectSize: "small", engagement: "normal", serviceType: "Bathroom", estimatedValue: "3000" });
 check("OFFICE can work the pipeline (saveLead)", typeof officeLead.id === "number");
-const officeDelete = await A.deleteInvoice.handler(ctx, { _sessionToken: officeToken, id: 999999 });
-check("OFFICE may run normal doc deletes (deleteInvoice)", officeDelete.ok === true);
+await checkThrows("OFFICE denied a document delete (deleteDocument)", () => A.deleteDocument.handler(ctx, { _sessionToken: officeToken, id: 999999 }), /Office role/);
+await checkThrows("OFFICE denied an invoice delete (deleteInvoice)", () => A.deleteInvoice.handler(ctx, { _sessionToken: officeToken, id: 999999 }), /Office role/);
+const adminDelete = await A.deleteInvoice.handler(ctx, { _sessionToken: ownerToken, id: 999999 });
+check("ADMIN can still delete (deleteInvoice)", adminDelete.ok === true);
 
 // Admin: allowed across the layers.
 const adminBilling = await A.getBillingOverview.handler(ctx, { _sessionToken: ownerToken });

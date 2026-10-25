@@ -10,10 +10,13 @@ export function JobsView({
   selectedJobId,
   onSelectJob,
   onOpenDocument,
+  canDelete,
 }: {
   selectedJobId: number | null;
   onSelectJob: (id: number | null) => void;
   onOpenDocument: (sel: DocSelection) => void;
+  /** Deletes are Admin-only (Danny 2026-10-24); the server enforces, this only hides the buttons. */
+  canDelete: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -106,13 +109,13 @@ export function JobsView({
           ) : null}
         </section>
 
-        {selected ? <JobDetail jobId={selected.id} onClose={() => onSelectJob(null)} onOpenDocument={onOpenDocument} /> : null}
+        {selected ? <JobDetail jobId={selected.id} onClose={() => onSelectJob(null)} onOpenDocument={onOpenDocument} canDelete={canDelete} /> : null}
       </div>
     </div>
   );
 }
 
-function JobDetail({ jobId, onClose, onOpenDocument }: { jobId: number; onClose: () => void; onOpenDocument: (sel: DocSelection) => void }) {
+function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: number; onClose: () => void; onOpenDocument: (sel: DocSelection) => void; canDelete: boolean }) {
   const detailQuery = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => api.getJob({ id: jobId }),
@@ -173,7 +176,7 @@ function JobDetail({ jobId, onClose, onOpenDocument }: { jobId: number; onClose:
             ) : null}
           </section>
 
-          <JobPhotosSection jobId={job.id} photos={data?.photos ?? []} />
+          <JobPhotosSection jobId={job.id} photos={data?.photos ?? []} canDelete={canDelete} />
 
           <section className="drawer-section">
             <h3>Documents</h3>
@@ -240,7 +243,7 @@ interface SoloPhoto {
 
 const PHOTO_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
-function JobPhotosSection({ jobId, photos }: { jobId: number; photos: JobPhoto[] }) {
+function JobPhotosSection({ jobId, photos, canDelete }: { jobId: number; photos: JobPhoto[]; canDelete: boolean }) {
   const queryClient = useQueryClient();
   const [stageFilter, setStageFilter] = useState<"all" | PhotoStage>("all");
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
@@ -351,7 +354,9 @@ function JobPhotosSection({ jobId, photos }: { jobId: number; photos: JobPhoto[]
               </div>
               <div className="pair-meta">
                 <span>{pair.label || "Before / After"}</span>
-                <button type="button" className="link-btn" disabled={unpairMutation.isPending} onClick={() => unpairMutation.mutate(pair.id)}>Unpair</button>
+                {canDelete ? (
+                  <button type="button" className="link-btn" disabled={unpairMutation.isPending} onClick={() => unpairMutation.mutate(pair.id)}>Unpair</button>
+                ) : null}
               </div>
             </div>
           ))}

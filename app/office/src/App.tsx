@@ -168,13 +168,13 @@ export function App() {
             <DashboardView onGoPipeline={() => setView("pipeline")} onGoJobs={() => setView("jobs")} />
           ) : null}
           {view === "pipeline" ? (
-            <PipelineView focusLeadId={focusLeadId} onOpenJob={openJob} onConsumeFocus={consumeFocus} />
+            <PipelineView focusLeadId={focusLeadId} onOpenJob={openJob} onConsumeFocus={consumeFocus} canDelete={user.teamRole === "admin"} />
           ) : null}
           {view === "clients" ? (
             <ClientsView selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onOpenJob={openJob} onOpenDocument={openDocument} />
           ) : null}
           {view === "jobs" ? (
-            <JobsView selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} onOpenDocument={openDocument} />
+            <JobsView selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} onOpenDocument={openDocument} canDelete={user.teamRole === "admin"} />
           ) : null}
           {view === "documents" ? (
             <DocumentsView
@@ -183,9 +183,10 @@ export function App() {
               onOpenJob={openJob}
               onOpenClient={openClient}
               userName={user.name}
+              canDelete={user.teamRole === "admin"}
             />
           ) : null}
-          {view === "schedule" ? <ScheduleView onOpenJob={openJob} /> : null}
+          {view === "schedule" ? <ScheduleView onOpenJob={openJob} canDelete={user.teamRole === "admin"} /> : null}
           {view === "marketplace" ? <MarketplaceView /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView /> : null}

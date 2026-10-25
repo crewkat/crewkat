@@ -24,19 +24,27 @@
 //   company staff account is never a platform team member, and the
 //   handlers reject it.
 // - ADMIN_ACTIONS: billing, company settings + branding, team
-//   management, the crew roster / admin console, backups, and the
-//   destructive company-level deletes.
+//   management, the crew roster / admin console, backups, and EVERY
+//   record delete — company-level records and working records alike
+//   (Danny 2026-10-24: all deletes are Admin-only).
 // - OFFICE_ACTIONS: the back-office working surface — pipeline,
 //   purchasing, money views and money mutations, recurring billing,
-//   client selections/milestones, marketplace management, and the
-//   working-record deletes (documents, invoices, quotes, photos,
-//   appointments...) that are normal doc ops. Admin + Office.
+//   client selections/milestones, marketplace management. Office
+//   creates and edits freely but cannot delete anything. Admin + Office.
 // - ALL_ROLE_ACTIONS: the field working surface — jobs, clients,
 //   documents create/edit/send/sign, schedule, photos, job comms,
 //   timers, safety, support. Any signed-in role.
-// Field gets NO delete actions at all (the office-track1c behavior suite
-// asserts every "delete*" action is outside Field's set), and no money
-// views/mutations beyond the document totals its work already shows.
+// NEITHER Field nor Office gets any delete action (the office-track1c
+// behavior suite asserts every "delete*" action is Admin-only), with
+// ONE deliberate exception: deleteMyAccount, the code-confirmed
+// self-service deletion of the caller's OWN login (a Play Store data-
+// deletion requirement — it removes the caller's own rows, or the
+// whole company only when the caller is its sole login; it is not a
+// tool for deleting company records) stays open to any signed-in role.
+// Actions that revoke links (revokePortalLink, revokeDocumentLink,
+// revokeOnMyWay) or cancel schedules are state changes, not record
+// removal, and stay where their feature lives. Field also gets no
+// money views/mutations beyond the document totals its work shows.
 
 export type StoredRole = "owner" | "admin" | "office" | "field";
 export type ProductRole = "admin" | "office" | "field";
@@ -60,6 +68,15 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "deleteLead", "deleteBusinessExpense", "deleteMaterialCost",
   "deletePriceBookItem", "deleteQuoteTemplate", "deleteSubcontractor",
   "deleteMileageTrip", "deleteFieldTestRecord", "loadSampleData",
+  // All deletes are Admin-only (Danny 2026-10-24): the working-record
+  // deletes that used to be Office doc ops live here now.
+  "deleteAppointment", "deleteBidBoardItem", "deleteCrewTask",
+  "deleteDocument", "deleteDocumentAttachment", "deleteInvoice",
+  "deleteJobFile", "deleteMarketplaceAlert", "deleteMarketplaceListing",
+  "deletePayment", "deletePhoto", "deletePhotoPair",
+  "deleteProgressUpdate", "deletePunchItem", "deleteQuote",
+  "deleteReceipt", "deleteShareImage", "deleteTimeEntry",
+  "deleteVoiceNote",
 ]);
 
 export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
@@ -67,13 +84,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "cancelRecurringInvoice", "cancelRecurringSchedule", "completeMaintenancePlan",
   "convertLeadToJob", "createMarketplaceListing", "createPortalLink",
   "createPurchaseOrder", "createQuoteVersion", "createRecurringSchedule",
-  "deleteAppointment", "deleteBidBoardItem", "deleteCrewTask",
-  "deleteDocument", "deleteDocumentAttachment", "deleteInvoice",
-  "deleteJobFile", "deleteMarketplaceAlert", "deleteMarketplaceListing",
-  "deletePayment", "deletePhoto", "deletePhotoPair",
-  "deleteProgressUpdate", "deletePunchItem", "deleteQuote",
-  "deleteReceipt", "deleteShareImage", "deleteTimeEntry",
-  "deleteVoiceNote", "generateRecurringInvoice", "getCrewClockStatus",
+  "generateRecurringInvoice", "getCrewClockStatus",
   "getCrewDayView", "getDashboard", "getDocumentParameters",
   "getExpansionSuite", "getFieldIntelligence", "getGrowthToolkit",
   "getJobOperations", "getLeadActivities", "getListingBumpStatus",
