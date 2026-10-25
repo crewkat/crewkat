@@ -33,13 +33,13 @@ describe("TapArticle document support", () => {
 describe("invoice/estimate cards are tappable", () => {
   test("invoice card opens the invoice preview", () => {
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
+      '<TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
     );
   });
 
   test("estimate card opens the quote preview", () => {
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>',
+      '<TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>',
     );
   });
 
@@ -67,9 +67,9 @@ describe("invoice/estimate cards are tappable", () => {
 
 describe("compact invoice/estimate buttons", () => {
   test("create + list-card + detail action buttons are compact", () => {
-    expect(CSS).toContain(
-      ".page-actions.document-create .primary-button { min-height: 42px;",
-    );
+    // Doc redesign (2026-10-24): the full-width CREATE slab is gone; the
+    // compact New button in the search row is the create affordance now.
+    expect(CSS).toContain(".doc-new-btn { display: inline-flex;");
     expect(CSS).toContain(
       ".document-list .row-actions button { min-height: 40px;",
     );

@@ -30,12 +30,15 @@ describe("reusable compact language", () => {
 describe("invoice list compact rows", () => {
   test("invoice card still taps through to the preview (TapArticle preserved)", () => {
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
+      '<TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
     );
   });
 
   test("row has the mockup checkbox, title, client, pill, amount", () => {
-    expect(APP).toContain('className={`ck-check${invoice.status === "paid" ? " done" : ""}`}');
+    // Doc redesign (2026-10-24): the small status glyph replaced the ring
+    // checkbox; it keeps the same one-tap paid toggle.
+    expect(APP).toContain("ck-doc-glyph");
+    expect(APP).toContain('invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "overdue"');
     expect(APP).toContain("ck-invoice-row-copy");
     expect(APP).toContain("ck-invoice-row-amount");
     expect(APP).toContain("ck-pill-paid");
@@ -51,7 +54,7 @@ describe("invoice list compact rows", () => {
   });
 
   test("search + status filter bar exists and filters the list", () => {
-    expect(APP).toContain("ck-invoice-toolbar");
+    expect(APP).toContain("doc-controls");
     expect(APP).toContain("ck-search");
     expect(APP).toContain("setInvSearch");
     expect(APP).toContain("setInvStatus");
@@ -136,7 +139,7 @@ describe("build 3.0 item 10: compact invoice cards", () => {
   });
 
   test("paid status circle renders green like the mockup", () => {
-    expect(CSS).toContain(".ck-check.done { background: #22c55e;");
+    expect(CSS).toContain(".ck-doc-glyph.paid { background: color-mix(in srgb, #22c55e 16%, var(--surface));");
   });
 });
 

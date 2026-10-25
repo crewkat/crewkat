@@ -17481,6 +17481,16 @@ function InvoicesScreen({
   const [confirmConvertQuoteId, setConfirmConvertQuoteId] = useState<number | null>(null);
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<"all" | InvoiceStatus>("all");
+  const [estSearch, setEstSearch] = useState("");
+  // Doc redesign (Danny approved 2026-10-24): the navy money strip leads
+  // with one period total — Year (the current year's totals; the feed keeps
+  // its current behavior) or a picked Month, which also narrows the feed
+  // to that month's documents.
+  const [period, setPeriod] = useState<"year" | "month">("year");
+  const [monthKey, setMonthKey] = useState(() => new Date().toISOString().slice(0, 7));
+  // Expanded row (text-link actions): null = the first feed row is expanded,
+  // "none" = all collapsed, otherwise the row's key ("inv-<id>"/"est-<id>").
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const schedulesQuery = useQuery({ queryKey: ["recurring-schedules"], queryFn: () => api.listRecurringSchedules({}) });
   const cancelSchedule = useMutation({ mutationFn: (id: number) => api.cancelRecurringSchedule({ id }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recurring-schedules"] }); } });
   const activeSchedules = (schedulesQuery.data?.schedules ?? []).filter((s) => s.active);
@@ -17496,11 +17506,15 @@ function InvoicesScreen({
   });
   const sortedInvoices = sortDocuments(query.data?.invoices ?? []);
   const invTerm = invSearch.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
-  const visibleInvoices = sortedInvoices.filter((invoice) =>
+  const searchedInvoices = sortedInvoices.filter((invoice) =>
     (invStatus === "all" || invoice.status === invStatus) &&
     (!invTerm || [invoice.clientName, invoice.invoiceNumber, invoice.jobType, String(invoice.id)].some((v) => v.toLocaleLowerCase(lang === "es" ? "es" : "en").includes(invTerm)))
   );
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
+  const estTerm = estSearch.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
+  const searchedQuotes = sortedQuotes.filter((quote) =>
+    !estTerm || [quote.clientName, quote.jobType, String(quote.id)].some((v) => (v ?? "").toLocaleLowerCase(lang === "es" ? "es" : "en").includes(estTerm))
+  );
   const estTerms = estimateTerms(lang, settings); const estimateWord = capFirst(estTerms.plural);
   const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
   const quoteInvoice = useMutation({ mutationFn: (id: number) => api.convertQuoteToInvoice({ quoteId: id, today: localToday() }), onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["invoices"] }); setScreen({ name: "invoicePreview", invoiceId: r.invoiceId }); }, onError: (e) => handleLimitError(e, () => {}) });
@@ -17524,81 +17538,86 @@ function InvoicesScreen({
       i.nextDueDate <= today,
   );
   const month = today.slice(0, 7);
-  const balanceDue = sortedInvoices.reduce((sum, invoice) => sum + Number(invoice.balanceRemaining), 0);
-  // Month carousel (2026-10-14): invoiced + estimated totals per month,
-  // newest first, back to the earliest document (capped at 12 months).
-  const [activeMonthIdx, setActiveMonthIdx] = useState(0);
-  const monthStats = (() => {
-    type Agg = { invoiced: number; estimated: number; invCount: number; estCount: number };
-    const byMonth = new Map<string, Agg>();
-    const agg = (key: string) => { let a = byMonth.get(key); if (!a) { a = { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }; byMonth.set(key, a); } return a; };
-    sortedInvoices.forEach((invoice) => { const a = agg(invoice.issueDate.slice(0, 7)); a.invoiced += money(invoice.totalWithLateFee); a.invCount += 1; });
-    sortedQuotes.forEach((quote) => { const a = agg((quote.sentAt || quote.createdAt).slice(0, 7)); a.estimated += money(quote.total); a.estCount += 1; });
-    const earliest = [...byMonth.keys()].sort()[0] ?? month;
-    const out: Array<{ key: string } & Agg> = [];
-    let cursor = month;
-    for (let n = 0; n < 12 && cursor >= earliest; n += 1) {
-      out.push({ key: cursor, ...(byMonth.get(cursor) ?? { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }) });
-      const prev = new Date(Number(cursor.slice(0, 4)), Number(cursor.slice(5, 7)) - 2, 1);
-      cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
-    }
-    const ascending = out.reverse();
-    return ascending.length ? ascending : [{ key: month, invoiced: 0, estimated: 0, invCount: 0, estCount: 0 }];
-  })();
+  // Doc redesign (2026-10-24): period totals for the navy money strip. A
+  // document's month is its issue month (invoices) or sent month, falling
+  // back to created month (estimates) — the same keys the retired month
+  // carousel aggregated by. Paid = invoiced − balance over the same set,
+  // so Paid + Balance due always reconciles with the hero total.
+  const invMonthKey = (invoice: { issueDate: string }) => invoice.issueDate.slice(0, 7);
+  const quoteMonthKey = (quote: { sentAt?: string | null; createdAt: string }) => (quote.sentAt || quote.createdAt).slice(0, 7);
+  const inPeriod = (key: string) => (period === "year" ? key.startsWith(month.slice(0, 4)) : key === monthKey);
+  const periodInvoices = sortedInvoices.filter((invoice) => inPeriod(invMonthKey(invoice)));
+  const periodQuotes = sortedQuotes.filter((quote) => inPeriod(quoteMonthKey(quote)));
+  const periodInvoiced = periodInvoices.reduce((sum, invoice) => sum + money(invoice.totalWithLateFee), 0);
+  const periodPaid = periodInvoices.reduce((sum, invoice) => sum + Math.max(0, money(invoice.totalWithLateFee) - money(invoice.balanceRemaining)), 0);
+  const periodBalance = periodInvoices.reduce((sum, invoice) => sum + money(invoice.balanceRemaining), 0);
+  const periodEstimated = periodQuotes.reduce((sum, quote) => sum + money(quote.total), 0);
+  const periodAccepted = periodQuotes.filter((quote) => quote.accepted || quote.automationStatus === "won").reduce((sum, quote) => sum + money(quote.total), 0);
+  // Month mode narrows the feed to the picked month; Year mode keeps the
+  // feed exactly as it behaved before (search/status filters still apply).
+  const visibleInvoices = period === "month" ? searchedInvoices.filter((invoice) => invMonthKey(invoice) === monthKey) : searchedInvoices;
+  const visibleQuotes = period === "month" ? searchedQuotes.filter((quote) => quoteMonthKey(quote) === monthKey) : searchedQuotes;
   const monthLabel = (key: string) => new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "long", year: "numeric" }).format(new Date(`${key}-15T12:00:00`));
-  // Card strip (Danny 2026-10-14): the FIRST card is the year total; scrolling
-  // the carousel brings up the month cards (previous months to the left,
-  // current month at the right end).
-  const docCards = (() => {
-    type Card = { kind: "month" | "year"; key: string; label: string; invoiced: number; estimated: number; invCount: number; estCount: number };
-    const cards: Card[] = [];
-    const yearsSeen = new Set<string>();
-    monthStats.forEach((m) => {
-      const y = m.key.slice(0, 4);
-      if (yearsSeen.has(y)) return;
-      yearsSeen.add(y);
-      const monthsOfYear = monthStats.filter((x) => x.key.slice(0, 4) === y);
-      monthsOfYear.forEach((mm) => cards.push({ kind: "month", key: mm.key, label: monthLabel(mm.key), invoiced: mm.invoiced, estimated: mm.estimated, invCount: mm.invCount, estCount: mm.estCount }));
-      const agg = monthsOfYear.reduce((a, mm) => ({ invoiced: a.invoiced + mm.invoiced, estimated: a.estimated + mm.estimated, invCount: a.invCount + mm.invCount, estCount: a.estCount + mm.estCount }), { invoiced: 0, estimated: 0, invCount: 0, estCount: 0 });
-      cards.push({ kind: "year", key: `year-${y}`, label: y, invoiced: agg.invoiced, estimated: agg.estimated, invCount: agg.invCount, estCount: agg.estCount });
-    });
-    return cards;
-  })();
-  // The year card is the main card at the right end: open the strip there.
-  const docTrackRef = useRef<HTMLDivElement | null>(null);
-  const docTrackInitRef = useRef(false);
-  useEffect(() => {
-    const el = docTrackRef.current;
-    if (el && !docTrackInitRef.current && docCards.length > 1) {
-      el.scrollLeft = el.scrollWidth;
-      setActiveMonthIdx(docCards.length - 1);
-      docTrackInitRef.current = true;
-    }
-  }, [docCards]);
+  const monthName = (key: string) => new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { month: "long" }).format(new Date(`${key}-15T12:00:00`));
+  const shiftMonth = (delta: number) => {
+    const d = new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)) - 1 + delta, 1);
+    setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const heroLabel = period === "year"
+    ? (lang === "es" ? `TOTAL ${month.slice(0, 4)}` : `${month.slice(0, 4)} TOTAL`)
+    : (lang === "es" ? `TOTAL DE ${monthName(monthKey).toUpperCase()}` : `${monthName(monthKey).toUpperCase()} TOTAL`);
+  const isExpanded = (key: string, isFirst: boolean) => (expandedKey === null ? isFirst : expandedKey === key);
+  const toggleExpand = (key: string) => setExpandedKey((cur) => (cur === key ? "none" : key));
   return (
     <main className="page">
       <PageHeader lang={lang} title={lang === "es" ? `Facturas y ${estimateWord.toLowerCase()}` : `Invoices & ${estimateWord.toLowerCase()}`} onBack={onBack} actions={<><MainTabHeaderActions lang={lang} setScreen={setScreen} /><SettingsAvatarButton lang={lang} setScreen={setScreen} /></>} />
       {tab === "invoices"
         ? <OfflineCacheNote lang={lang} action="listInvoices" isLoading={query.isLoading} />
         : <OfflineCacheNote lang={lang} action="listQuotes" isLoading={quotes.isLoading} />}
-      <nav className="document-tabs" aria-label={lang === "es" ? "Documentos" : "Documents"}><button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}>{lang === "es" ? "Facturas" : "Invoices"}</button><button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}>{estimateWord}</button></nav>
-      <section className="doc-months" aria-label={lang === "es" ? "Totales por mes" : "Monthly totals"}>
-        <div className="doc-months-track" ref={docTrackRef} onScroll={(e) => { const el = e.currentTarget; const card = el.querySelector<HTMLElement>(".doc-month-card"); if (card && card.offsetWidth > 0) setActiveMonthIdx(Math.max(0, Math.min(docCards.length - 1, Math.round(el.scrollLeft / (card.offsetWidth + 10))))); }}>
-          {docCards.map((c) => (
-            <article className={`doc-month-card${c.kind === "year" ? " is-year" : ""}`} key={c.key}>
-              <header><span>{c.label}</span>{c.kind === "year" ? <em>{lang === "es" ? "Total del año" : "Year total"}</em> : c.key === month ? <em>{lang === "es" ? "Este mes" : "This month"}</em> : null}</header>
-              <div className="doc-month-stats">
-                <span className="doc-month-stat"><small>{tab === "invoices" ? (lang === "es" ? "Facturado" : "Invoiced") : estimateWord}</small><strong>{usd(tab === "invoices" ? c.invoiced : c.estimated)}</strong></span>
-              </div>
-              <small className="doc-month-counts">{tab === "invoices" ? `${c.invCount} ${lang === "es" ? "facturas" : "invoices"}` : `${c.estCount} ${estTerms.plural}`}</small>
-            </article>
-          ))}
+      <nav className="document-tabs doc-seg" aria-label={lang === "es" ? "Documentos" : "Documents"}>
+        <button className={tab === "invoices" ? "active" : ""} onClick={() => setTab("invoices")}><Icon size={16}><path d="M6 3.5h12V20l-2-1.4L14 20l-2-1.4L10 20l-2-1.4L6 20z" /><path d="M9 8h6M9 11.5h6" /></Icon>{lang === "es" ? "Facturas" : "Invoices"}</button>
+        <button className={tab === "estimates" ? "active" : ""} onClick={() => setTab("estimates")}><Icon size={16}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9.5 4a2.5 2.5 0 0 1 5 0" /><path d="M9 11h6M9 14.5h4" /></Icon>{estimateWord}</button>
+      </nav>
+      <section className={`doc-strip${period === "month" ? " is-month" : ""}`} aria-label={lang === "es" ? "Totales del periodo" : "Period totals"}>
+        <div className="doc-strip-top">
+          {period === "month" && (
+            <span className="doc-month-pick">
+              <button type="button" aria-label={lang === "es" ? "Mes anterior" : "Previous month"} onClick={() => shiftMonth(-1)}><Icon size={11}><path d="M15 5l-7 7 7 7" /></Icon></button>
+              <span>{monthLabel(monthKey)}</span>
+              <button type="button" aria-label={lang === "es" ? "Mes siguiente" : "Next month"} disabled={monthKey >= month} onClick={() => shiftMonth(1)}><Icon size={11}><path d="M9 5l7 7-7 7" /></Icon></button>
+            </span>
+          )}
+          <span className="doc-period-chips" role="group" aria-label={lang === "es" ? "Periodo" : "Period"}>
+            <button type="button" className={period === "year" ? "on" : ""} onClick={() => setPeriod("year")}>{lang === "es" ? "Año" : "Year"}</button>
+            <button type="button" className={period === "month" ? "on" : ""} onClick={() => setPeriod("month")}>{lang === "es" ? "Mes" : "Month"}</button>
+          </span>
         </div>
-        {docCards.length > 1 && <div className="doc-months-dots" aria-hidden="true">{docCards.map((c, i) => <i key={c.key} className={i === activeMonthIdx ? "on" : ""} />)}</div>}
-        {tab === "invoices" && <p className="doc-balance-line">{lang === "es" ? "Saldo pendiente" : "Balance due"}: <strong>{usd(balanceDue)}</strong></p>}
+        <div className="doc-strip-main">
+          <div className="doc-strip-hero">
+            <span className="doc-strip-label">{heroLabel} — {tab === "invoices" ? (lang === "es" ? "FACTURADO" : "INVOICED") : estimateWord.toUpperCase()}</span>
+            <strong className="doc-strip-num">{usd(tab === "invoices" ? periodInvoiced : periodEstimated)}</strong>
+          </div>
+          <div className="doc-strip-stats">
+            {tab === "invoices" ? <>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "PAGADO" : "PAID"}</small><strong>{usd(periodPaid)}</strong></span>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "SALDO PENDIENTE" : "BALANCE DUE"}</small><strong>{usd(periodBalance)}</strong></span>
+            </> : <>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "ACEPTADO" : "ACCEPTED"}</small><strong>{usd(periodAccepted)}</strong></span>
+              <span className="doc-strip-stat"><small>{estimateWord.toUpperCase()}</small><strong>{periodQuotes.length}</strong></span>
+            </>}
+          </div>
+        </div>
       </section>
-      <div className="page-actions document-create">
-        <button className="primary-button" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><PlusIcon />{tab === "invoices" ? (lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE") : (lang === "es" ? `CREAR ${estimateWord.toUpperCase()}` : `CREATE ${estimateWord.toUpperCase()}`)}</button>
+      <div className="doc-controls">
+        {tab === "invoices" ? <>
+          <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? "Buscar facturas" : "Search invoices"}</span><input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder={lang === "es" ? "Buscar facturas" : "Search invoices"} aria-label={lang === "es" ? "Buscar facturas" : "Search invoices"} /></label>
+          <select className="ck-btn-sm doc-filter-chip" value={invStatus} onChange={(e) => setInvStatus(e.target.value as "all" | InvoiceStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
+            <option value="all">{lang === "es" ? "Todas" : "All"}</option><option value="draft">{t.draft}</option><option value="sent">{lang === "es" ? "Pendiente" : "Pending"}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option>
+          </select>
+        </> : <>
+          <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`}</span><input value={estSearch} onChange={(e) => setEstSearch(e.target.value)} placeholder={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} aria-label={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} /></label>
+        </>}
+        <button type="button" className="doc-new-btn" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><Icon size={13}><path d="M12 4v16M4 12h16" /></Icon>{lang === "es" ? (tab === "invoices" ? "Nueva" : "Nuevo") : "New"}</button>
       </div>
       {tab === "invoices" && recurringDue.length > 0 && (
         <section className="recurring-panel">
@@ -17654,21 +17673,18 @@ function InvoicesScreen({
           ))}
         </section>
       )}
-      {tab === "invoices" && (
-        <div className="ck-invoice-toolbar">
-          <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? "Buscar facturas" : "Search invoices"}</span><input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder={lang === "es" ? "Buscar facturas" : "Search invoices"} aria-label={lang === "es" ? "Buscar facturas" : "Search invoices"} /></label>
-          <select className="ck-btn-sm" value={invStatus} onChange={(e) => setInvStatus(e.target.value as "all" | InvoiceStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
-            <option value="all">{lang === "es" ? "Todas" : "All"}</option><option value="draft">{t.draft}</option><option value="sent">{lang === "es" ? "Pendiente" : "Pending"}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option>
-          </select>
-        </div>
-      )}
-      {tab === "invoices" ? <section className="quote-list document-list" aria-label={lang === "es" ? "Lista de facturas" : "Invoice list"}>
+      {tab === "invoices" ? <section className="quote-list document-list doc-list-v2 stagger-children" key={`inv-${period}-${monthKey}`} aria-label={lang === "es" ? "Lista de facturas" : "Invoice list"}>
         {query.isLoading && <SkeletonList rows={5} />}
-        {visibleInvoices.map((invoice) => (
+        {visibleInvoices.map((invoice) => {
+          const rowKey = `inv-${invoice.id}`;
+          const expanded = isExpanded(rowKey, invoice === visibleInvoices[0]);
+          return (
           <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
-          <TapArticle baseClass="document-tap" className="ck-invoice-row" onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
-            <button type="button" className={`ck-check${invoice.status === "paid" ? " done" : ""}`} aria-label={invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid")} onClick={() => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); }}>{invoice.status === "paid" && <CheckIcon />}</button>
-            {/* Build 3.0 (item 10): compact card — INV + client | amount + pill | Mark status | View. */}
+          <TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
+            {/* Doc redesign (2026-10-24): the status glyph IS the old ring
+                toggle — one tap marks paid / back to pending — drawn small:
+                green check when paid, amber clock while money is owed. */}
+            <button type="button" className={`ck-doc-glyph ${invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "overdue" : invoice.status === "draft" ? "draft" : "pend"}`} aria-label={invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid")} onClick={() => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); }}>{invoice.status === "paid" ? <Icon size={13}><path d="M4.5 12.5l5 5 10-11" /></Icon> : <Icon size={13}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 2" /></Icon>}</button>
             <span className="ck-invoice-row-copy">
               <strong>{invoice.invoiceNumber || `INV-${String(invoice.id).padStart(4, "0")}`}</strong>
               <small>{invoice.clientName}</small>
@@ -17677,29 +17693,41 @@ function InvoicesScreen({
               <strong className="ck-invoice-row-amount">{usd(money(invoice.totalWithLateFee))}</strong>
               <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</span>
             </span>
-            <span className="ck-invoice-actions">
+            <button type="button" className={`ck-doc-chev${expanded ? " open" : ""}`} aria-label={expanded ? (lang === "es" ? "Ocultar acciones" : "Hide actions") : (lang === "es" ? "Mostrar acciones" : "Show actions")} aria-expanded={expanded} onClick={() => toggleExpand(rowKey)}><Icon size={15}><path d="m6 9 6 6 6-6" /></Icon></button>
+            {expanded && <span className="ck-invoice-actions">
               <span className="ck-mark-status"><Icon size={14}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon><span>{lang === "es" ? "Marcar estado" : "Mark status"}</span><select className="ck-status-select" value={invoice.status} onChange={(e) => status.mutate({ id: invoice.id, status: e.target.value as InvoiceStatus })} aria-label={`${t.invoiceStatus} #${invoice.id}`}><option value="draft">{t.draft}</option><option value="sent">{t.sent}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option></select></span>
               <span className="ck-actions-sep" aria-hidden="true" />
               <button type="button" className="ck-view-action" onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><Icon size={15}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></Icon><span>{lang === "es" ? "Ver" : "View"}</span></button>
-            </span>
+            </span>}
           </TapArticle>
           </SwipeRow>
-        ))}
-        {visibleInvoices.length === 0 && !query.isLoading && (query.data?.invoices.length ?? 0) > 0 && <p className="privacy-note">{lang === "es" ? "No hay facturas que coincidan con la búsqueda." : "No invoices match your search."}</p>}
+          );
+        })}
+        {visibleInvoices.length === 0 && !query.isLoading && (query.data?.invoices.length ?? 0) > 0 && <p className="privacy-note">{invTerm || invStatus !== "all" ? (lang === "es" ? "No hay facturas que coincidan con la búsqueda." : "No invoices match your search.") : (lang === "es" ? `No hay facturas en ${monthLabel(monthKey)}.` : `No invoices in ${monthLabel(monthKey)}.`)}</p>}
         {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE"} onAction={() => setScreen({ name: "invoiceNew" })} />}
-      </section> : <section className="quote-list document-list">
+      </section> : <section className="quote-list document-list doc-list-v2 stagger-children" key={`est-${period}-${monthKey}`}>
         {quotes.isLoading && <SkeletonList rows={5} />}
-        {sortedQuotes.map((quote) => (
+        {visibleQuotes.map((quote) => {
+          const rowKey = `est-${quote.id}`;
+          const expanded = isExpanded(rowKey, quote === visibleQuotes[0]);
+          return (
           <SwipeRow key={quote.id} actions={quote.convertedToInvoiceId ? [] : [{ label: lang === "es" ? "Convertir" : "Convert", kind: "primary", onTap: () => setConfirmConvertQuoteId(quote.id) }]}>
-          <TapArticle baseClass="document-tap" onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
-            <div className="document-row-copy">
-              <span className={`status-chip ${quote.accepted || quote.automationStatus === "won" ? "paid" : quote.automationStatus === "lost" ? "overdue" : "sent"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
-              <h2>{quote.clientName}</h2><p>{quote.jobType || capFirst(estTerms.plural)} · {usd(money(quote.total))}</p><small>#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</small>
-            </div>
-            <div className="row-actions"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>
+          <TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
+            <span className="ck-est-row-main">
+              <span className="ck-est-row-l1">{quote.clientName}</span>
+              <span className="ck-est-row-l2">{quote.jobType || capFirst(estTerms.plural)} · {usd(money(quote.total))}</span>
+            </span>
+            <span className="ck-est-row-side">
+              <span className={`ck-pill ${quote.accepted || quote.automationStatus === "won" ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : "ck-pill-pending"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
+              <span className="ck-est-row-ref">#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</span>
+            </span>
+            <button type="button" className={`ck-doc-chev${expanded ? " open" : ""}`} aria-label={expanded ? (lang === "es" ? "Ocultar acciones" : "Hide actions") : (lang === "es" ? "Mostrar acciones" : "Show actions")} aria-expanded={expanded} onClick={() => toggleExpand(rowKey)}><Icon size={15}><path d="m6 9 6 6 6-6" /></Icon></button>
+            {expanded && <div className="row-actions ck-doc-subrow"><button onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>{t.previewPdf}</button>{quote.convertedToInvoiceId ? <button onClick={() => setScreen({ name: "invoicePreview", invoiceId: quote.convertedToInvoiceId as number })}>{lang === "es" ? "Ver factura" : "View invoice"}</button> : confirmConvertQuoteId === quote.id ? <><strong>{lang === "es" ? `¿Crear factura de ${usd(money(quote.total))}?` : `Create ${usd(money(quote.total))} invoice?`}</strong><button className="primary-button" disabled={quoteInvoice.isPending} onClick={() => { setConfirmConvertQuoteId(null); quoteInvoice.mutate(quote.id); }}>{lang === "es" ? "Sí, crear" : "Yes, create"}</button><button onClick={() => setConfirmConvertQuoteId(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></> : <button onClick={() => setConfirmConvertQuoteId(quote.id)}>{t.convertInvoice}</button>}{!quote.jobId && <button onClick={() => convertQuote.mutate(quote.id)}>{t.convertJob}</button>}</div>}
           </TapArticle>
           </SwipeRow>
-        ))}
+          );
+        })}
+        {visibleQuotes.length === 0 && !quotes.isLoading && (quotes.data?.quotes.length ?? 0) > 0 && <p className="privacy-note">{estTerm ? (lang === "es" ? `Ningún ${estTerms.singular} coincide con la búsqueda.` : `No ${estTerms.plural} match your search.`) : (lang === "es" ? `No hay ${estTerms.plural} en ${monthLabel(monthKey)}.` : `No ${estTerms.plural} in ${monthLabel(monthKey)}.`)}</p>}
         {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
