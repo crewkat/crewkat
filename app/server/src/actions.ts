@@ -22,7 +22,18 @@ import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
 import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
-import { assertRoleCan, productRoleOf, type ProductRole } from "./permissions";
+import {
+  ACCESS_SWITCHES,
+  assertAccessAllowed,
+  assertRoleCan,
+  effectiveAccess,
+  parseAccessOverrides,
+  productRoleOf,
+  serializeAccessOverrides,
+  type AccessOverrides,
+  type EffectiveAccess,
+  type ProductRole,
+} from "./permissions";
 import { platformAdminPhase1Actions } from "./platform-admin-phase1";
 import { platformAdminPhase2Actions } from "./platform-admin-phase2";
 import { scanListingText } from "./moderation";
@@ -848,9 +859,37 @@ const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
 const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
 export { authEnvelopeSchema };
-const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string() });
+// Tier 2 (0089): the five per-member access switches. In requests, each
+// switch is optional (absent = inherit the role preset); in
+// setMemberAccess, null clears an override back to the preset.
+const accessOverridesSchema = z.object({
+  seeMoney: z.boolean().optional(),
+  seeClientContact: z.boolean().optional(),
+  sendDocuments: z.boolean().optional(),
+  seeAllJobs: z.boolean().optional(),
+  recordPayments: z.boolean().optional(),
+});
+const accessOverridesPatchSchema = z.object({
+  seeMoney: z.boolean().nullable().optional(),
+  seeClientContact: z.boolean().nullable().optional(),
+  sendDocuments: z.boolean().nullable().optional(),
+  seeAllJobs: z.boolean().nullable().optional(),
+  recordPayments: z.boolean().nullable().optional(),
+});
+const effectiveAccessSchema = z.object({
+  seeMoney: z.boolean(), seeClientContact: z.boolean(), sendDocuments: z.boolean(), seeAllJobs: z.boolean(), recordPayments: z.boolean(),
+});
+const authUserSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), companyId: z.number(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(), marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(), announcementBanner: z.string(), createdAt: z.string(),
+  // Tier 2: how this login authenticates ("crew_pin" = company code +
+  // PIN, no email) and the member's EFFECTIVE access switches (role
+  // preset + admin overrides resolved server-side). The phone client
+  // keys its crew-shaped home off these two fields.
+  credentialType: z.enum(["email", "crew_pin"]), access: effectiveAccessSchema });
 // Track 1c: one row of the company team list (Office Team section).
-const teamMemberSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), active: z.boolean(), isSelf: z.boolean(), createdAt: z.string() });
+// Tier 2 adds the credential type, the stored overrides, and the
+// resolved effective access so the Team section can render the switch
+// panel and a plain-language access summary per member.
+const teamMemberSchema = z.object({ id: z.number(), name: z.string(), email: z.string(), role: z.enum(["owner", "admin", "office", "field"]), teamRole: z.enum(["admin", "office", "field"]), active: z.boolean(), isSelf: z.boolean(), createdAt: z.string(), credentialType: z.enum(["email", "crew_pin"]), overrides: accessOverridesSchema, access: effectiveAccessSchema });
 const authCodeDeliverySchema = z.enum(["sent", "fallback", "failed"]);
 // The standalone harness (server.mjs) attaches these to the action context:
 // refreshToken = raw refresh token from the HttpOnly cookie (if present).
@@ -1000,7 +1039,7 @@ async function derivePassword(password: string, saltHex: string, iterations: num
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 export function authUserShape(row: typeof schema.authUsers.$inferSelect, announcementBanner: string) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", access: effectiveAccess(productRoleOf(row.role), parseAccessOverrides(row.accessOverrides)) };
 }
 async function issueAuthCode(ctx: Ctx, userId: number, purpose: "verify_email" | "reset_password") {
   const db = ctx.db<typeof schema>();
@@ -1183,6 +1222,281 @@ export async function requireCompanyAdmin(ctx: Ctx) {
     throw new Error("Admin access required. Only your company's admin can manage the team.");
   }
   return { identity, admin: user };
+}
+
+// ---------------------------------------------------------------------------
+// Tier 2 (0089): companies, crew PIN credentials, tier gating, and the
+// payload shaping that enforces the per-member access switches.
+// ---------------------------------------------------------------------------
+
+export type CompanyTier = "app" | "office";
+
+// Crew codes use the referral-code alphabet (no confusable 0/O/1/I/L).
+const CREW_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+export function normalizeCrewCode(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function crewCodeDisplay(normalized: string): string {
+  return normalized.length === 8 ? `${normalized.slice(0, 4)}-${normalized.slice(4)}` : normalized;
+}
+
+function makeCrewCode(): string {
+  let code = "";
+  for (let i = 0; i < 8; i++) code += CREW_CODE_ALPHABET[randomInt(CREW_CODE_ALPHABET.length)];
+  return crewCodeDisplay(code);
+}
+
+async function uniqueCrewCode(db: ReturnType<Ctx["db"]>): Promise<string> {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const code = makeCrewCode();
+    const existing = (await db.select({ id: schema.companies.id }).from(schema.companies).where(eq(schema.companies.crewCode, code)).limit(1))[0];
+    if (!existing) return code;
+  }
+  throw new Error("Could not generate a crew code. Try again.");
+}
+
+// Companies were implicit before 0089 (just a company_id integer), so
+// rows are created lazily: the first Team-surface call for a company
+// mints its row (tier "office" — the grandfathered default) and its
+// crew code. signUp also calls this for brand-new companies.
+export async function ensureCompanyRow(db: ReturnType<Ctx["db"]>, companyId: number): Promise<typeof schema.companies.$inferSelect> {
+  const existing = (await db.select().from(schema.companies).where(eq(schema.companies.id, companyId)).limit(1))[0];
+  if (existing) {
+    if (existing.crewCode) return existing;
+    const crewCode = await uniqueCrewCode(db);
+    await db.update(schema.companies).set({ crewCode, updatedAt: new Date() }).where(eq(schema.companies.id, companyId));
+    return { ...existing, crewCode };
+  }
+  const now = new Date();
+  const crewCode = await uniqueCrewCode(db);
+  const made = (await db.insert(schema.companies).values({ id: companyId, crewCode, tier: "office", createdAt: now, updatedAt: now }).returning())[0];
+  if (!made) throw new Error("The company record could not be created.");
+  return made;
+}
+
+// Tier gate for the Office-tier capabilities (staff accounts, crew
+// logins, override switches — the whole Team surface). Companies on the
+// "app" tier are single-user: creating or re-scoping logins is refused
+// with an upgrade message. Deactivation is deliberately NOT gated (see
+// updateStaffMember) — an off switch must always work.
+export async function assertOfficeTier(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  const company = await ensureCompanyRow(db, companyId);
+  if (company.tier !== "office") {
+    throw new Error("Team logins are part of the Crewkat Office plan. Upgrade this company to Office to add staff and crew logins.");
+  }
+}
+
+// --- Crew PINs -------------------------------------------------------------
+// A PIN identifies a member only together with the company code, and
+// must be unique among the company's crew logins (the login supplies
+// nothing else). PINs are 6 digits, PBKDF2-hashed like passwords.
+
+async function pinMatches(pin: string, row: { pinHash: string | null; pinSalt: string | null }): Promise<boolean> {
+  if (!row.pinHash || !row.pinSalt) return false;
+  return (await derivePassword(pin, row.pinSalt, AUTH_PASSWORD_ITERATIONS)) === row.pinHash;
+}
+
+async function generateUniqueCrewPin(db: ReturnType<Ctx["db"]>, companyId: number, excludeUserId?: number): Promise<string> {
+  const members = await db.select({ id: schema.authUsers.id, pinHash: schema.authUsers.pinHash, pinSalt: schema.authUsers.pinSalt })
+    .from(schema.authUsers)
+    .where(and(eq(schema.authUsers.companyId, companyId), eq(schema.authUsers.credentialType, "crew_pin")));
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const pin = randomCode();
+    let clash = false;
+    for (const member of members) {
+      if (excludeUserId !== undefined && member.id === excludeUserId) continue;
+      if (await pinMatches(pin, member)) { clash = true; break; }
+    }
+    if (!clash) return pin;
+  }
+  throw new Error("Could not generate a crew PIN. Try again.");
+}
+
+// Crew sign-in lockout: failed attempts are recorded per company in
+// rate_limit_events (scope "crew-login:fail"); 10 failures inside 15
+// minutes locks crew sign-in for the whole company until they age out.
+// A successful sign-in clears the counter. Per-company (not per-member)
+// because the login attempt itself doesn't say which member it targets
+// until the PIN matches.
+const CREW_LOGIN_MAX_FAILURES = 10;
+const CREW_LOGIN_WINDOW_MS = 15 * 60_000;
+
+async function crewLoginLocked(db: ReturnType<Ctx["db"]>, companyId: number): Promise<boolean> {
+  const windowStart = new Date(Date.now() - CREW_LOGIN_WINDOW_MS);
+  const hits = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "crew-login:fail"), eq(schema.rateLimitEvents.key, String(companyId)), gte(schema.rateLimitEvents.occurredAt, windowStart)));
+  return hits.length >= CREW_LOGIN_MAX_FAILURES;
+}
+
+async function recordCrewLoginFailure(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  await db.insert(schema.rateLimitEvents).values({ scope: "crew-login:fail", key: String(companyId), occurredAt: new Date() });
+}
+
+async function clearCrewLoginFailures(db: ReturnType<Ctx["db"]>, companyId: number): Promise<void> {
+  await db.delete(schema.rateLimitEvents).where(and(eq(schema.rateLimitEvents.scope, "crew-login:fail"), eq(schema.rateLimitEvents.key, String(companyId))));
+}
+
+// --- Access shaping ----------------------------------------------------------
+// The jobs a member "has": jobs with an appointment whose crewMember
+// text names them (the app's existing free-text crew assignment), plus
+// jobs they have clocked time on. Used when seeAllJobs is off.
+export async function assignedJobIds(db: ReturnType<Ctx["db"]>, user: { name: string; companyId: number }): Promise<Set<number>> {
+  const ids = new Set<number>();
+  const nameKey = user.name.trim().toLowerCase();
+  if (!nameKey) return ids;
+  const appts = await db.select({ jobId: schema.appointments.jobId, crewMember: schema.appointments.crewMember })
+    .from(schema.appointments).where(eq(schema.appointments.companyId, user.companyId));
+  for (const a of appts) {
+    if (a.jobId != null && a.crewMember.trim().toLowerCase() === nameKey) ids.add(a.jobId);
+  }
+  const times = await db.select({ jobId: schema.timeEntries.jobId, crewMember: schema.timeEntries.crewMember })
+    .from(schema.timeEntries).where(eq(schema.timeEntries.companyId, user.companyId));
+  for (const t of times) {
+    if (t.crewMember.trim().toLowerCase() === nameKey) ids.add(t.jobId);
+  }
+  return ids;
+}
+
+type AnyRecord = Record<string, any>;
+
+function stripLineItemAmounts(holder: AnyRecord): void {
+  if (Array.isArray(holder.lineItems)) {
+    holder.lineItems = holder.lineItems.map((item: AnyRecord) => ({ ...item, amount: "" }));
+  }
+  if (Array.isArray(holder.materials)) {
+    holder.materials = holder.materials.map((item: any) => (
+      item && typeof item === "object" && "amount" in item ? { ...item, amount: "" } : item
+    ));
+  }
+}
+
+// Money VALUES are blanked/zeroed in place (payload shapes — and the
+// clients' zod response contracts — stay identical; the numbers simply
+// never reach a member whose seeMoney switch is off).
+function stripQuoteMoney(quote: AnyRecord): AnyRecord {
+  const out = { ...quote, subtotal: "", total: "", discountValue: "", taxValue: "" };
+  // Line items include the tickable option rows — their amounts are
+  // money too, so they blank with the rest.
+  stripLineItemAmounts(out);
+  return out;
+}
+
+function stripInvoiceMoney(invoice: AnyRecord): AnyRecord {
+  const out = {
+    ...invoice,
+    subtotal: "", total: "", discountValue: "", taxValue: "",
+    paidToDate: "", balanceRemaining: "", lateFeeAccrued: "", totalWithLateFee: "",
+    payments: Array.isArray(invoice.payments) ? invoice.payments.map((p: AnyRecord) => ({ ...p, amount: "" })) : invoice.payments,
+  };
+  stripLineItemAmounts(out);
+  return out;
+}
+
+function stripJobMoney(job: AnyRecord): AnyRecord {
+  return { ...job, amountDue: "", contractSum: "", depositAmount: "", paymentNotes: "" };
+}
+
+function stripContact(holder: AnyRecord): AnyRecord {
+  return { ...holder, clientPhone: "", clientEmail: "" };
+}
+
+// Post-handler payload shaping for the access switches, run inside
+// protectActions. Only the payloads a Field/Office member can already
+// reach are shaped; role-gated surfaces never get here for them.
+export async function applyAccessShaping(
+  db: ReturnType<Ctx["db"]>,
+  user: typeof schema.authUsers.$inferSelect,
+  access: EffectiveAccess,
+  actionName: string,
+  result: unknown,
+): Promise<unknown> {
+  if (!result || typeof result !== "object") return result;
+  const out = result as AnyRecord;
+
+  if (actionName === "listInvoices" && Array.isArray(out.invoices)) {
+    if (!access.seeMoney) out.invoices = out.invoices.map(stripInvoiceMoney);
+    if (!access.seeClientContact) out.invoices = out.invoices.map(stripContact);
+    return out;
+  }
+  if (actionName === "listQuotes" && Array.isArray(out.quotes)) {
+    if (!access.seeMoney) out.quotes = out.quotes.map(stripQuoteMoney);
+    if (!access.seeClientContact) out.quotes = out.quotes.map(stripContact);
+    return out;
+  }
+  if (actionName === "listClients" && Array.isArray(out.clients)) {
+    out.clients = out.clients.map((client: AnyRecord) => {
+      let shaped = client;
+      if (!access.seeClientContact) shaped = { ...shaped, phone: "", email: "" };
+      if (!access.seeMoney) shaped = { ...shaped, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+      return shaped;
+    });
+    return out;
+  }
+  if (actionName === "getClient") {
+    if (out.client) {
+      if (!access.seeClientContact) out.client = { ...out.client, phone: "", email: "" };
+      if (!access.seeMoney) out.client = { ...out.client, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+    }
+    if (Array.isArray(out.jobs)) {
+      out.jobs = out.jobs.map((job: AnyRecord) => {
+        let shaped = job;
+        if (!access.seeMoney) shaped = stripJobMoney(shaped);
+        if (!access.seeClientContact) shaped = stripContact(shaped);
+        return shaped;
+      });
+    }
+    if (Array.isArray(out.quotes) && !access.seeMoney) out.quotes = out.quotes.map(stripQuoteMoney);
+    return out;
+  }
+  if (actionName === "listJobs" && Array.isArray(out.jobs)) {
+    let jobs = out.jobs as AnyRecord[];
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs = jobs.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney) jobs = jobs.map(stripJobMoney);
+    if (!access.seeClientContact) jobs = jobs.map(stripContact);
+    out.jobs = jobs;
+    return out;
+  }
+  if (actionName === "listAppointments" && Array.isArray(out.appointments)) {
+    let appts = out.appointments as AnyRecord[];
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      const nameKey = user.name.trim().toLowerCase();
+      appts = appts.filter((a) => (a.jobId != null && mine.has(a.jobId)) || (typeof a.crewMember === "string" && a.crewMember.trim().toLowerCase() === nameKey && nameKey !== ""));
+    }
+    if (!access.seeClientContact) {
+      appts = appts.map((a) => ({ ...a, clientPhone: "" }));
+    }
+    out.appointments = appts;
+    return out;
+  }
+  if (actionName === "getJob") {
+    if (out.job) {
+      if (!access.seeAllJobs) {
+        const mine = await assignedJobIds(db, user);
+        if (!mine.has(out.job.id)) {
+          throw new Error("That job isn't on your schedule. Ask your admin or office if it should be.");
+        }
+      }
+      if (!access.seeMoney) {
+        out.job = stripJobMoney(out.job);
+        if (Array.isArray(out.documents)) {
+          out.documents = out.documents.map((doc: AnyRecord) => ({ ...doc, amount: "" }));
+        }
+        if (Array.isArray(out.receipts)) {
+          out.receipts = out.receipts.map((receipt: AnyRecord) => ({ ...receipt, amount: "" }));
+        }
+        out.contractSummary = null;
+      }
+      if (!access.seeClientContact) out.job = stripContact(out.job);
+    }
+    return out;
+  }
+  return result;
 }
 
 // Admin panel Phase 2: platform-team membership = is_platform_admin OR a row
@@ -2941,6 +3255,10 @@ export const BaseActions = {
       const referralCode = await uniqueReferralCode(db);
       const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
+      // Tier 2: mint the company's row (crew code + tier flag) up front;
+      // best-effort — ensureCompanyRow also creates it lazily on the
+      // first Team-surface call, so a failure here never fails signup.
+      try { await ensureCompanyRow(db, companyId); } catch { /* lazy creation covers it */ }
       // Auth-screen language choice (EN/ES toggle): persist it on the new
       // company's settings so the first signed-in session opens in the
       // language the owner picked while signing up.
@@ -3045,6 +3363,53 @@ export const BaseActions = {
       }
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
+    },
+  }),
+  // Tier 2: crew sign-in. A crew member has NO email and NO password —
+  // the admin created their login in the Office Team section and handed
+  // them the company's crew code + a personal PIN. The pair identifies
+  // the member (PINs are unique within a company), and success issues
+  // exactly the same session as an email login, so everything
+  // downstream (role map, access switches, deactivation) applies
+  // unchanged. Failure handling mirrors email login's caution: a
+  // generic error for bad credentials, a per-company failure counter
+  // with a 15-minute lockout after 10 misses, and the shared per-IP
+  // limiter in front.
+  crewLogin: defineAction({
+    request: z.object({ companyCode: z.string().trim().min(4).max(16), pin: z.string().regex(/^\d{4,6}$/) }),
+    response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()), totpRequired: z.boolean().default(false) }),
+    async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
+      const db = ctx.db<typeof schema>();
+      const codeKey = normalizeCrewCode(args.companyCode);
+      const candidates = await db.select({ id: schema.companies.id, crewCode: schema.companies.crewCode })
+        .from(schema.companies);
+      const company = candidates.find((row) => row.crewCode && normalizeCrewCode(row.crewCode) === codeKey);
+      if (!company) throw new Error("Company code or PIN is incorrect.");
+      if (await crewLoginLocked(db, company.id)) {
+        throw new Error("Too many crew sign-in attempts for this company. Try again in 15 minutes.");
+      }
+      const members = await db.select().from(schema.authUsers)
+        .where(and(eq(schema.authUsers.companyId, company.id), eq(schema.authUsers.credentialType, "crew_pin")));
+      let matched: typeof schema.authUsers.$inferSelect | undefined;
+      for (const member of members) {
+        if (await pinMatches(args.pin, member)) { matched = member; break; }
+      }
+      if (!matched) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("Company code or PIN is incorrect.");
+      }
+      // The PIN identified the member; account-state refusals mirror
+      // email login (and deactivation — set by the company admin — is
+      // also re-checked on every later call by requireSession).
+      if (matched.deactivatedAt) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
+      }
+      if (matched.suspendedAt) throw new Error("This account has been suspended. Contact support for help.");
+      await clearCrewLoginFailures(db, company.id);
+      const session = await issueSession(ctx, matched.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(matched, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
     },
   }),
   // Public client-ID lookup (same pattern as getVapidPublicKey): the OAuth
@@ -4387,14 +4752,26 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // The owner row (role "owner") is never editable through this surface.
   listTeamMembers: defineAction({
     request: z.object({}),
-    response: z.object({ members: z.array(teamMemberSchema) }),
+    // Tier 2: the response also carries the company's crew sign-in code
+    // and tier flag, so the Team section can show crew how to sign in
+    // and render the upgrade prompt on the "app" tier.
+    response: z.object({ members: z.array(teamMemberSchema), crewCode: z.string(), tier: z.enum(["app", "office"]) }),
     async handler(ctx) {
       const { identity, admin } = await requireCompanyAdmin(ctx);
       const db = platformDb(ctx);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
       const rows = await db.select().from(schema.authUsers)
         .where(eq(schema.authUsers.companyId, identity.workspaceCompanyId))
         .orderBy(schema.authUsers.createdAt, schema.authUsers.id);
-      return { members: rows.map((row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, teamRole: productRoleOf(row.role), active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString() })) };
+      return {
+        crewCode: company.crewCode ?? "",
+        tier: company.tier,
+        members: rows.map((row) => {
+          const overrides = parseAccessOverrides(row.accessOverrides);
+          const teamRole = productRoleOf(row.role);
+          return { id: row.id, name: row.name, email: row.email, role: row.role, teamRole, active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", overrides, access: effectiveAccess(teamRole, overrides) };
+        }),
+      };
     },
   }),
   createStaffAccount: defineAction({
@@ -4403,6 +4780,8 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     async handler(ctx, args) {
       const { identity, admin } = await requireCompanyAdmin(ctx);
       const db = platformDb(ctx);
+      // Tier 2 packaging: staff logins are an Office-tier capability.
+      await assertOfficeTier(db, identity.workspaceCompanyId);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.email, email)).limit(1))[0];
       if (duplicate) throw new Error("An account with this email already exists. They should sign in with that email instead.");
@@ -4466,6 +4845,104 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       }
       ctx.invalidateQueries();
       return { ok: true as const };
+    },
+  }),
+
+  // Tier 2: create a CREW LOGIN — a Field-preset member with no email
+  // and no password. They sign in with the company crew code + the PIN
+  // minted here (crewLogin). The plaintext PIN is returned exactly
+  // once, in this response, for the admin to hand to the member; only
+  // its PBKDF2 hash is stored. The row's password fields hold an
+  // unusable random secret (same pattern as Google-created accounts),
+  // so the email login can never authenticate as this member.
+  createCrewLogin: defineAction({
+    request: z.object({ name: z.string().trim().min(2).max(120), overrides: accessOverridesSchema.default({}) }),
+    response: z.object({ id: z.number(), pin: z.string(), crewCode: z.string() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const now = new Date();
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId);
+      const pinSalt = randomHex(16);
+      const passwordSalt = randomHex(16);
+      const referralCode = await uniqueReferralCode(db);
+      const overrides = serializeAccessOverrides(args.overrides);
+      const made = (await db.insert(schema.authUsers).values({
+        name: args.name.trim(),
+        // Synthetic, non-deliverable address: the email column is NOT
+        // NULL UNIQUE, but a crew login has no email — this value is
+        // never displayed or mailed (the Team UI keys off
+        // credentialType) and can never receive a reset code.
+        email: `crew-${identity.workspaceCompanyId}-${randomHex(6)}@crew.invalid`,
+        passwordHash: await derivePassword(randomHex(32), passwordSalt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt, passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: "field",
+        credentialType: "crew_pin",
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        accessOverrides: overrides,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode, createdAt: now, updatedAt: now,
+      }).returning({ id: schema.authUsers.id }))[0];
+      if (!made) throw new Error("The crew login could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id, pin, crewCode: company.crewCode ?? "" };
+    },
+  }),
+  // Tier 2: re-issue a crew member's PIN (the old one stops working
+  // immediately). The new plaintext PIN is returned once, like at
+  // creation. Only crew logins have PINs; email logins reset through
+  // the normal password flow.
+  resetCrewPin: defineAction({
+    request: z.object({ userId: z.number().int().positive() }),
+    response: z.object({ pin: z.string() }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId || target.credentialType !== "crew_pin") {
+        throw new Error("Crew member not found.");
+      }
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId, target.id);
+      const pinSalt = randomHex(16);
+      await db.update(schema.authUsers).set({
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt, updatedAt: new Date(),
+      }).where(eq(schema.authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { pin };
+    },
+  }),
+  // Tier 2: set a member's access switches. The patch is per-switch:
+  // true/false stores an override, null clears it back to the role
+  // preset, absent leaves it untouched. Applies to staff accounts
+  // (office/field, either credential type) — never the owner's row
+  // (Admins are never switch-limited; see effectiveAccess).
+  setMemberAccess: defineAction({
+    request: z.object({ userId: z.number().int().positive(), overrides: accessOverridesPatchSchema }),
+    response: z.object({ ok: z.literal(true), overrides: accessOverridesSchema, access: effectiveAccessSchema }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const target = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId) throw new Error("Team member not found.");
+      if (target.role === "owner") throw new Error("The account owner's access can't be limited — owners always have full access.");
+      const next: AccessOverrides = { ...parseAccessOverrides(target.accessOverrides) };
+      for (const key of ACCESS_SWITCHES) {
+        const value = args.overrides[key];
+        if (value === null) delete next[key];
+        else if (typeof value === "boolean") next[key] = value;
+      }
+      await db.update(schema.authUsers).set({ accessOverrides: serializeAccessOverrides(next), updatedAt: new Date() })
+        .where(eq(schema.authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { ok: true as const, overrides: next, access: effectiveAccess(productRoleOf(target.role), next) };
     },
   }),
 
@@ -6742,6 +7219,9 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
 
 export const PUBLIC_ACTIONS = new Set([
   "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
+  // Tier 2: crew sign-in (company code + PIN) IS a login — public like
+  // "login", with its own per-company failure lockout in the handler.
+  "crewLogin",
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
   "getGoogleClientId", "googleSignIn",
@@ -6787,9 +7267,19 @@ function protectActions<T extends ActionsModule>(actions: T): T {
         // point every non-public action passes through — against the
         // explicit map in server/src/permissions.ts. Runs before the
         // premium gate so a role denial is never masked as an upsell.
-        assertRoleCan(productRoleOf(user.role), name);
+        const role = productRoleOf(user.role);
+        assertRoleCan(role, name);
+        // Tier 2: the member's per-person access switches sit directly
+        // under the role check — switch-gated action families are
+        // refused here, and switch-shaped payloads are stripped on the
+        // way out (applyAccessShaping). The user's row is re-read by
+        // requireSession on every call, so an admin's switch flip takes
+        // effect on the member's very next action.
+        const access = effectiveAccess(role, parseAccessOverrides(user.accessOverrides));
+        assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium") throw new Error("Premium required. Upgrade to unlock this Pro tool.");
-        return original(withWorkspace(ctx, user), args);
+        const result = await original(withWorkspace(ctx, user), args);
+        return applyAccessShaping(ctx.db<typeof schema>(), user, access, name, result);
       },
     };
     return [name, protectedAction] as const;

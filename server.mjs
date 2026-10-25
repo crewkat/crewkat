@@ -275,6 +275,46 @@ console.log("[crewkat] verifying team roles (0088) ...");
 }
 console.log("[crewkat] team roles schema verified.");
 
+// Repair (Tier 2): migration 0089 adds the crew-login columns on
+// auth_users (credential_type / pin_hash / pin_salt / access_overrides)
+// and the companies table (crew code + tier flag). Same self-heal
+// pattern: if the migration was ever skipped, crew sign-in and the
+// override checks in the action layer would fail on the missing
+// columns for EVERY account. Idempotent PRAGMA / sqlite_master checks
+// first; the companies backfill mirrors the migration (every existing
+// company starts on the "office" tier so nobody is locked out).
+console.log("[crewkat] verifying crew tier2 (0089) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`auth_users`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  const additions = [
+    ["credential_type", "ALTER TABLE `auth_users` ADD COLUMN `credential_type` text DEFAULT 'email' NOT NULL"],
+    ["pin_hash", "ALTER TABLE `auth_users` ADD COLUMN `pin_hash` text"],
+    ["pin_salt", "ALTER TABLE `auth_users` ADD COLUMN `pin_salt` text"],
+    ["access_overrides", "ALTER TABLE `auth_users` ADD COLUMN `access_overrides` text"],
+  ];
+  for (const [column, ddl] of additions) {
+    if (!existing.has(column)) {
+      console.log(`[crewkat] repair: adding missing column auth_users.${column}`);
+      await libsql.execute(ddl);
+    }
+  }
+  const tables = await libsql.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='companies'");
+  if (tables.rows.length === 0) {
+    console.log("[crewkat] repair: creating missing table companies");
+    await libsql.execute(`CREATE TABLE \`companies\` (
+      \`id\` integer PRIMARY KEY NOT NULL,
+      \`crew_code\` text,
+      \`tier\` text DEFAULT 'office' NOT NULL,
+      \`created_at\` integer NOT NULL,
+      \`updated_at\` integer NOT NULL
+    )`);
+    await libsql.execute("CREATE UNIQUE INDEX `companies_crew_code_unique` ON `companies` (`crew_code`)");
+  }
+  await libsql.execute("INSERT OR IGNORE INTO `companies` (`id`, `tier`, `created_at`, `updated_at`) SELECT DISTINCT `company_id`, 'office', 0, 0 FROM `auth_users`");
+}
+console.log("[crewkat] crew tier2 schema verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------

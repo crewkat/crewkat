@@ -5896,3 +5896,81 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .doc-status-dot.open { background: transparent; border: 1.6px solid #c4c4c4; }
 .doc-link-summary { min-height: 32px; }
 .client-doc-zoom-hint { font-size: 11px; }
+
+/* ---------- crew home (Tier 2): the field-shaped phone shell ---------- */
+.crew-shell { min-height: 100%; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+.crew-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px; background: linear-gradient(135deg, #0a2239, #12395c); color: #fff;
+  border-bottom: 2px solid var(--accent);
+}
+.crew-hello { display: block; font-size: 20px; font-weight: 700; }
+.crew-header-sub { display: block; font-size: 12px; opacity: 0.75; letter-spacing: 1px; text-transform: uppercase; }
+.crew-signout {
+  background: rgba(255, 255, 255, 0.12); color: #fff; border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius); padding: 10px 14px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.crew-main { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.crew-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.crew-tabs button {
+  padding: 14px; font-size: 17px; font-weight: 700; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+}
+.crew-tabs button.active { background: #0b2a44; color: #fff; border-color: #0b2a44; }
+.crew-h2 { font-size: 18px; margin: 4px 0 0; }
+.crew-note { color: var(--dim); font-size: 15px; }
+.crew-note.error { color: var(--danger); }
+.crew-cards { display: flex; flex-direction: column; gap: 10px; }
+.crew-job-card {
+  display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; cursor: pointer; color: var(--text);
+}
+.crew-job-card:disabled { opacity: 0.6; cursor: default; }
+.crew-job-time { font-weight: 800; font-size: 16px; color: #0b2a44; min-width: 74px; }
+.crew-job-main { display: flex; flex-direction: column; gap: 2px; flex: 1; font-size: 15px; }
+.crew-job-main strong { font-size: 17px; }
+.crew-job-address { color: var(--dim); }
+.crew-job-chevron { font-size: 26px; color: var(--dim); }
+.crew-back { align-self: flex-start; background: none; border: none; color: #0b2a44; font-size: 16px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+.crew-job-head { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+.crew-job-head strong { font-size: 20px; }
+.crew-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.crew-action {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 10px;
+  font-size: 30px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); cursor: pointer; text-decoration: none;
+}
+.crew-action span { font-size: 16px; font-weight: 700; }
+.crew-section { display: flex; flex-direction: column; gap: 12px; }
+.crew-photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.crew-photo { margin: 0; }
+.crew-photo img { width: 100%; height: 92px; object-fit: cover; border-radius: var(--radius); display: block; }
+.crew-photo figcaption { font-size: 11px; color: var(--dim); text-transform: capitalize; margin-top: 2px; }
+.crew-big-button {
+  background: var(--accent); color: var(--accent-ink); border: none; border-radius: var(--radius);
+  padding: 16px; font-size: 17px; font-weight: 800; cursor: pointer; width: 100%;
+}
+.crew-big-button:disabled { opacity: 0.6; }
+.crew-messages { display: flex; flex-direction: column; gap: 8px; }
+.crew-message { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; max-width: 85%; }
+.crew-message.client { align-self: flex-start; }
+.crew-message.contractor { align-self: flex-end; background: #e4ecf7; }
+.crew-message p { margin: 0; font-size: 15px; white-space: pre-wrap; }
+.crew-message img { max-width: 100%; border-radius: 6px; }
+.crew-message-form { display: flex; gap: 8px; }
+.crew-message-form input {
+  flex: 1; padding: 14px; font-size: 16px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); color: var(--text);
+}
+.crew-send {
+  background: #0b2a44; color: #fff; border: none; border-radius: var(--radius);
+  padding: 0 20px; font-size: 16px; font-weight: 700; cursor: pointer;
+}
+.crew-send:disabled { opacity: 0.5; }
+.crew-log-form { display: flex; flex-direction: column; gap: 12px; }
+.crew-log-form label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; }
+.crew-log-form input, .crew-log-form textarea {
+  padding: 12px; font-size: 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font-family: inherit;
+}

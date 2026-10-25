@@ -864,6 +864,28 @@ export const marketplaceBookingRequests = sqliteTable("marketplace_booking_reque
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// Tier 2 (0089): one row per company (id = the company_id used across
+// auth_users and every company-scoped table). Companies were implicit
+// until now; this table carries the two company-level facts Tier 2
+// needs:
+// - crewCode: the short shared code crew members type (with their
+//   personal PIN) on the crew sign-in. Unique across companies,
+//   generated lazily by the action layer on first Team use.
+// - tier: the packaging flag — "app" (Tier 1, single-user: no staff /
+//   crew logins, no Team, no override switches) vs "office" (Tier 2).
+//   EVERY existing company defaults to "office" so no current account
+//   is ever locked out of team features; the flag exists so pricing
+//   can attach later. No Stripe objects hang off it.
+// Rows are created lazily (ensureCompanyRow) for companies that predate
+// the table, and at signUp for new ones.
+export const companies = sqliteTable("companies", {
+  id: integer("id").primaryKey(),
+  crewCode: text("crew_code").unique(),
+  tier: text("tier", { enum: ["app", "office"] }).notNull().default("office"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 export const authUsers = sqliteTable("auth_users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -882,6 +904,27 @@ export const authUsers = sqliteTable("auth_users", {
   // set, requireSession rejects the user. Distinct from suspendedAt,
   // which is a platform-level suspension.
   deactivatedAt: integer("deactivated_at", { mode: "timestamp_ms" }),
+  // Tier 2 (0089): how this login authenticates. "email" is the classic
+  // email + password login (every pre-Tier-2 row). "crew_pin" is a crew
+  // login created by the company admin in the Office Team section: NO
+  // email, NO password — the member signs in with the company's crew
+  // code + their personal PIN (crewLogin action). Crew rows carry a
+  // synthetic non-deliverable address in `email` only because the
+  // column is NOT NULL UNIQUE; it is never shown or mailed.
+  credentialType: text("credential_type", { enum: ["email", "crew_pin"] }).notNull().default("email"),
+  // Tier 2 (0089): the crew PIN credential, PBKDF2-hashed with the same
+  // KDF as passwords (derivePassword + AUTH_PASSWORD_ITERATIONS). The
+  // plaintext PIN exists only in the createCrewLogin / resetCrewPin
+  // response, shown once to the admin who hands it to the member.
+  pinHash: text("pin_hash"),
+  pinSalt: text("pin_salt"),
+  // Tier 2 (0089): per-member access overrides (JSON object, subset of
+  // the five switches in server/src/permissions.ts — seeMoney,
+  // seeClientContact, sendDocuments, seeAllJobs, recordPayments).
+  // NULL / missing key = inherit the role preset. Consulted inside
+  // protectActions alongside the role map; settable only by an Admin
+  // via setMemberAccess.
+  accessOverrides: text("access_overrides"),
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),

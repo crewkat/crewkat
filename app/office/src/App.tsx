@@ -312,6 +312,9 @@ function GlobalSearch({
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [crewMode, setCrewMode] = useState(false);
+  const [companyCode, setCompanyCode] = useState("");
+  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [totpNotice, setTotpNotice] = useState(false);
@@ -322,6 +325,14 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
     setError("");
     setTotpNotice(false);
     try {
+      if (crewMode) {
+        // Tier 2 crew sign-in: company code + personal PIN, no email.
+        const result = await api.crewLogin({ companyCode: companyCode.trim(), pin });
+        if (isCookieLoginResult(result)) setActiveSessionToken(result.sessionToken);
+        else persistLegacySessionToken(result.sessionToken);
+        onAuthenticated(result.user as AuthUser);
+        return;
+      }
       const result = await api.login({ email: email.trim(), password });
       if (result.totpRequired) {
         // Platform-team 2FA accounts finish sign-in in the phone app flow;
@@ -344,15 +355,30 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
       <form className="login-card" onSubmit={submit}>
         <img src={crewkatC} alt="Crewkat" className="login-logo" />
         <h1 className="login-wordmark">Crewkat <span>Office</span></h1>
-        <p className="login-sub">The desktop back office for your Crewkat account.</p>
-        <label className="field">
-          <span>Email</span>
-          <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@company.com" />
-        </label>
-        <label className="field">
-          <span>Password</span>
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Your password" />
-        </label>
+        <p className="login-sub">{crewMode ? "Crew member sign-in — use the company code and PIN your admin gave you." : "The desktop back office for your Crewkat account."}</p>
+        {crewMode ? (
+          <>
+            <label className="field">
+              <span>Company code</span>
+              <input autoComplete="off" value={companyCode} onChange={(e) => setCompanyCode(e.target.value.toUpperCase())} required placeholder="e.g. WK7P-2QXR" />
+            </label>
+            <label className="field">
+              <span>Your PIN</span>
+              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{4,6}" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} required placeholder="6-digit PIN" />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span>Email</span>
+              <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@company.com" />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Your password" />
+            </label>
+          </>
+        )}
         {totpNotice ? (
           <p className="inline-notice">This account requires two-factor authentication. Please sign in with the Crewkat phone app to complete the 2FA flow.</p>
         ) : null}
@@ -360,7 +386,16 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
-        <p className="login-foot muted">Same account as the Crewkat mobile app.</p>
+        <p className="login-foot muted">
+          {crewMode ? (
+            <button type="button" className="link-button" onClick={() => { setCrewMode(false); setError(""); }}>← Back to email sign-in</button>
+          ) : (
+            <>
+              Same account as the Crewkat mobile app.{" "}
+              <button type="button" className="link-button" onClick={() => { setCrewMode(true); setError(""); }}>Crew member? Sign in with a code →</button>
+            </>
+          )}
+        </p>
       </form>
     </main>
   );

@@ -34328,6 +34328,7 @@ __export(exports_schema, {
   businessVerifications: () => businessVerifications,
   cancellationFeedback: () => cancellationFeedback,
   clients: () => clients,
+  companies: () => companies,
   completionCertificates: () => completionCertificates,
   completionOverrides: () => completionOverrides,
   credentials: () => credentials,
@@ -41996,6 +41997,13 @@ var marketplaceBookingRequests = sqliteTable("marketplace_booking_requests", {
   status: text("status", { enum: ["requested", "confirmed", "declined"] }).notNull().default("requested"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var companies = sqliteTable("companies", {
+  id: integer2("id").primaryKey(),
+  crewCode: text("crew_code").unique(),
+  tier: text("tier", { enum: ["app", "office"] }).notNull().default("office"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
 var authUsers = sqliteTable("auth_users", {
   id: integer2("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -42007,6 +42015,10 @@ var authUsers = sqliteTable("auth_users", {
   companyId: integer2("company_id").notNull().default(1),
   role: text("role", { enum: ["owner", "admin", "office", "field"] }).notNull().default("owner"),
   deactivatedAt: integer2("deactivated_at", { mode: "timestamp_ms" }),
+  credentialType: text("credential_type", { enum: ["email", "crew_pin"] }).notNull().default("email"),
+  pinHash: text("pin_hash"),
+  pinSalt: text("pin_salt"),
+  accessOverrides: text("access_overrides"),
   tier: text("tier", { enum: ["free", "premium"] }).notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
@@ -73176,6 +73188,9 @@ var ADMIN_ACTIONS = new Set([
   "listTeamMembers",
   "createStaffAccount",
   "updateStaffMember",
+  "createCrewLogin",
+  "resetCrewPin",
+  "setMemberAccess",
   "addAppUser",
   "updateAppUser",
   "deleteAppUser",
@@ -73542,6 +73557,80 @@ function roleCan(role, actionName) {
 function assertRoleCan(role, actionName) {
   if (!roleCan(role, actionName)) {
     throw new Error(role === "field" ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through." : "Your Office role doesn't include that \u2014 it's an admin action. Ask your company's admin.");
+  }
+}
+var ACCESS_SWITCHES = [
+  "seeMoney",
+  "seeClientContact",
+  "sendDocuments",
+  "seeAllJobs",
+  "recordPayments"
+];
+var ROLE_ACCESS_PRESETS = {
+  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false }
+};
+function parseAccessOverrides(json) {
+  if (!json)
+    return {};
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
+    const out = {};
+    for (const key of ACCESS_SWITCHES) {
+      const value = parsed[key];
+      if (typeof value === "boolean")
+        out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function serializeAccessOverrides(overrides) {
+  const clean = {};
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      clean[key] = overrides[key];
+  }
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+function effectiveAccess(role, overrides) {
+  const preset = ROLE_ACCESS_PRESETS[role];
+  if (role === "admin")
+    return { ...preset };
+  const out = { ...preset };
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      out[key] = overrides[key];
+  }
+  return out;
+}
+var SEND_DOCUMENT_ACTIONS = new Set([
+  "createDocumentLink",
+  "createPortalLink",
+  "rotatePortalLink",
+  "sendQuoteVersion"
+]);
+var RECORD_PAYMENT_ACTIONS = new Set([
+  "addPayment",
+  "toggleInvoicePaid"
+]);
+var SWITCH_LABELS = {
+  seeMoney: "seeing money totals",
+  seeClientContact: "seeing client contact details",
+  sendDocuments: "sending documents to clients",
+  seeAllJobs: "seeing every company job",
+  recordPayments: "recording payments"
+};
+function assertAccessAllowed(access, actionName) {
+  if (SEND_DOCUMENT_ACTIONS.has(actionName) && !access.sendDocuments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.sendDocuments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
   }
 }
 
@@ -74704,7 +74793,15 @@ var platformAdminPhase2SettingsActions = {
         marketplaceTermsAcceptedAt: string2().nullable(),
         marketplaceTermsVersion: string2().nullable(),
         announcementBanner: string2(),
-        createdAt: string2()
+        createdAt: string2(),
+        credentialType: _enum(["email", "crew_pin"]),
+        access: object({
+          seeMoney: boolean2(),
+          seeClientContact: boolean2(),
+          sendDocuments: boolean2(),
+          seeAllJobs: boolean2(),
+          recordPayments: boolean2()
+        })
       }),
       setCookies: array(string2()),
       totpRequired: boolean2().default(false)
@@ -76027,8 +76124,44 @@ var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
 var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
-var authUserSchema = object({ id: number2(), name: string2(), email: string2(), companyId: number2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), tier: _enum(["free", "premium"]), isPlatformAdmin: boolean2(), marketplaceTermsAcceptedAt: string2().nullable(), marketplaceTermsVersion: string2().nullable(), announcementBanner: string2(), createdAt: string2() });
-var teamMemberSchema = object({ id: number2(), name: string2(), email: string2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), active: boolean2(), isSelf: boolean2(), createdAt: string2() });
+var accessOverridesSchema = object({
+  seeMoney: boolean2().optional(),
+  seeClientContact: boolean2().optional(),
+  sendDocuments: boolean2().optional(),
+  seeAllJobs: boolean2().optional(),
+  recordPayments: boolean2().optional()
+});
+var accessOverridesPatchSchema = object({
+  seeMoney: boolean2().nullable().optional(),
+  seeClientContact: boolean2().nullable().optional(),
+  sendDocuments: boolean2().nullable().optional(),
+  seeAllJobs: boolean2().nullable().optional(),
+  recordPayments: boolean2().nullable().optional()
+});
+var effectiveAccessSchema = object({
+  seeMoney: boolean2(),
+  seeClientContact: boolean2(),
+  sendDocuments: boolean2(),
+  seeAllJobs: boolean2(),
+  recordPayments: boolean2()
+});
+var authUserSchema = object({
+  id: number2(),
+  name: string2(),
+  email: string2(),
+  companyId: number2(),
+  role: _enum(["owner", "admin", "office", "field"]),
+  teamRole: _enum(["admin", "office", "field"]),
+  tier: _enum(["free", "premium"]),
+  isPlatformAdmin: boolean2(),
+  marketplaceTermsAcceptedAt: string2().nullable(),
+  marketplaceTermsVersion: string2().nullable(),
+  announcementBanner: string2(),
+  createdAt: string2(),
+  credentialType: _enum(["email", "crew_pin"]),
+  access: effectiveAccessSchema
+});
+var teamMemberSchema = object({ id: number2(), name: string2(), email: string2(), role: _enum(["owner", "admin", "office", "field"]), teamRole: _enum(["admin", "office", "field"]), active: boolean2(), isSelf: boolean2(), createdAt: string2(), credentialType: _enum(["email", "crew_pin"]), overrides: accessOverridesSchema, access: effectiveAccessSchema });
 var authCodeDeliverySchema = _enum(["sent", "fallback", "failed"]);
 function authMeta(ctx) {
   return ctx;
@@ -76182,7 +76315,7 @@ async function derivePassword(password, saltHex, iterations) {
   return Array.from(new Uint8Array(bits)).map((item) => item.toString(16).padStart(2, "0")).join("");
 }
 function authUserShape(row, announcementBanner) {
-  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, email: row.email, companyId: row.companyId, role: row.role, teamRole: productRoleOf(row.role), tier: row.tier, isPlatformAdmin: row.isPlatformAdmin, marketplaceTermsAcceptedAt: row.marketplaceTermsAcceptedAt ? row.marketplaceTermsAcceptedAt.toISOString() : null, marketplaceTermsVersion: row.marketplaceTermsVersion, announcementBanner, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", access: effectiveAccess(productRoleOf(row.role), parseAccessOverrides(row.accessOverrides)) };
 }
 async function issueAuthCode(ctx, userId, purpose) {
   const db = ctx.db();
@@ -76342,6 +76475,239 @@ async function requireCompanyAdmin(ctx) {
     throw new Error("Admin access required. Only your company's admin can manage the team.");
   }
   return { identity, admin: user };
+}
+var CREW_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function normalizeCrewCode(raw) {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function crewCodeDisplay(normalized) {
+  return normalized.length === 8 ? `${normalized.slice(0, 4)}-${normalized.slice(4)}` : normalized;
+}
+function makeCrewCode() {
+  let code = "";
+  for (let i = 0;i < 8; i++)
+    code += CREW_CODE_ALPHABET[randomInt(CREW_CODE_ALPHABET.length)];
+  return crewCodeDisplay(code);
+}
+async function uniqueCrewCode(db) {
+  for (let attempt = 0;attempt < 25; attempt++) {
+    const code = makeCrewCode();
+    const existing = (await db.select({ id: companies.id }).from(companies).where(eq(companies.crewCode, code)).limit(1))[0];
+    if (!existing)
+      return code;
+  }
+  throw new Error("Could not generate a crew code. Try again.");
+}
+async function ensureCompanyRow(db, companyId) {
+  const existing = (await db.select().from(companies).where(eq(companies.id, companyId)).limit(1))[0];
+  if (existing) {
+    if (existing.crewCode)
+      return existing;
+    const crewCode = await uniqueCrewCode(db);
+    await db.update(companies).set({ crewCode, updatedAt: new Date }).where(eq(companies.id, companyId));
+    return { ...existing, crewCode };
+  }
+  const now = new Date;
+  const crewCode = await uniqueCrewCode(db);
+  const made = (await db.insert(companies).values({ id: companyId, crewCode, tier: "office", createdAt: now, updatedAt: now }).returning())[0];
+  if (!made)
+    throw new Error("The company record could not be created.");
+  return made;
+}
+async function assertOfficeTier(db, companyId) {
+  const company = await ensureCompanyRow(db, companyId);
+  if (company.tier !== "office") {
+    throw new Error("Team logins are part of the Crewkat Office plan. Upgrade this company to Office to add staff and crew logins.");
+  }
+}
+async function pinMatches(pin, row) {
+  if (!row.pinHash || !row.pinSalt)
+    return false;
+  return await derivePassword(pin, row.pinSalt, AUTH_PASSWORD_ITERATIONS) === row.pinHash;
+}
+async function generateUniqueCrewPin(db, companyId, excludeUserId) {
+  const members = await db.select({ id: authUsers.id, pinHash: authUsers.pinHash, pinSalt: authUsers.pinSalt }).from(authUsers).where(and(eq(authUsers.companyId, companyId), eq(authUsers.credentialType, "crew_pin")));
+  for (let attempt = 0;attempt < 50; attempt++) {
+    const pin = randomCode();
+    let clash = false;
+    for (const member of members) {
+      if (excludeUserId !== undefined && member.id === excludeUserId)
+        continue;
+      if (await pinMatches(pin, member)) {
+        clash = true;
+        break;
+      }
+    }
+    if (!clash)
+      return pin;
+  }
+  throw new Error("Could not generate a crew PIN. Try again.");
+}
+var CREW_LOGIN_MAX_FAILURES = 10;
+var CREW_LOGIN_WINDOW_MS = 15 * 60000;
+async function crewLoginLocked(db, companyId) {
+  const windowStart = new Date(Date.now() - CREW_LOGIN_WINDOW_MS);
+  const hits = await db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "crew-login:fail"), eq(rateLimitEvents.key, String(companyId)), gte(rateLimitEvents.occurredAt, windowStart)));
+  return hits.length >= CREW_LOGIN_MAX_FAILURES;
+}
+async function recordCrewLoginFailure(db, companyId) {
+  await db.insert(rateLimitEvents).values({ scope: "crew-login:fail", key: String(companyId), occurredAt: new Date });
+}
+async function clearCrewLoginFailures(db, companyId) {
+  await db.delete(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "crew-login:fail"), eq(rateLimitEvents.key, String(companyId))));
+}
+async function assignedJobIds(db, user) {
+  const ids = new Set;
+  const nameKey = user.name.trim().toLowerCase();
+  if (!nameKey)
+    return ids;
+  const appts = await db.select({ jobId: appointments.jobId, crewMember: appointments.crewMember }).from(appointments).where(eq(appointments.companyId, user.companyId));
+  for (const a of appts) {
+    if (a.jobId != null && a.crewMember.trim().toLowerCase() === nameKey)
+      ids.add(a.jobId);
+  }
+  const times = await db.select({ jobId: timeEntries.jobId, crewMember: timeEntries.crewMember }).from(timeEntries).where(eq(timeEntries.companyId, user.companyId));
+  for (const t of times) {
+    if (t.crewMember.trim().toLowerCase() === nameKey)
+      ids.add(t.jobId);
+  }
+  return ids;
+}
+function stripLineItemAmounts(holder) {
+  if (Array.isArray(holder.lineItems)) {
+    holder.lineItems = holder.lineItems.map((item) => ({ ...item, amount: "" }));
+  }
+  if (Array.isArray(holder.materials)) {
+    holder.materials = holder.materials.map((item) => item && typeof item === "object" && ("amount" in item) ? { ...item, amount: "" } : item);
+  }
+}
+function stripQuoteMoney(quote) {
+  const out = { ...quote, subtotal: "", total: "", discountValue: "", taxValue: "" };
+  stripLineItemAmounts(out);
+  return out;
+}
+function stripInvoiceMoney(invoice) {
+  const out = {
+    ...invoice,
+    subtotal: "",
+    total: "",
+    discountValue: "",
+    taxValue: "",
+    paidToDate: "",
+    balanceRemaining: "",
+    lateFeeAccrued: "",
+    totalWithLateFee: "",
+    payments: Array.isArray(invoice.payments) ? invoice.payments.map((p) => ({ ...p, amount: "" })) : invoice.payments
+  };
+  stripLineItemAmounts(out);
+  return out;
+}
+function stripJobMoney(job) {
+  return { ...job, amountDue: "", contractSum: "", depositAmount: "", paymentNotes: "" };
+}
+function stripContact(holder) {
+  return { ...holder, clientPhone: "", clientEmail: "" };
+}
+async function applyAccessShaping(db, user, access, actionName, result) {
+  if (!result || typeof result !== "object")
+    return result;
+  const out = result;
+  if (actionName === "listInvoices" && Array.isArray(out.invoices)) {
+    if (!access.seeMoney)
+      out.invoices = out.invoices.map(stripInvoiceMoney);
+    if (!access.seeClientContact)
+      out.invoices = out.invoices.map(stripContact);
+    return out;
+  }
+  if (actionName === "listQuotes" && Array.isArray(out.quotes)) {
+    if (!access.seeMoney)
+      out.quotes = out.quotes.map(stripQuoteMoney);
+    if (!access.seeClientContact)
+      out.quotes = out.quotes.map(stripContact);
+    return out;
+  }
+  if (actionName === "listClients" && Array.isArray(out.clients)) {
+    out.clients = out.clients.map((client) => {
+      let shaped = client;
+      if (!access.seeClientContact)
+        shaped = { ...shaped, phone: "", email: "" };
+      if (!access.seeMoney)
+        shaped = { ...shaped, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+      return shaped;
+    });
+    return out;
+  }
+  if (actionName === "getClient") {
+    if (out.client) {
+      if (!access.seeClientContact)
+        out.client = { ...out.client, phone: "", email: "" };
+      if (!access.seeMoney)
+        out.client = { ...out.client, totalInvoiced: 0, totalPaid: 0, balanceDue: 0, paymentPercent: 0 };
+    }
+    if (Array.isArray(out.jobs)) {
+      out.jobs = out.jobs.map((job) => {
+        let shaped = job;
+        if (!access.seeMoney)
+          shaped = stripJobMoney(shaped);
+        if (!access.seeClientContact)
+          shaped = stripContact(shaped);
+        return shaped;
+      });
+    }
+    if (Array.isArray(out.quotes) && !access.seeMoney)
+      out.quotes = out.quotes.map(stripQuoteMoney);
+    return out;
+  }
+  if (actionName === "listJobs" && Array.isArray(out.jobs)) {
+    let jobs2 = out.jobs;
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs2 = jobs2.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney)
+      jobs2 = jobs2.map(stripJobMoney);
+    if (!access.seeClientContact)
+      jobs2 = jobs2.map(stripContact);
+    out.jobs = jobs2;
+    return out;
+  }
+  if (actionName === "listAppointments" && Array.isArray(out.appointments)) {
+    let appts = out.appointments;
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      const nameKey = user.name.trim().toLowerCase();
+      appts = appts.filter((a) => a.jobId != null && mine.has(a.jobId) || typeof a.crewMember === "string" && a.crewMember.trim().toLowerCase() === nameKey && nameKey !== "");
+    }
+    if (!access.seeClientContact) {
+      appts = appts.map((a) => ({ ...a, clientPhone: "" }));
+    }
+    out.appointments = appts;
+    return out;
+  }
+  if (actionName === "getJob") {
+    if (out.job) {
+      if (!access.seeAllJobs) {
+        const mine = await assignedJobIds(db, user);
+        if (!mine.has(out.job.id)) {
+          throw new Error("That job isn't on your schedule. Ask your admin or office if it should be.");
+        }
+      }
+      if (!access.seeMoney) {
+        out.job = stripJobMoney(out.job);
+        if (Array.isArray(out.documents)) {
+          out.documents = out.documents.map((doc) => ({ ...doc, amount: "" }));
+        }
+        if (Array.isArray(out.receipts)) {
+          out.receipts = out.receipts.map((receipt) => ({ ...receipt, amount: "" }));
+        }
+        out.contractSummary = null;
+      }
+      if (!access.seeClientContact)
+        out.job = stripContact(out.job);
+    }
+    return out;
+  }
+  return result;
 }
 async function isPlatformTeamMember(db, user) {
   if (user.isPlatformAdmin)
@@ -77821,6 +78187,9 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
       if (!made)
         throw new Error("The account could not be created.");
+      try {
+        await ensureCompanyRow(db, companyId);
+      } catch {}
       if (args.language) {
         const existingSettings = (await db.select({ id: settings.id }).from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
         if (existingSettings)
@@ -77935,6 +78304,43 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       }
       const session = await issueSession(ctx, user.id);
       return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(user, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
+    }
+  }),
+  crewLogin: defineAction({
+    request: object({ companyCode: string2().trim().min(4).max(16), pin: string2().regex(/^\d{4,6}$/) }),
+    response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()), totpRequired: boolean2().default(false) }),
+    async handler(ctx, args) {
+      await checkLoginIpRateLimit(ctx);
+      const db = ctx.db();
+      const codeKey = normalizeCrewCode(args.companyCode);
+      const candidates = await db.select({ id: companies.id, crewCode: companies.crewCode }).from(companies);
+      const company = candidates.find((row) => row.crewCode && normalizeCrewCode(row.crewCode) === codeKey);
+      if (!company)
+        throw new Error("Company code or PIN is incorrect.");
+      if (await crewLoginLocked(db, company.id)) {
+        throw new Error("Too many crew sign-in attempts for this company. Try again in 15 minutes.");
+      }
+      const members = await db.select().from(authUsers).where(and(eq(authUsers.companyId, company.id), eq(authUsers.credentialType, "crew_pin")));
+      let matched;
+      for (const member of members) {
+        if (await pinMatches(args.pin, member)) {
+          matched = member;
+          break;
+        }
+      }
+      if (!matched) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("Company code or PIN is incorrect.");
+      }
+      if (matched.deactivatedAt) {
+        await recordCrewLoginFailure(db, company.id);
+        throw new Error("This login has been deactivated by your company's admin. Contact them if this is a mistake.");
+      }
+      if (matched.suspendedAt)
+        throw new Error("This account has been suspended. Contact support for help.");
+      await clearCrewLoginFailures(db, company.id);
+      const session = await issueSession(ctx, matched.id);
+      return { sessionToken: session.proof, expiresAt: session.proofExpiresAt.toISOString(), user: authUserShape(matched, await getPlatformSetting(db, "announcement_banner", "")), setCookies: session.setCookies, totpRequired: false };
     }
   }),
   getGoogleClientId: defineAction({
@@ -80677,12 +81083,21 @@ If that was you, just sign in again. If not, we recommend changing your password
   } }),
   listTeamMembers: defineAction({
     request: object({}),
-    response: object({ members: array(teamMemberSchema) }),
+    response: object({ members: array(teamMemberSchema), crewCode: string2(), tier: _enum(["app", "office"]) }),
     async handler(ctx) {
       const { identity, admin } = await requireCompanyAdmin(ctx);
       const db = platformDb(ctx);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
       const rows = await db.select().from(authUsers).where(eq(authUsers.companyId, identity.workspaceCompanyId)).orderBy(authUsers.createdAt, authUsers.id);
-      return { members: rows.map((row) => ({ id: row.id, name: row.name, email: row.email, role: row.role, teamRole: productRoleOf(row.role), active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString() })) };
+      return {
+        crewCode: company.crewCode ?? "",
+        tier: company.tier,
+        members: rows.map((row) => {
+          const overrides = parseAccessOverrides(row.accessOverrides);
+          const teamRole = productRoleOf(row.role);
+          return { id: row.id, name: row.name, email: row.email, role: row.role, teamRole, active: !row.deactivatedAt, isSelf: row.id === admin.id, createdAt: row.createdAt.toISOString(), credentialType: row.credentialType ?? "email", overrides, access: effectiveAccess(teamRole, overrides) };
+        })
+      };
     }
   }),
   createStaffAccount: defineAction({
@@ -80691,6 +81106,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     async handler(ctx, args) {
       const { identity, admin } = await requireCompanyAdmin(ctx);
       const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
       const email = normalizedEmail(args.email);
       const duplicate = (await db.select({ id: authUsers.id }).from(authUsers).where(eq(authUsers.email, email)).limit(1))[0];
       if (duplicate)
@@ -80753,6 +81169,92 @@ If that was you, just sign in again. If not, we recommend changing your password
       }
       ctx.invalidateQueries();
       return { ok: true };
+    }
+  }),
+  createCrewLogin: defineAction({
+    request: object({ name: string2().trim().min(2).max(120), overrides: accessOverridesSchema.default({}) }),
+    response: object({ id: number2(), pin: string2(), crewCode: string2() }),
+    async handler(ctx, args) {
+      const { identity, admin } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const now = new Date;
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId);
+      const pinSalt = randomHex2(16);
+      const passwordSalt = randomHex2(16);
+      const referralCode = await uniqueReferralCode(db);
+      const overrides = serializeAccessOverrides(args.overrides);
+      const made = (await db.insert(authUsers).values({
+        name: args.name.trim(),
+        email: `crew-${identity.workspaceCompanyId}-${randomHex2(6)}@crew.invalid`,
+        passwordHash: await derivePassword(randomHex2(32), passwordSalt, AUTH_PASSWORD_ITERATIONS),
+        passwordSalt,
+        passwordIterations: AUTH_PASSWORD_ITERATIONS,
+        emailVerifiedAt: now,
+        companyId: identity.workspaceCompanyId,
+        role: "field",
+        credentialType: "crew_pin",
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        accessOverrides: overrides,
+        tier: admin.tier,
+        marketplaceTermsAcceptedAt: now,
+        marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION,
+        referralCode,
+        createdAt: now,
+        updatedAt: now
+      }).returning({ id: authUsers.id }))[0];
+      if (!made)
+        throw new Error("The crew login could not be created.");
+      ctx.invalidateQueries();
+      return { id: made.id, pin, crewCode: company.crewCode ?? "" };
+    }
+  }),
+  resetCrewPin: defineAction({
+    request: object({ userId: number2().int().positive() }),
+    response: object({ pin: string2() }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId || target.credentialType !== "crew_pin") {
+        throw new Error("Crew member not found.");
+      }
+      const pin = await generateUniqueCrewPin(db, identity.workspaceCompanyId, target.id);
+      const pinSalt = randomHex2(16);
+      await db.update(authUsers).set({
+        pinHash: await derivePassword(pin, pinSalt, AUTH_PASSWORD_ITERATIONS),
+        pinSalt,
+        updatedAt: new Date
+      }).where(eq(authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { pin };
+    }
+  }),
+  setMemberAccess: defineAction({
+    request: object({ userId: number2().int().positive(), overrides: accessOverridesPatchSchema }),
+    response: object({ ok: literal(true), overrides: accessOverridesSchema, access: effectiveAccessSchema }),
+    async handler(ctx, args) {
+      const { identity } = await requireCompanyAdmin(ctx);
+      const db = platformDb(ctx);
+      await assertOfficeTier(db, identity.workspaceCompanyId);
+      const target = (await db.select().from(authUsers).where(eq(authUsers.id, args.userId)).limit(1))[0];
+      if (!target || target.companyId !== identity.workspaceCompanyId)
+        throw new Error("Team member not found.");
+      if (target.role === "owner")
+        throw new Error("The account owner's access can't be limited \u2014 owners always have full access.");
+      const next = { ...parseAccessOverrides(target.accessOverrides) };
+      for (const key of ACCESS_SWITCHES) {
+        const value = args.overrides[key];
+        if (value === null)
+          delete next[key];
+        else if (typeof value === "boolean")
+          next[key] = value;
+      }
+      await db.update(authUsers).set({ accessOverrides: serializeAccessOverrides(next), updatedAt: new Date }).where(eq(authUsers.id, target.id));
+      ctx.invalidateQueries();
+      return { ok: true, overrides: next, access: effectiveAccess(productRoleOf(target.role), next) };
     }
   }),
   createPortalLink: defineAction({ request: object({ jobId: number2().int().positive(), expiresInDays: union([literal(30), literal(90), literal(365), literal(0)]).default(90) }), response: object({ token: string2(), shortCode: string2(), route: string2(), expiresAt: string2().nullable() }), async handler(ctx, args) {
@@ -83846,6 +84348,7 @@ var PUBLIC_ACTIONS = new Set([
   "requestPasswordReset",
   "resetPassword",
   "handleStripeWebhook",
+  "crewLogin",
   "getGoogleClientId",
   "googleSignIn",
   "getPortalData",
@@ -83943,10 +84446,14 @@ function protectActions(actions) {
       handler: async (ctx, args) => {
         const envelope = authEnvelopeSchema.parse(args);
         const user = await requireSession(ctx, envelope._sessionToken);
-        assertRoleCan(productRoleOf(user.role), name);
+        const role = productRoleOf(user.role);
+        assertRoleCan(role, name);
+        const access = effectiveAccess(role, parseAccessOverrides(user.accessOverrides));
+        assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium")
           throw new Error("Premium required. Upgrade to unlock this Pro tool.");
-        return original(withWorkspace(ctx, user), args);
+        const result = await original(withWorkspace(ctx, user), args);
+        return applyAccessShaping(ctx.db(), user, access, name, result);
       }
     };
     return [name, protectedAction];
@@ -83959,10 +84466,14 @@ export {
   BaseActions,
   PUBLIC_ACTIONS,
   alertMatchesListing,
+  applyAccessShaping,
+  assertOfficeTier,
+  assignedJobIds,
   authEnvelopeSchema,
   authUserShape,
   consumeMarketplaceUnlock,
   deleteUserAccount,
+  ensureCompanyRow,
   getPlatformSetting,
   googleAuth,
   hydrateScreenshots,
@@ -83970,6 +84481,7 @@ export {
   issueSession,
   logAdminAction,
   marketplaceZipCodeSchema,
+  normalizeCrewCode,
   normalizeZipCode,
   notifyAlertMatches,
   parseScreenshotKeys,

@@ -57,6 +57,9 @@ export function productRoleOf(stored: string | null | undefined): ProductRole {
 
 export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "listTeamMembers", "createStaffAccount", "updateStaffMember",
+  // Tier 2 (0089): crew logins + per-member access switches are
+  // Admin-only team management, same tier as the staff actions above.
+  "createCrewLogin", "resetCrewPin", "setMemberAccess",
   "addAppUser", "updateAppUser", "deleteAppUser",
   "getAdminConsole", "updateAdminParameters", "updateSupportReport",
   "saveCrewPayRate", "updateSettings", "uploadLogo",
@@ -211,5 +214,122 @@ export function assertRoleCan(role: ProductRole, actionName: string): void {
         ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through."
         : "Your Office role doesn't include that — it's an admin action. Ask your company's admin.",
     );
+  }
+}
+
+// ---------------------------------------------------------------------
+// Tier 2 (0089): per-member access switches, layered ON TOP of the role
+// presets above. Danny's model: roles stay coarse presets (Admin /
+// Office / Field); an Admin can flip a small set of sensitive switches
+// per individual staff member from the Office Team section. This is
+// deliberately NOT a per-action matrix: five switches, stored sparsely
+// on the member's auth_users row (access_overrides JSON — an absent key
+// means "inherit the preset"), consulted inside protectActions next to
+// assertRoleCan. Effective access = override ?? preset. Admins are
+// never limited by switches (their preset is all-on and overrides on
+// an admin row are ignored), so a company can never lock its own admin
+// out of money, contacts, or payments.
+//
+// How each switch is enforced (see actions.ts protectActions):
+// - seeMoney: money VALUES are stripped from the list/detail payloads
+//   a member can already reach (listInvoices, listQuotes, listJobs,
+//   getJob, listClients totals, getClient) — blanked/zeroed, never
+//   sent. Pure money views Field never had stay role-gated as before.
+// - seeClientContact: client phone/email blanked on listClients,
+//   getClient, listJobs, getJob, listAppointments payloads.
+// - sendDocuments: the send/link actions below are REFUSED outright.
+// - seeAllJobs: listJobs / listAppointments are filtered to the jobs
+//   the member is scheduled on (appointment crewMember = their name)
+//   or has clocked time on, and getJob for any other job is refused.
+// - recordPayments: the payment-recording actions below are REFUSED
+//   (matters for Office members — the role map already keeps Field
+//   out of them).
+
+export type AccessSwitch = "seeMoney" | "seeClientContact" | "sendDocuments" | "seeAllJobs" | "recordPayments";
+export type AccessOverrides = Partial<Record<AccessSwitch, boolean>>;
+export type EffectiveAccess = Record<AccessSwitch, boolean>;
+
+export const ACCESS_SWITCHES: readonly AccessSwitch[] = [
+  "seeMoney", "seeClientContact", "sendDocuments", "seeAllJobs", "recordPayments",
+];
+
+// Role presets: the behavior a member gets with NO overrides stored.
+// Field matches what the phone already showed a Field login before
+// Tier 2 (document totals and client contact visible on its own work,
+// every company job listed, document links sendable) EXCEPT recording
+// payments, which the role map has always kept Office+. Office and
+// Admin presets are all-on: an override is the only way to narrow an
+// Office member, and Admins ignore overrides entirely.
+export const ROLE_ACCESS_PRESETS: Record<ProductRole, EffectiveAccess> = {
+  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false },
+};
+
+export function parseAccessOverrides(json: string | null | undefined): AccessOverrides {
+  if (!json) return {};
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: AccessOverrides = {};
+    for (const key of ACCESS_SWITCHES) {
+      const value = (parsed as Record<string, unknown>)[key];
+      if (typeof value === "boolean") out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function serializeAccessOverrides(overrides: AccessOverrides): string | null {
+  const clean: AccessOverrides = {};
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean") clean[key] = overrides[key];
+  }
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+
+export function effectiveAccess(role: ProductRole, overrides: AccessOverrides): EffectiveAccess {
+  const preset = ROLE_ACCESS_PRESETS[role];
+  if (role === "admin") return { ...preset };
+  const out = { ...preset };
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean") out[key] = overrides[key] as boolean;
+  }
+  return out;
+}
+
+// Actions a member may only call with sendDocuments ON: creating/sharing
+// the links a client uses to view + sign documents, and sending a quote
+// version to a client. (revoke* stay available — pulling a link back is
+// a safety valve, not a send.)
+export const SEND_DOCUMENT_ACTIONS: ReadonlySet<string> = new Set([
+  "createDocumentLink", "createPortalLink", "rotatePortalLink", "sendQuoteVersion",
+]);
+
+// Actions a member may only call with recordPayments ON.
+export const RECORD_PAYMENT_ACTIONS: ReadonlySet<string> = new Set([
+  "addPayment", "toggleInvoicePaid",
+]);
+
+const SWITCH_LABELS: Record<AccessSwitch, string> = {
+  seeMoney: "seeing money totals",
+  seeClientContact: "seeing client contact details",
+  sendDocuments: "sending documents to clients",
+  seeAllJobs: "seeing every company job",
+  recordPayments: "recording payments",
+};
+
+// Refusal gate for the two switch-gated action families. Runs in
+// protectActions AFTER assertRoleCan (a role denial keeps its own
+// message); a member who passes the role map but has the switch off
+// gets this switch-specific error instead.
+export function assertAccessAllowed(access: EffectiveAccess, actionName: string): void {
+  if (SEND_DOCUMENT_ACTIONS.has(actionName) && !access.sendDocuments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.sendDocuments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
   }
 }

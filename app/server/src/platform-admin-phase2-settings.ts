@@ -423,6 +423,12 @@ export const platformAdminPhase2SettingsActions = {
         tier: z.enum(["free", "premium"]), isPlatformAdmin: z.boolean(),
         marketplaceTermsAcceptedAt: z.string().nullable(), marketplaceTermsVersion: z.string().nullable(),
         announcementBanner: z.string(), createdAt: z.string(),
+        // Tier 2 (0089): kept in sync with authUserSchema in actions.ts —
+        // the handler returns authUserShape(), which carries both.
+        credentialType: z.enum(["email", "crew_pin"]),
+        access: z.object({
+          seeMoney: z.boolean(), seeClientContact: z.boolean(), sendDocuments: z.boolean(), seeAllJobs: z.boolean(), recordPayments: z.boolean(),
+        }),
       }),
       setCookies: z.array(z.string()),
       totpRequired: z.boolean().default(false),

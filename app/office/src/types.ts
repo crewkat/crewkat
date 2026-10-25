@@ -143,7 +143,38 @@ export interface TeamMember {
   active: boolean;
   isSelf: boolean;
   createdAt: string;
+  /* Tier 2: "crew_pin" members sign in with the company crew code +
+     a PIN (no email — the email field holds a synthetic placeholder
+     the UI never shows). overrides are the admin-set switches (absent
+     key = role preset); access is the server-resolved effective set. */
+  credentialType: "email" | "crew_pin";
+  overrides: AccessOverrides;
+  access: EffectiveAccess;
 }
+
+/* ---------- Access switches (Tier 2) ----------
+   Mirrors server/src/permissions.ts. Roles are presets; an admin can
+   flip these five switches per member. The server enforces them in
+   the action layer — this is only the panel that sets them. */
+
+export type AccessSwitch = "seeMoney" | "seeClientContact" | "sendDocuments" | "seeAllJobs" | "recordPayments";
+export type AccessOverrides = Partial<Record<AccessSwitch, boolean>>;
+export type EffectiveAccess = Record<AccessSwitch, boolean>;
+
+export const ACCESS_SWITCH_DEFS: Array<{ key: AccessSwitch; label: string; hint: string }> = [
+  { key: "seeMoney", label: "See money totals", hint: "Invoice, estimate, and job amounts on the documents and lists they can open." },
+  { key: "seeClientContact", label: "See client contact info", hint: "Client phone numbers and email addresses." },
+  { key: "sendDocuments", label: "Send documents to clients", hint: "Create and share document and portal links, and send estimate versions." },
+  { key: "seeAllJobs", label: "See all company jobs", hint: "Off = only jobs they're scheduled on (named crew on an appointment) or have clocked time on." },
+  { key: "recordPayments", label: "Record payments", hint: "Add payments and mark invoices paid." },
+];
+
+/** Role presets — the switch values a member gets with no overrides. */
+export const ROLE_ACCESS_PRESETS: Record<TeamRole, EffectiveAccess> = {
+  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false },
+};
 
 export interface LeadActivity {
   id: number;
