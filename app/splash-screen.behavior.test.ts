@@ -66,11 +66,31 @@ describe("boot wiring", () => {
   });
 });
 
+describe("minimum display floor", () => {
+  test("splash never dismisses on ready alone before the 1000ms floor", () => {
+    expect(SPLASH).toContain("export const SPLASH_MIN_MS = 1000;");
+    expect(SPLASH).toContain("const [minElapsed, setMinElapsed] = useState(false);");
+    expect(SPLASH).toContain("setMinElapsed(true), SPLASH_MIN_MS");
+    // dismissal requires BOTH the ready latch AND the elapsed floor
+    expect(SPLASH).toContain("const done = (ready && minElapsed) || failsafeDone;");
+    expect(SPLASH).not.toContain("const done = ready || failsafeDone;");
+  });
+
+  test("a ready signal after the floor dismisses promptly (max, not ready + min)", () => {
+    // the floor timer arms on mount and does not wait for ready…
+    expect(SPLASH).toContain("const timer = window.setTimeout(() => setMinElapsed(true), SPLASH_MIN_MS);");
+    // …and nothing stacks the floor on top of the ready signal
+    expect(SPLASH).not.toContain("SPLASH_MIN_MS +");
+    expect(SPLASH).not.toContain("+ SPLASH_MIN_MS");
+  });
+});
+
 describe("failsafe", () => {
   test("max-display auto-dismiss is ~6s regardless of ready", () => {
     expect(SPLASH).toContain("export const SPLASH_MAX_MS = 6000;");
     expect(SPLASH).toContain("setFailsafeDone(true), SPLASH_MAX_MS");
-    expect(SPLASH).toContain("const done = ready || failsafeDone;");
+    // the failsafe ORs into done: it wins even if ready never fires
+    expect(SPLASH).toContain("const done = (ready && minElapsed) || failsafeDone;");
   });
 });
 

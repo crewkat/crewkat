@@ -10,6 +10,11 @@
 // The latch never resets, so the splash can never reappear mid-session
 // (sign-out, session invalidation, impersonation).
 //
+// Minimum display: the splash stays up at least SPLASH_MIN_MS from
+// mount even when boot is instant (warm load), so it registers instead
+// of flashing by. Dismissal needs BOTH the ready latch and the floor —
+// max(ready, min), never ready + min.
+//
 // Failsafe: if no milestone ever fires (a load hangs, an unforeseen gate
 // path), the splash force-dismisses itself after SPLASH_MAX_MS — it must
 // never trap the user on a loading screen.
@@ -22,6 +27,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import splashLogo from "./assets/crewkat-c-chevron.png";
 import splashCat from "./assets/mascot-peek.webp";
 
+export const SPLASH_MIN_MS = 1000;
 export const SPLASH_MAX_MS = 6000;
 const SPLASH_FADE_MS = 480;
 
@@ -64,9 +70,18 @@ export function isPublicEntryLocation(): boolean {
 export function BootSplash() {
   const [armed] = useState(() => !isPublicEntryLocation());
   const ready = useSyncExternalStore(subscribeBootReady, bootReadySnapshot, bootReadySnapshot);
+  const [minElapsed, setMinElapsed] = useState(false);
   const [failsafeDone, setFailsafeDone] = useState(false);
   const [gone, setGone] = useState(false);
-  const done = ready || failsafeDone;
+  const done = (ready && minElapsed) || failsafeDone;
+
+  // Minimum display floor: counts from mount, independent of ready, so
+  // a ready signal that lands after the floor dismisses immediately.
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setMinElapsed(true), SPLASH_MIN_MS);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
 
   // Failsafe: auto-dismiss after ~6s regardless of the ready signal.
   useEffect(() => {
