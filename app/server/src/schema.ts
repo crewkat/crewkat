@@ -47,6 +47,12 @@ export const jobs = sqliteTable("jobs", {
   requiredPhotoStages: text("required_photo_stages").notNull().default("before,during,after"),
   completedAt: integer("completed_at", { mode: "timestamp_ms" }),
   completionOverrideNote: text("completion_override_note").notNull().default(""),
+  // Wave 1 (Office Production Board): the job's production stage —
+  // scheduled → in_progress → punch_list → complete → paid_in_full.
+  // Kept in sync with completedAt by setJobProductionStage (complete and
+  // paid_in_full mean completedAt is set). Migration 0090 backfills:
+  // completed jobs land on "complete", everything else "scheduled".
+  productionStage: text("production_stage", { enum: ["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"] }).notNull().default("scheduled"),
   // Authoritative sample marker. Sample jobs never count toward the free
   // tier's active-job ceiling (the "[SAMPLE]" name prefix is display-only).
   isSample: integer("is_sample", { mode: "boolean" }).notNull().default(false),
@@ -554,6 +560,66 @@ export const internalNotes = sqliteTable("internal_notes", {
   reminderDate: text("reminder_date").notNull().default(""),
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
+// Wave 1 (Office): the follow-up queue — one work list across leads,
+// jobs, clients and invoices. Manual items are created from the queue
+// UI; automation items are created by the Wave 1 recipes with a
+// sourceKey that dedupes them (partial unique index below: at most one
+// row per company + sourceKey). internal_notes stays the phone
+// dashboard's note+reminder store; anything that needs an assignee, a
+// snooze, a lead link, or an automation source lives here instead.
+export const followUps = sqliteTable("follow_ups", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  dueDate: text("due_date").notNull().default(""),
+  status: text("status", { enum: ["open", "done"] }).notNull().default("open"),
+  source: text("source", { enum: ["manual", "automation"] }).notNull().default("manual"),
+  sourceKey: text("source_key").notNull().default(""),
+  recipe: text("recipe").notNull().default(""),
+  assigneeUserId: integer("assignee_user_id"),
+  leadId: integer("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  jobId: integer("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  invoiceId: integer("invoice_id").references(() => invoices.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id"),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("follow_ups_company_status_idx").on(table.companyId, table.status, table.dueDate),
+  index("follow_ups_job_idx").on(table.jobId),
+  index("follow_ups_lead_idx").on(table.leadId),
+]);
+
+// Wave 1 (Office): recorded job events for things no other table
+// captures — production-stage moves and automation firings. The
+// unified timeline (getJobTimeline/getClientTimeline) reads this table
+// alongside documents, invoices, payments, logs and photos; those
+// sources stay the source of truth for their own events.
+export const jobEvents = sqliteTable("job_events", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["stage", "automation", "note"] }).notNull().default("stage"),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("job_events_job_idx").on(table.jobId, table.createdAt),
+]);
+
+// Wave 1 (Office): per-company on/off switches for the five built-in
+// automation recipes. One row per company; a missing row means every
+// recipe is ON (the recipes create tasks, never send anything, so
+// default-on is safe). JSON map of recipe key -> enabled.
+export const officeAutomationSettings = sqliteTable("office_automation_settings", {
+  companyId: integer("company_id").primaryKey(),
+  recipesJson: text("recipes_json").notNull().default("{}"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
