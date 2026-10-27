@@ -164,7 +164,7 @@ const blobs = {
 // Boot: database, migrations, action bundles
 // ---------------------------------------------------------------------------
 
-const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick, runReviewRequestTick, runWeeklyProgressTick } = await import(join(APP_DIR, "server/dist/actions.js"));
+const { Actions, runScheduledBackup, recoverStaleBackupRuns, runRecurringInvoiceTick, runEstimateNudgeTick, runReviewRequestTick, runWeeklyProgressTick, runOfficeAutomationTick } = await import(join(APP_DIR, "server/dist/actions.js"));
 const privilegedBundle = await import(join(APP_DIR, "server/dist/privileged.js"));
 const privilegedHandlers = privilegedBundle.privilegedHandlers;
 
@@ -314,6 +314,65 @@ console.log("[crewkat] verifying crew tier2 (0089) ...");
   await libsql.execute("INSERT OR IGNORE INTO `companies` (`id`, `tier`, `created_at`, `updated_at`) SELECT DISTINCT `company_id`, 'office', 0, 0 FROM `auth_users`");
 }
 console.log("[crewkat] crew tier2 schema verified.");
+
+// Repair (Wave 1): migration 0090 adds jobs.production_stage and the
+// follow_ups / job_events / office_automation_settings tables. Same
+// self-heal pattern as the repairs above: if the migration was ever
+// skipped (journal `when` comparison), the Office Production Board and
+// follow-up queue would fail on the missing schema. Idempotent
+// PRAGMA / IF NOT EXISTS checks first; the stage backfill mirrors the
+// migration (completed jobs -> "complete").
+console.log("[crewkat] verifying office wave1 (0090) ...");
+{
+  const info = await libsql.execute("PRAGMA table_info(`jobs`)");
+  const existing = new Set(info.rows.map((r) => r.name));
+  if (!existing.has("production_stage")) {
+    console.log("[crewkat] repair: adding missing column jobs.production_stage");
+    await libsql.execute("ALTER TABLE `jobs` ADD COLUMN `production_stage` text DEFAULT 'scheduled' NOT NULL");
+    await libsql.execute("UPDATE `jobs` SET `production_stage` = 'complete' WHERE `completed_at` IS NOT NULL");
+  }
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`follow_ups\` (
+    \`company_id\` integer DEFAULT 1 NOT NULL,
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`title\` text DEFAULT '' NOT NULL,
+    \`body\` text DEFAULT '' NOT NULL,
+    \`due_date\` text DEFAULT '' NOT NULL,
+    \`status\` text DEFAULT 'open' NOT NULL,
+    \`source\` text DEFAULT 'manual' NOT NULL,
+    \`source_key\` text DEFAULT '' NOT NULL,
+    \`recipe\` text DEFAULT '' NOT NULL,
+    \`assignee_user_id\` integer,
+    \`lead_id\` integer REFERENCES \`leads\`(\`id\`) ON DELETE CASCADE,
+    \`job_id\` integer REFERENCES \`jobs\`(\`id\`) ON DELETE CASCADE,
+    \`client_id\` integer REFERENCES \`clients\`(\`id\`) ON DELETE CASCADE,
+    \`invoice_id\` integer REFERENCES \`invoices\`(\`id\`) ON DELETE CASCADE,
+    \`created_by_user_id\` integer,
+    \`completed_at\` integer,
+    \`created_at\` integer NOT NULL,
+    \`updated_at\` integer NOT NULL
+  )`);
+  await libsql.execute("CREATE INDEX IF NOT EXISTS `follow_ups_company_status_idx` ON `follow_ups` (`company_id`, `status`, `due_date`)");
+  await libsql.execute("CREATE INDEX IF NOT EXISTS `follow_ups_job_idx` ON `follow_ups` (`job_id`)");
+  await libsql.execute("CREATE INDEX IF NOT EXISTS `follow_ups_lead_idx` ON `follow_ups` (`lead_id`)");
+  await libsql.execute("CREATE UNIQUE INDEX IF NOT EXISTS `follow_ups_source_key_unique` ON `follow_ups` (`company_id`, `source_key`) WHERE `source_key` <> ''");
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`job_events\` (
+    \`company_id\` integer DEFAULT 1 NOT NULL,
+    \`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    \`job_id\` integer NOT NULL REFERENCES \`jobs\`(\`id\`) ON DELETE CASCADE,
+    \`kind\` text DEFAULT 'stage' NOT NULL,
+    \`title\` text DEFAULT '' NOT NULL,
+    \`body\` text DEFAULT '' NOT NULL,
+    \`created_by_user_id\` integer,
+    \`created_at\` integer NOT NULL
+  )`);
+  await libsql.execute("CREATE INDEX IF NOT EXISTS `job_events_job_idx` ON `job_events` (`job_id`, `created_at`)");
+  await libsql.execute(`CREATE TABLE IF NOT EXISTS \`office_automation_settings\` (
+    \`company_id\` integer PRIMARY KEY NOT NULL,
+    \`recipes_json\` text DEFAULT '{}' NOT NULL,
+    \`updated_at\` integer NOT NULL
+  )`);
+}
+console.log("[crewkat] office wave1 schema verified.");
 
 // ---------------------------------------------------------------------------
 // Runtime context
@@ -1300,6 +1359,29 @@ if (!process.env.BACKUP_ALERT_EMAIL) {
   setTimeout(tick, 8 * 60 * 1000); // catch up shortly after boot
   setInterval(tick, PROGRESS_TICK_MS).unref();
   console.log(`[crewkat][progress] scheduler armed (tick every ${PROGRESS_TICK_MS / 3600000} h).`);
+}
+
+// ---------------------------------------------------------------------------
+// Office automations (Wave 1): in-process scheduler
+// ---------------------------------------------------------------------------
+// Ticks hourly; the sweep only creates deduped follow-up tasks for
+// overdue invoices and stale leads (recipes on/off per company), so
+// hourly ticks are cheap. getFollowUpQueue also runs the sweep for
+// the caller's company on load.
+
+{
+  const OFFICE_AUTOMATION_TICK_MS = 60 * 60 * 1000;
+  const tick = async () => {
+    try {
+      const result = await runOfficeAutomationTick(makeCtx());
+      if (result.ran) console.log(`[crewkat][office-automation] queued ${result.created} follow-up(s).`);
+    } catch (error) {
+      console.error("[crewkat][office-automation] scheduled run errored:", error);
+    }
+  };
+  setTimeout(tick, 7 * 60 * 1000); // catch up shortly after boot
+  setInterval(tick, OFFICE_AUTOMATION_TICK_MS).unref();
+  console.log(`[crewkat][office-automation] scheduler armed (tick every ${OFFICE_AUTOMATION_TICK_MS / 60000} min).`);
 }
 
 function shutdown(signal) {

@@ -16,8 +16,26 @@ import {
   changeOrderDisplayTitle,
   contractSummaryForJob,
   jobDocumentsOrdered,
+  moneyString,
+  parseMoneyLoose,
   referenceContractTitle,
 } from "./changeOrders";
+import {
+  AUTOMATION_RECIPES,
+  PRODUCTION_STAGE_LABELS,
+  PRODUCTION_STAGES,
+  automationEnabled,
+  buildClientTimeline,
+  buildJobTimeline,
+  createFollowUp,
+  getRecipeSettings,
+  jobBudget,
+  jobLastActivity,
+  recordJobEvent,
+  runAutomationSweep,
+  shiftDateKey,
+  todayKey,
+} from "./wave1";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
@@ -54,7 +72,7 @@ const documentKindSchema = z.enum(["invoice", "quote", "contract", "change_order
 const clientAddressSchema = z.object({ label: z.string(), address: z.string(), primary: z.boolean() });
 const clientSchema = z.object({ id: z.number(), name: z.string(), phone: z.string(), email: z.string(), address: z.string(), addresses: z.array(clientAddressSchema), notes: z.string(), tags: z.array(z.string()), referredByClientId: z.number().nullable(), referredByName: z.string().nullable(), referralCount: z.number(), jobCount: z.number(), quoteCount: z.number(), totalInvoiced: z.number(), totalPaid: z.number(), balanceDue: z.number(), invoiceCount: z.number(), paymentPercent: z.number(), createdAt: z.string(), updatedAt: z.string() });
 const jobSchema = z.object({
-  id: z.number(), clientId: z.number().nullable(), clientName: z.string(), clientPhone: z.string(), clientEmail: z.string(), jobAddress: z.string(), jobType: z.string(), notes: z.string(), jobDate: z.string(), appointmentAt: z.string(), amountDue: z.string(), contractSum: z.string(), dueDate: z.string(), depositAmount: z.string(), paymentNotes: z.string(), galleryPick: z.boolean(), photoCount: z.number(), requiredPhotoStages: z.array(stageSchema), photoCompleteness: z.number(), completedAt: z.string().nullable(), completionOverrideNote: z.string(), createdAt: z.string(), updatedAt: z.string(),
+  id: z.number(), clientId: z.number().nullable(), clientName: z.string(), clientPhone: z.string(), clientEmail: z.string(), jobAddress: z.string(), jobType: z.string(), notes: z.string(), jobDate: z.string(), appointmentAt: z.string(), amountDue: z.string(), contractSum: z.string(), dueDate: z.string(), depositAmount: z.string(), paymentNotes: z.string(), galleryPick: z.boolean(), photoCount: z.number(), requiredPhotoStages: z.array(stageSchema), photoCompleteness: z.number(), completedAt: z.string().nullable(), completionOverrideNote: z.string(), productionStage: z.enum(["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"]).default("scheduled"), createdAt: z.string(), updatedAt: z.string(),
 });
 const photoSchema = z.object({
   id: z.number(), jobId: z.number(), stage: stageSchema, caption: z.string(), filename: z.string(), contentType: z.string(), url: z.string(), galleryPick: z.boolean(), excludeFromSocial: z.boolean(), annotatedFromId: z.number().nullable(), capturedAt: z.string(), createdAt: z.string(),
@@ -112,6 +130,33 @@ const documentSchema = z.object({
 });
 const punchItemSchema = z.object({ id: z.number(), jobId: z.number(), text: z.string(), completed: z.boolean() });
 const punchSignoffSchema = z.object({ id: z.number(), jobId: z.number(), customerName: z.string(), customerSignatureUrl: z.string(), contractorName: z.string(), contractorSignatureUrl: z.string(), signedAt: z.string() });
+// Wave 1 (Office): shared payload shapes for the Production Board,
+// the follow-up queue, budget-vs-actual, and the unified timeline.
+const productionStageSchema = z.enum(["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"]);
+const boardJobSchema = z.object({
+  id: z.number(), clientId: z.number().nullable(), clientName: z.string(), jobType: z.string(), jobAddress: z.string(), jobDate: z.string(),
+  productionStage: productionStageSchema,
+  contractSum: z.string(), invoiced: z.string(), paid: z.string(),
+  marginPercent: z.number().nullable(), lowMargin: z.boolean(), hasCosts: z.boolean(),
+  lastActivityAt: z.string(), idleDays: z.number(), stuck: z.boolean(),
+});
+const followUpItemSchema = z.object({
+  id: z.number(), title: z.string(), body: z.string(), dueDate: z.string(),
+  status: z.enum(["open", "done"]), source: z.enum(["manual", "automation"]), recipe: z.string(),
+  assigneeUserId: z.number().nullable(), assigneeName: z.string(),
+  leadId: z.number().nullable(), leadName: z.string(),
+  jobId: z.number().nullable(), jobLabel: z.string(),
+  clientId: z.number().nullable(), clientName: z.string(),
+  invoiceId: z.number().nullable(), invoiceNumber: z.string(), amount: z.string().nullable(),
+  overdue: z.boolean(), createdAt: z.string(), completedAt: z.string().nullable(),
+});
+const jobBudgetSchema = z.object({
+  contract: z.string(), invoiced: z.string(), paid: z.string(), costs: z.string(),
+  materials: z.string(), labor: z.string(), expenses: z.string(), subcontractors: z.string(),
+  hasCosts: z.boolean(), marginPercent: z.number().nullable(), lowMargin: z.boolean(),
+});
+const timelineEventSchema = z.object({ id: z.string(), kind: z.string(), title: z.string(), body: z.string(), at: z.string() });
+const automationRecipeSchema = z.object({ key: z.string(), label: z.string(), description: z.string(), enabled: z.boolean() });
 const progressSchema = z.object({ id: z.number(), jobId: z.number(), dayNumber: z.number(), note: z.string(), photoIds: z.array(z.number()), status: z.enum(["draft", "sent"]), createdAt: z.string(), updatedAt: z.string() });
 // amount may be blank: a description-only line (e.g. a materials list the
 // contractor does not price out) is valid and normalizes to "0.00" in
@@ -260,7 +305,7 @@ const marketplaceBookingSchema = z.object({ id: z.number(), listingId: z.number(
 function jobShape(row: typeof schema.jobs.$inferSelect, photoCount = 0, photoStages: string[] = []) {
   const requiredPhotoStages = row.requiredPhotoStages.split(",").filter((stage): stage is "before"|"during"|"after" => stage === "before" || stage === "during" || stage === "after");
   const complete = requiredPhotoStages.filter((stage) => photoStages.includes(stage)).length;
-  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, contractSum: row.contractSum, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, contractSum: row.contractSum, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, productionStage: row.productionStage ?? "scheduled", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function normalizedPhone(value: string) { return value.replace(/\D/g, ""); }
 function normalizeMoney(value: string, emptyValue = "") {
@@ -1496,6 +1541,39 @@ export async function applyAccessShaping(
     }
     return out;
   }
+  // Wave 1 surfaces: the Production Board, the follow-up queue, the job
+  // budget and the timelines carry money too — same rules as above.
+  if (actionName === "getProductionBoard" && Array.isArray(out.jobs)) {
+    let jobs = out.jobs as AnyRecord[];
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs = jobs.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney) {
+      jobs = jobs.map((job) => ({ ...job, contractSum: "", invoiced: "", paid: "", marginPercent: null, lowMargin: false, hasCosts: false }));
+    }
+    out.jobs = jobs;
+    return out;
+  }
+  if (actionName === "getJobBudget" && out.budget) {
+    if (!access.seeMoney) {
+      out.budget = { contract: "", invoiced: "", paid: "", costs: "", materials: "", labor: "", expenses: "", subcontractors: "", hasCosts: false, marginPercent: null, lowMargin: false };
+    }
+    return out;
+  }
+  if (actionName === "getFollowUpQueue" && Array.isArray(out.items)) {
+    if (!access.seeMoney) {
+      out.items = out.items.map((item: AnyRecord) => ({ ...item, amount: null }));
+    }
+    return out;
+  }
+  if ((actionName === "getJobTimeline" || actionName === "getClientTimeline") && Array.isArray(out.events)) {
+    if (!access.seeMoney) {
+      const scrub = (text: string) => text.replace(/\$[\d,]+(\.\d{2})?/g, "$—");
+      out.events = out.events.map((event: AnyRecord) => ({ ...event, title: scrub(String(event.title ?? "")), body: scrub(String(event.body ?? "")) }));
+    }
+    return out;
+  }
   return result;
 }
 
@@ -2561,6 +2639,28 @@ async function logJobSystemMessage(db: ReturnType<Ctx["db"]>, jobId: number, bod
 // per job per week — tracked in automation_logs (kind "weekly_progress").
 // Email-only. One bad job never throws the tick.
 // ---------------------------------------------------------------------------
+/**
+ * Wave 1 automation sweep tick: the time-based recipes (overdue
+ * invoice follow-ups + stale-lead alerts) for every company. Deduped
+ * by sourceKey, so hourly ticks and queue loads can both run it.
+ * Invoked hourly by server.mjs and on demand by getFollowUpQueue.
+ */
+export async function runOfficeAutomationTick(ctx: Ctx): Promise<{ ran: boolean; created: number }> {
+  const db = ctx.db<typeof schema>();
+  const settingsRows = await db.select({ companyId: schema.settings.companyId }).from(schema.settings);
+  const companyIds = [...new Set(settingsRows.map((row) => row.companyId))];
+  let created = 0;
+  for (const companyId of companyIds) {
+    try {
+      const result = await runAutomationSweep(db, companyId);
+      created += result.created;
+    } catch (error) {
+      console.error(`[crewkat][office-automation] company ${companyId} sweep failed:`, error);
+    }
+  }
+  return { ran: created > 0, created };
+}
+
 export async function runWeeklyProgressTick(ctx: Ctx): Promise<{ ran: boolean; emailed: number[] }> {
   const db = ctx.db<typeof schema>();
   const emailed: number[] = [];
@@ -4247,7 +4347,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   deleteProgressUpdate: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { await ctx.db<typeof schema>().delete(schema.progressUpdates).where(eq(schema.progressUpdates.id, args.id)); ctx.invalidateQueries(); return { ok: true }; }}),
 
   listQuotes: defineAction({ request: z.object({}), response: z.object({ quotes: z.array(quoteSchema) }), async handler(ctx) { const rows = await ctx.db<typeof schema>().select().from(schema.quotes).orderBy(desc(schema.quotes.createdAt)); return { quotes: rows.map(quoteShape) }; }}),
-  saveQuote: defineAction({ request: z.object({ clientId: z.number().int().positive().nullable().default(null), jobId: z.number().int().positive().nullable().default(null), clientName: z.string().trim().min(1).max(160), clientPhone: z.string().trim().max(80), clientEmail: z.string().trim().email().max(200).or(z.literal("")), jobAddress: z.string().trim().max(240), shippingAddress: z.string().trim().max(240).default(""), jobType: z.string().trim().max(120), lineItems: z.array(quoteItemSchema).min(1).max(50), subtotal: z.string().max(80), discountType: adjustmentTypeSchema, discountValue: z.string().max(80), taxType: adjustmentTypeSchema, taxValue: z.string().max(80), total: z.string().max(80), footnote: z.string().max(3000), expiryDate: z.string().max(10), sentAt: z.string().max(10), theme: quoteThemeSchema, font: documentFontSchema, accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema, depositType: depositTypeSchema.default("none"), depositValue: z.string().max(80).default("0"), materials: z.array(materialItemSchema).max(200).default([]) }).extend(documentVisibilitySchema.shape), response: z.object({ id: z.number() }), async handler(ctx, args) { const now = new Date(); /* Doc-only (Danny 2026-10-15): no upsertClient — the quote keeps args.clientId as a link only and its own snapshot fields; the client record is never written by a document. */ const clientId = args.clientId; const depositValue = normalizeMoney(args.depositValue, "0.00"); if (args.depositType === "percent" && (Number(depositValue) < 0 || Number(depositValue) > 100)) throw new Error("Deposit percent must be 0-100."); if (args.depositType === "fixed" && Number(depositValue) < 0) throw new Error("Deposit amount cannot be negative."); const { materials, ...quoteArgs } = args; const rows = await ctx.db<typeof schema>().insert(schema.quotes).values({ ...quoteArgs, clientId, materialsJson: JSON.stringify(materials), lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), depositValue, createdAt: now, updatedAt: now }).returning({ id: schema.quotes.id }); const made = rows[0]; if (!made) throw new Error("Could not save quote."); ctx.invalidateQueries(); return { id: made.id }; }}),
+  saveQuote: defineAction({ request: z.object({ clientId: z.number().int().positive().nullable().default(null), jobId: z.number().int().positive().nullable().default(null), clientName: z.string().trim().min(1).max(160), clientPhone: z.string().trim().max(80), clientEmail: z.string().trim().email().max(200).or(z.literal("")), jobAddress: z.string().trim().max(240), shippingAddress: z.string().trim().max(240).default(""), jobType: z.string().trim().max(120), lineItems: z.array(quoteItemSchema).min(1).max(50), subtotal: z.string().max(80), discountType: adjustmentTypeSchema, discountValue: z.string().max(80), taxType: adjustmentTypeSchema, taxValue: z.string().max(80), total: z.string().max(80), footnote: z.string().max(3000), expiryDate: z.string().max(10), sentAt: z.string().max(10), theme: quoteThemeSchema, font: documentFontSchema, accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema, depositType: depositTypeSchema.default("none"), depositValue: z.string().max(80).default("0"), materials: z.array(materialItemSchema).max(200).default([]) }).extend(documentVisibilitySchema.shape), response: z.object({ id: z.number() }), async handler(ctx, args) { const now = new Date(); /* Doc-only (Danny 2026-10-15): no upsertClient — the quote keeps args.clientId as a link only and its own snapshot fields; the client record is never written by a document. */ const clientId = args.clientId; const depositValue = normalizeMoney(args.depositValue, "0.00"); if (args.depositType === "percent" && (Number(depositValue) < 0 || Number(depositValue) > 100)) throw new Error("Deposit percent must be 0-100."); if (args.depositType === "fixed" && Number(depositValue) < 0) throw new Error("Deposit amount cannot be negative."); const { materials, ...quoteArgs } = args; const rows = await ctx.db<typeof schema>().insert(schema.quotes).values({ ...quoteArgs, clientId, materialsJson: JSON.stringify(materials), lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), depositValue, createdAt: now, updatedAt: now }).returning({ id: schema.quotes.id }); const made = rows[0]; if (!made) throw new Error("Could not save quote."); /* Wave 1 recipe (proposal_follow_up): a quote saved already marked as sent gets the same 2-day follow-up as a send. Best-effort. */ if (args.sentAt) { try { const savedQuote = (await ctx.db<typeof schema>().select().from(schema.quotes).where(eq(schema.quotes.id, made.id)).limit(1))[0]; if (savedQuote && await automationEnabled(ctx.db<typeof schema>(), savedQuote.companyId, "proposal_follow_up")) { await createFollowUp(ctx.db<typeof schema>(), { companyId: savedQuote.companyId, title: `Follow up on the estimate for ${savedQuote.clientName}`, body: `Estimate #${savedQuote.id} was sent. Check in with the client, answer questions, and ask for a decision.`, dueDate: shiftDateKey(todayKey(), 2), source: "automation", sourceKey: `proposal:${savedQuote.id}:${todayKey()}`, recipe: "proposal_follow_up", jobId: savedQuote.jobId, clientId: savedQuote.clientId }); } } catch { /* automation is best-effort */ } } ctx.invalidateQueries(); return { id: made.id }; }}),
   convertQuoteToJob: defineAction({ request: z.object({ id: z.number().int().positive(), today: clientTodaySchema }), response: z.object({ jobId: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.quotes).where(eq(schema.quotes.id, args.id)).limit(1); const q = rows[0]; if (!q) throw new Error("Quote not found."); if (q.jobId) return { jobId: q.jobId }; const now = new Date(); const madeRows = await db.insert(schema.jobs).values({ clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress || "Address pending", jobType: q.jobType || "Quoted work", notes: `Converted from quote #${q.id}`, jobDate: clientToday(args), amountDue: q.total, createdAt: now, updatedAt: now }).returning({ id: schema.jobs.id }); const made = madeRows[0]; if (!made) throw new Error("Could not create job."); await db.update(schema.quotes).set({ jobId: made.id, updatedAt: now }).where(eq(schema.quotes.id, q.id)); ctx.invalidateQueries(); return { jobId: made.id }; }}),
 
   listInvoices: defineAction({ request: z.object({}), response: z.object({ invoices: z.array(invoiceSchema) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.invoices).orderBy(desc(schema.invoices.createdAt)); const payments = await db.select().from(schema.payments).orderBy(desc(schema.payments.paymentDate)); const setting=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0]; const fee={type:setting?.lateFeeType??"flat",value:Number(setting?.lateFeeValue??0),graceDays:setting?.lateFeeGraceDays??0}; return { invoices: rows.map((row) => invoiceShape(row, payments.filter((p) => p.invoiceId === row.id), fee)) }; }}),
@@ -4438,6 +4538,310 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // minus payments, floored per invoice at 0).
   getOfficeDashboard: defineAction({ request: z.object({}), response: z.object({ pipelineValue: z.number(), openLeads: z.number(), leadsByStage: z.object({ new: z.number(), contacted: z.number(), quoted: z.number(), won: z.number(), lost: z.number() }), activeJobs: z.number(), invoicedMonth: z.number(), collectedMonth: z.number(), outstanding: z.number(), overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })), followUps: z.array(z.object({ id: z.number(), note: z.string(), reminderDate: z.string(), jobId: z.number().nullable(), clientId: z.number().nullable() })), recentActivity: z.array(z.object({ id: z.number(), leadId: z.number(), leadName: z.string(), kind: leadActivityKindSchema, body: z.string(), createdAt: z.string() })) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [leadRows, jobRows, invoiceRows, paymentRows, noteRows, activityRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.jobs), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.leadActivities).orderBy(desc(schema.leadActivities.createdAt), desc(schema.leadActivities.id)).limit(10)]); const now = new Date(); const today = now.toISOString().slice(0, 10); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const money = (value: string) => Number(String(value).replace(/[^0-9.-]/g, "") || 0); const open = leadRows.filter((row) => row.stage !== "won" && row.stage !== "lost"); const pipelineValue = open.reduce((sum, row) => sum + money(row.estimatedValue), 0); const leadsByStage = { new: 0, contacted: 0, quoted: 0, won: 0, lost: 0 }; for (const row of leadRows) leadsByStage[row.stage]++; const invoicedMonth = invoiceRows.filter((row) => row.issueDate && new Date(`${row.issueDate}T12:00:00`).getTime() >= monthStart).reduce((sum, row) => sum + money(row.total), 0); const collectedMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + money(p.amount), 0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + money(p.amount), 0); return sum + Math.max(0, money(invoice.total) - paid); }, 0); const leadNameById = new Map(leadRows.map((row) => [row.id, row.name])); return { pipelineValue, openLeads: open.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) }; }}),
   // 0087 (Office CRM): global office search across leads, clients, and jobs.
+  // ---------------------------------------------------------------------
+  // Wave 1 (Office): Production Board, follow-up queue, automation
+  // recipes, budget-vs-actual, unified timelines. Helpers live in
+  // server/src/wave1.ts. Money leaves these payloads only through
+  // applyAccessShaping (seeMoney off blanks board/budget/queue amounts
+  // and scrubs timeline amounts, exactly like the job/invoice shapes).
+  // ---------------------------------------------------------------------
+  getProductionBoard: defineAction({
+    request: z.object({}),
+    response: z.object({
+      stages: z.array(z.object({ key: productionStageSchema, label: z.string() })),
+      jobs: z.array(boardJobSchema),
+    }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      const jobRows = await db.select().from(schema.jobs).where(eq(schema.jobs.companyId, companyId)).orderBy(desc(schema.jobs.updatedAt));
+      const activity = await jobLastActivity(db, companyId, jobRows.map((j) => j.id));
+      const nowMs = Date.now();
+      const jobs = [];
+      for (const job of jobRows) {
+        const budget = await jobBudget(db, job);
+        const last = activity.get(job.id) ?? job.updatedAt;
+        const idleDays = Math.max(0, Math.floor((nowMs - last.getTime()) / 86_400_000));
+        jobs.push({
+          id: job.id, clientId: job.clientId, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress, jobDate: job.jobDate,
+          productionStage: job.productionStage,
+          contractSum: moneyString(budget.contract), invoiced: moneyString(budget.invoiced), paid: moneyString(budget.paid),
+          marginPercent: budget.marginPercent, lowMargin: budget.lowMargin, hasCosts: budget.hasCosts,
+          lastActivityAt: last.toISOString(), idleDays,
+          stuck: idleDays >= 7 && job.productionStage !== "complete" && job.productionStage !== "paid_in_full",
+        });
+      }
+      return { stages: PRODUCTION_STAGES.map((key) => ({ key, label: PRODUCTION_STAGE_LABELS[key] })), jobs };
+    },
+  }),
+
+  setJobProductionStage: defineAction({
+    request: z.object({ jobId: z.number().int().positive(), stage: productionStageSchema }),
+    response: z.object({ ok: z.literal(true), stage: productionStageSchema, reviewFollowUp: z.enum(["emailed", "queued", "already", "none"]) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+      if (!job) throw new Error("Job not found.");
+      const from = job.productionStage;
+      const to = args.stage;
+      let reviewFollowUp: "emailed" | "queued" | "already" | "none" = "none";
+      if (from !== to) {
+        const now = new Date();
+        const patch: { productionStage: typeof to; updatedAt: Date; completedAt?: Date | null } = { productionStage: to, updatedAt: now };
+        if ((to === "complete" || to === "paid_in_full") && !job.completedAt) patch.completedAt = now;
+        if (to !== "complete" && to !== "paid_in_full" && job.completedAt) patch.completedAt = null;
+        await db.update(schema.jobs).set(patch).where(eq(schema.jobs.id, job.id));
+        await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "stage", title: `Stage: ${PRODUCTION_STAGE_LABELS[from]} → ${PRODUCTION_STAGE_LABELS[to]}`, userId: identity.workspaceUserId });
+        await logJobSystemMessage(db, job.id, `Production stage moved to ${PRODUCTION_STAGE_LABELS[to]}.`, `La etapa de producción cambió a ${PRODUCTION_STAGE_LABELS[to]}.`);
+        // Recipe (job_review): entering Complete fires the review
+        // request. The existing mechanism (sendJobReviewEmail) is
+        // exactly-once per job; when it can't run (review email off,
+        // no review link, no client email) the office gets a task
+        // instead. Nothing else is ever auto-sent.
+        if (to === "complete" && await automationEnabled(db, job.companyId, "job_review")) {
+          const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, job.companyId)).limit(1))[0];
+          let emailed = false;
+          let already = false;
+          if (setting?.reviewRequestsEnabled && (setting.reviewUrl || "").trim() && job.clientEmail) {
+            try {
+              emailed = await sendJobReviewEmail(ctx, db, { ...job, completedAt: patch.completedAt ?? job.completedAt }, "auto");
+              already = !emailed;
+            } catch { emailed = false; }
+          }
+          if (emailed) {
+            reviewFollowUp = "emailed";
+            await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: "Review request sent", body: "The review-request email went out automatically when the job was marked complete." });
+          } else if (already) {
+            reviewFollowUp = "already";
+          } else {
+            const created = await createFollowUp(db, { companyId: job.companyId, title: `Ask ${job.clientName} for a review`, body: "The job is complete. Send the client a review request (or turn on automatic review emails in Settings).", dueDate: todayKey(now), source: "automation", sourceKey: `review-task:job:${job.id}`, recipe: "job_review", jobId: job.id, clientId: job.clientId, createdByUserId: identity.workspaceUserId });
+            reviewFollowUp = "queued";
+            if (created !== null) {
+              await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: "Review-request task queued", body: "A follow-up task was added to ask the client for a review." });
+            }
+          }
+        }
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const, stage: to, reviewFollowUp };
+    },
+  }),
+
+  getFollowUpQueue: defineAction({
+    request: z.object({ includeDone: z.boolean().default(false) }),
+    response: z.object({
+      items: z.array(followUpItemSchema),
+      members: z.array(z.object({ id: z.number(), name: z.string(), role: z.string() })),
+      openCount: z.number(), overdueCount: z.number(), dueTodayCount: z.number(),
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      // The sweep is deduped and cheap; running it on load keeps the
+      // queue fresh between hourly ticks.
+      await runAutomationSweep(db, companyId).catch(() => ({ created: 0 }));
+      const rows = await db.select().from(schema.followUps).where(eq(schema.followUps.companyId, companyId)).orderBy(asc(schema.followUps.dueDate), desc(schema.followUps.createdAt));
+      const [memberRows, leadRows, jobRows, clientRows, invoiceRows, paymentRows] = await Promise.all([
+        db.select({ id: schema.authUsers.id, name: schema.authUsers.name, role: schema.authUsers.role }).from(schema.authUsers).where(eq(schema.authUsers.companyId, companyId)),
+        db.select({ id: schema.leads.id, name: schema.leads.name }).from(schema.leads).where(eq(schema.leads.companyId, companyId)),
+        db.select({ id: schema.jobs.id, jobType: schema.jobs.jobType, clientName: schema.jobs.clientName }).from(schema.jobs).where(eq(schema.jobs.companyId, companyId)),
+        db.select({ id: schema.clients.id, name: schema.clients.name }).from(schema.clients).where(eq(schema.clients.companyId, companyId)),
+        db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, total: schema.invoices.total }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId)),
+        db.select().from(schema.payments).where(eq(schema.payments.companyId, companyId)),
+      ]);
+      const memberName = new Map(memberRows.map((m) => [m.id, m.name]));
+      const leadName = new Map(leadRows.map((l) => [l.id, l.name]));
+      const jobLabel = new Map(jobRows.map((j) => [j.id, j.jobType || `Job for ${j.clientName}`]));
+      const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
+      const invoiceById = new Map(invoiceRows.map((i) => [i.id, i]));
+      const paidByInvoice = new Map<number, number>();
+      for (const p of paymentRows) paidByInvoice.set(p.invoiceId, (paidByInvoice.get(p.invoiceId) ?? 0) + parseMoneyLoose(p.amount));
+      const today = todayKey();
+      const items = rows
+        .filter((row) => args.includeDone || row.status === "open")
+        .map((row) => {
+          const invoice = row.invoiceId != null ? invoiceById.get(row.invoiceId) : undefined;
+          const balance = invoice ? parseMoneyLoose(invoice.total) - (paidByInvoice.get(invoice.id) ?? 0) : null;
+          return {
+            id: row.id, title: row.title, body: row.body, dueDate: row.dueDate,
+            status: row.status, source: row.source, recipe: row.recipe,
+            assigneeUserId: row.assigneeUserId, assigneeName: row.assigneeUserId != null ? (memberName.get(row.assigneeUserId) ?? "") : "",
+            leadId: row.leadId, leadName: row.leadId != null ? (leadName.get(row.leadId) ?? "") : "",
+            jobId: row.jobId, jobLabel: row.jobId != null ? (jobLabel.get(row.jobId) ?? "") : "",
+            clientId: row.clientId, clientName: row.clientId != null ? (clientName.get(row.clientId) ?? "") : "",
+            invoiceId: row.invoiceId, invoiceNumber: invoice ? (invoice.invoiceNumber || `#${invoice.id}`) : "",
+            amount: balance !== null ? moneyString(balance) : null,
+            overdue: row.status === "open" && !!row.dueDate && row.dueDate < today,
+            createdAt: row.createdAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null,
+          };
+        });
+      const open = rows.filter((row) => row.status === "open");
+      return {
+        items,
+        members: memberRows.map((m) => ({ id: m.id, name: m.name, role: m.role })),
+        openCount: open.length,
+        overdueCount: open.filter((row) => !!row.dueDate && row.dueDate < today).length,
+        dueTodayCount: open.filter((row) => row.dueDate === today).length,
+      };
+    },
+  }),
+
+  saveFollowUp: defineAction({
+    request: z.object({
+      id: z.number().int().positive().optional(),
+      title: z.string().trim().min(1).max(300),
+      body: z.string().max(2000).default(""),
+      dueDate: z.string().max(10).default(""),
+      assigneeUserId: z.number().int().positive().nullable().default(null),
+      leadId: z.number().int().positive().nullable().default(null),
+      jobId: z.number().int().positive().nullable().default(null),
+      clientId: z.number().int().positive().nullable().default(null),
+      invoiceId: z.number().int().positive().nullable().default(null),
+    }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      if (args.id) {
+        const existing = (await db.select().from(schema.followUps).where(eq(schema.followUps.id, args.id)).limit(1))[0];
+        if (!existing || existing.companyId !== companyId) throw new Error("Follow-up not found.");
+        await db.update(schema.followUps).set({
+          title: args.title, body: args.body, dueDate: args.dueDate,
+          assigneeUserId: args.assigneeUserId, leadId: args.leadId, jobId: args.jobId, clientId: args.clientId, invoiceId: args.invoiceId,
+          updatedAt: new Date(),
+        }).where(eq(schema.followUps.id, args.id));
+        ctx.invalidateQueries();
+        return { id: args.id };
+      }
+      const id = await createFollowUp(db, {
+        companyId, title: args.title, body: args.body, dueDate: args.dueDate || todayKey(),
+        assigneeUserId: args.assigneeUserId, leadId: args.leadId, jobId: args.jobId, clientId: args.clientId, invoiceId: args.invoiceId,
+        createdByUserId: identity.workspaceUserId,
+      });
+      if (id === null) throw new Error("Could not create the follow-up.");
+      ctx.invalidateQueries();
+      return { id };
+    },
+  }),
+
+  completeFollowUp: defineAction({
+    request: z.object({ id: z.number().int().positive(), completed: z.boolean().default(true) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const row = (await db.select().from(schema.followUps).where(eq(schema.followUps.id, args.id)).limit(1))[0];
+      if (!row || row.companyId !== identity.workspaceCompanyId) throw new Error("Follow-up not found.");
+      const now = new Date();
+      await db.update(schema.followUps).set({
+        status: args.completed ? "done" : "open",
+        completedAt: args.completed ? now : null,
+        updatedAt: now,
+      }).where(eq(schema.followUps.id, args.id));
+      if (args.completed && row.jobId) {
+        await recordJobEvent(db, { companyId: row.companyId, jobId: row.jobId, kind: "note", title: `Follow-up completed: ${row.title}`, userId: identity.workspaceUserId });
+      }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+
+  snoozeFollowUp: defineAction({
+    request: z.object({ id: z.number().int().positive(), days: z.number().int().min(1).max(90) }),
+    response: z.object({ ok: z.literal(true), dueDate: z.string() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const row = (await db.select().from(schema.followUps).where(eq(schema.followUps.id, args.id)).limit(1))[0];
+      if (!row || row.companyId !== identity.workspaceCompanyId) throw new Error("Follow-up not found.");
+      const today = todayKey();
+      const base = row.dueDate && row.dueDate > today ? row.dueDate : today;
+      const dueDate = shiftDateKey(base, args.days);
+      await db.update(schema.followUps).set({ dueDate, status: "open", completedAt: null, updatedAt: new Date() }).where(eq(schema.followUps.id, args.id));
+      ctx.invalidateQueries();
+      return { ok: true as const, dueDate };
+    },
+  }),
+
+  getAutomationSettings: defineAction({
+    request: z.object({}),
+    response: z.object({ recipes: z.array(automationRecipeSchema) }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const settings = await getRecipeSettings(db, identity.workspaceCompanyId);
+      return { recipes: AUTOMATION_RECIPES.map((r) => ({ key: r.key, label: r.label, description: r.description, enabled: settings[r.key] })) };
+    },
+  }),
+
+  updateAutomationSettings: defineAction({
+    request: z.object({ recipes: z.record(z.string(), z.boolean()) }),
+    response: z.object({ recipes: z.array(automationRecipeSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      const current = await getRecipeSettings(db, companyId);
+      const next: Record<string, boolean> = { ...current };
+      for (const recipe of AUTOMATION_RECIPES) {
+        if (typeof args.recipes[recipe.key] === "boolean") next[recipe.key] = args.recipes[recipe.key] as boolean;
+      }
+      const existing = (await db.select().from(schema.officeAutomationSettings).where(eq(schema.officeAutomationSettings.companyId, companyId)).limit(1))[0];
+      if (existing) {
+        await db.update(schema.officeAutomationSettings).set({ recipesJson: JSON.stringify(next), updatedAt: new Date() }).where(eq(schema.officeAutomationSettings.companyId, companyId));
+      } else {
+        await db.insert(schema.officeAutomationSettings).values({ companyId, recipesJson: JSON.stringify(next), updatedAt: new Date() });
+      }
+      ctx.invalidateQueries();
+      return { recipes: AUTOMATION_RECIPES.map((r) => ({ key: r.key, label: r.label, description: r.description, enabled: next[r.key] ?? true })) };
+    },
+  }),
+
+  getJobBudget: defineAction({
+    request: z.object({ jobId: z.number().int().positive() }),
+    response: z.object({ budget: jobBudgetSchema }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+      if (!job) throw new Error("Job not found.");
+      const budget = await jobBudget(db, job);
+      return {
+        budget: {
+          contract: moneyString(budget.contract), invoiced: moneyString(budget.invoiced), paid: moneyString(budget.paid), costs: moneyString(budget.costs),
+          materials: moneyString(budget.costBreakdown.materials), labor: moneyString(budget.costBreakdown.labor),
+          expenses: moneyString(budget.costBreakdown.expenses), subcontractors: moneyString(budget.costBreakdown.subcontractors),
+          hasCosts: budget.hasCosts, marginPercent: budget.marginPercent, lowMargin: budget.lowMargin,
+        },
+      };
+    },
+  }),
+
+  getJobTimeline: defineAction({
+    request: z.object({ jobId: z.number().int().positive() }),
+    response: z.object({ events: z.array(timelineEventSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+      if (!job) throw new Error("Job not found.");
+      return { events: await buildJobTimeline(db, job) };
+    },
+  }),
+
+  getClientTimeline: defineAction({
+    request: z.object({ clientId: z.number().int().positive() }),
+    response: z.object({ events: z.array(timelineEventSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const client = (await db.select().from(schema.clients).where(eq(schema.clients.id, args.clientId)).limit(1))[0];
+      if (!client) throw new Error("Client not found.");
+      return { events: await buildClientTimeline(db, client) };
+    },
+  }),
+
   getOfficeSearch: defineAction({ request: z.object({ query: z.string().trim().max(120) }), response: z.object({ leads: z.array(z.object({ id: z.number(), name: z.string(), phone: z.string(), stage: leadStageSchema })), clients: z.array(z.object({ id: z.number(), name: z.string(), phone: z.string(), email: z.string() })), jobs: z.array(z.object({ id: z.number(), clientName: z.string(), jobAddress: z.string(), jobType: z.string() })) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const term = args.query.toLowerCase(); if (!term) return { leads: [], clients: [], jobs: [] }; const [leadRows, clientRows, jobRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.clients), db.select().from(schema.jobs)]); const hit = (values: string[]) => values.some((value) => value.toLowerCase().includes(term)); return { leads: leadRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, stage: row.stage })), clients: clientRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email })), jobs: jobRows.filter((row) => hit([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType])).slice(0, 8).map((row) => ({ id: row.id, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType })) }; }}),
   prepareLeadQuote: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ clientId: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.leads).where(eq(schema.leads.id, args.id)).limit(1); const lead = rows[0]; if (!lead) throw new Error("Lead not found."); const clientId = await upsertClient(ctx, { clientId: lead.clientId, name: lead.name, phone: lead.phone, email: "", address: "" }); if (!clientId) throw new Error("Could not create client."); await db.update(schema.leads).set({ clientId, stage: "quoted", updatedAt: new Date() }).where(eq(schema.leads.id, lead.id)); ctx.invalidateQueries(); return { clientId }; }}),
   getJobOperations: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ selections: z.array(selectionSchema), dailyLogs: z.array(dailyLogSchema), internalNotes: z.array(internalNoteSchema), milestones: z.array(milestoneSchema), profitability: z.object({ quoted: z.number(), invoiced: z.number(), variance: z.number(), variancePercent: z.number().nullable(), materials: z.number(), expenses: z.number(), subcontractors: z.number(), laborHours: z.number(), laborCost: z.number(), profit: z.number(), margin: z.number(), changeOrdersTotal: z.number(), selectionBudget: z.number(), selectionActual: z.number(), budgetTotal: z.number() }) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const jobId = job.id; const [selectionRows, logRows, noteRows, milestoneRows, invoiceRows, receiptRows, timeRows, settingRows, expenseRows, subcontractorRows, jobQuoteRows, documentRows] = await Promise.all([db.select().from(schema.selections).where(eq(schema.selections.jobId, jobId)).orderBy(desc(schema.selections.createdAt)), db.select().from(schema.dailyLogs).where(eq(schema.dailyLogs.jobId, jobId)).orderBy(desc(schema.dailyLogs.logDate)), db.select().from(schema.internalNotes).where(eq(schema.internalNotes.jobId, jobId)).orderBy(desc(schema.internalNotes.createdAt)), db.select().from(schema.paymentMilestones).where(eq(schema.paymentMilestones.jobId, jobId)).orderBy(schema.paymentMilestones.id), db.select().from(schema.invoices).where(eq(schema.invoices.jobId, jobId)), db.select().from(schema.receipts).where(eq(schema.receipts.jobId, jobId)), db.select().from(schema.timeEntries).where(eq(schema.timeEntries.jobId, jobId)), db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(schema.businessExpenses).where(eq(schema.businessExpenses.jobId, jobId)), db.select().from(schema.subcontractors).where(eq(schema.subcontractors.jobId, jobId)), db.select().from(schema.quotes).where(eq(schema.quotes.jobId, jobId)), db.select().from(schema.documents).where(and(eq(schema.documents.jobId, jobId), eq(schema.documents.kind, "change_order")))]); const now = Date.now(); const invoiced = invoiceRows.reduce((sum, row) => sum + Number(row.total.replace(/[^0-9.-]/g, "") || 0), 0); const quoted = jobQuoteRows.reduce((sum,row)=>sum+Number(row.total.replace(/[^0-9.-]/g,"")||0),0); const materials = receiptRows.reduce((sum, row) => sum + Number(row.amount.replace(/[^0-9.-]/g, "") || 0), 0); const laborHours = timeRows.reduce((sum, row) => sum + Math.max(0, ((row.endedAt?.getTime() ?? now) - row.startedAt.getTime()) / 3600000), 0); const laborCost = laborHours * Number(settingRows[0]?.hourlyCostRate.replace(/[^0-9.-]/g, "") || 0); const expenses = expenseRows.reduce((sum,row)=>sum+Number(row.amount.replace(/[^0-9.-]/g,"")||0),0); const subcontractors = subcontractorRows.reduce((sum,row)=>sum+Number(row.agreedAmount.replace(/[^0-9.-]/g,"")||0),0); const profit = invoiced - materials - laborCost - expenses - subcontractors; const changeOrdersTotal = documentRows.reduce((sum,row)=>sum+Number(String(row.amount).replace(/[^0-9.-]/g,"")||0),0); const selectionBudget = selectionRows.reduce((sum,row)=>sum+Number(String(row.estimatedCost).replace(/[^0-9.-]/g,"")||0),0); const selectionActual = selectionRows.reduce((sum,row)=>sum+Number(String(row.actualCost).replace(/[^0-9.-]/g,"")||0),0); return { selections: await Promise.all(selectionRows.map(async (row) => ({ id: row.id, jobId: row.jobId, category: row.category, item: row.item, vendor: row.vendor, photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null, approvalStatus: row.approvalStatus, leadTimeDays: row.leadTimeDays, estimatedCost: row.estimatedCost, actualCost: row.actualCost, createdAt: row.createdAt.toISOString() }))), dailyLogs: logRows.map((row) => ({ id: row.id, jobId: row.jobId, logDate: row.logDate, crew: row.crew, hours: row.hours, photoIds: JSON.parse(row.photoIdsJson) as number[], notes: row.notes, blockers: row.blockers, clientSummary: row.clientSummary, sharedWithClient: row.sharedWithClient, createdAt: row.createdAt.toISOString() })), internalNotes: noteRows.map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })), milestones: milestoneRows.map((row) => { const linked = row.invoiceId ? invoiceRows.find((inv) => inv.id === row.invoiceId) : undefined; return { id: row.id, jobId: row.jobId, invoiceId: linked ? row.invoiceId : null, invoiceNumber: linked ? (linked.invoiceNumber || `INV-${String(linked.id).padStart(4, "0")}`) : null, invoiceStatus: linked ? linked.status : null, label: row.label, amount: row.amount, percentage: row.percentage, dueDate: row.dueDate, status: row.status, createdAt: row.createdAt.toISOString() }; }), profitability: { quoted, invoiced, variance: invoiced-quoted, variancePercent: quoted>0?(invoiced-quoted)/quoted*100:null, materials, expenses, subcontractors, laborHours, laborCost, profit, margin: invoiced > 0 ? (profit / invoiced) * 100 : 0, changeOrdersTotal, selectionBudget, selectionActual, budgetTotal: quoted + changeOrdersTotal } }; }}),
@@ -5342,6 +5746,25 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     await ctx.blobs.put(pdfKey,finalPdfBytes,{contentType:"application/pdf"});
     await db.update(schema.documents).set({clientSignerName:args.signerName,clientSignatureBlobKey:sigKey,clientSignedAt:now,clientSignedPdfBlobKey:pdfKey,clientSignatureHash:hash,clientSignedUserAgent:args.userAgent.slice(0,300),fillValuesJson:JSON.stringify(mergedFill)}).where(eq(schema.documents.id,doc.id));
     await db.insert(schema.documentLinkEvents).values({linkId:link.id,eventType:"sign",userAgent:args.userAgent.slice(0,300),occurredAt:now});
+    // Wave 1 recipe (contract_welcome): a signed CONTRACT queues a
+    // welcome-message task in the Office follow-up queue. Nothing is
+    // sent to the client automatically — the office sends it. The job
+    // is guaranteed to exist (documents always belong to a job), so
+    // "ensure job exists/linked" is satisfied by construction.
+    // Best-effort: automation must never fail a signing.
+    if (doc.kind === "contract") {
+      try {
+        if (await automationEnabled(db, link.companyId, "contract_welcome")) {
+          const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, doc.jobId)).limit(1))[0];
+          if (job) {
+            const created = await createFollowUp(db, { companyId: link.companyId, title: `Send a welcome message to ${job.clientName}`, body: `"${doc.title}" was signed. Send the client a short welcome: thanks for signing, what happens next, and when the work starts.`, dueDate: todayKey(now), source: "automation", sourceKey: `welcome:doc:${doc.id}`, recipe: "contract_welcome", jobId: job.id, clientId: job.clientId });
+            if (created !== null) {
+              await recordJobEvent(db, { companyId: link.companyId, jobId: job.id, kind: "automation", title: "Welcome-message task queued", body: `Contract "${doc.title}" signed — a welcome task was added to the follow-up queue.` });
+            }
+          }
+        }
+      } catch { /* automation is best-effort */ }
+    }
     // Build 2: tell the company a client signed their document (in-app + push, preference-gated).
     await notifyCompanyEvent(ctx,link.companyId,"notifyDocSigned","document-signed",`Client signed "${doc.title}"`,"Un cliente firmó tu documento",`doc-signed:${doc.id}`);
     // Signing flow v2 (2026-10-17): DocuSign-style completion emails —
@@ -5548,7 +5971,18 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // sync with the account instead of one phone's localStorage.
   saveQuoteMaterials: defineAction({request:z.object({id:z.number().int().positive(),materials:z.array(materialItemSchema).max(200)}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const row=(await db.select({id:schema.quotes.id}).from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!row)throw new Error("Quote not found.");await db.update(schema.quotes).set({materialsJson:JSON.stringify(args.materials),updatedAt:new Date()}).where(eq(schema.quotes.id,args.id));ctx.invalidateQueries();return{ok:true};} }),
   createQuoteVersion: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({id:z.number(),versionNumber:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const source=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!source)throw new Error("Quote not found.");const seriesId=source.seriesId??source.id;const versions=(await db.select().from(schema.quotes)).filter(q=>(q.seriesId??q.id)===seriesId);const versionNumber=Math.max(...versions.map(q=>q.versionNumber),0)+1;const now=new Date();const rows=await db.insert(schema.quotes).values({clientId:source.clientId,clientName:source.clientName,clientPhone:source.clientPhone,clientEmail:source.clientEmail,jobAddress:source.jobAddress,jobType:source.jobType,lineItemsJson:source.lineItemsJson,materialsJson:source.materialsJson,optionSelectionJson:serializeOptionSelection({selected:parseOptionSelection(source.optionSelectionJson).selected,accepted:null}),subtotal:source.subtotal,discountType:source.discountType,discountValue:source.discountValue,taxType:source.taxType,taxValue:source.taxValue,total:source.total,footnote:source.footnote,expiryDate:source.expiryDate,sentAt:"",automationStatus:"awaiting",lostReason:null,lostNote:"",theme:source.theme,font:source.font,accentColor:source.accentColor,showTaxLine:source.showTaxLine,showDiscountLine:source.showDiscountLine,showPaidLine:source.showPaidLine,showPaymentTerms:source.showPaymentTerms,showFooterNotes:source.showFooterNotes,showLogo:source.showLogo,showCompanyInfo:source.showCompanyInfo,jobId:source.jobId,seriesId,parentQuoteId:source.id,versionNumber,superseded:false,accepted:false,createdAt:now,updatedAt:now}).returning({id:schema.quotes.id});const made=rows[0];if(!made)throw new Error("Could not create quote version.");ctx.invalidateQueries();return{id:made.id,versionNumber};} }),
-  sendQuoteVersion: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const quote=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!quote)throw new Error("Quote not found.");const seriesId=quote.seriesId??quote.id;const versions=(await db.select().from(schema.quotes)).filter(q=>(q.seriesId??q.id)===seriesId);for(const version of versions)await db.update(schema.quotes).set({superseded:version.id!==quote.id,updatedAt:new Date()}).where(eq(schema.quotes.id,version.id));await db.update(schema.quotes).set({sentAt:new Date().toISOString().slice(0,10),superseded:false,updatedAt:new Date()}).where(eq(schema.quotes.id,quote.id));ctx.invalidateQueries();return{ok:true};} }),
+  sendQuoteVersion: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const quote=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!quote)throw new Error("Quote not found.");const seriesId=quote.seriesId??quote.id;const versions=(await db.select().from(schema.quotes)).filter(q=>(q.seriesId??q.id)===seriesId);for(const version of versions)await db.update(schema.quotes).set({superseded:version.id!==quote.id,updatedAt:new Date()}).where(eq(schema.quotes.id,version.id));await db.update(schema.quotes).set({sentAt:new Date().toISOString().slice(0,10),superseded:false,updatedAt:new Date()}).where(eq(schema.quotes.id,quote.id));
+// Wave 1 recipe (proposal_follow_up): an estimate send queues a
+// follow-up task due in 2 days. Best-effort — never fail the send.
+try {
+  if (await automationEnabled(db, quote.companyId, "proposal_follow_up")) {
+    const created = await createFollowUp(db, { companyId: quote.companyId, title: `Follow up on the estimate for ${quote.clientName}`, body: `Estimate #${quote.id} was sent. Check in with the client, answer questions, and ask for a decision.`, dueDate: shiftDateKey(todayKey(), 2), source: "automation", sourceKey: `proposal:${quote.id}:${todayKey()}`, recipe: "proposal_follow_up", jobId: quote.jobId, clientId: quote.clientId });
+    if (created !== null && quote.jobId) {
+      await recordJobEvent(db, { companyId: quote.companyId, jobId: quote.jobId, kind: "automation", title: "Estimate follow-up queued", body: `Estimate #${quote.id} was sent — a follow-up task was added to the queue.` });
+    }
+  }
+} catch { /* automation is best-effort */ }
+ctx.invalidateQueries();return{ok:true};} }),
   acceptQuoteVersion: defineAction({request:z.object({id:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{const db=ctx.db<typeof schema>();const quote=(await db.select().from(schema.quotes).where(eq(schema.quotes.id,args.id)).limit(1))[0];if(!quote)throw new Error("Quote not found.");const seriesId=quote.seriesId??quote.id;const versions=(await db.select().from(schema.quotes)).filter(q=>(q.seriesId??q.id)===seriesId);for(const version of versions){const isAccepted=version.id===quote.id;// Estimate options (0076): accepting freezes this version's client option
 // selection into the accepted snapshot; versions losing acceptance drop
 // theirs (the live tick state stays for reference).

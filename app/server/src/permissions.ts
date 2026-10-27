@@ -62,7 +62,7 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "createCrewLogin", "resetCrewPin", "setMemberAccess",
   "addAppUser", "updateAppUser", "deleteAppUser",
   "getAdminConsole", "updateAdminParameters", "updateSupportReport",
-  "saveCrewPayRate", "updateSettings", "uploadLogo",
+  "saveCrewPayRate", "updateSettings", "updateAutomationSettings", "uploadLogo",
   "uploadCompanyCover", "getBillingOverview", "getSubscription",
   "createBillingPortalSession", "startPremiumCheckout", "createCreditPackCheckout",
   "startListingBumpCheckout", "verifyPlaySubscription", "refreshPlaySubscription",
@@ -97,6 +97,13 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "getExpansionSuite", "getFieldIntelligence", "getGrowthToolkit",
   "getJobOperations", "getLeadActivities", "getListingBumpStatus",
   "getMarketplaceProProfile", "getOfficeDashboard", "getOfficeSearch",
+  // Wave 1: Production Board, follow-up queue, automation recipe
+  // switches (read), and budget-vs-actual. Office working surface —
+  // Field never reaches these; money inside their payloads is still
+  // stripped per-member by access shaping (seeMoney).
+  "getProductionBoard", "setJobProductionStage", "getFollowUpQueue",
+  "saveFollowUp", "completeFollowUp", "snoozeFollowUp",
+  "getAutomationSettings", "getJobBudget",
   "getQuoteVersions", "getTaxExport", "invoiceMilestone",
   "listBidBoard", "listLeads", "listMaterialCosts",
   "listRecurringSchedules", "listShareImages", "listSubcontractors",
@@ -158,9 +165,9 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "craneRunSetOptIn", "craneRunSubmitScore", "createDocumentLink",
   "createJob", "createMarketplaceBooking", "createPhotoPair",
   "deleteMyAccount", "dismissOnboardingChecklist", "duplicateInvoice",
-  "duplicateQuote", "getAutomationCenter", "getClient",
+  "duplicateQuote", "getAutomationCenter", "getClient", "getClientTimeline",
   "getDocumentLinkInfo", "getDocumentPdf", "getDocumentTimeline",
-  "getFinancialSignature", "getFoundingMemberAvailability", "getJob",
+  "getFinancialSignature", "getFoundingMemberAvailability", "getJob", "getJobTimeline",
   "getMarketplaceListing", "getMarketplaceUnlockStatus", "getOnMyWayStatus",
   "getOnboardingChecklist", "getPlayBillingConfig", "getPortalLinkInfo",
   "getReferralStats", "getSettings", "getUsageLimits",

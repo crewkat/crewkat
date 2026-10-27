@@ -34343,9 +34343,11 @@ __export(exports_schema, {
   equipment: () => equipment,
   featureFlags: () => featureFlags,
   financialDocumentSignatures: () => financialDocumentSignatures,
+  followUps: () => followUps,
   incidents: () => incidents,
   internalNotes: () => internalNotes,
   invoices: () => invoices,
+  jobEvents: () => jobEvents,
   jobFiles: () => jobFiles,
   jobMessages: () => jobMessages,
   jobs: () => jobs,
@@ -34367,6 +34369,7 @@ __export(exports_schema, {
   materialCostItems: () => materialCostItems,
   mileageTrips: () => mileageTrips,
   moderationKeywordRules: () => moderationKeywordRules,
+  officeAutomationSettings: () => officeAutomationSettings,
   onboardingChecklist: () => onboardingChecklist,
   paymentMilestones: () => paymentMilestones,
   payments: () => payments,
@@ -41134,6 +41137,7 @@ var jobs = sqliteTable("jobs", {
   requiredPhotoStages: text("required_photo_stages").notNull().default("before,during,after"),
   completedAt: integer2("completed_at", { mode: "timestamp_ms" }),
   completionOverrideNote: text("completion_override_note").notNull().default(""),
+  productionStage: text("production_stage", { enum: ["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"] }).notNull().default("scheduled"),
   isSample: integer2("is_sample", { mode: "boolean" }).notNull().default(false),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
@@ -41575,6 +41579,47 @@ var internalNotes = sqliteTable("internal_notes", {
   reminderDate: text("reminder_date").notNull().default(""),
   completed: integer2("completed", { mode: "boolean" }).notNull().default(false),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
+var followUps = sqliteTable("follow_ups", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  dueDate: text("due_date").notNull().default(""),
+  status: text("status", { enum: ["open", "done"] }).notNull().default("open"),
+  source: text("source", { enum: ["manual", "automation"] }).notNull().default("manual"),
+  sourceKey: text("source_key").notNull().default(""),
+  recipe: text("recipe").notNull().default(""),
+  assigneeUserId: integer2("assignee_user_id"),
+  leadId: integer2("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  jobId: integer2("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+  clientId: integer2("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  invoiceId: integer2("invoice_id").references(() => invoices.id, { onDelete: "cascade" }),
+  createdByUserId: integer2("created_by_user_id"),
+  completedAt: integer2("completed_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("follow_ups_company_status_idx").on(table.companyId, table.status, table.dueDate),
+  index("follow_ups_job_idx").on(table.jobId),
+  index("follow_ups_lead_idx").on(table.leadId)
+]);
+var jobEvents = sqliteTable("job_events", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["stage", "automation", "note"] }).notNull().default("stage"),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  createdByUserId: integer2("created_by_user_id"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("job_events_job_idx").on(table.jobId, table.createdAt)
+]);
+var officeAutomationSettings = sqliteTable("office_automation_settings", {
+  companyId: integer2("company_id").primaryKey(),
+  recipesJson: text("recipes_json").notNull().default("{}"),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var paymentMilestones = sqliteTable("payment_milestones", {
@@ -72166,6 +72211,443 @@ async function buildChangeOrderPdfForDocument(ctx, documentId, lang) {
   return { bytes, filename };
 }
 
+// src/wave1.ts
+function todayKey(now = new Date) {
+  return now.toISOString().slice(0, 10);
+}
+function shiftDateKey(key, days) {
+  const base = new Date(`${key}T12:00:00Z`);
+  return new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+function daysBetweenKeys(fromKey, toKey) {
+  const from = new Date(`${fromKey}T12:00:00Z`).getTime();
+  const to = new Date(`${toKey}T12:00:00Z`).getTime();
+  return Math.round((to - from) / (24 * 60 * 60 * 1000));
+}
+function dateKeyToDate(key) {
+  return new Date(`${key}T12:00:00Z`);
+}
+var PRODUCTION_STAGES = ["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"];
+var PRODUCTION_STAGE_LABELS = {
+  scheduled: "Scheduled",
+  in_progress: "In Progress",
+  punch_list: "Punch List",
+  complete: "Complete",
+  paid_in_full: "Paid in Full"
+};
+async function recordJobEvent(db, args) {
+  await db.insert(jobEvents).values({
+    companyId: args.companyId,
+    jobId: args.jobId,
+    kind: args.kind,
+    title: args.title,
+    body: args.body ?? "",
+    createdByUserId: args.userId ?? null
+  });
+}
+async function createFollowUp(db, args) {
+  const sourceKey = args.sourceKey ?? "";
+  if (sourceKey) {
+    const existing = await db.select({ id: followUps.id }).from(followUps).where(and(eq(followUps.companyId, args.companyId), eq(followUps.sourceKey, sourceKey))).limit(1);
+    if (existing[0])
+      return null;
+  }
+  try {
+    const rows = await db.insert(followUps).values({
+      companyId: args.companyId,
+      title: args.title,
+      body: args.body ?? "",
+      dueDate: args.dueDate,
+      source: args.source ?? "manual",
+      sourceKey,
+      recipe: args.recipe ?? "",
+      assigneeUserId: args.assigneeUserId ?? null,
+      leadId: args.leadId ?? null,
+      jobId: args.jobId ?? null,
+      clientId: args.clientId ?? null,
+      invoiceId: args.invoiceId ?? null,
+      createdByUserId: args.createdByUserId ?? null
+    }).returning({ id: followUps.id });
+    return rows[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+var AUTOMATION_RECIPES = [
+  {
+    key: "proposal_follow_up",
+    label: "Estimate follow-up",
+    description: "When an estimate is sent, queue a follow-up task due in 2 days so no proposal goes unanswered."
+  },
+  {
+    key: "contract_welcome",
+    label: "Contract welcome",
+    description: "When a client signs a contract, queue a welcome-message task for the office (nothing is sent automatically)."
+  },
+  {
+    key: "job_review",
+    label: "Review request on completion",
+    description: "When a job is marked Complete on the Production Board, send the review request through the existing review email (if enabled in Settings) or queue a task to ask for one."
+  },
+  {
+    key: "invoice_overdue",
+    label: "Overdue invoice follow-up",
+    description: "When an invoice goes past due with a balance, queue an office follow-up and client nudge task."
+  },
+  {
+    key: "lead_stale",
+    label: "Stale lead alert",
+    description: "When an open lead has no activity for 7 days, surface it in the follow-up queue before it goes cold."
+  }
+];
+async function getRecipeSettings(db, companyId) {
+  const out = Object.fromEntries(AUTOMATION_RECIPES.map((r) => [r.key, true]));
+  const row = (await db.select().from(officeAutomationSettings).where(eq(officeAutomationSettings.companyId, companyId)).limit(1))[0];
+  if (row) {
+    try {
+      const parsed = JSON.parse(row.recipesJson || "{}");
+      for (const recipe of AUTOMATION_RECIPES) {
+        if (typeof parsed[recipe.key] === "boolean")
+          out[recipe.key] = parsed[recipe.key];
+      }
+    } catch {}
+  }
+  return out;
+}
+async function automationEnabled(db, companyId, key) {
+  const settings2 = await getRecipeSettings(db, companyId);
+  return settings2[key];
+}
+async function jobCosts(db, job) {
+  const [receiptRows, timeRows, expenseRows, subRows, settingsRow] = await Promise.all([
+    db.select().from(receipts).where(eq(receipts.jobId, job.id)),
+    db.select().from(timeEntries).where(eq(timeEntries.jobId, job.id)),
+    db.select().from(businessExpenses).where(eq(businessExpenses.jobId, job.id)),
+    db.select().from(subcontractors).where(eq(subcontractors.jobId, job.id)),
+    db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1)
+  ]);
+  const hourlyCostRate = parseMoneyLoose(settingsRow[0]?.hourlyCostRate);
+  const materials = receiptRows.reduce((sum, r) => sum + parseMoneyLoose(r.amount), 0);
+  const nowMs = Date.now();
+  const laborHours = timeRows.reduce((sum, t) => sum + Math.max(0, ((t.endedAt?.getTime() ?? nowMs) - t.startedAt.getTime()) / 3600000), 0);
+  const labor = laborHours * hourlyCostRate;
+  const expenses = expenseRows.reduce((sum, e) => sum + parseMoneyLoose(e.amount), 0);
+  const subcontractors2 = subRows.reduce((sum, s) => sum + parseMoneyLoose(s.agreedAmount), 0);
+  return { materials, labor, expenses, subcontractors: subcontractors2 };
+}
+async function jobBudget(db, job) {
+  const docs = await jobDocumentsOrdered(db, job.id);
+  const contract = parseMoneyLoose(contractSummaryForJob(job, docs).revisedTotal);
+  const invoiceRows = await db.select().from(invoices).where(eq(invoices.jobId, job.id));
+  const invoiced = invoiceRows.reduce((sum, inv) => sum + parseMoneyLoose(inv.total), 0);
+  let paid = 0;
+  if (invoiceRows.length > 0) {
+    const paymentRows = await db.select().from(payments).where(inArray(payments.invoiceId, invoiceRows.map((i) => i.id)));
+    paid = paymentRows.reduce((sum, p) => sum + parseMoneyLoose(p.amount), 0);
+  }
+  const costBreakdown = await jobCosts(db, job);
+  const costs = costBreakdown.materials + costBreakdown.labor + costBreakdown.expenses + costBreakdown.subcontractors;
+  const hasCosts = costs > 0;
+  const marginPercent = hasCosts && contract > 0 ? Math.round((contract - costs) / contract * 1000) / 10 : null;
+  return {
+    contract,
+    invoiced,
+    paid,
+    costs,
+    costBreakdown,
+    hasCosts,
+    marginPercent,
+    lowMargin: marginPercent !== null && marginPercent < 15
+  };
+}
+async function jobLastActivity(db, companyId, jobIds) {
+  const out = new Map;
+  if (jobIds.length === 0)
+    return out;
+  const idSet = new Set(jobIds);
+  const touch = (jobId, at) => {
+    if (jobId == null || !at || !idSet.has(jobId))
+      return;
+    const current = out.get(jobId);
+    if (!current || at.getTime() > current.getTime())
+      out.set(jobId, at);
+  };
+  const jobs2 = await db.select({ id: jobs.id, updatedAt: jobs.updatedAt, createdAt: jobs.createdAt }).from(jobs).where(eq(jobs.companyId, companyId));
+  for (const j of jobs2) {
+    touch(j.id, j.updatedAt);
+    touch(j.id, j.createdAt);
+  }
+  const [events, photos2, logs, times, receipts2, docs, notes, followUps2, invoices2] = await Promise.all([
+    db.select({ jobId: jobEvents.jobId, at: jobEvents.createdAt }).from(jobEvents).where(eq(jobEvents.companyId, companyId)),
+    db.select({ jobId: photos.jobId, at: photos.createdAt }).from(photos).where(eq(photos.companyId, companyId)),
+    db.select({ jobId: dailyLogs.jobId, at: dailyLogs.createdAt }).from(dailyLogs).where(eq(dailyLogs.companyId, companyId)),
+    db.select({ jobId: timeEntries.jobId, at: timeEntries.createdAt }).from(timeEntries).where(eq(timeEntries.companyId, companyId)),
+    db.select({ jobId: receipts.jobId, at: receipts.createdAt }).from(receipts).where(eq(receipts.companyId, companyId)),
+    db.select({ jobId: documents.jobId, at: documents.createdAt }).from(documents).where(eq(documents.companyId, companyId)),
+    db.select({ jobId: internalNotes.jobId, at: internalNotes.updatedAt }).from(internalNotes).where(eq(internalNotes.companyId, companyId)),
+    db.select({ jobId: followUps.jobId, at: followUps.updatedAt }).from(followUps).where(eq(followUps.companyId, companyId)),
+    db.select({ id: invoices.id, jobId: invoices.jobId, at: invoices.createdAt }).from(invoices).where(eq(invoices.companyId, companyId))
+  ]);
+  for (const r of [...events, ...photos2, ...logs, ...times, ...receipts2, ...docs, ...notes, ...followUps2])
+    touch(r.jobId, r.at);
+  const invoiceJob = new Map(invoices2.map((i) => [i.id, i.jobId]));
+  for (const inv of invoices2)
+    touch(inv.jobId, inv.at);
+  if (invoices2.length > 0) {
+    const payments2 = await db.select({ invoiceId: payments.invoiceId, at: payments.createdAt }).from(payments).where(inArray(payments.invoiceId, invoices2.map((i) => i.id)));
+    for (const p of payments2)
+      touch(invoiceJob.get(p.invoiceId) ?? null, p.at);
+  }
+  return out;
+}
+async function runAutomationSweep(db, companyId, now = new Date) {
+  const recipes = await getRecipeSettings(db, companyId);
+  const today = todayKey(now);
+  let created = 0;
+  if (recipes.invoice_overdue) {
+    const invoiceRows = await db.select().from(invoices).where(eq(invoices.companyId, companyId));
+    const open2 = invoiceRows.filter((inv) => inv.status !== "paid" && inv.dueDate && inv.dueDate < today);
+    if (open2.length > 0) {
+      const paymentRows = await db.select().from(payments).where(inArray(payments.invoiceId, open2.map((i) => i.id)));
+      const paidByInvoice = new Map;
+      for (const p of paymentRows)
+        paidByInvoice.set(p.invoiceId, (paidByInvoice.get(p.invoiceId) ?? 0) + parseMoneyLoose(p.amount));
+      for (const inv of open2) {
+        const balance = parseMoneyLoose(inv.total) - (paidByInvoice.get(inv.id) ?? 0);
+        if (balance <= 0)
+          continue;
+        const days = daysBetweenKeys(inv.dueDate, today);
+        const id = await createFollowUp(db, {
+          companyId,
+          title: `Invoice ${inv.invoiceNumber || `#${inv.id}`} is overdue \u2014 follow up with ${inv.clientName}`,
+          body: `Balance of ${moneyString(balance)} is ${days} day${days === 1 ? "" : "s"} past due (due ${inv.dueDate}). Nudge the client, then confirm a payment date.`,
+          dueDate: today,
+          source: "automation",
+          sourceKey: `overdue-invoice:${inv.id}`,
+          recipe: "invoice_overdue",
+          jobId: inv.jobId,
+          clientId: inv.clientId,
+          invoiceId: inv.id
+        });
+        if (id !== null) {
+          created++;
+          if (inv.jobId) {
+            const job = (await db.select().from(jobs).where(eq(jobs.id, inv.jobId)).limit(1))[0];
+            if (job) {
+              await recordJobEvent(db, {
+                companyId,
+                jobId: inv.jobId,
+                kind: "automation",
+                title: "Overdue invoice follow-up queued",
+                body: `Invoice ${inv.invoiceNumber || `#${inv.id}`} is ${days} days past due with a balance of ${moneyString(balance)}.`
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+  if (recipes.lead_stale) {
+    const leadRows = await db.select().from(leads).where(eq(leads.companyId, companyId));
+    const openLeads = leadRows.filter((lead) => lead.stage === "new" || lead.stage === "contacted" || lead.stage === "quoted");
+    if (openLeads.length > 0) {
+      const activityRows = await db.select({ leadId: leadActivities.leadId, at: leadActivities.createdAt }).from(leadActivities).where(inArray(leadActivities.leadId, openLeads.map((l) => l.id)));
+      const lastActivity = new Map;
+      for (const a of activityRows) {
+        const current = lastActivity.get(a.leadId);
+        if (!current || a.at.getTime() > current.getTime())
+          lastActivity.set(a.leadId, a.at);
+      }
+      const cutoff = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+      for (const lead of openLeads) {
+        const lastTouch = lastActivity.get(lead.id) ?? lead.updatedAt;
+        const last = lastTouch.getTime() > lead.updatedAt.getTime() ? lastTouch : lead.updatedAt;
+        if (last.getTime() > cutoff)
+          continue;
+        const idleDays = Math.floor((now.getTime() - last.getTime()) / (24 * 60 * 60 * 1000));
+        const id = await createFollowUp(db, {
+          companyId,
+          title: `Lead ${lead.name} has gone quiet`,
+          body: `No activity for ${idleDays} days (stage: ${lead.stage}). Reach out before it goes cold.`,
+          dueDate: today,
+          source: "automation",
+          sourceKey: `stale-lead:${lead.id}:${todayKey(last)}`,
+          recipe: "lead_stale",
+          leadId: lead.id,
+          clientId: lead.clientId
+        });
+        if (id !== null)
+          created++;
+      }
+    }
+  }
+  return { created };
+}
+var TIMELINE_CAP = 200;
+function sortTimeline(events) {
+  return events.sort((a, b) => a.at < b.at ? 1 : a.at > b.at ? -1 : 0).slice(0, TIMELINE_CAP);
+}
+async function buildJobTimeline(db, job) {
+  const events = [];
+  const push = (id, kind, title, at, body = "") => {
+    if (!at)
+      return;
+    events.push({ id, kind, title, body, at: at.toISOString() });
+  };
+  push(`job-created:${job.id}`, "job", "Job created", job.createdAt, job.jobType || "");
+  const [eventRows, docs, quoteRows, invoiceRows, logRows, photoRows, noteRows, followUpRows, messageRows] = await Promise.all([
+    db.select().from(jobEvents).where(eq(jobEvents.jobId, job.id)).orderBy(desc(jobEvents.createdAt)),
+    jobDocumentsOrdered(db, job.id),
+    db.select().from(quotes).where(eq(quotes.jobId, job.id)),
+    db.select().from(invoices).where(eq(invoices.jobId, job.id)),
+    db.select().from(dailyLogs).where(eq(dailyLogs.jobId, job.id)),
+    db.select().from(photos).where(eq(photos.jobId, job.id)),
+    db.select().from(internalNotes).where(eq(internalNotes.jobId, job.id)),
+    db.select().from(followUps).where(eq(followUps.jobId, job.id)),
+    db.select().from(jobMessages).where(and(eq(jobMessages.jobId, job.id), eq(jobMessages.sender, "system")))
+  ]);
+  for (const row of eventRows) {
+    push(`event:${row.id}`, row.kind, row.title, row.createdAt, row.body);
+  }
+  for (const msg of messageRows) {
+    push(`sysmsg:${msg.id}`, "system", msg.body, msg.createdAt);
+  }
+  const docIds = docs.map((d) => d.id);
+  const quoteIds = quoteRows.map((q) => q.id);
+  const invoiceIds = invoiceRows.map((i) => i.id);
+  const linkRows = docIds.length + quoteIds.length + invoiceIds.length > 0 ? await db.select().from(documentLinks).where(and(eq(documentLinks.companyId, job.companyId))) : [];
+  const docTitle = new Map(docs.map((d) => [d.id, d.title]));
+  const linksFor = linkRows.filter((l) => (l.documentKind === "contract" || l.documentKind === "change_order") && docIds.includes(l.documentId) || l.documentKind === "quote" && quoteIds.includes(l.documentId) || l.documentKind === "invoice" && invoiceIds.includes(l.documentId));
+  const linkLabel = (l) => {
+    if (l.documentKind === "contract" || l.documentKind === "change_order")
+      return docTitle.get(l.documentId) ?? "Document";
+    if (l.documentKind === "quote")
+      return `Estimate #${l.documentId}`;
+    const inv = invoiceRows.find((i) => i.id === l.documentId);
+    return inv ? `Invoice ${inv.invoiceNumber || `#${inv.id}`}` : "Invoice";
+  };
+  for (const link of linksFor) {
+    push(`link:${link.id}:shared`, "shared", `Shared with client: ${linkLabel(link)}`, link.createdAt);
+    if (link.firstViewedAt) {
+      push(`link:${link.id}:viewed`, "viewed", `Client opened ${linkLabel(link)}`, link.firstViewedAt, link.viewCount > 1 ? `Opened ${link.viewCount} times` : "");
+    }
+  }
+  for (const doc of docs) {
+    push(`doc:${doc.id}:created`, "document", `${doc.title} created`, doc.createdAt, doc.kind === "change_order" ? "Change order" : "Contract");
+    if (doc.clientSignedAt) {
+      push(`doc:${doc.id}:signed`, "signed", `${doc.title} signed`, doc.clientSignedAt, doc.clientSignerName ? `Signed by ${doc.clientSignerName}` : "");
+    }
+  }
+  for (const quote of quoteRows) {
+    push(`quote:${quote.id}:created`, "estimate", `Estimate #${quote.id} created`, quote.createdAt, `$${moneyString(parseMoneyLoose(quote.total))}`);
+    if (quote.sentAt) {
+      push(`quote:${quote.id}:sent`, "estimate", `Estimate #${quote.id} sent`, dateKeyToDate(quote.sentAt));
+    }
+    if (quote.accepted) {
+      push(`quote:${quote.id}:accepted`, "estimate", `Estimate #${quote.id} accepted`, quote.updatedAt);
+    }
+  }
+  for (const inv of invoiceRows) {
+    push(`invoice:${inv.id}:issued`, "invoice", `Invoice ${inv.invoiceNumber || `#${inv.id}`} issued`, inv.createdAt, `$${moneyString(parseMoneyLoose(inv.total))}`);
+  }
+  if (invoiceIds.length > 0) {
+    const paymentRows = await db.select().from(payments).where(inArray(payments.invoiceId, invoiceIds));
+    const invById = new Map(invoiceRows.map((i) => [i.id, i]));
+    for (const p of paymentRows) {
+      const inv = invById.get(p.invoiceId);
+      push(`payment:${p.id}`, "payment", `Payment received \u2014 $${moneyString(parseMoneyLoose(p.amount))}`, p.createdAt, `${inv ? `Invoice ${inv.invoiceNumber || `#${inv.id}`}` : ""}${p.method ? ` \xB7 ${p.method}` : ""} \xB7 ${p.paymentDate}`);
+    }
+  }
+  for (const log of logRows) {
+    push(`log:${log.id}`, "log", `Daily log \u2014 ${log.logDate}`, log.createdAt, log.notes.slice(0, 160));
+  }
+  const photoGroups = new Map;
+  for (const photo of photoRows) {
+    const key = `${photo.createdAt.toISOString().slice(0, 10)}:${photo.stage}`;
+    const group = photoGroups.get(key);
+    if (group) {
+      group.count++;
+      if (photo.createdAt.getTime() > group.at.getTime())
+        group.at = photo.createdAt;
+    } else
+      photoGroups.set(key, { count: 1, at: photo.createdAt, stage: photo.stage });
+  }
+  for (const [key, group] of photoGroups) {
+    push(`photos:${job.id}:${key}`, "photo", `${group.count} photo${group.count === 1 ? "" : "s"} added (${group.stage})`, group.at);
+  }
+  for (const note of noteRows) {
+    push(`note:${note.id}`, "note", "Note added", note.createdAt, note.note.slice(0, 160));
+  }
+  for (const fu of followUpRows) {
+    push(`followup:${fu.id}:created`, "follow_up", `Follow-up queued: ${fu.title}`, fu.createdAt);
+    if (fu.completedAt) {
+      push(`followup:${fu.id}:done`, "follow_up", `Follow-up completed: ${fu.title}`, fu.completedAt);
+    }
+  }
+  return sortTimeline(events);
+}
+async function buildClientTimeline(db, client) {
+  const events = [];
+  events.push({ id: `client-created:${client.id}`, kind: "client", title: "Client added", body: "", at: client.createdAt.toISOString() });
+  const clientJobs = await db.select().from(jobs).where(eq(jobs.clientId, client.id));
+  for (const job of clientJobs) {
+    const jobEvents2 = await buildJobTimeline(db, job);
+    for (const e of jobEvents2) {
+      if (e.kind === "job")
+        continue;
+      events.push({ ...e, body: [job.jobType || "Job", e.body].filter(Boolean).join(" \xB7 ") });
+    }
+    events.push({
+      id: `job-created:${job.id}`,
+      kind: "job",
+      title: `Job started: ${job.jobType || "Job"}`,
+      body: job.jobAddress || "",
+      at: job.createdAt.toISOString()
+    });
+  }
+  const jobIds = new Set(clientJobs.map((j) => j.id));
+  const [quoteRows, invoiceRows, noteRows, followUpRows] = await Promise.all([
+    db.select().from(quotes).where(eq(quotes.clientId, client.id)),
+    db.select().from(invoices).where(eq(invoices.clientId, client.id)),
+    db.select().from(internalNotes).where(eq(internalNotes.clientId, client.id)),
+    db.select().from(followUps).where(eq(followUps.clientId, client.id))
+  ]);
+  for (const quote of quoteRows) {
+    if (quote.jobId != null && jobIds.has(quote.jobId))
+      continue;
+    events.push({ id: `quote:${quote.id}:created`, kind: "estimate", title: `Estimate #${quote.id} created`, body: `$${moneyString(parseMoneyLoose(quote.total))}`, at: quote.createdAt.toISOString() });
+    if (quote.sentAt) {
+      events.push({ id: `quote:${quote.id}:sent`, kind: "estimate", title: `Estimate #${quote.id} sent`, body: "", at: dateKeyToDate(quote.sentAt).toISOString() });
+    }
+  }
+  const looseInvoices = invoiceRows.filter((inv) => inv.jobId == null || !jobIds.has(inv.jobId));
+  for (const inv of looseInvoices) {
+    events.push({ id: `invoice:${inv.id}:issued`, kind: "invoice", title: `Invoice ${inv.invoiceNumber || `#${inv.id}`} issued`, body: `$${moneyString(parseMoneyLoose(inv.total))}`, at: inv.createdAt.toISOString() });
+  }
+  if (looseInvoices.length > 0) {
+    const paymentRows = await db.select().from(payments).where(inArray(payments.invoiceId, looseInvoices.map((i) => i.id)));
+    const invById = new Map(looseInvoices.map((i) => [i.id, i]));
+    for (const p of paymentRows) {
+      const inv = invById.get(p.invoiceId);
+      events.push({ id: `payment:${p.id}`, kind: "payment", title: `Payment received \u2014 $${moneyString(parseMoneyLoose(p.amount))}`, body: inv ? `Invoice ${inv.invoiceNumber || `#${inv.id}`}` : "", at: p.createdAt.toISOString() });
+    }
+  }
+  for (const note of noteRows) {
+    if (note.jobId != null && jobIds.has(note.jobId))
+      continue;
+    events.push({ id: `note:${note.id}`, kind: "note", title: "Note added", body: note.note.slice(0, 160), at: note.createdAt.toISOString() });
+  }
+  for (const fu of followUpRows) {
+    if (fu.jobId != null && jobIds.has(fu.jobId))
+      continue;
+    events.push({ id: `followup:${fu.id}:created`, kind: "follow_up", title: `Follow-up queued: ${fu.title}`, body: "", at: fu.createdAt.toISOString() });
+    if (fu.completedAt) {
+      events.push({ id: `followup:${fu.id}:done`, kind: "follow_up", title: `Follow-up completed: ${fu.title}`, body: "", at: fu.completedAt.toISOString() });
+    }
+  }
+  return sortTimeline(events);
+}
+
 // src/auth-email.ts
 function authCodeClientResult(code, delivery) {
   return {
@@ -73199,6 +73681,7 @@ var ADMIN_ACTIONS = new Set([
   "updateSupportReport",
   "saveCrewPayRate",
   "updateSettings",
+  "updateAutomationSettings",
   "uploadLogo",
   "uploadCompanyCover",
   "getBillingOverview",
@@ -73273,6 +73756,14 @@ var OFFICE_ACTIONS = new Set([
   "getMarketplaceProProfile",
   "getOfficeDashboard",
   "getOfficeSearch",
+  "getProductionBoard",
+  "setJobProductionStage",
+  "getFollowUpQueue",
+  "saveFollowUp",
+  "completeFollowUp",
+  "snoozeFollowUp",
+  "getAutomationSettings",
+  "getJobBudget",
   "getQuoteVersions",
   "getTaxExport",
   "invoiceMilestone",
@@ -73443,12 +73934,14 @@ var ALL_ROLE_ACTIONS = new Set([
   "duplicateQuote",
   "getAutomationCenter",
   "getClient",
+  "getClientTimeline",
   "getDocumentLinkInfo",
   "getDocumentPdf",
   "getDocumentTimeline",
   "getFinancialSignature",
   "getFoundingMemberAvailability",
   "getJob",
+  "getJobTimeline",
   "getMarketplaceListing",
   "getMarketplaceUnlockStatus",
   "getOnMyWayStatus",
@@ -75318,6 +75811,7 @@ var jobSchema = object({
   photoCompleteness: number2(),
   completedAt: string2().nullable(),
   completionOverrideNote: string2(),
+  productionStage: _enum(["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"]).default("scheduled"),
   createdAt: string2(),
   updatedAt: string2()
 });
@@ -75392,6 +75886,63 @@ var documentSchema = object({
 });
 var punchItemSchema = object({ id: number2(), jobId: number2(), text: string2(), completed: boolean2() });
 var punchSignoffSchema = object({ id: number2(), jobId: number2(), customerName: string2(), customerSignatureUrl: string2(), contractorName: string2(), contractorSignatureUrl: string2(), signedAt: string2() });
+var productionStageSchema = _enum(["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"]);
+var boardJobSchema = object({
+  id: number2(),
+  clientId: number2().nullable(),
+  clientName: string2(),
+  jobType: string2(),
+  jobAddress: string2(),
+  jobDate: string2(),
+  productionStage: productionStageSchema,
+  contractSum: string2(),
+  invoiced: string2(),
+  paid: string2(),
+  marginPercent: number2().nullable(),
+  lowMargin: boolean2(),
+  hasCosts: boolean2(),
+  lastActivityAt: string2(),
+  idleDays: number2(),
+  stuck: boolean2()
+});
+var followUpItemSchema = object({
+  id: number2(),
+  title: string2(),
+  body: string2(),
+  dueDate: string2(),
+  status: _enum(["open", "done"]),
+  source: _enum(["manual", "automation"]),
+  recipe: string2(),
+  assigneeUserId: number2().nullable(),
+  assigneeName: string2(),
+  leadId: number2().nullable(),
+  leadName: string2(),
+  jobId: number2().nullable(),
+  jobLabel: string2(),
+  clientId: number2().nullable(),
+  clientName: string2(),
+  invoiceId: number2().nullable(),
+  invoiceNumber: string2(),
+  amount: string2().nullable(),
+  overdue: boolean2(),
+  createdAt: string2(),
+  completedAt: string2().nullable()
+});
+var jobBudgetSchema = object({
+  contract: string2(),
+  invoiced: string2(),
+  paid: string2(),
+  costs: string2(),
+  materials: string2(),
+  labor: string2(),
+  expenses: string2(),
+  subcontractors: string2(),
+  hasCosts: boolean2(),
+  marginPercent: number2().nullable(),
+  lowMargin: boolean2()
+});
+var timelineEventSchema = object({ id: string2(), kind: string2(), title: string2(), body: string2(), at: string2() });
+var automationRecipeSchema = object({ key: string2(), label: string2(), description: string2(), enabled: boolean2() });
 var progressSchema = object({ id: number2(), jobId: number2(), dayNumber: number2(), note: string2(), photoIds: array(number2()), status: _enum(["draft", "sent"]), createdAt: string2(), updatedAt: string2() });
 var quoteItemSchema = object({ description: string2().trim().min(1).max(5000), amount: string2().trim().max(80), name: string2().trim().max(160).optional(), quantity: number2().min(0).max(1e5).optional(), discount: string2().trim().max(80).optional(), unit: _enum(["none", "days", "hours"]).optional(), id: string2().trim().max(80).optional(), optional: boolean2().optional() });
 var materialItemSchema = object({ name: string2().trim().min(1).max(300), qty: string2().trim().max(40), unit: string2().trim().max(40), checked: boolean2() });
@@ -75541,7 +76092,7 @@ var marketplaceBookingSchema = object({ id: number2(), listingId: number2(), sta
 function jobShape(row, photoCount = 0, photoStages = []) {
   const requiredPhotoStages = row.requiredPhotoStages.split(",").filter((stage) => stage === "before" || stage === "during" || stage === "after");
   const complete = requiredPhotoStages.filter((stage) => photoStages.includes(stage)).length;
-  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, contractSum: row.contractSum, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, notes: row.notes, jobDate: row.jobDate, appointmentAt: row.appointmentAt, amountDue: row.amountDue, contractSum: row.contractSum, dueDate: row.dueDate, depositAmount: row.depositAmount, paymentNotes: row.paymentNotes, galleryPick: row.galleryPick, photoCount, requiredPhotoStages, photoCompleteness: requiredPhotoStages.length ? Math.round(complete / requiredPhotoStages.length * 100) : 100, completedAt: row.completedAt?.toISOString() ?? null, completionOverrideNote: row.completionOverrideNote, productionStage: row.productionStage ?? "scheduled", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 function normalizedPhone(value) {
   return value.replace(/\D/g, "");
@@ -76709,6 +77260,37 @@ async function applyAccessShaping(db, user, access, actionName, result) {
     }
     return out;
   }
+  if (actionName === "getProductionBoard" && Array.isArray(out.jobs)) {
+    let jobs2 = out.jobs;
+    if (!access.seeAllJobs) {
+      const mine = await assignedJobIds(db, user);
+      jobs2 = jobs2.filter((job) => mine.has(job.id));
+    }
+    if (!access.seeMoney) {
+      jobs2 = jobs2.map((job) => ({ ...job, contractSum: "", invoiced: "", paid: "", marginPercent: null, lowMargin: false, hasCosts: false }));
+    }
+    out.jobs = jobs2;
+    return out;
+  }
+  if (actionName === "getJobBudget" && out.budget) {
+    if (!access.seeMoney) {
+      out.budget = { contract: "", invoiced: "", paid: "", costs: "", materials: "", labor: "", expenses: "", subcontractors: "", hasCosts: false, marginPercent: null, lowMargin: false };
+    }
+    return out;
+  }
+  if (actionName === "getFollowUpQueue" && Array.isArray(out.items)) {
+    if (!access.seeMoney) {
+      out.items = out.items.map((item) => ({ ...item, amount: null }));
+    }
+    return out;
+  }
+  if ((actionName === "getJobTimeline" || actionName === "getClientTimeline") && Array.isArray(out.events)) {
+    if (!access.seeMoney) {
+      const scrub = (text) => text.replace(/\$[\d,]+(\.\d{2})?/g, "$\u2014");
+      out.events = out.events.map((event) => ({ ...event, title: scrub(String(event.title ?? "")), body: scrub(String(event.body ?? "")) }));
+    }
+    return out;
+  }
   return result;
 }
 async function isPlatformTeamMember(db, user) {
@@ -77622,6 +78204,21 @@ async function logJobSystemMessage(db, jobId, bodyEn, bodyEs) {
   try {
     await db.insert(jobMessages).values({ jobId, sender: "system", body: `${bodyEn} / ${bodyEs}`, createdAt: new Date });
   } catch {}
+}
+async function runOfficeAutomationTick(ctx) {
+  const db = ctx.db();
+  const settingsRows = await db.select({ companyId: settings.companyId }).from(settings);
+  const companyIds = [...new Set(settingsRows.map((row) => row.companyId))];
+  let created = 0;
+  for (const companyId of companyIds) {
+    try {
+      const result = await runAutomationSweep(db, companyId);
+      created += result.created;
+    } catch (error) {
+      console.error(`[crewkat][office-automation] company ${companyId} sweep failed:`, error);
+    }
+  }
+  return { ran: created > 0, created };
 }
 async function runWeeklyProgressTick(ctx) {
   const db = ctx.db();
@@ -79478,6 +80075,14 @@ If that was you, just sign in again. If not, we recommend changing your password
     const made = rows[0];
     if (!made)
       throw new Error("Could not save quote.");
+    if (args.sentAt) {
+      try {
+        const savedQuote = (await ctx.db().select().from(quotes).where(eq(quotes.id, made.id)).limit(1))[0];
+        if (savedQuote && await automationEnabled(ctx.db(), savedQuote.companyId, "proposal_follow_up")) {
+          await createFollowUp(ctx.db(), { companyId: savedQuote.companyId, title: `Follow up on the estimate for ${savedQuote.clientName}`, body: `Estimate #${savedQuote.id} was sent. Check in with the client, answer questions, and ask for a decision.`, dueDate: shiftDateKey(todayKey(), 2), source: "automation", sourceKey: `proposal:${savedQuote.id}:${todayKey()}`, recipe: "proposal_follow_up", jobId: savedQuote.jobId, clientId: savedQuote.clientId });
+        }
+      } catch {}
+    }
     ctx.invalidateQueries();
     return { id: made.id };
   } }),
@@ -80267,6 +80872,340 @@ If that was you, just sign in again. If not, we recommend changing your password
     const leadNameById = new Map(leadRows.map((row) => [row.id, row.name]));
     return { pipelineValue, openLeads: open2.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) };
   } }),
+  getProductionBoard: defineAction({
+    request: object({}),
+    response: object({
+      stages: array(object({ key: productionStageSchema, label: string2() })),
+      jobs: array(boardJobSchema)
+    }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      const jobRows = await db.select().from(jobs).where(eq(jobs.companyId, companyId)).orderBy(desc(jobs.updatedAt));
+      const activity = await jobLastActivity(db, companyId, jobRows.map((j) => j.id));
+      const nowMs = Date.now();
+      const jobs2 = [];
+      for (const job of jobRows) {
+        const budget = await jobBudget(db, job);
+        const last = activity.get(job.id) ?? job.updatedAt;
+        const idleDays = Math.max(0, Math.floor((nowMs - last.getTime()) / 86400000));
+        jobs2.push({
+          id: job.id,
+          clientId: job.clientId,
+          clientName: job.clientName,
+          jobType: job.jobType,
+          jobAddress: job.jobAddress,
+          jobDate: job.jobDate,
+          productionStage: job.productionStage,
+          contractSum: moneyString(budget.contract),
+          invoiced: moneyString(budget.invoiced),
+          paid: moneyString(budget.paid),
+          marginPercent: budget.marginPercent,
+          lowMargin: budget.lowMargin,
+          hasCosts: budget.hasCosts,
+          lastActivityAt: last.toISOString(),
+          idleDays,
+          stuck: idleDays >= 7 && job.productionStage !== "complete" && job.productionStage !== "paid_in_full"
+        });
+      }
+      return { stages: PRODUCTION_STAGES.map((key) => ({ key, label: PRODUCTION_STAGE_LABELS[key] })), jobs: jobs2 };
+    }
+  }),
+  setJobProductionStage: defineAction({
+    request: object({ jobId: number2().int().positive(), stage: productionStageSchema }),
+    response: object({ ok: literal(true), stage: productionStageSchema, reviewFollowUp: _enum(["emailed", "queued", "already", "none"]) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      const from = job.productionStage;
+      const to = args.stage;
+      let reviewFollowUp = "none";
+      if (from !== to) {
+        const now = new Date;
+        const patch = { productionStage: to, updatedAt: now };
+        if ((to === "complete" || to === "paid_in_full") && !job.completedAt)
+          patch.completedAt = now;
+        if (to !== "complete" && to !== "paid_in_full" && job.completedAt)
+          patch.completedAt = null;
+        await db.update(jobs).set(patch).where(eq(jobs.id, job.id));
+        await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "stage", title: `Stage: ${PRODUCTION_STAGE_LABELS[from]} \u2192 ${PRODUCTION_STAGE_LABELS[to]}`, userId: identity.workspaceUserId });
+        await logJobSystemMessage(db, job.id, `Production stage moved to ${PRODUCTION_STAGE_LABELS[to]}.`, `La etapa de producci\xF3n cambi\xF3 a ${PRODUCTION_STAGE_LABELS[to]}.`);
+        if (to === "complete" && await automationEnabled(db, job.companyId, "job_review")) {
+          const setting = (await db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1))[0];
+          let emailed = false;
+          let already = false;
+          if (setting?.reviewRequestsEnabled && (setting.reviewUrl || "").trim() && job.clientEmail) {
+            try {
+              emailed = await sendJobReviewEmail(ctx, db, { ...job, completedAt: patch.completedAt ?? job.completedAt }, "auto");
+              already = !emailed;
+            } catch {
+              emailed = false;
+            }
+          }
+          if (emailed) {
+            reviewFollowUp = "emailed";
+            await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: "Review request sent", body: "The review-request email went out automatically when the job was marked complete." });
+          } else if (already) {
+            reviewFollowUp = "already";
+          } else {
+            const created = await createFollowUp(db, { companyId: job.companyId, title: `Ask ${job.clientName} for a review`, body: "The job is complete. Send the client a review request (or turn on automatic review emails in Settings).", dueDate: todayKey(now), source: "automation", sourceKey: `review-task:job:${job.id}`, recipe: "job_review", jobId: job.id, clientId: job.clientId, createdByUserId: identity.workspaceUserId });
+            reviewFollowUp = "queued";
+            if (created !== null) {
+              await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: "Review-request task queued", body: "A follow-up task was added to ask the client for a review." });
+            }
+          }
+        }
+      }
+      ctx.invalidateQueries();
+      return { ok: true, stage: to, reviewFollowUp };
+    }
+  }),
+  getFollowUpQueue: defineAction({
+    request: object({ includeDone: boolean2().default(false) }),
+    response: object({
+      items: array(followUpItemSchema),
+      members: array(object({ id: number2(), name: string2(), role: string2() })),
+      openCount: number2(),
+      overdueCount: number2(),
+      dueTodayCount: number2()
+    }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      await runAutomationSweep(db, companyId).catch(() => ({ created: 0 }));
+      const rows = await db.select().from(followUps).where(eq(followUps.companyId, companyId)).orderBy(asc(followUps.dueDate), desc(followUps.createdAt));
+      const [memberRows, leadRows, jobRows, clientRows, invoiceRows, paymentRows] = await Promise.all([
+        db.select({ id: authUsers.id, name: authUsers.name, role: authUsers.role }).from(authUsers).where(eq(authUsers.companyId, companyId)),
+        db.select({ id: leads.id, name: leads.name }).from(leads).where(eq(leads.companyId, companyId)),
+        db.select({ id: jobs.id, jobType: jobs.jobType, clientName: jobs.clientName }).from(jobs).where(eq(jobs.companyId, companyId)),
+        db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.companyId, companyId)),
+        db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, total: invoices.total }).from(invoices).where(eq(invoices.companyId, companyId)),
+        db.select().from(payments).where(eq(payments.companyId, companyId))
+      ]);
+      const memberName = new Map(memberRows.map((m) => [m.id, m.name]));
+      const leadName = new Map(leadRows.map((l) => [l.id, l.name]));
+      const jobLabel = new Map(jobRows.map((j) => [j.id, j.jobType || `Job for ${j.clientName}`]));
+      const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
+      const invoiceById = new Map(invoiceRows.map((i) => [i.id, i]));
+      const paidByInvoice = new Map;
+      for (const p of paymentRows)
+        paidByInvoice.set(p.invoiceId, (paidByInvoice.get(p.invoiceId) ?? 0) + parseMoneyLoose(p.amount));
+      const today = todayKey();
+      const items = rows.filter((row) => args.includeDone || row.status === "open").map((row) => {
+        const invoice = row.invoiceId != null ? invoiceById.get(row.invoiceId) : undefined;
+        const balance = invoice ? parseMoneyLoose(invoice.total) - (paidByInvoice.get(invoice.id) ?? 0) : null;
+        return {
+          id: row.id,
+          title: row.title,
+          body: row.body,
+          dueDate: row.dueDate,
+          status: row.status,
+          source: row.source,
+          recipe: row.recipe,
+          assigneeUserId: row.assigneeUserId,
+          assigneeName: row.assigneeUserId != null ? memberName.get(row.assigneeUserId) ?? "" : "",
+          leadId: row.leadId,
+          leadName: row.leadId != null ? leadName.get(row.leadId) ?? "" : "",
+          jobId: row.jobId,
+          jobLabel: row.jobId != null ? jobLabel.get(row.jobId) ?? "" : "",
+          clientId: row.clientId,
+          clientName: row.clientId != null ? clientName.get(row.clientId) ?? "" : "",
+          invoiceId: row.invoiceId,
+          invoiceNumber: invoice ? invoice.invoiceNumber || `#${invoice.id}` : "",
+          amount: balance !== null ? moneyString(balance) : null,
+          overdue: row.status === "open" && !!row.dueDate && row.dueDate < today,
+          createdAt: row.createdAt.toISOString(),
+          completedAt: row.completedAt?.toISOString() ?? null
+        };
+      });
+      const open2 = rows.filter((row) => row.status === "open");
+      return {
+        items,
+        members: memberRows.map((m) => ({ id: m.id, name: m.name, role: m.role })),
+        openCount: open2.length,
+        overdueCount: open2.filter((row) => !!row.dueDate && row.dueDate < today).length,
+        dueTodayCount: open2.filter((row) => row.dueDate === today).length
+      };
+    }
+  }),
+  saveFollowUp: defineAction({
+    request: object({
+      id: number2().int().positive().optional(),
+      title: string2().trim().min(1).max(300),
+      body: string2().max(2000).default(""),
+      dueDate: string2().max(10).default(""),
+      assigneeUserId: number2().int().positive().nullable().default(null),
+      leadId: number2().int().positive().nullable().default(null),
+      jobId: number2().int().positive().nullable().default(null),
+      clientId: number2().int().positive().nullable().default(null),
+      invoiceId: number2().int().positive().nullable().default(null)
+    }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      if (args.id) {
+        const existing = (await db.select().from(followUps).where(eq(followUps.id, args.id)).limit(1))[0];
+        if (!existing || existing.companyId !== companyId)
+          throw new Error("Follow-up not found.");
+        await db.update(followUps).set({
+          title: args.title,
+          body: args.body,
+          dueDate: args.dueDate,
+          assigneeUserId: args.assigneeUserId,
+          leadId: args.leadId,
+          jobId: args.jobId,
+          clientId: args.clientId,
+          invoiceId: args.invoiceId,
+          updatedAt: new Date
+        }).where(eq(followUps.id, args.id));
+        ctx.invalidateQueries();
+        return { id: args.id };
+      }
+      const id = await createFollowUp(db, {
+        companyId,
+        title: args.title,
+        body: args.body,
+        dueDate: args.dueDate || todayKey(),
+        assigneeUserId: args.assigneeUserId,
+        leadId: args.leadId,
+        jobId: args.jobId,
+        clientId: args.clientId,
+        invoiceId: args.invoiceId,
+        createdByUserId: identity.workspaceUserId
+      });
+      if (id === null)
+        throw new Error("Could not create the follow-up.");
+      ctx.invalidateQueries();
+      return { id };
+    }
+  }),
+  completeFollowUp: defineAction({
+    request: object({ id: number2().int().positive(), completed: boolean2().default(true) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const row = (await db.select().from(followUps).where(eq(followUps.id, args.id)).limit(1))[0];
+      if (!row || row.companyId !== identity.workspaceCompanyId)
+        throw new Error("Follow-up not found.");
+      const now = new Date;
+      await db.update(followUps).set({
+        status: args.completed ? "done" : "open",
+        completedAt: args.completed ? now : null,
+        updatedAt: now
+      }).where(eq(followUps.id, args.id));
+      if (args.completed && row.jobId) {
+        await recordJobEvent(db, { companyId: row.companyId, jobId: row.jobId, kind: "note", title: `Follow-up completed: ${row.title}`, userId: identity.workspaceUserId });
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  snoozeFollowUp: defineAction({
+    request: object({ id: number2().int().positive(), days: number2().int().min(1).max(90) }),
+    response: object({ ok: literal(true), dueDate: string2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const row = (await db.select().from(followUps).where(eq(followUps.id, args.id)).limit(1))[0];
+      if (!row || row.companyId !== identity.workspaceCompanyId)
+        throw new Error("Follow-up not found.");
+      const today = todayKey();
+      const base = row.dueDate && row.dueDate > today ? row.dueDate : today;
+      const dueDate = shiftDateKey(base, args.days);
+      await db.update(followUps).set({ dueDate, status: "open", completedAt: null, updatedAt: new Date }).where(eq(followUps.id, args.id));
+      ctx.invalidateQueries();
+      return { ok: true, dueDate };
+    }
+  }),
+  getAutomationSettings: defineAction({
+    request: object({}),
+    response: object({ recipes: array(automationRecipeSchema) }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const settings2 = await getRecipeSettings(db, identity.workspaceCompanyId);
+      return { recipes: AUTOMATION_RECIPES.map((r) => ({ key: r.key, label: r.label, description: r.description, enabled: settings2[r.key] })) };
+    }
+  }),
+  updateAutomationSettings: defineAction({
+    request: object({ recipes: record(string2(), boolean2()) }),
+    response: object({ recipes: array(automationRecipeSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const companyId = identity.workspaceCompanyId;
+      const current = await getRecipeSettings(db, companyId);
+      const next = { ...current };
+      for (const recipe of AUTOMATION_RECIPES) {
+        if (typeof args.recipes[recipe.key] === "boolean")
+          next[recipe.key] = args.recipes[recipe.key];
+      }
+      const existing = (await db.select().from(officeAutomationSettings).where(eq(officeAutomationSettings.companyId, companyId)).limit(1))[0];
+      if (existing) {
+        await db.update(officeAutomationSettings).set({ recipesJson: JSON.stringify(next), updatedAt: new Date }).where(eq(officeAutomationSettings.companyId, companyId));
+      } else {
+        await db.insert(officeAutomationSettings).values({ companyId, recipesJson: JSON.stringify(next), updatedAt: new Date });
+      }
+      ctx.invalidateQueries();
+      return { recipes: AUTOMATION_RECIPES.map((r) => ({ key: r.key, label: r.label, description: r.description, enabled: next[r.key] ?? true })) };
+    }
+  }),
+  getJobBudget: defineAction({
+    request: object({ jobId: number2().int().positive() }),
+    response: object({ budget: jobBudgetSchema }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      const budget = await jobBudget(db, job);
+      return {
+        budget: {
+          contract: moneyString(budget.contract),
+          invoiced: moneyString(budget.invoiced),
+          paid: moneyString(budget.paid),
+          costs: moneyString(budget.costs),
+          materials: moneyString(budget.costBreakdown.materials),
+          labor: moneyString(budget.costBreakdown.labor),
+          expenses: moneyString(budget.costBreakdown.expenses),
+          subcontractors: moneyString(budget.costBreakdown.subcontractors),
+          hasCosts: budget.hasCosts,
+          marginPercent: budget.marginPercent,
+          lowMargin: budget.lowMargin
+        }
+      };
+    }
+  }),
+  getJobTimeline: defineAction({
+    request: object({ jobId: number2().int().positive() }),
+    response: object({ events: array(timelineEventSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+      if (!job)
+        throw new Error("Job not found.");
+      return { events: await buildJobTimeline(db, job) };
+    }
+  }),
+  getClientTimeline: defineAction({
+    request: object({ clientId: number2().int().positive() }),
+    response: object({ events: array(timelineEventSchema) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const client = (await db.select().from(clients).where(eq(clients.id, args.clientId)).limit(1))[0];
+      if (!client)
+        throw new Error("Client not found.");
+      return { events: await buildClientTimeline(db, client) };
+    }
+  }),
   getOfficeSearch: defineAction({ request: object({ query: string2().trim().max(120) }), response: object({ leads: array(object({ id: number2(), name: string2(), phone: string2(), stage: leadStageSchema })), clients: array(object({ id: number2(), name: string2(), phone: string2(), email: string2() })), jobs: array(object({ id: number2(), clientName: string2(), jobAddress: string2(), jobType: string2() })) }), async handler(ctx, args) {
     const db = ctx.db();
     const term = args.query.toLowerCase();
@@ -81881,6 +82820,19 @@ Keep it for your records.
     await ctx.blobs.put(pdfKey, finalPdfBytes, { contentType: "application/pdf" });
     await db.update(documents).set({ clientSignerName: args.signerName, clientSignatureBlobKey: sigKey, clientSignedAt: now, clientSignedPdfBlobKey: pdfKey, clientSignatureHash: hash, clientSignedUserAgent: args.userAgent.slice(0, 300), fillValuesJson: JSON.stringify(mergedFill) }).where(eq(documents.id, doc.id));
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "sign", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    if (doc.kind === "contract") {
+      try {
+        if (await automationEnabled(db, link.companyId, "contract_welcome")) {
+          const job = (await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1))[0];
+          if (job) {
+            const created = await createFollowUp(db, { companyId: link.companyId, title: `Send a welcome message to ${job.clientName}`, body: `"${doc.title}" was signed. Send the client a short welcome: thanks for signing, what happens next, and when the work starts.`, dueDate: todayKey(now), source: "automation", sourceKey: `welcome:doc:${doc.id}`, recipe: "contract_welcome", jobId: job.id, clientId: job.clientId });
+            if (created !== null) {
+              await recordJobEvent(db, { companyId: link.companyId, jobId: job.id, kind: "automation", title: "Welcome-message task queued", body: `Contract "${doc.title}" signed \u2014 a welcome task was added to the follow-up queue.` });
+            }
+          }
+        }
+      } catch {}
+    }
     await notifyCompanyEvent(ctx, link.companyId, "notifyDocSigned", "document-signed", `Client signed "${doc.title}"`, "Un cliente firm\xF3 tu documento", `doc-signed:${doc.id}`);
     try {
       const signedAttachment = { filename: signedPdfFilename(doc.title), contentType: "application/pdf", dataBase64: finalPdfBytes.toString("base64") };
@@ -82193,6 +83145,14 @@ Thanks for signing "${doc.title}". Your signed copy is attached \u2014 keep it f
     for (const version of versions)
       await db.update(quotes).set({ superseded: version.id !== quote.id, updatedAt: new Date }).where(eq(quotes.id, version.id));
     await db.update(quotes).set({ sentAt: new Date().toISOString().slice(0, 10), superseded: false, updatedAt: new Date }).where(eq(quotes.id, quote.id));
+    try {
+      if (await automationEnabled(db, quote.companyId, "proposal_follow_up")) {
+        const created = await createFollowUp(db, { companyId: quote.companyId, title: `Follow up on the estimate for ${quote.clientName}`, body: `Estimate #${quote.id} was sent. Check in with the client, answer questions, and ask for a decision.`, dueDate: shiftDateKey(todayKey(), 2), source: "automation", sourceKey: `proposal:${quote.id}:${todayKey()}`, recipe: "proposal_follow_up", jobId: quote.jobId, clientId: quote.clientId });
+        if (created !== null && quote.jobId) {
+          await recordJobEvent(db, { companyId: quote.companyId, jobId: quote.jobId, kind: "automation", title: "Estimate follow-up queued", body: `Estimate #${quote.id} was sent \u2014 a follow-up task was added to the queue.` });
+        }
+      }
+    } catch {}
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -84630,6 +85590,7 @@ export {
   requirePlatformAdmin,
   requireSession,
   runEstimateNudgeTick,
+  runOfficeAutomationTick,
   runRecurringInvoiceTick,
   runReviewRequestTick,
   runScheduledBackup,
