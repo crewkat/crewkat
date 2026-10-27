@@ -40,7 +40,7 @@ const WIDE_FIELDS: BasicField[] = ["address", "serviceArea", "profileDescription
  * all, because the save submits the full settings record the server
  * returned, with only these basics replaced.
  */
-export function SettingsView() {
+export function SettingsView({ canManage = false }: { canManage?: boolean }) {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: ["settings-company"], queryFn: () => api.getSettings({}) });
   const [draft, setDraft] = useState<Basics | null>(null);
@@ -122,6 +122,64 @@ export function SettingsView() {
           </form>
         ) : null}
       </section>
+
+      <AutomationsSection canManage={canManage} />
     </div>
+  );
+}
+
+/**
+ * Wave 1: the five built-in automation recipes. Each one only creates
+ * follow-up tasks (plus the review email through the existing review
+ * mechanism) — automations never message a client on their own.
+ * Switches are per company and Admin-only to change (server-enforced).
+ */
+function AutomationsSection({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState("");
+  const recipesQuery = useQuery({ queryKey: ["automation-settings"], queryFn: () => api.getAutomationSettings({}) });
+  const recipes = recipesQuery.data?.recipes ?? [];
+
+  const toggleMutation = useMutation({
+    mutationFn: (args: { key: string; enabled: boolean }) =>
+      api.updateAutomationSettings({ recipes: { [args.key]: args.enabled } }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["automation-settings"] }); },
+    onError: (e) => setError(cleanError(e)),
+  });
+
+  return (
+    <section className="panel settings-panel">
+      <div className="panel-head">
+        <h2>Automations</h2>
+      </div>
+      <p className="muted">
+        Built-in recipes that keep work from slipping. They only create tasks in the follow-up queue —
+        nothing is ever sent to a client automatically (the review recipe uses the review email you
+        already control under Settings in the phone app).
+      </p>
+      {recipesQuery.isLoading ? <p className="muted">Loading automations…</p> : null}
+      {recipesQuery.isError ? <p className="inline-error">Couldn't load the automation switches.</p> : null}
+      {error ? <p className="inline-error">{error}</p> : null}
+      <div className="automation-list">
+        {recipes.map((recipe) => (
+          <div key={recipe.key} className="automation-row">
+            <div className="feed-main">
+              <span className="feed-title">{recipe.label}</span>
+              <span className="feed-meta block">{recipe.description}</span>
+            </div>
+            <label className="access-switch-row">
+              <input
+                type="checkbox"
+                checked={recipe.enabled}
+                disabled={!canManage || toggleMutation.isPending}
+                onChange={(e) => { setError(""); toggleMutation.mutate({ key: recipe.key, enabled: e.target.checked }); }}
+              />
+              <span>{recipe.enabled ? "On" : "Off"}</span>
+            </label>
+          </div>
+        ))}
+      </div>
+      {!canManage ? <p className="muted small">Only company Admins can change these switches.</p> : null}
+    </section>
   );
 }

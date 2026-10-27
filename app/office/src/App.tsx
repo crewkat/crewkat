@@ -16,6 +16,7 @@ import { STAGE_LABELS } from "./types";
 import { cleanError, initials } from "./utils";
 import { ClientsView } from "./views/Clients";
 import { DashboardView } from "./views/Dashboard";
+import { FollowUpsView } from "./views/FollowUps";
 import { DocumentsView, type DocSelection } from "./views/Documents";
 import { JobsView } from "./views/Jobs";
 import { MarketplaceView } from "./views/Marketplace";
@@ -30,6 +31,7 @@ import mascotIpad from "./assets/mascot-ipad.webp";
 const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: "▦" },
   { key: "pipeline", label: "Pipeline", icon: "▤" },
+  { key: "followups", label: "Follow-ups", icon: "✓" },
   { key: "clients", label: "Clients", icon: "👥" },
   { key: "jobs", label: "Jobs", icon: "🛠" },
   { key: "documents", label: "Documents", icon: "📄" },
@@ -42,7 +44,9 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "team", label: "Team", icon: "👤" },
 ];
 
-const PHASE2_NAV = ["Reports", "Automations"];
+// Wave 1 shipped the automation recipes (they live in Settings), so
+// only Reports remains parked here.
+const PHASE2_NAV = ["Reports"];
 
 export function App() {
   const queryClient = useQueryClient();
@@ -104,6 +108,17 @@ export function App() {
     setFocusLeadId(null);
   }, [queryClient]);
 
+  // Wave 1: live open-follow-up count for the nav badge. Field users
+  // can't read the queue (Office+ action) — the query just errors and
+  // no badge renders.
+  const queueBadgeQuery = useQuery({
+    queryKey: ["follow-up-queue", false],
+    queryFn: () => api.getFollowUpQueue({ includeDone: false }),
+    enabled: !!user && user.teamRole !== "field",
+    retry: false,
+  });
+  const followUpBadge = queueBadgeQuery.data?.openCount ?? 0;
+
   const openJob = useCallback((jobId: number) => { setSelectedJobId(jobId); setView("jobs"); }, []);
   const openClient = useCallback((clientId: number) => { setSelectedClientId(clientId); setView("clients"); }, []);
   const openDocument = useCallback((sel: DocSelection) => { setSelectedDoc(sel); setView("documents"); }, []);
@@ -143,6 +158,7 @@ export function App() {
             >
               <span className="nav-icon" aria-hidden="true">{item.icon}</span>
               {item.label}
+              {item.key === "followups" && followUpBadge > 0 ? <span className="nav-badge">{followUpBadge}</span> : null}
             </button>
           ))}
           <div className="nav-group-label">Phase 2</div>
@@ -166,10 +182,13 @@ export function App() {
         </header>
         <main className="content">
           {view === "dashboard" ? (
-            <DashboardView onGoPipeline={() => setView("pipeline")} onGoJobs={() => setView("jobs")} />
+            <DashboardView onGoPipeline={() => setView("pipeline")} onGoJobs={() => setView("jobs")} onGoFollowUps={() => setView("followups")} />
           ) : null}
           {view === "pipeline" ? (
             <PipelineView focusLeadId={focusLeadId} onOpenJob={openJob} onConsumeFocus={consumeFocus} canDelete={user.teamRole === "admin"} />
+          ) : null}
+          {view === "followups" ? (
+            <FollowUpsView onOpenJob={openJob} onOpenLead={openLead} onOpenClient={openClient} />
           ) : null}
           {view === "clients" ? (
             <ClientsView selectedClientId={selectedClientId} onSelectClient={setSelectedClientId} onOpenJob={openJob} onOpenDocument={openDocument} />
@@ -190,7 +209,7 @@ export function App() {
           {view === "schedule" ? <ScheduleView onOpenJob={openJob} canDelete={user.teamRole === "admin"} /> : null}
           {view === "marketplace" ? <MarketplaceView /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
-          {view === "settings" ? <SettingsView /> : null}
+          {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} /> : null}
           {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}
         </main>
       </div>

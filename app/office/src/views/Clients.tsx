@@ -4,6 +4,7 @@ import { api } from "../api";
 import type { Client } from "../types";
 import { formatDate, formatMoney, initials } from "../utils";
 import type { DocSelection } from "./Documents";
+import { TimelineFeed } from "./Timeline";
 
 type SortKey = "name" | "jobCount" | "totalInvoiced" | "balanceDue" | "createdAt";
 
@@ -131,6 +132,10 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
     queryKey: ["client", client.id],
     queryFn: () => api.getClient({ id: client.id }),
   });
+  const timelineQuery = useQuery({
+    queryKey: ["client-timeline", client.id],
+    queryFn: () => api.getClientTimeline({ clientId: client.id }),
+  });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const signablesQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const detail = detailQuery.data;
@@ -240,6 +245,11 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="drawer-section">
+        <h3>Timeline</h3>
+        <TimelineFeed events={timelineQuery.data?.events ?? []} isLoading={timelineQuery.isLoading} />
       </section>
     </aside>
   );

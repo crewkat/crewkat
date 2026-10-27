@@ -1,10 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import type { Job, JobPhoto, PhotoStage } from "../types";
-import { PHOTO_STAGE_LABELS } from "../types";
+import type { Job, JobPhoto, PhotoStage, ProductionStage } from "../types";
+import { PHOTO_STAGE_LABELS, PRODUCTION_STAGES, PRODUCTION_STAGE_LABELS } from "../types";
 import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, formatMoney, parseMoney } from "../utils";
 import type { DocSelection } from "./Documents";
+import { ProductionBoard } from "./ProductionBoard";
+import { TimelineFeed } from "./Timeline";
+
+/** Wave 1 budget-vs-actual: contract (incl. signed COs) against
+ *  invoiced/paid and the job's logged costs. Margin shows only when
+ *  costs exist — otherwise an honest "no costs logged yet". When the
+ *  member's seeMoney switch is off the server blanks every value and
+ *  this renders the hidden note instead. */
+function JobBudgetBlock({ budget }: { budget: import("../types").JobBudget }) {
+  if (budget.contract === "" && budget.invoiced === "" && budget.costs === "") {
+    return <p className="muted">Money totals are hidden by your access settings.</p>;
+  }
+  return (
+    <>
+      <div className="mini-stats">
+        <div><span>Contract</span><strong>{formatMoney(budget.contract)}</strong></div>
+        <div><span>Invoiced</span><strong>{formatMoney(budget.invoiced)}</strong></div>
+        <div><span>Paid</span><strong>{formatMoney(budget.paid)}</strong></div>
+        <div><span>Costs</span><strong>{formatMoney(budget.costs)}</strong></div>
+      </div>
+      {budget.hasCosts && budget.marginPercent !== null ? (
+        <p className={`margin-line${budget.lowMargin ? " is-low" : ""}`}>
+          Margin {budget.marginPercent.toFixed(1)}%
+          {budget.lowMargin ? " — under the 15% flag line. Check this job's costs." : ""}
+        </p>
+      ) : (
+        <p className="muted small">Margin — · no costs logged yet. Add receipts, time, or expenses and the margin appears here.</p>
+      )}
+      {budget.hasCosts ? (
+        <dl className="detail-list compact">
+          <div><dt>Materials</dt><dd>{formatMoney(budget.materials)}</dd></div>
+          <div><dt>Labor</dt><dd>{formatMoney(budget.labor)}</dd></div>
+          <div><dt>Expenses</dt><dd>{formatMoney(budget.expenses)}</dd></div>
+          <div><dt>Subcontractors</dt><dd>{formatMoney(budget.subcontractors)}</dd></div>
+        </dl>
+      ) : null}
+    </>
+  );
+}
 
 export function JobsView({
   selectedJobId,
@@ -20,6 +59,7 @@ export function JobsView({
 }) {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [mode, setMode] = useState<"list" | "board">("list");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed">("all");
   const searchTimer = useRef<number | undefined>(undefined);
 
@@ -42,6 +82,11 @@ export function JobsView({
           <p className="view-sub">{jobs.length} jobs · {jobs.filter((j) => !j.completedAt).length} active.</p>
         </div>
         <div className="head-controls">
+          <div className="segmented" role="group" aria-label="Jobs view mode">
+            <button type="button" className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>List</button>
+            <button type="button" className={mode === "board" ? "active" : ""} onClick={() => setMode("board")}>Production Board</button>
+          </div>
+          {mode === "list" ? (
           <div className="segmented" role="group" aria-label="Status filter">
             {(["all", "active", "completed"] as const).map((s) => (
               <button key={s} type="button" className={statusFilter === s ? "active" : ""} onClick={() => setStatusFilter(s)}>
@@ -49,6 +94,8 @@ export function JobsView({
               </button>
             ))}
           </div>
+          ) : null}
+          {mode === "list" ? (
           <div className="search-box">
             <input
               value={search}
@@ -60,9 +107,13 @@ export function JobsView({
               }}
             />
           </div>
+          ) : null}
         </div>
       </div>
 
+      {mode === "board" ? (
+        <ProductionBoard onOpenJob={(id) => { onSelectJob(id); setMode("list"); }} />
+      ) : (
       <div className={selected ? "split-layout" : ""}>
         <section className="panel table-panel">
           {jobsQuery.isLoading ? <div className="view-loading">Loading jobs…</div> : null}
@@ -89,6 +140,7 @@ export function JobsView({
                   <th>Date</th>
                   <th className="num">Contract sum</th>
                   <th className="num">Amount due</th>
+                  <th>Stage</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -101,6 +153,7 @@ export function JobsView({
                     <td>{formatDate(j.jobDate)}</td>
                     <td className="num">{parseMoney(j.contractSum) > 0 ? formatMoney(j.contractSum) : "—"}</td>
                     <td className="num">{parseMoney(j.amountDue) > 0 ? <span className="overdue">{formatMoney(j.amountDue)}</span> : formatMoney(0)}</td>
+                    <td><span className={`stage-pill stage-${j.productionStage}`}>{PRODUCTION_STAGE_LABELS[j.productionStage]}</span></td>
                     <td><span className={`status-pill${j.completedAt ? " done" : ""}`}>{j.completedAt ? "Completed" : "Active"}</span></td>
                   </tr>
                 ))}
@@ -111,17 +164,40 @@ export function JobsView({
 
         {selected ? <JobDetail jobId={selected.id} onClose={() => onSelectJob(null)} onOpenDocument={onOpenDocument} canDelete={canDelete} /> : null}
       </div>
+      )}
     </div>
   );
 }
 
 function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: number; onClose: () => void; onOpenDocument: (sel: DocSelection) => void; canDelete: boolean }) {
+  const queryClient = useQueryClient();
   const detailQuery = useQuery({
     queryKey: ["job", jobId],
     queryFn: () => api.getJob({ id: jobId }),
   });
   const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const budgetQuery = useQuery({ queryKey: ["job-budget", jobId], queryFn: () => api.getJobBudget({ jobId }) });
+  const timelineQuery = useQuery({ queryKey: ["job-timeline", jobId], queryFn: () => api.getJobTimeline({ jobId }) });
+  const [stageNote, setStageNote] = useState("");
+  const stageMutation = useMutation({
+    mutationFn: (stage: ProductionStage) => api.setJobProductionStage({ jobId, stage }),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["job-budget", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["job-timeline", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["production-board"] });
+      void queryClient.invalidateQueries({ queryKey: ["follow-up-queue"] });
+      setStageNote(
+        result.reviewFollowUp === "emailed" ? "Review request emailed to the client."
+        : result.reviewFollowUp === "queued" ? "Marked complete — a review-request follow-up was added to the queue."
+        : result.reviewFollowUp === "already" ? "A review request already went out for this job."
+        : "",
+      );
+    },
+    onError: (err) => setStageNote(cleanError(err)),
+  });
   const data = detailQuery.data;
   const job: Job | null = data?.job ?? null;
   const jobQuotes = (quotesQuery.data?.quotes ?? []).filter((q) => q.jobId === jobId);
@@ -155,6 +231,21 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             {job.notes ? <div><dt>Notes</dt><dd>{job.notes}</dd></div> : null}
             {job.paymentNotes ? <div><dt>Payment notes</dt><dd>{job.paymentNotes}</dd></div> : null}
           </dl>
+
+          <section className="drawer-section">
+            <h3>Production stage</h3>
+            <select
+              className="stage-select"
+              value={job.productionStage}
+              disabled={stageMutation.isPending}
+              onChange={(e) => { setStageNote(""); stageMutation.mutate(e.target.value as ProductionStage); }}
+              aria-label="Production stage"
+            >
+              {PRODUCTION_STAGES.map((s) => <option key={s} value={s}>{PRODUCTION_STAGE_LABELS[s]}</option>)}
+            </select>
+            {stageNote ? <p className="feed-meta block">{stageNote}</p> : null}
+            <p className="muted small">Moving to Complete asks for a review (email if enabled, otherwise a queue task).</p>
+          </section>
 
           <section className="drawer-section">
             <h3>Amounts</h3>
@@ -212,6 +303,18 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
                 ))}
               </ul>
             )}
+          </section>
+
+          <section className="drawer-section">
+            <h3>Budget vs actual</h3>
+            {budgetQuery.isLoading ? <p className="muted">Loading budget…</p> : null}
+            {budgetQuery.data ? <JobBudgetBlock budget={budgetQuery.data.budget} /> : null}
+            {budgetQuery.isError ? <p className="muted">Budget isn't available right now.</p> : null}
+          </section>
+
+          <section className="drawer-section">
+            <h3>Timeline</h3>
+            <TimelineFeed events={timelineQuery.data?.events ?? []} isLoading={timelineQuery.isLoading} />
           </section>
 
           <section className="drawer-section">

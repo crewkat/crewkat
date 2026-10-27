@@ -735,3 +735,44 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   padding: 10px 12px; margin: 10px 0 0; font-size: 14px;
 }
 .pin-reveal small { color: #8a6a20; margin-top: 4px; }
+
+/* ---------- Wave 1: production board, follow-ups, budgets, timelines ---------- */
+.prod-scheduled .kanban-head { border-top-color: #3d7ab8; }
+.prod-in_progress .kanban-head { border-top-color: #e8a33d; }
+.prod-punch_list .kanban-head { border-top-color: #b0533d; }
+.prod-complete .kanban-head { border-top-color: #2e9e6b; }
+.prod-paid_in_full .kanban-head { border-top-color: #0b2a44; }
+.job-card.is-stuck { border-color: #e3b23c; background: #fffaf0; box-shadow: inset 3px 0 0 #e3b23c; }
+.stuck-flag { font-size: 11px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: #fdf1dc; color: #8a5c10; white-space: nowrap; }
+.budget-chip { font-size: 11px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: #e2f2e8; color: #20714a; white-space: nowrap; }
+.budget-chip.is-low { background: #f9e3e0; color: var(--danger); }
+.budget-chip.is-none { background: var(--line-soft); color: var(--muted); font-weight: 600; }
+.stage-pill { font-size: 11px; font-weight: 700; border-radius: 99px; padding: 2px 9px; background: var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.stage-pill.stage-scheduled { background: #e4ecf7; color: #2c5d8f; }
+.stage-pill.stage-in_progress { background: #fdf1dc; color: #8a5c10; }
+.stage-pill.stage-punch_list { background: #f9e3e0; color: #9a4a2e; }
+.stage-pill.stage-complete { background: #e2f2e8; color: #20714a; }
+.stage-pill.stage-paid_in_full { background: #0b2a44; color: #fff; }
+.stage-select { width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); font-weight: 600; color: var(--navy-900); }
+.margin-line { font-weight: 700; color: #20714a; font-size: 13.5px; margin: 10px 0 4px; }
+.margin-line.is-low { color: var(--danger); }
+.nav-badge { margin-left: auto; background: var(--accent); color: #fff; font-size: 11px; font-weight: 800; border-radius: 99px; padding: 1px 8px; }
+.queue-group { margin-bottom: 16px; }
+.queue-row { gap: 10px; }
+.queue-row.is-overdue .feed-title { color: var(--danger); }
+.queue-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.queue-assign { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 7px; background: var(--surface); font-size: 12.5px; color: var(--ink-2); max-width: 170px; }
+.queue-snooze { display: flex; gap: 4px; }
+.queue-link { font-size: 12.5px; margin-top: 2px; align-self: flex-start; }
+.queue-new { margin-bottom: 16px; }
+.queue-summary { margin: 0 0 8px; }
+.timeline-feed .feed-item { align-items: flex-start; }
+.timeline-dot { flex: none; width: 26px; height: 26px; border-radius: 99px; background: var(--line-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px; }
+.timeline-dot.kind-stage { background: #e4ecf7; }
+.timeline-dot.kind-automation { background: #fdf1dc; }
+.timeline-dot.kind-signed, .timeline-dot.kind-payment { background: #e2f2e8; }
+.automation-list { display: flex; flex-direction: column; }
+.automation-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px; border-radius: var(--radius-sm); }
+.automation-row:hover { background: #eef3f8; }
+.automation-row .access-switch-row { padding: 0; }
+.automation-row .access-switch-row:hover { background: none; }

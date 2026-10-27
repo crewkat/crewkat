@@ -93,8 +93,100 @@ export interface Job {
   photoCompleteness: number;
   completedAt: string | null;
   completionOverrideNote: string;
+  /** Wave 1: Production Board stage (migration 0090). */
+  productionStage: ProductionStage;
   createdAt: string;
   updatedAt: string;
+}
+
+/* ---------- Wave 1: Production Board, follow-ups, budgets, timelines ----------
+   Mirrors the Wave 1 payloads in server/src/actions.ts (boardJobSchema /
+   followUpItemSchema / jobBudgetSchema / timelineEventSchema). Money stays
+   string-shaped; the server blanks it for members whose seeMoney switch is
+   off, so "" / null means "hidden", never zero. */
+
+export type ProductionStage = "scheduled" | "in_progress" | "punch_list" | "complete" | "paid_in_full";
+
+export const PRODUCTION_STAGES: ProductionStage[] = ["scheduled", "in_progress", "punch_list", "complete", "paid_in_full"];
+
+export const PRODUCTION_STAGE_LABELS: Record<ProductionStage, string> = {
+  scheduled: "Scheduled",
+  in_progress: "In Progress",
+  punch_list: "Punch List",
+  complete: "Complete",
+  paid_in_full: "Paid in Full",
+};
+
+export interface BoardJob {
+  id: number;
+  clientId: number | null;
+  clientName: string;
+  jobType: string;
+  jobAddress: string;
+  jobDate: string;
+  productionStage: ProductionStage;
+  contractSum: string;
+  invoiced: string;
+  paid: string;
+  marginPercent: number | null;
+  lowMargin: boolean;
+  hasCosts: boolean;
+  lastActivityAt: string;
+  idleDays: number;
+  stuck: boolean;
+}
+
+export interface FollowUpItem {
+  id: number;
+  title: string;
+  body: string;
+  dueDate: string;
+  status: "open" | "done";
+  source: "manual" | "automation";
+  recipe: string;
+  assigneeUserId: number | null;
+  assigneeName: string;
+  leadId: number | null;
+  leadName: string;
+  jobId: number | null;
+  jobLabel: string;
+  clientId: number | null;
+  clientName: string;
+  invoiceId: number | null;
+  invoiceNumber: string;
+  amount: string | null;
+  overdue: boolean;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface JobBudget {
+  contract: string;
+  invoiced: string;
+  paid: string;
+  costs: string;
+  materials: string;
+  labor: string;
+  expenses: string;
+  subcontractors: string;
+  hasCosts: boolean;
+  marginPercent: number | null;
+  lowMargin: boolean;
+}
+
+export interface TimelineEvent {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  at: string;
+}
+
+export interface AutomationRecipe {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
 }
 
 export interface AuthUser {
@@ -212,7 +304,7 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings" | "team";
+export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings" | "team";
 
 /* ---------- Schedule (Track 1b) ----------
    Mirrors the server appointmentSchema — the same records the phone

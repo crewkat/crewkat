@@ -77,12 +77,19 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
   );
 }
 
-export function DashboardView({ onGoPipeline, onGoJobs }: { onGoPipeline: () => void; onGoJobs: () => void }) {
+export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoPipeline: () => void; onGoJobs: () => void; onGoFollowUps?: () => void }) {
   const queryClient = useQueryClient();
   const [followUpError, setFollowUpError] = useState("");
   const dashQuery = useQuery({
     queryKey: ["office-dashboard"],
     queryFn: async () => normalizeDashboard(await api.getOfficeDashboard({})),
+  });
+  // Wave 1: the follow-up queue is the real work list (manual items +
+  // automation tasks across leads/jobs/invoices). Surface its counts
+  // here; the note-reminders list below is the phone dashboard's own.
+  const queueQuery = useQuery({
+    queryKey: ["follow-up-queue", false],
+    queryFn: () => api.getFollowUpQueue({ includeDone: false }),
   });
   // leadsByStage arrives as counts only, so stage dollar values for the
   // pipeline chart are summed from the lead list itself.
@@ -185,7 +192,15 @@ export function DashboardView({ onGoPipeline, onGoJobs }: { onGoPipeline: () => 
 
       <div className="panel-grid">
         <section className="panel">
-          <div className="panel-head"><h2>Follow-ups due</h2></div>
+          <div className="panel-head">
+            <h2>Follow-ups due</h2>
+            {onGoFollowUps ? <button type="button" className="link-btn" onClick={onGoFollowUps}>Open the queue →</button> : null}
+          </div>
+          {queueQuery.data ? (
+            <p className="feed-meta queue-summary">
+              Queue: {queueQuery.data.openCount} open · {queueQuery.data.overdueCount} overdue · {queueQuery.data.dueTodayCount} due today — automation tasks land here too.
+            </p>
+          ) : null}
           {followUpError ? <p className="inline-error">{followUpError}</p> : null}
           {d.followUps.length === 0 ? (
             <div className="empty-state small">
