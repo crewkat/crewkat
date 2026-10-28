@@ -66,6 +66,40 @@ export function clearActiveSessionToken() {
   } catch { /* storage unavailable */ }
 }
 
+// Platform admin impersonation (mirrors the phone client): while active,
+// every API call goes out with the impersonation proof instead of the
+// admin's own, so Office behaves as the target user. Silent refresh is
+// disabled in this mode (the admin's refresh cookie would otherwise
+// silently restore the admin identity), and the admin's proof is parked
+// in memory to be restored on End. Sessions last 30 minutes server-side.
+let impersonationProof: string | null = null;
+let parkedAdminProof = "";
+let impersonationName = "";
+export const IMPERSONATION_EVENT = "crewkat:impersonation";
+
+export function startImpersonation(proof: string, userName: string) {
+  parkedAdminProof = activeSessionProof;
+  impersonationProof = proof;
+  impersonationName = userName;
+  window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+}
+
+export function endImpersonationLocal() {
+  impersonationProof = null;
+  activeSessionProof = parkedAdminProof;
+  parkedAdminProof = "";
+  impersonationName = "";
+  window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+}
+
+export function isImpersonating() {
+  return impersonationProof != null;
+}
+
+export function impersonationTargetName() {
+  return impersonationName;
+}
+
 const AUTH_ERROR_PATTERN = /session has expired|sign in to continue|unusual sign-in activity/i;
 
 function isAuthErrorBody(body: unknown): boolean {
@@ -79,6 +113,7 @@ function isAuthErrorBody(body: unknown): boolean {
 const ENDPOINT = "/actions";
 let refreshPromise: Promise<boolean> | null = null;
 export function trySilentRefresh(force = false): Promise<boolean> {
+  if (isImpersonating()) return Promise.resolve(false);
   if (!force) {
     try {
       if (window.localStorage.getItem(COOKIE_SESSION_MARKER_KEY) !== "1") return Promise.resolve(false);
@@ -120,14 +155,14 @@ const authenticatedFetch = (async (input: RequestInfo | URL, init?: RequestInit)
     credentials: "same-origin",
     body: JSON.stringify({ ...payload, args: { ...(payload.args ?? {}), ...(proof ? { _sessionToken: proof } : {}) } }),
   });
-  let response = await send(activeSessionProof);
+  let response = await send(impersonationProof ?? activeSessionProof);
   let authFailed = false;
   try {
     authFailed = isAuthErrorBody(await response.clone().json());
   } catch { /* non-JSON body: leave it to the caller */ }
   if (!authFailed) return response;
   if (await trySilentRefresh()) {
-    response = await send(activeSessionProof);
+    response = await send(impersonationProof ?? activeSessionProof);
     try {
       if (!isAuthErrorBody(await response.clone().json())) return response;
     } catch { return response; }

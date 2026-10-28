@@ -776,3 +776,37 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .automation-row:hover { background: #eef3f8; }
 .automation-row .access-switch-row { padding: 0; }
 .automation-row .access-switch-row:hover { background: none; }
+
+/* ---------- platform admin console ---------- */
+.admin-stack { display: flex; flex-direction: column; gap: 16px; }
+.admin-split { grid-template-columns: minmax(0, 1fr) 430px; }
+.admin-panel-note { padding: 0 18px; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+.admin-action-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-row-actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-note-input {
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 7px 9px;
+  background: var(--surface); font-size: 13px; min-width: 150px;
+}
+.feed-item.clickable { cursor: pointer; }
+.feed-item.clickable:hover { background: #f7fafc; }
+.feed-item.admin-ticket { cursor: pointer; border-radius: var(--radius-sm); padding-left: 8px; padding-right: 8px; }
+.feed-item.admin-ticket:hover { background: #f7fafc; }
+.feed-item.admin-ticket.selected { background: #fdf3ea; }
+.support-msg {
+  border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+  padding: 10px 12px; margin-bottom: 10px; background: #fafbfc;
+}
+.support-msg p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-msg.admin { background: #eef4fb; border-color: #d7e4f2; }
+.support-shots { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.support-shots img {
+  width: 92px; height: 92px; object-fit: cover; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); display: block;
+}
+.impersonation-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  background: #7c2d12; color: #fff; padding: 9px 26px; font-size: 13.5px; font-weight: 600;
+}
+.impersonation-end { background: #fff; color: #7c2d12; border-color: #fff; font-weight: 700; }
+.impersonation-end:hover:not(:disabled) { background: #fdf0e4; }

@@ -4,8 +4,12 @@ import {
   api,
   AUTH_SESSION_INVALID_EVENT,
   clearActiveSessionToken,
+  endImpersonationLocal,
   getStoredSessionToken,
+  IMPERSONATION_EVENT,
+  impersonationTargetName,
   isCookieLoginResult,
+  isImpersonating,
   persistLegacySessionToken,
   restoreLegacySessionToken,
   setActiveSessionToken,
@@ -14,6 +18,7 @@ import {
 import type { AuthUser, ViewKey } from "./types";
 import { STAGE_LABELS } from "./types";
 import { cleanError, initials } from "./utils";
+import { AdminView, type PlatformRole } from "./views/Admin";
 import { ClientsView } from "./views/Clients";
 import { DashboardView } from "./views/Dashboard";
 import { FollowUpsView } from "./views/FollowUps";
@@ -42,6 +47,9 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   // Track 1c: Team is Admin-only — filtered out of the nav for other
   // roles below (cosmetic; the server gates the team actions regardless).
   { key: "team", label: "Team", icon: "👤" },
+  // Platform admin console — filtered to platform admins / team-role
+  // holders below (cosmetic; every admin action re-gates server-side).
+  { key: "admin", label: "Admin", icon: "🛡" },
 ];
 
 // Wave 1 shipped the automation recipes (they live in Settings), so
@@ -119,6 +127,51 @@ export function App() {
   });
   const followUpBadge = queueBadgeQuery.data?.openCount ?? 0;
 
+  // Platform admin console gating (cosmetic — the server re-gates every
+  // admin action). Visible to platform admins and platform team-role
+  // holders; a platform admin's effective role is "admin".
+  const myTeamRoleQuery = useQuery({
+    queryKey: ["pa-my-team-role"],
+    queryFn: () => api.adminMyTeamRole({}),
+    enabled: !!user,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const teamRole = (myTeamRoleQuery.data?.role ?? null) as PlatformRole | null;
+  const canAdmin = !!user && (user.isPlatformAdmin || teamRole !== null);
+  const effectiveRole: PlatformRole = user?.isPlatformAdmin ? "admin" : (teamRole ?? "support");
+
+  // Impersonation (started from Admin → Users): api.ts swaps the session
+  // proof and fires IMPERSONATION_EVENT; reload the session so the whole
+  // shell becomes the target user, and back again on End.
+  const [impersonating, setImpersonating] = useState(false);
+  useEffect(() => {
+    const onImpersonation = () => {
+      const active = isImpersonating();
+      setImpersonating(active);
+      queryClient.clear();
+      setView("dashboard");
+      setSelectedClientId(null);
+      setSelectedJobId(null);
+      setSelectedDoc(null);
+      setFocusLeadId(null);
+      void (async () => {
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (result.user) setUser(result.user as AuthUser);
+          else if (!active) setUser(null);
+        } catch { /* keep the current user on transport failure */ }
+      })();
+    };
+    window.addEventListener(IMPERSONATION_EVENT, onImpersonation);
+    return () => window.removeEventListener(IMPERSONATION_EVENT, onImpersonation);
+  }, [queryClient]);
+
+  const endImpersonation = useCallback(async () => {
+    try { await api.adminImpersonateEnd({ _sessionToken: "impersonation" }); } catch { /* session may already be gone */ }
+    endImpersonationLocal();
+  }, []);
+
   const openJob = useCallback((jobId: number) => { setSelectedJobId(jobId); setView("jobs"); }, []);
   const openClient = useCallback((clientId: number) => { setSelectedClientId(clientId); setView("clients"); }, []);
   const openDocument = useCallback((sel: DocSelection) => { setSelectedDoc(sel); setView("documents"); }, []);
@@ -149,7 +202,7 @@ export function App() {
           </div>
         </div>
         <nav className="nav" aria-label="Office">
-          {NAV.filter((item) => item.key !== "team" || user.teamRole === "admin").map((item) => (
+          {NAV.filter((item) => (item.key !== "team" || user.teamRole === "admin") && (item.key !== "admin" || canAdmin)).map((item) => (
             <button
               key={item.key}
               type="button"
@@ -176,6 +229,12 @@ export function App() {
       </aside>
 
       <div className="main-column">
+        {impersonating ? (
+          <div className="impersonation-banner" role="status">
+            <span>Viewing as {impersonationTargetName()} — actions are logged to the audit trail.</span>
+            <button type="button" className="btn btn-small impersonation-end" onClick={() => void endImpersonation()}>End impersonation</button>
+          </div>
+        ) : null}
         <header className="topbar">
           <GlobalSearch onOpenLead={openLead} onOpenClient={openClient} onOpenJob={openJob} />
           <UserChip user={user} onSignOut={() => void signOut()} />
@@ -211,6 +270,9 @@ export function App() {
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} /> : null}
           {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}
+          {view === "admin" && canAdmin ? (
+            <AdminView isPlatformAdmin={user.isPlatformAdmin} role={effectiveRole} selfUserId={user.id} />
+          ) : null}
         </main>
       </div>
     </div>

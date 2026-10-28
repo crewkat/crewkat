@@ -111,6 +111,14 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
     );
   }
   const d = dashQuery.data;
+  // The queue (Wave 1) is the source of truth for what's due: its items
+  // drive this card whenever anything is overdue or due today. The
+  // note-reminder list from getOfficeDashboard is a separate, older list
+  // and must not mask queue work with a "nothing due" state.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const dueQueueItems = (queueQuery.data?.items ?? [])
+    .filter((item) => item.status === "open" && (item.overdue || item.dueDate === todayKey))
+    .sort((x, y) => (x.overdue === y.overdue ? x.dueDate.localeCompare(y.dueDate) : x.overdue ? -1 : 1));
   const stageBuckets = d.leadsByStage.map((b) => {
     if (b.value > 0) return b;
     const value = (leadsQuery.data?.leads ?? [])
@@ -202,12 +210,39 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
             </p>
           ) : null}
           {followUpError ? <p className="inline-error">{followUpError}</p> : null}
-          {d.followUps.length === 0 ? (
+          {dueQueueItems.length > 0 ? (
+            <ul className="feed-list">
+              {dueQueueItems.slice(0, 5).map((item) => (
+                <li
+                  key={item.id}
+                  className="feed-item clickable"
+                  onClick={onGoFollowUps}
+                  title="Open the follow-up queue"
+                >
+                  <div className="feed-main">
+                    <span className="feed-title">{item.title}</span>
+                    <span className="feed-meta">
+                      {[item.clientName || item.leadName || item.jobLabel || item.invoiceNumber, item.body].filter(Boolean).join(" · ") || "Follow-up"}
+                    </span>
+                  </div>
+                  <span className={`status-pill${item.overdue ? " overdue" : ""}`}>{item.overdue ? "Overdue" : "Due today"}</span>
+                </li>
+              ))}
+              {dueQueueItems.length > 5 ? (
+                <li className="feed-item">
+                  <div className="feed-main">
+                    <span className="feed-meta">+ {dueQueueItems.length - 5} more due — open the queue to work them.</span>
+                  </div>
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
+          {d.followUps.length === 0 && dueQueueItems.length === 0 ? (
             <div className="empty-state small">
               <div className="empty-icon">✓</div>
               <p>Nothing due — every follow-up is handled.</p>
             </div>
-          ) : (
+          ) : d.followUps.length === 0 ? null : (
             <ul className="feed-list">
               {d.followUps.map((row, i) => {
                 const id = pickNumber(row, ["id"]);
