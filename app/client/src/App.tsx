@@ -7000,7 +7000,6 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
     statusOpen: "Open", statusVoid: "Void", statusUncollectible: "Uncollectible",
   };
   const query = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
-  const auth = useContext(AuthContext);
   const [portalError, setPortalError] = useState("");
   const portal = useMutation({
     mutationFn: () => api.createBillingPortalSession({}),
@@ -7085,18 +7084,18 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
               })}
             </ul>
           )}
-          {auth?.user.access.seeMoney ? <BillingExports lang={lang} /> : null}
-          {auth?.user.access.seeMoney ? <BillingImport lang={lang} /> : null}
         </>
       )}
     </main>
   );
 }
 
-// Accountant exports (Danny 2026-10-27): the same datasets Office offers,
-// inside the phone Billing screen — no new tab or module. The server
-// gates these on the seeMoney switch; the section hides when the
-// signed-in member's money switch is off (BillingScreen checks).
+// Accountant exports (Danny 2026-10-27): the same datasets Office offers.
+// Lives with the other data-movement tools in Settings → Backup &
+// restore (moved out of the Billing screen 2026-10-27) — no new tab or
+// module. The server gates these on the seeMoney switch; the section
+// hides when the signed-in member's money switch is off (SettingsScreen
+// checks).
 function BillingExports({ lang }: { lang: Lang }) {
   const text = lang === "es" ? {
     title: "Exporta tus libros",
@@ -12450,6 +12449,8 @@ function SettingsScreen({
             {confirmRestore && restoreFile && <div className="restore-warning" role="alert"><strong>{lang === "es" ? "Esto reemplazará todos los datos actuales." : "This will replace all current data."}</strong><p>{lang === "es" ? "No cierres la app durante la restauración." : "Do not close the app while restore is running."}</p><div><button type="button" className="danger-button" disabled={restore.isPending} onClick={() => restore.mutate(restoreFile)}>{restore.isPending ? (lang === "es" ? "Restaurando…" : "Restoring…") : (lang === "es" ? "Sí, reemplazar y restaurar" : "Yes, replace and restore")}</button><button type="button" className="secondary-button" onClick={() => { setConfirmRestore(false); setRestoreFile(null); }}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div></div>}
             {backupNotice && <p className={`status ${backup.isError || restore.isError ? "error" : "success"}`} role="status">{backupNotice}</p>}
             <p className="privacy-note">{lang === "es" ? "La copia protege contra pérdida accidental. El acceso con cuenta en cualquier dispositivo se añadirá con el sistema de inicio de sesión del lanzamiento." : "Backups protect against accidental loss. Account sign-in on any device will arrive with the launch authentication system."}</p>
+            {auth?.user.access.seeMoney ? <BillingExports lang={lang} /> : null}
+            {auth?.user.access.seeMoney ? <BillingImport lang={lang} /> : null}
           </SettingsAccordion>
 
           <SettingsAccordion
