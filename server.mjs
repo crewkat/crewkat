@@ -694,6 +694,12 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/privacy" || urlPath === "/privacy/") {
     return sendFile(res, join(MARKETING_DIST, "privacy.html"));
   }
+  if (urlPath === "/paperwork" || urlPath === "/paperwork/") {
+    return sendFile(res, join(MARKETING_DIST, "paperwork.html"));
+  }
+  if (urlPath === "/paperwork/sample-estimate" || urlPath === "/paperwork/sample-estimate/") {
+    return sendFile(res, join(MARKETING_DIST, "sample-estimate.html"));
+  }
   // Phase 1 marketing feature pages (2026-10-18): one static HTML file per
   // feature in the marketing dir, Invoice Fly-style. Explicit routes are
   // required — unknown paths fall back to the marketing homepage below, which
@@ -971,7 +977,9 @@ const server = createServer(async (req, res) => {
           clientIp: clientIp(req),
           isProdCookie: process.env.NODE_ENV === "production",
         };
-        const { body } = await dispatchAction("googleSignIn", { idToken: credential }, reqMeta);
+        const signupRef = parseCookies(req.headers.cookie)["ck_signup_ref"] ?? "";
+        const source = ["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"].includes(signupRef) ? signupRef : undefined;
+        const { body } = await dispatchAction("googleSignIn", { idToken: credential, ...(source ? { signupSource: source } : {}) }, reqMeta);
         if (body?.error || !body?.data) { fail(body?.error ?? "no session issued"); return; }
         const setCookies = Array.isArray(body.data.setCookies) ? body.data.setCookies : [];
         const headers = { location: "/app/#google=ok" };

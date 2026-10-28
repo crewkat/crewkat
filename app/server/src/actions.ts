@@ -62,6 +62,7 @@ import { compositeFillFields, compositeSignatureStamps, parseFillFields, parseFi
 
 const stageSchema = z.enum(["before", "during", "after"]);
 const languageSchema = z.enum(["en", "es"]);
+const loopSurfaceSchema = z.enum(["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"]);
 const quoteThemeSchema = z.enum(["classic", "modern", "bold", "minimal"]);
 const documentFontSchema = z.enum(["helvetica", "times", "courier", "palatino"]);
 const adjustmentTypeSchema = z.enum(["percent", "fixed"]);
@@ -3482,7 +3483,7 @@ export const BaseActions = {
     },
   }),
   signUp: defineAction({
-    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: z.string().trim().max(16).optional(), language: languageSchema.optional() }),
+    request: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(200), password: z.string().min(10).max(200), marketplaceTermsAccepted: z.literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: z.string().trim().max(16).optional(), language: languageSchema.optional(), signupSource: loopSurfaceSchema.optional() }),
     response: z.object({ ok: z.literal(true), email: z.string(), verificationCode: z.string().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: z.boolean() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args): Promise<{ ok: true; email: string; verificationCode: string | null; emailDelivery: "sent" | "fallback" | "failed"; existingDataClaimed: boolean }> {
@@ -3500,7 +3501,7 @@ export const BaseActions = {
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
       const counts = firstAccount ? await Promise.all([db.select({ id: schema.jobs.id }).from(schema.jobs), db.select({ id: schema.clients.id }).from(schema.clients), db.select({ id: schema.invoices.id }).from(schema.invoices)]) : [[], [], []];
       const referralCode = await uniqueReferralCode(db);
-      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
+      const made = (await db.insert(schema.authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, signupSource: args.signupSource ?? null, createdAt: now, updatedAt: now }).returning({ id: schema.authUsers.id }))[0];
       if (!made) throw new Error("The account could not be created.");
       // Tier 2: mint the company's row (crew code + tier flag) up front;
       // best-effort — ensureCompanyRow also creates it lazily on the
@@ -3672,7 +3673,7 @@ export const BaseActions = {
   }),
   // Sign in (or sign up) with a Google Identity Services ID token. Public.
   googleSignIn: defineAction({
-    request: z.object({ idToken: z.string().min(1).max(8000) }),
+    request: z.object({ idToken: z.string().min(1).max(8000), signupSource: loopSurfaceSchema.optional() }),
     response: z.object({ sessionToken: z.string(), expiresAt: z.string(), user: authUserSchema, setCookies: z.array(z.string()) }),
     async handler(ctx, args) {
       if (!googleClientId()) throw new Error("Google sign-in is not configured.");
@@ -3711,7 +3712,7 @@ export const BaseActions = {
           emailVerifiedAt: now, dataClaimedAt: now, googleSub: payload.sub,
           companyId, role: "owner", tier: firstAccount ? "premium" : "free",
           subscriptionStatus: firstAccount ? "founder" : "inactive",
-          referralCode, createdAt: now, updatedAt: now,
+          referralCode, signupSource: args.signupSource ?? null, createdAt: now, updatedAt: now,
         }).returning())[0];
         if (!made) throw new Error("The account could not be created.");
         user = made;
@@ -8012,6 +8013,15 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
       return { champion: await craneLastWeekChampion(db) };
     },
   }),
+  recordLoopLanding: defineAction({
+    request: z.object({ surface: loopSurfaceSchema }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      await db.insert(schema.growthLoopEvents).values({ surface: args.surface });
+      return { ok: true };
+    },
+  }),
 } satisfies ActionsModule;
 
 export const PUBLIC_ACTIONS = new Set([
@@ -8022,6 +8032,8 @@ export const PUBLIC_ACTIONS = new Set([
   // Google Sign-In must be public: getGoogleClientId drives the login-screen
   // button (no session exists yet), and googleSignIn IS the login.
   "getGoogleClientId", "googleSignIn",
+  // Growth loop: landing-page click beacon — public, no session exists yet.
+  "recordLoopLanding",
   "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
   "getFeatureFlags",
   // Admin panel Phase 2 (Settings): maintenance status, branding, and the

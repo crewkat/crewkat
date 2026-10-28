@@ -791,6 +791,15 @@ export const documentLinkEvents = sqliteTable("document_link_events", {
   occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// Growth loop (0091): one row per client-link landing click — the
+// /paperwork funnel records which surface (estimate, invoice, etc.)
+// brought a visitor to the signup landing page.
+export const growthLoopEvents = sqliteTable("growth_loop_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  surface: text("surface").notNull(),
+  occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 export const materialCostItems = sqliteTable("material_cost_items", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -1007,6 +1016,7 @@ export const authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
+  signupSource: text("signup_source"),
   // Crane Run leaderboard (0073; weekly since 0077): per-user opt-in, default private.
   // Only opted-in users appear on the public daily top-5 board.
   leaderboardOptIn: integer("leaderboard_opt_in", { mode: "boolean" }).notNull().default(false),

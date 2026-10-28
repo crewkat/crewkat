@@ -34344,6 +34344,7 @@ __export(exports_schema, {
   featureFlags: () => featureFlags,
   financialDocumentSignatures: () => financialDocumentSignatures,
   followUps: () => followUps,
+  growthLoopEvents: () => growthLoopEvents,
   incidents: () => incidents,
   internalNotes: () => internalNotes,
   invoices: () => invoices,
@@ -41983,6 +41984,11 @@ var documentLinkEvents = sqliteTable("document_link_events", {
   userAgent: text("user_agent").notNull().default(""),
   occurredAt: integer2("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
+var growthLoopEvents = sqliteTable("growth_loop_events", {
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  surface: text("surface").notNull(),
+  occurredAt: integer2("occurred_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+});
 var materialCostItems = sqliteTable("material_cost_items", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -42203,6 +42209,7 @@ var authUsers = sqliteTable("auth_users", {
   marketplaceTermsAcceptedAt: integer2("marketplace_terms_accepted_at", { mode: "timestamp_ms" }),
   marketplaceTermsVersion: text("marketplace_terms_version"),
   referralCode: text("referral_code"),
+  signupSource: text("signup_source"),
   leaderboardOptIn: integer2("leaderboard_opt_in", { mode: "boolean" }).notNull().default(false),
   googleSub: text("google_sub"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
@@ -73986,6 +73993,7 @@ var PLATFORM_ACTIONS = new Set([
   "adminKeywordRuleDelete",
   "adminKeywordRulesList",
   "adminListingDecision",
+  "adminLoopStats",
   "adminMaintenanceSet",
   "adminMarketplaceOverview",
   "adminModerationQueue",
@@ -75079,6 +75087,86 @@ var platformAdminPhase2AnalyticsActions = {
         avgMessagesPerListing,
         supportOpenCount: openReports.length,
         premiumTotal
+      };
+    }
+  }),
+  adminLoopStats: defineAction({
+    request: object({}),
+    response: object({
+      linkOpens: object({
+        total: number2(),
+        bySurface: array(object({ surface: string2(), opens: number2() }))
+      }),
+      landingClicks: object({
+        total: number2(),
+        bySurface: array(object({ surface: string2(), count: number2() }))
+      }),
+      signups: object({
+        total: number2(),
+        bySurface: array(object({ surface: string2(), count: number2() }))
+      })
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const surfaces = ["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"];
+      const kindToSurface = {
+        quote: "estimate",
+        invoice: "invoice",
+        contract: "contract",
+        change_order: "changeorder"
+      };
+      const opensBySurface = new Map(surfaces.map((s) => [s, 0]));
+      const docLinks = await db.select({
+        documentKind: documentLinks.documentKind,
+        viewCount: documentLinks.viewCount
+      }).from(documentLinks);
+      for (const row of docLinks) {
+        const surface = kindToSurface[row.documentKind];
+        if (surface)
+          opensBySurface.set(surface, (opensBySurface.get(surface) ?? 0) + (row.viewCount ?? 0));
+      }
+      const portalRows = await db.select({ viewCount: portalTokens.viewCount }).from(portalTokens);
+      let portalOpens = 0;
+      for (const row of portalRows)
+        portalOpens += row.viewCount ?? 0;
+      opensBySurface.set("portal", (opensBySurface.get("portal") ?? 0) + portalOpens);
+      const linkOpensBySurface = surfaces.map((surface) => ({
+        surface,
+        opens: opensBySurface.get(surface) ?? 0
+      }));
+      const linkOpensTotal = linkOpensBySurface.reduce((sum, r) => sum + r.opens, 0);
+      const clicksBySurface = new Map(surfaces.map((s) => [s, 0]));
+      const events = await db.select({ surface: growthLoopEvents.surface }).from(growthLoopEvents);
+      for (const row of events) {
+        if (clicksBySurface.has(row.surface)) {
+          clicksBySurface.set(row.surface, (clicksBySurface.get(row.surface) ?? 0) + 1);
+        }
+      }
+      const landingBySurface = surfaces.map((surface) => ({
+        surface,
+        count: clicksBySurface.get(surface) ?? 0
+      }));
+      const landingTotal = landingBySurface.reduce((sum, r) => sum + r.count, 0);
+      const signupsBySurfaceMap = new Map(surfaces.map((s) => [s, 0]));
+      const users = await db.select({ signupSource: authUsers.signupSource }).from(authUsers);
+      let signupsTotal = 0;
+      for (const row of users) {
+        if (row.signupSource != null) {
+          signupsTotal++;
+          if (signupsBySurfaceMap.has(row.signupSource)) {
+            signupsBySurfaceMap.set(row.signupSource, (signupsBySurfaceMap.get(row.signupSource) ?? 0) + 1);
+          }
+        }
+      }
+      const signupsBySurface = surfaces.map((surface) => ({
+        surface,
+        count: signupsBySurfaceMap.get(surface) ?? 0
+      }));
+      return {
+        linkOpens: { total: linkOpensTotal, bySurface: linkOpensBySurface },
+        landingClicks: { total: landingTotal, bySurface: landingBySurface },
+        signups: { total: signupsTotal, bySurface: signupsBySurface }
       };
     }
   })
@@ -76622,6 +76710,7 @@ async function compositeFillFields(pdfBytes, fields, values) {
 // src/actions.ts
 var stageSchema = _enum(["before", "during", "after"]);
 var languageSchema = _enum(["en", "es"]);
+var loopSurfaceSchema = _enum(["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"]);
 var quoteThemeSchema = _enum(["classic", "modern", "bold", "minimal"]);
 var documentFontSchema = _enum(["helvetica", "times", "courier", "palatino"]);
 var adjustmentTypeSchema = _enum(["percent", "fixed"]);
@@ -79711,7 +79800,7 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
     }
   }),
   signUp: defineAction({
-    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: string2().trim().max(16).optional(), language: languageSchema.optional() }),
+    request: object({ name: string2().trim().min(2).max(120), email: string2().trim().email().max(200), password: string2().min(10).max(200), marketplaceTermsAccepted: literal(true, { error: "You must agree to the Marketplace Terms of Use to create an account." }), referralCode: string2().trim().max(16).optional(), language: languageSchema.optional(), signupSource: loopSurfaceSchema.optional() }),
     response: object({ ok: literal(true), email: string2(), verificationCode: string2().length(6).nullable(), emailDelivery: authCodeDeliverySchema, existingDataClaimed: boolean2() }),
     privileged: [privileged.sendAuthEmail],
     async handler(ctx, args) {
@@ -79731,7 +79820,7 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
       const companyId = firstAccount ? 1 : Math.max(1, ...users.map((user) => user.companyId)) + 1;
       const counts = firstAccount ? await Promise.all([db.select({ id: jobs.id }).from(jobs), db.select({ id: clients.id }).from(clients), db.select({ id: invoices.id }).from(invoices)]) : [[], [], []];
       const referralCode = await uniqueReferralCode(db);
-      const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
+      const made = (await db.insert(authUsers).values({ name: args.name.trim(), email, passwordHash: await derivePassword(args.password, salt, AUTH_PASSWORD_ITERATIONS), passwordSalt: salt, passwordIterations: AUTH_PASSWORD_ITERATIONS, companyId, role: "owner", tier: firstAccount ? "premium" : "free", subscriptionStatus: firstAccount ? "founder" : "inactive", marketplaceTermsAcceptedAt: now, marketplaceTermsVersion: MARKETPLACE_TERMS_VERSION, referralCode, signupSource: args.signupSource ?? null, createdAt: now, updatedAt: now }).returning({ id: authUsers.id }))[0];
       if (!made)
         throw new Error("The account could not be created.");
       try {
@@ -79899,7 +79988,7 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
     }
   }),
   googleSignIn: defineAction({
-    request: object({ idToken: string2().min(1).max(8000) }),
+    request: object({ idToken: string2().min(1).max(8000), signupSource: loopSurfaceSchema.optional() }),
     response: object({ sessionToken: string2(), expiresAt: string2(), user: authUserSchema, setCookies: array(string2()) }),
     async handler(ctx, args) {
       if (!googleClientId())
@@ -79940,6 +80029,7 @@ If you didn't ask for this, just ignore this email \u2014 nothing will be delete
           tier: firstAccount ? "premium" : "free",
           subscriptionStatus: firstAccount ? "founder" : "inactive",
           referralCode,
+          signupSource: args.signupSource ?? null,
           createdAt: now,
           updatedAt: now
         }).returning())[0];
@@ -86470,6 +86560,15 @@ Thanks for signing "${doc.title}". Your signed copy is attached \u2014 keep it f
       const db = ctx.db();
       return { champion: await craneLastWeekChampion(db) };
     }
+  }),
+  recordLoopLanding: defineAction({
+    request: object({ surface: loopSurfaceSchema }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      await db.insert(growthLoopEvents).values({ surface: args.surface });
+      return { ok: true };
+    }
   })
 };
 var PUBLIC_ACTIONS = new Set([
@@ -86487,6 +86586,7 @@ var PUBLIC_ACTIONS = new Set([
   "crewLogin",
   "getGoogleClientId",
   "googleSignIn",
+  "recordLoopLanding",
   "getPortalData",
   "getPortalPhotoDownload",
   "portalUpdateSelection",

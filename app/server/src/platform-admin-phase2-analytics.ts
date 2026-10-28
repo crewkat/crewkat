@@ -178,4 +178,104 @@ export const platformAdminPhase2AnalyticsActions = {
       };
     },
   }),
+
+  /** Admin-only: client-link growth loop stats (platform-wide). */
+  adminLoopStats: defineAction({
+    request: z.object({}),
+    response: z.object({
+      linkOpens: z.object({
+        total: z.number(),
+        bySurface: z.array(z.object({ surface: z.string(), opens: z.number() })),
+      }),
+      landingClicks: z.object({
+        total: z.number(),
+        bySurface: z.array(z.object({ surface: z.string(), count: z.number() })),
+      }),
+      signups: z.object({
+        total: z.number(),
+        bySurface: z.array(z.object({ surface: z.string(), count: z.number() })),
+      }),
+    }),
+    async handler(ctx) {
+      await requirePlatformAdmin(ctx);
+      const db = platformDb(ctx);
+      const surfaces = ["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"] as const;
+
+      // linkOpens: documentLinks SUM(viewCount) grouped by documentKind,
+      // mapped quote->estimate, invoice->invoice, contract->contract,
+      // change_order->changeorder; portalTokens SUM(viewCount) -> portal.
+      // Receipt/photo opens happen inside the portal and are not
+      // separately recorded — they stay 0.
+      const kindToSurface: Record<string, string> = {
+        quote: "estimate",
+        invoice: "invoice",
+        contract: "contract",
+        change_order: "changeorder",
+      };
+      const opensBySurface = new Map<string, number>(surfaces.map((s) => [s, 0]));
+      const docLinks = await db
+        .select({
+          documentKind: schema.documentLinks.documentKind,
+          viewCount: schema.documentLinks.viewCount,
+        })
+        .from(schema.documentLinks);
+      for (const row of docLinks) {
+        const surface = kindToSurface[row.documentKind];
+        if (surface) opensBySurface.set(surface, (opensBySurface.get(surface) ?? 0) + (row.viewCount ?? 0));
+      }
+      const portalRows = await db
+        .select({ viewCount: schema.portalTokens.viewCount })
+        .from(schema.portalTokens);
+      let portalOpens = 0;
+      for (const row of portalRows) portalOpens += row.viewCount ?? 0;
+      opensBySurface.set("portal", (opensBySurface.get("portal") ?? 0) + portalOpens);
+      const linkOpensBySurface = surfaces.map((surface) => ({
+        surface,
+        opens: opensBySurface.get(surface) ?? 0,
+      }));
+      const linkOpensTotal = linkOpensBySurface.reduce((sum, r) => sum + r.opens, 0);
+
+      // landingClicks: COUNT growthLoopEvents grouped by surface.
+      const clicksBySurface = new Map<string, number>(surfaces.map((s) => [s, 0]));
+      const events = await db
+        .select({ surface: schema.growthLoopEvents.surface })
+        .from(schema.growthLoopEvents);
+      for (const row of events) {
+        if (clicksBySurface.has(row.surface)) {
+          clicksBySurface.set(row.surface, (clicksBySurface.get(row.surface) ?? 0) + 1);
+        }
+      }
+      const landingBySurface = surfaces.map((surface) => ({
+        surface,
+        count: clicksBySurface.get(surface) ?? 0,
+      }));
+      const landingTotal = landingBySurface.reduce((sum, r) => sum + r.count, 0);
+
+      // signups: COUNT authUsers where signupSource is not null, grouped
+      // by signupSource.
+      const signupsBySurfaceMap = new Map<string, number>(surfaces.map((s) => [s, 0]));
+      const users = await db
+        .select({ signupSource: schema.authUsers.signupSource })
+        .from(schema.authUsers);
+      let signupsTotal = 0;
+      for (const row of users) {
+        if (row.signupSource != null) {
+          signupsTotal++;
+          if (signupsBySurfaceMap.has(row.signupSource)) {
+            signupsBySurfaceMap.set(row.signupSource, (signupsBySurfaceMap.get(row.signupSource) ?? 0) + 1);
+          }
+        }
+      }
+      const signupsBySurface = surfaces.map((surface) => ({
+        surface,
+        count: signupsBySurfaceMap.get(surface) ?? 0,
+      }));
+
+      return {
+        linkOpens: { total: linkOpensTotal, bySurface: linkOpensBySurface },
+        landingClicks: { total: landingTotal, bySurface: landingBySurface },
+        signups: { total: signupsTotal, bySurface: signupsBySurface },
+      };
+    },
+  }),
 };

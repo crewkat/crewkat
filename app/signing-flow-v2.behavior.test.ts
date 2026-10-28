@@ -295,18 +295,20 @@ check("compact inner rules use the same strengthened selector", themeSrc.include
 const narrowSheetIdx = themeSrc.indexOf("@media (max-width:390px) { .app-header h1");
 const narrowSheetBlock = themeSrc.slice(narrowSheetIdx, narrowSheetIdx + 500);
 check("narrow-viewport sheet rule survives for text documents only", narrowSheetIdx >= 0 && narrowSheetBlock.includes(".quote-paper { padding: 0 16px 18px; min-height: 480px; }") && !narrowSheetBlock.includes("quote-paper--compact"));
-// Brand bar as platform strip (Danny 2026-10-17): clean C mark + a
-// "Sign with / Doc by Crewkat" label, so Crewkat reads as the software.
+// Platform strip (Danny 2026-10-17; standardized as the shared
+// PlatformStrip at the foot of the page by the growth-loop build,
+// 2026-10-27): clean C mark + a "Sign with / Doc by Crewkat" label, so
+// Crewkat reads as the software. The top bar keeps only the EN/ES toggle.
 check("brand bar imports the clean C mark asset", appSrc.includes('import crewkatC from "./assets/crewkat-c.png"'));
 const cMarkBytes = await readFile("client/src/assets/crewkat-c.png").catch(() => null);
 check("clean C mark asset is bundled from client assets", !!cMarkBytes && cMarkBytes.length > 1000);
-const brandSlice = appSrc.slice(appSrc.indexOf("const brandBar = ("), appSrc.indexOf("const brandBar = (") + 700);
-check("brand bar renders the clean C mark", brandSlice.includes("src={crewkatC}"));
-check("brand bar no longer renders the wrench-cat mascot", !brandSlice.includes("crewkatLogo"));
-check("brand label follows the loaded doc's signable state", appSrc.includes("q.data?.signable"));
+const brandSlice = appSrc.slice(appSrc.indexOf("function PlatformStrip"), appSrc.indexOf("function PlatformStrip") + 900);
+check("platform strip renders the clean C mark", brandSlice.includes("src={crewkatC}"));
+check("platform strip does not render the wrench-cat mascot", !brandSlice.includes("crewkatLogo"));
+check("strip label follows the loaded doc's signable state", appSrc.includes("signable={doc.signable}"));
 check("brand label ships signable + view-only variants (EN)", appSrc.includes('"Sign with Crewkat"') && appSrc.includes('"Doc by Crewkat"'));
 check("brand label ships signable + view-only variants (ES)", appSrc.includes('"Firma con Crewkat"') && appSrc.includes('"Documento con Crewkat"'));
-check("brand bar carries the platform strip styling", appSrc.includes("client-doc-wordmark--platform") && themeSrc.includes(".client-doc-wordmark--platform {") && themeSrc.includes(".client-doc-wordmark--platform img {"));
+check("platform strip carries the muted strip styling", appSrc.includes("platform-strip") && themeSrc.includes(".platform-strip {") && themeSrc.includes(".platform-strip img {"));
 
 // --- Source pins (commit 3: in-app signed-first document view) ---------------------------
 const pdfPagesSlice = appSrc.slice(appSrc.indexOf("function DocumentPdfPages"), appSrc.indexOf("function DocumentPdfPages") + 700);

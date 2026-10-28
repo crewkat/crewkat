@@ -2025,6 +2025,13 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .client-doc-wordmark--platform { font-size: 14.5px; font-weight: 650; letter-spacing: 0; color: var(--dim); }
 .client-doc-wordmark--platform img { width: 23px; height: 23px; border-radius: 6px; }
 .client-doc-brandbar .client-lang-toggle { padding: 0; }
+/* Client-link growth loop: the Crewkat mark as a whisper at the foot of
+   client-facing pages — small muted text + tiny C logo, centered, never
+   colored, never a banner. The contractor's branding stays dominant. */
+.platform-strip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 14px 16px 18px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12px; text-align: center; text-decoration: none; }
+.platform-strip img { height: 14px; width: auto; display: block; }
+.platform-strip:hover { text-decoration: underline; }
+.platform-strip.on-dark { color: rgba(255, 255, 255, .72); border-top: 0; }
 .client-doc-company { display: flex; align-items: center; gap: 12px; padding: 14px 4px 0; }
 .client-doc-company img { width: 52px; height: 38px; object-fit: contain; }
 .client-doc-company div { display: grid; gap: 2px; }

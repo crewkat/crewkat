@@ -41,6 +41,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://crewkat.com/paperwork</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://crewkat.com/privacy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>

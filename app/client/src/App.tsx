@@ -2198,6 +2198,37 @@ function GoogleSignInButton({ clientId, disabled, lang, context }: {
   return <div ref={hostRef} className={`google-signin-host${disabled ? " is-disabled" : ""}`} aria-hidden={disabled || undefined} />;
 }
 
+// Client-link growth loop: the surfaces a client can arrive from, carried
+// to signup as attribution. The footer strip on client pages links to
+// /paperwork?ref=<surface>; that landing (or a direct arrival here with a
+// valid ?ref=) is captured once and replayed on signup.
+type LoopSurface = "estimate" | "invoice" | "contract" | "changeorder" | "portal" | "receipt" | "photo";
+const SURFACES: readonly LoopSurface[] = ["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"];
+function isLoopSurface(value: string | null | undefined): value is LoopSurface {
+  return !!value && (SURFACES as readonly string[]).includes(value);
+}
+function captureSignupRef() {
+  try {
+    const value = new URLSearchParams(window.location.search).get("ref");
+    if (!isLoopSurface(value)) return;
+    try { window.sessionStorage.setItem("ck_signup_ref", value); } catch { /* storage unavailable */ }
+    try { document.cookie = `ck_signup_ref=${value}; path=/; max-age=2592000; SameSite=Lax`; } catch { /* cookies unavailable */ }
+  } catch { /* no location to read */ }
+}
+function readSignupRef(): LoopSurface | undefined {
+  try {
+    const fromSession = window.sessionStorage.getItem("ck_signup_ref");
+    if (isLoopSurface(fromSession)) return fromSession;
+  } catch { /* storage unavailable */ }
+  try {
+    const match = document.cookie.match(/(?:^|; )ck_signup_ref=([^;]*)/);
+    const raw = match?.[1];
+    const value = raw ? decodeURIComponent(raw) : null;
+    if (isLoopSurface(value)) return value;
+  } catch { /* cookies unavailable */ }
+  return undefined;
+}
+
 function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (user: AuthUser) => void; onRestoreSettled?: () => void }) {
   const bootstrap = useQuery({ queryKey: ["auth-bootstrap"], queryFn: () => api.getAuthBootstrap({}), retry: false });
   // Google Sign-In client ID (public by design). The Google button renders
@@ -2207,6 +2238,9 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
   // instead of the registration form.
   const flagsQuery = useQuery({ queryKey: ["feature-flags"], queryFn: () => api.getFeatureFlags({}), retry: false, staleTime: 5 * 60_000 });
   const signupsEnabled = flagsQuery.data?.signups_enabled ?? true;
+  // Client-link growth loop: capture a valid ?ref=<surface> on arrival so
+  // a later signup in this session is attributed to that surface.
+  useEffect(() => { captureSignupRef(); }, []);
   const [restoring, setRestoring] = useState(true);
   // Restore the previous session so the owner stays signed in across app
   // restarts: first a legacy pre-cookie token (transition window), otherwise
@@ -2339,7 +2373,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
       if (mode === "signup") {
         if (!acceptedTerms) { setError(t.mustAgreeTerms); return; }
         if (!acceptedMarketplaceTerms) { setError(t.mustAgreeMarketplace); return; }
-        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true, referralCode: referralCode || undefined, language: authLang });
+        const result = await api.signUp({ name, email, password, marketplaceTermsAccepted: true, referralCode: referralCode || undefined, language: authLang, signupSource: readSignupRef() });
         setEmail(result.email); setDevCode(result.verificationCode ?? ""); setMode("verify"); setPassword("");
         if (result.emailDelivery === "sent") setNotice(t.codeEmailed(result.email));
         else if (result.emailDelivery === "failed") setNotice(t.accountEmailFailed);
@@ -30745,6 +30779,32 @@ function ChangeOrderPaper({ doc, lang }: { doc: ClientDoc; lang: Lang }) {
   );
 }
 
+// Client-link growth loop: ONE shared footer strip for every client
+// surface. The Crewkat mark is a whisper — small muted text + tiny C logo
+// linking to /paperwork (with ?ref=<surface> attribution when the surface
+// is known) — never colored, never a banner; contractor branding above it
+// stays dominant. Signable docs say "Sign with Crewkat", everything else
+// says "Doc by Crewkat".
+function PlatformStrip({ lang, surface, signable, onDark, onClick }: { lang: Lang; surface?: LoopSurface; signable?: boolean; onDark?: boolean; onClick?: (event: ReactMouseEvent) => void }) {
+  const label = signable
+    ? lang === "es"
+      ? "Firma con Crewkat"
+      : "Sign with Crewkat"
+    : lang === "es"
+      ? "Documento con Crewkat"
+      : "Doc by Crewkat";
+  return (
+    <a
+      className={onDark ? "platform-strip on-dark" : "platform-strip"}
+      href={surface ? `/paperwork?ref=${surface}` : "/paperwork"}
+      onClick={onClick}
+    >
+      <img src={crewkatC} alt="" aria-hidden="true" />
+      <span>{label}</span>
+    </a>
+  );
+}
+
 function ClientDocumentScreen({ token }: { token: string }) {
   const [lang, setLang] = useState<Lang>("en");
   const t = copy[lang];
@@ -30857,27 +30917,15 @@ function ClientDocumentScreen({ token }: { token: string }) {
       </button>
     </div>
   );
-  // Brand bar (Danny 2026-10-12; platform strip 2026-10-17): the clean C
-  // mark + a platform label, with the EN/ES toggle, in one slim bar at the
-  // very top of the client page. Crewkat must read as the SOFTWARE that
-  // delivered the document, not the sending company — the company block
-  // below carries the sender's identity. The label follows the loaded
-  // document: signable docs say "Sign with Crewkat", view-only docs (and
-  // the loading/error states, where no doc is loaded yet) say "Doc by
-  // Crewkat".
-  const brandLabel = q.data?.signable
-    ? lang === "es"
-      ? "Firma con Crewkat"
-      : "Sign with Crewkat"
-    : lang === "es"
-      ? "Documento con Crewkat"
-      : "Doc by Crewkat";
+  // Brand bar (Danny 2026-10-12): a slim bar at the very top of the client
+  // page carrying only the EN/ES toggle — the Crewkat wordmark moved to
+  // the PlatformStrip at the foot of the page (client-link growth loop),
+  // so the contractor's company block below is the first branding the
+  // client sees. The empty span keeps the bar's space-between layout
+  // (and the toggle on the right) exactly as it was with the wordmark.
   const brandBar = (
     <div className="client-doc-brandbar">
-      <span className="client-doc-wordmark client-doc-wordmark--platform" aria-label={brandLabel}>
-        <img src={crewkatC} alt="" aria-hidden="true" />
-        <span>{brandLabel}</span>
-      </span>
+      <span aria-hidden="true" />
       {langToggle}
     </div>
   );
@@ -30886,6 +30934,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
       <main className="page public-page">
         {brandBar}
         <div className="loading-block" />
+        <PlatformStrip lang={lang} />
       </main>
     );
   if (q.isError || !q.data)
@@ -30896,6 +30945,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
           <h1>{t.linkInvalid}</h1>
           <p>{t.linkInvalidHint}</p>
         </section>
+        <PlatformStrip lang={lang} />
       </main>
     );
   const doc = q.data;
@@ -31034,6 +31084,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
       </p>
     </article>
   );
+  const docLoopSurface: LoopSurface = doc.kind === "quote" ? "estimate" : doc.kind === "invoice" ? "invoice" : doc.kind === "change_order" ? "changeorder" : "contract";
   return (
     <main className="page public-page client-doc-page">
       {brandBar}
@@ -31308,6 +31359,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
           </div>
         </>
       )}
+      <PlatformStrip lang={lang} surface={docLoopSurface} signable={doc.signable} />
     </main>
   );
 }
@@ -32452,6 +32504,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
               <button type="button" className="primary-button sm" onClick={downloadReceipt}>{t.download}</button>
               <button type="button" className="secondary-button sm" onClick={() => setReceipt(null)}>{t.close}</button>
             </div>
+            <PlatformStrip lang={lang} surface="receipt" />
           </div>
         </div>
       )}
@@ -32470,8 +32523,10 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
               {t.download}
             </button>
           )}
+          <PlatformStrip lang={lang} surface="photo" onDark onClick={(e) => e.stopPropagation()} />
         </div>
       )}
+      <PlatformStrip lang={lang} surface="portal" />
     </main>
   );
 }

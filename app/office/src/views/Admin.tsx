@@ -153,12 +153,14 @@ function OverviewTab() {
   const growthQuery = useQuery({ queryKey: ["admin-growth"], queryFn: () => api.adminGrowthMetrics({}) });
   const marketplaceQuery = useQuery({ queryKey: ["admin-marketplace-overview"], queryFn: () => api.adminMarketplaceOverview({}) });
   const activityQuery = useQuery({ queryKey: ["admin-recent-activity"], queryFn: () => api.adminRecentActivity({}) });
+  const loopQuery = useQuery({ queryKey: ["admin-loop-stats"], queryFn: () => api.adminLoopStats({}) });
 
   const a = analyticsQuery.data;
   const r = revenueQuery.data;
   const g = growthQuery.data;
   const m = marketplaceQuery.data;
   const act = activityQuery.data;
+  const loop = loopQuery.data;
 
   return (
     <div className="admin-stack">
@@ -219,6 +221,29 @@ function OverviewTab() {
               </div>
             </>
           ) : null}
+        </section>
+
+        <section className="panel">
+          <div className="panel-head"><h2>Client-link loop</h2></div>
+          {loopQuery.isLoading ? <p className="muted">Loading…</p> : null}
+          {loopQuery.isError ? <p className="inline-error">Couldn't load the client-link loop stats.</p> : null}
+          {loop ? (
+            <dl className="detail-list">
+              <div><dt>Link opens</dt><dd>{loop.linkOpens.total}</dd></div>
+              {loop.linkOpens.bySurface.filter((s) => s.opens > 0).map((s) => (
+                <div key={`opens-${s.surface}`}><dt>Link opens · {s.surface}</dt><dd>{s.opens}</dd></div>
+              ))}
+              <div><dt>Landing clicks</dt><dd>{loop.landingClicks.total}</dd></div>
+              {loop.landingClicks.bySurface.filter((s) => s.count > 0).map((s) => (
+                <div key={`clicks-${s.surface}`}><dt>Landing clicks · {s.surface}</dt><dd>{s.count}</dd></div>
+              ))}
+              <div><dt>Attributed signups</dt><dd>{loop.signups.total}</dd></div>
+              {loop.signups.bySurface.filter((s) => s.count > 0).map((s) => (
+                <div key={`signups-${s.surface}`}><dt>Attributed signups · {s.surface}</dt><dd>{s.count}</dd></div>
+              ))}
+            </dl>
+          ) : null}
+          <p className="muted">Receipt and photo views open inside the client portal, so their opens count toward Portal.</p>
         </section>
 
         <section className="panel">
