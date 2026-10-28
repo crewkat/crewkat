@@ -4113,6 +4113,20 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .document-action-bar.four { inset: auto 12px calc(92px + env(safe-area-inset-bottom)) 12px; min-height: 60px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 18px; background: var(--surface); box-shadow: 0 14px 34px color-mix(in srgb, #1a2433 20%, transparent), 0 3px 10px color-mix(in srgb, #1a2433 10%, transparent); }
 .app-shell.master-nav-hidden .document-action-bar.four { inset: auto 12px calc(10px + env(safe-area-inset-bottom)) 12px; }
 @media (min-width:760px) { .document-action-bar.four { left: 50%; right: auto; width: min(calc(100% - 24px), 920px); transform: translateX(-50%); } }
+/* Desktop centering fix (Danny 2026-10-27): the centering rule above
+   never actually applied on the invoice/estimate detail screens — they
+   always run under .app-shell.master-nav-hidden, whose .four rule
+   (specificity 0,3,0) beats the media rule (0,2,0) for left/right, while
+   the media rule's width and translateX(-50%) still applied. Net effect:
+   left:12px minus half the bar's width — the bar hung off the left edge
+   of the viewport, spanning only ~30% of it. Re-center with matching
+   specificity, and size the bar to the column it serves:
+   .financial-detail-page is 720px wide (not the 920px .page width).
+   Below 760px nothing changes: the bar keeps its 12px-inset pill. */
+@media (min-width:760px) {
+  .document-action-bar.four { width: min(calc(100% - 24px), 720px); }
+  .app-shell.master-nav-hidden .document-action-bar.four { left: 50%; right: auto; width: min(calc(100% - 24px), 720px); transform: translateX(-50%); }
+}
 /* Floating-bar opacity + clearance fix (Danny 2026-10-12): the .four bar
    shipped with a 97% color-mix background — page content ghosted through
    it (the expanded client-link panel's URL row read straight through the
