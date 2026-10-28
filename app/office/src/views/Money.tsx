@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { downloadBase64, formatCents, formatDate, formatMoney, parseMoney, todayIso } from "../utils";
@@ -124,6 +124,179 @@ function ExportPanel() {
         {row("expenses", "Expenses", "Business expenses and job receipts — spreadsheet")}
         {row("pdfzip", "Invoice PDFs", "One PDF per invoice in the period, bundled in a ZIP")}
       </ul>
+      {doneNote ? <p className="muted small">{doneNote}</p> : null}
+      {error ? <p className="status error" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+type ImportPreview = Awaited<ReturnType<typeof api.previewInvoiceFlyImport>>;
+
+const CLIENT_STATUS_LABEL: Record<string, string> = { new: "New", matched: "Already in Crewkat", invalid: "Can't import" };
+const INVOICE_STATUS_LABEL: Record<string, string> = {
+  new: "New", duplicate: "Possible duplicate", collision: "Number clash", imported: "Already imported", invalid: "Can't import",
+};
+const STATUS_PILL_CLASS: Record<string, string> = {
+  new: "done", matched: "sent", invalid: "overdue", duplicate: "viewed", collision: "overdue", imported: "draft",
+};
+
+/**
+ * Invoice Fly import (Danny 2026-10-27): the reverse of the exports
+ * above. Pick the Clients and/or Invoices CSVs Invoice Fly produces,
+ * review the server's preview (matches, duplicate flags, number
+ * clashes), toggle rows, then confirm — nothing writes before that.
+ * Same seeMoney gating family as the exports; the panel hides with
+ * them for members whose money switch is off.
+ */
+function ImportPanel() {
+  const queryClient = useQueryClient();
+  const [clientsCsv, setClientsCsv] = useState("");
+  const [invoicesCsv, setInvoicesCsv] = useState("");
+  const [clientsName, setClientsName] = useState("");
+  const [invoicesName, setInvoicesName] = useState("");
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [selClients, setSelClients] = useState<Set<number>>(new Set());
+  const [selInvoices, setSelInvoices] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<"preview" | "run" | null>(null);
+  const [error, setError] = useState("");
+  const [doneNote, setDoneNote] = useState("");
+
+  const pick = async (file: File | undefined, which: "clients" | "invoices") => {
+    if (!file) return;
+    const text = await file.text();
+    setPreview(null);
+    setDoneNote("");
+    setError("");
+    if (which === "clients") { setClientsCsv(text); setClientsName(file.name); }
+    else { setInvoicesCsv(text); setInvoicesName(file.name); }
+  };
+
+  const runPreview = async () => {
+    setBusy("preview");
+    setError("");
+    setDoneNote("");
+    try {
+      const result = await api.previewInvoiceFlyImport({ clientsCsv, invoicesCsv });
+      setPreview(result);
+      setSelClients(new Set(result.clients.filter((r) => r.included).map((r) => r.index)));
+      setSelInvoices(new Set(result.invoices.filter((r) => r.included).map((r) => r.index)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't read those files. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggle = (set: Set<number>, index: number, apply: (next: Set<number>) => void) => {
+    const next = new Set(set);
+    if (next.has(index)) next.delete(index); else next.add(index);
+    apply(next);
+  };
+
+  const runImport = async () => {
+    setBusy("run");
+    setError("");
+    try {
+      const result = await api.runInvoiceFlyImport({
+        clientsCsv, invoicesCsv,
+        clientIndexes: [...selClients], invoiceIndexes: [...selInvoices],
+      });
+      const parts = [
+        `${result.clientsCreated} client${result.clientsCreated === 1 ? "" : "s"} added`,
+        result.clientsMatched ? `${result.clientsMatched} matched` : "",
+        result.addressesAppended ? `${result.addressesAppended} address${result.addressesAppended === 1 ? "" : "es"} saved` : "",
+        `${result.invoicesCreated} invoice${result.invoicesCreated === 1 ? "" : "s"} imported`,
+        result.paymentsCreated ? `${result.paymentsCreated} payment${result.paymentsCreated === 1 ? "" : "s"} recorded` : "",
+        result.invoicesSkipped ? `${result.invoicesSkipped} skipped` : "",
+      ].filter(Boolean);
+      setDoneNote(`Import complete — ${parts.join(" · ")}.`);
+      setPreview(null);
+      setClientsCsv(""); setInvoicesCsv(""); setClientsName(""); setInvoicesName("");
+      void queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      void queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed. Nothing was half-written — try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const c = preview?.counts;
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2>Import from Invoice Fly</h2></div>
+      <p className="muted small">Bringing your books over from Invoice Fly? Export your Clients and Invoices there as CSV, pick the files here, and review everything before anything is imported.</p>
+      <div className="export-period-row">
+        <label>
+          Clients CSV
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "clients")} />
+          {clientsName ? <span className="feed-meta">{clientsName}</span> : null}
+        </label>
+        <label>
+          Invoices CSV
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "invoices")} />
+          {invoicesName ? <span className="feed-meta">{invoicesName}</span> : null}
+        </label>
+        <button type="button" className="btn btn-primary" disabled={busy !== null || (!clientsCsv && !invoicesCsv)} onClick={() => void runPreview()}>
+          {busy === "preview" ? "Reading…" : "Preview import"}
+        </button>
+      </div>
+      {preview && c ? (
+        <>
+          <p className="muted small">
+            Clients: {c.clientsTotal} in file — {c.clientsNew} new, {c.clientsMatched} already in Crewkat{c.clientsInvalid ? `, ${c.clientsInvalid} can't import` : ""}.
+            {c.invoicesTotal ? <> Invoices: {c.invoicesTotal} in file — {c.invoicesNew} new, {c.invoicesDuplicate} possible duplicate{c.invoicesDuplicate === 1 ? "" : "s"}, {c.invoicesCollision} number clash{c.invoicesCollision === 1 ? "" : "es"}{c.invoicesImported ? `, ${c.invoicesImported} already imported` : ""}{c.invoicesInvalid ? `, ${c.invoicesInvalid} can't import` : ""}.</> : null}
+          </p>
+          {preview.clients.length > 0 ? (
+            <>
+              <h3 className="day-section-title">Clients</h3>
+              <ul className="link-list static import-rows">
+                {preview.clients.map((r) => (
+                  <li key={r.index}>
+                    <label className="import-row">
+                      <input type="checkbox" checked={selClients.has(r.index)} disabled={r.status === "invalid"}
+                        onChange={() => toggle(selClients, r.index, setSelClients)} />
+                      <span>
+                        {r.name || "(no name)"}
+                        <span className="feed-meta">{[r.email, r.phone, r.address].filter(Boolean).join(" · ") || "—"}</span>
+                        {r.note ? <span className="feed-meta">{r.note}</span> : null}
+                      </span>
+                      <span className={`status-pill ${STATUS_PILL_CLASS[r.status] ?? ""}`}>{CLIENT_STATUS_LABEL[r.status]}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {preview.invoices.length > 0 ? (
+            <>
+              <h3 className="day-section-title">Invoices</h3>
+              <ul className="link-list static import-rows">
+                {preview.invoices.map((r) => (
+                  <li key={r.index}>
+                    <label className="import-row">
+                      <input type="checkbox" checked={selInvoices.has(r.index)} disabled={r.status === "invalid" || r.status === "imported"}
+                        onChange={() => toggle(selInvoices, r.index, setSelInvoices)} />
+                      <span>
+                        {r.number} · {r.clientName}
+                        <span className="feed-meta">{formatDate(r.issueDate)} · Total {formatMoney(r.total)} · Paid {formatMoney(r.paid)}</span>
+                        {r.note ? <span className="feed-meta">{r.note}</span> : null}
+                      </span>
+                      <span className={`status-pill ${STATUS_PILL_CLASS[r.status] ?? ""}`}>{INVOICE_STATUS_LABEL[r.status]}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          <div className="export-period-row">
+            <button type="button" className="btn btn-primary" disabled={busy !== null || (selClients.size === 0 && selInvoices.size === 0)} onClick={() => void runImport()}>
+              {busy === "run" ? "Importing…" : `Import selected (${selClients.size + selInvoices.size})`}
+            </button>
+            <span className="muted small">Flagged rows stay off unless you tick them. Re-running the same files imports nothing twice.</span>
+          </div>
+        </>
+      ) : null}
       {doneNote ? <p className="muted small">{doneNote}</p> : null}
       {error ? <p className="status error" role="alert">{error}</p> : null}
     </section>
@@ -261,6 +434,7 @@ export function MoneyView({ onOpenDocument, seeMoney }: { onOpenDocument: (sel: 
         </section>
       </div>
       {seeMoney ? <ExportPanel /> : null}
+      {seeMoney ? <ImportPanel /> : null}
     </div>
   );
 }

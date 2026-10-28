@@ -54,6 +54,7 @@ import {
 } from "./permissions";
 import { platformAdminPhase1Actions } from "./platform-admin-phase1";
 import { platformAdminPhase2Actions } from "./platform-admin-phase2";
+import { invoiceFlyImportActions } from "./invoiceImport";
 import { scanListingText } from "./moderation";
 import { MARKETPLACE_TERMS_VERSION } from "./marketplace-terms";
 import { getVapidPublicKey, sendPushToCompany, sendPushToUser } from "./push";
@@ -3386,6 +3387,9 @@ export const BaseActions = {
   ...platformAdminActions,
   ...platformAdminPhase1Actions,
   ...platformAdminPhase2Actions,
+  // Invoice Fly import (2026-10-27): preview + confirmed run of the
+  // user's own Clients/Invoices CSV exports. Office-tier + seeMoney.
+  ...invoiceFlyImportActions,
   /** SMS cap pre-check (abuse controls): read-only check of the caller's own
    *  daily SMS cap. The client runs this BEFORE opening the phone's SMS app,
    *  so a capped user sees the error immediately. */

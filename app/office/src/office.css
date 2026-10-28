@@ -393,6 +393,12 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .export-list li { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
 .export-list li > span { display: flex; flex-direction: column; gap: 1px; }
 .export-list .btn { flex: none; }
+.import-rows { max-height: 320px; overflow-y: auto; }
+.import-rows li { padding: 0; }
+.import-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 2px; cursor: pointer; }
+.import-row > span { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.import-row .status-pill { flex: none; }
+.import-row input[type="checkbox"] { flex: none; width: 16px; height: 16px; }
 .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mini-stats > div { background: #fafbfc; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
 .mini-stats span { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

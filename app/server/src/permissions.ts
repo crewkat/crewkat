@@ -111,6 +111,9 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   // refused by the server, not just missing the buttons.
   "exportExpensesCsv", "exportInvoicesCsv", "exportInvoicesPdfZip",
   "exportPaymentsCsv",
+  // Invoice Fly import: the reverse flow of the exports — same Office
+  // surface, same seeMoney family membership below.
+  "previewInvoiceFlyImport", "runInvoiceFlyImport",
   "listBidBoard", "listLeads", "listMaterialCosts",
   "listRecurringSchedules", "listShareImages", "listSubcontractors",
   "markMarketplaceConversationRead", "marketplaceConversation", "marketplaceConversations",
@@ -338,6 +341,10 @@ export const RECORD_PAYMENT_ACTIONS: ReadonlySet<string> = new Set([
 export const MONEY_EXPORT_ACTIONS: ReadonlySet<string> = new Set([
   "exportExpensesCsv", "exportInvoicesCsv", "exportInvoicesPdfZip",
   "exportPaymentsCsv",
+  // Import previews carry invoice totals + paid amounts and the run
+  // writes financial records, so the Invoice Fly import gates on the
+  // same switch as the exports it reverses.
+  "previewInvoiceFlyImport", "runInvoiceFlyImport",
 ]);
 
 const SWITCH_LABELS: Record<AccessSwitch, string> = {

@@ -7072,6 +7072,7 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
             </ul>
           )}
           {auth?.user.access.seeMoney ? <BillingExports lang={lang} /> : null}
+          {auth?.user.access.seeMoney ? <BillingImport lang={lang} /> : null}
         </>
       )}
     </main>
@@ -7213,6 +7214,200 @@ function BillingExports({ lang }: { lang: Lang }) {
         {row("expenses", text.expenses, text.expensesHint)}
         {row("pdfzip", text.pdfzip, text.pdfzipHint)}
       </ul>
+      {note && <p className="billing-empty">{note}</p>}
+      {error && <p className="status error" role="alert">{error}</p>}
+    </>
+  );
+}
+
+// Invoice Fly import (Danny 2026-10-27): the phone twin of the Office
+// Import panel — pick the Clients/Invoices CSVs, review the preview,
+// confirm. Same seeMoney gating family as the exports above; the
+// section hides when the member's money switch is off.
+function BillingImport({ lang }: { lang: Lang }) {
+  const text = lang === "es" ? {
+    title: "Importar desde Invoice Fly",
+    hint: "Exporta tus Clientes y Facturas de Invoice Fly como CSV, elige los archivos y revisa todo antes de importar. Nada se guarda hasta que confirmes.",
+    clientsFile: "CSV de clientes", invoicesFile: "CSV de facturas",
+    preview: "Ver vista previa", reading: "Leyendo…",
+    importSelected: "Importar seleccionados", importing: "Importando…",
+    clientsHead: "Clientes", invoicesHead: "Facturas",
+    statusNew: "Nuevo", statusMatched: "Ya está en Crewkat", statusInvalid: "No se puede importar",
+    statusDuplicate: "Posible duplicado", statusCollision: "Número repetido", statusImported: "Ya importado",
+    summaryClients: "clientes en el archivo", summaryInvoices: "facturas en el archivo",
+    newWord: "nuevos", matchedWord: "ya en Crewkat", dupWord: "posibles duplicados", clashWord: "números repetidos", importedWord: "ya importados",
+    flaggedNote: "Las filas marcadas quedan fuera a menos que las actives. Repetir la importación no duplica nada.",
+    donePrefix: "Importación completa — ",
+    added: "clientes agregados", matched: "coincidencias", addresses: "direcciones guardadas",
+    invoicesImported: "facturas importadas", payments: "pagos registrados", skipped: "omitidas",
+    failed: "La importación falló. Inténtalo de nuevo.",
+  } : {
+    title: "Import from Invoice Fly",
+    hint: "Export your Clients and Invoices from Invoice Fly as CSV, pick the files, and review everything before importing. Nothing is saved until you confirm.",
+    clientsFile: "Clients CSV", invoicesFile: "Invoices CSV",
+    preview: "Preview import", reading: "Reading…",
+    importSelected: "Import selected", importing: "Importing…",
+    clientsHead: "Clients", invoicesHead: "Invoices",
+    statusNew: "New", statusMatched: "Already in Crewkat", statusInvalid: "Can't import",
+    statusDuplicate: "Possible duplicate", statusCollision: "Number clash", statusImported: "Already imported",
+    summaryClients: "clients in file", summaryInvoices: "invoices in file",
+    newWord: "new", matchedWord: "already in Crewkat", dupWord: "possible duplicates", clashWord: "number clashes", importedWord: "already imported",
+    flaggedNote: "Flagged rows stay off unless you tick them. Re-running the same files imports nothing twice.",
+    donePrefix: "Import complete — ",
+    added: "clients added", matched: "matched", addresses: "addresses saved",
+    invoicesImported: "invoices imported", payments: "payments recorded", skipped: "skipped",
+    failed: "Import failed. Try again.",
+  };
+  type Preview = Awaited<ReturnType<typeof api.previewInvoiceFlyImport>>;
+  const [clientsCsv, setClientsCsv] = useState("");
+  const [invoicesCsv, setInvoicesCsv] = useState("");
+  const [clientsName, setClientsName] = useState("");
+  const [invoicesName, setInvoicesName] = useState("");
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [selClients, setSelClients] = useState<Set<number>>(new Set());
+  const [selInvoices, setSelInvoices] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<"preview" | "run" | null>(null);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+
+  const statusLabel = (status: string) =>
+    status === "new" ? text.statusNew
+    : status === "matched" ? text.statusMatched
+    : status === "duplicate" ? text.statusDuplicate
+    : status === "collision" ? text.statusCollision
+    : status === "imported" ? text.statusImported
+    : text.statusInvalid;
+
+  const pick = async (file: File | undefined, which: "clients" | "invoices") => {
+    if (!file) return;
+    const content = await file.text();
+    setPreview(null);
+    setNote("");
+    setError("");
+    if (which === "clients") { setClientsCsv(content); setClientsName(file.name); }
+    else { setInvoicesCsv(content); setInvoicesName(file.name); }
+  };
+
+  const runPreview = async () => {
+    setBusy("preview");
+    setError("");
+    setNote("");
+    try {
+      const result = await api.previewInvoiceFlyImport({ clientsCsv, invoicesCsv });
+      setPreview(result);
+      setSelClients(new Set(result.clients.filter((r) => r.included).map((r) => r.index)));
+      setSelInvoices(new Set(result.invoices.filter((r) => r.included).map((r) => r.index)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : text.failed);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggle = (set: Set<number>, index: number, apply: (next: Set<number>) => void) => {
+    const next = new Set(set);
+    if (next.has(index)) next.delete(index); else next.add(index);
+    apply(next);
+  };
+
+  const runImport = async () => {
+    setBusy("run");
+    setError("");
+    try {
+      const result = await api.runInvoiceFlyImport({
+        clientsCsv, invoicesCsv,
+        clientIndexes: [...selClients], invoiceIndexes: [...selInvoices],
+      });
+      const parts = [
+        `${result.clientsCreated} ${text.added}`,
+        result.clientsMatched ? `${result.clientsMatched} ${text.matched}` : "",
+        result.addressesAppended ? `${result.addressesAppended} ${text.addresses}` : "",
+        `${result.invoicesCreated} ${text.invoicesImported}`,
+        result.paymentsCreated ? `${result.paymentsCreated} ${text.payments}` : "",
+        result.invoicesSkipped ? `${result.invoicesSkipped} ${text.skipped}` : "",
+      ].filter(Boolean);
+      setNote(`${text.donePrefix}${parts.join(" · ")}.`);
+      setPreview(null);
+      setClientsCsv(""); setInvoicesCsv(""); setClientsName(""); setInvoicesName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : text.failed);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const c = preview?.counts;
+  return (
+    <>
+      <h3 className="settings-group-title">{text.title}</h3>
+      <p className="billing-empty">{text.hint}</p>
+      <div className="billing-export-controls">
+        <label>
+          {text.clientsFile}
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "clients")} />
+          {clientsName ? <small>{clientsName}</small> : null}
+        </label>
+        <label>
+          {text.invoicesFile}
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "invoices")} />
+          {invoicesName ? <small>{invoicesName}</small> : null}
+        </label>
+      </div>
+      <button type="button" className="secondary-button" disabled={busy !== null || (!clientsCsv && !invoicesCsv)} onClick={() => void runPreview()}>
+        {busy === "preview" ? text.reading : text.preview}
+      </button>
+      {preview && c ? (
+        <>
+          <p className="billing-empty">
+            {c.clientsTotal} {text.summaryClients} — {c.clientsNew} {text.newWord}, {c.clientsMatched} {text.matchedWord}.
+            {c.invoicesTotal ? <> {c.invoicesTotal} {text.summaryInvoices} — {c.invoicesNew} {text.newWord}, {c.invoicesDuplicate} {text.dupWord}, {c.invoicesCollision} {text.clashWord}{c.invoicesImported ? `, ${c.invoicesImported} ${text.importedWord}` : ""}.</> : null}
+          </p>
+          {preview.clients.length > 0 ? (
+            <>
+              <h4 className="settings-group-title">{text.clientsHead}</h4>
+              <ul className="billing-history billing-import-rows">
+                {preview.clients.map((r) => (
+                  <li key={r.index}>
+                    <label className="billing-row">
+                      <input type="checkbox" checked={selClients.has(r.index)} disabled={r.status === "invalid"}
+                        onChange={() => toggle(selClients, r.index, setSelClients)} />
+                      <span className="billing-row-main">
+                        <strong>{r.name || "—"} · {statusLabel(r.status)}</strong>
+                        <small>{[r.email, r.phone, r.address].filter(Boolean).join(" · ")}</small>
+                        {r.note ? <small>{r.note}</small> : null}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {preview.invoices.length > 0 ? (
+            <>
+              <h4 className="settings-group-title">{text.invoicesHead}</h4>
+              <ul className="billing-history billing-import-rows">
+                {preview.invoices.map((r) => (
+                  <li key={r.index}>
+                    <label className="billing-row">
+                      <input type="checkbox" checked={selInvoices.has(r.index)} disabled={r.status === "invalid" || r.status === "imported"}
+                        onChange={() => toggle(selInvoices, r.index, setSelInvoices)} />
+                      <span className="billing-row-main">
+                        <strong>{r.number} · {r.clientName} · {statusLabel(r.status)}</strong>
+                        <small>{r.issueDate} · {r.total}</small>
+                        {r.note ? <small>{r.note}</small> : null}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          <p className="billing-empty">{text.flaggedNote}</p>
+          <button type="button" className="secondary-button" disabled={busy !== null || (selClients.size === 0 && selInvoices.size === 0)} onClick={() => void runImport()}>
+            {busy === "run" ? text.importing : `${text.importSelected} (${selClients.size + selInvoices.size})`}
+          </button>
+        </>
+      ) : null}
       {note && <p className="billing-empty">{note}</p>}
       {error && <p className="status error" role="alert">{error}</p>}
     </>
