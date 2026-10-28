@@ -267,7 +267,7 @@ export function App() {
           ) : null}
           {view === "schedule" ? <ScheduleView onOpenJob={openJob} canDelete={user.teamRole === "admin"} /> : null}
           {view === "marketplace" ? <MarketplaceView /> : null}
-          {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
+          {view === "money" ? <MoneyView onOpenDocument={openDocument} seeMoney={user.access.seeMoney} /> : null}
           {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} /> : null}
           {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}
           {view === "admin" && canAdmin ? (

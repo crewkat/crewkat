@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../api";
-import { formatCents, formatDate, formatMoney, parseMoney, todayIso } from "../utils";
+import { downloadBase64, formatCents, formatDate, formatMoney, parseMoney, todayIso } from "../utils";
 import type { DocSelection } from "./Documents";
 
 /**
@@ -11,7 +11,126 @@ import type { DocSelection } from "./Documents";
  * listInvoices' server-derived fields. No checkout, no portal session, no
  * Stripe writes: subscription changes stay with the provider / phone app.
  */
-export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelection) => void }) {
+type ExportPeriodKind = "all" | "lastMonth" | "month" | "quarter" | "year";
+type ExportDataset = "invoices" | "payments" | "expenses" | "pdfzip";
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * Accountant exports (Danny 2026-10-27): the company's books as CSV
+ * spreadsheets plus a batch PDF bundle of invoices. The server gates
+ * these on the seeMoney switch; this panel additionally hides itself
+ * for members whose money switch is off (seeMoney prop from the shell).
+ * Periods mirror the export UX contractors know from Invoice Fly.
+ */
+function ExportPanel() {
+  const now = new Date();
+  const [period, setPeriod] = useState<ExportPeriodKind>("all");
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
+  const [selQuarter, setSelQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [busy, setBusy] = useState<ExportDataset | null>(null);
+  const [error, setError] = useState("");
+  const [doneNote, setDoneNote] = useState("");
+  const years = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
+
+  const run = async (dataset: ExportDataset) => {
+    setBusy(dataset);
+    setError("");
+    setDoneNote("");
+    const args = {
+      period,
+      ...(period === "month" ? { month: selMonth, year: selYear } : {}),
+      ...(period === "quarter" ? { quarter: selQuarter, year: selYear } : {}),
+    };
+    try {
+      const result =
+        dataset === "invoices" ? await api.exportInvoicesCsv(args)
+        : dataset === "payments" ? await api.exportPaymentsCsv(args)
+        : dataset === "expenses" ? await api.exportExpensesCsv(args)
+        : await api.exportInvoicesPdfZip(args);
+      downloadBase64(result.dataBase64, result.filename, dataset === "pdfzip" ? "application/zip" : "text/csv;charset=utf-8");
+      setDoneNote(`${result.filename} — ${result.rowCount} record${result.rowCount === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const row = (dataset: ExportDataset, label: string, hint: string) => (
+    <li>
+      <span>
+        {label}
+        <span className="feed-meta">{hint}</span>
+      </span>
+      <button type="button" className="btn" disabled={busy !== null} onClick={() => void run(dataset)}>
+        {busy === dataset ? "Preparing…" : "Download"}
+      </button>
+    </li>
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2>Export your books</h2></div>
+      <p className="muted small">Spreadsheets your accountant can open in Excel or Google Sheets, plus a ZIP with one PDF per invoice.</p>
+      <div className="export-period-row">
+        <label>
+          Period
+          <select className="doc-status-select" value={period} onChange={(e) => setPeriod(e.target.value as ExportPeriodKind)}>
+            <option value="all">All time</option>
+            <option value="lastMonth">Last month</option>
+            <option value="month">By month</option>
+            <option value="quarter">By quarter</option>
+            <option value="year">This year</option>
+          </select>
+        </label>
+        {period === "month" ? (
+          <>
+            <label>
+              Month
+              <select className="doc-status-select" value={selMonth} onChange={(e) => setSelMonth(Number(e.target.value))}>
+                {MONTH_NAMES.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
+              </select>
+            </label>
+            <label>
+              Year
+              <select className="doc-status-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {period === "quarter" ? (
+          <>
+            <label>
+              Quarter
+              <select className="doc-status-select" value={selQuarter} onChange={(e) => setSelQuarter(Number(e.target.value))}>
+                {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}
+              </select>
+            </label>
+            <label>
+              Year
+              <select className="doc-status-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        ) : null}
+      </div>
+      <ul className="link-list static export-list">
+        {row("invoices", "Invoices", "Every invoice with totals, paid and balance — spreadsheet")}
+        {row("payments", "Payments", "Every payment received, matched to its invoice — spreadsheet")}
+        {row("expenses", "Expenses", "Business expenses and job receipts — spreadsheet")}
+        {row("pdfzip", "Invoice PDFs", "One PDF per invoice in the period, bundled in a ZIP")}
+      </ul>
+      {doneNote ? <p className="muted small">{doneNote}</p> : null}
+      {error ? <p className="status error" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+export function MoneyView({ onOpenDocument, seeMoney }: { onOpenDocument: (sel: DocSelection) => void; seeMoney: boolean }) {
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
 
@@ -141,6 +260,7 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
           {paymentsAcross.length > 25 ? <p className="muted small">Showing the 25 most recent payments — open an invoice to see its full history.</p> : null}
         </section>
       </div>
+      {seeMoney ? <ExportPanel /> : null}
     </div>
   );
 }

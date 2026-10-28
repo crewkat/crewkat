@@ -200,6 +200,9 @@ export interface AuthUser {
   teamRole: TeamRole;
   tier: "free" | "premium";
   isPlatformAdmin: boolean;
+  /** Tier 2: the server-resolved effective access switches for this
+   *  login (mirrors authUserSchema in server/src/actions.ts). */
+  access: EffectiveAccess;
   marketplaceTermsAcceptedAt: string | null;
   marketplaceTermsVersion: string | null;
   announcementBanner: string;

@@ -388,6 +388,11 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px 11px;
   display: flex; flex-direction: column; gap: 1px; font-weight: 600;
 }
+.export-period-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 10px 0 12px; }
+.export-period-row label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.export-list li { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.export-list li > span { display: flex; flex-direction: column; gap: 1px; }
+.export-list .btn { flex: none; }
 .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mini-stats > div { background: #fafbfc; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
 .mini-stats span { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
