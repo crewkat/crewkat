@@ -374,6 +374,24 @@ console.log("[crewkat] verifying office wave1 (0090) ...");
 }
 console.log("[crewkat] office wave1 schema verified.");
 
+// Repair (Office admin console): the founder account — the first account
+// ever created, and the only one that can hold subscription_status =
+// 'founder' (see signUp in actions.ts) — must always carry the platform
+// admin flag. Without it the owner is locked out of the platform admin
+// suite (phone Settings panel and the Office Admin console) with no
+// in-product way back in. Idempotent: only touches founder rows that are
+// not already flagged, so this is a no-op once applied.
+console.log("[crewkat] verifying founder platform admin ...");
+{
+  const granted = await libsql.execute(
+    "UPDATE `auth_users` SET `is_platform_admin` = 1 WHERE `subscription_status` = 'founder' AND COALESCE(`is_platform_admin`, 0) = 0",
+  );
+  if (granted.rowsAffected > 0) {
+    console.log(`[crewkat] repair: granted platform admin to ${granted.rowsAffected} founder account(s)`);
+  }
+}
+console.log("[crewkat] founder platform admin verified.");
+
 // ---------------------------------------------------------------------------
 // Runtime context
 // ---------------------------------------------------------------------------
