@@ -1,6 +1,6 @@
 import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } from "@hatch/space-sdk";
 import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, isTable, like, lt, lte, ne, or, sql } from "drizzle-orm";
-import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
+import { gzipSync, gunzipSync, strFromU8, strToU8, zipSync } from "fflate";
 import { execFile } from "node:child_process";
 import { randomInt } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 import { OAuth2Client } from "google-auth-library";
 import * as schema from "./schema";
 import { currentWeekStart, etDateString, lastWeekStart, weekDates } from "./craneWeek";
-import { buildChangeOrderPdfForDocument, buildDocumentLinkPdf } from "./docPdf";
+import { buildChangeOrderPdfForDocument, buildDocumentLinkPdf, type DocumentLinkPdfPayload } from "./docPdf";
 import {
   changeOrderChain,
   changeOrderDisplayTitle,
@@ -698,6 +698,113 @@ function buildAcceptedOptionsSnapshot(q: { lineItemsJson: string; total: string;
   };
 }
 function quoteShape(q: typeof schema.quotes.$inferSelect) { return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson) as Array<{ description: string; amount: string }>, optionSelection: (() => { const s = parseOptionSelection(q.optionSelectionJson); return { selectedKeys: s.selected, accepted: s.accepted }; })(), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() }; }
+// ---------------------------------------------------------------------
+// Exports (accountant-grade): shared helpers for the export* actions.
+// Periods mirror the export UX contractors already know (Invoice Fly):
+// all time, last month, a specific month, a specific quarter, or a year.
+// Dates are the codebase's UTC YYYY-MM-DD keys; a range is [from, to).
+// ---------------------------------------------------------------------
+const exportPeriodSchema = z.enum(["all", "lastMonth", "month", "quarter", "year"]);
+const exportRequestSchema = z.object({
+  period: exportPeriodSchema.default("all"),
+  year: z.number().int().min(2000).max(2100).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+  quarter: z.number().int().min(1).max(4).optional(),
+});
+type ExportRequest = z.infer<typeof exportRequestSchema>;
+const exportFileResponseSchema = z.object({ filename: z.string(), dataBase64: z.string(), rowCount: z.number() });
+const EXPORT_PDF_ZIP_MAX = 200;
+
+function exportPeriodRange(args: ExportRequest): { from: string; to: string } | null {
+  const now = new Date();
+  const cy = now.getUTCFullYear();
+  const cm = now.getUTCMonth(); // 0-based
+  const key = (y: number, m0: number) => `${y}-${String(m0 + 1).padStart(2, "0")}-01`;
+  const nextMonth = (y: number, m0: number) => (m0 === 11 ? key(y + 1, 0) : key(y, m0 + 1));
+  switch (args.period) {
+    case "all": return null;
+    case "lastMonth": {
+      const y = cm === 0 ? cy - 1 : cy;
+      const m = cm === 0 ? 11 : cm - 1;
+      return { from: key(y, m), to: nextMonth(y, m) };
+    }
+    case "month": {
+      const y = args.year ?? cy;
+      const m = (args.month ?? cm + 1) - 1;
+      return { from: key(y, m), to: nextMonth(y, m) };
+    }
+    case "quarter": {
+      const y = args.year ?? cy;
+      const m = ((args.quarter ?? Math.floor(cm / 3) + 1) - 1) * 3;
+      return { from: key(y, m), to: m + 3 > 11 ? key(y + 1, 0) : key(y, m + 3) };
+    }
+    case "year": {
+      const y = args.year ?? cy;
+      return { from: key(y, 0), to: key(y + 1, 0) };
+    }
+  }
+}
+
+function exportPeriodSuffix(args: ExportRequest, range: { from: string; to: string } | null): string {
+  if (!range) return "all-time";
+  const y = range.from.slice(0, 4);
+  const m = Number(range.from.slice(5, 7));
+  if (args.period === "quarter") return `${y}-Q${Math.ceil(m / 3)}`;
+  if (args.period === "year") return y;
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+function inExportRange(dateKey: string, range: { from: string; to: string } | null): boolean {
+  return !range || (dateKey >= range.from && dateKey < range.to);
+}
+
+const moneyNum = (value: string | number): number => Number(String(value).replace(/[^0-9.-]/g, "") || 0);
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+const fmtMoneyNum = (value: string | number): string => moneyNum(value).toFixed(2);
+
+// RFC 4180 CSV: quote any cell containing a quote, comma, or newline.
+function csvCell(value: string | number): string {
+  const s = String(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toCsv(headers: string[], rows: Array<Array<string | number>>): string {
+  return [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+// An invoice's export date: its issue date, falling back to the creation
+// date for legacy drafts saved without one.
+function effectiveDateKey(row: typeof schema.invoices.$inferSelect): string {
+  return row.issueDate || row.createdAt.toISOString().slice(0, 10);
+}
+
+type ExportInvoiceRow = {
+  row: typeof schema.invoices.$inferSelect;
+  shaped: ReturnType<typeof invoiceShape>;
+  jobLabel: string;
+};
+
+/** Company-scoped, period-filtered invoice rows shared by the CSV + ZIP exports. */
+async function exportInvoiceRows(ctx: Ctx, args: ExportRequest): Promise<{ rows: ExportInvoiceRow[]; suffix: string }> {
+  const db = ctx.db<typeof schema>();
+  const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+  const range = exportPeriodRange(args);
+  const invoiceRows = await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId));
+  const ids = new Set(invoiceRows.map((r) => r.id));
+  const paymentRows = (await db.select().from(schema.payments).where(eq(schema.payments.companyId, companyId))).filter((p) => ids.has(p.invoiceId));
+  const jobRows = await db.select().from(schema.jobs).where(eq(schema.jobs.companyId, companyId));
+  const jobById = new Map(jobRows.map((j) => [j.id, j]));
+  const setting = (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
+  const fee = { type: setting?.lateFeeType ?? "flat", value: Number(setting?.lateFeeValue ?? 0), graceDays: setting?.lateFeeGraceDays ?? 0 } as { type: "flat" | "percent"; value: number; graceDays: number };
+  const rows = invoiceRows
+    .filter((row) => inExportRange(effectiveDateKey(row), range))
+    .map((row) => {
+      const job = row.jobId ? jobById.get(row.jobId) : undefined;
+      return { row, shaped: invoiceShape(row, paymentRows.filter((p) => p.invoiceId === row.id), fee), jobLabel: job?.jobType || row.jobType || "" };
+    })
+    .sort((a, b) => effectiveDateKey(a.row).localeCompare(effectiveDateKey(b.row)) || a.row.id - b.row.id);
+  return { rows, suffix: exportPeriodSuffix(args, range) };
+}
+
 function invoiceShape(row: typeof schema.invoices.$inferSelect, paymentRows: Array<typeof schema.payments.$inferSelect> = [], fee: {type:"flat"|"percent";value:number;graceDays:number} = {type:"flat",value:0,graceDays:0}) { const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const total = Number(row.total.replace(/[^0-9.-]/g, "") || 0); const due=row.dueDate?new Date(`${row.dueDate}T12:00:00`).getTime():0; const daysLate=due?Math.floor((Date.now()-due)/86400000)-fee.graceDays:0; const monthsLate=Math.max(0,Math.ceil(daysLate/30)); const lateFee=row.status!=="paid"&&monthsLate>0?(fee.type==="percent"?total*fee.value/100*monthsLate:fee.value):0; return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson) as Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours" }>), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee:(total+lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }; }
 // Build 0.6 item 22: marketplace contact unlock quotas (hybrid model).
 const MARKETPLACE_FREE_UNLOCKS_TOTAL = 3;
@@ -5191,6 +5298,121 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   saveSlideshowVideo: defineAction({request:z.object({jobId:z.number().int().positive(),caption:z.string().trim().max(2000),branded:z.boolean(),filename:z.string().min(1).max(240),contentType:z.string().max(100),dataBase64:z.string().min(1).max(80_000_000),photoIds:z.array(z.number().int().positive()).min(1).max(100)}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const {job}=await requireJobCompany(ctx,db,args.jobId);const photoRows=await db.select().from(schema.photos);const requested=photoRows.filter(p=>args.photoIds.includes(p.id)&&p.jobId===job.id);if(requested.length!==args.photoIds.length||requested.some(p=>p.excludeFromSocial))throw new Error("A photo marked Not for social cannot be exported.");const key=`slideshows/${job.id}/${crypto.randomUUID()}`;await ctx.blobs.put(key,Buffer.from(args.dataBase64,"base64"),{contentType:args.contentType});const rows=await ctx.db<typeof schema>().insert(schema.slideshowVideos).values({jobId:job.id,caption:args.caption,branded:args.branded,blobKey:key,filename:args.filename,contentType:args.contentType,createdAt:new Date()}).returning({id:schema.slideshowVideos.id});const made=rows[0];if(!made)throw new Error("Could not save video.");ctx.invalidateQueries();return{id:made.id};}}),
   getTaxExport: defineAction({request:z.object({year:z.number().int().min(2000).max(2100)}),response:z.object({rows:z.array(z.object({month:z.string(),type:z.enum(["revenue","expense","materials"]),category:z.string(),date:z.string(),description:z.string(),amount:z.number()}))}),async handler(ctx,args){const db=ctx.db<typeof schema>();const [payments,invoices,expenses,receipts,jobs]=await Promise.all([db.select().from(schema.payments),db.select().from(schema.invoices),db.select().from(schema.businessExpenses),db.select().from(schema.receipts),db.select().from(schema.jobs)]);const prefix=String(args.year);const rows=[...payments.filter(p=>p.paymentDate.startsWith(prefix)).map(p=>{const inv=invoices.find(i=>i.id===p.invoiceId);return{month:p.paymentDate.slice(0,7),type:"revenue" as const,category:p.method||"payment",date:p.paymentDate,description:inv?`${inv.clientName} · ${inv.jobType}`:`Invoice #${p.invoiceId}`,amount:Number(p.amount.replace(/[^0-9.-]/g,"")||0)}}),...expenses.filter(e=>e.expenseDate.startsWith(prefix)).map(e=>({month:e.expenseDate.slice(0,7),type:"expense" as const,category:e.category,date:e.expenseDate,description:[e.vendor,e.note].filter(Boolean).join(" · "),amount:Number(e.amount.replace(/[^0-9.-]/g,"")||0)})),...receipts.filter(r=>r.purchaseDate.startsWith(prefix)).map(r=>({month:r.purchaseDate.slice(0,7),type:"materials" as const,category:"job materials",date:r.purchaseDate,description:`${r.vendor}${jobs.find(j=>j.id===r.jobId)?` · ${jobs.find(j=>j.id===r.jobId)?.clientName}`:""}`,amount:Number(r.amount.replace(/[^0-9.-]/g,"")||0)}))];return{rows:rows.sort((a,b)=>a.date.localeCompare(b.date))};}}),
 
+
+  // ---------------------------------------------------------------------
+  // Exports (accountant-grade, Danny 2026-10-27): the company's own books
+  // as spreadsheet files + a batch PDF ZIP of invoices. Transport follows
+  // exportBackup: the action returns { filename, dataBase64 } and the
+  // client decodes + downloads. Gating is layered like everything else:
+  // OFFICE_ACTIONS in the role map (Field is refused outright) and the
+  // seeMoney switch family in assertAccessAllowed (a member whose money
+  // switch is off is refused server-side, never just hidden in the UI).
+  // Every query is scoped to the caller's companyId — a login can only
+  // ever export its own company's data. CSV amounts are plain numbers
+  // derived through invoiceShape, so Paid/Balance columns reconcile with
+  // what the app screens show.
+  exportInvoicesCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const { rows, suffix } = await exportInvoiceRows(ctx, args);
+      const csv = toCsv(
+        ["Invoice Number", "Status", "Client", "Client Email", "Job", "Job Address", "Issue Date", "Due Date", "Subtotal", "Discount", "Tax", "Total", "Paid", "Late Fee", "Balance"],
+        rows.map(({ row, shaped, jobLabel }) => {
+          const subtotal = moneyNum(row.subtotal);
+          const discount = round2(row.discountType === "percent" ? (subtotal * moneyNum(row.discountValue)) / 100 : moneyNum(row.discountValue));
+          const tax = round2(moneyNum(row.total) - subtotal + discount);
+          return [shaped.invoiceNumber, row.status, row.clientName, row.clientEmail, jobLabel, row.jobAddress, shaped.issueDate || effectiveDateKey(row), row.dueDate, fmtMoneyNum(subtotal), fmtMoneyNum(discount), fmtMoneyNum(tax), fmtMoneyNum(row.total), shaped.paidToDate, shaped.lateFeeAccrued, shaped.balanceRemaining];
+        }),
+      );
+      return { filename: `crewkat-invoices-${suffix}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: rows.length };
+    },
+  }),
+  exportPaymentsCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const range = exportPeriodRange(args);
+      const invoiceRows = await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId));
+      const invoiceById = new Map(invoiceRows.map((r) => [r.id, r]));
+      const paymentRows = (await db.select().from(schema.payments).where(eq(schema.payments.companyId, companyId)))
+        .filter((p) => invoiceById.has(p.invoiceId) && inExportRange(p.paymentDate, range))
+        .sort((a, b) => a.paymentDate.localeCompare(b.paymentDate) || a.id - b.id);
+      const csv = toCsv(
+        ["Date", "Invoice Number", "Client", "Method", "Amount", "Note"],
+        paymentRows.map((p) => {
+          const inv = invoiceById.get(p.invoiceId);
+          return [p.paymentDate, inv ? inv.invoiceNumber || `INV-${String(inv.id).padStart(4, "0")}` : "", inv?.clientName ?? "", p.method, fmtMoneyNum(p.amount), p.note];
+        }),
+      );
+      return { filename: `crewkat-payments-${exportPeriodSuffix(args, range)}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: paymentRows.length };
+    },
+  }),
+  exportExpensesCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const range = exportPeriodRange(args);
+      const jobRows = await db.select().from(schema.jobs).where(eq(schema.jobs.companyId, companyId));
+      const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      const jobLabel = (jobId: number | null) => {
+        const job = jobId ? jobById.get(jobId) : undefined;
+        return job ? job.jobType || job.clientName : "";
+      };
+      type Row = [string, string, string, string, string, string, string];
+      const expenseRows: Row[] = (await db.select().from(schema.businessExpenses).where(eq(schema.businessExpenses.companyId, companyId)))
+        .filter((e) => inExportRange(e.expenseDate, range))
+        .map((e): Row => [e.expenseDate, e.vendor, e.category, jobLabel(e.jobId), fmtMoneyNum(e.amount), e.note, "Expense"]);
+      // Receipts are job costs too (the Wave 1 budget and getTaxExport
+      // both count them); they carry no category of their own, so they
+      // ride under the same "Job materials" label the tax export uses.
+      const receiptRows: Row[] = (await db.select().from(schema.receipts).where(eq(schema.receipts.companyId, companyId)))
+        .filter((r) => inExportRange(r.purchaseDate, range))
+        .map((r): Row => [r.purchaseDate, r.vendor, "Job materials", jobLabel(r.jobId), fmtMoneyNum(r.amount), r.note, "Receipt"]);
+      const all = [...expenseRows, ...receiptRows].sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+      const csv = toCsv(["Date", "Vendor", "Category", "Job", "Amount", "Note", "Source"], all);
+      return { filename: `crewkat-expenses-${exportPeriodSuffix(args, range)}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: all.length };
+    },
+  }),
+  exportInvoicesPdfZip: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const { rows, suffix } = await exportInvoiceRows(ctx, args);
+      if (rows.length > EXPORT_PDF_ZIP_MAX) {
+        throw new Error(`That period has ${rows.length} invoices — the PDF bundle caps at ${EXPORT_PDF_ZIP_MAX}. Pick a shorter period.`);
+      }
+      const entries: Record<string, Uint8Array> = {};
+      const usedNames = new Set<string>();
+      for (const { row, shaped } of rows) {
+        const payload: DocumentLinkPdfPayload = {
+          kind: "invoice", documentId: row.id,
+          clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType,
+          lineItems: JSON.parse(row.lineItemsJson) as DocumentLinkPdfPayload["lineItems"],
+          subtotal: row.subtotal, total: row.total, footnote: row.footnote,
+          invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, expiryDate: "", status: row.status,
+          paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee,
+          discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue,
+          theme: row.theme, font: row.font, accentColor: row.accentColor,
+          showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine,
+          showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo,
+          customizeJson: row.customizeJson, depositType: row.depositType, depositValue: row.depositValue,
+        };
+        const { bytes, filename } = await buildDocumentLinkPdf(ctx, payload, "en");
+        let name = filename;
+        let n = 2;
+        while (usedNames.has(name)) { name = filename.replace(/\.pdf$/, `-${n}.pdf`); n++; }
+        usedNames.add(name);
+        entries[name] = bytes;
+      }
+      const zip = zipSync(entries);
+      return { filename: `crewkat-invoices-${suffix}.zip`, dataBase64: Buffer.from(zip).toString("base64"), rowCount: rows.length };
+    },
+  }),
 
   getDocumentParameters: defineAction({ request:z.object({}), response:z.object({defaultTaxRate:z.string()}), async handler(ctx){const row=(await ctx.db<typeof schema>().select().from(schema.adminParameters).where(eq(schema.adminParameters.id,1)).limit(1))[0];return{defaultTaxRate:row?.defaultTaxRate??"0"};} }),
   getAdminConsole: defineAction({

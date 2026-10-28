@@ -40372,6 +40372,14 @@ var dopt = function(dat, opt, pre, post, st) {
   }
   return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20 : 12 + opt.mem, pre, post, st);
 };
+var mrg = function(a, b) {
+  var o = {};
+  for (var k in a)
+    o[k] = a[k];
+  for (var k in b)
+    o[k] = b[k];
+  return o;
+};
 var wbytes = function(d, b, v) {
   for (;v; ++b)
     d[b] = v, v >>>= 8;
@@ -40415,6 +40423,9 @@ var zlh = function(c, o) {
     wbytes(c, 2, h.d());
   }
 };
+function deflateSync(data, opts) {
+  return dopt(data, opts || {}, 0, 0);
+}
 function gzipSync(data, opts) {
   if (!opts)
     opts = {};
@@ -40437,6 +40448,19 @@ function zlibSync(data, opts) {
   var d = dopt(data, opts, opts.dictionary ? 6 : 2, 4);
   return zlh(d, opts), wbytes(d, d.length - 4, a.d()), d;
 }
+var fltn = function(d, p, t, o) {
+  for (var k in d) {
+    var val = d[k], n = p + k, op = o;
+    if (Array.isArray(val))
+      op = mrg(o, val[1]), val = val[0];
+    if (ArrayBuffer.isView(val))
+      t[n] = [val, op];
+    else {
+      t[n += "/"] = [new u8(0), op];
+      fltn(val, n, t, o);
+    }
+  }
+};
 var te = typeof TextEncoder != "undefined" && /* @__PURE__ */ new TextEncoder;
 var td = typeof TextDecoder != "undefined" && /* @__PURE__ */ new TextDecoder;
 var tds = 0;
@@ -40507,6 +40531,107 @@ function strFromU8(dat, latin1) {
       err(8);
     return s;
   }
+}
+var exfl = function(ex) {
+  var le = 0;
+  if (ex) {
+    for (var k in ex) {
+      var l = ex[k].length;
+      if (l > 65535)
+        err(9);
+      le += l + 4;
+    }
+  }
+  return le;
+};
+var wzh = function(d, b, f, fn, u, c, ce, co) {
+  var fl = fn.length, ex = f.extra, col = co && co.length;
+  var exl = exfl(ex);
+  wbytes(d, b, ce != null ? 33639248 : 67324752), b += 4;
+  if (ce != null)
+    d[b++] = 20, d[b++] = f.os;
+  d[b] = 20, b += 2;
+  d[b++] = f.flag << 1 | (c < 0 && 8), d[b++] = u && 8;
+  d[b++] = f.compression & 255, d[b++] = f.compression >> 8;
+  var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
+  if (y < 0 || y > 119)
+    err(10);
+  wbytes(d, b, y << 25 | dt.getMonth() + 1 << 21 | dt.getDate() << 16 | dt.getHours() << 11 | dt.getMinutes() << 5 | dt.getSeconds() >> 1), b += 4;
+  if (c != -1) {
+    wbytes(d, b, f.crc);
+    wbytes(d, b + 4, c < 0 ? -c - 2 : c);
+    wbytes(d, b + 8, f.size);
+  }
+  wbytes(d, b + 12, fl);
+  wbytes(d, b + 14, exl), b += 16;
+  if (ce != null) {
+    wbytes(d, b, col);
+    wbytes(d, b + 6, f.attrs);
+    wbytes(d, b + 10, ce), b += 14;
+  }
+  d.set(fn, b);
+  b += fl;
+  if (exl) {
+    for (var k in ex) {
+      var exf = ex[k], l = exf.length;
+      wbytes(d, b, +k);
+      wbytes(d, b + 2, l);
+      d.set(exf, b + 4), b += 4 + l;
+    }
+  }
+  if (col)
+    d.set(co, b), b += col;
+  return b;
+};
+var wzf = function(o, b, c, d, e) {
+  wbytes(o, b, 101010256);
+  wbytes(o, b + 8, c);
+  wbytes(o, b + 10, c);
+  wbytes(o, b + 12, d);
+  wbytes(o, b + 16, e);
+};
+function zipSync(data, opts) {
+  if (!opts)
+    opts = {};
+  var r = {};
+  var files = [];
+  fltn(data, "", r, opts);
+  var o = 0;
+  var tot = 0;
+  for (var fn in r) {
+    var _a = r[fn], file = _a[0], p = _a[1];
+    var compression = p.level == 0 ? 0 : 8;
+    var f = strToU8(fn), s = f.length;
+    var com = p.comment, m = com && strToU8(com), ms = m && m.length;
+    var exl = exfl(p.extra);
+    if (s > 65535)
+      err(11);
+    var d = compression ? deflateSync(file, p) : file, l = d.length;
+    var c = crc();
+    c.p(file);
+    files.push(mrg(p, {
+      size: file.length,
+      crc: c.d(),
+      c: d,
+      f,
+      m,
+      u: s != fn.length || m && com.length != ms,
+      o,
+      compression
+    }));
+    o += 30 + s + exl + l;
+    tot += 76 + 2 * (s + exl) + (ms || 0) + l;
+  }
+  var out = new u8(tot + 22), oe = o, cdl = tot - o;
+  for (var i = 0;i < files.length; ++i) {
+    var f = files[i];
+    wzh(out, f.o, f, f.f, f.u, f.c.length);
+    var badd = 30 + f.f.length + exfl(f.extra);
+    out.set(f.c, f.o + badd);
+    wzh(out, o, f, f.f, f.u, f.c.length, f.o, f.m), o += 16 + badd + (f.m ? f.m.length : 0);
+  }
+  wzf(out, o, files.length, cdl, oe);
+  return out;
 }
 
 // src/actions.ts
@@ -73767,6 +73892,10 @@ var OFFICE_ACTIONS = new Set([
   "getQuoteVersions",
   "getTaxExport",
   "invoiceMilestone",
+  "exportExpensesCsv",
+  "exportInvoicesCsv",
+  "exportInvoicesPdfZip",
+  "exportPaymentsCsv",
   "listBidBoard",
   "listLeads",
   "listMaterialCosts",
@@ -74113,6 +74242,12 @@ var RECORD_PAYMENT_ACTIONS = new Set([
   "addPayment",
   "toggleInvoicePaid"
 ]);
+var MONEY_EXPORT_ACTIONS = new Set([
+  "exportExpensesCsv",
+  "exportInvoicesCsv",
+  "exportInvoicesPdfZip",
+  "exportPaymentsCsv"
+]);
 var SWITCH_LABELS = {
   seeMoney: "seeing money totals",
   seeClientContact: "seeing client contact details",
@@ -74126,6 +74261,9 @@ function assertAccessAllowed(access, actionName) {
   }
   if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
     throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (MONEY_EXPORT_ACTIONS.has(actionName) && !access.seeMoney) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.seeMoney}. Ask your company's admin to turn it on for you.`);
   }
 }
 
@@ -76440,6 +76578,91 @@ function quoteShape(q) {
     const s = parseOptionSelection(q.optionSelectionJson);
     return { selectedKeys: s.selected, accepted: s.accepted };
   })(), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
+}
+var exportPeriodSchema = _enum(["all", "lastMonth", "month", "quarter", "year"]);
+var exportRequestSchema = object({
+  period: exportPeriodSchema.default("all"),
+  year: number2().int().min(2000).max(2100).optional(),
+  month: number2().int().min(1).max(12).optional(),
+  quarter: number2().int().min(1).max(4).optional()
+});
+var exportFileResponseSchema = object({ filename: string2(), dataBase64: string2(), rowCount: number2() });
+var EXPORT_PDF_ZIP_MAX = 200;
+function exportPeriodRange(args) {
+  const now = new Date;
+  const cy = now.getUTCFullYear();
+  const cm = now.getUTCMonth();
+  const key = (y, m0) => `${y}-${String(m0 + 1).padStart(2, "0")}-01`;
+  const nextMonth = (y, m0) => m0 === 11 ? key(y + 1, 0) : key(y, m0 + 1);
+  switch (args.period) {
+    case "all":
+      return null;
+    case "lastMonth": {
+      const y = cm === 0 ? cy - 1 : cy;
+      const m = cm === 0 ? 11 : cm - 1;
+      return { from: key(y, m), to: nextMonth(y, m) };
+    }
+    case "month": {
+      const y = args.year ?? cy;
+      const m = (args.month ?? cm + 1) - 1;
+      return { from: key(y, m), to: nextMonth(y, m) };
+    }
+    case "quarter": {
+      const y = args.year ?? cy;
+      const m = ((args.quarter ?? Math.floor(cm / 3) + 1) - 1) * 3;
+      return { from: key(y, m), to: m + 3 > 11 ? key(y + 1, 0) : key(y, m + 3) };
+    }
+    case "year": {
+      const y = args.year ?? cy;
+      return { from: key(y, 0), to: key(y + 1, 0) };
+    }
+  }
+}
+function exportPeriodSuffix(args, range) {
+  if (!range)
+    return "all-time";
+  const y = range.from.slice(0, 4);
+  const m = Number(range.from.slice(5, 7));
+  if (args.period === "quarter")
+    return `${y}-Q${Math.ceil(m / 3)}`;
+  if (args.period === "year")
+    return y;
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+function inExportRange(dateKey, range) {
+  return !range || dateKey >= range.from && dateKey < range.to;
+}
+var moneyNum = (value) => Number(String(value).replace(/[^0-9.-]/g, "") || 0);
+var round2 = (n) => Math.round(n * 100) / 100;
+var fmtMoneyNum = (value) => moneyNum(value).toFixed(2);
+function csvCell(value) {
+  const s = String(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toCsv(headers, rows) {
+  return [headers, ...rows].map((r) => r.map(csvCell).join(",")).join(`\r
+`) + `\r
+`;
+}
+function effectiveDateKey(row) {
+  return row.issueDate || row.createdAt.toISOString().slice(0, 10);
+}
+async function exportInvoiceRows(ctx, args) {
+  const db = ctx.db();
+  const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+  const range = exportPeriodRange(args);
+  const invoiceRows = await db.select().from(invoices).where(eq(invoices.companyId, companyId));
+  const ids = new Set(invoiceRows.map((r) => r.id));
+  const paymentRows = (await db.select().from(payments).where(eq(payments.companyId, companyId))).filter((p) => ids.has(p.invoiceId));
+  const jobRows = await db.select().from(jobs).where(eq(jobs.companyId, companyId));
+  const jobById = new Map(jobRows.map((j) => [j.id, j]));
+  const setting = (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
+  const fee = { type: setting?.lateFeeType ?? "flat", value: Number(setting?.lateFeeValue ?? 0), graceDays: setting?.lateFeeGraceDays ?? 0 };
+  const rows = invoiceRows.filter((row) => inExportRange(effectiveDateKey(row), range)).map((row) => {
+    const job = row.jobId ? jobById.get(row.jobId) : undefined;
+    return { row, shaped: invoiceShape(row, paymentRows.filter((p) => p.invoiceId === row.id), fee), jobLabel: job?.jobType || row.jobType || "" };
+  }).sort((a, b) => effectiveDateKey(a.row).localeCompare(effectiveDateKey(b.row)) || a.row.id - b.row.id);
+  return { rows, suffix: exportPeriodSuffix(args, range) };
 }
 function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, graceDays: 0 }) {
   const paid = paymentRows.reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0);
@@ -81979,6 +82202,118 @@ If that was you, just sign in again. If not, we recommend changing your password
     }), ...expenses.filter((e) => e.expenseDate.startsWith(prefix)).map((e) => ({ month: e.expenseDate.slice(0, 7), type: "expense", category: e.category, date: e.expenseDate, description: [e.vendor, e.note].filter(Boolean).join(" \xB7 "), amount: Number(e.amount.replace(/[^0-9.-]/g, "") || 0) })), ...receipts2.filter((r) => r.purchaseDate.startsWith(prefix)).map((r) => ({ month: r.purchaseDate.slice(0, 7), type: "materials", category: "job materials", date: r.purchaseDate, description: `${r.vendor}${jobs2.find((j) => j.id === r.jobId) ? ` \xB7 ${jobs2.find((j) => j.id === r.jobId)?.clientName}` : ""}`, amount: Number(r.amount.replace(/[^0-9.-]/g, "") || 0) }))];
     return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)) };
   } }),
+  exportInvoicesCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const { rows, suffix } = await exportInvoiceRows(ctx, args);
+      const csv = toCsv(["Invoice Number", "Status", "Client", "Client Email", "Job", "Job Address", "Issue Date", "Due Date", "Subtotal", "Discount", "Tax", "Total", "Paid", "Late Fee", "Balance"], rows.map(({ row, shaped, jobLabel }) => {
+        const subtotal = moneyNum(row.subtotal);
+        const discount = round2(row.discountType === "percent" ? subtotal * moneyNum(row.discountValue) / 100 : moneyNum(row.discountValue));
+        const tax = round2(moneyNum(row.total) - subtotal + discount);
+        return [shaped.invoiceNumber, row.status, row.clientName, row.clientEmail, jobLabel, row.jobAddress, shaped.issueDate || effectiveDateKey(row), row.dueDate, fmtMoneyNum(subtotal), fmtMoneyNum(discount), fmtMoneyNum(tax), fmtMoneyNum(row.total), shaped.paidToDate, shaped.lateFeeAccrued, shaped.balanceRemaining];
+      }));
+      return { filename: `crewkat-invoices-${suffix}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: rows.length };
+    }
+  }),
+  exportPaymentsCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const range = exportPeriodRange(args);
+      const invoiceRows = await db.select().from(invoices).where(eq(invoices.companyId, companyId));
+      const invoiceById = new Map(invoiceRows.map((r) => [r.id, r]));
+      const paymentRows = (await db.select().from(payments).where(eq(payments.companyId, companyId))).filter((p) => invoiceById.has(p.invoiceId) && inExportRange(p.paymentDate, range)).sort((a, b) => a.paymentDate.localeCompare(b.paymentDate) || a.id - b.id);
+      const csv = toCsv(["Date", "Invoice Number", "Client", "Method", "Amount", "Note"], paymentRows.map((p) => {
+        const inv = invoiceById.get(p.invoiceId);
+        return [p.paymentDate, inv ? inv.invoiceNumber || `INV-${String(inv.id).padStart(4, "0")}` : "", inv?.clientName ?? "", p.method, fmtMoneyNum(p.amount), p.note];
+      }));
+      return { filename: `crewkat-payments-${exportPeriodSuffix(args, range)}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: paymentRows.length };
+    }
+  }),
+  exportExpensesCsv: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const range = exportPeriodRange(args);
+      const jobRows = await db.select().from(jobs).where(eq(jobs.companyId, companyId));
+      const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      const jobLabel = (jobId) => {
+        const job = jobId ? jobById.get(jobId) : undefined;
+        return job ? job.jobType || job.clientName : "";
+      };
+      const expenseRows = (await db.select().from(businessExpenses).where(eq(businessExpenses.companyId, companyId))).filter((e) => inExportRange(e.expenseDate, range)).map((e) => [e.expenseDate, e.vendor, e.category, jobLabel(e.jobId), fmtMoneyNum(e.amount), e.note, "Expense"]);
+      const receiptRows = (await db.select().from(receipts).where(eq(receipts.companyId, companyId))).filter((r) => inExportRange(r.purchaseDate, range)).map((r) => [r.purchaseDate, r.vendor, "Job materials", jobLabel(r.jobId), fmtMoneyNum(r.amount), r.note, "Receipt"]);
+      const all = [...expenseRows, ...receiptRows].sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+      const csv = toCsv(["Date", "Vendor", "Category", "Job", "Amount", "Note", "Source"], all);
+      return { filename: `crewkat-expenses-${exportPeriodSuffix(args, range)}.csv`, dataBase64: Buffer.from(csv, "utf8").toString("base64"), rowCount: all.length };
+    }
+  }),
+  exportInvoicesPdfZip: defineAction({
+    request: exportRequestSchema,
+    response: exportFileResponseSchema,
+    async handler(ctx, args) {
+      const { rows, suffix } = await exportInvoiceRows(ctx, args);
+      if (rows.length > EXPORT_PDF_ZIP_MAX) {
+        throw new Error(`That period has ${rows.length} invoices \u2014 the PDF bundle caps at ${EXPORT_PDF_ZIP_MAX}. Pick a shorter period.`);
+      }
+      const entries = {};
+      const usedNames = new Set;
+      for (const { row, shaped } of rows) {
+        const payload = {
+          kind: "invoice",
+          documentId: row.id,
+          clientName: row.clientName,
+          jobAddress: row.jobAddress,
+          jobType: row.jobType,
+          lineItems: JSON.parse(row.lineItemsJson),
+          subtotal: row.subtotal,
+          total: row.total,
+          footnote: row.footnote,
+          invoiceNumber: row.invoiceNumber,
+          issueDate: row.issueDate,
+          dueDate: row.dueDate,
+          expiryDate: "",
+          status: row.status,
+          paidToDate: shaped.paidToDate,
+          lateFeeAccrued: shaped.lateFeeAccrued,
+          totalWithLateFee: shaped.totalWithLateFee,
+          discountType: row.discountType,
+          discountValue: row.discountValue,
+          taxType: row.taxType,
+          taxValue: row.taxValue,
+          theme: row.theme,
+          font: row.font,
+          accentColor: row.accentColor,
+          showTaxLine: row.showTaxLine,
+          showDiscountLine: row.showDiscountLine,
+          showPaidLine: row.showPaidLine,
+          showPaymentTerms: row.showPaymentTerms,
+          showFooterNotes: row.showFooterNotes,
+          showLogo: row.showLogo,
+          showCompanyInfo: row.showCompanyInfo,
+          customizeJson: row.customizeJson,
+          depositType: row.depositType,
+          depositValue: row.depositValue
+        };
+        const { bytes, filename } = await buildDocumentLinkPdf(ctx, payload, "en");
+        let name = filename;
+        let n = 2;
+        while (usedNames.has(name)) {
+          name = filename.replace(/\.pdf$/, `-${n}.pdf`);
+          n++;
+        }
+        usedNames.add(name);
+        entries[name] = bytes;
+      }
+      const zip = zipSync(entries);
+      return { filename: `crewkat-invoices-${suffix}.zip`, dataBase64: Buffer.from(zip).toString("base64"), rowCount: rows.length };
+    }
+  }),
   getDocumentParameters: defineAction({ request: object({}), response: object({ defaultTaxRate: string2() }), async handler(ctx) {
     const row = (await ctx.db().select().from(adminParameters).where(eq(adminParameters.id, 1)).limit(1))[0];
     return { defaultTaxRate: row?.defaultTaxRate ?? "0" };

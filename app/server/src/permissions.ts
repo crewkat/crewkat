@@ -105,6 +105,12 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "saveFollowUp", "completeFollowUp", "snoozeFollowUp",
   "getAutomationSettings", "getJobBudget",
   "getQuoteVersions", "getTaxExport", "invoiceMilestone",
+  // Exports (accountant-grade): full company financials leave the app
+  // through these, so they sit on the Office money surface AND in the
+  // seeMoney switch family below — a member with money switched off is
+  // refused by the server, not just missing the buttons.
+  "exportExpensesCsv", "exportInvoicesCsv", "exportInvoicesPdfZip",
+  "exportPaymentsCsv",
   "listBidBoard", "listLeads", "listMaterialCosts",
   "listRecurringSchedules", "listShareImages", "listSubcontractors",
   "markMarketplaceConversationRead", "marketplaceConversation", "marketplaceConversations",
@@ -325,6 +331,15 @@ export const RECORD_PAYMENT_ACTIONS: ReadonlySet<string> = new Set([
   "addPayment", "toggleInvoicePaid",
 ]);
 
+// Actions a member may only call with seeMoney ON: the accountant
+// exports carry the company's full financials out of the app, so the
+// money switch gates them outright (Admins are never switch-limited —
+// their effective access is always all-on).
+export const MONEY_EXPORT_ACTIONS: ReadonlySet<string> = new Set([
+  "exportExpensesCsv", "exportInvoicesCsv", "exportInvoicesPdfZip",
+  "exportPaymentsCsv",
+]);
+
 const SWITCH_LABELS: Record<AccessSwitch, string> = {
   seeMoney: "seeing money totals",
   seeClientContact: "seeing client contact details",
@@ -343,5 +358,8 @@ export function assertAccessAllowed(access: EffectiveAccess, actionName: string)
   }
   if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
     throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (MONEY_EXPORT_ACTIONS.has(actionName) && !access.seeMoney) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.seeMoney}. Ask your company's admin to turn it on for you.`);
   }
 }
