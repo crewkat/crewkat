@@ -6986,6 +6986,7 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
     statusOpen: "Open", statusVoid: "Void", statusUncollectible: "Uncollectible",
   };
   const query = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
+  const auth = useContext(AuthContext);
   const [portalError, setPortalError] = useState("");
   const portal = useMutation({
     mutationFn: () => api.createBillingPortalSession({}),
@@ -7070,9 +7071,151 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
               })}
             </ul>
           )}
+          {auth?.user.access.seeMoney ? <BillingExports lang={lang} /> : null}
         </>
       )}
     </main>
+  );
+}
+
+// Accountant exports (Danny 2026-10-27): the same datasets Office offers,
+// inside the phone Billing screen — no new tab or module. The server
+// gates these on the seeMoney switch; the section hides when the
+// signed-in member's money switch is off (BillingScreen checks).
+function BillingExports({ lang }: { lang: Lang }) {
+  const text = lang === "es" ? {
+    title: "Exporta tus libros",
+    hint: "Hojas de cálculo para tu contador, más un ZIP con un PDF por factura.",
+    period: "Periodo", all: "Todo el tiempo", lastMonth: "Mes pasado", byMonth: "Por mes", byQuarter: "Por trimestre", thisYear: "Este año",
+    month: "Mes", quarter: "Trimestre", year: "Año",
+    months: ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+    invoices: "Facturas", invoicesHint: "Totales, pagos y saldos — hoja de cálculo",
+    payments: "Pagos", paymentsHint: "Cada pago con su factura — hoja de cálculo",
+    expenses: "Gastos", expensesHint: "Gastos y recibos de trabajos — hoja de cálculo",
+    pdfzip: "PDFs de facturas", pdfzipHint: "Un PDF por factura, en un ZIP",
+    download: "Descargar", preparing: "Preparando…",
+    records: "registros", failed: "La exportación falló. Inténtalo de nuevo.",
+    shareTitle: "Exportación de Crewkat",
+  } : {
+    title: "Export your books",
+    hint: "Spreadsheets for your accountant, plus a ZIP with one PDF per invoice.",
+    period: "Period", all: "All time", lastMonth: "Last month", byMonth: "By month", byQuarter: "By quarter", thisYear: "This year",
+    month: "Month", quarter: "Quarter", year: "Year",
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    invoices: "Invoices", invoicesHint: "Totals, paid and balance — spreadsheet",
+    payments: "Payments", paymentsHint: "Every payment with its invoice — spreadsheet",
+    expenses: "Expenses", expensesHint: "Expenses and job receipts — spreadsheet",
+    pdfzip: "Invoice PDFs", pdfzipHint: "One PDF per invoice, bundled in a ZIP",
+    download: "Download", preparing: "Preparing…",
+    records: "records", failed: "Export failed. Try again.",
+    shareTitle: "Crewkat export",
+  };
+  type PeriodKind = "all" | "lastMonth" | "month" | "quarter" | "year";
+  type Dataset = "invoices" | "payments" | "expenses" | "pdfzip";
+  const now = new Date();
+  const [period, setPeriod] = useState<PeriodKind>("all");
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
+  const [selQuarter, setSelQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [busy, setBusy] = useState<Dataset | null>(null);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const years = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
+
+  const run = async (dataset: Dataset) => {
+    setBusy(dataset);
+    setNote("");
+    setError("");
+    const args = {
+      period,
+      ...(period === "month" ? { month: selMonth, year: selYear } : {}),
+      ...(period === "quarter" ? { quarter: selQuarter, year: selYear } : {}),
+    };
+    try {
+      const result =
+        dataset === "invoices" ? await api.exportInvoicesCsv(args)
+        : dataset === "payments" ? await api.exportPaymentsCsv(args)
+        : dataset === "expenses" ? await api.exportExpensesCsv(args)
+        : await api.exportInvoicesPdfZip(args);
+      const bytes = Uint8Array.from(atob(result.dataBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: dataset === "pdfzip" ? "application/zip" : "text/csv;charset=utf-8" });
+      await nativeShare(blob, result.filename, text.shareTitle);
+      setNote(`${result.filename} — ${result.rowCount} ${text.records}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : text.failed);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const row = (dataset: Dataset, label: string, hint: string) => (
+    <li>
+      <div className="billing-row">
+        <span className="billing-row-main"><strong>{label}</strong><small>{hint}</small></span>
+        <button type="button" className="secondary-button billing-export-btn" disabled={busy !== null} onClick={() => void run(dataset)}>
+          {busy === dataset ? text.preparing : text.download}
+        </button>
+      </div>
+    </li>
+  );
+
+  return (
+    <>
+      <h3 className="settings-group-title">{text.title}</h3>
+      <p className="billing-empty">{text.hint}</p>
+      <div className="billing-export-controls">
+        <label>
+          {text.period}
+          <select className="billing-export-select" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKind)}>
+            <option value="all">{text.all}</option>
+            <option value="lastMonth">{text.lastMonth}</option>
+            <option value="month">{text.byMonth}</option>
+            <option value="quarter">{text.byQuarter}</option>
+            <option value="year">{text.thisYear}</option>
+          </select>
+        </label>
+        {period === "month" && (
+          <>
+            <label>
+              {text.month}
+              <select className="billing-export-select" value={selMonth} onChange={(e) => setSelMonth(Number(e.target.value))}>
+                {text.months.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
+              </select>
+            </label>
+            <label>
+              {text.year}
+              <select className="billing-export-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        )}
+        {period === "quarter" && (
+          <>
+            <label>
+              {text.quarter}
+              <select className="billing-export-select" value={selQuarter} onChange={(e) => setSelQuarter(Number(e.target.value))}>
+                {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}
+              </select>
+            </label>
+            <label>
+              {text.year}
+              <select className="billing-export-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        )}
+      </div>
+      <ul className="billing-history">
+        {row("invoices", text.invoices, text.invoicesHint)}
+        {row("payments", text.payments, text.paymentsHint)}
+        {row("expenses", text.expenses, text.expensesHint)}
+        {row("pdfzip", text.pdfzip, text.pdfzipHint)}
+      </ul>
+      {note && <p className="billing-empty">{note}</p>}
+      {error && <p className="status error" role="alert">{error}</p>}
+    </>
   );
 }
 
