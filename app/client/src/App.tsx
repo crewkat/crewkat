@@ -24353,7 +24353,7 @@ function TodayScreen({
           Marketplace listings (the real, implemented reward) — never a
           free Premium month, which the billing code does not grant. */}
       <button type="button" className="home-referral-banner stagger-in" onClick={() => setScreen({ name: "referContractor" })}>
-        <span className="home-referral-icon" aria-hidden="true"><Icon><path d="M16 11a4 4 0 1 0-4-4M4 21c0-4 3-7 8-7 2 0 3.8.7 5.2 1.8M18 8v6M15 11h6" /></Icon></span>
+        <span className="home-referral-icon" aria-hidden="true"><Icon><path d="M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M19 8v6M16 11h6" /></Icon></span>
         <span>
           <strong>{lang === "es" ? "Invita a un contratista, gana listados gratis" : "Refer a contractor, earn free listings"}</strong>
           <small>{lang === "es" ? "5 listados extra en el Mercado por cada amigo que se una" : "5 bonus Marketplace listings for every friend who joins"}</small>
