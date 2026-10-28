@@ -52,6 +52,30 @@ console.log("[build] marketing site copied to dist/marketing");
 for (const f of ["manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png", "sw.js"]) {
   await cp(join(here, "pwa", f), join(distDir, f));
 }
+
+// Receipt OCR assets (tesseract.js): copied verbatim into dist/ocr/ and
+// fetched ONLY when a user taps "Scan receipt" — the bundler never sees
+// them, so the engine (~7MB on first scan) never taxes the app bundle.
+// Sources are devDependencies (present in the build stage's full install,
+// pruned from the runtime image): the UMD API + worker from tesseract.js,
+// the self-contained LSTM core variants from tesseract.js-core (the
+// worker feature-detects exactly one at runtime), and the quantized
+// English language data from @tesseract.js-data/eng.
+const ocrDir = join(distDir, "ocr");
+await mkdir(join(ocrDir, "core"), { recursive: true });
+await mkdir(join(ocrDir, "lang"), { recursive: true });
+const nodeModules = join(here, "..", "node_modules");
+for (const f of ["tesseract.min.js", "worker.min.js"]) {
+  await cp(join(nodeModules, "tesseract.js", "dist", f), join(ocrDir, f));
+}
+for (const f of ["tesseract-core-lstm.wasm.js", "tesseract-core-simd-lstm.wasm.js", "tesseract-core-relaxedsimd-lstm.wasm.js"]) {
+  await cp(join(nodeModules, "tesseract.js-core", f), join(ocrDir, "core", f));
+}
+await cp(
+  join(nodeModules, "@tesseract.js-data", "eng", "4.0.0_best_int", "eng.traineddata.gz"),
+  join(ocrDir, "lang", "eng.traineddata.gz"),
+);
+console.log("[build] receipt OCR assets copied to dist/ocr");
 // Build 3: stamp the service worker with a per-build ID so EVERY deploy
 // produces a byte-different sw.js. Browsers only auto-install a new worker
 // when its bytes change — without this, the old cache-first shell could

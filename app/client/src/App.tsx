@@ -1,5 +1,7 @@
 import { SafeAreaTopScrim, bytesToBase64, fileToBase64 } from "@hatch/space-sdk/client";
 import { compressImageFile } from "./imageCompress";
+import { parseReceiptText, receiptLooksUnreadable, receiptPrefill } from "./receiptParse";
+import { scanReceiptText } from "./receiptOcr";
 import { parseVCard, type VCardContact } from "./vcard";
 import { Switch } from "./switch";
 import { DEFAULT_RADIUS_MILES, RADIUS_OPTIONS, extractZipFromServiceArea, geocodeZip, isRadiusQuery, listingGeoText, listingWithinRadius, parseLocationQuery, radiusZoom, resolveLocationCenter } from "./marketplaceGeo";
@@ -628,6 +630,9 @@ const copy = {
     timeNote: "Work note",
     receipts: "Receipts",
     receiptPhoto: "Receipt photo",
+    scanReceipt: "Scan receipt",
+    scanningReceipt: "Reading receipt…",
+    scanUnreadable: "Couldn't read this one — fill it in below.",
     vendor: "Vendor",
     materialsTotal: "Materials total",
     purchaseDate: "Purchase date",
@@ -974,6 +979,9 @@ const copy = {
     timeNote: "Nota de trabajo",
     receipts: "Recibos",
     receiptPhoto: "Foto del recibo",
+    scanReceipt: "Escanear recibo",
+    scanningReceipt: "Leyendo recibo…",
+    scanUnreadable: "No se pudo leer este — complétalo abajo.",
     vendor: "Proveedor",
     materialsTotal: "Total de materiales",
     purchaseDate: "Fecha de compra",
@@ -1175,6 +1183,12 @@ const CameraIcon = () => (
   <Icon>
     <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
     <circle cx="12" cy="13" r="3" />
+  </Icon>
+);
+const ScanIcon = () => (
+  <Icon>
+    <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" />
+    <path d="M4 12h16" />
   </Icon>
 );
 const FileIcon = () => (
@@ -23266,8 +23280,34 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
   );
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const scanInput = useRef<HTMLInputElement>(null);
   const total = data.receipts.reduce((sum, r) => sum + money(r.amount), 0);
+  // Scan receipt: attach the photo exactly like the camera button, then
+  // OCR it on-device and prefill vendor/amount/date. Nothing saves until
+  // the user taps Save; a failed or unreadable scan just leaves a note.
+  const runScan = async (picked: File | null) => {
+    if (!picked) return;
+    setFile(picked);
+    setScanNote(false);
+    setScanning(true);
+    try {
+      const compressed = await compressImageFile(picked, "photo");
+      const text = await scanReceiptText(compressed);
+      const fields = parseReceiptText(text);
+      const next = receiptPrefill(fields, { vendor, amount, date: purchaseDate });
+      setVendor(next.vendor);
+      setAmount(next.amount);
+      setPurchaseDate(next.date);
+      setScanNote(receiptLooksUnreadable(fields));
+    } catch {
+      setScanNote(true);
+    } finally {
+      setScanning(false);
+    }
+  };
   const save = useMutation({
     mutationFn: async () => {
       if (!file || !job) throw new Error();
@@ -23289,6 +23329,7 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
       setAmount("");
       setNote("");
       setFile(null);
+      setScanNote(false);
       qc.invalidateQueries({ queryKey: ["job", job?.id] });
     },
   });
@@ -23309,14 +23350,25 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
           if (file && money(amount) >= 0) save.mutate();
         }}
       >
-        <button
-          type="button"
-          className="camera-button"
-          onClick={() => input.current?.click()}
-        >
-          <CameraIcon />
-          {file ? file.name : t.receiptPhoto}
-        </button>
+        <div className="field-pair">
+          <button
+            type="button"
+            className="camera-button"
+            onClick={() => input.current?.click()}
+          >
+            <CameraIcon />
+            {file ? file.name : t.receiptPhoto}
+          </button>
+          <button
+            type="button"
+            className="camera-button"
+            disabled={scanning}
+            onClick={() => scanInput.current?.click()}
+          >
+            <ScanIcon />
+            {scanning ? t.scanningReceipt : t.scanReceipt}
+          </button>
+        </div>
         <input
           ref={input}
           className="sr-only"
@@ -23325,6 +23377,18 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
           capture="environment"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
+        <input
+          ref={scanInput}
+          className="sr-only"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
+          onChange={(e) => {
+            void runScan(e.target.files?.[0] ?? null);
+            e.target.value = "";
+          }}
+        />
+        {scanNote && <p className="privacy-note">{t.scanUnreadable}</p>}
         <div className="field-pair">
           <label>
             <span>{t.vendor}</span>
@@ -28841,6 +28905,9 @@ function ScannerTool({
   const [expenseDate, setExpenseDate] = useState(scanDraft?.expenseDate || today);
   const [category, setCategory] = useState(scanDraft?.category ?? "materials");
   const [note, setNote] = useState(scanDraft?.note ?? "");
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState(false);
+  const scanInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const onCapture = async (f: File | null) => {
     setFile(f);
@@ -28863,6 +28930,31 @@ function ScannerTool({
       bitmap.close();
     } catch {
       /* keep the file; no thumbnail this time */
+    }
+  };
+  // Scan receipt: same capture pipeline as the photo button, then OCR
+  // on-device prefills the receipt expense fields. Saving still goes
+  // through saveScannedDocument when the user taps Create — nothing is
+  // written by the scan itself.
+  const runScan = async (picked: File | null) => {
+    if (!picked) return;
+    setKind("receipt");
+    await onCapture(picked);
+    setScanNote(false);
+    setScanning(true);
+    try {
+      const compressed = await compressImageFile(picked, "photo");
+      const text = await scanReceiptText(compressed);
+      const fields = parseReceiptText(text);
+      const next = receiptPrefill(fields, { vendor, amount, date: expenseDate });
+      setVendor(next.vendor);
+      setAmount(next.amount);
+      setExpenseDate(next.date);
+      setScanNote(receiptLooksUnreadable(fields));
+    } catch {
+      setScanNote(true);
+    } finally {
+      setScanning(false);
     }
   };
   // Persist the draft continuously; flush synchronously on hardware back
@@ -28959,6 +29051,7 @@ function ScannerTool({
       setExpenseDate(today);
       setCategory("materials");
       setNote("");
+      setScanNote(false);
     } catch {
       setError(
         lang === "es"
@@ -29074,18 +29167,53 @@ function ScannerTool({
             </label>
           </>
         )}
-        <label className="camera-button">
-          <CameraIcon />
-          {file?.name ??
-            (lang === "es" ? "Capturar documento" : "Capture document")}
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            onChange={(e) => void onCapture(e.target.files?.[0] ?? null)}
-          />
-        </label>
+        <div className="field-pair">
+          <label className="camera-button">
+            <CameraIcon />
+            {file?.name ??
+              (lang === "es" ? "Capturar documento" : "Capture document")}
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={(e) => void onCapture(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <button
+            type="button"
+            className="camera-button"
+            disabled={scanning}
+            onClick={() => scanInput.current?.click()}
+          >
+            <ScanIcon />
+            {scanning
+              ? lang === "es"
+                ? "Leyendo recibo…"
+                : "Reading receipt…"
+              : lang === "es"
+                ? "Escanear recibo"
+                : "Scan receipt"}
+          </button>
+        </div>
+        <input
+          ref={scanInput}
+          className="sr-only"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
+          onChange={(e) => {
+            void runScan(e.target.files?.[0] ?? null);
+            e.target.value = "";
+          }}
+        />
+        {scanNote && (
+          <p className="privacy-note">
+            {lang === "es"
+              ? "No se pudo leer este — complétalo abajo."
+              : "Couldn't read this one — fill it in below."}
+          </p>
+        )}
         {capture && !preview && (
           <>
             <img

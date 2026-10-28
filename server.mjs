@@ -745,7 +745,7 @@ async function serveStatic(res, urlPath) {
       // file under /app/assets/ is a genuine 404 so broken asset URLs fail loudly.
       // Chunk D: same for the known PWA files — a missing manifest, service
       // worker, or icon must never serve HTML by accident.
-      if (relative.startsWith("/assets/") || KNOWN_PWA_STATIC.has(relative)) {
+      if (relative.startsWith("/assets/") || relative.startsWith("/ocr/") || KNOWN_PWA_STATIC.has(relative)) {
         res.writeHead(404, { "x-content-type-options": "nosniff" });
         res.end();
         return;

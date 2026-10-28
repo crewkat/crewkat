@@ -36,3 +36,24 @@ interface GoogleAccountsId {
   cancel(): void;
 }
 interface Window { google?: { accounts: { id: GoogleAccountsId } }; }
+
+// Tesseract.js OCR (receipt scanning), loaded on demand from the static
+// /app/ocr/tesseract.min.js by client/src/receiptOcr.ts — never bundled.
+// Only the slice of the API the receipt flow uses is typed here.
+interface TesseractWorker {
+  recognize(image: Blob): Promise<{ data: { text: string } }>;
+  terminate(): Promise<unknown>;
+}
+interface TesseractStatic {
+  createWorker(
+    langs: string,
+    oem: string,
+    options: {
+      workerPath: string;
+      corePath: string;
+      langPath: string;
+      cacheMethod?: string;
+    },
+  ): Promise<TesseractWorker>;
+}
+interface Window { Tesseract?: TesseractStatic; }
