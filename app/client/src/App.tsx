@@ -4256,8 +4256,8 @@ function BottomSheet({
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closing]);
-  return (
-    <div className={`sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+  const sheet = (
+    <div className={`sheet-backdrop bottom-sheet-backdrop${closing ? " closing" : ""}`} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <section className="more-sheet bottom-sheet" role="dialog" aria-modal="true" aria-label={title}>
         <span className="sheet-handle" aria-hidden="true" />
         <header className="bottom-sheet-head">
@@ -4268,6 +4268,18 @@ function BottomSheet({
       </section>
     </div>
   );
+  // Layout fix (2026-10-31): BottomSheet hosts include the doc builders
+  // (DocClientSheet in the quote/invoice forms), which are themselves
+  // scrolled/animated sheet containers. A position:fixed backdrop nested
+  // there can paint offset and lose its viewport containment on mobile
+  // Chrome — the client pop-up blended into the New Invoice page (no dim,
+  // the page's Recurring card showing at the sheet's edge, sheet content
+  // clipping mid-form). Same failure LineItemEditSheet (2026-10-14) and
+  // the Customize overlay were portaled to document.body for; BottomSheet
+  // never got that treatment. Portaling keeps inset:0 relative to the
+  // true viewport in every host, and outside .doc-fullscreen the sheet
+  // also regains the standard dialog lift shadow that container zeroes.
+  return typeof globalThis.document === "undefined" ? sheet : createPortal(sheet, globalThis.document.body);
 }
 
 function SkeletonList({ rows = 4, className = "" }: { rows?: number; className?: string }) {

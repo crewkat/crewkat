@@ -3083,6 +3083,15 @@ button { transition: transform .12s ease, background-color .15s ease, border-col
 .bottom-sheet-body > button { min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-weight: 700; font-size: 15px; cursor: pointer; }
 .bottom-sheet-body > button:last-child { border-bottom: 0; }
 .bottom-sheet-body > button svg { width: 22px; height: 22px; color: var(--accent); flex: none; }
+/* BottomSheet separation (2026-10-31): the shared BottomSheet is portaled
+   to document.body (see App.tsx), so its backdrop always covers the true
+   viewport. Give that backdrop a deeper dim than the generic sheet
+   backdrop and the panel a taller, scroll-contained box, so a BottomSheet
+   reads as a pop-up over the page — never as part of the page — and its
+   whole form (e.g. the doc client form's saved addresses + save-to
+   checkbox) stays reachable inside the sheet. */
+.sheet-backdrop.bottom-sheet-backdrop { background: rgba(8,12,11,.66); overscroll-behavior: contain; }
+.more-sheet.bottom-sheet { max-height: min(88vh, 780px); max-height: min(88dvh, 780px); overscroll-behavior: contain; }
 
 /* ---- 10. Swipe-to-reveal rows ---- */
 .swipe-row { position: relative; overflow: hidden; border-radius: 14px; }
@@ -3413,7 +3422,12 @@ button { -webkit-tap-highlight-color: transparent; }
    (stable under mobile browser chrome). Same grid-rows pattern as
    .toolbox-window / .float-popup. */
 .line-item-sheet { gap: 12px; overflow: hidden; max-height: min(88dvh, 720px); grid-template-rows: auto minmax(0, 1fr) auto; }
-.line-item-sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; display: grid; gap: 12px; align-content: start; }
+/* Focus-glow guard: the global :focus-visible outline paints 5px outside
+   the field (3px + 2px offset); fields here are width:100%, flush with
+   this scroll box, so the glow was sliced at the body's padding edge.
+   6px of padding moves the clip boundary out past the glow; the matching
+   negative margin keeps the fields' laid-out size/position unchanged. */
+.line-item-sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; display: grid; gap: 12px; align-content: start; padding: 6px; margin: -6px; }
 .line-item-sheet-foot { display: grid; gap: 12px; }
 .line-item-sheet label { display: grid; gap: 6px; }
 .line-item-sheet label > span { font-size: .85rem; color: var(--muted); font-weight: 600; }
