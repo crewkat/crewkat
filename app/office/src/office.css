@@ -383,6 +383,20 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .detail-list.compact > div { grid-template-columns: 1fr auto; }
 .address-list, .link-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .address-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* In-place contact editing in the Jobs + Clients detail panels
+   (Danny 2026-11-01): inputs mirror the .field look; the edit bar
+   sits directly under the facts list it edits. */
+.contact-input, .address-add input {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 7px 10px; background: var(--surface); outline: none; width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.contact-input:focus, .address-add input:focus { border-color: var(--navy-700); box-shadow: 0 0 0 3px rgba(18, 57, 92, 0.12); }
+.contact-edit-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+.contact-note { margin: 2px 0 10px; }
+.address-add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.address-add input { flex: 1; width: auto; }
+.address-add .btn { flex: none; }
 .chip {
   font-size: 11px; font-weight: 700; background: var(--line-soft); color: var(--ink-2);
   border-radius: 99px; padding: 1.5px 8px;

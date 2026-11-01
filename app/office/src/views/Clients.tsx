@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { Client } from "../types";
-import { formatDate, formatMoney, initials } from "../utils";
+import { cleanError, formatDate, formatMoney, initials } from "../utils";
 import type { DocSelection } from "./Documents";
 import { TimelineFeed } from "./Timeline";
 
@@ -128,6 +128,7 @@ export function ClientsView({
 }
 
 function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: Client; onClose: () => void; onOpenJob: (jobId: number) => void; onOpenDocument: (sel: DocSelection) => void }) {
+  const queryClient = useQueryClient();
   const detailQuery = useQuery({
     queryKey: ["client", client.id],
     queryFn: () => api.getClient({ id: client.id }),
@@ -140,6 +141,57 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
   const signablesQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const detail = detailQuery.data;
   const c = detail?.client ?? client;
+  // Editing (Danny 2026-11-01): phone/email edit in place and the
+  // saved-address list is manageable right here — add (append-only),
+  // set primary, remove a non-primary entry. All writes go through the
+  // existing client actions (saveClient carries the full record, so
+  // fields this panel doesn't render are sent back untouched) and
+  // appendClientAddress for adds. Nothing here writes back into jobs:
+  // a job keeps the contact/address snapshot it was created with.
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactNote, setContactNote] = useState("");
+  const [newAddress, setNewAddress] = useState("");
+  const [addressNote, setAddressNote] = useState("");
+  const invalidateClient = () => {
+    void queryClient.invalidateQueries({ queryKey: ["client", c.id] });
+    void queryClient.invalidateQueries({ queryKey: ["clients"] });
+  };
+  const saveClientMutation = useMutation({
+    mutationFn: (patch: { phone?: string; email?: string; addresses?: Client["addresses"] }) =>
+      api.saveClient({
+        id: c.id,
+        name: c.name,
+        phone: patch.phone ?? c.phone,
+        email: patch.email ?? c.email,
+        address: c.address,
+        addresses: (patch.addresses ?? c.addresses).map((a) => ({ label: a.label, address: a.address, primary: a.primary })),
+        notes: c.notes,
+        tags: c.tags,
+        referredByClientId: c.referredByClientId,
+      }),
+    onError: (err) => { setContactNote(cleanError(err)); setAddressNote(cleanError(err)); },
+  });
+  const contactSave = useMutation({
+    mutationFn: () => saveClientMutation.mutateAsync({ phone: contactPhone.trim(), email: contactEmail.trim() }),
+    onSuccess: () => { setEditingContact(false); setContactNote("Saved."); invalidateClient(); },
+  });
+  const appendAddressMutation = useMutation({
+    mutationFn: () => api.appendClientAddress({ clientId: c.id, address: newAddress.trim(), label: "" }),
+    onSuccess: () => { setNewAddress(""); setAddressNote("Address added to the saved list."); invalidateClient(); },
+    onError: (err) => setAddressNote(cleanError(err)),
+  });
+  const addressListMutation = useMutation({
+    mutationFn: (addresses: Client["addresses"]) => saveClientMutation.mutateAsync({ addresses }),
+    onSuccess: () => { setAddressNote("Saved addresses updated."); invalidateClient(); },
+  });
+  const startContactEdit = () => {
+    setContactPhone(c.phone);
+    setContactEmail(c.email);
+    setContactNote("");
+    setEditingContact(true);
+  };
   const jobs = detail?.jobs ?? [];
   const quotes = detail?.quotes ?? [];
   const clientInvoices = (invoicesQuery.data?.invoices ?? []).filter((i) => i.clientId === client.id);
@@ -157,29 +209,85 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
       </div>
 
       <dl className="detail-list">
-        <div><dt>Phone</dt><dd>{c.phone || "—"}</dd></div>
-        <div><dt>Email</dt><dd>{c.email || "—"}</dd></div>
+        <div><dt>Phone</dt><dd>{editingContact ? <input className="contact-input" type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Add a phone number" aria-label="Client phone" /> : (c.phone || "—")}</dd></div>
+        <div><dt>Email</dt><dd>{editingContact ? <input className="contact-input" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Add an email" aria-label="Client email" /> : (c.email || "—")}</dd></div>
         <div><dt>Primary address</dt><dd>{c.address || "—"}</dd></div>
         {c.tags.length > 0 ? <div><dt>Tags</dt><dd>{c.tags.join(", ")}</dd></div> : null}
         {c.referredByName ? <div><dt>Referred by</dt><dd>{c.referredByName}</dd></div> : null}
         {c.notes ? <div><dt>Notes</dt><dd>{c.notes}</dd></div> : null}
       </dl>
 
+      <div className="contact-edit-bar">
+        {editingContact ? (
+          <>
+            <button type="button" className="btn btn-primary btn-small" disabled={contactSave.isPending} onClick={() => contactSave.mutate()}>
+              {contactSave.isPending ? "Saving…" : "Save phone & email"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" disabled={contactSave.isPending} onClick={() => setEditingContact(false)}>Cancel</button>
+          </>
+        ) : (
+          <button type="button" className="btn btn-ghost btn-small" onClick={startContactEdit}>✎ Edit phone &amp; email</button>
+        )}
+      </div>
+      {contactNote ? <p className="feed-meta block contact-note">{contactNote}</p> : null}
+
       <section className="drawer-section">
         <h3>Saved addresses</h3>
         {c.addresses.length === 0 ? (
-          <p className="muted">No saved addresses yet.</p>
+          <p className="muted">No saved addresses yet — add the first one below.</p>
         ) : (
           <ul className="address-list">
             {c.addresses.map((a, i) => (
               <li key={`${a.address}-${i}`}>
                 <span>{a.address}</span>
                 {a.label ? <span className="chip">{a.label}</span> : null}
-                {a.primary ? <span className="chip chip-primary">Primary</span> : null}
+                {a.primary ? <span className="chip chip-primary">Primary</span> : (
+                  <>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      disabled={addressListMutation.isPending}
+                      onClick={() => addressListMutation.mutate(c.addresses.map((entry, j) => ({ ...entry, primary: j === i })))}
+                    >
+                      Make primary
+                    </button>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      disabled={addressListMutation.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Remove “${a.address}” from this client's saved addresses? Jobs that already use it keep their own copy.`)) {
+                          addressListMutation.mutate(c.addresses.filter((_, j) => j !== i));
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
         )}
+        <div className="address-add">
+          <input
+            value={newAddress}
+            onChange={(e) => setNewAddress(e.target.value)}
+            placeholder="Add another address…"
+            aria-label="New saved address"
+            onKeyDown={(e) => { if (e.key === "Enter" && newAddress.trim()) { setAddressNote(""); appendAddressMutation.mutate(); } }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            disabled={!newAddress.trim() || appendAddressMutation.isPending}
+            onClick={() => { setAddressNote(""); appendAddressMutation.mutate(); }}
+          >
+            {appendAddressMutation.isPending ? "Adding…" : "Add address"}
+          </button>
+        </div>
+        <p className="muted small">Adding never replaces an existing address — the list just grows (up to 20).</p>
+        {addressNote ? <p className="feed-meta block contact-note">{addressNote}</p> : null}
       </section>
 
       <section className="drawer-section">

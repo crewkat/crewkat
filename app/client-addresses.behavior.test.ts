@@ -34,6 +34,11 @@
 //     promotes it to primary, keeping the other saved entries.
 //  7. Static guards on the client UI wiring (sheet chips + opt-in,
 //     clients-form editor, job-form chips, builders' append calls).
+//  8. updateJobClientInfo (Office Jobs panel, Danny 2026-11-01): the
+//     job snapshot saves; phone/email update the linked client; a new
+//     job address APPENDS to the client's list without promotion or
+//     rewrite (the deliberate contrast with updateJob in section 6);
+//     unlinked jobs save snapshot-only with clientSynced: false.
 //
 // Run from app/:  bun client-addresses.behavior.test.ts
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -258,6 +263,58 @@ check("static: client form manages the address list", formSlice.includes("client
 check("static: client form no longer renders the lone address input", !formSlice.includes('<span className="ck-label">{t.address}</span>'));
 const jobFieldsSlice = appSrc.slice(appSrc.indexOf("function JobFields"), appSrc.indexOf("function ClientPicker"));
 check("static: job form offers saved-address chips", jobFieldsSlice.includes("job-saved-addresses") && jobFieldsSlice.includes("jobAddress: entry.address"));
+
+// --- 8. updateJobClientInfo: the Office Jobs panel's additive sync ------------------
+// Danny (2026-11-01): editing phone / email / address inside a JOB (the
+// Office Jobs detail panel) updates the linked client too — the
+// single-value lines (phone, email) land on the client, and a new job
+// address is APPENDED to the client's saved addresses. Unlike updateJob
+// (section 6), the appended address must NOT become primary and must
+// NOT rewrite the existing primary entry — the old address stays.
+const panelJob = await A.createJob.handler(ctx, {
+  clientId: null, clientName: "Panel Pete", clientPhone: "", clientEmail: "",
+  jobAddress: "900 Panel Dr, Tampa, FL", jobType: "Kitchen remodel", notes: "", jobDate: "2026-11-01",
+  appointmentAt: "", amountDue: "", dueDate: "", depositAmount: "", paymentNotes: "",
+});
+const panelJobRow = async () => (await db.select().from(schema.jobs).where(eq(schema.jobs.id, panelJob.id)).limit(1))[0]!;
+const peteId = (await panelJobRow()).clientId!;
+await A.appendClientAddress.handler(ctx, { clientId: peteId, address: "901 Second Dr, Tampa, FL", label: "Rental" });
+
+const sync1 = await A.updateJobClientInfo.handler(ctx, { jobId: panelJob.id, clientPhone: "(813) 555-0177", clientEmail: "pete@example.com", jobAddress: "902 New Site Rd, Tampa, FL" });
+check("panel sync: linked client reports clientSynced", sync1.clientSynced === true);
+const panelJobAfter = await panelJobRow();
+check("panel sync: job snapshot carries the edited values", panelJobAfter.clientPhone === "(813) 555-0177" && panelJobAfter.clientEmail === "pete@example.com" && panelJobAfter.jobAddress === "902 New Site Rd, Tampa, FL");
+const pete = await listed(peteId);
+check("panel sync: phone/email updated on the client", pete?.phone === "(813) 555-0177" && pete?.email === "pete@example.com");
+check("panel sync: new address APPENDED as a third, non-primary entry", pete?.addresses.length === 3 && pete?.addresses.find((a: any) => a.address === "902 New Site Rd, Tampa, FL")?.primary === false, JSON.stringify(pete?.addresses));
+check("panel sync: original primary untouched (no promotion, no rewrite)", pete?.address === "900 Panel Dr, Tampa, FL" && pete?.addresses.find((a: any) => a.primary)?.address === "900 Panel Dr, Tampa, FL");
+check("panel sync: the pre-existing second address survives", pete?.addresses.some((a: any) => a.address === "901 Second Dr, Tampa, FL"));
+
+// Re-save with a case/space variant of the same new address: no duplicate.
+await A.updateJobClientInfo.handler(ctx, { jobId: panelJob.id, clientPhone: "(813) 555-0177", clientEmail: "pete@example.com", jobAddress: "902  new site rd, Tampa, FL" });
+const peteDeduped = await listed(peteId);
+check("panel sync: re-saving the same address adds no duplicate", peteDeduped?.addresses.length === 3, JSON.stringify(peteDeduped?.addresses));
+
+// Point the job at an address the client already has saved: no dup, primary unchanged.
+await A.updateJobClientInfo.handler(ctx, { jobId: panelJob.id, clientPhone: "(813) 555-0177", clientEmail: "pete@example.com", jobAddress: "901 Second Dr, Tampa, FL" });
+const peteExisting = await listed(peteId);
+check("panel sync: job address matching a saved entry changes nothing on the client", peteExisting?.addresses.length === 3 && peteExisting?.address === "900 Panel Dr, Tampa, FL");
+
+// Unlinked job: the snapshot still saves, no client is created, clientSynced is false.
+await db.update(schema.jobs).set({ clientId: null }).where(eq(schema.jobs.id, panelJob.id));
+const clientCountBefore = (await db.select().from(schema.clients)).length;
+const syncOrphan = await A.updateJobClientInfo.handler(ctx, { jobId: panelJob.id, clientPhone: "(813) 555-0199", clientEmail: "", jobAddress: "903 Lone Way, Tampa, FL" });
+const orphanRow = await panelJobRow();
+check("panel sync: unlinked job reports clientSynced false", syncOrphan.clientSynced === false);
+check("panel sync: unlinked job snapshot still saves", orphanRow.clientPhone === "(813) 555-0199" && orphanRow.jobAddress === "903 Lone Way, Tampa, FL");
+check("panel sync: unlinked job creates no client record", (await db.select().from(schema.clients)).length === clientCountBefore);
+
+// Static guards: the Office panels are wired to the new/existing actions.
+const officeJobsSrc = await readFile("office/src/views/Jobs.tsx", "utf8");
+const officeClientsSrc = await readFile("office/src/views/Clients.tsx", "utf8");
+check("static: office Jobs panel saves contact edits via updateJobClientInfo", officeJobsSrc.includes("api.updateJobClientInfo"));
+check("static: office Clients panel adds addresses via appendClientAddress", officeClientsSrc.includes("api.appendClientAddress"));
+check("static: office Clients panel edits via saveClient", officeClientsSrc.includes("api.saveClient"));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

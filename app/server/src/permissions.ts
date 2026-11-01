@@ -205,7 +205,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "submitPlatformSupportReport", "submitSupportReport", "suggestJobsByLocation",
   "togglePhotoSocial", "togglePunchItem", "unpinTool",
   "updateDocument", "updateInvoiceDesign", "updateInvoiceDocument",
-  "updateJob", "updateJobInfo", "updateJobSiteLocation",
+  "updateJob", "updateJobClientInfo", "updateJobInfo", "updateJobSiteLocation",
   "updateOnMyWay", "updatePhoto", "updatePhotoPair",
   "updateProfileName", "updateQuoteDesign", "updateQuoteDocument",
   "uploadDocumentAttachment", "uploadJobFile", "uploadSupportScreenshot",

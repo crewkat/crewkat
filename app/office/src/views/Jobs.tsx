@@ -199,6 +199,37 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
     },
     onError: (err) => setStageNote(cleanError(err)),
   });
+  // Contact editing (Danny 2026-11-01): phone / email / job site
+  // address edit in place. The save updates the job's snapshot AND the
+  // linked client (server-side updateJobClientInfo: phone/email update
+  // on the client; the address is appended to the client's saved
+  // addresses, never replacing one).
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactAddress, setContactAddress] = useState("");
+  const [contactNote, setContactNote] = useState("");
+  const contactMutation = useMutation({
+    mutationFn: () => api.updateJobClientInfo({ jobId, clientPhone: contactPhone.trim(), clientEmail: contactEmail.trim(), jobAddress: contactAddress.trim() }),
+    onSuccess: (result) => {
+      setEditingContact(false);
+      setContactNote(result.clientSynced ? "Saved — the client record in Clients was updated too." : "Saved to this job (it has no linked client record).");
+      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      void queryClient.invalidateQueries({ queryKey: ["client"] });
+    },
+    onError: (err) => setContactNote(cleanError(err)),
+  });
+  const startContactEdit = () => {
+    const current = detailQuery.data?.job;
+    if (!current) return;
+    setContactPhone(current.clientPhone);
+    setContactEmail(current.clientEmail);
+    setContactAddress(current.jobAddress);
+    setContactNote("");
+    setEditingContact(true);
+  };
   const data = detailQuery.data;
   const job: Job | null = data?.job ?? null;
   const jobQuotes = (quotesQuery.data?.quotes ?? []).filter((q) => q.jobId === jobId);
@@ -222,9 +253,9 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
         <>
           <dl className="detail-list facts-grid">
             <div><dt>Client</dt><dd>{job.clientName || "—"}</dd></div>
-            <div><dt>Phone</dt><dd>{job.clientPhone || "—"}</dd></div>
-            <div><dt>Email</dt><dd>{job.clientEmail || "—"}</dd></div>
-            <div><dt>Address</dt><dd>{job.jobAddress || "—"}</dd></div>
+            <div><dt>Phone</dt><dd>{editingContact ? <input className="contact-input" type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Add a phone number" aria-label="Client phone" /> : (job.clientPhone || "—")}</dd></div>
+            <div><dt>Email</dt><dd>{editingContact ? <input className="contact-input" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Add an email" aria-label="Client email" /> : (job.clientEmail || "—")}</dd></div>
+            <div><dt>Address</dt><dd>{editingContact ? <input className="contact-input" value={contactAddress} onChange={(e) => setContactAddress(e.target.value)} placeholder="Job site address" aria-label="Job site address" /> : (job.jobAddress || "—")}</dd></div>
             <div><dt>Job date</dt><dd>{formatDate(job.jobDate)}</dd></div>
             {job.appointmentAt ? <div><dt>Appointment</dt><dd>{formatDate(job.appointmentAt)}</dd></div> : null}
             {job.dueDate ? <div><dt>Due date</dt><dd>{formatDate(job.dueDate)}</dd></div> : null}
@@ -232,6 +263,25 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             {job.notes ? <div className="wide"><dt>Notes</dt><dd>{job.notes}</dd></div> : null}
             {job.paymentNotes ? <div className="wide"><dt>Payment notes</dt><dd>{job.paymentNotes}</dd></div> : null}
           </dl>
+
+          <div className="contact-edit-bar">
+            {editingContact ? (
+              <>
+                <button type="button" className="btn btn-primary btn-small" disabled={contactMutation.isPending} onClick={() => contactMutation.mutate()}>
+                  {contactMutation.isPending ? "Saving…" : "Save contact info"}
+                </button>
+                <button type="button" className="btn btn-ghost btn-small" disabled={contactMutation.isPending} onClick={() => setEditingContact(false)}>Cancel</button>
+                <span className="muted small">
+                  {job.clientId
+                    ? "Saving also updates the client in Clients — a new address is added to their saved addresses, never replacing one."
+                    : "This job isn't linked to a client record, so the edit saves to the job only."}
+                </span>
+              </>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-small" onClick={startContactEdit}>✎ Edit phone, email &amp; address</button>
+            )}
+          </div>
+          {contactNote ? <p className="feed-meta block contact-note">{contactNote}</p> : null}
 
           <section className="drawer-section">
             <h3>Production stage</h3>
