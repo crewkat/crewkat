@@ -39,6 +39,11 @@
 //     job address APPENDS to the client's list without promotion or
 //     rewrite (the deliberate contrast with updateJob in section 6);
 //     unlinked jobs save snapshot-only with clientSynced: false.
+//  9. renameClient (Office Clients panel, Danny 2026-11-01): the
+//     rename updates the client record AND the clientName snapshot on
+//     every record linked by clientId (jobs, quotes, invoices,
+//     appointments, maintenance plans) in one batch; rows with a null
+//     or foreign clientId keep their name even when it matches.
 //
 // Run from app/:  bun client-addresses.behavior.test.ts
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -309,12 +314,88 @@ check("panel sync: unlinked job reports clientSynced false", syncOrphan.clientSy
 check("panel sync: unlinked job snapshot still saves", orphanRow.clientPhone === "(813) 555-0199" && orphanRow.jobAddress === "903 Lone Way, Tampa, FL");
 check("panel sync: unlinked job creates no client record", (await db.select().from(schema.clients)).length === clientCountBefore);
 
+// --- 9. renameClient: cascade by clientId link only -----------------------------------
+// Jobs are inserted directly here: createJob would upsert the client
+// (renaming traps before the rename runs) and the free-tier active-job
+// cap (3) is already nearly spent by sections 6 + 8.
+const rita = await A.saveClient.handler(ctx, { id: null, name: "Rename Rita", phone: "", email: "", address: "10 Rita Rd, Tampa, FL", addresses: [], notes: "", tags: [], referredByClientId: null });
+const oscar = await A.saveClient.handler(ctx, { id: null, name: "Other Oscar", phone: "", email: "", address: "20 Oscar Ave, Tampa, FL", addresses: [], notes: "", tags: [], referredByClientId: null });
+const insertJobRow = async (clientId: number | null, clientName: string, jobAddress: string) => (await db.insert(schema.jobs).values({
+  companyId: 1, clientId, clientName, clientPhone: "", clientEmail: "", jobAddress,
+  jobType: "Kitchen remodel", notes: "", jobDate: "2026-11-01", appointmentAt: "",
+  amountDue: "", contractSum: "", dueDate: "", depositAmount: "", paymentNotes: "",
+  createdAt: new Date(), updatedAt: new Date(),
+}).returning())[0]!;
+
+// One linked record of each cascaded kind for Rita.
+const ritaJob = await insertJobRow(rita.id, "Rename Rita", "10 Rita Rd, Tampa, FL");
+const ritaQuote = await A.saveQuote.handler(ctx, {
+  ...docFields, clientId: rita.id, clientName: "Rename Rita", jobAddress: "10 Rita Rd, Tampa, FL",
+  lineItems: line, subtotal: "500.00", total: "500.00",
+  expiryDate: "", sentAt: "", depositType: "none", depositValue: "0", materials: [],
+});
+const ritaInvoice = await A.saveInvoice.handler(ctx, {
+  ...docFields, clientId: rita.id, clientName: "Rename Rita", jobAddress: "10 Rita Rd, Tampa, FL",
+  invoiceNumber: "", quoteId: null, lineItems: line, subtotal: "500.00", total: "500.00",
+  issueDate: "2026-11-01", dueDate: "", status: "draft",
+  recurringFrequency: "none", nextDueDate: "", recurringEndDate: "",
+});
+const ritaAppt = await A.saveAppointment.handler(ctx, { id: null, jobId: null, clientId: rita.id, clientName: "Rename Rita", clientPhone: "", startsAt: "2026-11-05T09:00", notes: "" });
+const ritaPlan = await A.saveMaintenancePlan.handler(ctx, { id: null, clientId: rita.id, clientName: "Rename Rita", clientPhone: "", title: "Annual upkeep", tasks: "Inspect", startDate: "2026-11-01", intervalMonths: 12, active: true });
+
+// Traps: the same visible name with no link or a foreign link.
+const orphanJobTrap = await insertJobRow(null, "Rename Rita", "99 Orphan Ln, Tampa, FL");
+const oscarJobTrap = await insertJobRow(oscar.id, "Rename Rita", "20 Oscar Ave, Tampa, FL");
+const oscarQuoteTrap = await A.saveQuote.handler(ctx, {
+  ...docFields, clientId: oscar.id, clientName: "Rename Rita", jobAddress: "20 Oscar Ave, Tampa, FL",
+  lineItems: line, subtotal: "500.00", total: "500.00",
+  expiryDate: "", sentAt: "", depositType: "none", depositValue: "0", materials: [],
+});
+const orphanInvoiceTrap = await A.saveInvoice.handler(ctx, {
+  ...docFields, clientId: null, clientName: "Rename Rita", jobAddress: "99 Orphan Ln, Tampa, FL",
+  invoiceNumber: "", quoteId: null, lineItems: line, subtotal: "500.00", total: "500.00",
+  issueDate: "2026-11-01", dueDate: "", status: "draft",
+  recurringFrequency: "none", nextDueDate: "", recurringEndDate: "",
+});
+
+const renamed = await A.renameClient.handler(ctx, { clientId: rita.id, name: "Rita Renamed" });
+check("rename: reports one changed row per cascaded kind", renamed.jobs === 1 && renamed.quotes === 1 && renamed.invoices === 1 && renamed.appointments === 1 && renamed.maintenancePlans === 1, JSON.stringify(renamed));
+check("rename: client record carries the new name", (await clientRow(rita.id)).name === "Rita Renamed");
+check("rename: linked job snapshot updated", (await db.select().from(schema.jobs).where(eq(schema.jobs.id, ritaJob.id)).limit(1))[0]!.clientName === "Rita Renamed");
+check("rename: linked quote snapshot updated", (await db.select().from(schema.quotes).where(eq(schema.quotes.id, ritaQuote.id)).limit(1))[0]!.clientName === "Rita Renamed");
+check("rename: linked invoice snapshot updated", (await db.select().from(schema.invoices).where(eq(schema.invoices.id, ritaInvoice.id)).limit(1))[0]!.clientName === "Rita Renamed");
+check("rename: linked appointment snapshot updated", (await db.select().from(schema.appointments).where(eq(schema.appointments.id, ritaAppt.id)).limit(1))[0]!.clientName === "Rita Renamed");
+check("rename: linked maintenance plan snapshot updated", (await db.select().from(schema.maintenancePlans).where(eq(schema.maintenancePlans.id, ritaPlan.id)).limit(1))[0]!.clientName === "Rita Renamed");
+check("rename: client + records consistent in the read payloads", (await listed(rita.id))?.name === "Rita Renamed" && (await A.getClient.handler(ctx, { id: rita.id })).jobs[0]?.clientName === "Rita Renamed");
+
+// The boundary: unprovable linkage stays frozen, other clients untouched.
+check("rename: null-clientId job with the same name is untouched", (await db.select().from(schema.jobs).where(eq(schema.jobs.id, orphanJobTrap.id)).limit(1))[0]!.clientName === "Rename Rita");
+check("rename: another client's job with the same snapshot name is untouched", (await db.select().from(schema.jobs).where(eq(schema.jobs.id, oscarJobTrap.id)).limit(1))[0]!.clientName === "Rename Rita");
+check("rename: another client's quote with the same snapshot name is untouched", (await db.select().from(schema.quotes).where(eq(schema.quotes.id, oscarQuoteTrap.id)).limit(1))[0]!.clientName === "Rename Rita");
+check("rename: null-clientId invoice with the same name is untouched", (await db.select().from(schema.invoices).where(eq(schema.invoices.id, orphanInvoiceTrap.id)).limit(1))[0]!.clientName === "Rename Rita");
+check("rename: the other client's own record is untouched", (await clientRow(oscar.id)).name === "Other Oscar");
+
+// Renaming to the name already stored changes nothing and says so.
+const renamedAgain = await A.renameClient.handler(ctx, { clientId: rita.id, name: "Rita Renamed" });
+check("rename: re-rename to the same name reports zero cascaded rows", renamedAgain.jobs === 0 && renamedAgain.quotes === 0 && renamedAgain.invoices === 0 && renamedAgain.appointments === 0 && renamedAgain.maintenancePlans === 0, JSON.stringify(renamedAgain));
+// And renaming back re-cascades — counts track the actual diff, not the linkage alone.
+const renamedBack = await A.renameClient.handler(ctx, { clientId: rita.id, name: "Rename Rita" });
+check("rename: renaming back re-cascades every linked kind", renamedBack.jobs === 1 && renamedBack.quotes === 1 && renamedBack.invoices === 1 && renamedBack.appointments === 1 && renamedBack.maintenancePlans === 1, JSON.stringify(renamedBack));
+check("rename: client + job agree after the round trip", (await clientRow(rita.id)).name === "Rename Rita" && (await db.select().from(schema.jobs).where(eq(schema.jobs.id, ritaJob.id)).limit(1))[0]!.clientName === "Rename Rita");
+
+let renameThrew = false;
+try { await A.renameClient.handler(ctx, { clientId: 999999, name: "Ghost" }); } catch { renameThrew = true; }
+check("rename: unknown client throws", renameThrew);
+
 // Static guards: the Office panels are wired to the new/existing actions.
 const officeJobsSrc = await readFile("office/src/views/Jobs.tsx", "utf8");
 const officeClientsSrc = await readFile("office/src/views/Clients.tsx", "utf8");
 check("static: office Jobs panel saves contact edits via updateJobClientInfo", officeJobsSrc.includes("api.updateJobClientInfo"));
 check("static: office Clients panel adds addresses via appendClientAddress", officeClientsSrc.includes("api.appendClientAddress"));
 check("static: office Clients panel edits via saveClient", officeClientsSrc.includes("api.saveClient"));
+check("static: office Clients panel renames via renameClient", officeClientsSrc.includes("api.renameClient"));
+check("static: office Clients panel states the cascade before saving", officeClientsSrc.includes("Renaming updates this client and all their jobs, estimates, invoices and documents."));
+check("static: office Jobs panel has NO rename (name editing lives in Clients)", !officeJobsSrc.includes("renameClient"));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

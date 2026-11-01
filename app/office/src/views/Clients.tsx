@@ -148,6 +148,9 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
   // fields this panel doesn't render are sent back untouched) and
   // appendClientAddress for adds. Nothing here writes back into jobs:
   // a job keeps the contact/address snapshot it was created with.
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [nameNote, setNameNote] = useState("");
   const [editingContact, setEditingContact] = useState(false);
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -177,6 +180,35 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
     mutationFn: () => saveClientMutation.mutateAsync({ phone: contactPhone.trim(), email: contactEmail.trim() }),
     onSuccess: () => { setEditingContact(false); setContactNote("Saved."); invalidateClient(); },
   });
+  // Rename (Danny 2026-11-01): the name edit goes through renameClient,
+  // NOT saveClient — renaming cascades to the clientName snapshot on
+  // every record linked to this client (jobs, estimates, invoices,
+  // appointments, maintenance plans), so the panel says what was
+  // updated from the counts the action returns.
+  const renameSave = useMutation({
+    mutationFn: () => api.renameClient({ clientId: c.id, name: nameValue.trim() }),
+    onSuccess: (result) => {
+      setEditingName(false);
+      const parts: string[] = [];
+      const add = (count: number, one: string, many: string) => { if (count > 0) parts.push(`${count} ${count === 1 ? one : many}`); };
+      add(result.jobs, "job", "jobs");
+      add(result.quotes, "estimate", "estimates");
+      add(result.invoices, "invoice", "invoices");
+      add(result.appointments, "appointment", "appointments");
+      add(result.maintenancePlans, "maintenance plan", "maintenance plans");
+      setNameNote(parts.length > 0 ? `Renamed — also updated on ${parts.join(", ")}.` : "Renamed.");
+      invalidateClient();
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (err) => setNameNote(cleanError(err)),
+  });
+  const startNameEdit = () => {
+    setNameValue(c.name);
+    setNameNote("");
+    setEditingName(true);
+  };
   const appendAddressMutation = useMutation({
     mutationFn: () => api.appendClientAddress({ clientId: c.id, address: newAddress.trim(), label: "" }),
     onSuccess: () => { setNewAddress(""); setAddressNote("Address added to the saved list."); invalidateClient(); },
@@ -202,11 +234,30 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
     <aside className="panel detail-panel">
       <div className="drawer-head">
         <div>
-          <h2>{c.name}</h2>
+          {editingName ? (
+            <input className="contact-input name-input" value={nameValue} onChange={(e) => setNameValue(e.target.value)} placeholder="Client name" aria-label="Client name" autoFocus />
+          ) : (
+            <h2>{c.name}</h2>
+          )}
           <span className="drawer-sub">Client since {formatDate(c.createdAt)}</span>
         </div>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
       </div>
+
+      <div className="contact-edit-bar">
+        {editingName ? (
+          <>
+            <button type="button" className="btn btn-primary btn-small" disabled={!nameValue.trim() || renameSave.isPending} onClick={() => renameSave.mutate()}>
+              {renameSave.isPending ? "Saving…" : "Save name"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" disabled={renameSave.isPending} onClick={() => setEditingName(false)}>Cancel</button>
+            <span className="muted small">Renaming updates this client and all their jobs, estimates, invoices and documents.</span>
+          </>
+        ) : (
+          <button type="button" className="btn btn-ghost btn-small" onClick={startNameEdit}>✎ Edit name</button>
+        )}
+      </div>
+      {nameNote ? <p className="feed-meta block contact-note">{nameNote}</p> : null}
 
       <dl className="detail-list">
         <div><dt>Phone</dt><dd>{editingContact ? <input className="contact-input" type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Add a phone number" aria-label="Client phone" /> : (c.phone || "—")}</dd></div>

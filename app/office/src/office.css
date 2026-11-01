@@ -392,6 +392,10 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .contact-input:focus, .address-add input:focus { border-color: var(--navy-700); box-shadow: 0 0 0 3px rgba(18, 57, 92, 0.12); }
+/* The Clients panel name edit swaps the drawer-head h2 for an input
+   (renameClient cascade, Danny 2026-11-01): size it like the heading
+   it replaces instead of a full-width form field. */
+.name-input { width: 260px; max-width: 100%; font-size: 17px; font-weight: 600; padding: 5px 10px; }
 .contact-edit-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
 .contact-note { margin: 2px 0 10px; }
 .address-add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }

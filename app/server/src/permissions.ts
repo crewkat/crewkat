@@ -190,7 +190,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "listPunchItems", "listQuotes", "logAutomationSend",
   "markJobMessagesRead", "markNotificationsRead", "marketplaceGate",
   "marketplaceListingFlag", "pendingCancellationFeedback", "pinTool",
-  "removePushSubscription", "renderPdfPreview", "replyToOwnSupportReport",
+  "removePushSubscription", "renameClient", "renderPdfPreview", "replyToOwnSupportReport",
   "requestAccountDeletion", "revokeDocumentLink", "revokeOnMyWay",
   "saveAppointment", "saveCertificate", "saveClient",
   "saveCrewTask", "saveDailyLog", "saveDocument",
