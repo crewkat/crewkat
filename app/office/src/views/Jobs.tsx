@@ -199,6 +199,21 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
     },
     onError: (err) => setStageNote(cleanError(err)),
   });
+  // Manual review request (Danny 2026-11-01): one-click send for a
+  // completed job, sharing the automation's exactly-once record; Resend
+  // is the explicit override. State comes back on getJob as
+  // reviewRequestedAt (the shared automation_logs record).
+  const [reviewNote, setReviewNote] = useState("");
+  const reviewMutation = useMutation({
+    mutationFn: (resend: boolean) => api.sendReviewRequest({ jobId, resend }),
+    onSuccess: (result) => {
+      setReviewNote(result.emailed ? "Review request emailed to the client." : "A review request already went out for this job.");
+      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["job-timeline", jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["production-board"] });
+    },
+    onError: (err) => setReviewNote(cleanError(err)),
+  });
   // Contact editing (Danny 2026-11-01): phone / email / job site
   // address edit in place. The save updates the job's snapshot AND the
   // linked client (server-side updateJobClientInfo: phone/email update
@@ -299,6 +314,27 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
           </section>
 
           <PortalLinkPanel jobId={job.id} />
+
+          {job.completedAt ? (
+            <section className="drawer-section">
+              <h3>Review request</h3>
+              {data?.reviewRequestedAt ? (
+                <>
+                  <p className="feed-meta block">★ Review requested · {formatDate(data.reviewRequestedAt)}</p>
+                  <button type="button" className="btn btn-ghost btn-small" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate(true)}>
+                    {reviewMutation.isPending ? "Sending…" : "Resend review request"}
+                  </button>
+                </>
+              ) : job.clientEmail ? (
+                <button type="button" className="btn btn-primary btn-small" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate(false)}>
+                  {reviewMutation.isPending ? "Sending…" : "Send review request"}
+                </button>
+              ) : (
+                <p className="muted small">Add the client's email above (Edit phone, email &amp; address) to send a review request.</p>
+              )}
+              {reviewNote ? <p className="feed-meta block">{reviewNote}</p> : null}
+            </section>
+          ) : null}
 
           <section className="drawer-section">
             <h3>Amounts</h3>

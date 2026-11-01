@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api";
 import type { BoardJob, ProductionStage } from "../types";
 import { PRODUCTION_STAGES, PRODUCTION_STAGE_LABELS } from "../types";
-import { cleanError, formatMoney, parseMoney } from "../utils";
+import { cleanError, formatDate, formatMoney, parseMoney } from "../utils";
 
 /**
  * Wave 1: the Production Board — every job as a card in its production
@@ -34,6 +34,17 @@ export function ProductionBoard({ onOpenJob }: { onOpenJob: (jobId: number) => v
     onError: (err) => { setBoardError(cleanError(err)); invalidate(); },
     onSuccess: (result) => {
       if (result.reviewFollowUp === "emailed") setBoardError("");
+      invalidate();
+    },
+  });
+
+  // Manual review request from a Complete / Paid in Full card — the same
+  // shared exactly-once record the automation and the job panel use.
+  const reviewMutation = useMutation({
+    mutationFn: (jobId: number) => api.sendReviewRequest({ jobId, resend: false }),
+    onError: (err) => setBoardError(cleanError(err)),
+    onSuccess: (result) => {
+      if (!result.emailed) setBoardError("A review request already went out for that job.");
       invalidate();
     },
   });
@@ -116,6 +127,17 @@ export function ProductionBoard({ onOpenJob }: { onOpenJob: (jobId: number) => v
                       ) : <span className="lead-value muted">—</span>}
                       <BudgetChip job={job} />
                     </div>
+                    {job.productionStage === "complete" || job.productionStage === "paid_in_full" ? (
+                      <div className="lead-card-meta">
+                        {job.reviewRequestedAt ? (
+                          <span className="budget-chip" title={`Review requested ${formatDate(job.reviewRequestedAt)}`}>★ Review requested</span>
+                        ) : (
+                          <button type="button" className="btn btn-ghost btn-small" disabled={reviewMutation.isPending} onClick={(e) => { e.stopPropagation(); reviewMutation.mutate(job.id); }}>
+                            Send review request
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>

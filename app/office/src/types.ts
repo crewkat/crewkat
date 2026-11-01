@@ -134,6 +134,7 @@ export interface BoardJob {
   lastActivityAt: string;
   idleDays: number;
   stuck: boolean;
+  reviewRequestedAt: string | null;
 }
 
 export interface FollowUpItem {
@@ -307,7 +308,7 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "money" | "settings" | "team" | "admin";
+export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "promotions" | "money" | "settings" | "team" | "admin";
 
 /* ---------- Schedule (Track 1b) ----------
    Mirrors the server appointmentSchema — the same records the phone
