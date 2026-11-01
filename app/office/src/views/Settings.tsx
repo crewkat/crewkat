@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { cleanError } from "../utils";
+import { cleanError, formatCents, formatDate } from "../utils";
 
 type SettingsData = Awaited<ReturnType<typeof api.getSettings>>;
 
@@ -123,8 +123,84 @@ export function SettingsView({ canManage = false }: { canManage?: boolean }) {
         ) : null}
       </section>
 
+      <BillingSection />
+
       <AutomationsSection canManage={canManage} />
     </div>
+  );
+}
+
+/**
+ * Plan & billing (moved here from the Money page, Danny 2026-11-01) —
+ * the same read-only block: plan name/status, billed-through, and the
+ * billing payment history from getBillingOverview. No checkout, no
+ * portal session, no Stripe writes: subscription changes stay with
+ * the provider / phone app, exactly as before.
+ */
+function BillingSection() {
+  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
+  const billing = billingQuery.data;
+  const plan = billing?.plan;
+  const isFounder = plan?.status === "founder" || plan?.status === "founding_member";
+  const planLabel = !plan ? "" : isFounder ? "Founder plan" : plan.tier === "premium" ? "Crewkat Premium" : "Free plan";
+  const periodEnd = plan?.currentPeriodEnd ? formatDate(plan.currentPeriodEnd) : null;
+
+  return (
+    <section className="panel settings-panel">
+      <div className="panel-head"><h2>Plan & billing</h2></div>
+      {billingQuery.isLoading ? <p className="muted">Loading plan…</p> : null}
+      {billingQuery.isError ? (
+        <div className="empty-state small">
+          <div className="empty-icon">◍</div>
+          <p>Couldn't load billing.</p>
+          <button type="button" className="btn btn-primary" onClick={() => void billingQuery.refetch()}>Try again</button>
+        </div>
+      ) : null}
+      {plan ? (
+        <>
+          <p className="plan-name">{planLabel}</p>
+          <dl className="detail-list">
+            <div><dt>Status</dt><dd>{plan.status || "—"}</dd></div>
+            {periodEnd ? <div><dt>{plan.cancelAtPeriodEnd ? "Ends" : "Renews"}</dt><dd>{periodEnd}</dd></div> : null}
+            <div>
+              <dt>Billed through</dt>
+              <dd>{plan.provider === "stripe" ? "Stripe" : plan.provider === "play" ? "Google Play" : isFounder ? "— (founder plan, no billing)" : "Set up by the Crewkat team"}</dd>
+            </div>
+          </dl>
+          <p className="muted small">
+            {plan.provider === "play"
+              ? "Manage or cancel this subscription in the Play Store app."
+              : "To change plans or payment methods, use Billing in the Crewkat phone app — Office shows the state only."}
+          </p>
+        </>
+      ) : null}
+
+      <h3 className="day-section-title">Billing payment history</h3>
+      {billing && billing.payments.length === 0 ? <p className="muted">No billing payments yet.</p> : null}
+      {billing && billing.payments.length > 0 ? (
+        <ul className="link-list static">
+          {billing.payments.map((p) => {
+            const row = (
+              <>
+                <span>{p.description}</span>
+                <span className="feed-meta">
+                  {formatDate(p.date)} · {p.source === "subscription" ? "Subscription" : "Promotion"}
+                  {p.status && p.status !== "paid" && p.status !== "completed" ? ` · ${p.status}` : ""}
+                  {p.amountCents !== null ? ` · ${formatCents(p.amountCents, p.currency)}` : ""}
+                </span>
+              </>
+            );
+            return (
+              <li key={p.id}>
+                {p.receiptUrl ? (
+                  <a className="billing-receipt-link" href={p.receiptUrl} target="_blank" rel="noopener noreferrer">{row}</a>
+                ) : row}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

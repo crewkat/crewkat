@@ -42,7 +42,7 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "documents", label: "Documents", icon: "📄" },
   { key: "schedule", label: "Schedule", icon: "📅" },
   { key: "marketplace", label: "Marketplace", icon: "🏪" },
-  { key: "money", label: "Money & billing", icon: "$" },
+  { key: "money", label: "Money", icon: "$" },
   { key: "settings", label: "Settings", icon: "⚙" },
   // Track 1c: Team is Admin-only — filtered out of the nav for other
   // roles below (cosmetic; the server gates the team actions regardless).
