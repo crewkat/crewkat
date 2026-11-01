@@ -27,6 +27,7 @@ import { JobsView } from "./views/Jobs";
 import { MarketplaceView } from "./views/Marketplace";
 import { MoneyView } from "./views/Money";
 import { PromotionsView } from "./views/Promotions";
+import { ReputationView } from "./views/Reputation";
 import { PipelineView } from "./views/Pipeline";
 import { ScheduleView } from "./views/Schedule";
 import { SettingsView } from "./views/Settings";
@@ -44,6 +45,7 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
   { key: "marketplace", label: "Marketplace", icon: "🏪" },
   { key: "promotions", label: "Promotions", icon: "✉" },
+  { key: "reputation", label: "Reputation", icon: "★" },
   { key: "money", label: "Money", icon: "$" },
   { key: "settings", label: "Settings", icon: "⚙" },
   // Track 1c: Team is Admin-only — filtered out of the nav for other
@@ -270,6 +272,7 @@ export function App() {
           {view === "schedule" ? <ScheduleView onOpenJob={openJob} canDelete={user.teamRole === "admin"} /> : null}
           {view === "marketplace" ? <MarketplaceView /> : null}
           {view === "promotions" ? <PromotionsView canSend={user.teamRole === "admin"} /> : null}
+          {view === "reputation" ? <ReputationView canDelete={user.teamRole === "admin"} /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} userName={user.name} seeMoney={user.access.seeMoney} /> : null}
           {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}

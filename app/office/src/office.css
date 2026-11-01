@@ -945,3 +945,7 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .promo-cta { display: inline-block; background: var(--navy-800); color: #fff; font-weight: 700; font-size: 14px; padding: 10px 18px; border-radius: 8px; margin: 6px 0 12px; }
 .promo-foot { border-top: 1px solid var(--line-soft); padding-top: 10px; font-size: 12px !important; color: var(--muted) !important; }
 @media (max-width: 1100px) { .promo-grid { grid-template-columns: 1fr; } .promo-preview { position: static; } .promo-modes { grid-template-columns: 1fr; } }
+
+/* Reputation inbox (Wave 2 item 9) */
+.review-text { display: block; margin-top: 2px; color: var(--ink-2, #444); font-size: 13px; }
+.chip.ok { background: #e7f4ec; color: #1f5a4a; border-color: #bfe0cd; }

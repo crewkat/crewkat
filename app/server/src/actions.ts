@@ -6883,6 +6883,118 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   }),
 
   // ---------------------------------------------------------------------
+  // Wave 2 Item 9: reputation inbox. Requests derive from the shared
+  // review record (automation_logs kind "review" — written by the
+  // automation, the scheduler, and manual sends alike). Posted reviews
+  // are captured manually until the business's Google account is
+  // connected (Business Profile API) — googleConnected stays false
+  // and no feed is faked.
+  // ---------------------------------------------------------------------
+  getReputationInbox: defineAction({
+    request: z.object({}),
+    response: z.object({
+      googleConnected: z.boolean(),
+      requests: z.array(z.object({
+        logId: z.number(),
+        jobId: z.number(),
+        jobTitle: z.string(),
+        clientId: z.number().nullable(),
+        clientName: z.string(),
+        stageTitle: z.string(),
+        sentAt: z.string(),
+        posted: z.boolean(),
+        reviewId: z.number().nullable(),
+      })),
+      reviews: z.array(z.object({
+        id: z.number(),
+        jobId: z.number().nullable(),
+        clientId: z.number().nullable(),
+        clientName: z.string(),
+        rating: z.number(),
+        text: z.string(),
+        reviewDate: z.string(),
+        source: z.string(),
+      })),
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const logs = await db.select().from(schema.automationLogs).where(and(eq(schema.automationLogs.companyId, companyId), eq(schema.automationLogs.kind, "review"))).orderBy(desc(schema.automationLogs.sentAt)).limit(200);
+      const reviewRows = await db.select().from(schema.clientReviews).where(eq(schema.clientReviews.companyId, companyId)).orderBy(desc(schema.clientReviews.reviewDate));
+      const reviewByJob = new Map<number, typeof schema.clientReviews.$inferSelect>();
+      for (const r of reviewRows) if (r.jobId != null && !reviewByJob.has(r.jobId)) reviewByJob.set(r.jobId, r);
+      const jobIds = [...new Set(logs.map((l) => l.entityId))];
+      const jobRows = jobIds.length ? await db.select({ id: schema.jobs.id, jobType: schema.jobs.jobType, clientName: schema.jobs.clientName, clientId: schema.jobs.clientId }).from(schema.jobs).where(inArray(schema.jobs.id, jobIds)) : [];
+      const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      const seenJobs = new Set<number>();
+      const requests = [];
+      for (const log of logs) {
+        if (seenJobs.has(log.entityId)) continue; // latest request per job
+        seenJobs.add(log.entityId);
+        const job = jobById.get(log.entityId);
+        const posted = reviewByJob.get(log.entityId);
+        requests.push({
+          logId: log.id,
+          jobId: log.entityId,
+          jobTitle: job?.jobType || `Job #${log.entityId}`,
+          clientId: job?.clientId ?? null,
+          clientName: job?.clientName ?? "",
+          stageTitle: log.stage,
+          sentAt: log.sentAt.toISOString(),
+          posted: !!posted,
+          reviewId: posted?.id ?? null,
+        });
+      }
+      return {
+        googleConnected: false,
+        requests,
+        reviews: reviewRows.map((r) => ({ id: r.id, jobId: r.jobId, clientId: r.clientId, clientName: r.clientName, rating: r.rating, text: r.text, reviewDate: r.reviewDate, source: r.source })),
+      };
+    },
+  }),
+  recordPostedReview: defineAction({
+    request: z.object({
+      jobId: z.number().int().positive().nullable().default(null),
+      clientId: z.number().int().positive().nullable().default(null),
+      clientName: z.string().trim().max(160).default(""),
+      rating: z.number().int().min(1).max(5),
+      text: z.string().trim().max(4000).default(""),
+      reviewDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      source: z.enum(["manual", "google"]).default("manual"),
+    }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      let clientName = args.clientName;
+      let clientId = args.clientId;
+      if (args.jobId) {
+        const job = (await db.select({ clientName: schema.jobs.clientName, clientId: schema.jobs.clientId, companyId: schema.jobs.companyId }).from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
+        if (!job || job.companyId !== companyId) throw new Error("Job not found.");
+        if (!clientName) clientName = job.clientName;
+        if (clientId == null) clientId = job.clientId;
+      }
+      if (!clientName) throw new Error("A client name is required.");
+      const rows = await db.insert(schema.clientReviews).values({ companyId, jobId: args.jobId, clientId, clientName, rating: args.rating, text: args.text, reviewDate: args.reviewDate, source: args.source }).returning({ id: schema.clientReviews.id });
+      const made = rows[0];
+      if (!made) throw new Error("Could not save the review.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+  deletePostedReview: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      await db.delete(schema.clientReviews).where(and(eq(schema.clientReviews.id, args.id), eq(schema.clientReviews.companyId, companyId)));
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+
+  // ---------------------------------------------------------------------
   // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
   // Settings; payment starts from the public portal / invoice links
   // (PUBLIC_ACTIONS below) and lands via handleStripeWebhook.
