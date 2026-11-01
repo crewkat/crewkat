@@ -222,11 +222,11 @@ check("automation firings land on the job timeline events", automationEvents.som
 
 // --- 10. Recipe switches -------------------------------------------------------------------------
 const settings0 = await A.getAutomationSettings.handler(ctx, { _sessionToken: officeToken });
-check("recipes default to on", settings0.recipes.length === 5 && settings0.recipes.every((r: any) => r.enabled === true), JSON.stringify(settings0.recipes.map((r: any) => r.enabled)));
+check("recipes default to on", settings0.recipes.length === 6 && settings0.recipes.every((r: any) => r.enabled === true), JSON.stringify(settings0.recipes.map((r: any) => r.enabled)));
 await checkThrows("office cannot change recipe switches", () => A.updateAutomationSettings.handler(ctx, { _sessionToken: officeToken, recipes: { proposal_follow_up: false } }));
 await A.updateAutomationSettings.handler(ctx, { _sessionToken: ownerToken, recipes: { proposal_follow_up: false } });
 const settings1 = await A.getAutomationSettings.handler(ctx, { _sessionToken: ownerToken });
-check("switch persists", settings1.recipes.find((r: any) => r.key === "proposal_follow_up")?.enabled === false && settings1.recipes.filter((r: any) => r.enabled).length === 4);
+check("switch persists", settings1.recipes.find((r: any) => r.key === "proposal_follow_up")?.enabled === false && settings1.recipes.filter((r: any) => r.enabled).length === 5);
 const quote3 = await A.saveQuote.handler(ctx, { _sessionToken: ownerToken, ...docFields, clientId: null, clientName: "Board Client", jobAddress: "9 Board Way", lineItems: line, subtotal: "4000.00", total: "4000.00", expiryDate: "", sentAt: "", depositType: "none", depositValue: "0", materials: [] });
 await A.sendQuoteVersion.handler(ctx, { _sessionToken: ownerToken, id: quote3.id });
 const proposalTasks3 = await db.select().from(schema.followUps).where(eq(schema.followUps.recipe, "proposal_follow_up"));

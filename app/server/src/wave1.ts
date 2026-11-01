@@ -164,6 +164,7 @@ export async function createFollowUp(db: Db, args: FollowUpInput): Promise<numbe
 
 export type AutomationRecipeKey =
   | "proposal_follow_up"
+  | "hot_proposal"
   | "contract_welcome"
   | "job_review"
   | "invoice_overdue"
@@ -174,6 +175,11 @@ export const AUTOMATION_RECIPES: Array<{ key: AutomationRecipeKey; label: string
     key: "proposal_follow_up",
     label: "Estimate follow-up",
     description: "When an estimate is sent, queue a follow-up task due in 2 days so no proposal goes unanswered.",
+  },
+  {
+    key: "hot_proposal",
+    label: "Hot proposal alert",
+    description: "When a client opens the same estimate, contract, or change order a second time, queue a follow-up so the office can call while it's top of mind.",
   },
   {
     key: "contract_welcome",

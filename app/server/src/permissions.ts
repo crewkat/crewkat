@@ -147,7 +147,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "generateCampaignContent", "previewCampaignRecipients", "uploadCampaignImage",
   // Wave 2 Item 6: Pay Now setup state, status refresh, and the
   // online-payment attempts list (Money visibility).
-  "getPaymentsSetup", "refreshConnectStatus", "listInvoicePaymentAttempts",
+  "getPaymentsSetup", "refreshConnectStatus", "listInvoicePaymentAttempts", "getProposalAnalytics",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

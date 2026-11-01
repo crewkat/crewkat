@@ -6237,6 +6237,32 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       await db.update(schema.documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(schema.documentLinks.id, link.id));
     }
     await db.insert(schema.documentLinkEvents).values({ linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    // Wave 2 item 8 (hot proposal): the SECOND open of the same
+    // estimate/contract/change order across all its links queues one
+    // follow-up (deduped by sourceKey) when the recipe is on.
+    // Best-effort — analytics never block the client's page.
+    if (link.documentKind === "quote" || link.documentKind === "contract" || link.documentKind === "change_order") {
+      try {
+        const siblings = await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.companyId, link.companyId), eq(schema.documentLinks.documentKind, link.documentKind), eq(schema.documentLinks.documentId, link.documentId)));
+        const views = (await db.select({ id: schema.documentLinkEvents.id }).from(schema.documentLinkEvents).where(and(eq(schema.documentLinkEvents.eventType, "view"), inArray(schema.documentLinkEvents.linkId, siblings.map((l) => l.id))))).length;
+        if (views === 2 && (await automationEnabled(db, link.companyId, "hot_proposal"))) {
+          let hotJobId: number | null = null;
+          let hotClientId: number | null = null;
+          if (link.documentKind === "quote") {
+            const q = (await db.select({ jobId: schema.quotes.jobId, clientId: schema.quotes.clientId }).from(schema.quotes).where(eq(schema.quotes.id, link.documentId)).limit(1))[0];
+            hotJobId = q?.jobId ?? null;
+            hotClientId = q?.clientId ?? null;
+          } else {
+            const d = (await db.select({ jobId: schema.documents.jobId }).from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
+            hotJobId = d?.jobId ?? null;
+          }
+          const kindLabel = link.documentKind === "quote" ? "estimate" : link.documentKind === "contract" ? "contract" : "change order";
+          const who = payload.clientName.trim() || "The client";
+          await createFollowUp(db, { companyId: link.companyId, title: `Hot proposal: ${who} opened the ${kindLabel} again`, body: `${who} has now opened this ${kindLabel} twice — a good moment to call while it's top of mind.`, dueDate: todayKey(now), source: "automation", sourceKey: `hot-proposal:${link.documentKind}:${link.documentId}`, recipe: "hot_proposal", jobId: hotJobId, clientId: hotClientId });
+          if (hotJobId) await recordJobEvent(db, { companyId: link.companyId, jobId: hotJobId, kind: "automation", title: "Hot proposal alert queued", body: `${who} opened the ${kindLabel} a second time.`, userId: null });
+        }
+      } catch { /* best-effort */ }
+    }
     if (notifyView && link.documentKind === "invoice") await notifyCompanyEvent(ctx, link.companyId, "notifyInvoiceViewed", "document-viewed", `Client viewed invoice #${payload.documentId}`, "Un cliente vio tu factura", `invoice:${payload.documentId}`);
     if (notifyView && link.documentKind === "quote") await notifyCompanyEvent(ctx, link.companyId, "notifyEstimateViewed", "document-viewed", `Client viewed estimate #${payload.documentId}`, "Un cliente vio tu estimado", `quote:${payload.documentId}`);
     if (claimedFirstDocView) {
@@ -6742,6 +6768,120 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       return { ok: true, sent, failed, total: resolved.recipients.length };
     },
   }),
+  // ---------------------------------------------------------------------
+  // Wave 2 Item 8: proposal analytics — per-document engagement from
+  // the link view events: sent → first opened → view count → signed.
+  // Only facts the events support: quote acceptance carries no
+  // timestamp in the schema, so signedAt stays null for quotes rather
+  // than inventing one.
+  // ---------------------------------------------------------------------
+  getProposalAnalytics: defineAction({
+    request: z.object({}),
+    response: z.object({
+      items: z.array(z.object({
+        kind: z.enum(["quote", "contract", "change_order"]),
+        documentId: z.number(),
+        title: z.string(),
+        clientName: z.string(),
+        jobId: z.number().nullable(),
+        sentAt: z.string().nullable(),
+        firstViewedAt: z.string().nullable(),
+        viewCount: z.number(),
+        lastViewedAt: z.string().nullable(),
+        views: z.array(z.string()),
+        signed: z.boolean(),
+        signedAt: z.string().nullable(),
+      })),
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const quoteRows = await db.select().from(schema.quotes).where(eq(schema.quotes.companyId, companyId)).orderBy(desc(schema.quotes.updatedAt)).limit(150);
+      const docRows = await db.select().from(schema.documents).where(and(eq(schema.documents.companyId, companyId), inArray(schema.documents.kind, ["contract", "change_order"]))).orderBy(desc(schema.documents.createdAt)).limit(150);
+      const docJobIds = [...new Set(docRows.map((d) => d.jobId))];
+      const docJobs = docJobIds.length ? await db.select({ id: schema.jobs.id, clientName: schema.jobs.clientName }).from(schema.jobs).where(inArray(schema.jobs.id, docJobIds)) : [];
+      const docClientName = new Map(docJobs.map((j) => [j.id, j.clientName]));
+      type Target = { kind: "quote" | "contract" | "change_order"; id: number };
+      const targets: Target[] = [
+        ...quoteRows.map((q) => ({ kind: "quote" as const, id: q.id })),
+        ...docRows.map((d) => ({ kind: d.kind as "contract" | "change_order", id: d.id })),
+      ];
+      const targetKeys = new Set(targets.map((t) => `${t.kind}:${t.id}`));
+      const links = targets.length
+        ? await db.select().from(schema.documentLinks).where(and(eq(schema.documentLinks.companyId, companyId), inArray(schema.documentLinks.documentId, targets.map((t) => t.id)))).orderBy(asc(schema.documentLinks.createdAt))
+        : [];
+      const linkByKey = new Map<string, Array<typeof schema.documentLinks.$inferSelect>>();
+      for (const link of links) {
+        const key = `${link.documentKind}:${link.documentId}`;
+        if (!targetKeys.has(key)) continue;
+        const arr = linkByKey.get(key) ?? [];
+        arr.push(link);
+        linkByKey.set(key, arr);
+      }
+      const allLinkIds = [...linkByKey.values()].flat().map((l) => l.id);
+      const events = allLinkIds.length
+        ? await db.select().from(schema.documentLinkEvents).where(and(eq(schema.documentLinkEvents.eventType, "view"), inArray(schema.documentLinkEvents.linkId, allLinkIds))).orderBy(asc(schema.documentLinkEvents.occurredAt))
+        : [];
+      const viewsByLink = new Map<number, string[]>();
+      for (const e of events) {
+        const arr = viewsByLink.get(e.linkId) ?? [];
+        arr.push(e.occurredAt.toISOString());
+        viewsByLink.set(e.linkId, arr);
+      }
+      const statsFor = (kind: string, id: number) => {
+        const docLinks = linkByKey.get(`${kind}:${id}`) ?? [];
+        const views = docLinks.flatMap((l) => viewsByLink.get(l.id) ?? []).sort();
+        const linkFirsts = docLinks.map((l) => l.firstViewedAt?.toISOString() ?? null).filter((v): v is string => !!v).sort();
+        return {
+          firstLinkAt: docLinks[0]?.createdAt.toISOString() ?? null,
+          firstViewedAt: views[0] ?? linkFirsts[0] ?? null,
+          viewCount: views.length,
+          lastViewedAt: views[views.length - 1] ?? null,
+          views: views.slice(-50),
+        };
+      };
+      type AnalyticsItem = { kind: "quote" | "contract" | "change_order"; documentId: number; title: string; clientName: string; jobId: number | null; sentAt: string | null; firstViewedAt: string | null; viewCount: number; lastViewedAt: string | null; views: string[]; signed: boolean; signedAt: string | null };
+      const items: AnalyticsItem[] = [
+        ...quoteRows.map((q) => {
+          const s = statsFor("quote", q.id);
+          return {
+            kind: "quote" as const,
+            documentId: q.id,
+            title: `Estimate #${q.id}`,
+            clientName: q.clientName,
+            jobId: q.jobId,
+            sentAt: q.sentAt || s.firstLinkAt,
+            firstViewedAt: s.firstViewedAt,
+            viewCount: s.viewCount,
+            lastViewedAt: s.lastViewedAt,
+            views: s.views,
+            signed: q.accepted === true || q.automationStatus === "won",
+            signedAt: null as string | null,
+          };
+        }),
+        ...docRows.map((d) => {
+          const s = statsFor(d.kind, d.id);
+          return {
+            kind: d.kind as "contract" | "change_order",
+            documentId: d.id,
+            title: d.title || (d.kind === "contract" ? "Contract" : "Change order"),
+            clientName: docClientName.get(d.jobId) ?? "",
+            jobId: d.jobId,
+            sentAt: s.firstLinkAt,
+            firstViewedAt: s.firstViewedAt,
+            viewCount: s.viewCount,
+            lastViewedAt: s.lastViewedAt,
+            views: s.views,
+            signed: !!(d.clientSignedAt || d.signedAt),
+            signedAt: d.clientSignedAt ? d.clientSignedAt.toISOString() : d.signedAt ? d.signedAt.toISOString() : null,
+          };
+        }),
+      ].filter((i) => i.sentAt || i.viewCount > 0);
+      items.sort((a, b) => (b.lastViewedAt ?? b.sentAt ?? "").localeCompare(a.lastViewedAt ?? a.sentAt ?? ""));
+      return { items };
+    },
+  }),
+
   // ---------------------------------------------------------------------
   // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
   // Settings; payment starts from the public portal / invoice links

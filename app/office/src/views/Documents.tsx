@@ -95,6 +95,7 @@ export function DocumentsView({
   const [contractTarget, setContractTarget] = useState<ContractEditorTarget | null>(null);
 
   const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
+  const analyticsQuery = useQuery({ queryKey: ["proposal-analytics"], queryFn: () => api.getProposalAnalytics({}) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const docsQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const jobsQuery = useQuery({ queryKey: ["jobs", ""], queryFn: () => api.listJobs({ search: "" }) });
@@ -183,6 +184,26 @@ export function DocumentsView({
           <button type="button" className="btn btn-ghost" onClick={() => setContractTarget({ mode: "create", kind: "change_order" })}>+ Change order</button>
         </div>
       </div>
+
+      {(analyticsQuery.data?.items ?? []).some((i) => i.viewCount > 0) ? (
+        <section className="panel doc-engagement">
+          <div className="panel-head"><h2>Proposal engagement</h2><span className="muted small">Sent → opened → views → signed, from the client links</span></div>
+          <ul className="link-list static">
+            {(analyticsQuery.data?.items ?? []).filter((i) => i.viewCount > 0).slice(0, 8).map((i) => (
+              <li key={`${i.kind}-${i.documentId}`}>
+                <span>{i.title} · {i.clientName}</span>
+                <span className="feed-meta">
+                  Sent {i.sentAt ? formatDate(i.sentAt.slice(0, 10)) : "—"}
+                  {" → "}Opened {i.firstViewedAt ? formatDate(i.firstViewedAt.slice(0, 10)) : "—"}
+                  {` → ${i.viewCount} view${i.viewCount === 1 ? "" : "s"}`}
+                  {i.signed ? ` → Signed${i.signedAt ? ` ${formatDate(i.signedAt.slice(0, 10))}` : ""}` : ""}
+                  {i.viewCount >= 2 && !i.signed ? " · 🔥 hot" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="doc-filter-row">
         <div className="segmented" role="group" aria-label="Type filter">
