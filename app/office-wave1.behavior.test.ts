@@ -43,7 +43,7 @@ const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
 check("newest migration tag is 0092_promotions", last.tag === "0092_promotions", last.tag);
-check("newest migration idx is 90", last.idx === 90, String(last.idx));
+check("newest migration idx is 91", last.idx === 91, String(last.idx));
 
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-wave1-"));
 const sqlite = createClient({ url: `file:${join(dir, "app.db")}` });
