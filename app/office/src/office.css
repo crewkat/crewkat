@@ -690,6 +690,12 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   .money-stats { grid-template-columns: repeat(2, 1fr); }
   .chart-bar { width: 8px; }
 }
+/* Settings consolidation (Danny 2026-11-01) */
+.settings-group-head { margin: 18px 0 10px; }
+.settings-group-head h2 { font-size: 16px; margin: 0; color: var(--navy-900); }
+.accent-input-row { display: flex; gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; }
+.accent-input-row input[type="color"] { width: 44px; height: 36px; padding: 2px; flex: none; cursor: pointer; }
+.accent-input-row input:not([type="color"]) { flex: 1; }
 .plan-name { font-size: 20px; font-weight: 800; color: var(--navy-900); margin: 0 0 10px; }
 .billing-receipt-link { display: flex; flex-direction: column; gap: 1px; font-weight: 600; color: inherit; text-decoration: none; }
 .billing-receipt-link:hover { color: var(--accent-dark); }

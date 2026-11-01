@@ -1,19 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { cleanError, formatCents, formatDate } from "../utils";
+import { cleanError, downloadBase64, formatCents, formatDate, formatMoney } from "../utils";
 
 type SettingsData = Awaited<ReturnType<typeof api.getSettings>>;
+/** The full company settings record minus the logo/cover URLs (those are
+ *  display-only here). Office edits this SAME record through the SAME
+ *  updateSettings action the phone app uses — one source of truth. */
+type SettingsRecord = Omit<SettingsData, "logoUrl" | "coverUrl">;
 
-/** The company-profile basics Office edits; everything else round-trips
- *  unchanged through updateSettings so no phone-side preference is lost. */
+/** Company-profile basics (the fields Office has always edited). */
 const BASIC_FIELDS = [
   "companyName", "licenseNumber", "phone", "email", "website", "address",
   "serviceArea", "profileDescription", "paymentInstructions", "reviewUrl",
   "facebookUrl", "instagramUrl", "youtubeUrl",
 ] as const;
 type BasicField = (typeof BASIC_FIELDS)[number];
-type Basics = Record<BasicField, string>;
 
 const FIELD_LABELS: Record<BasicField, string> = {
   companyName: "Company name",
@@ -34,25 +36,30 @@ const FIELD_LABELS: Record<BasicField, string> = {
 const WIDE_FIELDS: BasicField[] = ["address", "serviceArea", "profileDescription", "paymentInstructions"];
 
 /**
- * Settings basics (Track 1b, item 5): company profile only. Document
- * defaults, notification preferences and the rest of the phone Settings
- * screen stay phone-side for this track — but saving here preserves them
- * all, because the save submits the full settings record the server
- * returned, with only these basics replaced.
+ * Settings (Danny 2026-11-01): Office Settings is the single home for
+ * everything a user can change — company profile, plan & billing,
+ * document defaults, notifications & reminders, marketplace toggles,
+ * appearance, backup & restore, and automations. Every section below
+ * edits the one shared settings record via updateSettings, and saving
+ * submits the full record the server returned with only the edited
+ * fields replaced, so phone-side preferences Office doesn't render
+ * (e.g. the document design-customization blob) are preserved, never
+ * clobbered. Genuinely device-bound controls — this device's push
+ * subscription, the company logo/cover uploads, account deletion —
+ * stay where they belong and are noted in their sections.
  */
-export function SettingsView({ canManage = false }: { canManage?: boolean }) {
+export function SettingsView({ canManage = false, userName = "", seeMoney = false }: { canManage?: boolean; userName?: string; seeMoney?: boolean }) {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: ["settings-company"], queryFn: () => api.getSettings({}) });
-  const [draft, setDraft] = useState<Basics | null>(null);
+  const [draft, setDraft] = useState<SettingsRecord | null>(null);
   const [error, setError] = useState("");
   const [savedNote, setSavedNote] = useState(false);
 
   useEffect(() => {
     const data = settingsQuery.data;
     if (data && draft === null) {
-      const basics = {} as Basics;
-      for (const f of BASIC_FIELDS) basics[f] = data[f] ?? "";
-      setDraft(basics);
+      const { logoUrl: _logoUrl, coverUrl: _coverUrl, ...rest } = data;
+      setDraft(rest);
     }
   }, [settingsQuery.data, draft]);
 
@@ -71,29 +78,47 @@ export function SettingsView({ canManage = false }: { canManage?: boolean }) {
   });
 
   const data = settingsQuery.data;
+  const set = <K extends keyof SettingsRecord>(key: K, value: SettingsRecord[K]) =>
+    setDraft((cur) => (cur ? { ...cur, [key]: value } : cur));
+
+  const saveButton = (label: string) => (
+    <div className="modal-actions">
+      <button type="submit" className="btn btn-primary" disabled={saveMutation.isPending}>
+        {saveMutation.isPending ? "Saving…" : label}
+      </button>
+    </div>
+  );
 
   return (
     <div className="view">
       <div className="view-head">
         <div>
           <h1>Settings</h1>
-          <p className="view-sub">Company profile basics — the same Settings record the phone app edits. Advanced preferences (document defaults, notifications, reminders) stay in the phone app for now and are preserved when you save here.</p>
+          <p className="view-sub">Everything you can change or tweak lives here — company profile, plan & billing, document defaults, notifications, marketplace, appearance, and backups. These are the same settings the phone app edits; a change here is the change the phone sees.</p>
         </div>
       </div>
 
-      <section className="panel settings-panel">
-        {settingsQuery.isLoading ? <p className="muted">Loading settings…</p> : null}
-        {settingsQuery.isError ? (
+      <ProfileSection userName={userName} />
+
+      <BillingSection />
+
+      {settingsQuery.isLoading ? (
+        <section className="panel settings-panel"><p className="muted">Loading settings…</p></section>
+      ) : null}
+      {settingsQuery.isError ? (
+        <section className="panel settings-panel">
           <div className="empty-state small">
             <div className="empty-icon">◍</div>
             <p>Couldn't load settings.</p>
             <button type="button" className="btn btn-primary" onClick={() => void settingsQuery.refetch()}>Try again</button>
           </div>
-        ) : null}
-        {data && draft ? (
-          <form
-            onSubmit={(e) => { e.preventDefault(); setError(""); setSavedNote(false); saveMutation.mutate(); }}
-          >
+        </section>
+      ) : null}
+
+      {data && draft ? (
+        <form onSubmit={(e) => { e.preventDefault(); setError(""); setSavedNote(false); saveMutation.mutate(); }}>
+          <section className="panel settings-panel">
+            <div className="panel-head"><h2>Company profile</h2></div>
             {data.logoUrl ? (
               <div className="settings-logo-row">
                 <img src={data.logoUrl} alt="" className="settings-logo" />
@@ -105,28 +130,257 @@ export function SettingsView({ canManage = false }: { canManage?: boolean }) {
                 <label key={f} className={`field${WIDE_FIELDS.includes(f) ? " span2" : ""}`}>
                   <span>{FIELD_LABELS[f]}</span>
                   {WIDE_FIELDS.includes(f) ? (
-                    <textarea rows={f === "profileDescription" ? 4 : 2} value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} />
+                    <textarea rows={f === "profileDescription" ? 4 : 2} value={draft[f]} onChange={(e) => set(f, e.target.value)} />
                   ) : (
-                    <input value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} />
+                    <input value={draft[f]} onChange={(e) => set(f, e.target.value)} />
                   )}
                 </label>
               ))}
             </div>
-            {error ? <p className="inline-error">{error}</p> : null}
-            {savedNote && !error ? <p className="inline-ok">Saved — the phone app will show the same company details.</p> : null}
-            <div className="modal-actions">
-              <button type="submit" className="btn btn-primary" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Saving…" : "Save company details"}
-              </button>
-            </div>
-          </form>
-        ) : null}
-      </section>
+            {saveButton("Save company details")}
+          </section>
 
-      <BillingSection />
+          <section className="panel settings-panel">
+            <div className="panel-head"><h2>Documents & defaults</h2></div>
+            <div className="form-grid">
+              <label className="field">
+                <span>Default document theme</span>
+                <select value={draft.defaultQuoteTheme} onChange={(e) => set("defaultQuoteTheme", e.target.value as SettingsRecord["defaultQuoteTheme"])}>
+                  <option value="classic">Classic</option>
+                  <option value="modern">Modern</option>
+                  <option value="bold">Bold</option>
+                  <option value="minimal">Minimal</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Default document font</span>
+                <select value={draft.defaultDocumentFont} onChange={(e) => set("defaultDocumentFont", e.target.value as SettingsRecord["defaultDocumentFont"])}>
+                  <option value="helvetica">Helvetica</option>
+                  <option value="times">Times</option>
+                  <option value="courier">Courier</option>
+                  <option value="palatino">Palatino</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Estimate follow-up after (days)</span>
+                <input type="number" min={1} max={60} value={draft.quoteFollowUpDays} onChange={(e) => set("quoteFollowUpDays", Number(e.target.value))} />
+              </label>
+              <label className="field">
+                <span>Hourly cost rate (job costing)</span>
+                <input value={draft.hourlyCostRate} onChange={(e) => set("hourlyCostRate", e.target.value)} inputMode="decimal" />
+              </label>
+              <label className="field">
+                <span>Cost alert at (% of budget)</span>
+                <input type="number" min={50} max={100} value={draft.costAlertPercent} onChange={(e) => set("costAlertPercent", Number(e.target.value))} />
+              </label>
+              <label className="field">
+                <span>Late fee type</span>
+                <select value={draft.lateFeeType} onChange={(e) => set("lateFeeType", e.target.value as SettingsRecord["lateFeeType"])}>
+                  <option value="flat">Flat amount</option>
+                  <option value="percent">Percent of balance</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Late fee value</span>
+                <input value={draft.lateFeeValue} onChange={(e) => set("lateFeeValue", e.target.value)} inputMode="decimal" />
+              </label>
+              <label className="field">
+                <span>Late fee grace period (days)</span>
+                <input type="number" min={0} max={365} value={draft.lateFeeGraceDays} onChange={(e) => set("lateFeeGraceDays", Number(e.target.value))} />
+              </label>
+              <label className="field">
+                <span>Invoices grouped by</span>
+                <select value={draft.invoiceGroupBy} onChange={(e) => set("invoiceGroupBy", e.target.value as SettingsRecord["invoiceGroupBy"])}>
+                  <option value="creation_date">Creation date</option>
+                  <option value="due_date">Due date</option>
+                  <option value="client">Client</option>
+                </select>
+              </label>
+            </div>
+            <h3 className="day-section-title">Shown on new documents by default</h3>
+            <div className="form-grid">
+              <Toggle label="Tax line" checked={draft.defaultShowTaxLine} onChange={(v) => set("defaultShowTaxLine", v)} />
+              <Toggle label="Discount line" checked={draft.defaultShowDiscountLine} onChange={(v) => set("defaultShowDiscountLine", v)} />
+              <Toggle label="Paid line" checked={draft.defaultShowPaidLine} onChange={(v) => set("defaultShowPaidLine", v)} />
+              <Toggle label="Payment terms" checked={draft.defaultShowPaymentTerms} onChange={(v) => set("defaultShowPaymentTerms", v)} />
+              <Toggle label="Footer notes" checked={draft.defaultShowFooterNotes} onChange={(v) => set("defaultShowFooterNotes", v)} />
+              <Toggle label="Logo" checked={draft.defaultShowLogo} onChange={(v) => set("defaultShowLogo", v)} />
+              <Toggle label="Company info" checked={draft.defaultShowCompanyInfo} onChange={(v) => set("defaultShowCompanyInfo", v)} />
+            </div>
+            <h3 className="day-section-title">Invoice & estimate behavior</h3>
+            <div className="form-grid">
+              <Toggle label="Online signature — collect signatures on estimates and invoices" checked={draft.onlineSignatureEnabled} onChange={(v) => set("onlineSignatureEnabled", v)} />
+              <Toggle label={'Add "Job Site" address on documents'} checked={draft.addJobSiteAddress} onChange={(v) => set("addJobSiteAddress", v)} />
+              <Toggle label="Add shipping address on documents" checked={draft.addShippingAddress} onChange={(v) => set("addShippingAddress", v)} />
+              <Toggle label="Convert to Quote — use Quote wording for estimates" checked={draft.convertToQuote} onChange={(v) => set("convertToQuote", v)} />
+            </div>
+            <div className="form-grid">
+              <label className="field span2">
+                <span>Default footnote</span>
+                <textarea rows={3} value={draft.defaultFootnote} onChange={(e) => set("defaultFootnote", e.target.value)} />
+              </label>
+              <label className="field span2">
+                <span>Warranty terms</span>
+                <textarea rows={4} value={draft.warrantyTerms} onChange={(e) => set("warrantyTerms", e.target.value)} />
+              </label>
+            </div>
+            <p className="muted small">The visual document design editor (colors, layout tweaks) still lives in the phone app — its saved design is preserved untouched when you save here.</p>
+            {saveButton("Save document defaults")}
+          </section>
+
+          <section className="panel settings-panel">
+            <div className="panel-head"><h2>Notifications & reminders</h2></div>
+            <div className="form-grid">
+              <Toggle label="Show alerts and follow-ups" checked={draft.notificationsEnabled} onChange={(v) => set("notificationsEnabled", v)} />
+              <Toggle label="New Marketplace message" checked={draft.notifyNewMessage} onChange={(v) => set("notifyNewMessage", v)} />
+              <Toggle label="Client signed a document" checked={draft.notifyDocSigned} onChange={(v) => set("notifyDocSigned", v)} />
+              <Toggle label="Client viewed an invoice" checked={draft.notifyInvoiceViewed} onChange={(v) => set("notifyInvoiceViewed", v)} />
+              <Toggle label="Client viewed an estimate" checked={draft.notifyEstimateViewed} onChange={(v) => set("notifyEstimateViewed", v)} />
+              <Toggle label="Client opened a contract" checked={draft.notifyContractViewed} onChange={(v) => set("notifyContractViewed", v)} />
+              <Toggle label="Show payment reminders" checked={draft.paymentRemindersEnabled} onChange={(v) => set("paymentRemindersEnabled", v)} />
+              <Toggle label="Alert me about overdue invoices" checked={draft.overdueInvoiceRemindersEnabled} onChange={(v) => set("overdueInvoiceRemindersEnabled", v)} />
+              <Toggle label="Automatic review requests after a job" checked={draft.reviewRequestsEnabled} onChange={(v) => set("reviewRequestsEnabled", v)} />
+              <Toggle label="Weekly progress summary" checked={draft.weeklyProgressEnabled} onChange={(v) => set("weeklyProgressEnabled", v)} />
+            </div>
+            <div className="form-grid">
+              <label className="field">
+                <span>First overdue reminder after (days)</span>
+                <input type="number" min={1} max={90} value={draft.overdueReminderDays} onChange={(e) => set("overdueReminderDays", Number(e.target.value))} />
+              </label>
+              <label className="field">
+                <span>Review request delay (days after completion)</span>
+                <input type="number" min={0} max={30} value={draft.reviewRequestDelayDays} onChange={(e) => set("reviewRequestDelayDays", Number(e.target.value))} />
+              </label>
+            </div>
+            <p className="muted small">Push notifications to a specific phone are switched on that device — open the phone app on the device to turn its push subscription on or off. The alert types above apply everywhere.</p>
+            {saveButton("Save notification settings")}
+          </section>
+
+          <section className="panel settings-panel">
+            <div className="panel-head"><h2>Marketplace</h2></div>
+            <div className="form-grid">
+              <Toggle label="Offer free estimates (shown on your marketplace profile)" checked={draft.offersFreeEstimates} onChange={(v) => set("offersFreeEstimates", v)} />
+              <Toggle label="Watermark shared job photos with your company name" checked={draft.socialWatermark} onChange={(v) => set("socialWatermark", v)} />
+            </div>
+            <p className="muted small">Your listings show the company name and phone from Company profile above — edit them there and every listing picks them up. Message alerts are under Notifications & reminders.</p>
+            {saveButton("Save marketplace settings")}
+          </section>
+
+          <section className="panel settings-panel">
+            <div className="panel-head"><h2>Appearance & software</h2></div>
+            <div className="form-grid">
+              <label className="field">
+                <span>Theme</span>
+                <select value={draft.themeMode} onChange={(e) => set("themeMode", e.target.value as SettingsRecord["themeMode"])}>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">Match device</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>App accent</span>
+                <select value={draft.uiAccent} onChange={(e) => set("uiAccent", e.target.value as SettingsRecord["uiAccent"])}>
+                  <option value="orange">Orange</option>
+                  <option value="blue">Blue</option>
+                  <option value="green">Green</option>
+                  <option value="purple">Purple</option>
+                  <option value="red">Red</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Document accent color</span>
+                <span className="accent-input-row">
+                  <input type="color" value={draft.accentColor} onChange={(e) => set("accentColor", e.target.value)} aria-label="Document accent color picker" />
+                  <input value={draft.accentColor} onChange={(e) => set("accentColor", e.target.value)} aria-label="Document accent color hex" />
+                </span>
+              </label>
+              <label className="field">
+                <span>Language</span>
+                <select value={draft.language} onChange={(e) => set("language", e.target.value as SettingsRecord["language"])}>
+                  <option value="en">English</option>
+                  <option value="es">Español</option>
+                </select>
+              </label>
+            </div>
+            <div className="form-grid">
+              <Toggle label="Simple mode — the streamlined phone layout" checked={draft.simpleMode} onChange={(v) => set("simpleMode", v)} />
+            </div>
+            {saveButton("Save appearance")}
+          </section>
+
+          {error ? <p className="inline-error">{error}</p> : null}
+          {savedNote && !error ? <p className="inline-ok">Saved — the phone app will show the same settings.</p> : null}
+        </form>
+      ) : null}
+
+      {seeMoney ? (
+        <>
+          <div className="panel-head settings-group-head"><h2>Backup & restore</h2></div>
+          <ExportPanel />
+          <ImportPanel />
+        </>
+      ) : null}
 
       <AutomationsSection canManage={canManage} />
     </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="field checkbox-field">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+/** Your own sign-in profile: display name (updateProfileName — the same
+ *  action the phone profile editor calls). Email is the sign-in ID and
+ *  isn't editable here. */
+function ProfileSection({ userName }: { userName: string }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const value = name ?? userName;
+
+  const mutation = useMutation({
+    mutationFn: () => api.updateProfileName({ name: value.trim() }),
+    onSuccess: () => {
+      setSaved(true);
+      void queryClient.invalidateQueries();
+    },
+    onError: (e) => setError(cleanError(e)),
+  });
+
+  return (
+    <section className="panel settings-panel">
+      <div className="panel-head"><h2>Your profile</h2></div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError("");
+          setSaved(false);
+          if (value.trim().length < 2) { setError("Enter your name (at least 2 characters)."); return; }
+          mutation.mutate();
+        }}
+      >
+        <div className="form-grid">
+          <label className="field">
+            <span>Your name</span>
+            <input value={value} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          </label>
+        </div>
+        {error ? <p className="inline-error">{error}</p> : null}
+        {saved && !error ? <p className="inline-ok">Name saved.</p> : null}
+        <div className="modal-actions">
+          <button type="submit" className="btn btn-primary" disabled={mutation.isPending || value.trim() === userName}>
+            {mutation.isPending ? "Saving…" : "Save name"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -256,6 +510,297 @@ function AutomationsSection({ canManage }: { canManage: boolean }) {
         ))}
       </div>
       {!canManage ? <p className="muted small">Only company Admins can change these switches.</p> : null}
+    </section>
+  );
+}
+type ExportPeriodKind = "all" | "lastMonth" | "month" | "quarter" | "year";
+type ExportDataset = "invoices" | "payments" | "expenses" | "pdfzip";
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * Accountant exports (Danny 2026-10-27): the company's books as CSV
+ * spreadsheets plus a batch PDF bundle of invoices. The server gates
+ * these on the seeMoney switch; this panel additionally hides itself
+ * for members whose money switch is off (seeMoney prop from the shell).
+ * Periods mirror the export UX contractors know from Invoice Fly.
+ */
+function ExportPanel() {
+  const now = new Date();
+  const [period, setPeriod] = useState<ExportPeriodKind>("all");
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1);
+  const [selQuarter, setSelQuarter] = useState(Math.floor(now.getMonth() / 3) + 1);
+  const [selYear, setSelYear] = useState(now.getFullYear());
+  const [busy, setBusy] = useState<ExportDataset | null>(null);
+  const [error, setError] = useState("");
+  const [doneNote, setDoneNote] = useState("");
+  const years = Array.from({ length: 6 }, (_, i) => now.getFullYear() - i);
+
+  const run = async (dataset: ExportDataset) => {
+    setBusy(dataset);
+    setError("");
+    setDoneNote("");
+    const args = {
+      period,
+      ...(period === "month" ? { month: selMonth, year: selYear } : {}),
+      ...(period === "quarter" ? { quarter: selQuarter, year: selYear } : {}),
+    };
+    try {
+      const result =
+        dataset === "invoices" ? await api.exportInvoicesCsv(args)
+        : dataset === "payments" ? await api.exportPaymentsCsv(args)
+        : dataset === "expenses" ? await api.exportExpensesCsv(args)
+        : await api.exportInvoicesPdfZip(args);
+      downloadBase64(result.dataBase64, result.filename, dataset === "pdfzip" ? "application/zip" : "text/csv;charset=utf-8");
+      setDoneNote(`${result.filename} — ${result.rowCount} record${result.rowCount === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const row = (dataset: ExportDataset, label: string, hint: string) => (
+    <li>
+      <span>
+        {label}
+        <span className="feed-meta">{hint}</span>
+      </span>
+      <button type="button" className="btn" disabled={busy !== null} onClick={() => void run(dataset)}>
+        {busy === dataset ? "Preparing…" : "Download"}
+      </button>
+    </li>
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2>Export your books</h2></div>
+      <p className="muted small">Spreadsheets your accountant can open in Excel or Google Sheets, plus a ZIP with one PDF per invoice.</p>
+      <div className="export-period-row">
+        <label>
+          Period
+          <select className="doc-status-select" value={period} onChange={(e) => setPeriod(e.target.value as ExportPeriodKind)}>
+            <option value="all">All time</option>
+            <option value="lastMonth">Last month</option>
+            <option value="month">By month</option>
+            <option value="quarter">By quarter</option>
+            <option value="year">This year</option>
+          </select>
+        </label>
+        {period === "month" ? (
+          <>
+            <label>
+              Month
+              <select className="doc-status-select" value={selMonth} onChange={(e) => setSelMonth(Number(e.target.value))}>
+                {MONTH_NAMES.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
+              </select>
+            </label>
+            <label>
+              Year
+              <select className="doc-status-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {period === "quarter" ? (
+          <>
+            <label>
+              Quarter
+              <select className="doc-status-select" value={selQuarter} onChange={(e) => setSelQuarter(Number(e.target.value))}>
+                {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}
+              </select>
+            </label>
+            <label>
+              Year
+              <select className="doc-status-select" value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </>
+        ) : null}
+      </div>
+      <ul className="link-list static export-list">
+        {row("invoices", "Invoices", "Every invoice with totals, paid and balance — spreadsheet")}
+        {row("payments", "Payments", "Every payment received, matched to its invoice — spreadsheet")}
+        {row("expenses", "Expenses", "Business expenses and job receipts — spreadsheet")}
+        {row("pdfzip", "Invoice PDFs", "One PDF per invoice in the period, bundled in a ZIP")}
+      </ul>
+      {doneNote ? <p className="muted small">{doneNote}</p> : null}
+      {error ? <p className="status error" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+type ImportPreview = Awaited<ReturnType<typeof api.previewInvoiceFlyImport>>;
+
+const CLIENT_STATUS_LABEL: Record<string, string> = { new: "New", matched: "Already in Crewkat", invalid: "Can't import" };
+const INVOICE_STATUS_LABEL: Record<string, string> = {
+  new: "New", duplicate: "Possible duplicate", collision: "Number clash", imported: "Already imported", invalid: "Can't import",
+};
+const STATUS_PILL_CLASS: Record<string, string> = {
+  new: "done", matched: "sent", invalid: "overdue", duplicate: "viewed", collision: "overdue", imported: "draft",
+};
+
+/**
+ * Invoice Fly import (Danny 2026-10-27): the reverse of the exports
+ * above. Pick the Clients and/or Invoices CSVs Invoice Fly produces,
+ * review the server's preview (matches, duplicate flags, number
+ * clashes), toggle rows, then confirm — nothing writes before that.
+ * Same seeMoney gating family as the exports; the panel hides with
+ * them for members whose money switch is off.
+ */
+function ImportPanel() {
+  const queryClient = useQueryClient();
+  const [clientsCsv, setClientsCsv] = useState("");
+  const [invoicesCsv, setInvoicesCsv] = useState("");
+  const [clientsName, setClientsName] = useState("");
+  const [invoicesName, setInvoicesName] = useState("");
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [selClients, setSelClients] = useState<Set<number>>(new Set());
+  const [selInvoices, setSelInvoices] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<"preview" | "run" | null>(null);
+  const [error, setError] = useState("");
+  const [doneNote, setDoneNote] = useState("");
+
+  const pick = async (file: File | undefined, which: "clients" | "invoices") => {
+    if (!file) return;
+    const text = await file.text();
+    setPreview(null);
+    setDoneNote("");
+    setError("");
+    if (which === "clients") { setClientsCsv(text); setClientsName(file.name); }
+    else { setInvoicesCsv(text); setInvoicesName(file.name); }
+  };
+
+  const runPreview = async () => {
+    setBusy("preview");
+    setError("");
+    setDoneNote("");
+    try {
+      const result = await api.previewInvoiceFlyImport({ clientsCsv, invoicesCsv });
+      setPreview(result);
+      setSelClients(new Set(result.clients.filter((r) => r.included).map((r) => r.index)));
+      setSelInvoices(new Set(result.invoices.filter((r) => r.included).map((r) => r.index)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't read those files. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggle = (set: Set<number>, index: number, apply: (next: Set<number>) => void) => {
+    const next = new Set(set);
+    if (next.has(index)) next.delete(index); else next.add(index);
+    apply(next);
+  };
+
+  const runImport = async () => {
+    setBusy("run");
+    setError("");
+    try {
+      const result = await api.runInvoiceFlyImport({
+        clientsCsv, invoicesCsv,
+        clientIndexes: [...selClients], invoiceIndexes: [...selInvoices],
+      });
+      const parts = [
+        `${result.clientsCreated} client${result.clientsCreated === 1 ? "" : "s"} added`,
+        result.clientsMatched ? `${result.clientsMatched} matched` : "",
+        result.addressesAppended ? `${result.addressesAppended} address${result.addressesAppended === 1 ? "" : "es"} saved` : "",
+        `${result.invoicesCreated} invoice${result.invoicesCreated === 1 ? "" : "s"} imported`,
+        result.paymentsCreated ? `${result.paymentsCreated} payment${result.paymentsCreated === 1 ? "" : "s"} recorded` : "",
+        result.invoicesSkipped ? `${result.invoicesSkipped} skipped` : "",
+      ].filter(Boolean);
+      setDoneNote(`Import complete — ${parts.join(" · ")}.`);
+      setPreview(null);
+      setClientsCsv(""); setInvoicesCsv(""); setClientsName(""); setInvoicesName("");
+      void queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      void queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed. Nothing was half-written — try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const c = preview?.counts;
+  return (
+    <section className="panel">
+      <div className="panel-head"><h2>Import from Invoice Fly</h2></div>
+      <p className="muted small">Bringing your books over from Invoice Fly? Export your Clients and Invoices there as CSV, pick the files here, and review everything before anything is imported.</p>
+      <div className="export-period-row">
+        <label>
+          Clients CSV
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "clients")} />
+          {clientsName ? <span className="feed-meta">{clientsName}</span> : null}
+        </label>
+        <label>
+          Invoices CSV
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void pick(e.target.files?.[0], "invoices")} />
+          {invoicesName ? <span className="feed-meta">{invoicesName}</span> : null}
+        </label>
+        <button type="button" className="btn btn-primary" disabled={busy !== null || (!clientsCsv && !invoicesCsv)} onClick={() => void runPreview()}>
+          {busy === "preview" ? "Reading…" : "Preview import"}
+        </button>
+      </div>
+      {preview && c ? (
+        <>
+          <p className="muted small">
+            Clients: {c.clientsTotal} in file — {c.clientsNew} new, {c.clientsMatched} already in Crewkat{c.clientsInvalid ? `, ${c.clientsInvalid} can't import` : ""}.
+            {c.invoicesTotal ? <> Invoices: {c.invoicesTotal} in file — {c.invoicesNew} new, {c.invoicesDuplicate} possible duplicate{c.invoicesDuplicate === 1 ? "" : "s"}, {c.invoicesCollision} number clash{c.invoicesCollision === 1 ? "" : "es"}{c.invoicesImported ? `, ${c.invoicesImported} already imported` : ""}{c.invoicesInvalid ? `, ${c.invoicesInvalid} can't import` : ""}.</> : null}
+          </p>
+          {preview.clients.length > 0 ? (
+            <>
+              <h3 className="day-section-title">Clients</h3>
+              <ul className="link-list static import-rows">
+                {preview.clients.map((r) => (
+                  <li key={r.index}>
+                    <label className="import-row">
+                      <input type="checkbox" checked={selClients.has(r.index)} disabled={r.status === "invalid"}
+                        onChange={() => toggle(selClients, r.index, setSelClients)} />
+                      <span>
+                        {r.name || "(no name)"}
+                        <span className="feed-meta">{[r.email, r.phone, r.address].filter(Boolean).join(" · ") || "—"}</span>
+                        {r.note ? <span className="feed-meta">{r.note}</span> : null}
+                      </span>
+                      <span className={`status-pill ${STATUS_PILL_CLASS[r.status] ?? ""}`}>{CLIENT_STATUS_LABEL[r.status]}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {preview.invoices.length > 0 ? (
+            <>
+              <h3 className="day-section-title">Invoices</h3>
+              <ul className="link-list static import-rows">
+                {preview.invoices.map((r) => (
+                  <li key={r.index}>
+                    <label className="import-row">
+                      <input type="checkbox" checked={selInvoices.has(r.index)} disabled={r.status === "invalid" || r.status === "imported"}
+                        onChange={() => toggle(selInvoices, r.index, setSelInvoices)} />
+                      <span>
+                        {r.number} · {r.clientName}
+                        <span className="feed-meta">{formatDate(r.issueDate)} · Total {formatMoney(r.total)} · Paid {formatMoney(r.paid)}</span>
+                        {r.note ? <span className="feed-meta">{r.note}</span> : null}
+                      </span>
+                      <span className={`status-pill ${STATUS_PILL_CLASS[r.status] ?? ""}`}>{INVOICE_STATUS_LABEL[r.status]}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          <div className="export-period-row">
+            <button type="button" className="btn btn-primary" disabled={busy !== null || (selClients.size === 0 && selInvoices.size === 0)} onClick={() => void runImport()}>
+              {busy === "run" ? "Importing…" : `Import selected (${selClients.size + selInvoices.size})`}
+            </button>
+            <span className="muted small">Flagged rows stay off unless you tick them. Re-running the same files imports nothing twice.</span>
+          </div>
+        </>
+      ) : null}
+      {doneNote ? <p className="muted small">{doneNote}</p> : null}
+      {error ? <p className="status error" role="alert">{error}</p> : null}
     </section>
   );
 }
