@@ -100,6 +100,23 @@ export function cleanError(caught: unknown): string {
    financialTotals) line for line, so a document written from Office
    carries exactly the subtotal/total the phone editor would compute. */
 
+/** Multi-token search (mirrors the server's searchMatches): a record
+ *  matches when EVERY whitespace-separated query token appears in its
+ *  combined searchable text — tokens may hit different fields, so
+ *  "6410 lomand" works. A token carrying 3+ digits also matches on
+ *  digits alone, so "813784" finds "(813) 784-6164". */
+export function matchesSearch(text: string, rawQuery: string): boolean {
+  const tokens = rawQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const haystack = text.toLowerCase();
+  const digits = haystack.replace(/\D/g, "");
+  return tokens.every((token) => {
+    if (haystack.includes(token)) return true;
+    const tokenDigits = token.replace(/\D/g, "");
+    return tokenDigits.length >= 3 && digits.includes(tokenDigits);
+  });
+}
+
 export function moneyOf(value: string | null | undefined): number {
   const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;

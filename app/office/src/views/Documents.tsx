@@ -5,7 +5,7 @@ import { DocumentLinkPanel, PortalLinkPanel } from "../components/LinkPanel";
 import { SignaturePad } from "../components/SignaturePad";
 import type { DocKind, Invoice, Job, Quote, SignableDocument } from "../types";
 import { DOC_KIND_LABELS } from "../types";
-import { cleanError, downloadBase64, financialTotals, formatDate, formatDateTime, formatMoney, lineTotal, parseMoney, todayIso } from "../utils";
+import { cleanError, downloadBase64, financialTotals, formatDate, formatDateTime, formatMoney, lineTotal, matchesSearch, parseMoney, todayIso } from "../utils";
 import { ContractEditor, type ContractEditorTarget } from "./ContractEditor";
 import { FinancialEditor, type FinancialEditorTarget } from "./FinancialEditor";
 import { PlacementEditor } from "./PlacementEditor";
@@ -120,7 +120,7 @@ export function DocumentsView({
         clientName: q.clientName, clientId: q.clientId, jobId: q.jobId, jobLabel: jobLabel(q.jobId),
         amount: q.total, amountMeta: q.accepted ? "Accepted" : q.superseded ? `v${q.versionNumber} · superseded` : `v${q.versionNumber}`,
         date: q.createdAt, statusLabel: s.label, statusCls: s.cls, statusGroup: s.group,
-        searchText: `${q.clientName} ${q.jobType} ${q.jobAddress} estimate ${q.id}`,
+        searchText: `${q.clientName} ${q.clientPhone} ${q.clientEmail} ${q.jobType} ${q.jobAddress} estimate ${q.id}`,
       });
     }
     for (const inv of invoices) {
@@ -131,7 +131,7 @@ export function DocumentsView({
         clientName: inv.clientName, clientId: inv.clientId, jobId: inv.jobId, jobLabel: jobLabel(inv.jobId),
         amount: inv.total, amountMeta: parseMoney(inv.balanceRemaining) > 0 && inv.status !== "draft" ? `Balance ${formatMoney(inv.balanceRemaining)}` : inv.dueDate ? `Due ${formatDate(inv.dueDate)}` : "",
         date: inv.issueDate || inv.createdAt, statusLabel: s.label, statusCls: s.cls, statusGroup: s.group,
-        searchText: `${inv.clientName} ${inv.invoiceNumber} ${inv.jobType} ${inv.jobAddress} invoice`,
+        searchText: `${inv.clientName} ${inv.clientPhone} ${inv.clientEmail} ${inv.invoiceNumber} ${inv.jobType} ${inv.jobAddress} invoice`,
       });
     }
     for (const d of signables) {
@@ -143,7 +143,7 @@ export function DocumentsView({
         jobId: d.jobId, jobLabel: jobLabel(d.jobId),
         amount: d.amount, amountMeta: d.kind === "change_order" && d.newContractSum ? `New sum ${formatMoney(d.newContractSum)}` : "",
         date: d.signedAt, statusLabel: s.label, statusCls: s.cls, statusGroup: s.group,
-        searchText: `${d.title} ${d.displayTitle} ${jobById.get(d.jobId)?.clientName ?? ""} ${d.kind}`,
+        searchText: `${d.title} ${d.displayTitle} ${jobById.get(d.jobId)?.clientName ?? ""} ${jobById.get(d.jobId)?.clientPhone ?? ""} ${jobById.get(d.jobId)?.clientEmail ?? ""} ${jobById.get(d.jobId)?.jobAddress ?? ""} ${d.kind}`,
       });
     }
     out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -154,7 +154,7 @@ export function DocumentsView({
   const filtered = rows.filter((r) =>
     (!kindFilter || r.kind === kindFilter) &&
     (!statusFilter || r.statusGroup === statusFilter) &&
-    (!search.trim() || r.searchText.toLowerCase().includes(search.trim().toLowerCase())),
+    (!search.trim() || matchesSearch(r.searchText, search)),
   );
 
   const loading = quotesQuery.isLoading || invoicesQuery.isLoading || docsQuery.isLoading;
