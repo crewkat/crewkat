@@ -102,6 +102,8 @@ export function SettingsView({ canManage = false, userName = "", seeMoney = fals
 
       <BillingSection />
 
+      <PaymentsSection canManage={canManage} />
+
       {settingsQuery.isLoading ? (
         <section className="panel settings-panel"><p className="muted">Loading settings…</p></section>
       ) : null}
@@ -391,6 +393,72 @@ function ProfileSection({ userName }: { userName: string }) {
  * portal session, no Stripe writes: subscription changes stay with
  * the provider / phone app, exactly as before.
  */
+// Wave 2 Item 6: Stripe Connect — clients pay invoices by card/ACH
+// from the invoice link; funds land in the company's own Stripe
+// account. Degrades to a setup state until the platform keys exist.
+function PaymentsSection({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const setupQuery = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}) });
+  const [error, setError] = useState("");
+  const onboard = useMutation({
+    mutationFn: () => api.startConnectOnboarding({}),
+    onSuccess: (result) => {
+      if (result.url) {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        void queryClient.invalidateQueries({ queryKey: ["payments-setup"] });
+      }
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not start Stripe setup."),
+  });
+  const refresh = useMutation({
+    mutationFn: () => api.refreshConnectStatus({}),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["payments-setup"] }),
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not refresh the status."),
+  });
+  const setup = setupQuery.data;
+  return (
+    <section className="panel settings-panel">
+      <div className="panel-head"><h2>Payments — get paid by card</h2></div>
+      {setupQuery.isLoading ? <p className="muted">Loading payment setup…</p> : null}
+      {setupQuery.isError ? <p className="muted">Couldn't load payment setup.</p> : null}
+      {setup && !setup.platformConfigured ? (
+        <div className="empty-state small">
+          <div className="empty-icon">▣</div>
+          <p><strong>Online payments aren't switched on for Crewkat yet.</strong></p>
+          <p className="muted">Once the platform's Stripe Connect keys are configured, this is where you connect your own Stripe account so clients can pay invoices by card or bank transfer (ACH) straight from the invoice link. Nothing to do here until then.</p>
+        </div>
+      ) : null}
+      {setup && setup.platformConfigured ? (
+        <>
+          <div className="settings-kv">
+            <div><span>Status</span><strong>{setup.status === "connected" ? "Connected" : setup.status === "onboarding" ? "Onboarding incomplete" : "Not connected"}</strong></div>
+            <div><span>Card & ACH charges</span><strong>{setup.chargesEnabled ? "Enabled" : "Not yet"}</strong></div>
+            <div><span>Payouts to your bank</span><strong>{setup.payoutsEnabled ? "Enabled" : "Not yet"}</strong></div>
+          </div>
+          <p className="muted small">
+            {setup.status === "connected" && setup.chargesEnabled
+              ? "Invoice links now carry a Pay Now button — clients pay by card or ACH and the money goes to your Stripe account. Payments record themselves against the invoice."
+              : "Connect your Stripe account (a few minutes: business details + bank account). When it's ready, every invoice link you send gets a Pay Now button automatically."}
+          </p>
+          {error ? <p className="status error">{error}</p> : null}
+          <div className="settings-save-row">
+            {canManage ? (
+              <button type="button" className="btn btn-primary" disabled={onboard.isPending} onClick={() => { setError(""); onboard.mutate(); }}>
+                {onboard.isPending ? "Opening Stripe…" : setup.status === "not_connected" ? "Connect Stripe" : "Continue Stripe setup"}
+              </button>
+            ) : <span className="muted small">Only an admin can connect payments.</span>}
+            {setup.status !== "not_connected" ? (
+              <button type="button" className="btn" disabled={refresh.isPending} onClick={() => { setError(""); refresh.mutate(); }}>
+                {refresh.isPending ? "Refreshing…" : "Refresh status"}
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function BillingSection() {
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
   const billing = billingQuery.data;

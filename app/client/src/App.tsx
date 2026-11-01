@@ -7005,6 +7005,31 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
 // Billing section (Danny 2026-10-17): the user's own plan state, subscription
 // management, and payment history with Crewkat — Stripe subscription
 // invoices plus marketplace promotion purchases, served by getBillingOverview.
+// Wave 2 Item 6: quiet, dismissible hints around Stripe Connect —
+// invoice links carry Pay Now once the company finishes setup in
+// Office. Both render nothing when setup is done, when the member
+// can't see payment setup (the action is office/admin-gated), or on
+// any load error: no dead buttons, no noise.
+function PaymentsSetupHint({ lang }: { lang: Lang }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return window.localStorage.getItem("crewkat-payments-hint") === "dismissed"; } catch { return false; }
+  });
+  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 300_000, enabled: !dismissed });
+  if (dismissed || !setup.data || setup.data.chargesEnabled) return null;
+  return (
+    <p className="payments-setup-hint">
+      <span>{lang === "es" ? "¿Quieres que tus clientes paguen facturas con tarjeta? Configura los pagos en Crewkat Office → Ajustes → Pagos." : "Want clients to pay invoices by card? Set up payments in Crewkat Office → Settings → Payments."}</span>
+      <button type="button" aria-label={lang === "es" ? "Descartar" : "Dismiss"} onClick={() => { setDismissed(true); try { window.localStorage.setItem("crewkat-payments-hint", "dismissed"); } catch { /* ignore */ } }}>×</button>
+    </p>
+  );
+}
+
+function InvoicePayLinkNote({ lang, balance, status }: { lang: Lang; balance: number; status: string }) {
+  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 300_000 });
+  if (status === "paid" || balance <= 0 || !setup.data?.chargesEnabled) return null;
+  return <p className="pay-link-note">{lang === "es" ? "✓ Enlace de pago activo — el cliente puede pagar con tarjeta o ACH desde el enlace de esta factura." : "✓ Pay link active — the client can pay by card or ACH from this invoice's link."}</p>;
+}
+
 function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
   const text = lang === "es" ? {
     title: "Facturación",
@@ -7132,6 +7157,7 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
           )}
         </>
       )}
+      <PaymentsSetupHint lang={lang} />
     </main>
   );
 }
@@ -17167,7 +17193,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
         />
       )}
       <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
-      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
+      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><InvoicePayLinkNote lang={lang} balance={Math.max(0, totals.total - Number(document.paidToDate ?? "0"))} status={document.status ?? ""} /><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={3} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="editor-delete-quiet" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar estimado" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
@@ -30907,6 +30933,17 @@ function ClientDocumentScreen({ token }: { token: string }) {
     },
     onError: (e) => setSignError(e instanceof Error ? e.message : t.linkInvalid),
   });
+  // Wave 2 Item 6: Pay Now on invoice links — the server only offers it
+  // when the company's Stripe Connect can take charges (payNowAvailable);
+  // checkout happens on Stripe's hosted page via a full redirect.
+  const [payError, setPayError] = useState("");
+  const payNow = useMutation({
+    mutationFn: () => api.createDocumentInvoicePayment({ token }),
+    onSuccess: (result) => {
+      window.location.href = result.url;
+    },
+    onError: (e) => setPayError(e instanceof Error ? e.message : "Payment could not be started."),
+  });
   // Build 0.6: the document renders as HTML (QuotePaper) — embedded PDFs
   // (<object>/<iframe>) do not render inside the installed app, so the PDF
   // is offered via Download/Share/Print instead of an inline embed.
@@ -31112,6 +31149,22 @@ function ClientDocumentScreen({ token }: { token: string }) {
           <a className="client-doc-action-btn" href={serverPdfUrl} target="_blank" rel="noopener"><span aria-hidden="true"><Icon size={15}><path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M20 14v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 1.5-1.5H10" /></Icon></span>{lang === "es" ? "Abrir PDF" : "Open PDF"}</a>
         )}
       </div>
+      {doc.kind === "invoice" && doc.payNowAvailable && Number((doc as { totalWithLateFee?: string }).totalWithLateFee ?? 0) - Number((doc as { paidToDate?: string }).paidToDate ?? 0) > 0 ? (
+        <section className="client-doc-pay">
+          <div>
+            <strong>{lang === "es" ? "Paga esta factura en línea" : "Pay this invoice online"}</strong>
+            <p>
+              {lang === "es" ? "Saldo pendiente: " : "Balance due: "}
+              {usd(Number((doc as { totalWithLateFee?: string }).totalWithLateFee ?? 0) - Number((doc as { paidToDate?: string }).paidToDate ?? 0))}
+              {lang === "es" ? " · Tarjeta o cuenta bancaria (ACH), pago seguro con Stripe." : " · Card or bank account (ACH), securely through Stripe."}
+            </p>
+            {payError ? <p className="client-doc-pay-error">{payError}</p> : null}
+          </div>
+          <button type="button" className="client-doc-pay-btn" disabled={payNow.isPending} onClick={() => { setPayError(""); payNow.mutate(); }}>
+            {payNow.isPending ? (lang === "es" ? "Abriendo…" : "Opening…") : (lang === "es" ? "Pagar ahora" : "Pay now")}
+          </button>
+        </section>
+      ) : null}
       <header className="client-doc-company">
         {c.logoUrl && <img src={c.logoUrl} alt={c.name} />}
         <div>
@@ -31855,6 +31908,16 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
     queryFn: () => api.getPortalData({ token }),
     retry: false,
   });
+  // Wave 2 Item 6: Pay Now from the portal — offered only when the
+  // company's Stripe Connect can take charges (payNowAvailable).
+  const [payError, setPayError] = useState("");
+  const portalPay = useMutation({
+    mutationFn: (invoiceId: number) => api.createPortalInvoicePayment({ token, invoiceId }),
+    onSuccess: (result) => {
+      window.location.href = result.url;
+    },
+    onError: (e) => setPayError(e instanceof Error ? e.message : "Payment could not be started."),
+  });
   const [signer, setSigner] = useState("");
   const [sig, setSig] = useState("");
   const [photoStage, setPhotoStage] = useState<"all" | "before" | "during" | "after">("all");
@@ -32368,6 +32431,14 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           return (
             <div key={inv.id}>
               {row}
+              {d.payNowAvailable && Number(inv.balanceDue) > 0 ? (
+                <>
+                  <button type="button" className="primary-button portal-v2-pay-btn" disabled={portalPay.isPending} onClick={() => { setPayError(""); portalPay.mutate(inv.id); }}>
+                    {portalPay.isPending ? (lang === "es" ? "Abriendo…" : "Opening…") : `${lang === "es" ? "Pagar ahora" : "Pay now"} · ${usd(money(inv.balanceDue))}`}
+                  </button>
+                  {payError ? <p className="status error">{payError}</p> : null}
+                </>
+              ) : null}
               {inv.payments.length > 0 && (
                 <div className="portal-v2-payments">
                   <p className="portal-v2-payments-title">{t.payments}</p>

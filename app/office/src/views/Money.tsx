@@ -49,6 +49,7 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const jobsQuery = useQuery({ queryKey: ["jobs", ""], queryFn: () => api.listJobs({ search: "" }) });
+  const attemptsQuery = useQuery({ queryKey: ["invoice-payment-attempts"], queryFn: () => api.listInvoicePaymentAttempts({}) });
   const [mode, setMode] = useState<MoneyMode>("month");
 
   const invoices = useMemo(() => invoicesQuery.data?.invoices ?? [], [invoicesQuery.data]);
@@ -234,6 +235,24 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
               ) : null}
               {paymentsAcross.length > 25 ? <p className="muted small">Showing the 25 most recent payments — open an invoice to see its full history.</p> : null}
             </section>
+
+            {(attemptsQuery.data?.attempts.length ?? 0) > 0 ? (
+              <section className="panel">
+                <div className="panel-head"><h2>Online payment attempts ({attemptsQuery.data!.attempts.length})</h2></div>
+                <p className="muted small">Every Pay Now checkout started from an invoice link — including ones that didn't finish, so a client who says "I tried to pay" is easy to check.</p>
+                <ul className="link-list static">
+                  {attemptsQuery.data!.attempts.map((a) => (
+                    <li key={a.id}>
+                      <span>{formatMoney(a.amount)} · {a.invoiceNumber} · {a.clientName}</span>
+                      <span className="feed-meta">
+                        {a.status === "paid" ? "Paid" : a.status === "pending" ? "Started — not completed" : a.status === "failed" ? "Payment failed" : "Link expired"}
+                        {a.method ? ` · ${a.method === "us_bank_account" ? "ACH" : "Card"}` : ""} · {formatDate(a.createdAt.slice(0, 10))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
         </>
       )}
