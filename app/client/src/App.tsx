@@ -10902,7 +10902,7 @@ function JobDetail({
             onClick={async () => {
               buzz(8);
               try {
-                const result = await api.sendReviewRequest({ jobId });
+                const result = await api.sendReviewRequest({ jobId, resend: false });
                 celebrate(result.emailed ? (lang === "es" ? "Solicitud enviada" : "Request sent") : (lang === "es" ? "Ya se envió" : "Already sent"));
               } catch {
                 // Best-effort: no review link or no client email configured.

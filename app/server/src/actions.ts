@@ -141,6 +141,7 @@ const boardJobSchema = z.object({
   contractSum: z.string(), invoiced: z.string(), paid: z.string(),
   marginPercent: z.number().nullable(), lowMargin: z.boolean(), hasCosts: z.boolean(),
   lastActivityAt: z.string(), idleDays: z.number(), stuck: z.boolean(),
+  reviewRequestedAt: z.string().nullable(),
 });
 const followUpItemSchema = z.object({
   id: z.number(), title: z.string(), body: z.string(), dueDate: z.string(),
@@ -2358,7 +2359,18 @@ async function notifyNudgeFallback(db: ReturnType<Ctx["db"]>, quote: typeof sche
 // ---------------------------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function sendJobReviewEmail(ctx: Ctx, db: ReturnType<Ctx["db"]>, job: typeof schema.jobs.$inferSelect, stage: "auto" | "manual"): Promise<boolean> {
+/** The shared "review requested" record for a job: the latest review email
+ * logged in automation_logs (kind "review", channel "email"). The completion
+ * automation, the scheduler tick, and the manual Office send all key off
+ * this one record, so a job is never double-sent for the same completion. */
+export async function reviewRequestedAtForJob(db: ReturnType<Ctx["db"]>, jobId: number): Promise<Date | null> {
+  const row = (await db.select({ sentAt: schema.automationLogs.sentAt }).from(schema.automationLogs)
+    .where(and(eq(schema.automationLogs.kind, "review"), eq(schema.automationLogs.channel, "email"), eq(schema.automationLogs.entityId, jobId)))
+    .orderBy(desc(schema.automationLogs.sentAt)).limit(1))[0];
+  return row?.sentAt ?? null;
+}
+
+export async function sendJobReviewEmail(ctx: Ctx, db: ReturnType<Ctx["db"]>, job: typeof schema.jobs.$inferSelect, stage: "auto" | "manual", force = false): Promise<boolean> {
   const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, job.companyId)).limit(1))[0];
   const reviewUrl = (setting?.reviewUrl || "").trim();
   if (!reviewUrl) throw new Error("Add your review link in Settings first.");
@@ -2366,7 +2378,10 @@ export async function sendJobReviewEmail(ctx: Ctx, db: ReturnType<Ctx["db"]>, jo
   const already = (await db.select({ id: schema.automationLogs.id }).from(schema.automationLogs)
     .where(and(eq(schema.automationLogs.kind, "review"), eq(schema.automationLogs.channel, "email"), eq(schema.automationLogs.entityId, job.id)))
     .limit(1))[0];
-  if (already) return false;
+  // Exactly-once per job unless a human explicitly resends (force): the
+  // resend still logs a fresh row, so "requested at" always reflects the
+  // most recent ask and the automation stays deduped against it.
+  if (already && !force) return false;
   const companyName = await companyNameForNudge(db, job.companyId);
   const clientName = job.clientName || "there";
   const subject = `How did we do? A quick review helps ${companyName}`;
@@ -4332,9 +4347,9 @@ export const BaseActions = {
     return { jobs: rows.map((row) => jobShape(row, map.get(row.id) ?? 0, stages.get(row.id) ?? [])) };
   }}),
 
-  getJob: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ job: jobSchema.nullable(), photos: z.array(photoSchema), documents: z.array(documentSchema), punchItems: z.array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: z.array(progressSchema), timeEntries: z.array(timeEntrySchema), receipts: z.array(receiptSchema), crewTasks: z.array(crewTaskSchema), voiceNotes: z.array(voiceNoteSchema), certificate: certificateSchema.nullable(), jobFiles: z.array(jobFileSchema), contractSummary: z.object({ baseAmount: z.string(), contractSum: z.string(), signedChangeOrdersTotal: z.string(), revisedTotal: z.string(), pendingChangeOrdersTotal: z.string() }).nullable().default(null) }), async handler(ctx, args) {
+  getJob: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ job: jobSchema.nullable(), photos: z.array(photoSchema), documents: z.array(documentSchema), punchItems: z.array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: z.array(progressSchema), timeEntries: z.array(timeEntrySchema), receipts: z.array(receiptSchema), crewTasks: z.array(crewTaskSchema), voiceNotes: z.array(voiceNoteSchema), certificate: certificateSchema.nullable(), jobFiles: z.array(jobFileSchema), contractSummary: z.object({ baseAmount: z.string(), contractSum: z.string(), signedChangeOrdersTotal: z.string(), revisedTotal: z.string(), pendingChangeOrdersTotal: z.string() }).nullable().default(null), reviewRequestedAt: z.string().nullable() }), async handler(ctx, args) {
     const db = ctx.db<typeof schema>(); const rows = await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.id)).limit(1); const row = rows[0];
-    if (!row) return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null, jobFiles: [], contractSummary: null };
+    if (!row) return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null, jobFiles: [], contractSummary: null, reviewRequestedAt: null };
     const [photoRows, documentRows, punchRows, signoffRows, progressRows, timeRows, receiptRows, crewRows, voiceRows, certificateRows, jobFileRows] = await Promise.all([
       db.select().from(schema.photos).where(eq(schema.photos.jobId, args.id)).orderBy(schema.photos.createdAt, schema.photos.id),
       db.select().from(schema.documents).where(eq(schema.documents.jobId, args.id)).orderBy(desc(schema.documents.signedAt)),
@@ -4357,7 +4372,7 @@ export const BaseActions = {
     const voiceData = await Promise.all(voiceRows.map(async (p) => ({ id: p.id, jobId: p.jobId, title: p.title, url: await ctx.blobs.getUrl(p.blobKey), durationSeconds: p.durationSeconds, createdAt: p.createdAt.toISOString() })));
     const jobFileData = await Promise.all(jobFileRows.map(async (f) => ({ id: f.id, jobId: f.jobId, title: f.title, filename: f.filename, contentType: f.contentType, sizeBytes: f.sizeBytes, sharedWithClient: f.sharedWithClient, url: await ctx.blobs.getUrl(f.blobKey), createdAt: f.createdAt.toISOString() })));
     const cert = certificateRows[0];
-    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson) as number[], status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date()).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null, jobFiles: jobFileData, contractSummary: contractSummaryForJob(row, await jobDocumentsOrdered(ctx.db<typeof schema>(), row.id)) };
+    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson) as number[], status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date()).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null, jobFiles: jobFileData, contractSummary: contractSummaryForJob(row, await jobDocumentsOrdered(ctx.db<typeof schema>(), row.id)), reviewRequestedAt: (await reviewRequestedAtForJob(db, row.id))?.toISOString() ?? null };
   }}),
 
   createJob: defineAction({ request: z.object({ clientId: z.number().int().positive().nullable().default(null), clientName: z.string().trim().min(1).max(160), clientPhone: z.string().trim().max(80).default(""), clientEmail: z.string().trim().email().max(200).or(z.literal("")).default(""), jobAddress: z.string().trim().min(1).max(240), jobType: z.string().trim().min(1).max(120), notes: z.string().trim().max(3000).default(""), jobDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: z.string().max(40).default(""), amountDue: z.string().trim().max(80).default(""), dueDate: z.string().max(10).default(""), depositAmount: z.string().trim().max(80).default(""), paymentNotes: z.string().trim().max(1000).default("") }), response: z.object({ id: z.number() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const now = new Date(); await assertJobLimit(ctx, db); const clientId = await upsertClient(ctx, { clientId: args.clientId, name: args.clientName, phone: args.clientPhone, email: args.clientEmail, address: args.jobAddress }); const rows = await db.insert(schema.jobs).values({ ...args, companyId: workspaceIdentity(ctx).workspaceCompanyId, clientId, amountDue: normalizeMoney(args.amountDue), depositAmount: normalizeMoney(args.depositAmount), createdAt: now, updatedAt: now }).returning({ id: schema.jobs.id }); const made = rows[0]; if (!made) throw new Error("The job could not be saved."); await logJobSystemMessage(db, made.id, "Job created", "Trabajo creado"); ctx.invalidateQueries(); return { id: made.id }; }}),
@@ -4719,6 +4734,13 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const companyId = identity.workspaceCompanyId;
       const jobRows = await db.select().from(schema.jobs).where(eq(schema.jobs.companyId, companyId)).orderBy(desc(schema.jobs.updatedAt));
       const activity = await jobLastActivity(db, companyId, jobRows.map((j) => j.id));
+      const reviewByJob = new Map<number, string>();
+      if (jobRows.length) {
+        const reviewLogs = await db.select({ entityId: schema.automationLogs.entityId, sentAt: schema.automationLogs.sentAt }).from(schema.automationLogs)
+          .where(and(eq(schema.automationLogs.kind, "review"), eq(schema.automationLogs.channel, "email"), inArray(schema.automationLogs.entityId, jobRows.map((j) => j.id))))
+          .orderBy(desc(schema.automationLogs.sentAt));
+        for (const log of reviewLogs) if (!reviewByJob.has(log.entityId)) reviewByJob.set(log.entityId, log.sentAt.toISOString());
+      }
       const nowMs = Date.now();
       const jobs = [];
       for (const job of jobRows) {
@@ -4732,6 +4754,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           marginPercent: budget.marginPercent, lowMargin: budget.lowMargin, hasCosts: budget.hasCosts,
           lastActivityAt: last.toISOString(), idleDays,
           stuck: idleDays >= 7 && job.productionStage !== "complete" && job.productionStage !== "paid_in_full",
+          reviewRequestedAt: reviewByJob.get(job.id) ?? null,
         });
       }
       return { stages: PRODUCTION_STAGES.map((key) => ({ key, label: PRODUCTION_STAGE_LABELS[key] })), jobs };
@@ -6225,16 +6248,24 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   }),
   // Phase 1: manual review-request send for one job (the scheduler covers the
   // automatic path). Idempotent — already-requested jobs return emailed:false.
+  // Feature 1 (Danny 2026-11-01): `resend: true` is the explicit human
+  // override — it sends again despite the shared exactly-once record, logs a
+  // fresh automation_logs row, and writes a job-timeline event, so the
+  // Office panel can show "Review requested · <date>" and offer Resend.
   sendReviewRequest: defineAction({
-    request: z.object({ jobId: z.number().int().positive() }),
-    response: z.object({ ok: z.literal(true), emailed: z.boolean() }),
-    async handler(ctx, args): Promise<{ ok: true; emailed: boolean }> {
+    request: z.object({ jobId: z.number().int().positive(), resend: z.boolean().default(false) }),
+    response: z.object({ ok: z.literal(true), emailed: z.boolean(), reviewRequestedAt: z.string().nullable() }),
+    async handler(ctx, args): Promise<{ ok: true; emailed: boolean; reviewRequestedAt: string | null }> {
       const db = ctx.db<typeof schema>();
       const job = (await db.select().from(schema.jobs).where(eq(schema.jobs.id, args.jobId)).limit(1))[0];
       if (!job) throw new Error("Job not found.");
-      const emailed = await sendJobReviewEmail(ctx, db, job, "manual");
+      const emailed = await sendJobReviewEmail(ctx, db, job, "manual", args.resend);
+      if (emailed) {
+        await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: args.resend ? "Review request re-sent" : "Review request sent", body: args.resend ? "The review-request email was re-sent manually." : "The review-request email was sent manually.", userId: workspaceIdentity(ctx).workspaceUserId });
+      }
+      const requestedAt = await reviewRequestedAtForJob(db, job.id);
       ctx.invalidateQueries();
-      return { ok: true, emailed };
+      return { ok: true, emailed, reviewRequestedAt: requestedAt?.toISOString() ?? null };
     },
   }),
   submitEstimateRequest: defineAction({request:z.object({name:z.string().trim().min(2).max(160),phone:z.string().trim().min(7).max(40),email:z.string().trim().email().max(200),address:z.string().trim().min(5).max(240),serviceType:z.string().trim().min(2).max(120),projectDetails:z.string().trim().min(10).max(3000),preferredContactTime:z.string().trim().max(120),preferredDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),preferredTime:z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")).default(""),company:z.string().max(0).default("")}),response:z.object({id:z.number()}),async handler(ctx,args){if(args.company)throw new Error("Request rejected.");const db=ctx.db<typeof schema>();const digits=normalizedPhone(args.phone);if(digits.length<10)throw new Error("Enter a valid phone number.");const recent=await db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt));const cutoff=Date.now()-86400000;const duplicates=recent.filter(l=>l.source==="website form"&&l.createdAt.getTime()>=cutoff&&(normalizedPhone(l.phone)===digits||l.email.toLowerCase()===args.email.toLowerCase()));if(duplicates.length>=3)throw new Error("Too many recent requests. Please call the office.");const rows=await db.insert(schema.leads).values({name:args.name,phone:args.phone,email:args.email,address:args.address,serviceType:args.serviceType,preferredContactTime:args.preferredContactTime,source:"website form",notes:args.projectDetails,stage:"new",createdAt:new Date(),updatedAt:new Date()}).returning({id:schema.leads.id});const made=rows[0];if(!made)throw new Error("Could not submit request.");if(args.preferredDate){const startsAt=`${args.preferredDate}T${args.preferredTime||"09:00"}:00`;await db.insert(schema.appointments).values({clientName:args.name,clientPhone:args.phone,startsAt,notes:`Online booking — ${args.serviceType}. ${args.projectDetails}`.slice(0,1000),createdAt:new Date(),updatedAt:new Date()});}ctx.invalidateQueries();return{id:made.id};} }),
