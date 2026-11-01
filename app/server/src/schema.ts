@@ -1593,3 +1593,67 @@ export const weeklyGameChampions = sqliteTable("weekly_game_champions", {
 }, (table) => [
   uniqueIndex("weekly_game_champions_week_unique").on(table.weekStart),
 ]);
+
+// Promotions (0092, Danny 2026-11-01): Office email campaigns. A campaign
+// is composed (template composer or custom creative), targeted at one of
+// three recipient modes (individual picks / the never-closed estimate
+// segment / all contacts with an email), then sent once via Resend. Sent
+// campaigns are locked; "duplicate" copies one into a fresh draft.
+export const campaigns = sqliteTable("campaigns", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["promotion", "blog"] }).notNull().default("promotion"),
+  status: text("status", { enum: ["draft", "sending", "sent"] }).notNull().default("draft"),
+  subject: text("subject").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  headline: text("headline").notNull().default(""),
+  bodyText: text("body_text").notNull().default(""),
+  ctaLabel: text("cta_label").notNull().default(""),
+  ctaUrl: text("cta_url").notNull().default(""),
+  imageBlobKey: text("image_blob_key"),
+  customHtml: text("custom_html").notNull().default(""),
+  recipientMode: text("recipient_mode", { enum: ["individual", "never_closed", "all"] }).notNull().default("all"),
+  recipientClientIdsJson: text("recipient_client_ids_json").notNull().default("[]"),
+  recipientCount: integer("recipient_count").notNull().default(0),
+  sentCount: integer("sent_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("campaigns_company_idx").on(table.companyId),
+]);
+
+// One row per attempted recipient of a campaign send. The per-recipient
+// unsubscribe token powers the public /u/:token endpoint; a click lands
+// the address in email_suppressions and excludes it from every future
+// promotional send in all segment modes.
+export const campaignRecipients = sqliteTable("campaign_recipients", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+  clientName: text("client_name").notNull().default(""),
+  email: text("email").notNull(),
+  status: text("status", { enum: ["sent", "failed"] }).notNull().default("sent"),
+  error: text("error").notNull().default(""),
+  unsubscribeToken: text("unsubscribe_token").notNull(),
+  sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("campaign_recipients_token_idx").on(table.unsubscribeToken),
+  index("campaign_recipients_campaign_idx").on(table.campaignId),
+]);
+
+export const emailSuppressions = sqliteTable("email_suppressions", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+  source: text("source", { enum: ["unsubscribe"] }).notNull().default("unsubscribe"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("email_suppressions_company_email_idx").on(table.companyId, table.email),
+]);

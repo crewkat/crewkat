@@ -85,6 +85,10 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "deleteProgressUpdate", "deletePunchItem", "deleteQuote",
   "deleteReceipt", "deleteShareImage", "deleteTimeEntry",
   "deleteVoiceNote",
+  // Promotions (0092): sending a campaign is a company-wide external
+  // send and deleting one is a record delete — both Admin-tier.
+  // Drafting, previewing, and duplicating are Office (below).
+  "sendCampaign", "deleteCampaign",
 ]);
 
 export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
@@ -134,6 +138,10 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "updateLeadStage", "updateMarketplaceListing", "updateMilestoneStatus",
   "updatePurchaseOrderStatus", "updateQuoteAutomationStatus", "updateQuoteVersion",
   "updateSelectionLeadTime", "updateSelectionStatus", "verifyMarketplacePhone",
+  // Promotions (0092): campaign drafting, the template composer,
+  // audience previews, creative upload, and duplicate-to-draft.
+  "listCampaigns", "getCampaign", "saveCampaign", "duplicateCampaign",
+  "generateCampaignContent", "previewCampaignRecipients", "uploadCampaignImage",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

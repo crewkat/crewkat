@@ -2429,6 +2429,221 @@ export async function runReviewRequestTick(ctx: Ctx): Promise<{ ran: boolean; em
   return { ran: emailed.length > 0, emailed };
 }
 
+// ---------------------------------------------------------------------------
+// Promotions (0092, Danny 2026-11-01): Office email campaigns.
+//
+// Recipient resolution is shared by the preview and the send so the count
+// the office confirms is the count that goes out. Suppressed addresses
+// (email_suppressions — the unsubscribe list) are excluded from EVERY
+// mode. Review-request email never comes through here: it is not
+// marketing and is never suppressed.
+// ---------------------------------------------------------------------------
+
+export type CampaignRecipientMode = "individual" | "never_closed" | "all";
+
+/** The "Estimate, never closed" segment, precisely: a client is IN when
+ * they have at least one quote that was sent (sentAt non-empty) and not
+ * superseded, AND they have no job, AND no invoice, AND no quote that
+ * closed — accepted, automationStatus "won", or converted to an invoice.
+ * Contracts/COs ride on jobs, so the job check covers signed contracts. */
+export async function neverClosedClientIds(db: ReturnType<Ctx["db"]>, companyId: number): Promise<Set<number>> {
+  const [quoteRows, jobRows, invoiceRows] = await Promise.all([
+    db.select({ clientId: schema.quotes.clientId, sentAt: schema.quotes.sentAt, accepted: schema.quotes.accepted, automationStatus: schema.quotes.automationStatus, convertedToInvoiceId: schema.quotes.convertedToInvoiceId, superseded: schema.quotes.superseded }).from(schema.quotes).where(eq(schema.quotes.companyId, companyId)),
+    db.select({ clientId: schema.jobs.clientId }).from(schema.jobs).where(eq(schema.jobs.companyId, companyId)),
+    db.select({ clientId: schema.invoices.clientId }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId)),
+  ]);
+  const withJob = new Set(jobRows.map((r) => r.clientId).filter((x): x is number => x != null));
+  const withInvoice = new Set(invoiceRows.map((r) => r.clientId).filter((x): x is number => x != null));
+  const closed = new Set<number>();
+  for (const q of quoteRows) {
+    if (q.clientId != null && (q.accepted || q.automationStatus === "won" || q.convertedToInvoiceId != null)) closed.add(q.clientId);
+  }
+  const out = new Set<number>();
+  for (const q of quoteRows) {
+    if (q.clientId == null || !q.sentAt || q.superseded) continue;
+    if (closed.has(q.clientId) || withJob.has(q.clientId) || withInvoice.has(q.clientId)) continue;
+    out.add(q.clientId);
+  }
+  return out;
+}
+
+export async function resolveCampaignRecipients(
+  db: ReturnType<Ctx["db"]>,
+  companyId: number,
+  mode: CampaignRecipientMode,
+  clientIds: number[],
+): Promise<{ recipients: Array<{ clientId: number; clientName: string; email: string }>; suppressedCount: number; noEmailCount: number }> {
+  const [clientRows, suppressionRows] = await Promise.all([
+    db.select().from(schema.clients).where(eq(schema.clients.companyId, companyId)),
+    db.select({ email: schema.emailSuppressions.email }).from(schema.emailSuppressions).where(eq(schema.emailSuppressions.companyId, companyId)),
+  ]);
+  const suppressed = new Set(suppressionRows.map((s) => s.email.toLowerCase()));
+  let pool = clientRows;
+  if (mode === "individual") {
+    const wanted = new Set(clientIds);
+    pool = clientRows.filter((c) => wanted.has(c.id));
+  } else if (mode === "never_closed") {
+    const ids = await neverClosedClientIds(db, companyId);
+    pool = clientRows.filter((c) => ids.has(c.id));
+  }
+  let suppressedCount = 0;
+  let noEmailCount = 0;
+  const seen = new Set<string>();
+  const recipients: Array<{ clientId: number; clientName: string; email: string }> = [];
+  for (const client of pool) {
+    const email = (client.email || "").trim();
+    if (!email || !EMAIL_RE.test(email)) { noEmailCount++; continue; }
+    const key = email.toLowerCase();
+    if (suppressed.has(key)) { suppressedCount++; continue; }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    recipients.push({ clientId: client.id, clientName: client.name, email });
+  }
+  return { recipients, suppressedCount, noEmailCount };
+}
+
+// ---------------------------------------------------------------------------
+// Campaign content generation. There is NO AI/LLM integration anywhere in
+// Crewkat (no provider key or endpoint in env or code), so this is a
+// template composer: it parses the user's prompt for an offer (percent
+// off, financing, a blog topic) and assembles a structured, branded email
+// from the company's own settings. The office edits the result before
+// sending. Wiring a true LLM later means: add a provider key env + one
+// privileged call in generateCampaignContent — the composer stays as the
+// fallback.
+// ---------------------------------------------------------------------------
+
+const BLOG_POINT_SETS: Array<{ match: RegExp; points: string[] }> = [
+  { match: /bath|shower|tub|vanity/i, points: [
+    "Water stains, soft spots, or a musty smell around the tub or shower — moisture is getting where it shouldn't.",
+    "Grout that keeps cracking and caulking that won't stay sealed, no matter how often you redo it.",
+    "Water pressure that has dropped, or drains that have slowed to a crawl.",
+    "Fixtures that waste water and date the whole room every time you look at them.",
+    "A layout that fights you every morning — too little storage, bad lighting, no counter space.",
+    "Tile or flooring that feels spongy underfoot, a classic sign of subfloor damage underneath.",
+  ] },
+  { match: /kitchen|cabinet|counter/i, points: [
+    "Cabinet doors that won't close right and drawers that stick or sag.",
+    "Counter space that disappears the moment you start cooking for more than two.",
+    "Water damage under the sink or around the dishwasher that keeps coming back.",
+    "Lighting that leaves your work areas in shadow.",
+    "Appliances older than the layout — the kitchen was designed around a different life.",
+    "Flooring that is lifting, stained, or impossible to keep clean.",
+  ] },
+  { match: /paint|exterior|siding/i, points: [
+    "Paint that is peeling, bubbling, or chalking when you run a hand over it.",
+    "Bare wood or caulk gaps showing at joints and trim — water's invitation in.",
+    "Fading that has gone uneven, especially on the sun side of the house.",
+    "Stains bleeding through from inside the wall or the substrate.",
+    "It has simply been 7–10 years — Florida sun and storms shorten every paint clock.",
+  ] },
+];
+const BLOG_POINTS_GENERAL: string[] = [
+  "Small problems you have started working around instead of fixing — they only get more expensive.",
+  "Water where it doesn't belong: stains, bubbling paint, soft spots, or a musty smell.",
+  "Doors, drawers, or windows that no longer open, close, or seal the way they should.",
+  "Surfaces that date the room and drag down how the whole home feels.",
+  "A layout that no longer fits how your family actually lives.",
+];
+
+export function composeCampaignContent(args: {
+  type: "promotion" | "blog";
+  prompt: string;
+  companyName: string;
+  phone: string;
+  website: string;
+  reviewUrl: string;
+  serviceArea: string;
+}): { subject: string; headline: string; bodyText: string; ctaLabel: string; ctaUrl: string } {
+  const company = args.companyName.trim() || "Our team";
+  const area = args.serviceArea.trim();
+  const clean = args.prompt.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  const capitalized = clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : "";
+  const estimateUrl = args.website.trim();
+  const ctaUrl = estimateUrl || (args.phone.trim() ? `tel:${args.phone.replace(/[^0-9+]/g, "")}` : "");
+
+  if (args.type === "blog") {
+    const topic = capitalized || "Home improvement tips from our crew";
+    const countMatch = /^(\d{1,2})\s+/.exec(topic);
+    const wanted = countMatch ? Math.min(8, Math.max(3, Number(countMatch[1]))) : 5;
+    const set = BLOG_POINT_SETS.find((s) => s.match.test(topic))?.points ?? BLOG_POINTS_GENERAL;
+    const points = set.slice(0, wanted).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    return {
+      subject: topic,
+      headline: topic,
+      bodyText:
+        `Thinking about your home lately? Our latest post — ${topic.charAt(0).toLowerCase() + topic.slice(1)} — pulls together what our crews see every week${area ? ` around ${area}` : ""}: the small signs that tell you it's time to act before a repair turns into a project.\n\n${points}\n\nIf any of these sound familiar, ${company} is happy to take a look and give you a straight, no-pressure assessment. Most estimates are free, and you'll know exactly what we'd do and what it would cost before you decide anything.`,
+      ctaLabel: "Get my free estimate",
+      ctaUrl,
+    };
+  }
+
+  const discount = /(\d{1,3})\s*%\s*off/i.exec(clean);
+  const financing = /financ/i.test(clean);
+  const headline = discount
+    ? `Save ${discount[1]}% — ${capitalized.replace(/^\d{1,3}\s*%\s*off\s*/i, "").trim() || "on your next project"}`
+    : capitalized || `News from ${company}`;
+  const subject = discount ? `${discount[1]}% off — ${capitalized.replace(/^\d{1,3}\s*%\s*off\s*/i, "").trim() || "your next project"} | ${company}` : headline;
+  const offerLine = discount
+    ? `Book now and take ${discount[1]}% off. ${capitalized}.`
+    : capitalized ? `${capitalized}.` : `Here's what's new at ${company}.`;
+  const financingLine = financing
+    ? "\n\nAnd if budget timing is the only thing holding you back: we now offer financing options, so you can spread the cost out instead of putting the project off. Ask us how it works when we talk — no obligation."
+    : "";
+  return {
+    subject,
+    headline,
+    bodyText:
+      `${offerLine}${financingLine}\n\n${company} is a local, licensed crew${area ? ` serving ${area}` : ""}. We give free, written estimates, show up when we say we will, and leave your home cleaner than we found it. Spots on the schedule fill quickly — reach out today and we'll find a time that works for you.${args.reviewUrl.trim() ? `\n\nSee what your neighbors say about working with us: ${args.reviewUrl.trim()}` : ""}`,
+    ctaLabel: discount ? "Claim this offer" : financing ? "Ask about financing" : "Get my free estimate",
+    ctaUrl,
+  };
+}
+
+function escapeHtmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Render the branded campaign email. When the user supplied custom HTML
+ * it is sent as-is, with only the compliance footer (sender + working
+ * unsubscribe link) appended. Otherwise the structured template renders:
+ * accent header, optional hero image, headline, body, CTA button,
+ * footer with the per-recipient unsubscribe link. */
+export function renderCampaignEmail(args: {
+  companyName: string;
+  phone: string;
+  serviceArea: string;
+  accentColor: string;
+  headline: string;
+  bodyText: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  imageUrl: string | null;
+  customHtml: string;
+  unsubscribeUrl: string;
+}): { html: string; text: string } {
+  const footerText = `\n\n—\n${args.companyName}${args.phone ? ` · ${args.phone}` : ""}${args.serviceArea ? ` · Serving ${args.serviceArea}` : ""}\nDon't want these emails? Unsubscribe: ${args.unsubscribeUrl}`;
+  const footerHtml = `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5">${escapeHtmlText(args.companyName)}${args.phone ? ` · ${escapeHtmlText(args.phone)}` : ""}${args.serviceArea ? ` · Serving ${escapeHtmlText(args.serviceArea)}` : ""}<br><a href="${escapeHtmlText(args.unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline">Unsubscribe</a> from these emails.</div>`;
+  if (args.customHtml.trim()) {
+    return { html: `${args.customHtml}\n${footerHtml}`, text: `${args.headline}\n\n${args.bodyText}${footerText}` };
+  }
+  const accent = /^#[0-9a-fA-F]{6}$/.test(args.accentColor) ? args.accentColor : "#1f5a4a";
+  const paragraphs = args.bodyText.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#1f2937">${escapeHtmlText(p.trim()).replace(/\n/g, "<br>")}</p>`).join("");
+  const html =
+    `<div style="margin:0;padding:24px 12px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">` +
+    `<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">` +
+    `<div style="background:${accent};padding:18px 24px;color:#ffffff;font-size:18px;font-weight:bold">${escapeHtmlText(args.companyName)}</div>` +
+    (args.imageUrl ? `<img src="${escapeHtmlText(args.imageUrl)}" alt="" style="display:block;width:100%;max-height:340px;object-fit:cover">` : "") +
+    `<div style="padding:24px">` +
+    (args.headline ? `<h1 style="margin:0 0 14px;font-size:23px;line-height:1.3;color:#111827">${escapeHtmlText(args.headline)}</h1>` : "") +
+    paragraphs +
+    (args.ctaLabel && args.ctaUrl ? `<div style="margin:22px 0 6px"><a href="${escapeHtmlText(args.ctaUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:8px">${escapeHtmlText(args.ctaLabel)}</a></div>` : "") +
+    footerHtml +
+    `</div></div></div>`;
+  const text = `${args.headline}\n\n${args.bodyText}${args.ctaLabel && args.ctaUrl ? `\n\n${args.ctaLabel}: ${args.ctaUrl}` : ""}${footerText}`;
+  return { html, text };
+}
+
 const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
 
 async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
@@ -6266,6 +6481,152 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       const requestedAt = await reviewRequestedAtForJob(db, job.id);
       ctx.invalidateQueries();
       return { ok: true, emailed, reviewRequestedAt: requestedAt?.toISOString() ?? null };
+    },
+  }),
+  // ---------------------------------------------------------------------
+  // Promotions (0092): Office email campaigns. Compose (template
+  // composer or custom creative) → one of the three recipient modes →
+  // preview the resolved count → send once via the existing Resend
+  // path. Sent campaigns are locked; duplicate copies one to a draft.
+  // ---------------------------------------------------------------------
+  listCampaigns: defineAction({
+    request: z.object({}),
+    response: z.object({ campaigns: z.array(z.object({ id: z.number(), name: z.string(), type: z.enum(["promotion", "blog"]), status: z.enum(["draft", "sending", "sent"]), subject: z.string(), recipientMode: z.enum(["individual", "never_closed", "all"]), recipientCount: z.number(), sentCount: z.number(), failedCount: z.number(), sentAt: z.string().nullable(), createdAt: z.string(), updatedAt: z.string() })) }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const rows = await db.select().from(schema.campaigns).where(eq(schema.campaigns.companyId, workspaceIdentity(ctx).workspaceCompanyId)).orderBy(desc(schema.campaigns.updatedAt));
+      return { campaigns: rows.map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status, subject: c.subject, recipientMode: c.recipientMode, recipientCount: c.recipientCount, sentCount: c.sentCount, failedCount: c.failedCount, sentAt: c.sentAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) };
+    },
+  }),
+  getCampaign: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ campaign: z.object({ id: z.number(), name: z.string(), type: z.enum(["promotion", "blog"]), status: z.enum(["draft", "sending", "sent"]), subject: z.string(), prompt: z.string(), headline: z.string(), bodyText: z.string(), ctaLabel: z.string(), ctaUrl: z.string(), imageBlobKey: z.string().nullable(), imageUrl: z.string().nullable(), customHtml: z.string(), recipientMode: z.enum(["individual", "never_closed", "all"]), recipientClientIds: z.array(z.number()), recipientCount: z.number(), sentCount: z.number(), failedCount: z.number(), sentAt: z.string().nullable(), createdAt: z.string(), updatedAt: z.string(), recipients: z.array(z.object({ id: z.number(), clientId: z.number().nullable(), clientName: z.string(), email: z.string(), status: z.enum(["sent", "failed"]), error: z.string(), sentAt: z.string().nullable() })) }).nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const c = (await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, args.id)).limit(1))[0];
+      if (!c) return { campaign: null };
+      const recipientRows = await db.select().from(schema.campaignRecipients).where(eq(schema.campaignRecipients.campaignId, c.id)).orderBy(schema.campaignRecipients.id);
+      let ids: number[] = [];
+      try { ids = (JSON.parse(c.recipientClientIdsJson) as unknown[]).filter((x): x is number => typeof x === "number"); } catch { ids = []; }
+      return { campaign: { id: c.id, name: c.name, type: c.type, status: c.status, subject: c.subject, prompt: c.prompt, headline: c.headline, bodyText: c.bodyText, ctaLabel: c.ctaLabel, ctaUrl: c.ctaUrl, imageBlobKey: c.imageBlobKey, imageUrl: c.imageBlobKey ? await ctx.blobs.getUrl(c.imageBlobKey) : null, customHtml: c.customHtml, recipientMode: c.recipientMode, recipientClientIds: ids, recipientCount: c.recipientCount, sentCount: c.sentCount, failedCount: c.failedCount, sentAt: c.sentAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(), recipients: recipientRows.map((r) => ({ id: r.id, clientId: r.clientId, clientName: r.clientName, email: r.email, status: r.status, error: r.error, sentAt: r.sentAt?.toISOString() ?? null })) } };
+    },
+  }),
+  saveCampaign: defineAction({
+    request: z.object({ id: z.number().int().positive().nullable().default(null), name: z.string().trim().min(1).max(160), type: z.enum(["promotion", "blog"]), subject: z.string().trim().max(200).default(""), prompt: z.string().max(1000).default(""), headline: z.string().trim().max(300).default(""), bodyText: z.string().max(50_000).default(""), ctaLabel: z.string().trim().max(80).default(""), ctaUrl: z.string().trim().max(500).default(""), imageBlobKey: z.string().max(300).nullable().default(null), customHtml: z.string().max(100_000).default(""), recipientMode: z.enum(["individual", "never_closed", "all"]), recipientClientIds: z.array(z.number().int().positive()).max(2000).default([]) }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const now = new Date();
+      const values = { name: args.name, type: args.type, subject: args.subject, prompt: args.prompt, headline: args.headline, bodyText: args.bodyText, ctaLabel: args.ctaLabel, ctaUrl: args.ctaUrl, imageBlobKey: args.imageBlobKey, customHtml: args.customHtml, recipientMode: args.recipientMode, recipientClientIdsJson: JSON.stringify(args.recipientClientIds), updatedAt: now };
+      if (args.id) {
+        const existing = (await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, args.id)).limit(1))[0];
+        if (!existing) throw new Error("Campaign not found.");
+        if (existing.status !== "draft") throw new Error("Sent campaigns are locked — duplicate this campaign to send a new version.");
+        await db.update(schema.campaigns).set(values).where(eq(schema.campaigns.id, args.id));
+        ctx.invalidateQueries();
+        return { id: args.id };
+      }
+      const rows = await db.insert(schema.campaigns).values({ ...values, companyId: identity.workspaceCompanyId, createdByUserId: identity.workspaceUserId, createdAt: now }).returning({ id: schema.campaigns.id });
+      const made = rows[0];
+      if (!made) throw new Error("The campaign could not be saved.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+  deleteCampaign: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      await db.delete(schema.campaigns).where(eq(schema.campaigns.id, args.id));
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+  duplicateCampaign: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const source = (await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, args.id)).limit(1))[0];
+      if (!source) throw new Error("Campaign not found.");
+      const now = new Date();
+      const rows = await db.insert(schema.campaigns).values({ companyId: source.companyId, name: `${source.name} (copy)`.slice(0, 160), type: source.type, status: "draft", subject: source.subject, prompt: source.prompt, headline: source.headline, bodyText: source.bodyText, ctaLabel: source.ctaLabel, ctaUrl: source.ctaUrl, imageBlobKey: source.imageBlobKey, customHtml: source.customHtml, recipientMode: source.recipientMode, recipientClientIdsJson: source.recipientClientIdsJson, createdByUserId: identity.workspaceUserId, createdAt: now, updatedAt: now }).returning({ id: schema.campaigns.id });
+      const made = rows[0];
+      if (!made) throw new Error("The campaign could not be duplicated.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+  generateCampaignContent: defineAction({
+    request: z.object({ type: z.enum(["promotion", "blog"]), prompt: z.string().trim().min(3).max(1000) }),
+    response: z.object({ subject: z.string(), headline: z.string(), bodyText: z.string(), ctaLabel: z.string(), ctaUrl: z.string() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
+      return composeCampaignContent({ type: args.type, prompt: args.prompt, companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", website: setting?.website ?? "", reviewUrl: setting?.reviewUrl ?? "", serviceArea: setting?.serviceArea ?? "" });
+    },
+  }),
+  previewCampaignRecipients: defineAction({
+    request: z.object({ mode: z.enum(["individual", "never_closed", "all"]), clientIds: z.array(z.number().int().positive()).max(2000).default([]) }),
+    response: z.object({ count: z.number(), suppressedCount: z.number(), noEmailCount: z.number(), recipients: z.array(z.object({ clientId: z.number(), name: z.string(), email: z.string() })) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const resolved = await resolveCampaignRecipients(db, workspaceIdentity(ctx).workspaceCompanyId, args.mode, args.clientIds);
+      return { count: resolved.recipients.length, suppressedCount: resolved.suppressedCount, noEmailCount: resolved.noEmailCount, recipients: resolved.recipients.slice(0, 500).map((r) => ({ clientId: r.clientId, name: r.clientName, email: r.email })) };
+    },
+  }),
+  uploadCampaignImage: defineAction({
+    request: z.object({ filename: z.string().min(1).max(240), contentType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]), dataBase64: z.string().min(1).max(30_000_000) }),
+    response: z.object({ blobKey: z.string(), url: z.string() }),
+    async handler(ctx, args) {
+      const key = `campaigns/${crypto.randomUUID()}`;
+      await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType });
+      return { blobKey: key, url: await ctx.blobs.getUrl(key) };
+    },
+  }),
+  sendCampaign: defineAction({
+    request: z.object({ id: z.number().int().positive() }),
+    response: z.object({ ok: z.literal(true), sent: z.number(), failed: z.number(), total: z.number() }),
+    async handler(ctx, args): Promise<{ ok: true; sent: number; failed: number; total: number }> {
+      const db = ctx.db<typeof schema>();
+      const campaign = (await db.select().from(schema.campaigns).where(eq(schema.campaigns.id, args.id)).limit(1))[0];
+      if (!campaign) throw new Error("Campaign not found.");
+      if (campaign.status === "sent") throw new Error("This campaign was already sent — duplicate it to send a new version.");
+      if (!campaign.subject.trim() && !campaign.headline.trim()) throw new Error("Add a subject line before sending.");
+      let clientIds: number[] = [];
+      try { clientIds = (JSON.parse(campaign.recipientClientIdsJson) as unknown[]).filter((x): x is number => typeof x === "number"); } catch { clientIds = []; }
+      const resolved = await resolveCampaignRecipients(db, campaign.companyId, campaign.recipientMode, clientIds);
+      if (resolved.recipients.length === 0) throw new Error("No recipients resolved for this campaign — check the audience (everyone may be unsubscribed or missing an email).");
+      if (resolved.recipients.length > 1000) throw new Error("This campaign resolves to more than 1,000 recipients — narrow the audience before sending.");
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, campaign.companyId)).limit(1))[0];
+      const imageUrl = campaign.imageBlobKey ? await ctx.blobs.getUrl(campaign.imageBlobKey) : null;
+      const subject = campaign.subject.trim() || campaign.headline.trim();
+      const now = new Date();
+      await db.update(schema.campaigns).set({ status: "sending", updatedAt: now }).where(eq(schema.campaigns.id, campaign.id));
+      let sent = 0;
+      let failed = 0;
+      for (const recipient of resolved.recipients) {
+        const token = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "");
+        const unsubscribeUrl = `${appPublicUrl()}/u/${token}`;
+        const rendered = renderCampaignEmail({ companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", serviceArea: setting?.serviceArea ?? "", accentColor: setting?.accentColor ?? "#1f5a4a", headline: campaign.headline, bodyText: campaign.bodyText, ctaLabel: campaign.ctaLabel, ctaUrl: campaign.ctaUrl, imageUrl, customHtml: campaign.customHtml, unsubscribeUrl });
+        let status: "sent" | "failed" = "sent";
+        let error = "";
+        try {
+          const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: recipient.email, subject, text: rendered.text, html: rendered.html });
+          if (result.delivery !== "sent") { status = "failed"; error = "The email provider did not accept this message."; }
+        } catch (err) {
+          status = "failed";
+          error = err instanceof Error ? err.message.slice(0, 300) : "Send failed.";
+        }
+        if (status === "sent") sent++; else failed++;
+        await db.insert(schema.campaignRecipients).values({ companyId: campaign.companyId, campaignId: campaign.id, clientId: recipient.clientId, clientName: recipient.clientName, email: recipient.email, status, error, unsubscribeToken: token, sentAt: status === "sent" ? new Date() : null, createdAt: new Date() });
+      }
+      await db.update(schema.campaigns).set({ status: "sent", recipientCount: resolved.recipients.length, sentCount: sent, failedCount: failed, sentAt: new Date(), updatedAt: new Date() }).where(eq(schema.campaigns.id, campaign.id));
+      ctx.invalidateQueries();
+      return { ok: true, sent, failed, total: resolved.recipients.length };
     },
   }),
   submitEstimateRequest: defineAction({request:z.object({name:z.string().trim().min(2).max(160),phone:z.string().trim().min(7).max(40),email:z.string().trim().email().max(200),address:z.string().trim().min(5).max(240),serviceType:z.string().trim().min(2).max(120),projectDetails:z.string().trim().min(10).max(3000),preferredContactTime:z.string().trim().max(120),preferredDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),preferredTime:z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")).default(""),company:z.string().max(0).default("")}),response:z.object({id:z.number()}),async handler(ctx,args){if(args.company)throw new Error("Request rejected.");const db=ctx.db<typeof schema>();const digits=normalizedPhone(args.phone);if(digits.length<10)throw new Error("Enter a valid phone number.");const recent=await db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt));const cutoff=Date.now()-86400000;const duplicates=recent.filter(l=>l.source==="website form"&&l.createdAt.getTime()>=cutoff&&(normalizedPhone(l.phone)===digits||l.email.toLowerCase()===args.email.toLowerCase()));if(duplicates.length>=3)throw new Error("Too many recent requests. Please call the office.");const rows=await db.insert(schema.leads).values({name:args.name,phone:args.phone,email:args.email,address:args.address,serviceType:args.serviceType,preferredContactTime:args.preferredContactTime,source:"website form",notes:args.projectDetails,stage:"new",createdAt:new Date(),updatedAt:new Date()}).returning({id:schema.leads.id});const made=rows[0];if(!made)throw new Error("Could not submit request.");if(args.preferredDate){const startsAt=`${args.preferredDate}T${args.preferredTime||"09:00"}:00`;await db.insert(schema.appointments).values({clientName:args.name,clientPhone:args.phone,startsAt,notes:`Online booking — ${args.serviceType}. ${args.projectDetails}`.slice(0,1000),createdAt:new Date(),updatedAt:new Date()});}ctx.invalidateQueries();return{id:made.id};} }),

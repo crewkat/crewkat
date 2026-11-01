@@ -54,6 +54,9 @@ export const privileged = definePrivilegedContracts({
       to: z.string().email().max(200),
       subject: z.string().min(1).max(200),
       text: z.string().min(1).max(20_000),
+      // Promotions (0092): optional pre-rendered HTML body (branded
+      // campaign template). Text stays required as the fallback part.
+      html: z.string().max(200_000).optional(),
     }),
     response: z.object({ delivery: z.enum(["sent", "failed"]) }),
     capabilities: [],
@@ -410,6 +413,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
           to: [args.to],
           subject: safeSubject,
           text: args.text,
+          ...(args.html ? { html: args.html } : {}),
         }),
         redirect: "error",
         signal: AbortSignal.timeout(15_000),

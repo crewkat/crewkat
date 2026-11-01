@@ -1162,6 +1162,38 @@ const server = createServer(async (req, res) => {
       } catch { /* fall through to the SPA below */ }
     }
 
+    // Promotions (0092): public unsubscribe for campaign email. The
+    // per-recipient token identifies one campaign_recipients row; a hit
+    // adds the address to email_suppressions for that company, which
+    // every future promotional send excludes in all segment modes.
+    // Idempotent — repeat hits just re-render the page, and unknown
+    // tokens get the same friendly page (no existence oracle).
+    const unsubMatch = (req.method === "GET" || req.method === "HEAD") ? /^\/u\/([A-Za-z0-9]{16,80})$/.exec(path) : null;
+    if (unsubMatch) {
+      let company = "";
+      try {
+        const rows = await libsql.execute({
+          sql: `SELECT company_id, email, client_id FROM campaign_recipients WHERE unsubscribe_token = ? LIMIT 1`,
+          args: [unsubMatch[1]],
+        });
+        const row = rows.rows[0];
+        if (row) {
+          await libsql.execute({
+            sql: `INSERT OR IGNORE INTO email_suppressions (company_id, email, client_id, source, created_at) VALUES (?, ?, ?, 'unsubscribe', ?)`,
+            args: [Number(row.company_id), String(row.email).toLowerCase(), row.client_id == null ? null : Number(row.client_id), Date.now()],
+          });
+          const r = await libsql.execute({ sql: `SELECT company_name FROM settings WHERE company_id = ? LIMIT 1`, args: [Number(row.company_id)] });
+          company = String(r.rows[0]?.company_name ?? "").trim();
+        }
+      } catch { /* render the generic page either way */ }
+      const bodyLine = company ? `You won't receive promotional emails from ${escapeHtmlAttr(company)} anymore.` : "You won't receive these promotional emails anymore.";
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Unsubscribed · Crewkat</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;margin:0;padding:40px 16px"><div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:28px"><h1 style="font-size:20px;margin:0 0 10px;color:#111827">You're unsubscribed</h1><p style="color:#374151;line-height:1.6;margin:0">${bodyLine} This only stops promotional email — messages about your project, invoices, and appointments still come through.</p></div></body></html>`;
+      const bytes = Buffer.from(html, "utf8");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-length": bytes.length, "x-content-type-options": "nosniff", "cache-control": "private, no-store" });
+      if (req.method === "GET") res.end(bytes); else res.end();
+      return;
+    }
+
     // Build 0.4 (item 2): server-rendered PDF for client document links.
     // Chrome on Android cannot render blob: PDF URLs in an <iframe>, so the
     // client link embeds this endpoint (<object>/<embed> + "Open PDF").

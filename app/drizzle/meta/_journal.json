@@ -638,6 +638,13 @@
       "when": 1791738300000,
       "tag": "0091_growth_loop",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "6",
+      "when": 1791738400000,
+      "tag": "0092_promotions",
+      "breakpoints": true
     }
   ]
 }
