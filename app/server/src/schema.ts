@@ -384,6 +384,15 @@ export const settings = sqliteTable("settings", {
   // Build 0.6 item 22: phone must be verified before listing on Marketplace.
   // TODO: wire to a real SMS provider (e.g. Twilio) — currently self-attested.
   marketplacePhoneVerified: integer("marketplace_phone_verified", { mode: "boolean" }).notNull().default(false),
+  // Wave 2 (0093): Stripe Connect (Pay Now). The connected account id +
+  // cached capability state; refreshed from Stripe on demand. Null
+  // account = not connected; the Office shows the setup state.
+  stripeConnectAccountId: text("stripe_connect_account_id"),
+  stripeConnectStatus: text("stripe_connect_status", { enum: ["not_connected", "onboarding", "connected"] }).notNull().default("not_connected"),
+  stripeChargesEnabled: integer("stripe_charges_enabled", { mode: "boolean" }).notNull().default(false),
+  stripePayoutsEnabled: integer("stripe_payouts_enabled", { mode: "boolean" }).notNull().default(false),
+  // Wave 2 (0093): public lead-capture form code (crewkat.com/lead/<code>).
+  leadFormCode: text("lead_form_code"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -447,8 +456,94 @@ export const payments = sqliteTable("payments", {
   paymentDate: text("payment_date").notNull(),
   method: text("method").notNull().default(""),
   note: text("note").notNull().default(""),
+  // Wave 2 (0093): set only for online (Stripe Connect) payments; the
+  // unique index makes webhook payment recording idempotent.
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("payments_stripe_pi_idx").on(table.stripePaymentIntentId),
+]);
+
+// Wave 2 (0093): one row per "Pay now" checkout attempt against an
+// invoice (portal link or the app's shared invoice link). The webhook
+// flips pending -> paid when it records the payment; failed/expired
+// attempts stay visible in Office so the office can follow up.
+export const invoicePaymentAttempts = sqliteTable("invoice_payment_attempts", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  stripeSessionId: text("stripe_session_id").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  amount: text("amount").notNull(),
+  method: text("method").notNull().default(""),
+  status: text("status", { enum: ["pending", "paid", "failed", "expired"] }).notNull().default("pending"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("invoice_payment_attempts_session_idx").on(table.stripeSessionId),
+  index("invoice_payment_attempts_invoice_idx").on(table.invoiceId),
+]);
+
+// Wave 2 (0093): QuickBooks Online connection (one per company).
+// Tokens are server-side only — no action returns them.
+export const quickbooksConnections = sqliteTable("quickbooks_connections", {
+  companyId: integer("company_id").notNull(),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  realmId: text("realm_id").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  accessTokenExpiresAt: integer("access_token_expires_at", { mode: "timestamp_ms" }),
+  status: text("status", { enum: ["not_connected", "connected"] }).notNull().default("not_connected"),
+  companyName: text("company_name").notNull().default(""),
+  defaultItemId: text("default_item_id").notNull().default(""),
+  stateToken: text("state_token").notNull().default(""),
+  lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("quickbooks_connections_company_idx").on(table.companyId),
+]);
+
+// Wave 2 (0093): per-record QuickBooks sync state for the Sync Status
+// centre. crewkatUpdatedAt / qbUpdatedAt snapshot both sides' clocks at
+// the last successful sync — the conflict rule compares against them.
+export const qbSyncRecords = sqliteTable("qb_sync_records", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type", { enum: ["customer", "invoice", "payment"] }).notNull(),
+  entityId: integer("entity_id").notNull(),
+  qbId: text("qb_id"),
+  status: text("status", { enum: ["synced", "pending", "error", "conflict"] }).notNull().default("pending"),
+  error: text("error").notNull().default(""),
+  lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
+  crewkatUpdatedAt: integer("crewkat_updated_at", { mode: "timestamp_ms" }).notNull(),
+  qbUpdatedAt: integer("qb_updated_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("qb_sync_records_entity_idx").on(table.companyId, table.entityType, table.entityId),
+]);
+
+// Wave 2 (0093): posted reviews captured in the Reputation inbox. The
+// request side stays in automation_logs (kind "review"); a request is
+// "posted" when a review here matches its job. source "google" is
+// reserved for the future Business Profile feed — today every row is
+// recorded manually ("record a posted review").
+export const clientReviews = sqliteTable("client_reviews", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
+  clientName: text("client_name").notNull().default(""),
+  rating: integer("rating").notNull(),
+  text: text("text").notNull().default(""),
+  reviewDate: text("review_date").notNull().default(""),
+  source: text("source", { enum: ["manual", "google"] }).notNull().default("manual"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("client_reviews_job_idx").on(table.jobId),
+]);
 
 export const completionCertificates = sqliteTable("completion_certificates", {
   companyId: integer("company_id").notNull().default(1),

@@ -89,6 +89,9 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // send and deleting one is a record delete — both Admin-tier.
   // Drafting, previewing, and duplicating are Office (below).
   "sendCampaign", "deleteCampaign",
+  // Wave 2 Item 6: connecting the company's Stripe account is a
+  // billing-tier act (like the billing portal session above).
+  "startConnectOnboarding",
 ]);
 
 export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
@@ -142,6 +145,9 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   // audience previews, creative upload, and duplicate-to-draft.
   "listCampaigns", "getCampaign", "saveCampaign", "duplicateCampaign",
   "generateCampaignContent", "previewCampaignRecipients", "uploadCampaignImage",
+  // Wave 2 Item 6: Pay Now setup state, status refresh, and the
+  // online-payment attempts list (Money visibility).
+  "getPaymentsSetup", "refreshConnectStatus", "listInvoicePaymentAttempts",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

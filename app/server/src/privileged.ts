@@ -104,7 +104,7 @@ export const privileged = definePrivilegedContracts({
     request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
     response: z.object({
       eventId: z.string(),
-      eventType: z.enum(["checkout.session.completed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      eventType: z.enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
       userId: z.number().int().positive().nullable(),
       customerId: z.string().nullable(),
       subscriptionId: z.string().nullable(),
@@ -117,7 +117,48 @@ export const privileged = definePrivilegedContracts({
       companyId: z.number().int().positive().nullable(),
       packSize: z.number().int().nullable(),
       stripeSessionId: z.string().nullable(),
+      // Wave 2 (Item 6): invoice payments on connected accounts.
+      invoiceId: z.number().int().positive().nullable(),
+      paymentIntentId: z.string().nullable(),
+      amountTotalCents: z.number().int().nullable(),
+      paymentMethodType: z.string().nullable(),
+      paymentStatus: z.string().nullable(),
+      connectAccountId: z.string().nullable(),
     }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  // Wave 2 (Item 6): Stripe Connect (Pay Now). The platform's own key
+  // powers everything; each contractor's money moves on THEIR connected
+  // account via direct charges. Without STRIPE_SECRET_KEY every op
+  // degrades to configured:false — a setup state, never an error.
+  getStripePlatformStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
+  createConnectAccount: {
+    request: z.object({ companyId: z.number().int().positive(), email: z.string().email().max(200), companyName: z.string().min(1).max(200) }),
+    response: z.object({ configured: z.boolean(), accountId: z.string().nullable(), missing: z.array(z.string()) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  createConnectAccountLink: {
+    request: z.object({ accountId: z.string().min(1).max(200), refreshUrl: z.string().url().max(500), returnUrl: z.string().url().max(500) }),
+    response: z.object({ configured: z.boolean(), url: z.string().nullable() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  getConnectAccount: {
+    request: z.object({ accountId: z.string().min(1).max(200) }),
+    response: z.object({ configured: z.boolean(), chargesEnabled: z.boolean(), payoutsEnabled: z.boolean(), detailsSubmitted: z.boolean() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  createInvoiceCheckout: {
+    request: z.object({ accountId: z.string().min(1).max(200), companyId: z.number().int().positive(), invoiceId: z.number().int().positive(), amountCents: z.number().int().positive(), description: z.string().min(1).max(300), customerEmail: z.string().max(200), successUrl: z.string().url().max(1000), cancelUrl: z.string().url().max(1000), applicationFeeCents: z.number().int().min(0) }),
+    response: z.object({ configured: z.boolean(), sessionId: z.string().nullable(), url: z.string().nullable(), missing: z.array(z.string()) }),
     capabilities: [],
     timeoutMs: 20_000,
   },
@@ -611,22 +652,27 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     return { configured: true, checkoutUrl: result.url, missing: [] };
   },
   async verifyStripeWebhook(args) {
-    const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-    if (!secret) throw new Error("Stripe webhook verification is not configured.");
+    // Wave 2: platform events sign with STRIPE_WEBHOOK_SECRET; events on
+    // connected accounts (invoice payments) arrive at the Connect webhook
+    // endpoint with its own secret — accept a signature from either.
+    const secrets = [process.env.STRIPE_WEBHOOK_SECRET?.trim(), process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim()].filter((s): s is string => !!s);
+    if (!secrets.length) throw new Error("Stripe webhook verification is not configured.");
     const parts = args.signature.split(",").map((part) => part.trim());
     const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) ?? "";
     const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
     const timestampSeconds = Number(timestamp);
     if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) throw new Error("Stripe webhook timestamp is invalid.");
-    const expected = createHmac("sha256", secret).update(`${timestamp}.${args.payload}`).digest("hex");
-    const expectedBytes = Buffer.from(expected, "hex");
-    const valid = signatures.some((candidate) => {
-      if (!/^[0-9a-f]{64}$/i.test(candidate)) return false;
-      const candidateBytes = Buffer.from(candidate, "hex");
-      return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+    const valid = secrets.some((secret) => {
+      const expected = createHmac("sha256", secret).update(`${timestamp}.${args.payload}`).digest("hex");
+      const expectedBytes = Buffer.from(expected, "hex");
+      return signatures.some((candidate) => {
+        if (!/^[0-9a-f]{64}$/i.test(candidate)) return false;
+        const candidateBytes = Buffer.from(candidate, "hex");
+        return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+      });
     });
     if (!valid) throw new Error("Stripe webhook signature is invalid.");
-    const event = JSON.parse(args.payload) as { id?: unknown; type?: unknown; data?: { object?: Record<string, unknown> } };
+    const event = JSON.parse(args.payload) as { id?: unknown; type?: unknown; account?: unknown; data?: { object?: Record<string, unknown> } };
     if (typeof event.id !== "string" || typeof event.type !== "string") throw new Error("Stripe webhook payload is invalid.");
     const object = event.data?.object ?? {};
     const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
@@ -636,13 +682,19 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const subscriptionId = typeof object.subscription === "string" ? object.subscription : typeof object.id === "string" && event.type.startsWith("customer.subscription.") ? object.id : null;
     const subscriptionStatus = typeof object.status === "string" ? object.status : null;
     const currentPeriodEnd = typeof object.current_period_end === "number" ? object.current_period_end : null;
-    const eventType: "checkout.session.completed" | "customer.subscription.updated" | "customer.subscription.deleted" | "ignored" = event.type === "checkout.session.completed" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted" ? event.type : "ignored";
+    const KNOWN_EVENT_TYPES = ["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted"] as const;
+    const eventType: typeof KNOWN_EVENT_TYPES[number] | "ignored" = (KNOWN_EVENT_TYPES as readonly string[]).includes(event.type) ? event.type as typeof KNOWN_EVENT_TYPES[number] : "ignored";
     const listingIdValue = metadata.listing_id;
     const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
     const companyIdValue = metadata.company_id;
     const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
     const packSizeValue = metadata.pack_size;
     const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
+    const invoiceIdValue = metadata.invoice_id;
+    const parsedInvoiceId = typeof invoiceIdValue === "string" ? Number(invoiceIdValue) : null;
+    const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : (event.type.startsWith("payment_intent.") && typeof object.id === "string" ? object.id : null);
+    const amountTotalCents = typeof object.amount_total === "number" ? Math.round(object.amount_total) : (typeof object.amount_received === "number" ? Math.round(object.amount_received) : (typeof object.amount === "number" ? Math.round(object.amount) : null));
+    const pmTypes = Array.isArray(object.payment_method_types) ? object.payment_method_types.filter((t) => typeof t === "string") as string[] : [];
     return {
       eventId: event.id,
       eventType,
@@ -657,8 +709,109 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
       companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
       packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
-      stripeSessionId: event.type === "checkout.session.completed" && typeof object.id === "string" ? object.id : null,
+      stripeSessionId: event.type.startsWith("checkout.session.") && typeof object.id === "string" ? object.id : null,
+      invoiceId: parsedInvoiceId && Number.isInteger(parsedInvoiceId) && parsedInvoiceId > 0 ? parsedInvoiceId : null,
+      paymentIntentId,
+      amountTotalCents,
+      paymentMethodType: pmTypes[0] ?? null,
+      paymentStatus: typeof object.payment_status === "string" ? object.payment_status : null,
+      connectAccountId: typeof event.account === "string" ? event.account : null,
     };
+  },
+  async getStripePlatformStatus() {
+    return { configured: !!process.env.STRIPE_SECRET_KEY?.trim() };
+  },
+  async createConnectAccount(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, accountId: null, missing: ["STRIPE_SECRET_KEY"] };
+    const body = new URLSearchParams({
+      type: "express",
+      email: args.email,
+      "business_profile[name]": args.companyName,
+      "capabilities[card_payments][requested]": "true",
+      "capabilities[transfers][requested]": "true",
+      "metadata[company_id]": String(args.companyId),
+      "metadata[type]": "crewkat_connect",
+    });
+    const response = await fetch("https://api.stripe.com/v1/accounts", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe could not create the connected account.");
+    const result = await response.json() as { id?: unknown };
+    if (typeof result.id !== "string" || !result.id) throw new Error("Stripe did not return an account id.");
+    return { configured: true, accountId: result.id, missing: [] };
+  },
+  async createConnectAccountLink(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, url: null };
+    const body = new URLSearchParams({
+      account: args.accountId,
+      refresh_url: args.refreshUrl,
+      return_url: args.returnUrl,
+      type: "account_onboarding",
+    });
+    const response = await fetch("https://api.stripe.com/v1/account_links", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe could not start onboarding.");
+    const result = await response.json() as { url?: unknown };
+    if (typeof result.url !== "string" || !/^https:\/\//.test(result.url)) throw new Error("Stripe did not return an onboarding link.");
+    return { configured: true, url: result.url };
+  },
+  async getConnectAccount(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
+    const response = await fetch(`https://api.stripe.com/v1/accounts/${encodeURIComponent(args.accountId)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secretKey}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Could not read the connected account from Stripe.");
+    const result = await response.json() as { charges_enabled?: unknown; payouts_enabled?: unknown; details_submitted?: unknown };
+    return { configured: true, chargesEnabled: result.charges_enabled === true, payoutsEnabled: result.payouts_enabled === true, detailsSubmitted: result.details_submitted === true };
+  },
+  async createInvoiceCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, sessionId: null, url: null, missing: ["STRIPE_SECRET_KEY"] };
+    const body = new URLSearchParams({
+      mode: "payment",
+      "payment_method_types[0]": "card",
+      "payment_method_types[1]": "us_bank_account",
+      "line_items[0][quantity]": "1",
+      "line_items[0][price_data][currency]": "usd",
+      "line_items[0][price_data][unit_amount]": String(args.amountCents),
+      "line_items[0][price_data][product_data][name]": args.description,
+      "metadata[type]": "invoice_payment",
+      "metadata[invoice_id]": String(args.invoiceId),
+      "metadata[company_id]": String(args.companyId),
+      "payment_intent_data[metadata][type]": "invoice_payment",
+      "payment_intent_data[metadata][invoice_id]": String(args.invoiceId),
+      "payment_intent_data[metadata][company_id]": String(args.companyId),
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+    });
+    if (args.customerEmail) body.set("customer_email", args.customerEmail);
+    if (args.applicationFeeCents > 0) body.set("payment_intent_data[application_fee_amount]", String(args.applicationFeeCents));
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded", "Stripe-Account": args.accountId },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe Checkout could not be started for this invoice.");
+    const result = await response.json() as { id?: unknown; url?: unknown };
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url) || typeof result.id !== "string") throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, sessionId: result.id, url: result.url, missing: [] };
   },
   async listStripeCharges(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();

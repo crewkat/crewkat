@@ -2644,6 +2644,87 @@ export function renderCampaignEmail(args: {
   return { html, text };
 }
 
+// ---------------------------------------------------------------------------
+// Wave 2 Item 6: Pay Now (Stripe Connect). Clients pay an invoice's
+// balance by card/ACH from the portal link or the shared invoice link;
+// the charge lands on the CONTRACTOR's connected account (direct
+// charge). Platform fee: STRIPE_APPLICATION_FEE_PERCENT env, default 0
+// (Danny has set no fee policy — unset means no fee, ever).
+// ---------------------------------------------------------------------------
+
+export function stripeApplicationFeeCents(amountCents: number): number {
+  const pct = Number(process.env.STRIPE_APPLICATION_FEE_PERCENT ?? "");
+  if (!Number.isFinite(pct) || pct <= 0) return 0;
+  return Math.max(0, Math.round((amountCents * Math.min(100, pct)) / 100));
+}
+
+async function invoiceBalanceRemaining(db: ReturnType<Ctx["db"]>, invoice: typeof schema.invoices.$inferSelect): Promise<number> {
+  const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, invoice.companyId)).limit(1))[0];
+  const paymentRows = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, invoice.id));
+  const fee = { type: setting?.lateFeeType ?? "flat", value: Number(setting?.lateFeeValue ?? 0), graceDays: setting?.lateFeeGraceDays ?? 0 } as { type: "flat" | "percent"; value: number; graceDays: number };
+  return Number(invoiceShape(invoice, paymentRows, fee).balanceRemaining);
+}
+
+async function startInvoiceCheckout(ctx: Ctx, db: ReturnType<Ctx["db"]>, invoice: typeof schema.invoices.$inferSelect, returnUrl: string): Promise<{ url: string }> {
+  const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, invoice.companyId)).limit(1))[0];
+  if (!setting?.stripeConnectAccountId || !setting.stripeChargesEnabled) throw new Error("Online payments are not set up for this company yet.");
+  const balance = await invoiceBalanceRemaining(db, invoice);
+  if (balance <= 0) throw new Error("This invoice is already paid.");
+  const amountCents = Math.round(balance * 100);
+  const result = await ctx.executePrivileged(privileged.createInvoiceCheckout, {
+    accountId: setting.stripeConnectAccountId,
+    companyId: invoice.companyId,
+    invoiceId: invoice.id,
+    amountCents,
+    description: `Invoice ${invoice.invoiceNumber || invoice.id} — ${setting.companyName}`,
+    customerEmail: invoice.clientEmail ?? "",
+    successUrl: returnUrl,
+    cancelUrl: returnUrl,
+    applicationFeeCents: stripeApplicationFeeCents(amountCents),
+  });
+  if (!result.configured || !result.url || !result.sessionId) throw new Error("Online payments are not configured on the server yet.");
+  const now = new Date();
+  // A fresh checkout supersedes any still-pending attempts for this invoice.
+  await db.update(schema.invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(and(eq(schema.invoicePaymentAttempts.invoiceId, invoice.id), eq(schema.invoicePaymentAttempts.status, "pending")));
+  await db.insert(schema.invoicePaymentAttempts).values({ companyId: invoice.companyId, invoiceId: invoice.id, stripeSessionId: result.sessionId, amount: balance.toFixed(2), status: "pending", createdAt: now, updatedAt: now });
+  return { url: result.url };
+}
+
+/** Record a completed online payment against its invoice — the same
+ * bookkeeping as a manual payment (insert + status flip when covered),
+ * plus attempt + timeline updates. Idempotent on the PaymentIntent: a
+ * redelivered webhook never records the money twice. */
+export async function recordOnlineInvoicePayment(db: ReturnType<Ctx["db"]>, attempt: typeof schema.invoicePaymentAttempts.$inferSelect, event: { paymentIntentId: string | null; paymentMethodType: string | null }): Promise<boolean> {
+  const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, attempt.invoiceId)).limit(1))[0];
+  if (!invoice) return false;
+  const now = new Date();
+  const method = event.paymentMethodType === "us_bank_account" ? "ACH (online payment)" : "Card (online payment)";
+  const existing = event.paymentIntentId ? (await db.select({ id: schema.payments.id }).from(schema.payments).where(eq(schema.payments.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0] : undefined;
+  if (!existing) {
+    await db.insert(schema.payments).values({ companyId: invoice.companyId, invoiceId: invoice.id, amount: attempt.amount, paymentDate: now.toISOString().slice(0, 10), method, note: "Paid online via the invoice link", stripePaymentIntentId: event.paymentIntentId, createdAt: now });
+  }
+  const balanceAfter = await invoiceBalanceRemaining(db, invoice);
+  const nowPaid = balanceAfter <= 0;
+  await db.update(schema.invoices).set({ status: nowPaid ? "paid" : invoice.status, updatedAt: now }).where(eq(schema.invoices.id, invoice.id));
+  await db.update(schema.invoicePaymentAttempts).set({ status: "paid", method, stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+  if (invoice.jobId) {
+    await recordJobEvent(db, { companyId: invoice.companyId, jobId: invoice.jobId, kind: "note", title: nowPaid ? "Invoice paid online — paid in full" : "Online payment received", body: `${invoice.clientName} paid $${attempt.amount} by ${event.paymentMethodType === "us_bank_account" ? "ACH" : "card"} on invoice ${invoice.invoiceNumber || invoice.id}.` });
+  }
+  return true;
+}
+
+async function connectSetupShape(ctx: Ctx, db: ReturnType<Ctx["db"]>, companyId: number) {
+  const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+  const platform = await ctx.executePrivileged(privileged.getStripePlatformStatus, {});
+  return {
+    platformConfigured: platform.configured,
+    status: (setting?.stripeConnectStatus ?? "not_connected") as "not_connected" | "onboarding" | "connected",
+    accountHint: setting?.stripeConnectAccountId ? setting.stripeConnectAccountId.slice(-4) : null,
+    chargesEnabled: setting?.stripeChargesEnabled ?? false,
+    payoutsEnabled: setting?.stripePayoutsEnabled ?? false,
+  };
+}
+
 const listingModerationResultSchema = z.object({ flagged: z.boolean(), status: moderationStatusSchema, reasons: z.array(z.string()) });
 
 async function scanListingForModeration(db: ReturnType<Ctx["db"]>, input: { title: string; description: string; companyName: string; serviceArea: string }) {
@@ -3117,6 +3198,10 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
   const settings = (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
   const company = { name: settings?.companyName ?? "", phone: settings?.phone ?? "", email: settings?.email ?? "", website: settings?.website ?? "", address: settings?.address ?? "", licenseNumber: settings?.licenseNumber ?? "", accentColor: settings?.accentColor ?? "#1f5a4a", logoUrl: settings?.logoBlobKey ? await ctx.blobs.getUrl(settings.logoBlobKey) : null };
   const base = { kind: link.documentKind, documentId: link.documentId, signable: false, alreadySigned: false, company, title: "", clientName: "", jobAddress: "", jobType: "", lineItems: [] as Array<{ description: string; amount: string }>, subtotal: "", total: "", dateLabel: "", dateValue: "", footnote: "", bodyText: "", description: "", amount: "", contractorSignerName: "", linkExpiresAt: link.expiresAt.toISOString(), shortCode: link.shortCode ?? null, attachedImages: [] as Array<{ fileName: string; url: string }>,
+    // Wave 2 Item 6: true only for an invoice link with a balance due
+    // while the company's Stripe Connect can take charges — the client
+    // page renders its Pay button from this (absent = no dead buttons).
+    payNowAvailable: false,
     // Signatures fix (2026-10-14): uploaded-PDF contracts expose their real
     // pages on the link (empty/false for everything else).
     hasOriginalPdf: false, originalFilename: "",
@@ -3166,7 +3251,9 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
     const paymentRows = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, row.id));
     const fee = { type: settings?.lateFeeType ?? "flat", value: Number(settings?.lateFeeValue ?? 0), graceDays: settings?.lateFeeGraceDays ?? 0 };
     const shaped = invoiceShape(row, paymentRows, fee);
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    const companySettings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, link.companyId)).limit(1))[0];
+    const payNowAvailable = !!companySettings?.stripeConnectAccountId && !!companySettings.stripeChargesEnabled && Number(shaped.balanceRemaining) > 0;
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType, depositValue: row.depositValue, attachedImages, payNowAvailable } };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, link.documentId)).limit(1))[0];
@@ -4345,6 +4432,32 @@ export const BaseActions = {
         }
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
+      }
+      // Wave 2 (Item 6): invoice payment on a connected account. Keyed by
+      // the checkout metadata + the attempt row, NOT by a Crewkat user —
+      // the payer is the contractor's client. Card payments complete
+      // synchronously; ACH sessions complete with payment_status
+      // "unpaid" and settle (or fail) via the async events.
+      if (event.checkoutType === "invoice_payment" && event.companyId) {
+        const now = new Date();
+        let attempt = event.stripeSessionId ? (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripeSessionId, event.stripeSessionId)).limit(1))[0] : undefined;
+        if (!attempt && event.paymentIntentId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0];
+        if (!attempt && event.invoiceId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(and(eq(schema.invoicePaymentAttempts.invoiceId, event.invoiceId), eq(schema.invoicePaymentAttempts.status, "pending"))).orderBy(desc(schema.invoicePaymentAttempts.createdAt)).limit(1))[0];
+        if (attempt) {
+          const paidEvent = (event.eventType === "checkout.session.completed" && event.paymentStatus !== "unpaid") || event.eventType === "checkout.session.async_payment_succeeded";
+          if (paidEvent) {
+            await recordOnlineInvoicePayment(db, attempt, event);
+          } else if (event.eventType === "checkout.session.expired") {
+            await db.update(schema.invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+          } else if (event.eventType === "payment_intent.payment_failed" || event.eventType === "checkout.session.async_payment_failed") {
+            await db.update(schema.invoicePaymentAttempts).set({ status: "failed", stripePaymentIntentId: event.paymentIntentId ?? attempt.stripePaymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+          } else if (event.eventType === "checkout.session.completed" && event.paymentStatus === "unpaid") {
+            await db.update(schema.invoicePaymentAttempts).set({ method: "us_bank_account", stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+          }
+        }
+        await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: !!attempt };
       }
       let user = event.userId ? (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, event.userId)).limit(1))[0] : undefined;
       if (!user && event.subscriptionId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeSubscriptionId, event.subscriptionId)).limit(1))[0];
@@ -6006,7 +6119,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   revokePortalLink: defineAction({ request:z.object({jobId:z.number().int().positive()}),response:z.object({ok:z.literal(true)}),async handler(ctx,args):Promise<{ok:true}>{await ctx.db<typeof schema>().update(schema.portalTokens).set({revokedAt:new Date()}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt)));ctx.invalidateQueries();return{ok:true};} }),
   getPortalLinkInfo: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string().nullable(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); const link=(await db.select().from(schema.portalTokens).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))).orderBy(desc(schema.portalTokens.createdAt)).limit(1))[0]; if(!link) return{link:null}; let shortCode=link.shortCode; if(!shortCode){ shortCode=await uniquePortalShortCode(ctx); await db.update(schema.portalTokens).set({shortCode}).where(eq(schema.portalTokens.id,link.id)); } return{link:{hint:link.tokenHint,shortCode,expiresAt:link.expiresAt?.toISOString()??null,expired:link.expiresAt?link.expiresAt.getTime()<Date.now():false,viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   rotatePortalLink: defineAction({ request: z.object({ jobId: z.number().int().positive(), expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.literal(0)]).default(90) }), response: z.object({ token: z.string(), shortCode: z.string(), route: z.string(), expiresAt: z.string().nullable() }), async handler(ctx, args): Promise<{token:string;shortCode:string;route:string;expiresAt:string|null}> { const db=ctx.db<typeof schema>(); const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,args.jobId)).limit(1))[0]; if(!job) throw new Error("Job not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashPortalToken(token); const shortCode=await uniquePortalShortCode(ctx); const now=new Date(); const expiresAt=args.expiresInDays===0?null:new Date(now.getTime()+args.expiresInDays*86400000); await db.batch([db.update(schema.portalTokens).set({revokedAt:now}).where(and(eq(schema.portalTokens.jobId,args.jobId),isNull(schema.portalTokens.revokedAt))),db.insert(schema.portalTokens).values({jobId:args.jobId,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:now})]); ctx.invalidateQueries(); return{token,shortCode,route:`p/${encodeURIComponent(shortCode)}`,expiresAt:expiresAt?.toISOString()??null}; } }),
-  getPortalData: defineAction({ request:z.object({token:z.string().min(8).max(200)}),response:z.object({job:z.object({id:z.number(),clientName:z.string(),jobType:z.string(),jobAddress:z.string()}),company:z.object({name:z.string(),phone:z.string(),email:z.string(),website:z.string(),address:z.string(),licenseNumber:z.string(),accentColor:z.string(),logoUrl:z.string().nullable()}),photos:z.array(z.object({id:z.number(),stage:stageSchema,caption:z.string(),url:z.string()})),photoPairs:z.array(z.object({id:z.number(),label:z.string(),before:z.object({url:z.string(),caption:z.string()}),after:z.object({url:z.string(),caption:z.string()})})),appointments:z.array(z.object({id:z.number(),startsAt:z.string(),notes:z.string()})),selections:z.array(selectionSchema),changeOrders:z.array(z.object({id:z.number(),title:z.string(),description:z.string(),bodyText:z.string().default(""),amount:z.string(),originalUrl:z.string().nullable(),contractorSignerName:z.string().default(""),contractorSignatureUrl:z.string().nullable().default(null),contractorSignedAt:z.string().nullable().default(null),clientSignerName:z.string(),clientSignatureUrl:z.string().nullable().default(null),clientSignedAt:z.string().nullable(),coNumber:z.number().nullable().default(null),displayTitle:z.string().default(""),contractSumBefore:z.string().default(""),newContractSum:z.string().default(""),referenceContract:z.string().default(""),dateIso:z.string().default(""),href:z.string().nullable().default(null)})),estimates:z.array(z.object({id:z.number(),total:z.string(),sentAt:z.string(),accepted:z.boolean(),lineItems:z.array(z.object({description:z.string(),amount:z.string()})),options:z.array(quoteOptionRowSchema),selectedOptionKeys:z.array(z.string()),acceptedOptions:acceptedOptionsSchema.nullable(),optionsTotal:z.string(),totalWithOptions:z.string(),href:z.string().nullable()})),invoices:z.array(z.object({id:z.number(),invoiceNumber:z.string(),total:z.string(),status:z.string(),dueDate:z.string(),balanceDue:z.string(),href:z.string().nullable(),payments:z.array(z.object({id:z.number(),amount:z.string(),paymentDate:z.string(),method:z.string()}))})),jobDocuments:z.array(z.object({id:z.number(),kind:z.enum(["contract","change_order"]),title:z.string(),displayTitle:z.string().default(""),amount:z.string().default(""),coNumber:z.number().nullable().default(null),clientSignedAt:z.string().nullable(),href:z.string().nullable()})),files:z.array(z.object({id:z.number(),title:z.string(),filename:z.string(),url:z.string(),createdAt:z.string()}))}),async handler(ctx,args){const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:true});const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,access.jobId)).limit(1))[0];if(!job)throw new Error("Job not found.");const portalSettings=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0];const portalCompany={name:portalSettings?.companyName??"",phone:portalSettings?.phone??"",email:portalSettings?.email??"",website:portalSettings?.website??"",address:portalSettings?.address??"",licenseNumber:portalSettings?.licenseNumber??"",accentColor:portalSettings?.accentColor??"#1f5a4a",logoUrl:portalSettings?.logoBlobKey?await ctx.blobs.getUrl(portalSettings.logoBlobKey):null};const [photos,appointments,selections,documents,quotes,invoices,payments,photoPairRows,jobFileRows]=await Promise.all([db.select().from(schema.photos).where(eq(schema.photos.jobId,job.id)).orderBy(schema.photos.createdAt),db.select().from(schema.appointments).where(eq(schema.appointments.jobId,job.id)).orderBy(schema.appointments.startsAt),db.select().from(schema.selections).where(eq(schema.selections.jobId,job.id)).orderBy(schema.selections.id),db.select().from(schema.documents).where(eq(schema.documents.jobId,job.id)).orderBy(desc(schema.documents.createdAt)),db.select().from(schema.quotes).where(and(eq(schema.quotes.jobId,job.id),eq(schema.quotes.superseded,false))).orderBy(desc(schema.quotes.createdAt)),db.select().from(schema.invoices).where(eq(schema.invoices.jobId,job.id)).orderBy(desc(schema.invoices.createdAt)),db.select().from(schema.payments),db.select().from(schema.photoPairs).where(eq(schema.photoPairs.jobId,job.id)).orderBy(asc(schema.photoPairs.createdAt)),db.select().from(schema.jobFiles).where(eq(schema.jobFiles.jobId,job.id)).orderBy(desc(schema.jobFiles.createdAt),desc(schema.jobFiles.id))]);const portalLinkKinds=[...documents.map(d=>d.kind),"quote" as const,"invoice" as const];const portalLinkIds=[...documents.map(d=>d.id),...quotes.map(q=>q.id),...invoices.map(i=>i.id)];const hrefByKey=new Map<string,string>();if(portalLinkIds.length){const linkRows=await db.select().from(schema.documentLinks).where(and(inArray(schema.documentLinks.documentKind,[...new Set(portalLinkKinds)]),inArray(schema.documentLinks.documentId,portalLinkIds),isNull(schema.documentLinks.revokedAt))).orderBy(desc(schema.documentLinks.createdAt));const nowMs=Date.now();for(const r of linkRows){if(!r.shortCode||r.expiresAt.getTime()<=nowMs)continue;const key=`${r.documentKind}:${r.documentId}`;if(!hrefByKey.has(key))hrefByKey.set(key,`/d/${r.shortCode}`);}}const docHref=(kind:string,id:number)=>hrefByKey.get(`${kind}:${id}`)??null;const coOrdered=[...documents].sort((a,b)=>a.createdAt.getTime()-b.createdAt.getTime()||a.id-b.id);const coChain=changeOrderChain(job,coOrdered);const coRef=referenceContractTitle(coOrdered);const coDisplay=(d:typeof documents[number])=>{const m=coChain.get(d.id);return d.kind==="change_order"&&m?changeOrderDisplayTitle(d,m.number):d.title;};const today=new Date().toISOString();return{job:{id:job.id,clientName:job.clientName,jobType:job.jobType,jobAddress:job.jobAddress},company:portalCompany,photos:await Promise.all(photos.filter(p=>!p.excludeFromSocial).map(async p=>({id:p.id,stage:p.stage,caption:p.caption,url:await ctx.blobs.getUrl(p.blobKey)}))),photoPairs:await (async()=>{const byId=new Map(photos.map(p=>[p.id,p]));const out:Array<{id:number;label:string;before:{url:string;caption:string};after:{url:string;caption:string}}> =[];for(const row of photoPairRows){const b=byId.get(row.beforePhotoId);const a=byId.get(row.afterPhotoId);if(!b||!a||b.excludeFromSocial||a.excludeFromSocial)continue;out.push({id:row.id,label:row.label,before:{url:await ctx.blobs.getUrl(b.blobKey),caption:b.caption},after:{url:await ctx.blobs.getUrl(a.blobKey),caption:a.caption}});}return out;})(),appointments:appointments.filter(a=>a.startsAt>=today).map(a=>({id:a.id,startsAt:a.startsAt,notes:a.notes})),selections:await Promise.all(selections.map(async s=>({id:s.id,jobId:s.jobId,category:s.category,item:s.item,vendor:s.vendor,photoUrl:s.photoBlobKey?await ctx.blobs.getUrl(s.photoBlobKey):null,approvalStatus:s.approvalStatus,leadTimeDays:s.leadTimeDays,estimatedCost:s.estimatedCost,actualCost:s.actualCost,createdAt:s.createdAt.toISOString()}))),changeOrders:await Promise.all(documents.filter(d=>d.kind==="change_order").map(async d=>{const m=coChain.get(d.id);return{id:d.id,title:d.title,description:d.description,bodyText:d.bodyText,amount:d.amount,originalUrl:d.originalBlobKey?await ctx.blobs.getUrl(d.originalBlobKey):null,contractorSignerName:d.signerName,contractorSignatureUrl:d.signatureBlobKey?await ctx.blobs.getUrl(d.signatureBlobKey):null,contractorSignedAt:d.signedAt?.toISOString()??null,clientSignerName:d.clientSignerName,clientSignatureUrl:d.clientSignatureBlobKey?await ctx.blobs.getUrl(d.clientSignatureBlobKey):null,clientSignedAt:d.clientSignedAt?.toISOString()??null,coNumber:m?.number??null,displayTitle:m?changeOrderDisplayTitle(d,m.number):d.title,contractSumBefore:m?.contractSumBefore??"",newContractSum:m?.newContractSum??"",referenceContract:coRef,dateIso:d.createdAt.toISOString().slice(0,10),href:docHref("change_order",d.id)};})),estimates:quotes.map(q=>{const payload=quoteOptionsPayload(q);return{id:q.id,total:q.total,sentAt:q.sentAt,accepted:q.accepted,lineItems:(JSON.parse(q.lineItemsJson) as Array<{description:string;amount:string;optional?:boolean}>).filter(i=>!i.optional).map(i=>({description:i.description,amount:i.amount})),options:payload.options,selectedOptionKeys:payload.selectedOptionKeys,acceptedOptions:payload.acceptedOptions,optionsTotal:payload.optionsTotal,totalWithOptions:payload.totalWithOptions,href:docHref("quote",q.id)};}),invoices:invoices.map(inv=>{const invPayments=payments.filter(p=>p.invoiceId===inv.id).sort((a,b)=>a.paymentDate<b.paymentDate?-1:a.paymentDate>b.paymentDate?1:a.id-b.id);const paid=invPayments.reduce((s,p)=>s+Number(String(p.amount).replace(/[^0-9.-]/g,"")||0),0);const total=Number(String(inv.total).replace(/[^0-9.-]/g,"")||0);return{id:inv.id,invoiceNumber:inv.invoiceNumber,total:inv.total,status:inv.status,dueDate:inv.dueDate,balanceDue:Math.max(0,total-paid).toFixed(2),href:docHref("invoice",inv.id),payments:invPayments.map(p=>({id:p.id,amount:p.amount,paymentDate:p.paymentDate,method:p.method}))};}),jobDocuments:documents.map(d=>({id:d.id,kind:d.kind,title:d.title,displayTitle:coDisplay(d),amount:d.amount,coNumber:coChain.get(d.id)?.number??null,clientSignedAt:d.clientSignedAt?.toISOString()??null,href:docHref(d.kind,d.id)})),files:await Promise.all(jobFileRows.filter(f=>f.sharedWithClient).map(async f=>({id:f.id,title:f.title,filename:f.filename,url:await ctx.blobs.getUrl(f.blobKey),createdAt:f.createdAt.toISOString()}))) };} }),
+  getPortalData: defineAction({ request:z.object({token:z.string().min(8).max(200)}),response:z.object({job:z.object({id:z.number(),clientName:z.string(),jobType:z.string(),jobAddress:z.string()}),company:z.object({name:z.string(),phone:z.string(),email:z.string(),website:z.string(),address:z.string(),licenseNumber:z.string(),accentColor:z.string(),logoUrl:z.string().nullable()}),photos:z.array(z.object({id:z.number(),stage:stageSchema,caption:z.string(),url:z.string()})),photoPairs:z.array(z.object({id:z.number(),label:z.string(),before:z.object({url:z.string(),caption:z.string()}),after:z.object({url:z.string(),caption:z.string()})})),appointments:z.array(z.object({id:z.number(),startsAt:z.string(),notes:z.string()})),selections:z.array(selectionSchema),changeOrders:z.array(z.object({id:z.number(),title:z.string(),description:z.string(),bodyText:z.string().default(""),amount:z.string(),originalUrl:z.string().nullable(),contractorSignerName:z.string().default(""),contractorSignatureUrl:z.string().nullable().default(null),contractorSignedAt:z.string().nullable().default(null),clientSignerName:z.string(),clientSignatureUrl:z.string().nullable().default(null),clientSignedAt:z.string().nullable(),coNumber:z.number().nullable().default(null),displayTitle:z.string().default(""),contractSumBefore:z.string().default(""),newContractSum:z.string().default(""),referenceContract:z.string().default(""),dateIso:z.string().default(""),href:z.string().nullable().default(null)})),estimates:z.array(z.object({id:z.number(),total:z.string(),sentAt:z.string(),accepted:z.boolean(),lineItems:z.array(z.object({description:z.string(),amount:z.string()})),options:z.array(quoteOptionRowSchema),selectedOptionKeys:z.array(z.string()),acceptedOptions:acceptedOptionsSchema.nullable(),optionsTotal:z.string(),totalWithOptions:z.string(),href:z.string().nullable()})),invoices:z.array(z.object({id:z.number(),invoiceNumber:z.string(),total:z.string(),status:z.string(),dueDate:z.string(),balanceDue:z.string(),href:z.string().nullable(),payments:z.array(z.object({id:z.number(),amount:z.string(),paymentDate:z.string(),method:z.string()}))})),jobDocuments:z.array(z.object({id:z.number(),kind:z.enum(["contract","change_order"]),title:z.string(),displayTitle:z.string().default(""),amount:z.string().default(""),coNumber:z.number().nullable().default(null),clientSignedAt:z.string().nullable(),href:z.string().nullable()})),files:z.array(z.object({id:z.number(),title:z.string(),filename:z.string(),url:z.string(),createdAt:z.string()})),payNowAvailable:z.boolean()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:true});const job=(await db.select().from(schema.jobs).where(eq(schema.jobs.id,access.jobId)).limit(1))[0];if(!job)throw new Error("Job not found.");const portalSettings=(await db.select().from(schema.settings).where(eq(schema.settings.id,1)).limit(1))[0];const portalCompany={name:portalSettings?.companyName??"",phone:portalSettings?.phone??"",email:portalSettings?.email??"",website:portalSettings?.website??"",address:portalSettings?.address??"",licenseNumber:portalSettings?.licenseNumber??"",accentColor:portalSettings?.accentColor??"#1f5a4a",logoUrl:portalSettings?.logoBlobKey?await ctx.blobs.getUrl(portalSettings.logoBlobKey):null};const [photos,appointments,selections,documents,quotes,invoices,payments,photoPairRows,jobFileRows]=await Promise.all([db.select().from(schema.photos).where(eq(schema.photos.jobId,job.id)).orderBy(schema.photos.createdAt),db.select().from(schema.appointments).where(eq(schema.appointments.jobId,job.id)).orderBy(schema.appointments.startsAt),db.select().from(schema.selections).where(eq(schema.selections.jobId,job.id)).orderBy(schema.selections.id),db.select().from(schema.documents).where(eq(schema.documents.jobId,job.id)).orderBy(desc(schema.documents.createdAt)),db.select().from(schema.quotes).where(and(eq(schema.quotes.jobId,job.id),eq(schema.quotes.superseded,false))).orderBy(desc(schema.quotes.createdAt)),db.select().from(schema.invoices).where(eq(schema.invoices.jobId,job.id)).orderBy(desc(schema.invoices.createdAt)),db.select().from(schema.payments),db.select().from(schema.photoPairs).where(eq(schema.photoPairs.jobId,job.id)).orderBy(asc(schema.photoPairs.createdAt)),db.select().from(schema.jobFiles).where(eq(schema.jobFiles.jobId,job.id)).orderBy(desc(schema.jobFiles.createdAt),desc(schema.jobFiles.id))]);const portalLinkKinds=[...documents.map(d=>d.kind),"quote" as const,"invoice" as const];const portalLinkIds=[...documents.map(d=>d.id),...quotes.map(q=>q.id),...invoices.map(i=>i.id)];const hrefByKey=new Map<string,string>();if(portalLinkIds.length){const linkRows=await db.select().from(schema.documentLinks).where(and(inArray(schema.documentLinks.documentKind,[...new Set(portalLinkKinds)]),inArray(schema.documentLinks.documentId,portalLinkIds),isNull(schema.documentLinks.revokedAt))).orderBy(desc(schema.documentLinks.createdAt));const nowMs=Date.now();for(const r of linkRows){if(!r.shortCode||r.expiresAt.getTime()<=nowMs)continue;const key=`${r.documentKind}:${r.documentId}`;if(!hrefByKey.has(key))hrefByKey.set(key,`/d/${r.shortCode}`);}}const docHref=(kind:string,id:number)=>hrefByKey.get(`${kind}:${id}`)??null;const coOrdered=[...documents].sort((a,b)=>a.createdAt.getTime()-b.createdAt.getTime()||a.id-b.id);const coChain=changeOrderChain(job,coOrdered);const coRef=referenceContractTitle(coOrdered);const coDisplay=(d:typeof documents[number])=>{const m=coChain.get(d.id);return d.kind==="change_order"&&m?changeOrderDisplayTitle(d,m.number):d.title;};const today=new Date().toISOString();const paySettings=(await db.select().from(schema.settings).where(eq(schema.settings.companyId,job.companyId)).limit(1))[0];const payNowAvailable=!!paySettings?.stripeConnectAccountId&&!!paySettings.stripeChargesEnabled;return{payNowAvailable,job:{id:job.id,clientName:job.clientName,jobType:job.jobType,jobAddress:job.jobAddress},company:portalCompany,photos:await Promise.all(photos.filter(p=>!p.excludeFromSocial).map(async p=>({id:p.id,stage:p.stage,caption:p.caption,url:await ctx.blobs.getUrl(p.blobKey)}))),photoPairs:await (async()=>{const byId=new Map(photos.map(p=>[p.id,p]));const out:Array<{id:number;label:string;before:{url:string;caption:string};after:{url:string;caption:string}}> =[];for(const row of photoPairRows){const b=byId.get(row.beforePhotoId);const a=byId.get(row.afterPhotoId);if(!b||!a||b.excludeFromSocial||a.excludeFromSocial)continue;out.push({id:row.id,label:row.label,before:{url:await ctx.blobs.getUrl(b.blobKey),caption:b.caption},after:{url:await ctx.blobs.getUrl(a.blobKey),caption:a.caption}});}return out;})(),appointments:appointments.filter(a=>a.startsAt>=today).map(a=>({id:a.id,startsAt:a.startsAt,notes:a.notes})),selections:await Promise.all(selections.map(async s=>({id:s.id,jobId:s.jobId,category:s.category,item:s.item,vendor:s.vendor,photoUrl:s.photoBlobKey?await ctx.blobs.getUrl(s.photoBlobKey):null,approvalStatus:s.approvalStatus,leadTimeDays:s.leadTimeDays,estimatedCost:s.estimatedCost,actualCost:s.actualCost,createdAt:s.createdAt.toISOString()}))),changeOrders:await Promise.all(documents.filter(d=>d.kind==="change_order").map(async d=>{const m=coChain.get(d.id);return{id:d.id,title:d.title,description:d.description,bodyText:d.bodyText,amount:d.amount,originalUrl:d.originalBlobKey?await ctx.blobs.getUrl(d.originalBlobKey):null,contractorSignerName:d.signerName,contractorSignatureUrl:d.signatureBlobKey?await ctx.blobs.getUrl(d.signatureBlobKey):null,contractorSignedAt:d.signedAt?.toISOString()??null,clientSignerName:d.clientSignerName,clientSignatureUrl:d.clientSignatureBlobKey?await ctx.blobs.getUrl(d.clientSignatureBlobKey):null,clientSignedAt:d.clientSignedAt?.toISOString()??null,coNumber:m?.number??null,displayTitle:m?changeOrderDisplayTitle(d,m.number):d.title,contractSumBefore:m?.contractSumBefore??"",newContractSum:m?.newContractSum??"",referenceContract:coRef,dateIso:d.createdAt.toISOString().slice(0,10),href:docHref("change_order",d.id)};})),estimates:quotes.map(q=>{const payload=quoteOptionsPayload(q);return{id:q.id,total:q.total,sentAt:q.sentAt,accepted:q.accepted,lineItems:(JSON.parse(q.lineItemsJson) as Array<{description:string;amount:string;optional?:boolean}>).filter(i=>!i.optional).map(i=>({description:i.description,amount:i.amount})),options:payload.options,selectedOptionKeys:payload.selectedOptionKeys,acceptedOptions:payload.acceptedOptions,optionsTotal:payload.optionsTotal,totalWithOptions:payload.totalWithOptions,href:docHref("quote",q.id)};}),invoices:invoices.map(inv=>{const invPayments=payments.filter(p=>p.invoiceId===inv.id).sort((a,b)=>a.paymentDate<b.paymentDate?-1:a.paymentDate>b.paymentDate?1:a.id-b.id);const paid=invPayments.reduce((s,p)=>s+Number(String(p.amount).replace(/[^0-9.-]/g,"")||0),0);const total=Number(String(inv.total).replace(/[^0-9.-]/g,"")||0);return{id:inv.id,invoiceNumber:inv.invoiceNumber,total:inv.total,status:inv.status,dueDate:inv.dueDate,balanceDue:Math.max(0,total-paid).toFixed(2),href:docHref("invoice",inv.id),payments:invPayments.map(p=>({id:p.id,amount:p.amount,paymentDate:p.paymentDate,method:p.method}))};}),jobDocuments:documents.map(d=>({id:d.id,kind:d.kind,title:d.title,displayTitle:coDisplay(d),amount:d.amount,coNumber:coChain.get(d.id)?.number??null,clientSignedAt:d.clientSignedAt?.toISOString()??null,href:docHref(d.kind,d.id)})),files:await Promise.all(jobFileRows.filter(f=>f.sharedWithClient).map(async f=>({id:f.id,title:f.title,filename:f.filename,url:await ctx.blobs.getUrl(f.blobKey),createdAt:f.createdAt.toISOString()}))) };} }),
   // Portal photo download (Danny 2026-10-20): the portal token is the only
   // credential. Serves ONLY a photo of the token's own job, and only one
   // the portal itself lists (excludeFromSocial photos never reach the
@@ -6099,7 +6212,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     changeOrder: z.object({ number: z.number(), displayTitle: z.string(), scopeLabel: z.string(), dateIso: z.string(), referenceContract: z.string(), contractSumBefore: z.string(), amount: z.string(), newContractSum: z.string(), contractorSignatureUrl: z.string().nullable(), contractorSignedAt: z.string().nullable(), clientSignatureUrl: z.string().nullable().default(null) }).nullable().default(null),
     // Build 0.3 (item 8): the actual document design, so the client link can
     // render the real PDF instead of a plain-HTML mock.
-    invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]) }), async handler(ctx, args) {
+    invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]), payNowAvailable: z.boolean().default(false) }), async handler(ctx, args) {
     // Build 0.4: payload assembly moved to getDocumentLinkPayload (shared with
     // getDocumentLinkPdf); this handler keeps the view counting + notify.
     const { link, payload } = await getDocumentLinkPayload(ctx, args.token);
@@ -6627,6 +6740,100 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       await db.update(schema.campaigns).set({ status: "sent", recipientCount: resolved.recipients.length, sentCount: sent, failedCount: failed, sentAt: new Date(), updatedAt: new Date() }).where(eq(schema.campaigns.id, campaign.id));
       ctx.invalidateQueries();
       return { ok: true, sent, failed, total: resolved.recipients.length };
+    },
+  }),
+  // ---------------------------------------------------------------------
+  // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
+  // Settings; payment starts from the public portal / invoice links
+  // (PUBLIC_ACTIONS below) and lands via handleStripeWebhook.
+  // ---------------------------------------------------------------------
+  getPaymentsSetup: defineAction({
+    request: z.object({}),
+    response: z.object({ platformConfigured: z.boolean(), status: z.enum(["not_connected", "onboarding", "connected"]), accountHint: z.string().nullable(), chargesEnabled: z.boolean(), payoutsEnabled: z.boolean() }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      return connectSetupShape(ctx, db, workspaceIdentity(ctx).workspaceCompanyId);
+    },
+  }),
+  startConnectOnboarding: defineAction({
+    request: z.object({}),
+    response: z.object({ url: z.string().nullable(), platformConfigured: z.boolean() }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (!setting) throw new Error("Company settings not found.");
+      let accountId = setting.stripeConnectAccountId;
+      if (!accountId) {
+        const owner = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+        const created = await ctx.executePrivileged(privileged.createConnectAccount, { companyId: identity.workspaceCompanyId, email: setting.email || owner?.email || "", companyName: setting.companyName || "Crewkat company" });
+        if (!created.configured || !created.accountId) return { url: null, platformConfigured: false };
+        accountId = created.accountId;
+        await db.update(schema.settings).set({ stripeConnectAccountId: accountId, stripeConnectStatus: "onboarding", updatedAt: new Date() }).where(eq(schema.settings.companyId, identity.workspaceCompanyId));
+      }
+      const link = await ctx.executePrivileged(privileged.createConnectAccountLink, { accountId, refreshUrl: `${appPublicUrl()}/office`, returnUrl: `${appPublicUrl()}/office` });
+      if (!link.configured || !link.url) return { url: null, platformConfigured: false };
+      return { url: link.url, platformConfigured: true };
+    },
+  }),
+  refreshConnectStatus: defineAction({
+    request: z.object({}),
+    response: z.object({ platformConfigured: z.boolean(), status: z.enum(["not_connected", "onboarding", "connected"]), accountHint: z.string().nullable(), chargesEnabled: z.boolean(), payoutsEnabled: z.boolean() }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const identity = workspaceIdentity(ctx);
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (setting?.stripeConnectAccountId) {
+        try {
+          const account = await ctx.executePrivileged(privileged.getConnectAccount, { accountId: setting.stripeConnectAccountId });
+          if (account.configured) {
+            const status = account.chargesEnabled ? "connected" : "onboarding";
+            await db.update(schema.settings).set({ stripeChargesEnabled: account.chargesEnabled, stripePayoutsEnabled: account.payoutsEnabled, stripeConnectStatus: status, updatedAt: new Date() }).where(eq(schema.settings.companyId, identity.workspaceCompanyId));
+          }
+        } catch { /* keep the cached state — the setup card stays honest about what we last verified */ }
+      }
+      return connectSetupShape(ctx, db, identity.workspaceCompanyId);
+    },
+  }),
+  listInvoicePaymentAttempts: defineAction({
+    request: z.object({}),
+    response: z.object({ attempts: z.array(z.object({ id: z.number(), invoiceId: z.number(), invoiceNumber: z.string(), clientName: z.string(), amount: z.string(), method: z.string(), status: z.enum(["pending", "paid", "failed", "expired"]), createdAt: z.string() })) }),
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const rows = await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.companyId, companyId)).orderBy(desc(schema.invoicePaymentAttempts.createdAt)).limit(50);
+      const invoiceIds = [...new Set(rows.map((r) => r.invoiceId))];
+      const invoices = invoiceIds.length ? await db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, clientName: schema.invoices.clientName }).from(schema.invoices).where(inArray(schema.invoices.id, invoiceIds)) : [];
+      const byId = new Map(invoices.map((i) => [i.id, i]));
+      return { attempts: rows.map((r) => ({ id: r.id, invoiceId: r.invoiceId, invoiceNumber: byId.get(r.invoiceId)?.invoiceNumber ?? "", clientName: byId.get(r.invoiceId)?.clientName ?? "", amount: r.amount, method: r.method, status: r.status, createdAt: r.createdAt.toISOString() })) };
+    },
+  }),
+  // Public: the portal's Pay button. The portal token is the credential;
+  // the invoice must belong to the portal's job.
+  createPortalInvoicePayment: defineAction({
+    request: z.object({ token: z.string().min(8).max(200), invoiceId: z.number().int().positive() }),
+    response: z.object({ url: z.string() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const access = await requirePortalAccess(ctx, args.token, { logView: false });
+      const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.invoiceId)).limit(1))[0];
+      if (!invoice || invoice.jobId !== access.jobId) throw new Error("That invoice is not part of this portal.");
+      return startInvoiceCheckout(ctx, db, invoice, `${appPublicUrl()}/app/#portal=${encodeURIComponent(args.token)}`);
+    },
+  }),
+  // Public: the shared invoice link's Pay button — the same link the app
+  // sends with the invoice, so a sent invoice is payable with no extra
+  // step for the contractor.
+  createDocumentInvoicePayment: defineAction({
+    request: z.object({ token: z.string().min(8).max(200) }),
+    response: z.object({ url: z.string() }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const link = await resolveDocumentLinkToken(ctx, args.token);
+      if (link.documentKind !== "invoice") throw new Error("This link is not an invoice.");
+      const invoice = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, link.documentId)).limit(1))[0];
+      if (!invoice) throw new Error("This invoice is no longer available.");
+      return startInvoiceCheckout(ctx, db, invoice, `${appPublicUrl()}/app/#doc=${encodeURIComponent(args.token)}`);
     },
   }),
   submitEstimateRequest: defineAction({request:z.object({name:z.string().trim().min(2).max(160),phone:z.string().trim().min(7).max(40),email:z.string().trim().email().max(200),address:z.string().trim().min(5).max(240),serviceType:z.string().trim().min(2).max(120),projectDetails:z.string().trim().min(10).max(3000),preferredContactTime:z.string().trim().max(120),preferredDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),preferredTime:z.string().regex(/^\d{2}:\d{2}$/).or(z.literal("")).default(""),company:z.string().max(0).default("")}),response:z.object({id:z.number()}),async handler(ctx,args){if(args.company)throw new Error("Request rejected.");const db=ctx.db<typeof schema>();const digits=normalizedPhone(args.phone);if(digits.length<10)throw new Error("Enter a valid phone number.");const recent=await db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt));const cutoff=Date.now()-86400000;const duplicates=recent.filter(l=>l.source==="website form"&&l.createdAt.getTime()>=cutoff&&(normalizedPhone(l.phone)===digits||l.email.toLowerCase()===args.email.toLowerCase()));if(duplicates.length>=3)throw new Error("Too many recent requests. Please call the office.");const rows=await db.insert(schema.leads).values({name:args.name,phone:args.phone,email:args.email,address:args.address,serviceType:args.serviceType,preferredContactTime:args.preferredContactTime,source:"website form",notes:args.projectDetails,stage:"new",createdAt:new Date(),updatedAt:new Date()}).returning({id:schema.leads.id});const made=rows[0];if(!made)throw new Error("Could not submit request.");if(args.preferredDate){const startsAt=`${args.preferredDate}T${args.preferredTime||"09:00"}:00`;await db.insert(schema.appointments).values({clientName:args.name,clientPhone:args.phone,startsAt,notes:`Online booking — ${args.serviceType}. ${args.projectDetails}`.slice(0,1000),createdAt:new Date(),updatedAt:new Date()});}ctx.invalidateQueries();return{id:made.id};} }),
@@ -8477,6 +8684,10 @@ export const PUBLIC_ACTIONS = new Set([
   // Growth loop: landing-page click beacon — public, no session exists yet.
   "recordLoopLanding",
   "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  // Wave 2 Item 6: Pay Now starts from the public portal / invoice
+  // links — the link token is the only credential, exactly like the
+  // other portal actions above.
+  "createPortalInvoicePayment", "createDocumentInvoicePayment",
   "getFeatureFlags",
   // Admin panel Phase 2 (Settings): maintenance status, branding, and the
   // public policy version are read by any client; verifyTotpLogin completes
