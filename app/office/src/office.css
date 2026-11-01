@@ -338,6 +338,16 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 
 /* ---------- tables & detail ---------- */
 .split-layout { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+/* Jobs (Danny 2026-11-01): the job detail window sat small in a corner —
+   give the Jobs split a wide panel and lay the panel's facts, stat cards
+   and photos out across the extra room instead of one narrow column. */
+.split-layout.jobs-split { grid-template-columns: minmax(0, 1fr) min(680px, 94vw); }
+.job-detail-panel .mini-stats { grid-template-columns: repeat(4, 1fr); }
+.job-detail-panel .photo-grid { grid-template-columns: repeat(4, 1fr); }
+.detail-list.facts-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 30px; }
+.detail-list.facts-grid > div { grid-template-columns: 96px 1fr; }
+.detail-list.facts-grid > div:nth-child(2) { border-top: none; }
+.detail-list.facts-grid > div.wide { grid-column: 1 / -1; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th {
   text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.07em;
@@ -551,12 +561,19 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   .kpi-row { grid-template-columns: repeat(3, 1fr); }
   .panel-grid { grid-template-columns: 1fr; }
   .split-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+  .split-layout.jobs-split { grid-template-columns: minmax(0, 1fr) min(500px, 94vw); }
 }
 @media (max-width: 980px) {
   .chart-grid { grid-template-columns: 1fr; }
   .split-layout { grid-template-columns: 1fr; }
   .detail-panel { position: static; max-height: none; }
   .sidebar { width: 200px; flex-basis: 200px; }
+}
+@media (max-width: 640px) {
+  .detail-list.facts-grid { grid-template-columns: 1fr; }
+  .detail-list.facts-grid > div:nth-child(2) { border-top: 1px solid var(--line-soft); }
+  .job-detail-panel .mini-stats { grid-template-columns: 1fr 1fr; }
+  .job-detail-panel .photo-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ---------- Track 1b: schedule ---------- */

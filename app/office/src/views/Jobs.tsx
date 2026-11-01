@@ -5,6 +5,7 @@ import type { Job, JobPhoto, PhotoStage, ProductionStage } from "../types";
 import { PHOTO_STAGE_LABELS, PRODUCTION_STAGES, PRODUCTION_STAGE_LABELS } from "../types";
 import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, formatMoney, parseMoney } from "../utils";
 import type { DocSelection } from "./Documents";
+import { PortalLinkPanel } from "../components/LinkPanel";
 import { ProductionBoard } from "./ProductionBoard";
 import { TimelineFeed } from "./Timeline";
 
@@ -114,7 +115,7 @@ export function JobsView({
       {mode === "board" ? (
         <ProductionBoard onOpenJob={(id) => { onSelectJob(id); setMode("list"); }} />
       ) : (
-      <div className={selected ? "split-layout" : ""}>
+      <div className={selected ? "split-layout jobs-split" : ""}>
         <section className="panel table-panel">
           {jobsQuery.isLoading ? <div className="view-loading">Loading jobs…</div> : null}
           {jobsQuery.isError ? (
@@ -204,7 +205,7 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
   const jobInvoices = (invoicesQuery.data?.invoices ?? []).filter((i) => i.jobId === jobId);
 
   return (
-    <aside className="panel detail-panel">
+    <aside className="panel detail-panel job-detail-panel">
       <div className="drawer-head">
         <div>
           <h2>{job ? (job.jobType || "Job") : "Job"}</h2>
@@ -219,7 +220,7 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
 
       {job ? (
         <>
-          <dl className="detail-list">
+          <dl className="detail-list facts-grid">
             <div><dt>Client</dt><dd>{job.clientName || "—"}</dd></div>
             <div><dt>Phone</dt><dd>{job.clientPhone || "—"}</dd></div>
             <div><dt>Email</dt><dd>{job.clientEmail || "—"}</dd></div>
@@ -228,8 +229,8 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             {job.appointmentAt ? <div><dt>Appointment</dt><dd>{formatDate(job.appointmentAt)}</dd></div> : null}
             {job.dueDate ? <div><dt>Due date</dt><dd>{formatDate(job.dueDate)}</dd></div> : null}
             {job.completedAt ? <div><dt>Completed</dt><dd>{formatDate(job.completedAt)}</dd></div> : null}
-            {job.notes ? <div><dt>Notes</dt><dd>{job.notes}</dd></div> : null}
-            {job.paymentNotes ? <div><dt>Payment notes</dt><dd>{job.paymentNotes}</dd></div> : null}
+            {job.notes ? <div className="wide"><dt>Notes</dt><dd>{job.notes}</dd></div> : null}
+            {job.paymentNotes ? <div className="wide"><dt>Payment notes</dt><dd>{job.paymentNotes}</dd></div> : null}
           </dl>
 
           <section className="drawer-section">
@@ -246,6 +247,8 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             {stageNote ? <p className="feed-meta block">{stageNote}</p> : null}
             <p className="muted small">Moving to Complete asks for a review (email if enabled, otherwise a queue task).</p>
           </section>
+
+          <PortalLinkPanel jobId={job.id} />
 
           <section className="drawer-section">
             <h3>Amounts</h3>
