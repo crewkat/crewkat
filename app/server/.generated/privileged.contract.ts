@@ -119,6 +119,30 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  qbPlatformStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), environment: z.string() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
+  qbTokenExchange: {
+    request: z.object({ code: z.string().min(1).max(2000), redirectUri: z.string().url().max(500) }),
+    response: z.object({ configured: z.boolean(), accessToken: z.string().nullable(), refreshToken: z.string().nullable(), expiresInSeconds: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  qbRefreshToken: {
+    request: z.object({ refreshToken: z.string().min(1).max(2000) }),
+    response: z.object({ configured: z.boolean(), accessToken: z.string().nullable(), refreshToken: z.string().nullable(), expiresInSeconds: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  qbApiRequest: {
+    request: z.object({ accessToken: z.string().min(1).max(4000), realmId: z.string().min(1).max(40), method: z.enum(["GET", "POST"]), path: z.string().min(1).max(1500), body: z.string().max(60000).default("") }),
+    response: z.object({ configured: z.boolean(), status: z.number().int(), body: z.string() }),
+    capabilities: [],
+    timeoutMs: 30_000,
+  },
   getStripePlatformStatus: {
     request: z.object({}),
     response: z.object({ configured: z.boolean() }),

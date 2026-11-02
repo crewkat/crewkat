@@ -36,6 +36,7 @@ import {
   shiftDateKey,
   todayKey,
 } from "./wave1";
+import { getQbConnection, runQuickBooksSync } from "./quickbooks";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
@@ -7120,6 +7121,146 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   }),
 
   // ---------------------------------------------------------------------
+  // Wave 2 Item 7: QuickBooks Online. OAuth connect (per company),
+  // two-way sync engine in quickbooks.ts, per-record state in
+  // qb_sync_records for the Sync Status centre. Tokens never leave
+  // the server; no Intuit env → the whole feature is a setup state.
+  // ---------------------------------------------------------------------
+  getQuickBooksStatus: defineAction({
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), environment: z.string(), status: z.enum(["not_connected", "connected"]), companyName: z.string(), realmHint: z.string().nullable(), hasDefaultItem: z.boolean(), lastSyncAt: z.string().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const platform = await ctx.executePrivileged(privileged.qbPlatformStatus, {});
+      const conn = await getQbConnection(db, companyId);
+      return {
+        configured: platform.configured,
+        environment: platform.environment,
+        status: conn?.status ?? "not_connected",
+        companyName: conn?.companyName ?? "",
+        realmHint: conn?.realmId ? `…${conn.realmId.slice(-4)}` : null,
+        hasDefaultItem: !!conn?.defaultItemId,
+        lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
+      };
+    },
+  }),
+  getQuickBooksConnectUrl: defineAction({
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), url: z.string().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const platform = await ctx.executePrivileged(privileged.qbPlatformStatus, {});
+      if (!platform.configured) return { configured: false, url: null };
+      const clientId = process.env.QB_CLIENT_ID?.trim();
+      if (!clientId) return { configured: false, url: null };
+      const state = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "");
+      const existing = await getQbConnection(db, companyId);
+      if (existing) {
+        await db.update(schema.quickbooksConnections).set({ stateToken: state, updatedAt: new Date() }).where(eq(schema.quickbooksConnections.id, existing.id));
+      } else {
+        await db.insert(schema.quickbooksConnections).values({ companyId, stateToken: state });
+      }
+      const redirectUri = `${appPublicUrl()}/quickbooks/callback`;
+      const url = `https://appcenter.intuit.com/connect/oauth2?client_id=${encodeURIComponent(clientId)}&response_type=code&scope=${encodeURIComponent("com.intuit.quickbooks.accounting")}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+      return { configured: true, url };
+    },
+  }),
+  handleQuickBooksCallback: defineAction({
+    request: z.object({ code: z.string().min(1).max(2000), realmId: z.string().min(1).max(40), state: z.string().min(8).max(80) }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db<typeof schema>();
+      const conn = (await db.select().from(schema.quickbooksConnections).where(eq(schema.quickbooksConnections.stateToken, args.state)).limit(1))[0];
+      if (!conn) throw new Error("This connection link has expired. Start again from Settings.");
+      const redirectUri = `${appPublicUrl()}/quickbooks/callback`;
+      const tokens = await ctx.executePrivileged(privileged.qbTokenExchange, { code: args.code, redirectUri });
+      if (!tokens.configured || !tokens.accessToken || !tokens.refreshToken) throw new Error("Intuit did not complete the connection.");
+      await db.update(schema.quickbooksConnections).set({
+        realmId: args.realmId,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        accessTokenExpiresAt: new Date(Date.now() + tokens.expiresInSeconds * 1000),
+        status: "connected",
+        stateToken: "",
+        updatedAt: new Date(),
+      }).where(eq(schema.quickbooksConnections.id, conn.id));
+      // Best-effort: fetch the QB company name for display.
+      try {
+        const info = await ctx.executePrivileged(privileged.qbApiRequest, { accessToken: tokens.accessToken, realmId: args.realmId, method: "GET", path: `/companyinfo/${encodeURIComponent(args.realmId)}`, body: "" });
+        if (info.status >= 200 && info.status < 300) {
+          const parsed = JSON.parse(info.body) as { CompanyInfo?: { CompanyName?: string } };
+          if (parsed.CompanyInfo?.CompanyName) {
+            await db.update(schema.quickbooksConnections).set({ companyName: parsed.CompanyInfo.CompanyName }).where(eq(schema.quickbooksConnections.id, conn.id));
+          }
+        }
+      } catch { /* display name is cosmetic */ }
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+  disconnectQuickBooks: defineAction({
+    request: z.object({}),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      await db.update(schema.quickbooksConnections).set({ status: "not_connected", realmId: "", accessToken: "", refreshToken: "", accessTokenExpiresAt: null, companyName: "", stateToken: "", updatedAt: new Date() }).where(eq(schema.quickbooksConnections.companyId, companyId));
+      ctx.invalidateQueries();
+      return { ok: true as const };
+    },
+  }),
+  runQuickBooksSync: defineAction({
+    request: z.object({}),
+    response: z.object({ pushed: z.number(), pulled: z.number(), conflicts: z.number(), errors: z.number(), lastSyncAt: z.string().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const summary = await runQuickBooksSync(ctx, db, companyId);
+      const conn = await getQbConnection(db, companyId);
+      ctx.invalidateQueries();
+      return { ...summary, lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null };
+    },
+  }),
+  listQbSyncRecords: defineAction({
+    request: z.object({}),
+    response: z.object({
+      lastSyncAt: z.string().nullable(),
+      records: z.array(z.object({ id: z.number(), entityType: z.string(), entityId: z.number(), label: z.string(), qbId: z.string().nullable(), status: z.string(), error: z.string(), lastSyncedAt: z.string().nullable() })),
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const conn = await getQbConnection(db, companyId);
+      const rows = await db.select().from(schema.qbSyncRecords).where(eq(schema.qbSyncRecords.companyId, companyId)).orderBy(desc(schema.qbSyncRecords.updatedAt)).limit(200);
+      const clientRows = await db.select({ id: schema.clients.id, name: schema.clients.name }).from(schema.clients).where(eq(schema.clients.companyId, companyId));
+      const invoiceRows = await db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, clientName: schema.invoices.clientName }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId));
+      const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
+      const invoiceLabel = new Map(invoiceRows.map((i) => [i.id, `${i.invoiceNumber || `Invoice #${i.id}`} · ${i.clientName}`]));
+      const paymentRows = rows.filter((r) => r.entityType === "payment");
+      const paymentInvoice = new Map<number, string>();
+      if (paymentRows.length) {
+        const pays = await db.select({ id: schema.payments.id, invoiceId: schema.payments.invoiceId, amount: schema.payments.amount }).from(schema.payments).where(inArray(schema.payments.id, paymentRows.map((r) => r.entityId)));
+        for (const p of pays) paymentInvoice.set(p.id, `${p.amount} on ${invoiceLabel.get(p.invoiceId) ?? `invoice #${p.invoiceId}`}`);
+      }
+      return {
+        lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
+        records: rows.map((r) => ({
+          id: r.id,
+          entityType: r.entityType,
+          entityId: r.entityId,
+          label: r.entityType === "customer" ? (clientName.get(r.entityId) ?? `Client #${r.entityId}`) : r.entityType === "invoice" ? (invoiceLabel.get(r.entityId) ?? `Invoice #${r.entityId}`) : (paymentInvoice.get(r.entityId) ?? `Payment #${r.entityId}`),
+          qbId: r.qbId,
+          status: r.status,
+          error: r.error,
+          lastSyncedAt: r.lastSyncedAt?.toISOString() ?? null,
+        })),
+      };
+    },
+  }),
+
+  // ---------------------------------------------------------------------
   // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
   // Settings; payment starts from the public portal / invoice links
   // (PUBLIC_ACTIONS below) and lands via handleStripeWebhook.
@@ -9060,7 +9201,7 @@ export const PUBLIC_ACTIONS = new Set([
   "getGoogleClientId", "googleSignIn",
   // Growth loop: landing-page click beacon — public, no session exists yet.
   "recordLoopLanding",
-  "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "submitLeadForm", "portalListJobMessages", "portalSendJobMessage",
+  "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "submitLeadForm", "handleQuickBooksCallback", "portalListJobMessages", "portalSendJobMessage",
   // Wave 2 Item 6: Pay Now starts from the public portal / invoice
   // links — the link token is the only credential, exactly like the
   // other portal actions above.

@@ -1162,6 +1162,26 @@ const server = createServer(async (req, res) => {
       } catch { /* fall through to the SPA below */ }
     }
 
+    // Wave 2 item 7: QuickBooks OAuth callback. Intuit redirects the
+    // browser here with code + realmId + state; the public action
+    // validates the state token and stores the tokens server-side,
+    // then we bounce the browser back to the Office settings page.
+    if (path === "/quickbooks/callback" && req.method === "GET") {
+      const code = url.searchParams.get("code") ?? "";
+      const realmId = url.searchParams.get("realmId") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      let location = "/office?qb=connected";
+      try {
+        if (!code || !realmId || !state) throw new Error("missing params");
+        await dispatchAction("handleQuickBooksCallback", { code, realmId, state }, { userAgent: req.headers["user-agent"] ?? "", clientIp: clientIp(req) });
+      } catch {
+        location = "/office?qb=failed";
+      }
+      res.writeHead(303, { location });
+      res.end();
+      return;
+    }
+
     // Wave 2 item 10: public lead-capture form at /lead/:code. The
     // code (on the company's settings row) names the company and
     // nothing more; the submit goes through the public submitLeadForm

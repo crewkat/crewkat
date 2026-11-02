@@ -88,7 +88,7 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // Promotions (0092): sending a campaign is a company-wide external
   // send and deleting one is a record delete — both Admin-tier.
   // Drafting, previewing, and duplicating are Office (below).
-  "sendCampaign", "deleteCampaign", "deletePostedReview",
+  "sendCampaign", "deleteCampaign", "deletePostedReview", "getQuickBooksConnectUrl", "disconnectQuickBooks",
   // Wave 2 Item 6: connecting the company's Stripe account is a
   // billing-tier act (like the billing portal session above).
   "startConnectOnboarding",
@@ -150,6 +150,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "getPaymentsSetup", "refreshConnectStatus", "listInvoicePaymentAttempts", "getProposalAnalytics",
   "getReputationInbox", "recordPostedReview",
   "getLeadCaptureInfo", "getLeadSourceReport",
+  "getQuickBooksStatus", "runQuickBooksSync", "listQbSyncRecords",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

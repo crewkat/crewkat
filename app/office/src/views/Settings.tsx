@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { cleanError, downloadBase64, formatCents, formatDate, formatMoney } from "../utils";
+import { cleanError, downloadBase64, formatCents, formatDate, formatDateTime, formatMoney } from "../utils";
 
 type SettingsData = Awaited<ReturnType<typeof api.getSettings>>;
 /** The full company settings record minus the logo/cover URLs (those are
@@ -103,6 +103,8 @@ export function SettingsView({ canManage = false, userName = "", seeMoney = fals
       <BillingSection />
 
       <PaymentsSection canManage={canManage} />
+
+      <QuickBooksSection canManage={canManage} />
 
       {settingsQuery.isLoading ? (
         <section className="panel settings-panel"><p className="muted">Loading settings…</p></section>
@@ -453,6 +455,114 @@ function PaymentsSection({ canManage }: { canManage: boolean }) {
               </button>
             ) : null}
           </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+// Wave 2 Item 7: QuickBooks Online — connect once, then clients,
+// invoices, and payments sync both ways. The Sync Status centre lists
+// every record's state; conflicts (both sides edited) are flagged
+// there, never silently overwritten (last-write-wins by updatedAt).
+function QuickBooksSection({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const statusQuery = useQuery({ queryKey: ["quickbooks-status"], queryFn: () => api.getQuickBooksStatus({}) });
+  const recordsQuery = useQuery({ queryKey: ["qb-sync-records"], queryFn: () => api.listQbSyncRecords({}), enabled: statusQuery.data?.status === "connected" });
+  const [error, setError] = useState("");
+  const [syncNote, setSyncNote] = useState("");
+  const connect = useMutation({
+    mutationFn: () => api.getQuickBooksConnectUrl({}),
+    onSuccess: (result) => {
+      if (result.url) window.location.href = result.url;
+      else setError("QuickBooks is not configured on the platform yet.");
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not start the QuickBooks connection."),
+  });
+  const disconnect = useMutation({
+    mutationFn: () => api.disconnectQuickBooks({}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["quickbooks-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["qb-sync-records"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not disconnect QuickBooks."),
+  });
+  const sync = useMutation({
+    mutationFn: () => api.runQuickBooksSync({}),
+    onSuccess: (r) => {
+      setSyncNote(`Sync complete: ${r.pushed} pushed, ${r.pulled} pulled${r.conflicts ? `, ${r.conflicts} conflict${r.conflicts === 1 ? "" : "s"}` : ""}${r.errors ? `, ${r.errors} error${r.errors === 1 ? "" : "s"}` : ""}.`);
+      void queryClient.invalidateQueries({ queryKey: ["qb-sync-records"] });
+      void queryClient.invalidateQueries({ queryKey: ["quickbooks-status"] });
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Sync failed."),
+  });
+  const status = statusQuery.data;
+  const records = recordsQuery.data?.records ?? [];
+  return (
+    <section className="panel settings-panel">
+      <div className="panel-head"><h2>QuickBooks Online</h2></div>
+      {statusQuery.isLoading ? <p className="muted">Loading QuickBooks status…</p> : null}
+      {statusQuery.isError ? <p className="muted">Couldn't load QuickBooks status.</p> : null}
+      {status && !status.configured ? (
+        <div className="empty-state small">
+          <div className="empty-icon">▤</div>
+          <p><strong>QuickBooks sync isn't switched on for Crewkat yet.</strong></p>
+          <p className="muted">Once the platform's Intuit app credentials are configured, this is where you connect your QuickBooks Online company and keep clients, invoices, and payments in sync both ways. Nothing to do here until then.</p>
+        </div>
+      ) : null}
+      {status && status.configured && status.status !== "connected" ? (
+        <>
+          <p className="muted">Connect your QuickBooks Online company ({status.environment}) and Crewkat will keep clients, invoices, and payments in sync both ways. Invoice lines post to a single “Services” item in QuickBooks — no journal entries, no expense sync.</p>
+          {error ? <p className="status error">{error}</p> : null}
+          <div className="settings-save-row">
+            {canManage ? (
+              <button type="button" className="btn btn-primary" disabled={connect.isPending} onClick={() => { setError(""); connect.mutate(); }}>
+                {connect.isPending ? "Opening Intuit…" : "Connect QuickBooks"}
+              </button>
+            ) : <span className="muted small">Only an admin can connect QuickBooks.</span>}
+          </div>
+        </>
+      ) : null}
+      {status && status.configured && status.status === "connected" ? (
+        <>
+          <div className="settings-kv">
+            <div><span>Company</span><strong>{status.companyName || "Connected"}</strong></div>
+            <div><span>Realm</span><strong>{status.realmHint ?? "—"}</strong></div>
+            <div><span>Default item</span><strong>{status.hasDefaultItem ? "Services" : "Created on first sync"}</strong></div>
+            <div><span>Last sync</span><strong>{status.lastSyncAt ? formatDateTime(status.lastSyncAt) : "Never"}</strong></div>
+          </div>
+          <p className="muted small">If both sides edit the same record between syncs, the newer edit wins and the record is flagged as a conflict below — nothing is silently overwritten.</p>
+          {error ? <p className="status error">{error}</p> : null}
+          {syncNote ? <p className="status ok">{syncNote}</p> : null}
+          <div className="settings-save-row">
+            <button type="button" className="btn btn-primary" disabled={sync.isPending} onClick={() => { setError(""); setSyncNote(""); sync.mutate(); }}>
+              {sync.isPending ? "Syncing…" : "Sync now"}
+            </button>
+            {canManage ? (
+              <button type="button" className="btn danger" disabled={disconnect.isPending} onClick={() => { setError(""); disconnect.mutate(); }}>
+                {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+              </button>
+            ) : null}
+          </div>
+          <h3 className="settings-group-title">Sync status</h3>
+          {recordsQuery.isLoading ? <p className="muted">Loading sync records…</p> : null}
+          {!recordsQuery.isLoading && records.length === 0 ? <p className="muted small">Nothing synced yet — run the first sync and every client, invoice, and payment gets a state here.</p> : null}
+          {records.length > 0 ? (
+            <table className="mini-table">
+              <thead><tr><th>Record</th><th>Type</th><th>Status</th><th>Last synced</th></tr></thead>
+              <tbody>
+                {records.slice(0, 60).map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.label}{r.error ? <span className="feed-meta" style={{ display: "block" }}>{r.error}</span> : null}</td>
+                    <td>{r.entityType}</td>
+                    <td>{r.status === "synced" ? "✓ Synced" : r.status === "conflict" ? "⚠ Conflict" : r.status === "error" ? "✗ Error" : "Pending"}</td>
+                    <td>{r.lastSyncedAt ? formatDate(r.lastSyncedAt.slice(0, 10)) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          {records.length > 60 ? <p className="muted small">Showing the 60 most recently updated records.</p> : null}
         </>
       ) : null}
     </section>

@@ -162,6 +162,34 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Wave 2 (Item 7): QuickBooks Online. Intuit OAuth + a generic API
+  // proxy; tokens live server-side (DB) and are passed per call, never
+  // logged. Without QB_CLIENT_ID / QB_CLIENT_SECRET every op degrades
+  // to configured:false — a setup state, never an error.
+  qbPlatformStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), environment: z.string() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
+  qbTokenExchange: {
+    request: z.object({ code: z.string().min(1).max(2000), redirectUri: z.string().url().max(500) }),
+    response: z.object({ configured: z.boolean(), accessToken: z.string().nullable(), refreshToken: z.string().nullable(), expiresInSeconds: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  qbRefreshToken: {
+    request: z.object({ refreshToken: z.string().min(1).max(2000) }),
+    response: z.object({ configured: z.boolean(), accessToken: z.string().nullable(), refreshToken: z.string().nullable(), expiresInSeconds: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  qbApiRequest: {
+    request: z.object({ accessToken: z.string().min(1).max(4000), realmId: z.string().min(1).max(40), method: z.enum(["GET", "POST"]), path: z.string().min(1).max(1500), body: z.string().max(60000).default("") }),
+    response: z.object({ configured: z.boolean(), status: z.number().int(), body: z.string() }),
+    capabilities: [],
+    timeoutMs: 30_000,
+  },
   listStripeCharges: {
     request: z.object({ customerId: z.string().min(1).max(200), limit: z.number().int().min(1).max(25).default(10) }),
     response: z.object({
@@ -812,6 +840,57 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const result = await response.json() as { id?: unknown; url?: unknown };
     if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url) || typeof result.id !== "string") throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, sessionId: result.id, url: result.url, missing: [] };
+  },
+  // ---- Wave 2 (Item 7): QuickBooks Online handlers ------------------
+  async qbPlatformStatus() {
+    const configured = !!(process.env.QB_CLIENT_ID?.trim() && process.env.QB_CLIENT_SECRET?.trim());
+    return { configured, environment: process.env.QB_ENVIRONMENT?.trim() === "production" ? "production" : "sandbox" };
+  },
+  async qbTokenExchange(args) {
+    const clientId = process.env.QB_CLIENT_ID?.trim();
+    const clientSecret = process.env.QB_CLIENT_SECRET?.trim();
+    if (!clientId || !clientSecret) return { configured: false, accessToken: null, refreshToken: null, expiresInSeconds: 0 };
+    const response = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST",
+      headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: args.code, redirect_uri: args.redirectUri }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Intuit did not accept the connection code. Try connecting again.");
+    const result = await response.json() as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown };
+    if (typeof result.access_token !== "string" || typeof result.refresh_token !== "string") throw new Error("Intuit did not return connection tokens.");
+    return { configured: true, accessToken: result.access_token, refreshToken: result.refresh_token, expiresInSeconds: typeof result.expires_in === "number" ? result.expires_in : 3600 };
+  },
+  async qbRefreshToken(args) {
+    const clientId = process.env.QB_CLIENT_ID?.trim();
+    const clientSecret = process.env.QB_CLIENT_SECRET?.trim();
+    if (!clientId || !clientSecret) return { configured: false, accessToken: null, refreshToken: null, expiresInSeconds: 0 };
+    const response = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST",
+      headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: args.refreshToken }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("The QuickBooks connection has expired. Reconnect in Settings.");
+    const result = await response.json() as { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown };
+    if (typeof result.access_token !== "string") throw new Error("Intuit did not return a refreshed token.");
+    return { configured: true, accessToken: result.access_token, refreshToken: typeof result.refresh_token === "string" ? result.refresh_token : args.refreshToken, expiresInSeconds: typeof result.expires_in === "number" ? result.expires_in : 3600 };
+  },
+  async qbApiRequest(args) {
+    const configured = !!(process.env.QB_CLIENT_ID?.trim() && process.env.QB_CLIENT_SECRET?.trim());
+    if (!configured) return { configured: false, status: 0, body: "" };
+    const base = process.env.QB_ENVIRONMENT?.trim() === "production" ? "https://quickbooks.api.intuit.com" : "https://sandbox-quickbooks.api.intuit.com";
+    const response = await fetch(`${base}/v3/company/${encodeURIComponent(args.realmId)}${args.path}`, {
+      method: args.method,
+      headers: { Authorization: `Bearer ${args.accessToken}`, Accept: "application/json", ...(args.method === "POST" ? { "Content-Type": "application/json" } : {}) },
+      body: args.method === "POST" && args.body ? args.body : undefined,
+      redirect: "error",
+      signal: AbortSignal.timeout(25_000),
+    });
+    const text = await response.text();
+    return { configured: true, status: response.status, body: text.slice(0, 60_000) };
   },
   async listStripeCharges(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
