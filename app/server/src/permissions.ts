@@ -89,6 +89,9 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // send and deleting one is a record delete — both Admin-tier.
   // Drafting, previewing, and duplicating are Office (below).
   "sendCampaign", "deleteCampaign", "deletePostedReview", "getQuickBooksConnectUrl", "disconnectQuickBooks",
+  // Work summaries (0094): deleting a stored summary is a record
+  // delete — Admin-only like every other delete.
+  "deleteWorkSummary",
   // Wave 2 Item 6: connecting the company's Stripe account is a
   // billing-tier act (like the billing portal session above).
   "startConnectOnboarding",
@@ -225,6 +228,10 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "updateJob", "updateJobClientInfo", "updateJobInfo", "updateJobSiteLocation",
   "updateOnMyWay", "updatePhoto", "updatePhotoPair",
   "updateProfileName", "updateQuoteDesign", "updateQuoteDocument",
+  // Work summaries (0094): field working surface — create/list/read a
+  // job's summaries from either client (share/revoke rides the existing
+  // document-link actions, already classified above).
+  "createWorkSummary", "listWorkSummaries", "getWorkSummary",
   "uploadDocumentAttachment", "uploadJobFile", "uploadSupportScreenshot",
   "userSupportThread", "userSupportThreads",
 ]);

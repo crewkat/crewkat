@@ -533,6 +533,10 @@ export async function buildJobTimeline(db: Db, job: JobRow): Promise<TimelineEve
   for (const log of logRows) {
     push(`log:${log.id}`, "log", `Daily log — ${log.logDate}`, log.createdAt, log.notes.slice(0, 160));
   }
+  // Work summaries (0094): creation is logged as a job_events row
+  // (kind "note", title "Work summary created") by createWorkSummary,
+  // so it surfaces above with the other recorded job events — no
+  // separate summary source here (that would double-report it).
   // Photos grouped by day + stage so a big upload doesn't flood the feed.
   const photoGroups = new Map<string, { count: number; at: Date; stage: string }>();
   for (const photo of photoRows) {

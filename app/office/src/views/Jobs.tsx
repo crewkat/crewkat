@@ -6,6 +6,7 @@ import { PHOTO_STAGE_LABELS, PRODUCTION_STAGES, PRODUCTION_STAGE_LABELS } from "
 import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, formatMoney, parseMoney } from "../utils";
 import type { DocSelection } from "./Documents";
 import { PortalLinkPanel } from "../components/LinkPanel";
+import { WorkSummaryPanel } from "../components/WorkSummaryPanel";
 import { ProductionBoard } from "./ProductionBoard";
 import { TimelineFeed } from "./Timeline";
 
@@ -314,6 +315,8 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
           </section>
 
           <PortalLinkPanel jobId={job.id} />
+
+          <WorkSummaryPanel jobId={job.id} />
 
           {job.completedAt ? (
             <section className="drawer-section">

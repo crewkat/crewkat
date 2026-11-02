@@ -37,6 +37,12 @@ import {
   todayKey,
 } from "./wave1";
 import { getQbConnection, runQuickBooksSync } from "./quickbooks";
+import {
+  buildWorkSummaryContent,
+  parseWorkSummaryContent,
+  resolveWorkSummaryRange,
+  type WorkSummaryContent,
+} from "./workSummaries";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
@@ -69,7 +75,25 @@ const documentFontSchema = z.enum(["helvetica", "times", "courier", "palatino"])
 const adjustmentTypeSchema = z.enum(["percent", "fixed"]);
 const depositTypeSchema = z.enum(["none", "percent", "fixed"]);
 const invoiceStatusSchema = z.enum(["draft", "sent", "paid", "overdue"]);
-const documentKindSchema = z.enum(["invoice", "quote", "contract", "change_order"]);
+const documentKindSchema = z.enum(["invoice", "quote", "contract", "change_order", "work_summary"]);
+// Work summaries (0094): the frozen snapshot shape stored on the
+// work_summaries row and served verbatim on the public summary page.
+const workSummaryLoadSchema = z.object({ date: z.string(), kind: z.string(), quantity: z.string(), unit: z.string(), cost: z.string(), vendor: z.string(), notes: z.string() });
+const workSummaryContentSchema = z.object({
+  version: z.literal(1),
+  job: z.object({ id: z.number(), jobType: z.string(), clientName: z.string(), jobAddress: z.string() }),
+  rangeStart: z.string(), rangeEnd: z.string(), generatedAt: z.string(),
+  logs: z.array(z.object({ logDate: z.string(), crew: z.string(), hours: z.string(), notes: z.string(), blockers: z.string(), clientSummary: z.string() })),
+  notes: z.array(z.object({ note: z.string(), at: z.string() })),
+  photos: z.array(z.object({ id: z.number(), stage: stageSchema, caption: z.string(), url: z.string(), capturedAt: z.string() })),
+  loads: z.object({ items: z.array(workSummaryLoadSchema), count: z.number(), totalCost: z.string() }),
+});
+const workSummarySummarySchema = z.object({
+  id: z.number(), jobId: z.number(), rangeStart: z.string(), rangeEnd: z.string(),
+  preset: z.enum(["today", "this_week", "custom"]), createdAt: z.string(),
+  logCount: z.number(), photoCount: z.number(), loadCount: z.number(),
+  link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable(),
+});
 // 0081: one saved address on a client profile. `primary` marks the entry
 // whose address mirrors into the legacy single `address` field.
 const clientAddressSchema = z.object({ label: z.string(), address: z.string(), primary: z.boolean() });
@@ -407,14 +431,15 @@ async function hashPortalToken(token: string) {
 async function hashLinkToken(token: string) {
   return hashPortalToken(token);
 }
-async function documentLinkTargetExists(ctx: Ctx, kind: "invoice" | "quote" | "contract" | "change_order", id: number) {
+async function documentLinkTargetExists(ctx: Ctx, kind: "invoice" | "quote" | "contract" | "change_order" | "work_summary", id: number) {
   const db = ctx.db<typeof schema>();
   if (kind === "invoice") return !!(await db.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.id, id)).limit(1))[0];
   if (kind === "quote") return !!(await db.select({ id: schema.quotes.id }).from(schema.quotes).where(eq(schema.quotes.id, id)).limit(1))[0];
+  if (kind === "work_summary") return !!(await db.select({ id: schema.workSummaries.id }).from(schema.workSummaries).where(eq(schema.workSummaries.id, id)).limit(1))[0];
   const doc = (await db.select({ kind: schema.documents.kind }).from(schema.documents).where(eq(schema.documents.id, id)).limit(1))[0];
   return !!doc && doc.kind === kind;
 }
-async function getActiveDocumentLinkRow(ctx: Ctx, kind: "invoice" | "quote" | "contract" | "change_order", id: number) {
+async function getActiveDocumentLinkRow(ctx: Ctx, kind: "invoice" | "quote" | "contract" | "change_order" | "work_summary", id: number) {
   const db = ctx.db<typeof schema>();
   const rows = await db.select().from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, kind), eq(schema.documentLinks.documentId, id), isNull(schema.documentLinks.revokedAt))).orderBy(desc(schema.documentLinks.createdAt));
   return rows[0] ?? null;
@@ -958,7 +983,7 @@ const BACKUP_TABLES = [
   "material_cost_items", "supplier_quotes", "purchase_orders", "equipment", "safety_talks", "incidents",
   "credentials", "crew_pay_rates", "completion_overrides", "marketplace_listings", "marketplace_listing_photos",
   "marketplace_requests", "marketplace_messages", "marketplace_booking_requests",
-  "document_links", "document_link_events"
+  "document_links", "document_link_events", "work_summaries"
 ] as const;
 
 function sqlValue(value: BackupScalar) {
@@ -3756,6 +3781,37 @@ async function craneLastWeekChampion(db: ReturnType<Ctx["db"]>): Promise<CraneCh
 
 const craneChampionSchema = z.object({ businessName: z.string(), score: z.number(), weekStart: z.string(), companyId: z.number().nullable() }).nullable();
 
+// Work summaries (0094): shape one stored summary row plus its active
+// document_links row (kind "work_summary") for the list/get payloads.
+// Counts come from the frozen snapshot, never from live source rows.
+async function workSummaryShape(ctx: Ctx, row: typeof schema.workSummaries.$inferSelect) {
+  const content: WorkSummaryContent = parseWorkSummaryContent(row.contentJson);
+  const link = await getActiveDocumentLinkRow(ctx, "work_summary", row.id);
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    rangeStart: row.rangeStart,
+    rangeEnd: row.rangeEnd,
+    preset: row.preset,
+    createdAt: row.createdAt.toISOString(),
+    logCount: content.logs.length,
+    photoCount: content.photos.length,
+    loadCount: content.loads.count,
+    link: link
+      ? {
+          hint: link.tokenHint,
+          shortCode: link.shortCode,
+          expiresAt: link.expiresAt.toISOString(),
+          expired: link.expiresAt.getTime() < Date.now(),
+          viewCount: link.viewCount,
+          firstViewedAt: link.firstViewedAt?.toISOString() ?? null,
+          lastViewedAt: link.lastViewedAt?.toISOString() ?? null,
+          createdAt: link.createdAt.toISOString(),
+        }
+      : null,
+  };
+}
+
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
@@ -4680,11 +4736,17 @@ export const BaseActions = {
     const linkFilter = docIds.length ? and(inArray(schema.documentLinks.documentId, docIds), inArray(schema.documentLinks.documentKind, ["contract", "change_order"])) : undefined;
     const linkRows = linkFilter ? await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(linkFilter) : [];
     const tokenIdRows = await db.select({ id: schema.portalTokens.id }).from(schema.portalTokens).where(eq(schema.portalTokens.jobId, jobId));
+    // Work summaries (0094) are job-owned too: their document_links rows
+    // (kind "work_summary") + link events die with the job, like the
+    // contract/change-order links above.
+    const summaryIdRows = await db.select({ id: schema.workSummaries.id }).from(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId));
+    const summaryLinkRows = summaryIdRows.length ? await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), inArray(schema.documentLinks.documentId, summaryIdRows.map((row) => row.id)))) : [];
     const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
     const cascade: unknown[] = [
       ...(linkRows.length ? [db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, linkRows.map((link) => link.id)))] : []),
       ...(linkFilter ? [db.delete(schema.documentLinks).where(linkFilter)] : []),
       ...(tokenIdRows.length ? [db.delete(schema.portalLinkEvents).where(inArray(schema.portalLinkEvents.linkId, tokenIdRows.map((row) => row.id)))] : []),
+      ...(summaryLinkRows.length ? [db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, summaryLinkRows.map((link) => link.id))), db.delete(schema.documentLinks).where(inArray(schema.documentLinks.id, summaryLinkRows.map((link) => link.id)))] : []),
       // Notifications that deep-link into this job or its documents.
       db.delete(schema.userNotifications).where(inArray(schema.userNotifications.link, notificationLinks)),
       // Independent records keep their rows; only the job link goes.
@@ -4723,6 +4785,7 @@ export const BaseActions = {
       db.delete(schema.safetyTalks).where(eq(schema.safetyTalks.jobId, jobId)),
       db.delete(schema.incidents).where(eq(schema.incidents.jobId, jobId)),
       db.delete(schema.completionOverrides).where(eq(schema.completionOverrides.jobId, jobId)),
+      db.delete(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId)),
       db.delete(schema.jobs).where(eq(schema.jobs.id, jobId)),
     ];
     await db.batch(cascade as [never, ...never[]]);
@@ -6248,6 +6311,20 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   createDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ token: z.string(), shortCode: z.string(), hint: z.string(), expiresAt: z.string() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); if(!await documentLinkTargetExists(ctx,args.kind,args.id)) throw new Error("Document not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashLinkToken(token); const shortCode=await uniqueDocumentShortCode(ctx); const now=new Date(); const expiresAt=new Date(now.getTime()+30*86400000); /* Build 0.5 (item 2): links are no longer revoked on re-share — previously shared links stay valid until explicitly revoked, so a link sent to a client can't silently die. */ await db.insert(schema.documentLinks).values({documentKind:args.kind,documentId:args.id,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:now}); ctx.invalidateQueries(); return{token,shortCode,hint:token.slice(-6),expiresAt:expiresAt.toISOString()}; } }),
   getDocumentLinkInfo: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const link=await getActiveDocumentLinkRow(ctx,args.kind,args.id); if(!link) return{link:null}; return{link:{hint:link.tokenHint,shortCode:link.shortCode,expiresAt:link.expiresAt.toISOString(),expired:link.expiresAt.getTime()<Date.now(),viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   revokeDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { await ctx.db<typeof schema>().update(schema.documentLinks).set({revokedAt:new Date()}).where(and(eq(schema.documentLinks.documentKind,args.kind),eq(schema.documentLinks.documentId,args.id),isNull(schema.documentLinks.revokedAt))); ctx.invalidateQueries(); return{ok:true}; } }),
+  // Work summaries (0094, SimplySub steals Item 1): generate a frozen,
+  // client-ready snapshot of a job's logs/notes/photos for a date range,
+  // store it, and share it through the document_links token family
+  // (kind "work_summary") — createDocumentLink / revokeDocumentLink /
+  // getDocumentLinkInfo work on summaries unchanged.
+  createWorkSummary: defineAction({ request: z.object({ jobId: z.number().int().positive(), preset: z.enum(["today", "this_week", "custom"]).default("custom"), rangeStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), rangeEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default("") }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { identity, job } = await requireJobCompany(ctx, db, args.jobId); if (args.preset === "custom" && (!args.rangeStart || !args.rangeEnd)) throw new Error("Pick a start and end date for a custom range."); const { rangeStart, rangeEnd } = resolveWorkSummaryRange(args.preset, args.rangeStart, args.rangeEnd); if (rangeStart > rangeEnd) throw new Error("The range start must be on or before the range end."); const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd); const rows = await db.insert(schema.workSummaries).values({ companyId: job.companyId, jobId: job.id, rangeStart, rangeEnd, preset: args.preset, contentJson: JSON.stringify(content), createdByUserId: identity.workspaceUserId, createdAt: new Date() }).returning({ id: schema.workSummaries.id }); const made = rows[0]; if (!made) throw new Error("Could not create the work summary."); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, made.id)).limit(1))[0]!; await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "note", title: "Work summary created", body: `${rangeStart} → ${rangeEnd} · ${content.logs.length} log${content.logs.length === 1 ? "" : "s"} · ${content.photos.length} photo${content.photos.length === 1 ? "" : "s"}`, userId: identity.workspaceUserId }); ctx.invalidateQueries(); return { summary: await workSummaryShape(ctx, row), content }; } }),
+  listWorkSummaries: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ summaries: z.array(workSummarySummarySchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const rows = await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.jobId, job.id)).orderBy(desc(schema.workSummaries.createdAt), desc(schema.workSummaries.id)); return { summaries: await Promise.all(rows.map((row) => workSummaryShape(ctx, row))) }; } }),
+  getWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); return { summary: await workSummaryShape(ctx, row), content: parseWorkSummaryContent(row.contentJson) }; } }),
+  deleteWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); const links = await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); if (links.length) { await db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, links.map((l) => l.id))); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); } await db.delete(schema.workSummaries).where(eq(schema.workSummaries.id, row.id)); ctx.invalidateQueries(); return { ok: true }; } }),
+  // Public (no session): the token IS the credential, resolved through
+  // the same document_links machinery as resolveDocumentLink (hash or
+  // short code; revoked/expired rejected identically). Records the view
+  // on the link row + a document_link_events row, like document links.
+  resolveWorkSummaryLink: defineAction({ request: z.object({ token: z.string().min(8).max(200), userAgent: z.string().max(500).default("") }), response: z.object({ summaryId: z.number(), company: z.object({ name: z.string(), phone: z.string(), email: z.string(), website: z.string(), address: z.string(), licenseNumber: z.string(), accentColor: z.string(), logoUrl: z.string().nullable() }), content: workSummaryContentSchema, linkExpiresAt: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const link = await resolveDocumentLinkToken(ctx, args.token); if (link.documentKind !== "work_summary") throw new Error("This link is no longer active."); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, link.documentId)).limit(1))[0]; if (!row || row.companyId !== link.companyId) throw new Error("This link is no longer active."); const now = new Date(); await db.update(schema.documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(schema.documentLinks.id, link.id)); await db.insert(schema.documentLinkEvents).values({ companyId: link.companyId, linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now }); const settingsRow = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, row.companyId)).limit(1))[0]; const company = { name: settingsRow?.companyName ?? "", phone: settingsRow?.phone ?? "", email: settingsRow?.email ?? "", website: settingsRow?.website ?? "", address: settingsRow?.address ?? "", licenseNumber: settingsRow?.licenseNumber ?? "", accentColor: settingsRow?.accentColor ?? "#1f5a4a", logoUrl: settingsRow?.logoBlobKey ? await ctx.blobs.getUrl(settingsRow.logoBlobKey) : null }; return { summaryId: row.id, company, content: parseWorkSummaryContent(row.contentJson), linkExpiresAt: link.expiresAt.toISOString() }; } }),
   deleteDocument: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { const db=ctx.db<typeof schema>(); const doc=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.id)).limit(1))[0]; if(!doc) throw new Error("Document not found."); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind,doc.kind),eq(schema.documentLinks.documentId,args.id))); await db.delete(schema.documents).where(eq(schema.documents.id,args.id)); for(const key of [doc.originalBlobKey,doc.signatureBlobKey,doc.clientSignatureBlobKey,doc.clientSignedPdfBlobKey]){ if(key){ try{ await ctx.blobs.delete(key); }catch{ /* best-effort blob cleanup, like the sibling deletes */ } } } ctx.invalidateQueries(); return{ok:true}; } }),
   // Portal shared files (0083): view-only files on a job. Upload stores the
   // blob + a job_files row (shared by default); the portal serves shared
@@ -9262,6 +9339,9 @@ export const PUBLIC_ACTIONS = new Set([
   // links — the link token is the only credential, exactly like the
   // other portal actions above.
   "createPortalInvoicePayment", "createDocumentInvoicePayment",
+  // Work summaries (0094): the public summary page resolves its
+  // document_links token exactly like resolveDocumentLink.
+  "resolveWorkSummaryLink",
   "getFeatureFlags",
   // Admin panel Phase 2 (Settings): maintenance status, branding, and the
   // public policy version are read by any client; verifyTotpLogin completes

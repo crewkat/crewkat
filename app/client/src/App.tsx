@@ -2012,7 +2012,7 @@ function handleLimitError(error: unknown, fallback: () => void) {
   else fallback();
 }
 
-function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" | "tools"; token: string }) {
+function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" | "tools" | "summary"; token: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   useBlockHostPullToRefresh(shellRef);
   return <div className="app-shell" ref={shellRef}>
@@ -2021,6 +2021,7 @@ function PublicEntry({ kind, token }: { kind: "document" | "portal" | "booking" 
     {kind === "portal" && <ClientPortalScreen lang="en" token={token} />}
     {kind === "booking" && <BookingRequestScreen lang="en" />}
     {kind === "tools" && <PublicToolsScreen slug={token} />}
+    {kind === "summary" && <PublicWorkSummaryScreen token={token} />}
   </div>;
 }
 
@@ -2662,7 +2663,9 @@ export function App() {
   const hash = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const docToken = hash.get("doc") ?? "";
   const portalToken = hash.get("portal") ?? "";
+  const summaryToken = hash.get("summary") ?? "";
   if (docToken) return <PublicEntry kind="document" token={docToken} />;
+  if (summaryToken) return <PublicEntry kind="summary" token={summaryToken} />;
   if (publicToolSlug !== null) return <PublicEntry kind="tools" token={publicToolSlug} />;
   if (portalToken) return <PublicEntry kind="portal" token={portalToken} />;
   if (params.has("booking")) return <PublicEntry kind="booking" token="" />;
@@ -3412,6 +3415,13 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     return hash.get("doc") ?? "";
   });
+  // Work summary links (#summary=, 0094): same document_links family as
+  // #doc= — memory-only token, public read-only summary page.
+  const [summaryToken] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    return hash.get("summary") ?? "";
+  });
   // Phase 3: public "On My Way" tracking links (#onmyway=). No login needed.
   // Persisted in sessionStorage (like the client portal) so a refresh keeps
   // the status card alive; the hash is stripped from the URL on arrival.
@@ -3439,7 +3449,7 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
     }
   });
   // Build 0.3: public link screens keep the default browser back-button behavior.
-  if (portalToken || docToken || onMyWayToken || publicParams.has("booking")) publicScreenRef.current = true;
+  if (portalToken || docToken || summaryToken || onMyWayToken || publicParams.has("booking")) publicScreenRef.current = true;
   if (portalToken)
     return (
       <div className="app-shell" ref={appShellRef}>
@@ -3452,6 +3462,13 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
       <div className="app-shell" ref={appShellRef}>
         <SafeAreaTopScrim backgroundColor="var(--bg)" />
         <ClientDocumentScreen token={docToken} />
+      </div>
+    );
+  if (summaryToken)
+    return (
+      <div className="app-shell" ref={appShellRef}>
+        <SafeAreaTopScrim backgroundColor="var(--bg)" />
+        <PublicWorkSummaryScreen token={summaryToken} />
       </div>
     );
   if (onMyWayToken)
@@ -10034,6 +10051,176 @@ function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId }: Pick<
 
 type ActivityItem = { at: number; label: string; detail: string };
 
+// Work summaries (0094): create a frozen client-ready summary for a
+// date range and share it through the document-link family (kind
+// "work_summary" — the same create/revoke actions as document links).
+// Lives on the job's Activity tab, under the timeline.
+function JobWorkSummariesCard({ lang, jobId }: { lang: Lang; jobId: number }) {
+  const es = lang === "es";
+  const qc = useQueryClient();
+  const [preset, setPreset] = useState<"today" | "this_week" | "custom">("this_week");
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const list = useQuery({
+    queryKey: ["work-summaries", jobId],
+    queryFn: () => api.listWorkSummaries({ jobId }),
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["work-summaries", jobId] });
+  const create = useMutation({
+    mutationFn: () =>
+      api.createWorkSummary({
+        jobId,
+        preset,
+        rangeStart: preset === "custom" ? rangeStart : "",
+        rangeEnd: preset === "custom" ? rangeEnd : "",
+      }),
+    onSuccess: () => { setError(""); refresh(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const share = useMutation({
+    mutationFn: (id: number) => api.createDocumentLink({ kind: "work_summary", id }),
+    onSuccess: () => { setError(""); refresh(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.revokeDocumentLink({ kind: "work_summary", id }),
+    onSuccess: () => refresh(),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteWorkSummary({ id }),
+    onSuccess: () => refresh(),
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const copyLink = async (id: number, shortCode: string) => {
+    const url = `${window.location.origin}/d/${shortCode}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopiedId(id);
+  };
+  const presetLabel = (p: string) => (p === "today" ? (es ? "Hoy" : "Today") : p === "this_week" ? (es ? "Esta semana" : "This week") : es ? "Personalizado" : "Custom");
+  const summaries = list.data?.summaries ?? [];
+  return (
+    <div className="panel-card">
+      <h3>{es ? "Resumen del trabajo" : "Work summary"}</h3>
+      <p className="muted">
+        {es
+          ? "Crea un resumen listo para el cliente con los registros, notas y fotos de un período. Queda guardado tal como se creó — los cambios posteriores no lo alteran."
+          : "Create a client-ready summary of the logs, notes and photos for a period. It's saved exactly as created — later edits don't change it."}
+      </p>
+      <div className="segmented-control ws-presets" role="group" aria-label={es ? "Período" : "Date range"}>
+        {(["today", "this_week", "custom"] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={preset === p ? "active" : ""}
+            aria-pressed={preset === p}
+            onClick={() => setPreset(p)}
+          >
+            {presetLabel(p)}
+          </button>
+        ))}
+      </div>
+      {preset === "custom" ? (
+        <div className="ws-range">
+          <label>
+            {es ? "Desde" : "From"}
+            <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+          </label>
+          <label>
+            {es ? "Hasta" : "To"}
+            <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
+          </label>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="primary-button"
+        disabled={create.isPending || (preset === "custom" && (!rangeStart || !rangeEnd))}
+        onClick={() => create.mutate()}
+      >
+        {create.isPending ? (es ? "Creando…" : "Creating…") : es ? "Crear resumen" : "Create summary"}
+      </button>
+      {error ? <p className="status error" role="alert">{error}</p> : null}
+      {list.isLoading ? (
+        <div className="loading-block" />
+      ) : summaries.length === 0 ? (
+        <p className="muted">{es ? "Aún no hay resúmenes para este trabajo." : "No summaries for this job yet."}</p>
+      ) : (
+        <ul className="panel-list">
+          {summaries.map((s) => (
+            <li key={s.id}>
+              <strong>{`${formatDate(s.rangeStart, lang)} – ${formatDate(s.rangeEnd, lang)}`}</strong>
+              <span>
+                {presetLabel(s.preset)} · {s.logCount} {es ? "registros" : "logs"} · {s.photoCount} {es ? "fotos" : "photos"} · {formatDate(s.createdAt.slice(0, 10), lang)}
+              </span>
+              {s.link ? (
+                <>
+                  <span>
+                    {s.link.viewCount > 0
+                      ? `${es ? "Visto" : "Viewed"} · ${s.link.viewCount}`
+                      : es ? "Enlace activo · sin abrir" : "Link active · not opened yet"}
+                    {` · ${es ? "Vence" : "Expires"} ${formatDate(s.link.expiresAt.slice(0, 10), lang)}`}
+                  </span>
+                  {s.link.shortCode ? (
+                    <div className="doc-link-url">
+                      <input readOnly value={`${window.location.origin}/d/${s.link.shortCode}`} onFocus={(e) => e.target.select()} aria-label={es ? "Enlace del resumen" : "Summary link"} />
+                      <button type="button" className="btn" onClick={() => void copyLink(s.id, s.link!.shortCode!)}>
+                        {copiedId === s.id ? `✓ ${es ? "Copiado" : "Copied"}` : es ? "Copiar enlace" : "Copy link"}
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="doc-link-actions">
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={revoke.isPending}
+                      onClick={() => { if (window.confirm(es ? "¿Revocar este enlace? El cliente ya no podrá abrirlo." : "Revoke this link? The client won't be able to open it anymore.")) revoke.mutate(s.id); }}
+                    >
+                      {es ? "Revocar enlace" : "Revoke link"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={remove.isPending}
+                      onClick={() => { if (window.confirm(es ? "¿Eliminar este resumen?" : "Delete this summary?")) remove.mutate(s.id); }}
+                    >
+                      {es ? "Eliminar" : "Delete"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="doc-link-actions">
+                  <button type="button" className="btn primary" disabled={share.isPending} onClick={() => share.mutate(s.id)}>
+                    {es ? "Compartir enlace" : "Share link"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={remove.isPending}
+                    onClick={() => { if (window.confirm(es ? "¿Eliminar este resumen?" : "Delete this summary?")) remove.mutate(s.id); }}
+                  >
+                    {es ? "Eliminar" : "Delete"}
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operations }: Pick<WorkspacePanelProps, "lang" | "job" | "quotes" | "invoices" | "documents" | "operations">) {
   const items: ActivityItem[] = [];
   const push = (iso: string | null | undefined, label: string, detail: string) => {
@@ -10072,6 +10259,7 @@ function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operat
           </ul>
         )}
       </div>
+      <JobWorkSummariesCard lang={lang} jobId={job.id} />
     </section>
   );
 }
@@ -31013,6 +31201,154 @@ function PlatformStrip({ lang, surface, signable, onDark, onClick }: { lang: Lan
       <img src={crewkatC} alt="" aria-hidden="true" />
       <span>{label}</span>
     </a>
+  );
+}
+
+// Work summary public page (0094): the read-only client view behind a
+// /d/ work_summary link (#summary=). Renders the FROZEN snapshot the
+// server stored at creation — logs, notes, photos and the loads
+// section — under the company's branding, same chrome family as the
+// portal/document public pages. EN/ES toggle like the document page.
+function PublicWorkSummaryScreen({ token }: { token: string }) {
+  const [lang, setLang] = useState<Lang>("en");
+  const es = lang === "es";
+  const q = useQuery({
+    queryKey: ["public-work-summary", token],
+    queryFn: () =>
+      api.resolveWorkSummaryLink({
+        token,
+        userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent.slice(0, 300),
+      }),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  if (q.isLoading)
+    return (
+      <main className="page public-page portal-v2">
+        <div className="loading-block" />
+      </main>
+    );
+  if (q.isError || !q.data) {
+    const errorMessage = q.error instanceof Error ? q.error.message : "";
+    const expired = errorMessage.toLowerCase().includes("has expired");
+    return (
+      <main className="page public-page portal-v2">
+        <section className="empty-state">
+          <h1>{expired ? (es ? "Enlace expirado" : "Link expired") : es ? "Este enlace ya no está activo" : "This link is no longer active"}</h1>
+          <p>{es ? "Solicite un enlace nuevo a su contratista." : "Ask your contractor for a new link."}</p>
+        </section>
+      </main>
+    );
+  }
+  const { company, content } = q.data;
+  const rangeLabel = `${formatDate(content.rangeStart, lang)} – ${formatDate(content.rangeEnd, lang)}`;
+  const stageLabel = (s: string) => (s === "before" ? (es ? "Antes" : "Before") : s === "after" ? (es ? "Después" : "After") : es ? "Durante" : "During");
+  return (
+    <main className="page public-page portal-v2">
+      <header className="portal-v2-brand">
+        {company.logoUrl ? (
+          <img src={company.logoUrl} alt={company.name} className="portal-v2-logo" />
+        ) : (
+          <span className="portal-v2-mark" aria-hidden="true">⌂</span>
+        )}
+        <div>
+          <strong>{company.name || "Crewkat"}</strong>
+          {company.phone && <span>{company.phone}</span>}
+        </div>
+        <button type="button" className="btn" onClick={() => setLang(es ? "en" : "es")}>
+          {es ? "English" : "Español"}
+        </button>
+      </header>
+
+      <section className="portal-v2-hero">
+        <p className="portal-v2-kicker">{content.job.jobType}</p>
+        <h1>{es ? "Resumen del trabajo" : "Work summary"}</h1>
+        {content.job.jobAddress ? <p className="portal-v2-address">{content.job.jobAddress}</p> : null}
+        <p className="portal-v2-address">{rangeLabel}</p>
+      </section>
+
+      <section className="portal-v2-card">
+        <h2>{es ? "Registro diario" : "Daily log"}</h2>
+        {content.logs.length === 0 ? (
+          <p className="dim">{es ? "Sin registros en este período." : "No log entries in this period."}</p>
+        ) : (
+          <ul className="panel-list">
+            {content.logs.map((l, i) => (
+              <li key={i}>
+                <strong>{formatDate(l.logDate, lang)}</strong>
+                <span>
+                  {[l.crew, l.hours ? `${l.hours}h` : ""].filter(Boolean).join(" · ")}
+                </span>
+                {l.clientSummary ? <p>{l.clientSummary}</p> : l.notes ? <p>{l.notes}</p> : null}
+                {l.blockers ? <small className="log-blockers">{es ? "Bloqueos: " : "Blockers: "}{l.blockers}</small> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {content.notes.length > 0 ? (
+        <section className="portal-v2-card">
+          <h2>{es ? "Notas" : "Notes"}</h2>
+          <ul className="panel-list">
+            {content.notes.map((n, i) => (
+              <li key={i}>
+                <span>{n.note}</span>
+                <time>{formatDate(n.at.slice(0, 10), lang)}</time>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="portal-v2-card">
+        <h2>{es ? "Fotos" : "Photos"}</h2>
+        {content.photos.length === 0 ? (
+          <p className="dim">{es ? "Sin fotos en este período." : "No photos in this period."}</p>
+        ) : (
+          <div className="portal-v2-grid">
+            {content.photos.map((p) => (
+              <figure key={p.id} className="portal-v2-thumb">
+                <img src={p.url} alt={p.caption || stageLabel(p.stage)} loading="lazy" />
+                <figcaption>
+                  {stageLabel(p.stage)}
+                  {p.caption ? ` · ${p.caption}` : ""}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="portal-v2-card">
+        <h2>{es ? "Cargas y acarreos" : "Loads"}</h2>
+        {content.loads.count === 0 ? (
+          <p className="dim">{es ? "Sin cargas registradas en este período." : "No loads recorded in this period."}</p>
+        ) : (
+          <ul className="panel-list">
+            {content.loads.items.map((l, i) => (
+              <li key={i}>
+                <strong>{formatDate(l.date, lang)}</strong>
+                <span>
+                  {[l.kind, l.quantity ? `${l.quantity} ${l.unit}`.trim() : "", l.vendor].filter(Boolean).join(" · ")}
+                </span>
+                {l.notes ? <p>{l.notes}</p> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <footer>
+        <p className="dim">
+          {company.name}
+          {company.phone ? ` · ${company.phone}` : ""}
+          {company.email ? ` · ${company.email}` : ""}
+          {company.licenseNumber ? ` · ${es ? "Lic." : "License"} ${company.licenseNumber}` : ""}
+        </p>
+      </footer>
+    </main>
   );
 }
 

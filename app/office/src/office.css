@@ -955,3 +955,7 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .lead-link-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .lead-link-row input { flex: 1; padding: 8px 10px; border: 1px solid var(--line, #e2e6ea); border-radius: 8px; font-size: 13px; background: #f8f9fa; }
 .lead-source-table { margin-top: 12px; }
+
+/* Work summaries (0094): one stored summary inside the job drawer. */
+.summary-row { border-top: 1px solid var(--border, #e5e2da); padding: 10px 0 4px; margin-top: 10px; }
+.summary-row .link-status-row { justify-content: space-between; }

@@ -545,6 +545,30 @@ export const clientReviews = sqliteTable("client_reviews", {
   index("client_reviews_job_idx").on(table.jobId),
 ]);
 
+// Work summaries (0094, SimplySub steals Item 1): a stored, client-ready
+// snapshot of a job's daily logs, notes and photos over a date range.
+// contentJson is FROZEN at creation — later edits to the source logs or
+// photos never change what a shared summary shows. Sharing reuses the
+// document_links family (document_kind = "work_summary", document_id =
+// this row's id): token hash, short code, expiry and revocation all live
+// there, exactly like invoice/quote/contract links. The snapshot's
+// "loads" section exists from day one; Item 2 fills its data source in
+// (see getJobLoadsInRange in server/src/workSummaries.ts).
+export const workSummaries = sqliteTable("work_summaries", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  rangeStart: text("range_start").notNull(),
+  rangeEnd: text("range_end").notNull(),
+  preset: text("preset", { enum: ["today", "this_week", "custom"] }).notNull().default("custom"),
+  contentJson: text("content_json").notNull().default("{}"),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("work_summaries_job_idx").on(table.jobId),
+  index("work_summaries_company_idx").on(table.companyId),
+]);
+
 export const completionCertificates = sqliteTable("completion_certificates", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -863,7 +887,9 @@ export const rateLimitEvents = sqliteTable("rate_limit_events", {
 export const documentLinks = sqliteTable("document_links", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
-  documentKind: text("document_kind", { enum: ["invoice", "quote", "contract", "change_order"] }).notNull(),
+  // 0094: "work_summary" joins the family — document_id points at a
+  // work_summaries row; the token machinery is identical.
+  documentKind: text("document_kind", { enum: ["invoice", "quote", "contract", "change_order", "work_summary"] }).notNull(),
   documentId: integer("document_id").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),

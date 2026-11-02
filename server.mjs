@@ -908,6 +908,8 @@ async function documentLinkMeta(linkRow) {
       docLabel = "Contract";
     } else if (kind === "change_order") {
       docLabel = "Change order";
+    } else if (kind === "work_summary") {
+      docLabel = "Work summary";
     }
   } catch {
     // keep the generic label
@@ -1095,7 +1097,12 @@ const server = createServer(async (req, res) => {
           const proto = req.headers["x-forwarded-proto"] || "https";
           const base = PUBLIC_URL || `${proto}://${host}`;
           const pageUrl = `${base}/d/${encodeURIComponent(code)}`;
-          const target = `${proto}://${host}/app/#doc=${encodeURIComponent(code)}`;
+          // Work summaries (0094) ride this same document_links family;
+          // their public page is the summary screen, not the document
+          // screen — same /d/:code URL, different #fragment target.
+          const target = rows.rows[0].document_kind === "work_summary"
+            ? `${proto}://${host}/app/#summary=${encodeURIComponent(code)}`
+            : `${proto}://${host}/app/#doc=${encodeURIComponent(code)}`;
           const meta = await documentLinkMeta(rows.rows[0]);
           const title = escapeHtmlAttr(meta.title);
           const description = escapeHtmlAttr(meta.description);

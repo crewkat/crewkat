@@ -34,7 +34,7 @@ const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
-check("newest migration tag is 0093_wave2", last.tag === "0093_wave2", last.tag);
+check("newest migration tag is 0094_work_summaries", last.tag === "0094_work_summaries", last.tag);
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
 
 // --- 2. Scratch DB ----------------------------------------------------------
