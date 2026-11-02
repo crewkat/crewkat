@@ -871,9 +871,16 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, url: null };
     // Account Links v2: the v1 flat shape (account / refresh_url /
-    // return_url / type=account_onboarding) becomes a use_case object;
-    // configurations must match the account's applied configurations —
-    // ours carries "merchant" only.
+    // return_url / type=account_onboarding) becomes a use_case object.
+    // Per the Account Links v2 create reference (docs.stripe.com/api/v2/
+    // core/account-links, "Create an account link") under the pinned
+    // preview version, account_onboarding takes ONLY refresh_url +
+    // return_url (+ optional collection_options): `configurations`
+    // exists solely on the RETURNED object, echoing the account's
+    // applied configurations — the account's merchant configuration is
+    // implied. Sending it in the request is rejected live with
+    // "use_case.account_onboarding.configurations: Unknown field."
+    // (Danny's retry, 2026-11-01), so it is deliberately NOT sent.
     const response = await fetch("https://api.stripe.com/v2/core/account_links", {
       method: "POST",
       headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json", "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
@@ -882,7 +889,6 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
         use_case: {
           type: "account_onboarding",
           account_onboarding: {
-            configurations: ["merchant"],
             refresh_url: args.refreshUrl,
             return_url: args.returnUrl,
           },

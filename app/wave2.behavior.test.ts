@@ -500,8 +500,13 @@ try {
     JSON.stringify(createReq.json));
   const linkReq = stripeRequests.filter((r) => r.url === "https://api.stripe.com/v2/core/account_links" && r.method === "POST").at(-1)!;
   check("account link posts to the v2 account_links endpoint", !!linkReq, JSON.stringify(stripeRequests.map((r) => r.url)));
-  check("v2 link uses the account_onboarding use case for the merchant configuration",
-    linkReq.json?.account === "acct_real_1" && linkReq.json?.use_case?.type === "account_onboarding" && JSON.stringify(linkReq.json?.use_case?.account_onboarding?.configurations) === JSON.stringify(["merchant"]),
+  // Corrected 2026-11-01 (live Stripe rejection): under the pinned
+  // preview version the Account Links v2 create reference gives
+  // account_onboarding ONLY refresh_url + return_url — `configurations`
+  // is a response-only echo of the account's applied configurations and
+  // sending it fails with "Unknown field". Assert its absence.
+  check("v2 link uses the account_onboarding use case with NO configurations field (response-only per the create reference)",
+    linkReq.json?.account === "acct_real_1" && linkReq.json?.use_case?.type === "account_onboarding" && !!linkReq.json?.use_case?.account_onboarding && !("configurations" in linkReq.json.use_case.account_onboarding),
     JSON.stringify(linkReq.json));
   check("v2 link maps the return/refresh URLs from the action",
     String(linkReq.json?.use_case?.account_onboarding?.return_url ?? "").endsWith("/app") && String(linkReq.json?.use_case?.account_onboarding?.refresh_url ?? "").endsWith("/app"),
