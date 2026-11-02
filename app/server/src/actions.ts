@@ -4450,32 +4450,11 @@ export const BaseActions = {
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
       }
-      // Wave 2 (Item 6): invoice payment on a connected account. Keyed by
-      // the checkout metadata + the attempt row, NOT by a Crewkat user —
-      // the payer is the contractor's client. Card payments complete
-      // synchronously; ACH sessions complete with payment_status
-      // "unpaid" and settle (or fail) via the async events.
-      if (event.checkoutType === "invoice_payment" && event.companyId) {
-        const now = new Date();
-        let attempt = event.stripeSessionId ? (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripeSessionId, event.stripeSessionId)).limit(1))[0] : undefined;
-        if (!attempt && event.paymentIntentId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0];
-        if (!attempt && event.invoiceId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(and(eq(schema.invoicePaymentAttempts.invoiceId, event.invoiceId), eq(schema.invoicePaymentAttempts.status, "pending"))).orderBy(desc(schema.invoicePaymentAttempts.createdAt)).limit(1))[0];
-        if (attempt) {
-          const paidEvent = (event.eventType === "checkout.session.completed" && event.paymentStatus !== "unpaid") || event.eventType === "checkout.session.async_payment_succeeded";
-          if (paidEvent) {
-            await recordOnlineInvoicePayment(db, attempt, event);
-          } else if (event.eventType === "checkout.session.expired") {
-            await db.update(schema.invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
-          } else if (event.eventType === "payment_intent.payment_failed" || event.eventType === "checkout.session.async_payment_failed") {
-            await db.update(schema.invoicePaymentAttempts).set({ status: "failed", stripePaymentIntentId: event.paymentIntentId ?? attempt.stripePaymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
-          } else if (event.eventType === "checkout.session.completed" && event.paymentStatus === "unpaid") {
-            await db.update(schema.invoicePaymentAttempts).set({ method: "us_bank_account", stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
-          }
-        }
-        await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
-        ctx.invalidateQueries();
-        return { ok: true, duplicate: false, processed: !!attempt };
-      }
+      // NOTE (two-account correction, 2026-11-01): invoice payments on
+      // connected accounts do NOT arrive here — Connect events land on
+      // /stripe-connect-webhook → handleConnectWebhook, verified with
+      // the Connect account's own secret. This handler is the
+      // subscription account only.
       let user = event.userId ? (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, event.userId)).limit(1))[0] : undefined;
       if (!user && event.subscriptionId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeSubscriptionId, event.subscriptionId)).limit(1))[0];
       if (!user && event.customerId) user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.stripeCustomerId, event.customerId)).limit(1))[0];
@@ -4524,6 +4503,48 @@ export const BaseActions = {
       await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: new Date() });
       ctx.invalidateQueries();
       return { ok: true, duplicate: false, processed: true };
+    },
+  }),
+  // Wave 2 (Item 6) + two-account correction (2026-11-01): Connect
+  // events (invoice payments on contractors' connected accounts) land
+  // on POST /stripe-connect-webhook and verify ONLY against
+  // STRIPE_CONNECT_WEBHOOK_SECRET — a different Stripe account from
+  // the subscription account above, with its own key + secret. Events
+  // are keyed by checkout metadata + the attempt row, NOT by a Crewkat
+  // user — the payer is the contractor's client. Card payments
+  // complete synchronously; ACH sessions complete with payment_status
+  // "unpaid" and settle (or fail) via the async events.
+  handleConnectWebhook: defineAction({
+    request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
+    response: z.object({ ok: z.literal(true), duplicate: z.boolean(), processed: z.boolean() }),
+    privileged: [privileged.verifyConnectWebhook],
+    async handler(ctx, args): Promise<{ ok: true; duplicate: boolean; processed: boolean }> {
+      const event = await ctx.executePrivileged(privileged.verifyConnectWebhook, args);
+      const db = ctx.db<typeof schema>();
+      if ((await db.select({ id: schema.stripeWebhookEvents.id }).from(schema.stripeWebhookEvents).where(eq(schema.stripeWebhookEvents.id, event.eventId)).limit(1))[0]) return { ok: true, duplicate: true, processed: false };
+      const now = new Date();
+      if (event.eventType === "ignored" || event.checkoutType !== "invoice_payment" || !event.companyId) {
+        await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+        return { ok: true, duplicate: false, processed: false };
+      }
+      let attempt = event.stripeSessionId ? (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripeSessionId, event.stripeSessionId)).limit(1))[0] : undefined;
+      if (!attempt && event.paymentIntentId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0];
+      if (!attempt && event.invoiceId) attempt = (await db.select().from(schema.invoicePaymentAttempts).where(and(eq(schema.invoicePaymentAttempts.invoiceId, event.invoiceId), eq(schema.invoicePaymentAttempts.status, "pending"))).orderBy(desc(schema.invoicePaymentAttempts.createdAt)).limit(1))[0];
+      if (attempt) {
+        const paidEvent = (event.eventType === "checkout.session.completed" && event.paymentStatus !== "unpaid") || event.eventType === "checkout.session.async_payment_succeeded";
+        if (paidEvent) {
+          await recordOnlineInvoicePayment(db, attempt, event);
+        } else if (event.eventType === "checkout.session.expired") {
+          await db.update(schema.invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+        } else if (event.eventType === "payment_intent.payment_failed" || event.eventType === "checkout.session.async_payment_failed") {
+          await db.update(schema.invoicePaymentAttempts).set({ status: "failed", stripePaymentIntentId: event.paymentIntentId ?? attempt.stripePaymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+        } else if (event.eventType === "checkout.session.completed" && event.paymentStatus === "unpaid") {
+          await db.update(schema.invoicePaymentAttempts).set({ method: "us_bank_account", stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(schema.invoicePaymentAttempts.id, attempt.id));
+        }
+      }
+      await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+      ctx.invalidateQueries();
+      return { ok: true, duplicate: false, processed: !!attempt };
     },
   }),
   requestPasswordReset: defineAction({
@@ -7263,7 +7284,7 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // ---------------------------------------------------------------------
   // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
   // Settings; payment starts from the public portal / invoice links
-  // (PUBLIC_ACTIONS below) and lands via handleStripeWebhook.
+  // (PUBLIC_ACTIONS below) and lands via handleConnectWebhook.
   // ---------------------------------------------------------------------
   getPaymentsSetup: defineAction({
     request: z.object({}),
@@ -9192,7 +9213,7 @@ const versionState=parseOptionSelection(version.optionSelectionJson);const nextS
 } satisfies ActionsModule;
 
 export const PUBLIC_ACTIONS = new Set([
-  "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook",
+  "getAuthBootstrap", "signUp", "verifyEmail", "resendVerification", "login", "refreshSession", "logout", "getAuthSession", "requestPasswordReset", "resetPassword", "handleStripeWebhook", "handleConnectWebhook",
   // Tier 2: crew sign-in (company code + PIN) IS a login — public like
   // "login", with its own per-company failure lockout in the handler.
   "crewLogin",

@@ -1049,6 +1049,25 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Two-account Stripe (correction, 2026-11-01): Connect / Pay Now
+    // events live on a SEPARATE Stripe account from subscriptions and
+    // arrive here, verified against that account's own signing secret.
+    if (path === "/stripe-connect-webhook" && req.method === "POST") {
+      const payload = await readBody(req, { raw: true });
+      const signature = req.headers["stripe-signature"];
+      if (!signature) {
+        jsonResponse(res, 400, { error: "Missing Stripe signature." });
+        return;
+      }
+      try {
+        const { status, body } = await dispatchAction("handleConnectWebhook", { payload, signature });
+        jsonResponse(res, status === 200 && body.error ? 400 : status, body);
+      } catch (error) {
+        jsonResponse(res, error.status || 500, { error: error.message || "Webhook failed." });
+      }
+      return;
+    }
+
     // Build 0.5 (items 2+3): short public document links (/d/:code).
     // Build 0.6 (item 11): serve a tiny unfurl page (og:/twitter: tags) with
     // a JS redirect instead of a bare 302 — unfurlers read the tags without

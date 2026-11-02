@@ -128,10 +128,44 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
-  // Wave 2 (Item 6): Stripe Connect (Pay Now). The platform's own key
-  // powers everything; each contractor's money moves on THEIR connected
-  // account via direct charges. Without STRIPE_SECRET_KEY every op
-  // degrades to configured:false — a setup state, never an error.
+  // Separate op, separate secret: Connect events verify ONLY against
+  // STRIPE_CONNECT_WEBHOOK_SECRET (the Connect platform account is a
+  // different Stripe account from the subscription account).
+  verifyConnectWebhook: {
+    request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
+    response: z.object({
+      eventId: z.string(),
+      eventType: z.enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      userId: z.number().int().positive().nullable(),
+      customerId: z.string().nullable(),
+      subscriptionId: z.string().nullable(),
+      subscriptionStatus: z.string().nullable(),
+      currentPeriodEnd: z.number().int().nullable(),
+      cancelAtPeriodEnd: z.boolean(),
+      checkoutType: z.string().nullable(),
+      plan: z.string().nullable(),
+      listingId: z.number().int().positive().nullable(),
+      companyId: z.number().int().positive().nullable(),
+      packSize: z.number().int().nullable(),
+      stripeSessionId: z.string().nullable(),
+      // Wave 2 (Item 6): invoice payments on connected accounts.
+      invoiceId: z.number().int().positive().nullable(),
+      paymentIntentId: z.string().nullable(),
+      amountTotalCents: z.number().int().nullable(),
+      paymentMethodType: z.string().nullable(),
+      paymentStatus: z.string().nullable(),
+      connectAccountId: z.string().nullable(),
+    }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
+  // Wave 2 (Item 6): Stripe Connect (Pay Now). TWO-ACCOUNT rule
+  // (correction, Danny 2026-11-01): the original Stripe account
+  // (STRIPE_SECRET_KEY) hosts Crewkat subscriptions and CANNOT host
+  // Connect, so Pay Now runs on a SEPARATE platform account whose key
+  // is STRIPE_CONNECT_SECRET_KEY. These ops must never fall back to
+  // the subscription key. Without the Connect key every op degrades
+  // to configured:false — a setup state, never an error.
   getStripePlatformStatus: {
     request: z.object({}),
     response: z.object({ configured: z.boolean() }),
@@ -366,6 +400,72 @@ function stripeAdminAuthHeader(required: boolean): { Authorization: string } | n
 // Build 3.0: in-process cache for the listing-boost price display (Stripe
 // price objects change only when Danny edits the product in the dashboard).
 let bumpPriceCache: { priceId: string; display: string | null; at: number } | null = null;
+
+// Two-account Stripe architecture (correction, Danny 2026-11-01):
+// subscriptions live on the ORIGINAL Stripe account and Connect /
+// Pay Now on a SEPARATE platform account. Each webhook op verifies
+// ONLY its own account's signing secret — never a fallback to the
+// other account's secret.
+function verifyAndParseStripeWebhook(secret: string, payload: string, signature: string) {
+  const parts = signature.split(",").map((part) => part.trim());
+  const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) ?? "";
+  const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) throw new Error("Stripe webhook timestamp is invalid.");
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
+  const expectedBytes = Buffer.from(expected, "hex");
+  const valid = signatures.some((candidate) => {
+    if (!/^[0-9a-f]{64}$/i.test(candidate)) return false;
+    const candidateBytes = Buffer.from(candidate, "hex");
+    return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+  });
+  if (!valid) throw new Error("Stripe webhook signature is invalid.");
+  const event = JSON.parse(payload) as { id?: unknown; type?: unknown; account?: unknown; data?: { object?: Record<string, unknown> } };
+  if (typeof event.id !== "string" || typeof event.type !== "string") throw new Error("Stripe webhook payload is invalid.");
+  const object = event.data?.object ?? {};
+  const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
+  const userIdValue = metadata.user_id ?? object.client_reference_id;
+  const parsedUserId = typeof userIdValue === "string" ? Number(userIdValue) : null;
+  const customerId = typeof object.customer === "string" ? object.customer : null;
+  const subscriptionId = typeof object.subscription === "string" ? object.subscription : typeof object.id === "string" && event.type.startsWith("customer.subscription.") ? object.id : null;
+  const subscriptionStatus = typeof object.status === "string" ? object.status : null;
+  const currentPeriodEnd = typeof object.current_period_end === "number" ? object.current_period_end : null;
+  const KNOWN_EVENT_TYPES = ["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted"] as const;
+  const eventType: typeof KNOWN_EVENT_TYPES[number] | "ignored" = (KNOWN_EVENT_TYPES as readonly string[]).includes(event.type) ? event.type as typeof KNOWN_EVENT_TYPES[number] : "ignored";
+  const listingIdValue = metadata.listing_id;
+  const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
+  const companyIdValue = metadata.company_id;
+  const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
+  const packSizeValue = metadata.pack_size;
+  const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
+  const invoiceIdValue = metadata.invoice_id;
+  const parsedInvoiceId = typeof invoiceIdValue === "string" ? Number(invoiceIdValue) : null;
+  const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : (event.type.startsWith("payment_intent.") && typeof object.id === "string" ? object.id : null);
+  const amountTotalCents = typeof object.amount_total === "number" ? Math.round(object.amount_total) : (typeof object.amount_received === "number" ? Math.round(object.amount_received) : (typeof object.amount === "number" ? Math.round(object.amount) : null));
+  const pmTypes = Array.isArray(object.payment_method_types) ? object.payment_method_types.filter((t) => typeof t === "string") as string[] : [];
+  return {
+    eventId: event.id,
+    eventType,
+    userId: parsedUserId && Number.isInteger(parsedUserId) && parsedUserId > 0 ? parsedUserId : null,
+    customerId,
+    subscriptionId,
+    subscriptionStatus,
+    currentPeriodEnd,
+    cancelAtPeriodEnd: object.cancel_at_period_end === true,
+    checkoutType: typeof metadata.type === "string" ? metadata.type : null,
+    plan: typeof metadata.plan === "string" ? metadata.plan : null,
+    listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
+    companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
+    packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
+    stripeSessionId: event.type.startsWith("checkout.session.") && typeof object.id === "string" ? object.id : null,
+    invoiceId: parsedInvoiceId && Number.isInteger(parsedInvoiceId) && parsedInvoiceId > 0 ? parsedInvoiceId : null,
+    paymentIntentId,
+    amountTotalCents,
+    paymentMethodType: pmTypes[0] ?? null,
+    paymentStatus: typeof object.payment_status === "string" ? object.payment_status : null,
+    connectAccountId: typeof event.account === "string" ? event.account : null,
+  };
+}
 
 export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
@@ -680,78 +780,21 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     return { configured: true, checkoutUrl: result.url, missing: [] };
   },
   async verifyStripeWebhook(args) {
-    // Wave 2: platform events sign with STRIPE_WEBHOOK_SECRET; events on
-    // connected accounts (invoice payments) arrive at the Connect webhook
-    // endpoint with its own secret — accept a signature from either.
-    const secrets = [process.env.STRIPE_WEBHOOK_SECRET?.trim(), process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim()].filter((s): s is string => !!s);
-    if (!secrets.length) throw new Error("Stripe webhook verification is not configured.");
-    const parts = args.signature.split(",").map((part) => part.trim());
-    const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) ?? "";
-    const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
-    const timestampSeconds = Number(timestamp);
-    if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) throw new Error("Stripe webhook timestamp is invalid.");
-    const valid = secrets.some((secret) => {
-      const expected = createHmac("sha256", secret).update(`${timestamp}.${args.payload}`).digest("hex");
-      const expectedBytes = Buffer.from(expected, "hex");
-      return signatures.some((candidate) => {
-        if (!/^[0-9a-f]{64}$/i.test(candidate)) return false;
-        const candidateBytes = Buffer.from(candidate, "hex");
-        return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
-      });
-    });
-    if (!valid) throw new Error("Stripe webhook signature is invalid.");
-    const event = JSON.parse(args.payload) as { id?: unknown; type?: unknown; account?: unknown; data?: { object?: Record<string, unknown> } };
-    if (typeof event.id !== "string" || typeof event.type !== "string") throw new Error("Stripe webhook payload is invalid.");
-    const object = event.data?.object ?? {};
-    const metadata = object.metadata && typeof object.metadata === "object" ? object.metadata as Record<string, unknown> : {};
-    const userIdValue = metadata.user_id ?? object.client_reference_id;
-    const parsedUserId = typeof userIdValue === "string" ? Number(userIdValue) : null;
-    const customerId = typeof object.customer === "string" ? object.customer : null;
-    const subscriptionId = typeof object.subscription === "string" ? object.subscription : typeof object.id === "string" && event.type.startsWith("customer.subscription.") ? object.id : null;
-    const subscriptionStatus = typeof object.status === "string" ? object.status : null;
-    const currentPeriodEnd = typeof object.current_period_end === "number" ? object.current_period_end : null;
-    const KNOWN_EVENT_TYPES = ["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted"] as const;
-    const eventType: typeof KNOWN_EVENT_TYPES[number] | "ignored" = (KNOWN_EVENT_TYPES as readonly string[]).includes(event.type) ? event.type as typeof KNOWN_EVENT_TYPES[number] : "ignored";
-    const listingIdValue = metadata.listing_id;
-    const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
-    const companyIdValue = metadata.company_id;
-    const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
-    const packSizeValue = metadata.pack_size;
-    const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
-    const invoiceIdValue = metadata.invoice_id;
-    const parsedInvoiceId = typeof invoiceIdValue === "string" ? Number(invoiceIdValue) : null;
-    const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : (event.type.startsWith("payment_intent.") && typeof object.id === "string" ? object.id : null);
-    const amountTotalCents = typeof object.amount_total === "number" ? Math.round(object.amount_total) : (typeof object.amount_received === "number" ? Math.round(object.amount_received) : (typeof object.amount === "number" ? Math.round(object.amount) : null));
-    const pmTypes = Array.isArray(object.payment_method_types) ? object.payment_method_types.filter((t) => typeof t === "string") as string[] : [];
-    return {
-      eventId: event.id,
-      eventType,
-      userId: parsedUserId && Number.isInteger(parsedUserId) && parsedUserId > 0 ? parsedUserId : null,
-      customerId,
-      subscriptionId,
-      subscriptionStatus,
-      currentPeriodEnd,
-      cancelAtPeriodEnd: object.cancel_at_period_end === true,
-      checkoutType: typeof metadata.type === "string" ? metadata.type : null,
-      plan: typeof metadata.plan === "string" ? metadata.plan : null,
-      listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
-      companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
-      packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
-      stripeSessionId: event.type.startsWith("checkout.session.") && typeof object.id === "string" ? object.id : null,
-      invoiceId: parsedInvoiceId && Number.isInteger(parsedInvoiceId) && parsedInvoiceId > 0 ? parsedInvoiceId : null,
-      paymentIntentId,
-      amountTotalCents,
-      paymentMethodType: pmTypes[0] ?? null,
-      paymentStatus: typeof object.payment_status === "string" ? object.payment_status : null,
-      connectAccountId: typeof event.account === "string" ? event.account : null,
-    };
+    const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+    if (!secret) throw new Error("Stripe webhook verification is not configured.");
+    return verifyAndParseStripeWebhook(secret, args.payload, args.signature);
+  },
+  async verifyConnectWebhook(args) {
+    const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+    if (!secret) throw new Error("Stripe Connect webhook verification is not configured.");
+    return verifyAndParseStripeWebhook(secret, args.payload, args.signature);
   },
   async getStripePlatformStatus() {
-    return { configured: !!process.env.STRIPE_SECRET_KEY?.trim() };
+    return { configured: !!process.env.STRIPE_CONNECT_SECRET_KEY?.trim() };
   },
   async createConnectAccount(args) {
-    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-    if (!secretKey) return { configured: false, accountId: null, missing: ["STRIPE_SECRET_KEY"] };
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, accountId: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
     const body = new URLSearchParams({
       type: "express",
       email: args.email,
@@ -774,7 +817,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     return { configured: true, accountId: result.id, missing: [] };
   },
   async createConnectAccountLink(args) {
-    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, url: null };
     const body = new URLSearchParams({
       account: args.accountId,
@@ -795,7 +838,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     return { configured: true, url: result.url };
   },
   async getConnectAccount(args) {
-    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
     const response = await fetch(`https://api.stripe.com/v1/accounts/${encodeURIComponent(args.accountId)}`, {
       method: "GET",
@@ -808,8 +851,8 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     return { configured: true, chargesEnabled: result.charges_enabled === true, payoutsEnabled: result.payouts_enabled === true, detailsSubmitted: result.details_submitted === true };
   },
   async createInvoiceCheckout(args) {
-    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-    if (!secretKey) return { configured: false, sessionId: null, url: null, missing: ["STRIPE_SECRET_KEY"] };
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey) return { configured: false, sessionId: null, url: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
     const body = new URLSearchParams({
       mode: "payment",
       "payment_method_types[0]": "card",
