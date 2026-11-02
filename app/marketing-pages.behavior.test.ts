@@ -261,8 +261,11 @@ describe("office marketing page (2026-11-01)", () => {
       expect(page).toContain("first 100 companies (regular $49/mo)");
       expect(page).toContain("Free while the founding period lasts — no card to start.");
       expect(page).toContain("Everything in Premium");
-      expect(page).toContain("Admin + 5 team logins included");
+      expect(page).toContain("Unlimited team logins included");
       expect(page).toContain("Promotions, QuickBooks sync, and review tools");
+      expect(page).toContain("100-day money-back guarantee");
+      // Office only — exactly once per page, never on the Premium card.
+      expect(page.match(/100-day money-back guarantee/g)?.length).toBe(1);
     }
   });
 
