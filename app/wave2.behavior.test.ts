@@ -380,6 +380,9 @@ check("post-lapse settlement flips the invoice to paid", invGateAfter.status ===
 // and fakes only the global fetch (Stripe's transport): a Stripe error
 // body must surface in the action's thrown error, so the app can show
 // Stripe's own reason instead of "Could not open Stripe right now."
+// The same faked transport also pins the Accounts v2 wire shapes
+// (Managed Risk: v1 creation is refused for this platform) and the
+// v2 → contract status mapping.
 async function checkThrowsMessage(name: string, fn: () => Promise<unknown>, ...needles: string[]) {
   try { await fn(); failures++; console.error(`FAIL ${name} — expected an error but none was thrown`); }
   catch (caught) {
@@ -412,35 +415,121 @@ await db.update(schema.settings).set({ stripeConnectAccountId: null, stripeCharg
 const realFetch = globalThis.fetch;
 const savedConnectKey = process.env.STRIPE_CONNECT_SECRET_KEY;
 process.env.STRIPE_CONNECT_SECRET_KEY = "sk_test_connect_fake";
-let stripeMode: "create-error" | "link-error" | "ok" = "create-error";
+let stripeMode: "create-error" | "link-error" | "ok" | "readback-restricted" = "create-error";
+// Accounts v2 fixtures, mirrored on the Retrieve-account API reference
+// example response (configuration.merchant.capabilities.<name>.status +
+// requirements.entries): "restricted" with a requirements_past_due
+// status_detail before onboarding completes, "active" + no outstanding
+// holder requirements once it has.
+const v2ReadbackRestricted = {
+  id: "acct_real_1", object: "v2.core.account", applied_configurations: ["merchant"], dashboard: "express", livemode: false,
+  configuration: { merchant: { capabilities: {
+    card_payments: { status: "restricted", status_details: [{ code: "requirements_past_due", resolution: "provide_info" }] },
+    stripe_balance: { payouts: { status: "restricted", status_details: [{ code: "requirements_past_due", resolution: "provide_info" }] } },
+  } } },
+  requirements: { collector: "stripe", entries: [
+    { description: "identity.business_details.registered_name", awaiting_action_from: "user", minimum_deadline: { status: "past_due" }, errors: [], requested_reasons: [{ code: "routine_onboarding" }] },
+  ] },
+};
+const v2ReadbackReady = {
+  id: "acct_real_1", object: "v2.core.account", applied_configurations: ["merchant"], dashboard: "express", livemode: false,
+  configuration: { merchant: { capabilities: {
+    card_payments: { status: "active" },
+    stripe_balance: { payouts: { status: "active" } },
+  } } },
+  requirements: { collector: "stripe", entries: [] },
+};
+type CapturedStripeRequest = { url: string; method: string; headers: Record<string, string>; json: any };
+const stripeRequests: CapturedStripeRequest[] = [];
 try {
-  globalThis.fetch = (async (url: unknown) => {
+  globalThis.fetch = (async (url: unknown, init?: any) => {
     const u = String(url);
-    if (u.endsWith("/v1/accounts")) {
-      if (stripeMode === "create-error") return { ok: false, status: 400, json: async () => ({ error: { message: "You must complete your platform profile before creating connected accounts.", code: "platform_profile_incomplete" } }) };
-      return { ok: true, status: 200, json: async () => ({ id: "acct_real_1" }) };
+    const capture = () => {
+      let json: any = null;
+      try { json = typeof init?.body === "string" ? JSON.parse(init.body) : null; } catch { /* not a JSON body */ }
+      const entry: CapturedStripeRequest = { url: u, method: String(init?.method ?? "GET"), headers: (init?.headers ?? {}) as Record<string, string>, json };
+      stripeRequests.push(entry);
+      return entry;
+    };
+    if (u.startsWith("https://api.stripe.com/v2/core/accounts/")) {
+      capture();
+      return { ok: true, status: 200, json: async () => (stripeMode === "readback-restricted" ? v2ReadbackRestricted : v2ReadbackReady) };
     }
-    if (u.endsWith("/v1/account_links")) {
+    if (u === "https://api.stripe.com/v2/core/accounts") {
+      capture();
+      if (stripeMode === "create-error") return { ok: false, status: 400, json: async () => ({ error: { message: "You must complete your platform profile before creating connected accounts.", code: "platform_profile_incomplete" } }) };
+      return { ok: true, status: 200, json: async () => ({ id: "acct_real_1", object: "v2.core.account" }) };
+    }
+    if (u === "https://api.stripe.com/v2/core/account_links") {
+      capture();
       if (stripeMode === "link-error") return { ok: false, status: 400, json: async () => ({ error: { message: "The provided account is not eligible for onboarding.", code: "account_invalid" } }) };
-      return { ok: true, status: 200, json: async () => ({ url: "https://connect.stripe.com/setup/s/real_link" }) };
+      return { ok: true, status: 200, json: async () => ({ object: "v2.core.account_link", url: "https://connect.stripe.com/setup/s/real_link" }) };
     }
     throw new Error(`unexpected fetch ${u}`);
   }) as typeof fetch;
 
   await checkThrowsMessage("account-creation failure carries Stripe's message + code",
     () => A.startConnectOnboarding.handler(ctxStripe, { surface: "app" }),
-    "Stripe could not create the connected account.", "platform profile", "platform_profile_incomplete");
+    "connected account: You must complete your platform profile", "platform_profile_incomplete");
   check("failed account creation persists nothing", (await settingsRow()).stripeConnectAccountId === null, (await settingsRow()).stripeConnectAccountId ?? "null");
 
   stripeMode = "link-error";
   await checkThrowsMessage("account-link failure carries Stripe's message + code",
     () => A.startConnectOnboarding.handler(ctxStripe, { surface: "app" }),
-    "Stripe could not start onboarding.", "not eligible for onboarding", "account_invalid");
+    "start onboarding: The provided account is not eligible", "account_invalid");
   check("the created account still persisted before the link failed", (await settingsRow()).stripeConnectAccountId === "acct_real_1" && (await settingsRow()).stripeConnectStatus === "onboarding", JSON.stringify((await settingsRow()).stripeConnectAccountId));
 
   stripeMode = "ok";
   const onboardReal = await A.startConnectOnboarding.handler(ctxStripe, { surface: "app" });
   check("success path through the real handlers is unchanged", onboardReal.platformConfigured === true && onboardReal.url === "https://connect.stripe.com/setup/s/real_link", JSON.stringify(onboardReal));
+
+  // Accounts v2 request shapes (Danny 2026-11-01): the platform carries
+  // Stripe as losses collector (Managed Risk), so v1 creation is
+  // refused — assert what actually goes over the wire.
+  const createReq = stripeRequests.filter((r) => r.url === "https://api.stripe.com/v2/core/accounts" && r.method === "POST").at(-1)!;
+  check("account creation posts to the Accounts v2 endpoint", !!createReq, JSON.stringify(stripeRequests.map((r) => r.url)));
+  check("v2 create carries the preview Stripe-Version header", createReq.headers["Stripe-Version"] === "2026-10-28.preview", createReq.headers["Stripe-Version"] ?? "missing");
+  check("v2 create sends NO legacy type field", !!createReq.json && !("type" in createReq.json), JSON.stringify(createReq.json));
+  check("v2 create sets dashboard express (the v1 Express equivalent)", createReq.json?.dashboard === "express", createReq.json?.dashboard ?? "missing");
+  check("v2 create sets Stripe as fees + losses collector (Managed Risk)",
+    createReq.json?.defaults?.responsibilities?.fees_collector === "stripe" && createReq.json?.defaults?.responsibilities?.losses_collector === "stripe",
+    JSON.stringify(createReq.json?.defaults?.responsibilities));
+  check("v2 create requests the merchant card_payments capability", createReq.json?.configuration?.merchant?.capabilities?.card_payments?.requested === true, JSON.stringify(createReq.json?.configuration));
+  check("v2 create maps email/name/country/metadata",
+    createReq.json?.contact_email === "owner@test.com" && createReq.json?.display_name === "Wave2 Test Co" && createReq.json?.identity?.country === "US" && createReq.json?.metadata?.company_id === "1" && createReq.json?.metadata?.type === "crewkat_connect",
+    JSON.stringify(createReq.json));
+  const linkReq = stripeRequests.filter((r) => r.url === "https://api.stripe.com/v2/core/account_links" && r.method === "POST").at(-1)!;
+  check("account link posts to the v2 account_links endpoint", !!linkReq, JSON.stringify(stripeRequests.map((r) => r.url)));
+  check("v2 link uses the account_onboarding use case for the merchant configuration",
+    linkReq.json?.account === "acct_real_1" && linkReq.json?.use_case?.type === "account_onboarding" && JSON.stringify(linkReq.json?.use_case?.account_onboarding?.configurations) === JSON.stringify(["merchant"]),
+    JSON.stringify(linkReq.json));
+  check("v2 link maps the return/refresh URLs from the action",
+    String(linkReq.json?.use_case?.account_onboarding?.return_url ?? "").endsWith("/app") && String(linkReq.json?.use_case?.account_onboarding?.refresh_url ?? "").endsWith("/app"),
+    JSON.stringify(linkReq.json?.use_case?.account_onboarding));
+
+  // v2 read-back mapping: restricted (docs example shape) keeps the
+  // company in onboarding with every flag off; active + no outstanding
+  // holder requirements flips it to connected.
+  const getConnectAccount = realConnectHandlers.get("getConnectAccount")!;
+  stripeMode = "readback-restricted";
+  const restricted = await getConnectAccount({ accountId: "acct_real_1" });
+  check("v2 restricted read-back maps to charges/payouts off + details not submitted",
+    restricted.configured === true && restricted.chargesEnabled === false && restricted.payoutsEnabled === false && restricted.detailsSubmitted === false,
+    JSON.stringify(restricted));
+  const refreshedRestricted = await A.refreshConnectStatus.handler(ctxStripe, {});
+  check("refresh on a restricted v2 account stays onboarding", refreshedRestricted.status === "onboarding" && refreshedRestricted.chargesEnabled === false, JSON.stringify(refreshedRestricted));
+  const getReq = stripeRequests.filter((r) => r.method === "GET").at(-1)!;
+  check("v2 read asks for the merchant configuration + requirements",
+    new URL(getReq.url).searchParams.get("include[0]") === "configuration.merchant" && new URL(getReq.url).searchParams.get("include[1]") === "requirements",
+    getReq.url);
+  stripeMode = "ok";
+  const ready = await getConnectAccount({ accountId: "acct_real_1" });
+  check("v2 ready read-back maps to charges/payouts on + details submitted",
+    ready.configured === true && ready.chargesEnabled === true && ready.payoutsEnabled === true && ready.detailsSubmitted === true,
+    JSON.stringify(ready));
+  const refreshedReady = await A.refreshConnectStatus.handler(ctxStripe, {});
+  check("refresh on a ready v2 account flips the company to connected", refreshedReady.status === "connected" && refreshedReady.chargesEnabled === true && refreshedReady.payoutsEnabled === true, JSON.stringify(refreshedReady));
+  check("connected v2 state persisted to settings", (await settingsRow()).stripeConnectStatus === "connected" && (await settingsRow()).stripeChargesEnabled === true && (await settingsRow()).stripePayoutsEnabled === true, JSON.stringify((await settingsRow()).stripeConnectStatus));
 } finally {
   globalThis.fetch = realFetch;
   if (savedConnectKey === undefined) delete process.env.STRIPE_CONNECT_SECRET_KEY; else process.env.STRIPE_CONNECT_SECRET_KEY = savedConnectKey;

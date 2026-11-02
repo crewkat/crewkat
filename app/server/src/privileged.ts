@@ -481,8 +481,34 @@ async function stripeConnectError(response: Response, fallback: string): Promise
     const code = typeof err.error?.code === "string" ? err.error.code : "";
     if (message) detail = code ? `${message} (${code})` : message;
   } catch { /* unparseable body — keep the fallback */ }
-  return new Error(detail ? `${fallback}: ${detail}` : fallback);
+  // Join with ": " — strip the fallback's trailing period first so the
+  // composed message never reads "…account.: You tried…" (Danny's
+  // 2026-11-01 screenshot showed exactly that doubled punctuation).
+  return new Error(detail ? `${fallback.replace(/\.+$/, "")}: ${detail}` : fallback);
 }
+
+// Accounts v2 (Danny 2026-11-01): the Crewkat Platform's Connect
+// integration carries Stripe as the losses collector (Managed Risk —
+// sellers are merchants of record, Stripe carries risk/loss), and
+// Stripe REFUSES v1 account creation for that configuration ("You
+// tried to create an Accounts v1 connected account using the legacy
+// `type` field with your platform as the losses collector"). The
+// Connect account ops below therefore use the Accounts v2 API
+// (/v2/core/accounts, /v2/core/account_links): no `type`, dashboard
+// "express" (the v1 Express equivalent), defaults.responsibilities
+// fees_collector + losses_collector = "stripe", merchant configuration
+// with card_payments requested. Per Stripe's Managed Risk doc,
+// combining the Express dashboard with Managed Risk is in public
+// preview and requires the current preview API version header — one
+// version is used for every v2 Connect call so the surface stays
+// coherent. (If Stripe ever rejects the express combination with
+// account_controller_unsupported_configuration, the documented GA
+// fallback is dashboard "full" with the same responsibilities.)
+// Payment APIs (Checkout, webhooks) stay on v1 — they reference the
+// connected account by id and are unchanged for v2 accounts.
+// NOTE for restricted live keys: Stripe's doc says the key needs the
+// `v2_account_storer_write` permission for v2 account creation.
+const STRIPE_CONNECT_V2_VERSION = "2026-10-28.preview";
 
 export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
@@ -812,19 +838,27 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async createConnectAccount(args) {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, accountId: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
-    const body = new URLSearchParams({
-      type: "express",
-      email: args.email,
-      "business_profile[name]": args.companyName,
-      "capabilities[card_payments][requested]": "true",
-      "capabilities[transfers][requested]": "true",
-      "metadata[company_id]": String(args.companyId),
-      "metadata[type]": "crewkat_connect",
-    });
-    const response = await fetch("https://api.stripe.com/v1/accounts", {
+    // Accounts v2 create (see STRIPE_CONNECT_V2_VERSION note above).
+    // v1 → v2 mapping: email → contact_email; business_profile[name] →
+    // display_name (legal details are collected by hosted onboarding);
+    // capabilities[card_payments] →
+    // configuration.merchant.capabilities.card_payments.requested. The
+    // v1 `transfers` capability is NOT requested: this platform only
+    // makes direct charges (merchant configuration), and v2
+    // auto-requests the merchant stripe_balance.payouts capability
+    // alongside card_payments — that is the money-out path.
+    const response = await fetch("https://api.stripe.com/v2/core/accounts", {
       method: "POST",
-      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body,
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json", "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
+      body: JSON.stringify({
+        contact_email: args.email,
+        display_name: args.companyName,
+        dashboard: "express",
+        identity: { country: "US" },
+        defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } },
+        configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+        metadata: { company_id: String(args.companyId), type: "crewkat_connect" },
+      }),
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
@@ -836,16 +870,24 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async createConnectAccountLink(args) {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, url: null };
-    const body = new URLSearchParams({
-      account: args.accountId,
-      refresh_url: args.refreshUrl,
-      return_url: args.returnUrl,
-      type: "account_onboarding",
-    });
-    const response = await fetch("https://api.stripe.com/v1/account_links", {
+    // Account Links v2: the v1 flat shape (account / refresh_url /
+    // return_url / type=account_onboarding) becomes a use_case object;
+    // configurations must match the account's applied configurations —
+    // ours carries "merchant" only.
+    const response = await fetch("https://api.stripe.com/v2/core/account_links", {
       method: "POST",
-      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body,
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json", "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
+      body: JSON.stringify({
+        account: args.accountId,
+        use_case: {
+          type: "account_onboarding",
+          account_onboarding: {
+            configurations: ["merchant"],
+            refresh_url: args.refreshUrl,
+            return_url: args.returnUrl,
+          },
+        },
+      }),
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
@@ -857,15 +899,44 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async getConnectAccount(args) {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
-    const response = await fetch(`https://api.stripe.com/v1/accounts/${encodeURIComponent(args.accountId)}`, {
+    // Accounts v2 read. v2 returns most sub-objects only when asked via
+    // `include` — request the merchant configuration (capability
+    // states) and the requirements (what the account holder still owes).
+    const url = new URL(`https://api.stripe.com/v2/core/accounts/${encodeURIComponent(args.accountId)}`);
+    url.searchParams.append("include[0]", "configuration.merchant");
+    url.searchParams.append("include[1]", "requirements");
+    const response = await fetch(url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${secretKey}` },
+      headers: { Authorization: `Bearer ${secretKey}`, "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw await stripeConnectError(response, "Could not read the connected account from Stripe.");
-    const result = await response.json() as { charges_enabled?: unknown; payouts_enabled?: unknown; details_submitted?: unknown };
-    return { configured: true, chargesEnabled: result.charges_enabled === true, payoutsEnabled: result.payouts_enabled === true, detailsSubmitted: result.details_submitted === true };
+    const result = await response.json() as {
+      configuration?: { merchant?: { capabilities?: { card_payments?: { status?: unknown }; stripe_balance?: { payouts?: { status?: unknown } } } } };
+      requirements?: { entries?: unknown };
+    };
+    // v1 → v2 status mapping (Stripe's own go-live readiness paths):
+    // charges_enabled → merchant card_payments capability status
+    // "active" (it gates the Pay buttons, so it must mean the account
+    // can actually accept a card payment now — "restricted"/"pending"
+    // do not count); payouts_enabled → the merchant configuration's
+    // stripe_balance.payouts capability status "active" (auto-requested
+    // with card_payments; it is v2's replacement for v1 payouts);
+    // details_submitted → no requirements entry is still awaiting the
+    // account holder ("user") at a currently-due or past-due deadline —
+    // the v2 analogue of v1's details_submitted (everything currently
+    // asked of the holder has been provided; Stripe-side verification
+    // entries awaiting "stripe" don't unset it).
+    const capabilities = result.configuration?.merchant?.capabilities;
+    const entries = Array.isArray(result.requirements?.entries) ? result.requirements.entries as Array<{ awaiting_action_from?: unknown; minimum_deadline?: { status?: unknown } }> : [];
+    const holderOwes = entries.some((e) => e?.awaiting_action_from === "user" && (e?.minimum_deadline?.status === "currently_due" || e?.minimum_deadline?.status === "past_due"));
+    return {
+      configured: true,
+      chargesEnabled: capabilities?.card_payments?.status === "active",
+      payoutsEnabled: capabilities?.stripe_balance?.payouts?.status === "active",
+      detailsSubmitted: !holderOwes,
+    };
   },
   async createInvoiceCheckout(args) {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
