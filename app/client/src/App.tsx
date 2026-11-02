@@ -10232,8 +10232,72 @@ function JobWorkSummariesCard({ lang, jobId }: { lang: Lang; jobId: number }) {
         preset,
         rangeStart: preset === "custom" ? rangeStart : "",
         rangeEnd: preset === "custom" ? rangeEnd : "",
+        narrative: "",
+        polishedWithAi: false,
       }),
     onSuccess: () => { setError(""); refresh(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  // Draft & polish (0098): assemble the narrative, optionally polish
+  // it with AI (same facts, cleaner prose; pre-polish text one tap
+  // away), edit, then create. The one-tap create above is unchanged.
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [draftRange, setDraftRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
+  const [prePolish, setPrePolish] = useState<string | null>(null);
+  const [draftPolished, setDraftPolished] = useState(false);
+  const aiAvailability = useQuery({
+    queryKey: ["ai-availability"],
+    queryFn: () => api.getAiAvailability({}),
+    enabled: draftOpen,
+  });
+  const preview = useMutation({
+    mutationFn: () =>
+      api.previewWorkSummary({
+        jobId,
+        preset,
+        rangeStart: preset === "custom" ? rangeStart : "",
+        rangeEnd: preset === "custom" ? rangeEnd : "",
+      }),
+    onSuccess: (res) => {
+      setDraftText(res.narrative);
+      setDraftRange({ start: res.content.rangeStart, end: res.content.rangeEnd });
+      setPrePolish(null);
+      setDraftPolished(false);
+      setDraftOpen(true);
+      setError("");
+    },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const polish = useMutation({
+    mutationFn: () => api.polishWorkSummary({ jobId, text: draftText, lang, rangeStart: draftRange.start, rangeEnd: draftRange.end }),
+    onSuccess: (res) => {
+      setPrePolish(draftText);
+      setDraftText(res.text);
+      setDraftPolished(true);
+      setError("");
+      void qc.invalidateQueries({ queryKey: ["ai-availability"] });
+    },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const createDraft = useMutation({
+    mutationFn: () =>
+      api.createWorkSummary({
+        jobId,
+        preset,
+        rangeStart: preset === "custom" ? rangeStart : "",
+        rangeEnd: preset === "custom" ? rangeEnd : "",
+        narrative: draftText,
+        polishedWithAi: draftPolished,
+      }),
+    onSuccess: () => {
+      setError("");
+      setDraftOpen(false);
+      setDraftText("");
+      setPrePolish(null);
+      setDraftPolished(false);
+      refresh();
+    },
     onError: (e) => setError(actionErrorMessage(e)),
   });
   const share = useMutation({
@@ -10307,6 +10371,53 @@ function JobWorkSummariesCard({ lang, jobId }: { lang: Lang; jobId: number }) {
       >
         {create.isPending ? (es ? "Creando…" : "Creating…") : es ? "Crear resumen" : "Create summary"}
       </button>
+      <button
+        type="button"
+        className="secondary-button"
+        disabled={preview.isPending || (preset === "custom" && (!rangeStart || !rangeEnd))}
+        onClick={() => preview.mutate()}
+      >
+        {preview.isPending ? (es ? "Redactando…" : "Drafting…") : es ? "Borrador y pulido" : "Draft & polish"}
+      </button>
+      {draftOpen ? (
+        <div className="ws-draft">
+          <label>
+            {es ? "Texto del resumen — de los registros y notas del período. Edítalo libremente; este texto exacto es el que se guarda." : "Summary text — from this period's logs and notes. Edit freely; this exact text is what gets saved."}
+            <textarea rows={9} value={draftText} onChange={(e) => setDraftText(e.target.value)} aria-label={es ? "Borrador del resumen" : "Work summary draft text"} />
+          </label>
+          <div className="ws-draft-actions">
+            {aiAvailability.data && !aiAvailability.data.configured ? (
+              <span className="muted">{es ? "✨ Pulir con IA aún no está configurado en este servidor de Crewkat." : "✨ Polish with AI isn't set up on this Crewkat server yet."}</span>
+            ) : aiAvailability.data && !aiAvailability.data.entitled ? (
+              <span className="muted">{es ? "✨ Pulir con IA es una función de Crewkat Premium / Office." : "✨ Polish with AI is a Crewkat Premium / Office feature."}</span>
+            ) : aiAvailability.data && aiAvailability.data.usedThisMonth >= aiAvailability.data.monthlyCap ? (
+              <span className="muted">{es ? `✨ Límite mensual de IA alcanzado (${aiAvailability.data.usedThisMonth} de ${aiAvailability.data.monthlyCap}).` : `✨ This month's AI writing limit is reached (${aiAvailability.data.usedThisMonth} of ${aiAvailability.data.monthlyCap}).`}</span>
+            ) : (
+              <button type="button" className="secondary-button" disabled={polish.isPending || draftText.trim().length === 0} onClick={() => polish.mutate()}>
+                {polish.isPending ? (es ? "Puliendo…" : "Polishing…") : es ? "✨ Pulir con IA" : "✨ Polish with AI"}
+              </button>
+            )}
+            {prePolish !== null ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => { setDraftText(prePolish); setPrePolish(null); setDraftPolished(false); }}
+              >
+                {es ? "Volver a mi texto" : "Revert to my text"}
+              </button>
+            ) : null}
+            {draftPolished ? <span className="muted">{es ? "Pulido con IA — mismos hechos, prosa más clara." : "Polished with AI — same facts, cleaner prose."}</span> : null}
+          </div>
+          <div className="ws-draft-actions">
+            <button type="button" className="primary-button" disabled={createDraft.isPending} onClick={() => createDraft.mutate()}>
+              {createDraft.isPending ? (es ? "Creando…" : "Creating…") : es ? "Crear resumen del borrador" : "Create summary from draft"}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setDraftOpen(false)}>
+              {es ? "Cancelar" : "Cancel"}
+            </button>
+          </div>
+        </div>
+      ) : null}
       {error ? <p className="status error" role="alert">{error}</p> : null}
       {list.isLoading ? (
         <div className="loading-block" />
@@ -31427,6 +31538,15 @@ function PublicWorkSummaryScreen({ token }: { token: string }) {
         {content.job.jobAddress ? <p className="portal-v2-address">{content.job.jobAddress}</p> : null}
         <p className="portal-v2-address">{rangeLabel}</p>
       </section>
+
+      {content.narrative ? (
+        <section className="portal-v2-card">
+          <h2>{es ? "Resumen" : "Overview"}</h2>
+          {content.narrative.split("\n\n").map((para, i) => (
+            <p key={i}>{para}</p>
+          ))}
+        </section>
+      ) : null}
 
       <section className="portal-v2-card">
         <h2>{es ? "Registro diario" : "Daily log"}</h2>

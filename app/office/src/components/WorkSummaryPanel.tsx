@@ -45,8 +45,74 @@ export function WorkSummaryPanel({ jobId }: { jobId: number }) {
         preset,
         rangeStart: preset === "custom" ? rangeStart : "",
         rangeEnd: preset === "custom" ? rangeEnd : "",
+        narrative: "",
+        polishedWithAi: false,
       }),
     onSuccess: () => { setError(""); invalidate(); void queryClient.invalidateQueries({ queryKey: ["job-timeline", jobId] }); },
+    onError: (e) => setError(cleanError(e)),
+  });
+
+  // Draft & polish (0098): assemble the narrative from the period's
+  // logs/notes, optionally polish it with AI (same facts, cleaner
+  // prose — the pre-polish text stays one tap away), edit freely,
+  // then create. The frozen snapshot stores the final text plus a
+  // polishedWithAi flag. The one-click Create summary above is
+  // unchanged and never involves the draft flow.
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [draftRange, setDraftRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
+  const [prePolish, setPrePolish] = useState<string | null>(null);
+  const [draftPolished, setDraftPolished] = useState(false);
+  const aiAvailabilityQuery = useQuery({ queryKey: ["ai-availability"], queryFn: () => api.getAiAvailability({}), enabled: draftOpen });
+  const aiAvailability = aiAvailabilityQuery.data;
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      api.previewWorkSummary({
+        jobId,
+        preset,
+        rangeStart: preset === "custom" ? rangeStart : "",
+        rangeEnd: preset === "custom" ? rangeEnd : "",
+      }),
+    onSuccess: (res) => {
+      setDraftText(res.narrative);
+      setDraftRange({ start: res.content.rangeStart, end: res.content.rangeEnd });
+      setPrePolish(null);
+      setDraftPolished(false);
+      setDraftOpen(true);
+      setError("");
+    },
+    onError: (e) => setError(cleanError(e)),
+  });
+  const polishMutation = useMutation({
+    mutationFn: () => api.polishWorkSummary({ jobId, text: draftText, lang: "en", rangeStart: draftRange.start, rangeEnd: draftRange.end }),
+    onSuccess: (res) => {
+      setPrePolish(draftText);
+      setDraftText(res.text);
+      setDraftPolished(true);
+      setError("");
+      void queryClient.invalidateQueries({ queryKey: ["ai-availability"] });
+    },
+    onError: (e) => setError(cleanError(e)),
+  });
+  const createDraftMutation = useMutation({
+    mutationFn: () =>
+      api.createWorkSummary({
+        jobId,
+        preset,
+        rangeStart: preset === "custom" ? rangeStart : "",
+        rangeEnd: preset === "custom" ? rangeEnd : "",
+        narrative: draftText,
+        polishedWithAi: draftPolished,
+      }),
+    onSuccess: () => {
+      setError("");
+      setDraftOpen(false);
+      setDraftText("");
+      setPrePolish(null);
+      setDraftPolished(false);
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ["job-timeline", jobId] });
+    },
     onError: (e) => setError(cleanError(e)),
   });
   const shareMutation = useMutation({
@@ -103,7 +169,52 @@ export function WorkSummaryPanel({ jobId }: { jobId: number }) {
         >
           {createMutation.isPending ? "Creating…" : "Create summary"}
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          disabled={previewMutation.isPending || (preset === "custom" && (!rangeStart || !rangeEnd))}
+          onClick={() => previewMutation.mutate()}
+        >
+          {previewMutation.isPending ? "Drafting…" : "Draft & polish"}
+        </button>
       </div>
+      {draftOpen ? (
+        <div className="summary-draft">
+          <label className="field">
+            <span>Summary text — assembled from this period's daily logs and notes. Edit freely; this exact text is what gets saved.</span>
+            <textarea rows={9} value={draftText} onChange={(e) => setDraftText(e.target.value)} aria-label="Work summary draft text" />
+          </label>
+          <div className="link-actions">
+            {aiAvailability && !aiAvailability.configured ? (
+              <span className="muted small">✨ Polish with AI isn't set up on this Crewkat server yet.</span>
+            ) : aiAvailability && !aiAvailability.entitled ? (
+              <span className="muted small">✨ Polish with AI is a Crewkat Premium / Office feature.</span>
+            ) : aiAvailability && aiAvailability.usedThisMonth >= aiAvailability.monthlyCap ? (
+              <span className="muted small">✨ This month's AI writing limit is reached ({aiAvailability.usedThisMonth} of {aiAvailability.monthlyCap}).</span>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-small" disabled={polishMutation.isPending || draftText.trim().length === 0} onClick={() => polishMutation.mutate()}>
+                {polishMutation.isPending ? "Polishing…" : "✨ Polish with AI"}
+              </button>
+            )}
+            {prePolish !== null ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => { setDraftText(prePolish); setPrePolish(null); setDraftPolished(false); }}
+              >
+                Revert to my text
+              </button>
+            ) : null}
+            {draftPolished ? <span className="muted small">Polished with AI — same facts, cleaner prose.</span> : null}
+          </div>
+          <div className="link-actions">
+            <button type="button" className="btn btn-primary btn-small" disabled={createDraftMutation.isPending} onClick={() => createDraftMutation.mutate()}>
+              {createDraftMutation.isPending ? "Creating…" : "Create summary from draft"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => setDraftOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
       {error ? <p className="inline-error">{error}</p> : null}
       {listQuery.isLoading ? <p className="muted">Loading summaries…</p> : null}
       {!listQuery.isLoading && summaries.length === 0 ? <p className="muted">No summaries for this job yet.</p> : null}

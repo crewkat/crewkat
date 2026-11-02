@@ -7,7 +7,8 @@ import { cleanError, fileToBase64, formatDate } from "../utils";
  * Promotions (0092, Danny 2026-11-01): Office email campaigns.
  *
  * A campaign is a draft the office composes — from a one-line prompt
- * (template composer; there is no AI hookup in Crewkat yet), a custom
+ * (template composer, or the AI writer when the server has AI
+ * configured and the company is Premium/Office — 0098), a custom
  * uploaded image, or pasted custom HTML — aimed at one of three
  * audiences: hand-picked contacts, the "Estimate, never closed"
  * segment, or every contact with an email. Sending is Admin-only
@@ -196,10 +197,28 @@ function CampaignEditor({ campaignId, canSend, onBack }: { campaignId: number | 
   });
 
   const generateMutation = useMutation({
-    mutationFn: (d: Draft) => api.generateCampaignContent({ type: d.type, prompt: d.prompt }),
+    mutationFn: (d: Draft) => api.generateCampaignContent({ type: d.type, prompt: d.prompt, mode: "template", lang: "en", audience: d.recipientMode }),
     onSuccess: (result) => {
       setDraft((cur) => (cur ? { ...cur, subject: result.subject, headline: result.headline, bodyText: result.bodyText, ctaLabel: result.ctaLabel, ctaUrl: result.ctaUrl } : cur));
       setNote("Draft generated from your prompt — edit anything before sending.");
+    },
+    onError: (err) => setNote(cleanError(err)),
+  });
+
+  // AI writer (0098): the same composer, model-written from the brief.
+  // Availability drives the surface: unconfigured -> setup note,
+  // not entitled -> upgrade note, at cap -> limit note; templates
+  // stay the default in every state. The result lands in the same
+  // editable draft fields — nothing ever auto-sends.
+  const [aiLang, setAiLang] = useState<"en" | "es">("en");
+  const aiAvailabilityQuery = useQuery({ queryKey: ["ai-availability"], queryFn: () => api.getAiAvailability({}) });
+  const aiAvailability = aiAvailabilityQuery.data;
+  const aiGenerateMutation = useMutation({
+    mutationFn: (d: Draft) => api.generateCampaignContent({ type: d.type, prompt: d.prompt, mode: "ai", lang: aiLang, audience: d.recipientMode }),
+    onSuccess: (result) => {
+      setDraft((cur) => (cur ? { ...cur, subject: result.subject, headline: result.headline, bodyText: result.bodyText, ctaLabel: result.ctaLabel, ctaUrl: result.ctaUrl } : cur));
+      setNote("AI draft written from your brief — check every fact, edit anything, then save when it reads right.");
+      void queryClient.invalidateQueries({ queryKey: ["ai-availability"] });
     },
     onError: (err) => setNote(cleanError(err)),
   });
@@ -309,7 +328,27 @@ function CampaignEditor({ campaignId, canSend, onBack }: { campaignId: number | 
               <button type="button" className="btn btn-accent" disabled={locked || generateMutation.isPending || draft.prompt.trim().length < 3} onClick={() => generateMutation.mutate(draft)}>
                 {generateMutation.isPending ? "Writing…" : "Generate draft"}
               </button>
-              <span className="muted small">Drafts come from your prompt + your company details (templates, not AI — yet). Edit everything before sending.</span>
+              <span className="muted small">Drafts come from your prompt + your company details. Edit everything before sending.</span>
+            </div>
+            <div className="promo-actions">
+              {aiAvailability && !aiAvailability.configured ? (
+                <span className="muted small">✨ Write with AI isn't set up on this Crewkat server yet — the template drafts above work as always.</span>
+              ) : aiAvailability && !aiAvailability.entitled ? (
+                <span className="muted small">✨ Write with AI is a Crewkat Premium / Office feature — upgrade to have AI draft from your brief. Templates stay free.</span>
+              ) : aiAvailability && aiAvailability.usedThisMonth >= aiAvailability.monthlyCap ? (
+                <span className="muted small">✨ This month's AI writing limit is reached ({aiAvailability.usedThisMonth} of {aiAvailability.monthlyCap}) — template drafts still work.</span>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-ghost" disabled={locked || aiGenerateMutation.isPending || draft.prompt.trim().length < 3} onClick={() => aiGenerateMutation.mutate(draft)}>
+                    {aiGenerateMutation.isPending ? "Writing with AI…" : "✨ Write with AI"}
+                  </button>
+                  <select value={aiLang} disabled={locked} onChange={(e) => setAiLang(e.target.value as "en" | "es")} aria-label="AI draft language">
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                  </select>
+                  <span className="muted small">AI writes from your one-line brief{aiAvailability ? ` · ${aiAvailability.usedThisMonth} of ${aiAvailability.monthlyCap} AI drafts used this month` : ""}. It only uses facts you give it — review before sending.</span>
+                </>
+              )}
             </div>
             <div className="form-grid">
               <label className="field span2">
