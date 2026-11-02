@@ -1057,10 +1057,17 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async createInvoiceCheckout(args) {
     const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
     if (!secretKey) return { configured: false, sessionId: null, url: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
+    // Dynamic payment methods (Danny 2026-11-02, live Stripe refusal on
+    // INV-0048): NO payment_method_types here — the platform account's
+    // current API version rejects the parameter on Checkout Session
+    // creation ("Payment methods are now managed from your Dashboard
+    // settings"). Omitting it lets Stripe present the methods enabled
+    // on the CONNECTED account (this session is a direct charge via the
+    // Stripe-Account header below): card by default; us_bank_account
+    // appears when the connected account has it enabled in its own
+    // Dashboard payment-method settings.
     const body = new URLSearchParams({
       mode: "payment",
-      "payment_method_types[0]": "card",
-      "payment_method_types[1]": "us_bank_account",
       "line_items[0][quantity]": "1",
       "line_items[0][price_data][currency]": "usd",
       "line_items[0][price_data][unit_amount]": String(args.amountCents),

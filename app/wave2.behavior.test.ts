@@ -573,5 +573,66 @@ const stripQuoteRaw = await A.resolveDocumentLink.handler(ctx, { token: quoteLin
 const stripQuoteParsed = A.resolveDocumentLink.response.safeParse(stripQuoteRaw);
 check("quote payload still parses through the response schema", stripQuoteParsed.success && stripQuoteParsed.data.kind === "quote", stripQuoteParsed.success ? "" : JSON.stringify(stripQuoteParsed.error.issues.slice(0, 3)));
 
+// --- 13. Connect checkout wire shape: NO payment_method_types (2026-11-02) --
+// Danny's first real Pay Now tap (INV-0048, $1) got all the way to Stripe
+// and was refused: "The `payment_method_types` parameter is no longer
+// supported when creating a Checkout Session. Payment methods are now
+// managed from your Dashboard settings" — the platform account's current
+// API version uses dynamic payment methods. §11 fakes fetch but never
+// drove a checkout creation through the real handler, so the obsolete
+// param shipped. This section drives createDocumentInvoicePayment through
+// the REAL createInvoiceCheckout handler (ctxStripe dispatch — the portal
+// payment action shares the same startInvoiceCheckout helper and the
+// same privileged op) with fetch faked at the transport, and pins the
+// wire body. Which methods a client sees is now governed by the
+// CONNECTED account's Dashboard payment-method settings (card on by
+// default; US bank account appears when that account enables it there).
+const [invWire] = await db.insert(schema.invoices).values({ companyId: 1, jobId, invoiceNumber: "INV-W2-WIRE", clientName: "Wire Wendy", clientEmail: "wendy@example.com", lineItemsJson: "[]", total: "100.00", status: "sent", issueDate: "2026-11-01" }).returning({ id: schema.invoices.id });
+const wireLink = await A.createDocumentLink.handler(ctx, { kind: "invoice", id: invWire!.id });
+type CapturedCheckoutRequest = { url: string; method: string; headers: Record<string, string>; form: Record<string, string> };
+const checkoutRequests: CapturedCheckoutRequest[] = [];
+const fetchBefore13 = globalThis.fetch;
+const connectKeyBefore13 = process.env.STRIPE_CONNECT_SECRET_KEY;
+process.env.STRIPE_CONNECT_SECRET_KEY = "sk_test_connect_fake";
+try {
+  globalThis.fetch = (async (url: unknown, init?: any) => {
+    const u = String(url);
+    if (u === "https://api.stripe.com/v1/checkout/sessions") {
+      const form: Record<string, string> = {};
+      for (const [k, v] of new URLSearchParams(String(init?.body ?? ""))) form[k] = v;
+      checkoutRequests.push({ url: u, method: String(init?.method ?? "GET"), headers: (init?.headers ?? {}) as Record<string, string>, form });
+      return { ok: true, status: 200, json: async () => ({ id: "cs_test_wire", object: "checkout.session", url: "https://checkout.stripe.com/c/pay/cs_test_wire" }) };
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  }) as typeof fetch;
+  const wireResult = await A.createDocumentInvoicePayment.handler(ctxStripe, { token: wireLink.token });
+  check("document-link Pay tap returns the Stripe checkout URL", wireResult.url === "https://checkout.stripe.com/c/pay/cs_test_wire", JSON.stringify(wireResult));
+} finally {
+  globalThis.fetch = fetchBefore13;
+  if (connectKeyBefore13 === undefined) delete process.env.STRIPE_CONNECT_SECRET_KEY; else process.env.STRIPE_CONNECT_SECRET_KEY = connectKeyBefore13;
+}
+const checkoutReq = checkoutRequests.at(-1)!;
+check("invoice checkout posts exactly once to the v1 checkout sessions endpoint", checkoutRequests.length === 1 && checkoutReq.method === "POST", JSON.stringify(checkoutRequests.map((r) => r.url)));
+check("checkout authenticates with the CONNECT key on the connected account (direct charge)",
+  checkoutReq.headers.Authorization === "Bearer sk_test_connect_fake" && checkoutReq.headers["Stripe-Account"] === "acct_real_1",
+  JSON.stringify(checkoutReq.headers));
+check("checkout sends NO payment_method_types (dynamic payment methods govern)",
+  !Object.keys(checkoutReq.form).some((k) => k.startsWith("payment_method_types")),
+  JSON.stringify(Object.keys(checkoutReq.form)));
+check("checkout carries the balance as a USD price_data line item",
+  checkoutReq.form.mode === "payment" && checkoutReq.form["line_items[0][price_data][currency]"] === "usd" && checkoutReq.form["line_items[0][price_data][unit_amount]"] === "10000" && String(checkoutReq.form["line_items[0][price_data][product_data][name]"] ?? "").includes("INV-W2-WIRE"),
+  JSON.stringify(checkoutReq.form));
+check("checkout metadata pins the invoice payment (session + payment intent)",
+  checkoutReq.form["metadata[type]"] === "invoice_payment" && checkoutReq.form["metadata[invoice_id]"] === String(invWire!.id) && checkoutReq.form["metadata[company_id]"] === "1" &&
+  checkoutReq.form["payment_intent_data[metadata][type]"] === "invoice_payment" && checkoutReq.form["payment_intent_data[metadata][invoice_id]"] === String(invWire!.id) && checkoutReq.form["payment_intent_data[metadata][company_id]"] === "1",
+  JSON.stringify(checkoutReq.form));
+check("checkout return URLs point back at the document link, payer email carried, no application fee at the 0% default",
+  String(checkoutReq.form.success_url ?? "").includes("#doc=") && checkoutReq.form.success_url === checkoutReq.form.cancel_url && checkoutReq.form.customer_email === "wendy@example.com" && !("payment_intent_data[application_fee_amount]" in checkoutReq.form),
+  JSON.stringify(checkoutReq.form));
+const [wireAttempt] = await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.invoiceId, invWire!.id));
+check("the pending payment attempt records the created session",
+  !!wireAttempt && wireAttempt.stripeSessionId === "cs_test_wire" && wireAttempt.status === "pending" && wireAttempt.amount === "100.00",
+  JSON.stringify(wireAttempt ?? null));
+
 console.log(failures === 0 ? "\nALL WAVE 2 CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
