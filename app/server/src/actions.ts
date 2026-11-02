@@ -3409,6 +3409,14 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
     // while the company's Stripe Connect can take charges — the client
     // page renders its Pay button from this (absent = no dead buttons).
     payNowAvailable: false,
+    // Invoice money defaults for the non-invoice branches (fix
+    // 2026-11-01): the invoice branch below overrides these with the
+    // real invoiceShape values. They live on every branch because
+    // resolveDocumentLink's response schema declares them — before the
+    // schema declared them at all, the runtime's response safeParse
+    // stripped the invoice branch's real values in production and the
+    // client page's Pay gate collapsed (see the schema comment).
+    paidToDate: "", lateFeeAccrued: "", totalWithLateFee: "",
     // Signatures fix (2026-10-14): uploaded-PDF contracts expose their real
     // pages on the link (empty/false for everything else).
     hasOriginalPdf: false, originalFilename: "",
@@ -3460,13 +3468,13 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
     const shaped = invoiceShape(row, paymentRows, fee);
     const companySettings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, link.companyId)).limit(1))[0];
     const payNowAvailable = !!companySettings?.stripeConnectAccountId && !!companySettings.stripeChargesEnabled && Number(shaped.balanceRemaining) > 0 && (await companyProActive(db, link.companyId));
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType, depositValue: row.depositValue, attachedImages, payNowAvailable } };
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, attachedImages, payNowAvailable } };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, link.documentId)).limit(1))[0];
     if (!row) throw new Error("This document is no longer available.");
     const attachedImages = await publicAttachmentImages(ctx, db, "quote", link.documentId, link.companyId);
-    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, attachedImages } };
   }
   const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
@@ -3508,7 +3516,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
       }
     }
   }
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none", depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
+  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none" as const, depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -6939,7 +6947,19 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
     changeOrder: z.object({ number: z.number(), displayTitle: z.string(), scopeLabel: z.string(), dateIso: z.string(), referenceContract: z.string(), contractSumBefore: z.string(), amount: z.string(), newContractSum: z.string(), contractorSignatureUrl: z.string().nullable(), contractorSignedAt: z.string().nullable(), clientSignatureUrl: z.string().nullable().default(null) }).nullable().default(null),
     // Build 0.3 (item 8): the actual document design, so the client link can
     // render the real PDF instead of a plain-HTML mock.
-    invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]), payNowAvailable: z.boolean().default(false) }), async handler(ctx, args) {
+    invoiceNumber: z.string(), issueDate: z.string(), dueDate: z.string(), expiryDate: z.string(), status: z.string(), discountType: z.string(), discountValue: z.string(), taxType: z.string(), taxValue: z.string(), theme: z.string(), font: z.string(), accentColor: z.string(), showTaxLine: z.boolean(), showDiscountLine: z.boolean(), showPaidLine: z.boolean(), showPaymentTerms: z.boolean(), showFooterNotes: z.boolean(), showLogo: z.boolean(), showCompanyInfo: z.boolean(), customizeJson: z.string(), attachedImages: z.array(z.object({ fileName: z.string(), url: z.string() })).default([]), payNowAvailable: z.boolean().default(false),
+    // Invoice money parity (fix 2026-11-01): the invoice branch of
+    // getDocumentLinkPayload computes paidToDate / lateFeeAccrued /
+    // totalWithLateFee from the payments table and every financial
+    // branch returns depositType / depositValue — but none of the five
+    // were declared here, so the runtime's response safeParse
+    // (server.mjs) stripped them in production. The client page gates
+    // its Pay Now section on totalWithLateFee - paidToDate > 0, which
+    // collapsed to 0 - 0 and hid the Pay button even with
+    // payNowAvailable: true (Danny's INV-0048). The handler's base
+    // payload supplies the trio's defaults on the non-invoice branches;
+    // shapes match invoiceSchema / depositTypeSchema.
+    paidToDate: z.string().default(""), lateFeeAccrued: z.string().default(""), totalWithLateFee: z.string().default(""), depositType: depositTypeSchema.default("none"), depositValue: z.string().default("0") }), async handler(ctx, args) {
     // Build 0.4: payload assembly moved to getDocumentLinkPayload (shared with
     // getDocumentLinkPdf); this handler keeps the view counting + notify.
     const { link, payload } = await getDocumentLinkPayload(ctx, args.token);

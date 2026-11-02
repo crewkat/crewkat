@@ -540,5 +540,38 @@ try {
   if (savedConnectKey === undefined) delete process.env.STRIPE_CONNECT_SECRET_KEY; else process.env.STRIPE_CONNECT_SECRET_KEY = savedConnectKey;
 }
 
+// --- 12. Response-schema stripping: the money fields survive (2026-11-01) ----
+// Production serializes every action result through the action's response
+// schema (server.mjs: action.response.safeParse(result)), and zod strips
+// undeclared keys. The sections above call handlers directly, so they
+// never saw that resolveDocumentLink's response schema omitted
+// paidToDate / lateFeeAccrued / totalWithLateFee / depositType /
+// depositValue even though getDocumentLinkPayload returns them: live,
+// Danny's INV-0048 payload carried payNowAvailable: true with the money
+// trio absent, so the client page's Pay gate
+// (totalWithLateFee - paidToDate > 0) collapsed to 0 - 0 and the Pay
+// Now section never rendered. This section runs a partially paid
+// invoice through the SAME safeParse the runtime applies.
+const [invStrip] = await db.insert(schema.invoices).values({ companyId: 1, jobId, invoiceNumber: "INV-W2-STRIP", clientName: "Strip Stella", clientEmail: "stella@example.com", lineItemsJson: "[]", total: "200.00", status: "sent", issueDate: "2026-10-29", depositType: "percent", depositValue: "25.00" }).returning({ id: schema.invoices.id });
+await db.insert(schema.payments).values({ companyId: 1, invoiceId: invStrip!.id, amount: "50.00", paymentDate: "2026-10-30", method: "Card" });
+const stripLink = await A.createDocumentLink.handler(ctx, { kind: "invoice", id: invStrip!.id });
+const stripRaw = await A.resolveDocumentLink.handler(ctx, { token: stripLink.token, userAgent: "test" });
+check("handler payload carries the money trio + deposit (pre-serialization truth)",
+  stripRaw.payNowAvailable === true && stripRaw.paidToDate === "50.00" && stripRaw.lateFeeAccrued === "0.00" && stripRaw.totalWithLateFee === "200.00" && stripRaw.depositType === "percent" && stripRaw.depositValue === "25.00",
+  JSON.stringify({ paidToDate: stripRaw.paidToDate, lateFeeAccrued: stripRaw.lateFeeAccrued, totalWithLateFee: stripRaw.totalWithLateFee, depositType: stripRaw.depositType, depositValue: stripRaw.depositValue, payNowAvailable: stripRaw.payNowAvailable }));
+const stripParsedResult = A.resolveDocumentLink.response.safeParse(stripRaw);
+check("response schema accepts the handler's invoice payload", stripParsedResult.success, stripParsedResult.success ? "" : JSON.stringify(stripParsedResult.error.issues.slice(0, 3)));
+const stripParsed: any = stripParsedResult.success ? stripParsedResult.data : {};
+check("money trio + deposit SURVIVE response-schema serialization",
+  stripParsed.paidToDate === "50.00" && stripParsed.lateFeeAccrued === "0.00" && stripParsed.totalWithLateFee === "200.00" && stripParsed.depositType === "percent" && stripParsed.depositValue === "25.00" && stripParsed.payNowAvailable === true,
+  JSON.stringify({ paidToDate: stripParsed.paidToDate, lateFeeAccrued: stripParsed.lateFeeAccrued, totalWithLateFee: stripParsed.totalWithLateFee, depositType: stripParsed.depositType, depositValue: stripParsed.depositValue, payNowAvailable: stripParsed.payNowAvailable }));
+check("the client page's Pay gate arithmetic works on the serialized payload (remaining = 150 > 0)",
+  Number(stripParsed.totalWithLateFee ?? 0) - Number(stripParsed.paidToDate ?? 0) === 150,
+  `${stripParsed.totalWithLateFee} - ${stripParsed.paidToDate}`);
+// Non-invoice branches still parse — the new fields default there.
+const stripQuoteRaw = await A.resolveDocumentLink.handler(ctx, { token: quoteLink.token, userAgent: "test" });
+const stripQuoteParsed = A.resolveDocumentLink.response.safeParse(stripQuoteRaw);
+check("quote payload still parses through the response schema", stripQuoteParsed.success && stripQuoteParsed.data.kind === "quote", stripQuoteParsed.success ? "" : JSON.stringify(stripQuoteParsed.error.issues.slice(0, 3)));
+
 console.log(failures === 0 ? "\nALL WAVE 2 CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);
