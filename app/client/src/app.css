@@ -66,6 +66,11 @@
 .client-doc-pay-btn { flex: none; padding: 11px 20px; border: 0; border-radius: 10px; background: #1f5a4a; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
 .client-doc-pay-btn:disabled { opacity: .6; }
 .portal-v2-pay-btn { width: 100%; margin: 8px 0 4px; }
-.payments-setup-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--line, #e2e6ea); border-radius: 10px; font-size: 13px; color: #5b6672; }
-.payments-setup-hint button { border: 0; background: none; font-size: 16px; line-height: 1; color: #8a95a1; cursor: pointer; padding: 2px 4px; }
+.payments-connect-card { margin-top: 18px; padding: 14px; border: 1px solid var(--line, #e2e6ea); border-radius: 12px; background: var(--surface-2, #f7f9fa); }
+.payments-connect-card .settings-group-title { margin-top: 0; }
+.payments-connect-note { margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; color: #5b6672; }
+.payments-connect-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.payments-connect-rows { display: grid; gap: 6px; margin-bottom: 10px; }
+.payments-connect-rows span { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #5b6672; }
+.payments-connect-rows strong { color: var(--ink, #171a1c); }
 .pay-link-note { margin: 6px 0 0; font-size: 12.5px; color: #1f5a4a; font-weight: 600; }

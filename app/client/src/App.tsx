@@ -7005,22 +7005,109 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
 // Billing section (Danny 2026-10-17): the user's own plan state, subscription
 // management, and payment history with Crewkat — Stripe subscription
 // invoices plus marketplace promotion purchases, served by getBillingOverview.
-// Wave 2 Item 6: quiet, dismissible hints around Stripe Connect —
-// invoice links carry Pay Now once the company finishes setup in
-// Office. Both render nothing when setup is done, when the member
-// can't see payment setup (the action is office/admin-gated), or on
-// any load error: no dead buttons, no noise.
-function PaymentsSetupHint({ lang }: { lang: Lang }) {
-  const [dismissed, setDismissed] = useState(() => {
-    try { return window.localStorage.getItem("crewkat-payments-hint") === "dismissed"; } catch { return false; }
+// Wave 2 Item 6 + Danny 2026-11-01: the "Get paid by card" card —
+// Stripe Connect onboarding lives right here in Billing so app-only
+// users never need Office. Mirrors the Office Settings → Payments
+// semantics (same actions, same states). Pay Now is Pro-only: free /
+// lapsed companies get the Premium upsell state instead of the Connect
+// button. Renders nothing on a load error or when the member can't see
+// payment setup (the actions are office/admin-gated): no dead buttons.
+function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const text = lang === "es" ? {
+    title: "Cobros con tarjeta",
+    platformNote: "Los pagos en línea aún no están activados en Crewkat. Cuando lo estén, aquí podrás conectar tu cuenta de Stripe para que tus clientes paguen facturas con tarjeta o ACH desde el enlace de la factura.",
+    proCopy: "Los pagos en línea son una función Pro. Con Premium, tus clientes pagan tus facturas con tarjeta o transferencia ACH desde el enlace de la factura, y el dinero llega directo a tu cuenta de Stripe.",
+    viewPlans: "Ver planes Premium",
+    connectCopy: "Conecta tu cuenta de Stripe (unos minutos: datos del negocio y cuenta bancaria). Cuando esté lista, cada enlace de factura que envíes tendrá un botón de pago automáticamente.",
+    connect: "Conectar Stripe", continueSetup: "Continuar la configuración de Stripe", opening: "Abriendo Stripe…",
+    onboardingCopy: "Tu cuenta de Stripe aún no está terminada. Continúa donde lo dejaste y luego actualiza el estado.",
+    refresh: "Actualizar estado", refreshing: "Actualizando…",
+    statusLabel: "Estado", connectedLabel: "Conectado", onboardingLabel: "Configuración incompleta",
+    chargesLabel: "Cobros con tarjeta y ACH", payoutsLabel: "Depósitos a tu banco", enabled: "Activado", notYet: "Todavía no",
+    connectedCopy: "✓ Enlace de pago activo — tus clientes pueden pagar con tarjeta o ACH desde el enlace de cada factura, y los pagos se registran solos.",
+    openError: "No se pudo abrir Stripe ahora. Inténtalo de nuevo.",
+  } : {
+    title: "Get paid by card",
+    platformNote: "Online payments aren't switched on for Crewkat yet. Once they are, this is where you'll connect your own Stripe account so clients can pay invoices by card or bank transfer (ACH) straight from the invoice link.",
+    proCopy: "Online payments are a Pro feature. With Premium, your clients pay invoices by card or ACH transfer from the invoice link, and the money lands in your own Stripe account.",
+    viewPlans: "See Premium plans",
+    connectCopy: "Connect your Stripe account (a few minutes: business details + bank account). When it's ready, every invoice link you send gets a Pay button automatically.",
+    connect: "Connect Stripe", continueSetup: "Continue Stripe setup", opening: "Opening Stripe…",
+    onboardingCopy: "Your Stripe account isn't finished yet. Pick up where you left off, then refresh the status.",
+    refresh: "Refresh status", refreshing: "Refreshing…",
+    statusLabel: "Status", connectedLabel: "Connected", onboardingLabel: "Onboarding incomplete",
+    chargesLabel: "Card & ACH charges", payoutsLabel: "Payouts to your bank", enabled: "Enabled", notYet: "Not yet",
+    connectedCopy: "✓ Pay link active — clients can pay by card or ACH from every invoice link, and payments record themselves.",
+    openError: "Could not open Stripe right now. Try again.",
+  };
+  const queryClient = useQueryClient();
+  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 60_000 });
+  const [error, setError] = useState("");
+  const refresh = useMutation({
+    mutationFn: () => api.refreshConnectStatus({}),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["payments-setup"] }),
   });
-  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 300_000, enabled: !dismissed });
-  if (dismissed || !setup.data || setup.data.chargesEnabled) return null;
+  // Returning from Stripe lands back on /app — when Billing mounts with
+  // a half-finished setup, pull the fresh Stripe state once.
+  const autoRefreshed = useRef(false);
+  useEffect(() => {
+    if (!autoRefreshed.current && setup.data?.status === "onboarding") {
+      autoRefreshed.current = true;
+      refresh.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setup.data?.status]);
+  const onboard = useMutation({
+    mutationFn: () => api.startConnectOnboarding({ surface: "app" }),
+    onSuccess: (result) => {
+      if (result.url) {
+        setError("");
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        void queryClient.invalidateQueries({ queryKey: ["payments-setup"] });
+      } else {
+        setError(text.openError);
+      }
+    },
+    onError: () => setError(text.openError),
+  });
+  const data = setup.data;
+  if (!data) return null;
   return (
-    <p className="payments-setup-hint">
-      <span>{lang === "es" ? "¿Quieres que tus clientes paguen facturas con tarjeta? Configura los pagos en Crewkat Office → Ajustes → Pagos." : "Want clients to pay invoices by card? Set up payments in Crewkat Office → Settings → Payments."}</span>
-      <button type="button" aria-label={lang === "es" ? "Descartar" : "Dismiss"} onClick={() => { setDismissed(true); try { window.localStorage.setItem("crewkat-payments-hint", "dismissed"); } catch { /* ignore */ } }}>×</button>
-    </p>
+    <section className="payments-connect-card">
+      <h3 className="settings-group-title">{text.title}</h3>
+      {!data.platformConfigured ? (
+        <p className="payments-connect-note">{text.platformNote}</p>
+      ) : !data.proActive ? (
+        <>
+          <p className="payments-connect-note">{text.proCopy}</p>
+          <button type="button" className="primary-button" onClick={() => setScreen({ name: "upgrade" })}>{text.viewPlans}</button>
+        </>
+      ) : data.status === "connected" && data.chargesEnabled ? (
+        <>
+          <div className="payments-connect-rows">
+            <span>{text.statusLabel}<strong>{text.connectedLabel}</strong></span>
+            <span>{text.chargesLabel}<strong>{data.chargesEnabled ? text.enabled : text.notYet}</strong></span>
+            <span>{text.payoutsLabel}<strong>{data.payoutsEnabled ? text.enabled : text.notYet}</strong></span>
+          </div>
+          <p className="pay-link-note">{text.connectedCopy}</p>
+        </>
+      ) : (
+        <>
+          <p className="payments-connect-note">{data.status === "onboarding" ? text.onboardingCopy : text.connectCopy}</p>
+          {error && <p className="status error" role="alert">{error}</p>}
+          <div className="payments-connect-actions">
+            <button type="button" className="primary-button" disabled={onboard.isPending} onClick={() => { setError(""); onboard.mutate(); }}>
+              {onboard.isPending ? text.opening : data.status === "onboarding" ? text.continueSetup : text.connect}
+            </button>
+            {data.status === "onboarding" && (
+              <button type="button" className="secondary-button" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+                {refresh.isPending ? text.refreshing : text.refresh}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -7157,7 +7244,7 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
           )}
         </>
       )}
-      <PaymentsSetupHint lang={lang} />
+      <PaymentsConnectCard lang={lang} setScreen={setScreen} />
     </main>
   );
 }
@@ -11621,6 +11708,24 @@ type WhatsNewEntry = {
   bugFixes: number;
 };
 const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
+  {
+    date: "2026-11-01",
+    features: {
+      en: [
+        "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Billing (Pro feature)",
+        "Payments record themselves: when a client pays online, the invoice updates on its own",
+        "New in Crewkat Office: send promotions to past clients and old estimates, sync with QuickBooks, and get alerted when a client opens your proposal twice",
+        "In Office, you can now fix a client's phone, email, or address right from the job — and renaming a client updates all their jobs and documents",
+      ],
+      es: [
+        "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Facturación (función Pro)",
+        "Los pagos se registran solos: cuando un cliente paga en línea, la factura se actualiza automáticamente",
+        "Nuevo en Crewkat Office: envía promociones a clientes anteriores y estimados viejos, sincroniza con QuickBooks y recibe un aviso cuando un cliente abre tu propuesta dos veces",
+        "En Office ya puedes corregir el teléfono, correo o dirección de un cliente desde el trabajo — y al renombrar un cliente se actualizan todos sus trabajos y documentos",
+      ],
+    },
+    bugFixes: 2,
+  },
   {
     date: "2026-10-25",
     features: {

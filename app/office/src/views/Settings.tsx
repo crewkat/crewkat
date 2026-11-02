@@ -430,7 +430,15 @@ function PaymentsSection({ canManage }: { canManage: boolean }) {
           <p className="muted">Once the platform's Stripe Connect keys are configured, this is where you connect your own Stripe account so clients can pay invoices by card or bank transfer (ACH) straight from the invoice link. Nothing to do here until then.</p>
         </div>
       ) : null}
-      {setup && setup.platformConfigured ? (
+      {setup && setup.platformConfigured && !setup.proActive ? (
+        <div className="empty-state small">
+          <div className="empty-icon">▣</div>
+          <p><strong>Online payments are a Pro feature.</strong></p>
+          <p className="muted">Taking card and ACH payments from your invoice links requires an active Crewkat Premium plan — you're on the free plan, so Pay Now stays off even if a Stripe account is connected. Upgrade in the Crewkat app (Billing) and this is where you'll connect Stripe.</p>
+          <a className="btn btn-primary" href="https://crewkat.com/app" target="_blank" rel="noopener noreferrer">Open the Crewkat app</a>
+        </div>
+      ) : null}
+      {setup && setup.platformConfigured && setup.proActive ? (
         <>
           <div className="settings-kv">
             <div><span>Status</span><strong>{setup.status === "connected" ? "Connected" : setup.status === "onboarding" ? "Onboarding incomplete" : "Not connected"}</strong></div>

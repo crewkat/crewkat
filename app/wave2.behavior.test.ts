@@ -96,6 +96,7 @@ function qbHandle(args: Record<string, unknown>) {
   throw new Error(`unexpected QB call ${method} ${path}`);
 }
 
+const linkCalls: Array<{ refreshUrl: string; returnUrl: string }> = [];
 const ctx = {
   slug: "tradesign",
   invocationId: "wave2-test",
@@ -133,6 +134,19 @@ const ctx = {
     if (typeof args.accessToken === "string" && typeof args.path === "string") return qbHandle(args);
     if (typeof args.refreshToken === "string") return { configured: true, accessToken: "tok-fresh", refreshToken: "ref-fresh", expiresInSeconds: 3600 };
     if (typeof args.code === "string" && typeof args.redirectUri === "string") return { configured: true, accessToken: "tok-1", refreshToken: "ref-1", expiresInSeconds: 3600 };
+    // Stripe Connect transport (Part B gate tests): account create, account
+    // link (URLs captured), account read-back, invoice checkout.
+    if (typeof args.companyName === "string") return { configured: true, accountId: "acct_fake_1" };
+    if (typeof args.refreshUrl === "string" && typeof args.returnUrl === "string") {
+      linkCalls.push({ refreshUrl: String(args.refreshUrl), returnUrl: String(args.returnUrl) });
+      return { configured: true, url: "https://connect.stripe.test/onboard" };
+    }
+    if (typeof args.amountCents === "number" && typeof args.invoiceId === "number") {
+      return { configured: true, url: "https://checkout.stripe.test/pay", sessionId: `cs_pro_${args.invoiceId}` };
+    }
+    if (Object.keys(args).length === 1 && typeof args.accountId === "string") {
+      return { configured: true, chargesEnabled: true, payoutsEnabled: true };
+    }
     // Platform status probes (both take {}): configured + sandbox.
     if (Object.keys(args).length === 0) return { configured: true, environment: "sandbox" };
     throw new Error(`unexpected privileged call ${JSON.stringify(Object.keys(args))}`);
@@ -278,6 +292,86 @@ const payRecord = (await db.select().from(schema.qbSyncRecords).where(and(eq(sch
 check("payment pushes linked to the synced invoice", !!payRecord?.qbId && qb.payments.size === 1, JSON.stringify(payRecord));
 const qbRecords = await A.listQbSyncRecords.handler(ctx, {});
 check("sync status centre lists records with labels", qbRecords.records.length >= 3 && qbRecords.records.every((r: any) => r.label.length > 0), JSON.stringify(qbRecords.records.map((r: any) => r.label)));
+
+// --- 10. Pay Now is Pro-only (Danny 2026-11-01) ---------------------------------
+// The seeded owner (user 1) is free-tier (schema default). Entitlement
+// resolves from the OWNER's row, not the caller's claims.
+const ownerRow = () => db.select().from(schema.authUsers).where(eq(schema.authUsers.id, 1)).then((r) => r[0]!);
+const settingsRow = () => db.select().from(schema.settings).where(eq(schema.settings.companyId, 1)).then((r) => r[0]!);
+check("seeded owner starts free-tier", (await ownerRow()).tier === "free", (await ownerRow()).tier);
+const setupGate0 = await A.getPaymentsSetup.handler(ctx, {});
+check("setup shape reports proActive=false for a free company", setupGate0.proActive === false, JSON.stringify(setupGate0));
+await checkThrows("non-Pro onboarding is refused (default surface)", () => A.startConnectOnboarding.handler(ctx, {}));
+await checkThrows("non-Pro onboarding is refused (app surface)", () => A.startConnectOnboarding.handler(ctx, { surface: "app" }));
+check("refused onboarding persists no Connect account", (await settingsRow()).stripeConnectAccountId === null, (await settingsRow()).stripeConnectAccountId ?? "null");
+check("refused onboarding never reaches Stripe", linkCalls.length === 0);
+
+// Connect wired by hand (as if connected while Pro, then lapsed): the
+// client-facing surfaces must still hide/refuse Pay Now for free.
+await db.update(schema.settings).set({ stripeConnectAccountId: "acct_test", stripeChargesEnabled: true, stripePayoutsEnabled: true, stripeConnectStatus: "connected" }).where(eq(schema.settings.companyId, 1));
+const [invGate] = await db.insert(schema.invoices).values({ companyId: 1, jobId, invoiceNumber: "INV-W2-GATE", clientName: "Gate Gail", clientEmail: "gail@example.com", lineItemsJson: "[]", total: "120.00", status: "sent", issueDate: "2026-10-28" }).returning({ id: schema.invoices.id });
+const gateLink = await A.createDocumentLink.handler(ctx, { kind: "invoice", id: invGate!.id });
+const gatePayloadFree = await A.resolveDocumentLink.handler(ctx, { token: gateLink.token, userAgent: "test" });
+check("invoice link hides Pay Now for a non-Pro company even with charges enabled", gatePayloadFree.payNowAvailable === false, JSON.stringify(gatePayloadFree.payNowAvailable));
+await checkThrows("non-Pro checkout creation is refused", () => A.createDocumentInvoicePayment.handler(ctx, { token: gateLink.token }));
+const portalLink = await A.createPortalLink.handler(ctx, { jobId, expiresInDays: 90 });
+const portalFree = await A.getPortalData.handler(ctx, { token: portalLink.token });
+check("portal hides Pay Now for a non-Pro company", portalFree.payNowAvailable === false);
+await checkThrows("non-Pro portal checkout is refused", () => A.createPortalInvoicePayment.handler(ctx, { token: portalLink.token, invoiceId: invGate!.id }));
+
+// Upgrade the owner to Premium: every gate opens.
+await db.update(schema.authUsers).set({ tier: "premium", subscriptionStatus: "active" }).where(eq(schema.authUsers.id, 1));
+const setupGate1 = await A.getPaymentsSetup.handler(ctx, {});
+check("setup shape reports proActive=true for a Premium company", setupGate1.proActive === true, JSON.stringify(setupGate1));
+
+// Onboarding from scratch: app surface returns Stripe to /app, the
+// default (Office) surface to /office — byte-identical to before.
+await db.update(schema.settings).set({ stripeConnectAccountId: null, stripeChargesEnabled: false, stripePayoutsEnabled: false, stripeConnectStatus: "not_connected" }).where(eq(schema.settings.companyId, 1));
+const onboardApp = await A.startConnectOnboarding.handler(ctx, { surface: "app" });
+check("Pro onboarding returns a Stripe URL", onboardApp.platformConfigured === true && typeof onboardApp.url === "string" && onboardApp.url.length > 0, JSON.stringify(onboardApp));
+check("app-surface onboarding returns to /app", linkCalls.at(-1)?.returnUrl.endsWith("/app") === true && linkCalls.at(-1)?.refreshUrl.endsWith("/app") === true, JSON.stringify(linkCalls.at(-1)));
+check("onboarding persisted the created account as onboarding", (await settingsRow()).stripeConnectAccountId === "acct_fake_1" && (await settingsRow()).stripeConnectStatus === "onboarding", JSON.stringify((await settingsRow()).stripeConnectAccountId));
+const onboardOffice = await A.startConnectOnboarding.handler(ctx, {});
+check("default-surface onboarding returns to /office (unchanged)", linkCalls.at(-1)?.returnUrl.endsWith("/office") === true, JSON.stringify(linkCalls.at(-1)));
+
+// Founder premium (tier "premium" + subscriptionStatus "founder" —
+// Danny's own account shape) passes every gate too.
+await db.update(schema.authUsers).set({ subscriptionStatus: "founder" }).where(eq(schema.authUsers.id, 1));
+const setupFounder = await A.getPaymentsSetup.handler(ctx, {});
+check("founder premium reports proActive=true", setupFounder.proActive === true, JSON.stringify(setupFounder));
+const onboardFounder = await A.startConnectOnboarding.handler(ctx, { surface: "app" });
+check("founder premium can onboard", typeof onboardFounder.url === "string" && onboardFounder.url.length > 0, JSON.stringify(onboardFounder));
+await db.update(schema.authUsers).set({ subscriptionStatus: "active" }).where(eq(schema.authUsers.id, 1));
+
+// Status refresh flips the company to connected (fake account read-back
+// reports charges + payouts enabled).
+const refreshed = await A.refreshConnectStatus.handler(ctx, {});
+check("refresh reports connected + proActive for Pro", refreshed.status === "connected" && refreshed.chargesEnabled === true && refreshed.proActive === true, JSON.stringify(refreshed));
+
+// Pro checkout: link + portal show Pay Now, checkout creates an attempt.
+const gatePayloadPro = await A.resolveDocumentLink.handler(ctx, { token: gateLink.token, userAgent: "test" });
+check("invoice link shows Pay Now for Pro + connected + balance", gatePayloadPro.payNowAvailable === true);
+const checkoutPro = await A.createDocumentInvoicePayment.handler(ctx, { token: gateLink.token });
+check("Pro checkout returns a Stripe URL", typeof checkoutPro.url === "string" && checkoutPro.url.length > 0, JSON.stringify(checkoutPro));
+const gateAttempt = (await db.select().from(schema.invoicePaymentAttempts).where(eq(schema.invoicePaymentAttempts.invoiceId, invGate!.id)))[0]!;
+check("checkout recorded a pending attempt", gateAttempt?.status === "pending" && gateAttempt?.stripeSessionId === `cs_pro_${invGate!.id}`, JSON.stringify(gateAttempt));
+const portalPro = await A.getPortalData.handler(ctx, { token: portalLink.token });
+check("portal shows Pay Now for Pro", portalPro.payNowAvailable === true);
+
+// Lapse AFTER the client started paying: new checkouts stop, surfaces
+// hide the button — but the in-flight payment still records via the
+// webhook (the webhook is deliberately NOT gated).
+await db.update(schema.authUsers).set({ tier: "free", subscriptionStatus: "canceled" }).where(eq(schema.authUsers.id, 1));
+const gatePayloadLapsed = await A.resolveDocumentLink.handler(ctx, { token: gateLink.token, userAgent: "test" });
+check("lapsed company link hides Pay Now again", gatePayloadLapsed.payNowAvailable === false);
+await checkThrows("lapsed company cannot start a new checkout", () => A.createDocumentInvoicePayment.handler(ctx, { token: gateLink.token }));
+const lapseEvent = JSON.stringify({ id: "evt_pro_lapse", type: "checkout.session.completed", account: "acct_fake_1", data: { object: { id: `cs_pro_${invGate!.id}`, payment_intent: "pi_pro_lapse", amount_total: 12000, payment_status: "paid", payment_method_types: ["card"], metadata: { type: "invoice_payment", invoice_id: String(invGate!.id), company_id: "1" } } } });
+const whLapse = await A.handleConnectWebhook.handler(ctx, { payload: lapseEvent, signature: "t=1,v1=x" });
+check("webhook still processes a payment that settles after the lapse", whLapse.processed === true, JSON.stringify(whLapse));
+const lapsePayments = await db.select().from(schema.payments).where(eq(schema.payments.invoiceId, invGate!.id));
+check("post-lapse settlement records the payment in full", lapsePayments.length === 1 && lapsePayments[0]!.amount === "120.00", JSON.stringify(lapsePayments));
+const invGateAfter = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, invGate!.id)))[0]!;
+check("post-lapse settlement flips the invoice to paid", invGateAfter.status === "paid", invGateAfter.status);
 
 console.log(failures === 0 ? "\nALL WAVE 2 CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

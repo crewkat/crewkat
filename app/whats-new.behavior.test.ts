@@ -50,14 +50,34 @@ describe("What's New — data model", () => {
     expect(/"2026-10-14"[\s\S]*?bugFixes: 5/.test(data)).toBe(true);
   });
 
-  test("Oct 25 entry is the newest, so existing users get the dot and stale seen-dates stay unread", () => {
+  test("Nov 1 entry is the newest, so existing users get the dot and stale seen-dates stay unread", () => {
     // The component derives `newest` from WHATS_NEW_ENTRIES[0]; pin that the
-    // first date in the data block is the Oct 25 release.
+    // first date in the data block is the Nov 1 release.
     const firstDate = data.match(/date: "(\d{4}-\d{2}-\d{2})"/)?.[1];
-    expect(firstDate).toBe("2026-10-25");
+    expect(firstDate).toBe("2026-11-01");
     const isUnread = (newest: string, seen: string) => newest > seen;
-    expect(isUnread("2026-10-25", "2026-10-15")).toBe(true); // saw the previous release
-    expect(isUnread("2026-10-25", "2026-10-25")).toBe(false); // already opened this one
+    expect(isUnread("2026-11-01", "2026-10-25")).toBe(true); // saw the previous release
+    expect(isUnread("2026-11-01", "2026-11-01")).toBe(false); // already opened this one
+    // The Nov 1 entry honestly counts the two Oct 31 sheet fixes.
+    expect(/"2026-11-01"[\s\S]*?bugFixes: 2/.test(data)).toBe(true);
+    // Ordering: Nov 1 above Oct 25 above Oct 15 above Oct 14.
+    const nov = data.indexOf('"2026-11-01"');
+    const oct25 = data.indexOf('"2026-10-25"');
+    expect(nov).toBeGreaterThanOrEqual(0);
+    expect(oct25).toBeGreaterThan(nov);
+  });
+
+  test("Nov 1 seeded EN/ES lines are present", () => {
+    for (const line of [
+      "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Billing (Pro feature)",
+      "Payments record themselves: when a client pays online, the invoice updates on its own",
+      "New in Crewkat Office: send promotions to past clients and old estimates, sync with QuickBooks, and get alerted when a client opens your proposal twice",
+      "In Office, you can now fix a client's phone, email, or address right from the job — and renaming a client updates all their jobs and documents",
+      "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Facturación (función Pro)",
+      "Los pagos se registran solos: cuando un cliente paga en línea, la factura se actualiza automáticamente",
+      "Nuevo en Crewkat Office: envía promociones a clientes anteriores y estimados viejos, sincroniza con QuickBooks y recibe un aviso cuando un cliente abre tu propuesta dos veces",
+      "En Office ya puedes corregir el teléfono, correo o dirección de un cliente desde el trabajo — y al renombrar un cliente se actualizan todos sus trabajos y documentos",
+    ]) expect(data).toContain(line);
   });
 
   test("Oct 25 seeded EN lines are present", () => {
