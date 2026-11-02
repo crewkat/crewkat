@@ -314,3 +314,144 @@ describe("office marketing page (2026-11-01)", () => {
     }
   });
 });
+
+describe("trade-solution pages /for/<trade> (Item 4, 2026-11-01)", () => {
+  const TRADES: Record<string, { title: string; h1: string }> = {
+    roofing: {
+      title: "Roofing Contractor Software — Estimates, Jobs and Invoicing | Crewkat",
+      h1: "Roofing jobs, from tear-off to paid in full.",
+    },
+    plumbing: {
+      title: "Plumbing Contractor Software — Service Calls, Estimates and Invoicing | Crewkat",
+      h1: "Service calls in, invoices out — same day.",
+    },
+    electrical: {
+      title: "Electrical Contractor Software — Estimates, Permits and Job Records | Crewkat",
+      h1: "Every wire, permit, and inspection — on the job record.",
+    },
+    hvac: {
+      title: "HVAC Contractor Software — Service History, Estimates and Invoicing | Crewkat",
+      h1: "Every system, every visit, one service history.",
+    },
+    painting: {
+      title: "Painting Contractor Software — Estimates, Color Approvals and Invoicing | Crewkat",
+      h1: "Colors approved before the first can opens.",
+    },
+    concrete: {
+      title: "Concrete Contractor Software — Pour Scheduling, Loads and Invoicing | Crewkat",
+      h1: "Pours scheduled, loads logged, invoices sent.",
+    },
+    handyman: {
+      title: "Handyman Software — Fast Estimates, Punch Lists and Same-Day Invoicing | Crewkat",
+      h1: "Small jobs, handled like a big operation.",
+    },
+    remodeling: {
+      title: "Remodeling Contractor Software — Estimates, Contracts and Change Orders | Crewkat",
+      h1: "The whole remodel, from first estimate to final payment.",
+    },
+  };
+  const TRADE_SLUGS = Object.keys(TRADES);
+  const tradeHtml = (slug: string) => readFileSync(join(MKT, "for", `${slug}.html`), "utf8");
+
+  test("server.mjs routes /for/<trade> on its own pattern; office never joins it", () => {
+    for (const slug of TRADE_SLUGS) expect(SERVER).toContain(slug);
+    expect(SERVER).toContain("(roofing|plumbing|electrical|hvac|painting|concrete|handyman|remodeling)");
+    expect(SERVER).toContain('join(MARKETING_DIST, "for", `${tradePage[1]}.html`)');
+    expect(SERVER).not.toMatch(/\(roofing\|[^)]*office/);
+    expect(SERVER).not.toMatch(/\/for\/\(office\)/);
+    // The phase-1 alternation stays exactly as the other suites pin it.
+    expect(SERVER).toMatch(/\(pricing\|invoicing\|estimates\|contracts\|jobs\|clients\|marketplace\)/);
+  });
+
+  for (const slug of TRADE_SLUGS) {
+    test(`/for/${slug}: title, single H1, meta, canonical, OG`, () => {
+      const page = tradeHtml(slug);
+      expect(page).toContain(`<title>${TRADES[slug].title}</title>`);
+      expect(page.match(/<h1[\s>]/g)?.length).toBe(1);
+      expect(page).toContain(`<h1>${TRADES[slug].h1}</h1>`);
+      const desc = /<meta name="description" content="([^"]+)"/.exec(page)?.[1] ?? "";
+      expect(desc.length).toBeGreaterThanOrEqual(80);
+      expect(desc.length).toBeLessThanOrEqual(170);
+      expect(page).toContain(`<link rel="canonical" href="https://crewkat.com/for/${slug}">`);
+      expect(page).toContain('property="og:title"');
+      expect(page).toContain('property="og:image" content="https://crewkat.com/marketing/og-image.jpg"');
+      expect(page).toContain('href="/marketing/styles.css"');
+    });
+
+    test(`/for/${slug}: substantial copy, shared chrome, and trade interlinks`, () => {
+      const page = tradeHtml(slug);
+      expect(wordCount(page)).toBeGreaterThanOrEqual(520);
+      for (const other of SLUGS) expect(page).toContain(`href="/${other}"`);
+      for (const trade of TRADE_SLUGS) expect(page).toContain(`href="/for/${trade}"`);
+      expect(page).toContain("For your trade");
+      expect(page).toContain('href="/office-tour"');
+      expect(page).toContain('href="/privacy"');
+      expect(page).toContain('href="/tools"');
+      expect(page).toContain('href="/app"');
+      expect(page).toContain("Start free");
+      expect(page).not.toContain("mascot");
+    });
+
+    test(`/for/${slug}: sells Pay Now + the Item 6 pricing strip, guarantee on Office only`, () => {
+      const page = tradeHtml(slug);
+      expect(page).toContain("Pay Now");
+      expect(page).toContain("(Pro feature, connects through Stripe.)");
+      expect(page).toContain("<strong>$19</strong>");
+      expect(page).toContain("Crewkat Office");
+      expect(page).toContain("<strong>$39</strong>");
+      expect(page).toContain("first 100 companies (regular $49/mo)");
+      expect(page).toContain("Free while the founding period lasts — no card to start.");
+      expect(page).toContain("Everything in Premium");
+      expect(page).toContain("Unlimited team logins included");
+      expect(page).toContain("Promotions, QuickBooks sync, and review tools");
+      expect(page.match(/100-day money-back guarantee/g)?.length).toBe(1);
+    });
+
+    test(`/for/${slug}: CSS sample board with generic labels only, no fabricated claims`, () => {
+      const page = tradeHtml(slug);
+      expect(page).toContain('class="board"');
+      expect(page).toContain("generic labels only");
+      expect(page).toContain("Sample");
+      expect(page).not.toContain("AI receptionist");
+      expect(page).not.toContain("Google Play");
+      expect(page).not.toContain("App Store");
+      expect(page).not.toContain("accept card payments");
+      expect(page).not.toContain("Pay now");
+      expect(page).not.toMatch(/testimonial/i);
+      expect(page).not.toMatch(/★|\bstars?\b[^<]{0,20}\brating/i);
+      expect(page).not.toMatch(/loved by|customers say|join \d+|thousands of (contractors|customers)/i);
+    });
+
+    test(`/for/${slug}: FAQPage JSON-LD matches the visible FAQ exactly`, () => {
+      const page = tradeHtml(slug);
+      const blocks = [...page.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
+      const faq = blocks.find((b) => b["@type"] === "FAQPage");
+      expect(faq).toBeTruthy();
+      const lite = page.slice(page.indexOf('class="faq-lite"'));
+      const visible = [...lite.matchAll(/<h3>([^<]+)<\/h3>\s*<p>([^<]+)<\/p>/g)].map((m) => [m[1].trim(), m[2].trim()]);
+      expect(visible.length).toBeGreaterThanOrEqual(3);
+      expect(faq.mainEntity.map((q: any) => q.name)).toEqual(visible.map((v) => v[0]));
+      expect(faq.mainEntity.map((q: any) => q.acceptedAnswer.text)).toEqual(visible.map((v) => v[1]));
+    });
+  }
+
+  test("all 8 trade titles and H1s are distinct, and distinct from the feature pages", () => {
+    const titles = TRADE_SLUGS.map((s) => TRADES[s].title);
+    const h1s = TRADE_SLUGS.map((s) => TRADES[s].h1);
+    expect(new Set(titles).size).toBe(8);
+    expect(new Set(h1s).size).toBe(8);
+    for (const slug of SLUGS) {
+      expect(titles).not.toContain(PAGES[slug].title);
+      expect(h1s).not.toContain(PAGES[slug].h1);
+    }
+  });
+
+  test("sitemap lists all 8 trade pages", () => {
+    for (const slug of TRADE_SLUGS) expect(SITEMAP).toContain(`<loc>https://crewkat.com/for/${slug}</loc>`);
+  });
+
+  test("homepage carries the For your trade link set to all 8 pages", () => {
+    expect(HOME).toContain("For your trade");
+    for (const slug of TRADE_SLUGS) expect(HOME).toContain(`href="/for/${slug}"`);
+  });
+});

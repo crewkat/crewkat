@@ -707,6 +707,14 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/office-tour" || urlPath === "/office-tour/") {
     return sendFile(res, join(MARKETING_DIST, "office.html"));
   }
+  // Trade-solution pages (2026-11-01, Item 4): /for/<trade> serves
+  // marketing/for/<trade>.html. A separate pattern on purpose — the
+  // phase-1 alternation below stays exactly as pinned, and "office" must
+  // never join a slug pattern here either (there is no /for/office).
+  const tradePage = /^\/for\/(roofing|plumbing|electrical|hvac|painting|concrete|handyman|remodeling)\/?$/.exec(urlPath);
+  if (tradePage) {
+    return sendFile(res, join(MARKETING_DIST, "for", `${tradePage[1]}.html`));
+  }
   // Phase 1 marketing feature pages (2026-10-18): one static HTML file per
   // feature in the marketing dir, Invoice Fly-style. Explicit routes are
   // required — unknown paths fall back to the marketing homepage below, which
