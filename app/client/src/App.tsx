@@ -372,6 +372,7 @@ type Screen =
   | { name: "proof"; jobId: number }
   | { name: "settings" }
   | { name: "billing" }
+  | { name: "takePayments" }
   | { name: "legal"; document: LegalDocumentKind }
   | { name: "companyProfile" }
   | { name: "quotes" }
@@ -3549,6 +3550,9 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
       )}
       {screen.name === "billing" && (
         <BillingScreen lang={lang} onBack={goBack} setScreen={setScreen} />
+      )}
+      {screen.name === "takePayments" && (
+        <TakePaymentsScreen lang={lang} onBack={goBack} setScreen={setScreen} />
       )}
       {screen.name === "legal" && <LegalDocumentPage kind={screen.document} lang={lang} onBack={goBack} />}
       {screen.name === "companyProfile" && (
@@ -7026,16 +7030,48 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   </main>;
 }
 
-// Billing section (Danny 2026-10-17): the user's own plan state, subscription
-// management, and payment history with Crewkat — Stripe subscription
-// invoices plus marketplace promotion purchases, served by getBillingOverview.
-// Wave 2 Item 6 + Danny 2026-11-01: the "Get paid by card" card —
-// Stripe Connect onboarding lives right here in Billing so app-only
-// users never need Office. Mirrors the Office Settings → Payments
-// semantics (same actions, same states). Pay Now is Pro-only: free /
-// lapsed companies get the Premium upsell state instead of the Connect
-// button. Renders nothing on a load error or when the member can't see
-// payment setup (the actions are office/admin-gated): no dead buttons.
+// "Take payments" (Danny 2026-11-01): Stripe Connect setup is a
+// setting of its own — Settings → Take payments — not a card inside
+// Billing, so app-only users find it where they'd look for it. The
+// screen hosts the "Get paid by card" card below; the Settings entry
+// shows a quiet live status subtitle from the same getPaymentsSetup
+// query. Mirrors the Office Settings → Payments semantics (same
+// actions, same states). Pay Now is Pro-only: free / lapsed companies
+// get the Premium upsell state instead of the Connect button. The card
+// renders nothing on a load error or when the member can't see payment
+// setup (the actions are office/admin-gated): no dead buttons.
+function TakePaymentsScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
+  return (
+    <main className="page take-payments-page">
+      <PageHeader lang={lang} title={lang === "es" ? "Recibir pagos" : "Take payments"} onBack={onBack} />
+      <PaymentsConnectCard lang={lang} setScreen={setScreen} />
+    </main>
+  );
+}
+
+function TakePaymentsSettingsEntry({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
+  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 60_000 });
+  const data = setup.data;
+  // Quiet live status when the setup state is readable; a plain
+  // descriptive line otherwise (load error, platform not switched on,
+  // or a member who can't see payment setup) — never alarming.
+  let subtitle = lang === "es" ? "Pagos con tarjeta y ACH desde los enlaces de tus facturas" : "Card & ACH payments from your invoice links";
+  if (data?.platformConfigured && data.proActive) {
+    if (data.status === "connected" && data.chargesEnabled) subtitle = lang === "es" ? "Activo" : "Active";
+    else if (data.status === "onboarding" || data.status === "connected") subtitle = lang === "es" ? "Configuración incompleta" : "Setup incomplete";
+    else subtitle = lang === "es" ? "Sin conectar" : "Not connected";
+  } else if (data?.platformConfigured && !data.proActive) {
+    subtitle = lang === "es" ? "Función Pro con Premium" : "Pro feature with Premium";
+  }
+  return (
+    <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "takePayments" })}>
+      <span className="market-category-icon"><Icon><circle cx="12" cy="12" r="9" /><path d="M12 7v10M15 9.2c-.6-.9-1.7-1.4-3-1.4-1.7 0-3 .8-3 2 0 2.8 6 1.5 6 3.9 0 1.2-1.3 2.1-3 2.1-1.3 0-2.4-.5-3-1.4" /></Icon></span>
+      <span><strong>{lang === "es" ? "Recibir pagos" : "Take payments"}</strong><small>{subtitle}</small></span>
+      <BackIcon />
+    </button>
+  );
+}
+
 function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const text = lang === "es" ? {
     title: "Cobros con tarjeta",
@@ -7071,8 +7107,8 @@ function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (scre
     mutationFn: () => api.refreshConnectStatus({}),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["payments-setup"] }),
   });
-  // Returning from Stripe lands back on /app — when Billing mounts with
-  // a half-finished setup, pull the fresh Stripe state once.
+  // Returning from Stripe lands back on /app — when this screen mounts
+  // with a half-finished setup, pull the fresh Stripe state once.
   const autoRefreshed = useRef(false);
   useEffect(() => {
     if (!autoRefreshed.current && setup.data?.status === "onboarding") {
@@ -7092,7 +7128,9 @@ function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (scre
         setError(text.openError);
       }
     },
-    onError: () => setError(text.openError),
+    // Surface the server's real reason (Stripe's own error text rides
+    // in the thrown message) instead of only the generic line.
+    onError: (error) => setError(actionErrorMessage(error) || text.openError),
   });
   const data = setup.data;
   if (!data) return null;
@@ -7141,6 +7179,10 @@ function InvoicePayLinkNote({ lang, balance, status }: { lang: Lang; balance: nu
   return <p className="pay-link-note">{lang === "es" ? "✓ Enlace de pago activo — el cliente puede pagar con tarjeta o ACH desde el enlace de esta factura." : "✓ Pay link active — the client can pay by card or ACH from this invoice's link."}</p>;
 }
 
+// Billing section (Danny 2026-10-17): the user's own plan state, subscription
+// management, and payment history with Crewkat — Stripe subscription
+// invoices plus marketplace promotion purchases, served by getBillingOverview.
+// (Taking payments from clients lives in Settings → Take payments.)
 function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (screen: Screen) => void }) {
   const text = lang === "es" ? {
     title: "Facturación",
@@ -7268,7 +7310,6 @@ function BillingScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => 
           )}
         </>
       )}
-      <PaymentsConnectCard lang={lang} setScreen={setScreen} />
     </main>
   );
 }
@@ -11736,13 +11777,13 @@ const WHATS_NEW_ENTRIES: WhatsNewEntry[] = [
     date: "2026-11-01",
     features: {
       en: [
-        "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Billing (Pro feature)",
+        "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Take payments (Pro feature)",
         "Payments record themselves: when a client pays online, the invoice updates on its own",
         "New in Crewkat Office: send promotions to past clients and old estimates, sync with QuickBooks, and get alerted when a client opens your proposal twice",
         "In Office, you can now fix a client's phone, email, or address right from the job — and renaming a client updates all their jobs and documents",
       ],
       es: [
-        "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Facturación (función Pro)",
+        "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Recibir pagos (función Pro)",
         "Los pagos se registran solos: cuando un cliente paga en línea, la factura se actualiza automáticamente",
         "Nuevo en Crewkat Office: envía promociones a clientes anteriores y estimados viejos, sincroniza con QuickBooks y recibe un aviso cuando un cliente abre tu propuesta dos veces",
         "En Office ya puedes corregir el teléfono, correo o dirección de un cliente desde el trabajo — y al renombrar un cliente se actualizan todos sus trabajos y documentos",
@@ -12426,6 +12467,7 @@ function SettingsScreen({
             </SettingsAccordion>
             <SettingsAccordion title={lang === "es" ? "Facturación" : "Billing"} icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}>
               <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "billing" })}><span className="market-category-icon"><Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon></span><span><strong>{lang === "es" ? "Plan y pagos" : "Plan & payments"}</strong><small>{lang === "es" ? "Suscripción, recibos e historial de pagos" : "Subscription, receipts, and payment history"}</small></span><BackIcon /></button>
+              <TakePaymentsSettingsEntry lang={lang} setScreen={setScreen} />
             </SettingsAccordion>
             <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<Icon><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></Icon>}>
               <SampleDataButton lang={lang} />

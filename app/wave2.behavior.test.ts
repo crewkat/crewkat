@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { and, eq } from "drizzle-orm";
 import { BaseActions, stripeApplicationFeeCents } from "./server/src/actions.ts";
+import { privileged, privilegedHandlers } from "./server/src/privileged.ts";
 import * as schema from "./server/src/schema.ts";
 
 let failures = 0;
@@ -372,6 +373,78 @@ const lapsePayments = await db.select().from(schema.payments).where(eq(schema.pa
 check("post-lapse settlement records the payment in full", lapsePayments.length === 1 && lapsePayments[0]!.amount === "120.00", JSON.stringify(lapsePayments));
 const invGateAfter = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, invGate!.id)))[0]!;
 check("post-lapse settlement flips the invoice to paid", invGateAfter.status === "paid", invGateAfter.status);
+
+// --- 11. Stripe's real error rides out (Danny 2026-11-01) ---------------------
+// The sections above stub executePrivileged wholesale. Here the ctx
+// delegates the four Connect contracts to the REAL privileged handlers
+// and fakes only the global fetch (Stripe's transport): a Stripe error
+// body must surface in the action's thrown error, so the app can show
+// Stripe's own reason instead of "Could not open Stripe right now."
+async function checkThrowsMessage(name: string, fn: () => Promise<unknown>, ...needles: string[]) {
+  try { await fn(); failures++; console.error(`FAIL ${name} — expected an error but none was thrown`); }
+  catch (caught) {
+    const message = caught instanceof Error ? caught.message : String(caught);
+    const missing = needles.filter((n) => !message.includes(n));
+    if (missing.length === 0) console.log(`ok   ${name}`);
+    else { failures++; console.error(`FAIL ${name} — error "${message}" is missing ${JSON.stringify(missing)}`); }
+  }
+}
+const connectHandlerFor = (contract: unknown) => (privilegedHandlers.entries as Array<{ contract: unknown; handler: (args: any) => Promise<any> }>).find((e) => e.contract === contract)!.handler;
+// Dispatch by contract NAME, exactly like server.mjs: the actions
+// import their contracts via the "@space/privileged" alias (a different
+// module instance than this file's), so object identity never matches.
+const realConnectHandlers = new Map<string, (args: any) => Promise<any>>();
+for (const name of ["createConnectAccount", "createConnectAccountLink", "getConnectAccount", "createInvoiceCheckout"] as const) {
+  realConnectHandlers.set(name, connectHandlerFor(privileged[name]));
+}
+check("connect contracts carry dispatch names", [...realConnectHandlers.keys()].every((n) => (privileged as any)[n]?.name === n), JSON.stringify([...realConnectHandlers.keys()]));
+const ctxStripe: any = {
+  ...ctx,
+  executePrivileged: async (fn: unknown, args: Record<string, unknown>) => {
+    const handler = realConnectHandlers.get((fn as any)?.name ?? "");
+    if (handler) return handler(args);
+    return (ctx as any).executePrivileged(fn, args);
+  },
+};
+// Back to Pro so onboarding reaches Stripe at all.
+await db.update(schema.authUsers).set({ tier: "premium", subscriptionStatus: "active" }).where(eq(schema.authUsers.id, 1));
+await db.update(schema.settings).set({ stripeConnectAccountId: null, stripeChargesEnabled: false, stripePayoutsEnabled: false, stripeConnectStatus: "not_connected" }).where(eq(schema.settings.companyId, 1));
+const realFetch = globalThis.fetch;
+const savedConnectKey = process.env.STRIPE_CONNECT_SECRET_KEY;
+process.env.STRIPE_CONNECT_SECRET_KEY = "sk_test_connect_fake";
+let stripeMode: "create-error" | "link-error" | "ok" = "create-error";
+try {
+  globalThis.fetch = (async (url: unknown) => {
+    const u = String(url);
+    if (u.endsWith("/v1/accounts")) {
+      if (stripeMode === "create-error") return { ok: false, status: 400, json: async () => ({ error: { message: "You must complete your platform profile before creating connected accounts.", code: "platform_profile_incomplete" } }) };
+      return { ok: true, status: 200, json: async () => ({ id: "acct_real_1" }) };
+    }
+    if (u.endsWith("/v1/account_links")) {
+      if (stripeMode === "link-error") return { ok: false, status: 400, json: async () => ({ error: { message: "The provided account is not eligible for onboarding.", code: "account_invalid" } }) };
+      return { ok: true, status: 200, json: async () => ({ url: "https://connect.stripe.com/setup/s/real_link" }) };
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  }) as typeof fetch;
+
+  await checkThrowsMessage("account-creation failure carries Stripe's message + code",
+    () => A.startConnectOnboarding.handler(ctxStripe, { surface: "app" }),
+    "Stripe could not create the connected account.", "platform profile", "platform_profile_incomplete");
+  check("failed account creation persists nothing", (await settingsRow()).stripeConnectAccountId === null, (await settingsRow()).stripeConnectAccountId ?? "null");
+
+  stripeMode = "link-error";
+  await checkThrowsMessage("account-link failure carries Stripe's message + code",
+    () => A.startConnectOnboarding.handler(ctxStripe, { surface: "app" }),
+    "Stripe could not start onboarding.", "not eligible for onboarding", "account_invalid");
+  check("the created account still persisted before the link failed", (await settingsRow()).stripeConnectAccountId === "acct_real_1" && (await settingsRow()).stripeConnectStatus === "onboarding", JSON.stringify((await settingsRow()).stripeConnectAccountId));
+
+  stripeMode = "ok";
+  const onboardReal = await A.startConnectOnboarding.handler(ctxStripe, { surface: "app" });
+  check("success path through the real handlers is unchanged", onboardReal.platformConfigured === true && onboardReal.url === "https://connect.stripe.com/setup/s/real_link", JSON.stringify(onboardReal));
+} finally {
+  globalThis.fetch = realFetch;
+  if (savedConnectKey === undefined) delete process.env.STRIPE_CONNECT_SECRET_KEY; else process.env.STRIPE_CONNECT_SECRET_KEY = savedConnectKey;
+}
 
 console.log(failures === 0 ? "\nALL WAVE 2 CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -69,11 +69,11 @@ describe("What's New — data model", () => {
 
   test("Nov 1 seeded EN/ES lines are present", () => {
     for (const line of [
-      "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Billing (Pro feature)",
+      "Get paid by card or bank transfer: clients can now pay right from the invoice link you send — connect Stripe in Settings → Take payments (Pro feature)",
       "Payments record themselves: when a client pays online, the invoice updates on its own",
       "New in Crewkat Office: send promotions to past clients and old estimates, sync with QuickBooks, and get alerted when a client opens your proposal twice",
       "In Office, you can now fix a client's phone, email, or address right from the job — and renaming a client updates all their jobs and documents",
-      "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Facturación (función Pro)",
+      "Cobra con tarjeta o transferencia: tus clientes ya pueden pagar desde el enlace de la factura que les envías — conecta Stripe en Ajustes → Recibir pagos (función Pro)",
       "Los pagos se registran solos: cuando un cliente paga en línea, la factura se actualiza automáticamente",
       "Nuevo en Crewkat Office: envía promociones a clientes anteriores y estimados viejos, sincroniza con QuickBooks y recibe un aviso cuando un cliente abre tu propuesta dos veces",
       "En Office ya puedes corregir el teléfono, correo o dirección de un cliente desde el trabajo — y al renombrar un cliente se actualizan todos sus trabajos y documentos",

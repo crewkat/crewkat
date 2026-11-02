@@ -467,6 +467,23 @@ function verifyAndParseStripeWebhook(secret: string, payload: string, signature:
   };
 }
 
+// Builds the thrown error for a failed Stripe Connect call, carrying
+// Stripe's own error text (error.message, plus error.code when present)
+// so clients can show the real reason instead of a generic failure
+// (Danny 2026-11-01: the app swallowed it and he couldn't tell why
+// Connect failed). Stripe API error text never contains the secret key;
+// request headers/authorization are never read or included here.
+async function stripeConnectError(response: Response, fallback: string): Promise<Error> {
+  let detail = "";
+  try {
+    const err = await response.json() as { error?: { message?: unknown; code?: unknown } };
+    const message = typeof err.error?.message === "string" ? err.error.message : "";
+    const code = typeof err.error?.code === "string" ? err.error.code : "";
+    if (message) detail = code ? `${message} (${code})` : message;
+  } catch { /* unparseable body — keep the fallback */ }
+  return new Error(detail ? `${fallback}: ${detail}` : fallback);
+}
+
 export const privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
     const directory = await mkdtemp(join(tmpdir(), "crewkat-pdf-"));
@@ -811,7 +828,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error("Stripe could not create the connected account.");
+    if (!response.ok) throw await stripeConnectError(response, "Stripe could not create the connected account.");
     const result = await response.json() as { id?: unknown };
     if (typeof result.id !== "string" || !result.id) throw new Error("Stripe did not return an account id.");
     return { configured: true, accountId: result.id, missing: [] };
@@ -832,7 +849,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error("Stripe could not start onboarding.");
+    if (!response.ok) throw await stripeConnectError(response, "Stripe could not start onboarding.");
     const result = await response.json() as { url?: unknown };
     if (typeof result.url !== "string" || !/^https:\/\//.test(result.url)) throw new Error("Stripe did not return an onboarding link.");
     return { configured: true, url: result.url };
@@ -846,7 +863,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error("Could not read the connected account from Stripe.");
+    if (!response.ok) throw await stripeConnectError(response, "Could not read the connected account from Stripe.");
     const result = await response.json() as { charges_enabled?: unknown; payouts_enabled?: unknown; details_submitted?: unknown };
     return { configured: true, chargesEnabled: result.charges_enabled === true, payoutsEnabled: result.payouts_enabled === true, detailsSubmitted: result.details_submitted === true };
   },
@@ -879,7 +896,7 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error("Stripe Checkout could not be started for this invoice.");
+    if (!response.ok) throw await stripeConnectError(response, "Stripe Checkout could not be started for this invoice.");
     const result = await response.json() as { id?: unknown; url?: unknown };
     if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url) || typeof result.id !== "string") throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, sessionId: result.id, url: result.url, missing: [] };
