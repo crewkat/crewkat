@@ -700,6 +700,13 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/paperwork/sample-estimate" || urlPath === "/paperwork/sample-estimate/") {
     return sendFile(res, join(MARKETING_DIST, "sample-estimate.html"));
   }
+  // Office marketing page (2026-11-01): the file is office.html, but the
+  // public URL is /office-tour — /office itself is the live desktop CRM
+  // app (OFFICE_DIST below; Stripe Connect onboarding also returns there),
+  // so the showcase page must never shadow it.
+  if (urlPath === "/office-tour" || urlPath === "/office-tour/") {
+    return sendFile(res, join(MARKETING_DIST, "office.html"));
+  }
   // Phase 1 marketing feature pages (2026-10-18): one static HTML file per
   // feature in the marketing dir, Invoice Fly-style. Explicit routes are
   // required — unknown paths fall back to the marketing homepage below, which

@@ -197,3 +197,117 @@ describe("brand mascot placements (2026-10-25)", () => {
     expect(HOME).not.toContain("mascot-ipad");
   });
 });
+
+describe("office marketing page (2026-11-01)", () => {
+  const OFFICE = readFileSync(join(MKT, "office.html"), "utf8");
+  const PRICING = html("pricing");
+
+  test("route: /office-tour serves office.html; /office stays the desktop app", () => {
+    expect(SERVER).toContain('urlPath === "/office-tour"');
+    expect(SERVER).toContain('join(MARKETING_DIST, "office.html")');
+    // The desktop CRM keeps /office (OFFICE_DIST) — the showcase route is an
+    // exact match on /office-tour only, matched before the app block, and
+    // "office" must never join the marketing slug alternation (which runs
+    // earlier and would shadow the app at its root).
+    expect(SERVER).toContain('urlPath === "/office" || urlPath.startsWith("/office/")');
+    expect(SERVER.indexOf('"/office-tour"')).toBeLessThan(SERVER.indexOf('urlPath === "/office"'));
+    expect(SERVER).not.toMatch(/\(pricing\|invoicing\|estimates\|contracts\|jobs\|clients\|marketplace\|office\)/);
+  });
+
+  test("/office-tour: title, single H1, meta, canonical, OG", () => {
+    expect(OFFICE).toContain("<title>Contractor Office Software &amp; CRM for Contractors | Crewkat</title>");
+    expect(OFFICE.match(/<h1[\s>]/g)?.length).toBe(1);
+    expect(OFFICE).toContain("<h1>Your whole business, on the big screen.</h1>");
+    const desc = /<meta name="description" content="([^"]+)"/.exec(OFFICE)?.[1] ?? "";
+    expect(desc.length).toBeGreaterThanOrEqual(80);
+    expect(desc.length).toBeLessThanOrEqual(170);
+    expect(OFFICE).toContain('<link rel="canonical" href="https://crewkat.com/office-tour">');
+    expect(OFFICE).toContain('property="og:title"');
+    expect(OFFICE).toContain('property="og:image" content="https://crewkat.com/marketing/og-image.jpg"');
+    expect(OFFICE).toContain('href="/marketing/styles.css"');
+  });
+
+  test("/office-tour: substantial copy, approved wording, shared chrome", () => {
+    expect(wordCount(OFFICE)).toBeGreaterThanOrEqual(520);
+    for (const slug of SLUGS) expect(OFFICE).toContain(`href="/${slug}"`);
+    expect(OFFICE).toContain('href="/office-tour"');
+    expect(OFFICE).toContain('href="/privacy"');
+    expect(OFFICE).toContain('href="/tools"');
+    expect(OFFICE).toContain('href="/app"');
+    expect(OFFICE).toContain("Start free");
+    // Approved copy anchors (office-webpage-home-promo-copy-2026-11-01.md §3).
+    expect(OFFICE).toContain("Crewkat on your phone runs the job.");
+    expect(OFFICE).toContain("For whoever runs the office");
+    expect(OFFICE).toContain("One business, two screens");
+    expect(OFFICE).toContain("Less admin. More building — now with a bigger screen.");
+    for (const h of ["Pipeline", "Production Board", "Money dashboard", "Follow-ups that don't slip", "Promotions", "Proposals that report back", "QuickBooks sync", "Get paid from the invoice", "Your crew, their logins"]) {
+      expect(OFFICE).toContain(`<h3>${h}</h3>`);
+    }
+    for (const stage of ["Scheduled", "In Progress", "Punch List", "Complete", "Paid in Full"]) {
+      expect(OFFICE).toContain(stage);
+    }
+    // Pay Now shipped 2026-11-01 and is sold here as the Pro feature it is —
+    // but the phase-1 claim guards still hold verbatim on this page too.
+    expect(OFFICE).toContain("(Pro feature, connects through Stripe.)");
+    expect(OFFICE).not.toContain("AI receptionist");
+    expect(OFFICE).not.toContain("Google Play");
+    expect(OFFICE).not.toContain("App Store");
+  });
+
+  test("founding-rate treatment is identical on the office page, home, and /pricing", () => {
+    for (const page of [OFFICE, HOME, PRICING]) {
+      expect(page).toContain("Crewkat Office");
+      expect(page).toContain("<strong>$39</strong>");
+      expect(page).toContain("first 100 companies (regular $49/mo)");
+      expect(page).toContain("Free while the founding period lasts — no card to start.");
+      expect(page).toContain("Everything in Premium");
+      expect(page).toContain("Admin + 5 team logins included");
+      expect(page).toContain("Promotions, QuickBooks sync, and review tools");
+    }
+  });
+
+  test("home promo section sits between the feature grid and Pricing, CTA to the office page", () => {
+    const promo = HOME.indexOf("The office side of Crewkat, on a real screen.");
+    expect(promo).toBeGreaterThan(HOME.indexOf('id="features"'));
+    expect(promo).toBeLessThan(HOME.indexOf('id="pricing"'));
+    expect(HOME).toContain("New — Crewkat Office");
+    expect(HOME).toContain('href="/office-tour">See Crewkat Office');
+    for (const point of [
+      "Every lead in one board, from first call to signed job",
+      "what's still owed — by month or by week",
+      "with the stuck ones flagged before they cost you",
+      "Email past clients and old estimates in a couple of clicks",
+    ]) {
+      expect(HOME).toContain(point);
+    }
+  });
+
+  test("every marketing page's chrome links to the office page", () => {
+    for (const slug of SLUGS) expect(html(slug)).toContain('href="/office-tour"');
+    expect(HOME).toContain('href="/office-tour"');
+    const privacy = readFileSync(join(MKT, "privacy.html"), "utf8");
+    expect(privacy).toContain('href="/office-tour"');
+    const paperwork = readFileSync(join(MKT, "paperwork.html"), "utf8");
+    expect(paperwork).toContain('href="/office-tour"');
+  });
+
+  test("sitemap lists the office page", () => {
+    expect(SITEMAP).toContain("<loc>https://crewkat.com/office-tour</loc>");
+  });
+
+  test("office visuals: CSS panels + clipboard cat in the hero stage", () => {
+    expect(OFFICE).toContain('class="office-window"');
+    expect(OFFICE).toContain("Collected this year");
+    expect(OFFICE).toContain('class="board"');
+    const img = /<img class="office-mascot"[^>]*>/.exec(OFFICE)?.[0] ?? "";
+    expect(img).toContain('src="/marketing/mascot-clipboard.webp"');
+    expect(img).toContain('alt="Crewkat cat mascot');
+    const stage = OFFICE.indexOf('class="office-stage"');
+    const cat = OFFICE.indexOf('class="office-mascot"', stage);
+    expect(stage).toBeGreaterThan(-1);
+    expect(cat).toBeGreaterThan(stage);
+    for (const cls of [".office-window", ".office-features", ".board-col", ".office-promo-panel", ".office-point", ".price-card-office", ".office-mascot"]) {
+      expect(CSS).toContain(cls);
+    }
+  });
+});

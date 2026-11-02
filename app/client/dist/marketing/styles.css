@@ -345,3 +345,99 @@ h2 { margin: 0; font-size: clamp(34px, 8vw, 58px); line-height: 1.03; letter-spa
 @media (min-width: 1120px) {
   .related-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Office page + home promo (2026-11-01): /office-tour (office.html), */
+/* the home Office promo section, and the Office price card. The      */
+/* desktop app itself lives at /office; this page is its showcase.    */
+/* Product visuals are CSS panels (Money dashboard, Pipeline board)   */
+/* in the same language as the home phone mock — sample data only.    */
+/* ------------------------------------------------------------------ */
+
+.office-hero { padding-bottom: 88px; }
+.office-stage { position: relative; max-width: 980px; margin: 54px auto 0; }
+.office-mascot { position: absolute; z-index: 2; left: 2px; bottom: -14px; width: 92px; height: auto; transform: rotate(-3deg); filter: drop-shadow(0 16px 24px rgba(0,0,0,.45)); pointer-events: none; }
+
+.office-window { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow); text-align: left; }
+.office-window-bar { display: flex; align-items: center; gap: 13px; padding: 11px 15px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.office-window-bar .dots { display: inline-flex; gap: 6px; }
+.office-window-bar .dots span { width: 10px; height: 10px; border-radius: 50%; background: #45484f; }
+.office-window-bar .dots span:first-child { background: var(--orange); }
+.office-url { padding: 4px 13px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); font-size: 12px; font-weight: 650; }
+.office-window-body { display: grid; }
+.office-side { display: none; }
+.office-main { display: grid; gap: 18px; padding: 22px; }
+.office-main-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.office-main-head strong { font-size: 19px; letter-spacing: -.02em; }
+.office-toggle { display: inline-flex; padding: 3px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; }
+.office-toggle span { padding: 4px 12px; border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.office-toggle span.active { background: var(--surface-2); color: var(--text); }
+.office-stats { display: grid; gap: 10px; }
+.office-stat { display: grid; gap: 2px; padding: 15px 17px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.office-stat span { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.office-stat strong { font-size: 25px; letter-spacing: -.03em; line-height: 1.15; }
+.office-stat small { color: var(--muted-2); font-size: 12px; }
+.office-chart { padding: 17px 17px 13px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.chart-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.chart-month { display: grid; gap: 7px; }
+.chart-month small { color: var(--muted-2); font-size: 11px; font-weight: 650; text-align: center; }
+.chart-bars { height: 96px; display: flex; align-items: flex-end; gap: 4px; }
+.chart-bars .bar { flex: 1; min-height: 6px; border-radius: 4px 4px 0 0; }
+.bar-inv { background: var(--orange); }
+.bar-col { background: var(--success); }
+.chart-legend { display: flex; gap: 18px; margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--border); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.chart-legend .dot { width: 9px; height: 9px; border-radius: 3px; }
+.dot-inv { background: var(--orange); }
+.dot-col { background: var(--success); }
+
+.office-features { display: grid; gap: 14px; }
+.office-feature { padding: 23px 25px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.office-feature h3 { margin: 0 0 7px; font-size: 19px; letter-spacing: -.02em; }
+.office-feature p { margin: 0; color: #aaa9a5; line-height: 1.55; font-size: 15px; }
+
+.office-panel { margin-top: 34px; }
+.office-panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 18px; margin-bottom: 14px; }
+.office-panel-head strong { font-size: 19px; letter-spacing: -.02em; }
+.office-panel-head span { color: var(--muted); font-size: 14px; }
+.board { display: grid; gap: 10px; }
+.board-col { display: grid; gap: 8px; align-content: start; padding: 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.board-col-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 2px 2px; }
+.board-col-head strong { font-size: 13px; letter-spacing: -.01em; }
+.board-col-head span { padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 800; }
+.board-card { padding: 10px 12px; background: var(--surface-2); border: 1px solid #3a3d44; border-radius: 9px; font-size: 13px; font-weight: 650; line-height: 1.35; }
+.board-card small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 550; }
+.board-card.stuck { border-color: rgba(255,106,26,.55); }
+.board-card.stuck small { color: #ff995e; font-weight: 750; }
+
+.office-promo-panel { padding: 32px 26px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.office-promo-panel .section-heading { margin-bottom: 0; }
+.office-points { display: grid; gap: 13px; margin: 28px 0 30px; }
+.office-point { padding: 19px 21px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.office-point h3 { margin: 0 0 5px; font-size: 17px; letter-spacing: -.02em; }
+.office-point p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+
+@media (min-width: 640px) {
+  .office-stats { grid-template-columns: repeat(3, 1fr); }
+  .office-features { grid-template-columns: repeat(2, 1fr); }
+  .board { grid-template-columns: repeat(2, 1fr); }
+  .office-points { grid-template-columns: repeat(2, 1fr); }
+  .pricing-grid > .price-card-office { grid-column: 1 / -1; }
+  .price-card-office ul { grid-template-columns: repeat(2, 1fr); column-gap: 26px; }
+}
+@media (min-width: 860px) {
+  .office-stage { margin-top: 64px; }
+  .office-mascot { width: 148px; left: -16px; bottom: -20px; }
+  .office-window-body { grid-template-columns: 178px 1fr; }
+  .office-side { display: grid; align-content: start; gap: 3px; padding: 18px 13px; border-right: 1px solid var(--border); }
+  .office-side span { padding: 7px 11px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 650; }
+  .office-side span.active { background: rgba(255,106,26,.12); color: #ffb287; }
+  .office-side .brand-mark { width: 24px; height: 24px; border-radius: 7px 3px 7px 3px; font-size: 13px; }
+  .office-side-brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 0 4px !important; color: var(--text) !important; font-size: 13.5px !important; font-weight: 780 !important; }
+  .board { grid-template-columns: repeat(3, 1fr); }
+  .office-promo-panel { padding: 46px 48px; }
+}
+@media (min-width: 1120px) {
+  .office-features { grid-template-columns: repeat(3, 1fr); }
+  .board { grid-template-columns: repeat(5, 1fr); }
+}
