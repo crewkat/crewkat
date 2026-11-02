@@ -257,6 +257,13 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   // job's summaries from either client (share/revoke rides the existing
   // document-link actions, already classified above).
   "createWorkSummary", "listWorkSummaries", "getWorkSummary",
+  // AI features (0098): the availability read both AI surfaces render
+  // from, plus the work-summary draft preview + AI polish — job-surface
+  // actions like createWorkSummary above. AI entitlement (Premium
+  // owner / Office active-or-founding) and the monthly cap are
+  // enforced in the handlers, not by role; the Promotions AI writer
+  // rides generateCampaignContent (Office-classified with Promotions).
+  "getAiAvailability", "previewWorkSummary", "polishWorkSummary",
   // Job loads (0095): field working surface like daily logs — the crew
   // on site logs the dump run (with its "logged by" attestation) from
   // either client; the linked expense posts inside the handler through

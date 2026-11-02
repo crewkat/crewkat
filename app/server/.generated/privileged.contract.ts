@@ -370,4 +370,26 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 10_000,
   },
+  // AI features (0098, first AI hookup): ONE provider integration —
+  // OpenAI-compatible chat completions, server-side only. The key
+  // (AI_API_KEY) lives only in this process's env and in the provider's
+  // Authorization header; it is never logged and never returned in any
+  // response. Without the key both ops degrade to configured:false —
+  // the AI features are simply absent and everything else is unchanged.
+  // AI_MODEL / AI_BASE_URL override the defaults ("gpt-4o-mini" /
+  // "https://api.openai.com/v1"); AI_MONTHLY_CAP (default 200) is
+  // reported by getAiStatus and enforced by the action layer against
+  // the ai_usage counter.
+  getAiStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), monthlyCap: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
+  aiComplete: {
+    request: z.object({ system: z.string().min(1).max(8000), user: z.string().min(1).max(24000), maxTokens: z.number().int().min(50).max(4000).default(1200) }),
+    response: z.object({ configured: z.boolean(), text: z.string().nullable() }),
+    capabilities: [],
+    timeoutMs: 45_000,
+  },
 });

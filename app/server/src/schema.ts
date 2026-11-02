@@ -569,6 +569,23 @@ export const workSummaries = sqliteTable("work_summaries", {
   index("work_summaries_company_idx").on(table.companyId),
 ]);
 
+// AI features (0098, first AI hookup): per-company monthly AI usage
+// counter. One row per (company_id, month) — month is a "YYYY-MM" UTC
+// key; count increments ONLY on a successful AI generation (the
+// Promotions AI writer and the work-summary polish in actions.ts share
+// this counter). The cap (AI_MONTHLY_CAP, default 200) is enforced in
+// the action layer before the provider is ever called.
+export const aiUsage = sqliteTable("ai_usage", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(),
+  count: integer("count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("ai_usage_company_month_idx").on(table.companyId, table.month),
+]);
+
 // Job loads / dump-run log (0095, SimplySub steals Item 2): one row per
 // hauling run logged against a job. COST INTEGRATION: a load with a cost
 // owns exactly one business_expenses row (expenseId, category "hauling",

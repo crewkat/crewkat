@@ -39,9 +39,9 @@ const A = BaseActions as any;
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("newest migration tag is 0097_office_billing", last.tag === "0097_office_billing", last.tag);
-check("0097 journal idx is 96", last.idx === 96, String(last.idx));
-check("0097 when is 1791738900000", last.when === 1791738900000, String(last.when));
+check("newest migration tag is 0098_ai_usage", last.tag === "0098_ai_usage", last.tag);
+check("0098 journal idx is 97", last.idx === 97, String(last.idx));
+check("0098 when is 1791739000000", last.when === 1791739000000, String(last.when));
 check("newest journal when exceeds every earlier entry", last.when > Math.max(...entries.slice(0, -1).map((e) => e.when)), `last=${last.when}`);
 
 // --- 2. Scratch DB ------------------------------------------------------------

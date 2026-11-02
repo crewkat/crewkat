@@ -42,8 +42,8 @@ const entries: Array<{ idx: number; when: number; tag: string }> = journal.entri
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
-check("newest migration tag is 0097_office_billing", last.tag === "0097_office_billing", last.tag);
-check("newest migration idx is 96", last.idx === 96, String(last.idx));
+check("newest migration tag is 0098_ai_usage", last.tag === "0098_ai_usage", last.tag);
+check("newest migration idx is 96", last.idx === 97, String(last.idx));
 
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-wave1-"));
 const sqlite = createClient({ url: `file:${join(dir, "app.db")}` });

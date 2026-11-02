@@ -39,10 +39,18 @@ import {
 import { getQbConnection, runQuickBooksSync } from "./quickbooks";
 import {
   buildWorkSummaryContent,
+  buildWorkSummaryNarrative,
   parseWorkSummaryContent,
   resolveWorkSummaryRange,
   type WorkSummaryContent,
 } from "./workSummaries";
+import {
+  buildPromoAiPrompt,
+  buildSummaryPolishAiPrompt,
+  parseAiPromoContent,
+  type AiAudience,
+  type AiLang,
+} from "./aiPrompts";
 import {
   SAFETY_TALKS,
   buildSafetySessionPdf,
@@ -105,6 +113,10 @@ const workSummaryContentSchema = z.object({
   notes: z.array(z.object({ note: z.string(), at: z.string() })),
   photos: z.array(z.object({ id: z.number(), stage: stageSchema, caption: z.string(), url: z.string(), capturedAt: z.string() })),
   loads: z.object({ items: z.array(workSummaryLoadSchema), count: z.number(), totalCost: z.string() }),
+  // AI (0098): optional composed narrative + whether it went through
+  // the AI polish. Defaults keep pre-0098 snapshots parsing unchanged.
+  narrative: z.string().default(""),
+  polishedWithAi: z.boolean().default(false),
 });
 // Job loads (0095): a load / dump-run row as served to both clients.
 // cost is null for a proof-only load (no linked expense row); expenseId
@@ -2599,14 +2611,14 @@ export async function resolveCampaignRecipients(
 }
 
 // ---------------------------------------------------------------------------
-// Campaign content generation. There is NO AI/LLM integration anywhere in
-// Crewkat (no provider key or endpoint in env or code), so this is a
-// template composer: it parses the user's prompt for an offer (percent
-// off, financing, a blog topic) and assembles a structured, branded email
-// from the company's own settings. The office edits the result before
-// sending. Wiring a true LLM later means: add a provider key env + one
-// privileged call in generateCampaignContent — the composer stays as the
-// fallback.
+// Campaign content generation. The default mode is a template composer:
+// it parses the user's prompt for an offer (percent off, financing, a
+// blog topic) and assembles a structured, branded email from the
+// company's own settings. The office edits the result before sending.
+// Mode "ai" (0098, first AI hookup) writes the same draft shape from
+// the user's brief via the privileged aiComplete op — see the AI
+// section below composeCampaignContent. Templates stay the fallback
+// and are never gated.
 // ---------------------------------------------------------------------------
 
 const BLOG_POINT_SETS: Array<{ match: RegExp; points: string[] }> = [
@@ -2694,6 +2706,80 @@ export function composeCampaignContent(args: {
     ctaLabel: discount ? "Claim this offer" : financing ? "Ask about financing" : "Get my free estimate",
     ctaUrl,
   };
+}
+
+// ---------------------------------------------------------------------------
+// AI features (0098, first AI hookup, Danny 2026-11-01): the Promotions
+// AI writer (generateCampaignContent mode "ai") and the work-summary
+// polish (polishWorkSummary) share ONE provider integration (the
+// privileged aiComplete op — OpenAI-compatible, server-side only), ONE
+// entitlement rule, and ONE monthly usage counter (ai_usage).
+//
+//   Entitlement rule: a company is AI-entitled when its owner is
+//   Premium (companyProActive — the same owner-row resolution Pay Now
+//   uses) OR its Office plan state is "active" / "founding"
+//   (companies.office_plan_state, Item 5). Everyone else gets the
+//   upgrade error below; templates and manual flows are never gated.
+//
+//   Cap: AI_MONTHLY_CAP successful generations per company per month
+//   (default 200, reported by the privileged getAiStatus). The counter
+//   increments ONLY after a successful generation — config refusals,
+//   entitlement refusals, cap refusals and provider failures never
+//   consume quota.
+//
+//   Config: without AI_API_KEY the privileged status reports
+//   configured:false and the AI paths refuse cleanly; every non-AI
+//   behavior is byte-identical to before the hookup.
+// ---------------------------------------------------------------------------
+
+type AiDb = ReturnType<Ctx["db"]>;
+
+/** Current month key ("YYYY-MM", UTC) for the ai_usage counter. */
+export function aiMonthKey(now = new Date()): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function aiUsageCount(db: AiDb, companyId: number): Promise<number> {
+  const row = (await db.select({ count: schema.aiUsage.count }).from(schema.aiUsage)
+    .where(and(eq(schema.aiUsage.companyId, companyId), eq(schema.aiUsage.month, aiMonthKey()))).limit(1))[0];
+  return row?.count ?? 0;
+}
+
+async function recordAiUsage(db: AiDb, companyId: number): Promise<void> {
+  const now = new Date();
+  await db.insert(schema.aiUsage)
+    .values({ companyId, month: aiMonthKey(now), count: 1, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [schema.aiUsage.companyId, schema.aiUsage.month],
+      set: { count: sql`count + 1`, updatedAt: now },
+    });
+}
+
+/** The AI entitlement rule (see the section comment above). */
+export async function companyAiEntitled(db: AiDb, companyId: number): Promise<boolean> {
+  if (await companyProActive(db, companyId)) return true;
+  const company = (await db.select({ officePlanState: schema.companies.officePlanState })
+    .from(schema.companies).where(eq(schema.companies.id, companyId)).limit(1))[0];
+  return company?.officePlanState === "active" || company?.officePlanState === "founding";
+}
+
+export const AI_NOT_CONFIGURED_ERROR = "AI writing isn't set up on this Crewkat server yet — the built-in templates still work.";
+export const AI_UPGRADE_ERROR = "AI writing is a Crewkat Premium / Office feature. Upgrade to write with AI — the built-in templates still work.";
+export function aiCapError(cap: number): string {
+  return `This company has reached its monthly AI limit (${cap} generations). It resets on the 1st — the built-in templates still work.`;
+}
+
+/**
+ * The shared gate for every AI generation: configured? entitled?
+ * under the cap? — in that order, each with its clean user-facing
+ * refusal. Callers invoke the provider only after this passes and
+ * record usage only after a successful generation.
+ */
+async function requireAiReady(ctx: Ctx, db: AiDb, companyId: number): Promise<void> {
+  const status = await ctx.executePrivileged(privileged.getAiStatus, {});
+  if (!status.configured) throw new Error(AI_NOT_CONFIGURED_ERROR);
+  if (!(await companyAiEntitled(db, companyId))) throw new Error(AI_UPGRADE_ERROR);
+  if ((await aiUsageCount(db, companyId)) >= status.monthlyCap) throw new Error(aiCapError(status.monthlyCap));
 }
 
 function escapeHtmlText(value: string): string {
@@ -3834,6 +3920,16 @@ async function craneLastWeekChampion(db: ReturnType<Ctx["db"]>): Promise<CraneCh
 }
 
 const craneChampionSchema = z.object({ businessName: z.string(), score: z.number(), weekStart: z.string(), companyId: z.number().nullable() }).nullable();
+
+/** Work summaries: resolve + validate a preset/range request (shared
+ * by createWorkSummary and previewWorkSummary so the draft the user
+ * polishes is built from exactly the range the create would freeze). */
+function summaryRangeOrThrow(args: { preset: "today" | "this_week" | "custom"; rangeStart: string; rangeEnd: string }): { rangeStart: string; rangeEnd: string } {
+  if (args.preset === "custom" && (!args.rangeStart || !args.rangeEnd)) throw new Error("Pick a start and end date for a custom range.");
+  const { rangeStart, rangeEnd } = resolveWorkSummaryRange(args.preset, args.rangeStart, args.rangeEnd);
+  if (rangeStart > rangeEnd) throw new Error("The range start must be on or before the range end.");
+  return { rangeStart, rangeEnd };
+}
 
 // Work summaries (0094): shape one stored summary row plus its active
 // document_links row (kind "work_summary") for the list/get payloads.
@@ -6775,7 +6871,9 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // store it, and share it through the document_links token family
   // (kind "work_summary") — createDocumentLink / revokeDocumentLink /
   // getDocumentLinkInfo work on summaries unchanged.
-  createWorkSummary: defineAction({ request: z.object({ jobId: z.number().int().positive(), preset: z.enum(["today", "this_week", "custom"]).default("custom"), rangeStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), rangeEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default("") }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { identity, job } = await requireJobCompany(ctx, db, args.jobId); if (args.preset === "custom" && (!args.rangeStart || !args.rangeEnd)) throw new Error("Pick a start and end date for a custom range."); const { rangeStart, rangeEnd } = resolveWorkSummaryRange(args.preset, args.rangeStart, args.rangeEnd); if (rangeStart > rangeEnd) throw new Error("The range start must be on or before the range end."); const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd); const rows = await db.insert(schema.workSummaries).values({ companyId: job.companyId, jobId: job.id, rangeStart, rangeEnd, preset: args.preset, contentJson: JSON.stringify(content), createdByUserId: identity.workspaceUserId, createdAt: new Date() }).returning({ id: schema.workSummaries.id }); const made = rows[0]; if (!made) throw new Error("Could not create the work summary."); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, made.id)).limit(1))[0]!; await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "note", title: "Work summary created", body: `${rangeStart} → ${rangeEnd} · ${content.logs.length} log${content.logs.length === 1 ? "" : "s"} · ${content.photos.length} photo${content.photos.length === 1 ? "" : "s"}`, userId: identity.workspaceUserId }); ctx.invalidateQueries(); return { summary: await workSummaryShape(ctx, row), content }; } }),
+  createWorkSummary: defineAction({ request: z.object({ jobId: z.number().int().positive(), preset: z.enum(["today", "this_week", "custom"]).default("custom"), rangeStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), rangeEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), narrative: z.string().max(20000).default(""), polishedWithAi: z.boolean().default(false) }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { identity, job } = await requireJobCompany(ctx, db, args.jobId); const { rangeStart, rangeEnd } = summaryRangeOrThrow(args); const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd); const finalNarrative = (args.narrative ?? "").trim(); if (finalNarrative) { content.narrative = finalNarrative; content.polishedWithAi = args.polishedWithAi === true; } const rows = await db.insert(schema.workSummaries).values({ companyId: job.companyId, jobId: job.id, rangeStart, rangeEnd, preset: args.preset, contentJson: JSON.stringify(content), createdByUserId: identity.workspaceUserId, createdAt: new Date() }).returning({ id: schema.workSummaries.id }); const made = rows[0]; if (!made) throw new Error("Could not create the work summary."); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, made.id)).limit(1))[0]!; await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "note", title: "Work summary created", body: `${rangeStart} → ${rangeEnd} · ${content.logs.length} log${content.logs.length === 1 ? "" : "s"} · ${content.photos.length} photo${content.photos.length === 1 ? "" : "s"}`, userId: identity.workspaceUserId }); ctx.invalidateQueries(); return { summary: await workSummaryShape(ctx, row), content }; } }),
+  previewWorkSummary: defineAction({ request: z.object({ jobId: z.number().int().positive(), preset: z.enum(["today", "this_week", "custom"]).default("custom"), rangeStart: z.string().max(10).default(""), rangeEnd: z.string().max(10).default("") }), response: z.object({ content: workSummaryContentSchema, narrative: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const { rangeStart, rangeEnd } = summaryRangeOrThrow(args); const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd); return { content, narrative: buildWorkSummaryNarrative(content) }; } }),
+  polishWorkSummary: defineAction({ request: z.object({ jobId: z.number().int().positive(), text: z.string().trim().min(1).max(20000), lang: z.enum(["en", "es"]).default("en"), rangeStart: z.string().max(10).default(""), rangeEnd: z.string().max(10).default("") }), response: z.object({ text: z.string() }), privileged: [privileged.getAiStatus, privileged.aiComplete], async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); await requireAiReady(ctx, db, job.companyId); const prompts = buildSummaryPolishAiPrompt({ lang: (args.lang === "es" ? "es" : "en") as AiLang, jobType: job.jobType, clientName: job.clientName, rangeStart: args.rangeStart ?? "", rangeEnd: args.rangeEnd ?? "", text: args.text }); const result = await ctx.executePrivileged(privileged.aiComplete, { system: prompts.system, user: prompts.user, maxTokens: 2000 }); if (!result.configured || !result.text) throw new Error("AI is unavailable right now."); await recordAiUsage(db, job.companyId); return { text: result.text.trim() }; } }),
   listWorkSummaries: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ summaries: z.array(workSummarySummarySchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const rows = await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.jobId, job.id)).orderBy(desc(schema.workSummaries.createdAt), desc(schema.workSummaries.id)); return { summaries: await Promise.all(rows.map((row) => workSummaryShape(ctx, row))) }; } }),
   getWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); return { summary: await workSummaryShape(ctx, row), content: parseWorkSummaryContent(row.contentJson) }; } }),
   deleteWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); const links = await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); if (links.length) { await db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, links.map((l) => l.id))); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); } await db.delete(schema.workSummaries).where(eq(schema.workSummaries.id, row.id)); ctx.invalidateQueries(); return { ok: true }; } }),
@@ -7328,13 +7426,58 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       return { id: made.id };
     },
   }),
+  // AI features (0098): the availability state both AI surfaces render
+  // from (Promotions composer + work-summary draft) — configured /
+  // entitled / this month's usage vs the cap, without generating.
+  getAiAvailability: defineAction({
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), entitled: z.boolean(), usedThisMonth: z.number(), monthlyCap: z.number() }),
+    privileged: [privileged.getAiStatus],
+    async handler(ctx) {
+      const db = ctx.db<typeof schema>();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const status = await ctx.executePrivileged(privileged.getAiStatus, {});
+      return {
+        configured: status.configured,
+        entitled: await companyAiEntitled(db, companyId),
+        usedThisMonth: await aiUsageCount(db, companyId),
+        monthlyCap: status.monthlyCap,
+      };
+    },
+  }),
   generateCampaignContent: defineAction({
-    request: z.object({ type: z.enum(["promotion", "blog"]), prompt: z.string().trim().min(3).max(1000) }),
+    request: z.object({ type: z.enum(["promotion", "blog"]), prompt: z.string().trim().min(3).max(1000), mode: z.enum(["template", "ai"]).default("template"), lang: z.enum(["en", "es"]).default("en"), audience: z.enum(["individual", "never_closed", "all"]).default("all") }),
     response: z.object({ subject: z.string(), headline: z.string(), bodyText: z.string(), ctaLabel: z.string(), ctaUrl: z.string() }),
+    privileged: [privileged.getAiStatus, privileged.aiComplete],
     async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
-      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1))[0];
-      return composeCampaignContent({ type: args.type, prompt: args.prompt, companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", website: setting?.website ?? "", reviewUrl: setting?.reviewUrl ?? "", serviceArea: setting?.serviceArea ?? "" });
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+      const base = { type: args.type, prompt: args.prompt, companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", website: setting?.website ?? "", reviewUrl: setting?.reviewUrl ?? "", serviceArea: setting?.serviceArea ?? "" };
+      // Template mode is the original composer, byte-identical — the
+      // fallback whenever AI is off, unconfigured, or not entitled.
+      if (args.mode !== "ai") return composeCampaignContent(base);
+      // AI mode (0098): Danny's original Promotions direction —
+      // content generated from a simple user prompt. The result lands
+      // in the composer as an editable draft; nothing ever auto-sends.
+      await requireAiReady(ctx, db, companyId);
+      const lang: AiLang = args.lang === "es" ? "es" : "en";
+      const audience: AiAudience = args.audience === "individual" || args.audience === "never_closed" ? args.audience : "all";
+      const prompts = buildPromoAiPrompt({ lang, type: args.type, brief: args.prompt, audience, companyName: base.companyName, phone: base.phone, website: base.website, serviceArea: base.serviceArea });
+      const result = await ctx.executePrivileged(privileged.aiComplete, { system: prompts.system, user: prompts.user, maxTokens: 1200 });
+      if (!result.configured || !result.text) throw new Error("AI is unavailable right now.");
+      const parsed = parseAiPromoContent(result.text);
+      const template = composeCampaignContent(base);
+      const esCta: Record<string, string> = { "Claim this offer": "Reclamar esta oferta", "Ask about financing": "Preguntar por financiamiento", "Get my free estimate": "Pedir mi estimado gratis" };
+      const content = {
+        subject: parsed.subject || template.subject,
+        headline: parsed.headline || parsed.subject || template.headline,
+        bodyText: parsed.bodyText || result.text.trim(),
+        ctaLabel: args.lang === "es" ? (esCta[template.ctaLabel] ?? template.ctaLabel) : template.ctaLabel,
+        ctaUrl: template.ctaUrl,
+      };
+      await recordAiUsage(db, companyId);
+      return content;
     },
   }),
   previewCampaignRecipients: defineAction({

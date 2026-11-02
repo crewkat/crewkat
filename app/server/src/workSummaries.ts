@@ -72,7 +72,36 @@ export type WorkSummaryContent = {
     count: number;
     totalCost: string; // money string, summed from item costs
   };
+  // AI features (0098): the optional client-facing narrative the user
+  // composed in the draft flow (preview → optional AI polish → edit →
+  // create). "" when the summary was created directly, exactly as
+  // before — the public page renders the narrative section only when
+  // one is stored. polishedWithAi records, for support honesty, that
+  // the stored narrative went through the AI polish step.
+  narrative: string;
+  polishedWithAi: boolean;
 };
+
+/**
+ * Assemble the default draft narrative from a built summary: one
+ * paragraph per daily-log entry (the log's client-facing summary when
+ * present, else its notes — the same preference the public page uses),
+ * then the standalone notes. This is the text the draft composer shows
+ * and the AI polish rewrites; creating a summary directly (no draft
+ * step) stores no narrative at all.
+ */
+export function buildWorkSummaryNarrative(content: WorkSummaryContent): string {
+  const paragraphs: string[] = [];
+  for (const log of content.logs) {
+    const text = (log.clientSummary || log.notes || "").trim();
+    if (text) paragraphs.push(text);
+  }
+  for (const note of content.notes) {
+    const text = note.note.trim();
+    if (text) paragraphs.push(text);
+  }
+  return paragraphs.join("\n\n");
+}
 
 /**
  * ITEM 2 INTEGRATION POINT (landed with 0095): return the job's load /
@@ -194,6 +223,8 @@ export async function buildWorkSummaryContent(
       count: loads.length,
       totalCost: moneyTotal(loads.map((l) => l.cost)),
     },
+    narrative: "",
+    polishedWithAi: false,
   };
 }
 
@@ -210,6 +241,8 @@ export function parseWorkSummaryContent(json: string): WorkSummaryContent {
     notes: [],
     photos: [],
     loads: { items: [], count: 0, totalCost: "0.00" },
+    narrative: "",
+    polishedWithAi: false,
   };
   try {
     const parsed = JSON.parse(json) as Partial<WorkSummaryContent>;
@@ -226,6 +259,8 @@ export function parseWorkSummaryContent(json: string): WorkSummaryContent {
         count: typeof parsed.loads?.count === "number" ? parsed.loads.count : (Array.isArray(parsed.loads?.items) ? parsed.loads.items.length : 0),
         totalCost: typeof parsed.loads?.totalCost === "string" ? parsed.loads.totalCost : "0.00",
       },
+      narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+      polishedWithAi: parsed.polishedWithAi === true,
     };
   } catch {
     return empty;

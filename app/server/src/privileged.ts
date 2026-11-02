@@ -407,7 +407,37 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 10_000,
   },
+  // AI features (0098, first AI hookup): ONE provider integration —
+  // OpenAI-compatible chat completions, server-side only. The key
+  // (AI_API_KEY) lives only in this process's env and in the provider's
+  // Authorization header; it is never logged and never returned in any
+  // response. Without the key both ops degrade to configured:false —
+  // the AI features are simply absent and everything else is unchanged.
+  // AI_MODEL / AI_BASE_URL override the defaults ("gpt-4o-mini" /
+  // "https://api.openai.com/v1"); AI_MONTHLY_CAP (default 200) is
+  // reported by getAiStatus and enforced by the action layer against
+  // the ai_usage counter.
+  getAiStatus: {
+    request: z.object({}),
+    response: z.object({ configured: z.boolean(), monthlyCap: z.number().int() }),
+    capabilities: [],
+    timeoutMs: 10_000,
+  },
+  aiComplete: {
+    request: z.object({ system: z.string().min(1).max(8000), user: z.string().min(1).max(24000), maxTokens: z.number().int().min(50).max(4000).default(1200) }),
+    response: z.object({ configured: z.boolean(), text: z.string().nullable() }),
+    capabilities: [],
+    timeoutMs: 45_000,
+  },
 });
+
+// AI features (0098): the per-company monthly generation cap. Env
+// override AI_MONTHLY_CAP; anything unparseable or non-positive falls
+// back to the default 200.
+function aiMonthlyCap(): number {
+  const parsed = Number.parseInt(process.env.AI_MONTHLY_CAP?.trim() ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 200;
+}
 
 function stripeAdminAuthHeader(required: true): { Authorization: string };
 function stripeAdminAuthHeader(required: false): { Authorization: string } | null;
@@ -1465,6 +1495,45 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
     const packageName = process.env.PLAY_PACKAGE_NAME?.trim() || "com.crewkat.app";
     const configured = Boolean(process.env.PLAY_SERVICE_ACCOUNT_JSON?.trim() || process.env.PLAY_SERVICE_ACCOUNT_JSON_PATH?.trim());
     return { configured, sku, packageName };
+  },
+  // AI features (0098): status is env-only (key presence + the cap) —
+  // no provider call, so the UIs can render their setup/upgrade states
+  // cheaply and the action layer can refuse before generating.
+  async getAiStatus() {
+    return { configured: !!process.env.AI_API_KEY?.trim(), monthlyCap: aiMonthlyCap() };
+  },
+  async aiComplete(args) {
+    const apiKey = process.env.AI_API_KEY?.trim();
+    if (!apiKey) return { configured: false, text: null };
+    const baseUrl = (process.env.AI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const model = process.env.AI_MODEL?.trim() || "gpt-4o-mini";
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: args.system },
+            { role: "user", content: args.user },
+          ],
+          max_tokens: args.maxTokens,
+          temperature: 0.6,
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new Error("provider refused");
+      const result = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
+      const text = result.choices?.[0]?.message?.content;
+      if (typeof text !== "string" || !text.trim()) throw new Error("provider returned no text");
+      return { configured: true, text };
+    } catch {
+      // Deliberately opaque: provider bodies, statuses and network
+      // errors never reach the client, and the key is never logged —
+      // every failure surfaces as this one fixed, user-safe message.
+      throw new Error("AI is unavailable right now.");
+    }
   },
   async verifyPlayPurchase(args) {
     const failed = (error: string) => ({
