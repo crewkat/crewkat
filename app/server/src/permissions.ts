@@ -92,6 +92,9 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // Work summaries (0094): deleting a stored summary is a record
   // delete — Admin-only like every other delete.
   "deleteWorkSummary",
+  // Job loads (0095): deleting a load (which also removes its linked
+  // job expense) is a record delete — Admin-only like every other.
+  "deleteJobLoad",
   // Wave 2 Item 6: connecting the company's Stripe account is a
   // billing-tier act (like the billing portal session above).
   "startConnectOnboarding",
@@ -232,6 +235,12 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   // job's summaries from either client (share/revoke rides the existing
   // document-link actions, already classified above).
   "createWorkSummary", "listWorkSummaries", "getWorkSummary",
+  // Job loads (0095): field working surface like daily logs — the crew
+  // on site logs the dump run (with its "logged by" attestation) from
+  // either client; the linked expense posts inside the handler through
+  // the existing business_expenses path, not through the Office-tier
+  // saveBusinessExpense action.
+  "createJobLoad", "listJobLoads", "updateJobLoad",
   "uploadDocumentAttachment", "uploadJobFile", "uploadSupportScreenshot",
   "userSupportThread", "userSupportThreads",
 ]);

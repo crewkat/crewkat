@@ -7,11 +7,10 @@
 // work_summaries row. Later edits to the source logs/photos never
 // change what a shared summary link shows.
 //
-// LOADS INTEGRATION POINT (Item 2): the content shape already carries a
-// `loads` section (count / kind / quantity / cost per record, plus
-// totals). It is filled by getJobLoadsInRange below, which returns []
-// until Item 2 lands its loads data source — Item 2 fills THIS
-// function in; the stored snapshot shape does not change.
+// LOADS INTEGRATION POINT (Item 2, landed with 0095): the content shape
+// carries a `loads` section (count / kind / quantity / cost per record,
+// plus totals), filled by getJobLoadsInRange below from the job_loads
+// table; the stored snapshot shape is unchanged from Item 1.
 
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import type { Ctx } from "@hatch/space-sdk";
@@ -76,18 +75,34 @@ export type WorkSummaryContent = {
 };
 
 /**
- * ITEM 2 INTEGRATION POINT: return the job's load / dump-run records
- * whose date falls inside [rangeStart, rangeEnd] (YYYY-MM-DD keys,
- * inclusive). Item 1 ships with no loads table, so this returns []
- * and every summary's loads section renders present-but-empty. Item 2
- * replaces the body with its real query — the signature and the
- * WorkSummaryLoad shape are the contract.
+ * ITEM 2 INTEGRATION POINT (landed with 0095): return the job's load /
+ * dump-run records whose date falls inside [rangeStart, rangeEnd]
+ * (YYYY-MM-DD keys, inclusive), read from the job_loads table. Cost is
+ * the load's money string, "" when the load is proof-only (cost NULL) —
+ * matching the WorkSummaryLoad contract documented above; the summary
+ * builder's moneyTotal treats "" as 0.
  */
 export async function getJobLoadsInRange(
-  _db: Db,
-  _args: { companyId: number; jobId: number; rangeStart: string; rangeEnd: string },
+  db: Db,
+  args: { companyId: number; jobId: number; rangeStart: string; rangeEnd: string },
 ): Promise<WorkSummaryLoad[]> {
-  return [];
+  const rows = await db.select().from(schema.jobLoads)
+    .where(and(
+      eq(schema.jobLoads.companyId, args.companyId),
+      eq(schema.jobLoads.jobId, args.jobId),
+      gte(schema.jobLoads.loadDate, args.rangeStart),
+      lte(schema.jobLoads.loadDate, args.rangeEnd),
+    ))
+    .orderBy(asc(schema.jobLoads.loadDate), asc(schema.jobLoads.id));
+  return rows.map((row) => ({
+    date: row.loadDate,
+    kind: row.kind,
+    quantity: row.quantity,
+    unit: row.unit,
+    cost: row.cost ?? "",
+    vendor: row.vendor,
+    notes: row.notes,
+  }));
 }
 
 /** Resolve a preset to concrete YYYY-MM-DD range keys (UTC, codebase convention). */

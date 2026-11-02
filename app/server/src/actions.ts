@@ -88,6 +88,36 @@ const workSummaryContentSchema = z.object({
   photos: z.array(z.object({ id: z.number(), stage: stageSchema, caption: z.string(), url: z.string(), capturedAt: z.string() })),
   loads: z.object({ items: z.array(workSummaryLoadSchema), count: z.number(), totalCost: z.string() }),
 });
+// Job loads (0095): a load / dump-run row as served to both clients.
+// cost is null for a proof-only load (no linked expense row); expenseId
+// points at the business_expenses row the load's cost posted through.
+const jobLoadKindSchema = z.enum(["debris_haul", "concrete", "dirt", "delivery", "other"]);
+const jobLoadUnitSchema = z.enum(["loads", "yards", "tons"]);
+const jobLoadSchema = z.object({
+  id: z.number(), jobId: z.number(), expenseId: z.number().nullable(),
+  date: z.string(), kind: jobLoadKindSchema, quantity: z.string(), unit: jobLoadUnitSchema,
+  cost: z.string().nullable(), vendor: z.string(), notes: z.string(),
+  photoUrl: z.string().nullable(), photoFilename: z.string(),
+  loggedByUserId: z.number().nullable(), loggedByName: z.string(),
+  attested: z.boolean(), attestedAt: z.string().nullable(),
+  createdAt: z.string(), updatedAt: z.string(),
+});
+const jobLoadPhotoFields = {
+  photoFilename: z.string().max(240).default(""),
+  photoContentType: z.enum(["", "image/jpeg", "image/png", "image/webp"]).default(""),
+  photoDataBase64: z.string().max(20_000_000).default(""),
+};
+const jobLoadInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  kind: jobLoadKindSchema,
+  quantity: z.string().trim().min(1).max(80),
+  unit: jobLoadUnitSchema,
+  cost: z.string().trim().max(80).default(""),
+  vendor: z.string().trim().max(160).default(""),
+  notes: z.string().trim().max(1000).default(""),
+  attested: z.boolean().default(false),
+  ...jobLoadPhotoFields,
+});
 const workSummarySummarySchema = z.object({
   id: z.number(), jobId: z.number(), rangeStart: z.string(), rangeEnd: z.string(),
   preset: z.enum(["today", "this_week", "custom"]), createdAt: z.string(),
@@ -983,7 +1013,7 @@ const BACKUP_TABLES = [
   "material_cost_items", "supplier_quotes", "purchase_orders", "equipment", "safety_talks", "incidents",
   "credentials", "crew_pay_rates", "completion_overrides", "marketplace_listings", "marketplace_listing_photos",
   "marketplace_requests", "marketplace_messages", "marketplace_booking_requests",
-  "document_links", "document_link_events", "work_summaries"
+  "document_links", "document_link_events", "work_summaries", "job_loads"
 ] as const;
 
 function sqlValue(value: BackupScalar) {
@@ -3812,6 +3842,107 @@ async function workSummaryShape(ctx: Ctx, row: typeof schema.workSummaries.$infe
   };
 }
 
+// Job loads (0095, SimplySub steals Item 2): COST INTEGRATION POINT.
+// A load's cost posts through the EXISTING job-expense path — the
+// business_expenses table, category "hauling", job_id = the load's
+// job — which is exactly the bucket jobCosts (wave1.ts) sums for
+// budget-vs-actual and getJobOperations sums for the job's expenses /
+// profitability. syncJobLoadExpense keeps the two rows in lockstep:
+// cost > 0 ⇒ one linked expense row (created or updated); cost null /
+// 0 (proof-only) ⇒ no expense row. Nothing anywhere totals job_loads
+// on its own for money — the load list's totalCost is a display sum of
+// the same values the linked expenses carry.
+export const JOB_LOAD_KIND_LABELS: Record<z.infer<typeof jobLoadKindSchema>, string> = {
+  debris_haul: "Debris haul",
+  concrete: "Concrete",
+  dirt: "Dirt",
+  delivery: "Material delivery",
+  other: "Other",
+};
+
+function jobLoadExpenseNote(load: { id: number; kind: string; quantity: string; unit: string; notes: string }): string {
+  const label = JOB_LOAD_KIND_LABELS[load.kind as keyof typeof JOB_LOAD_KIND_LABELS] ?? "Load";
+  return `Load #${load.id}: ${label} · ${load.quantity} ${load.unit}${load.notes ? ` — ${load.notes}` : ""}`.slice(0, 1000);
+}
+
+/** Normalize a load cost input: "" or 0 ⇒ null (proof-only, no expense). */
+function normalizeJobLoadCost(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const normalized = normalizeMoney(trimmed, "0.00");
+  return Number(normalized) > 0 ? normalized : null;
+}
+
+type JobLoadRow = typeof schema.jobLoads.$inferSelect;
+
+async function jobLoadShape(ctx: Ctx, row: JobLoadRow) {
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    expenseId: row.expenseId,
+    date: row.loadDate,
+    kind: row.kind,
+    quantity: row.quantity,
+    unit: row.unit,
+    cost: row.cost,
+    vendor: row.vendor,
+    notes: row.notes,
+    photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null,
+    photoFilename: row.photoFilename,
+    loggedByUserId: row.loggedByUserId,
+    loggedByName: row.loggedByName,
+    attested: row.attested,
+    attestedAt: row.attestedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Lockstep cost sync: make the linked business_expenses row match the
+ * load (see the integration note above). Returns the expense id, or
+ * null for a proof-only load. A linked expense that was deleted out
+ * from under the load is recreated, so the invariant "costed load ⇔
+ * expense row" always holds after any load save.
+ */
+async function syncJobLoadExpense(db: ReturnType<Ctx["db"]>, load: JobLoadRow): Promise<number | null> {
+  if (!load.cost || Number(load.cost) <= 0) {
+    if (load.expenseId) {
+      await db.delete(schema.businessExpenses).where(eq(schema.businessExpenses.id, load.expenseId));
+      await db.update(schema.jobLoads).set({ expenseId: null, updatedAt: new Date() }).where(eq(schema.jobLoads.id, load.id));
+    }
+    return null;
+  }
+  const values = {
+    expenseDate: load.loadDate,
+    vendor: load.vendor,
+    amount: load.cost,
+    category: "hauling",
+    jobId: load.jobId,
+    note: jobLoadExpenseNote(load),
+  };
+  if (load.expenseId) {
+    const existing = (await db.select({ id: schema.businessExpenses.id }).from(schema.businessExpenses).where(eq(schema.businessExpenses.id, load.expenseId)).limit(1))[0];
+    if (existing) {
+      await db.update(schema.businessExpenses).set(values).where(eq(schema.businessExpenses.id, load.expenseId));
+      return load.expenseId;
+    }
+  }
+  const rows = await db.insert(schema.businessExpenses).values({ companyId: load.companyId, supplierId: null, createdAt: new Date(), ...values }).returning({ id: schema.businessExpenses.id });
+  const made = rows[0];
+  if (!made) throw new Error("Could not post the load cost to job expenses.");
+  await db.update(schema.jobLoads).set({ expenseId: made.id, updatedAt: new Date() }).where(eq(schema.jobLoads.id, load.id));
+  return made.id;
+}
+
+async function requireJobLoad(ctx: Ctx, db: ReturnType<Ctx["db"]>, loadId: number) {
+  const row = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, loadId)).limit(1))[0];
+  if (!row) throw new Error("Load not found.");
+  const { identity, job } = await requireJobCompany(ctx, db, row.jobId);
+  if (row.companyId !== job.companyId) throw new Error("Load not found.");
+  return { identity, job, load: row };
+}
+
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
@@ -4739,6 +4870,14 @@ export const BaseActions = {
     // Work summaries (0094) are job-owned too: their document_links rows
     // (kind "work_summary") + link events die with the job, like the
     // contract/change-order links above.
+    // Job loads (0095) are job-owned too: their photo blobs die with the
+    // job, and their linked "hauling" expense rows — created solely for
+    // the load, in lockstep — are deleted rather than unlinked like a
+    // general business expense (an unlinked load expense would be a
+    // ghost cost with no load behind it).
+    const loadRows = await db.select({ id: schema.jobLoads.id, expenseId: schema.jobLoads.expenseId, photoBlobKey: schema.jobLoads.photoBlobKey }).from(schema.jobLoads).where(eq(schema.jobLoads.jobId, jobId));
+    for (const row of loadRows) if (row.photoBlobKey) blobKeys.add(row.photoBlobKey);
+    const loadExpenseIds = loadRows.map((row) => row.expenseId).filter((id): id is number => id != null);
     const summaryIdRows = await db.select({ id: schema.workSummaries.id }).from(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId));
     const summaryLinkRows = summaryIdRows.length ? await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), inArray(schema.documentLinks.documentId, summaryIdRows.map((row) => row.id)))) : [];
     const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
@@ -4747,6 +4886,7 @@ export const BaseActions = {
       ...(linkFilter ? [db.delete(schema.documentLinks).where(linkFilter)] : []),
       ...(tokenIdRows.length ? [db.delete(schema.portalLinkEvents).where(inArray(schema.portalLinkEvents.linkId, tokenIdRows.map((row) => row.id)))] : []),
       ...(summaryLinkRows.length ? [db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, summaryLinkRows.map((link) => link.id))), db.delete(schema.documentLinks).where(inArray(schema.documentLinks.id, summaryLinkRows.map((link) => link.id)))] : []),
+      ...(loadExpenseIds.length ? [db.delete(schema.businessExpenses).where(inArray(schema.businessExpenses.id, loadExpenseIds))] : []),
       // Notifications that deep-link into this job or its documents.
       db.delete(schema.userNotifications).where(inArray(schema.userNotifications.link, notificationLinks)),
       // Independent records keep their rows; only the job link goes.
@@ -4786,6 +4926,7 @@ export const BaseActions = {
       db.delete(schema.incidents).where(eq(schema.incidents.jobId, jobId)),
       db.delete(schema.completionOverrides).where(eq(schema.completionOverrides.jobId, jobId)),
       db.delete(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId)),
+      db.delete(schema.jobLoads).where(eq(schema.jobLoads.jobId, jobId)),
       db.delete(schema.jobs).where(eq(schema.jobs.id, jobId)),
     ];
     await db.batch(cascade as [never, ...never[]]);
@@ -6320,6 +6461,18 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   listWorkSummaries: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ summaries: z.array(workSummarySummarySchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const rows = await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.jobId, job.id)).orderBy(desc(schema.workSummaries.createdAt), desc(schema.workSummaries.id)); return { summaries: await Promise.all(rows.map((row) => workSummaryShape(ctx, row))) }; } }),
   getWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); return { summary: await workSummaryShape(ctx, row), content: parseWorkSummaryContent(row.contentJson) }; } }),
   deleteWorkSummary: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const row = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, args.id)).limit(1))[0]; if (!row) throw new Error("Work summary not found."); await requireJobCompany(ctx, db, row.jobId); const links = await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); if (links.length) { await db.delete(schema.documentLinkEvents).where(inArray(schema.documentLinkEvents.linkId, links.map((l) => l.id))); await db.delete(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), eq(schema.documentLinks.documentId, row.id))); } await db.delete(schema.workSummaries).where(eq(schema.workSummaries.id, row.id)); ctx.invalidateQueries(); return { ok: true }; } }),
+  // Job loads / dump-run log (0095, SimplySub steals Item 2): log a
+  // hauling run against a job. A costed load posts its cost into the
+  // job's business_expenses in lockstep (category "hauling" — see
+  // syncJobLoadExpense above), so the job cost view and
+  // budget-vs-actual include it with no extra plumbing; a load with an
+  // empty/0 cost is proof-only and posts nothing. Attestation is the
+  // "logged by" form: the caller's user id + name snapshot + the
+  // attested flag/timestamp set from the UI checkbox.
+  createJobLoad: defineAction({ request: jobLoadInputSchema.extend({ jobId: z.number().int().positive() }), response: z.object({ load: jobLoadSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { identity, job } = await requireJobCompany(ctx, db, args.jobId); let photoBlobKey: string | null = null; if (args.photoDataBase64 && args.photoContentType) { photoBlobKey = `job-loads/${job.id}/${crypto.randomUUID()}`; await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType }); } const logger = (await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0]; const now = new Date(); const rows = await db.insert(schema.jobLoads).values({ companyId: job.companyId, jobId: job.id, expenseId: null, loadDate: args.date, kind: args.kind, quantity: args.quantity, unit: args.unit, cost: normalizeJobLoadCost(args.cost), vendor: args.vendor, notes: args.notes, photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType, loggedByUserId: identity.workspaceUserId, loggedByName: logger?.name ?? "", attested: args.attested, attestedAt: args.attested ? now : null, createdAt: now, updatedAt: now }).returning({ id: schema.jobLoads.id }); const made = rows[0]; if (!made) { if (photoBlobKey) { try { await ctx.blobs.delete(photoBlobKey); } catch { /* best-effort */ } } throw new Error("Could not save the load."); } const row = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, made.id)).limit(1))[0]!; await syncJobLoadExpense(db, row); const synced = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, made.id)).limit(1))[0]!; ctx.invalidateQueries(); return { load: await jobLoadShape(ctx, synced) }; } }),
+  listJobLoads: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ loads: z.array(jobLoadSchema), count: z.number(), totalCost: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const rows = await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.jobId, job.id)).orderBy(desc(schema.jobLoads.loadDate), desc(schema.jobLoads.id)); const total = rows.reduce((sum, row) => sum + (row.cost ? Number(row.cost) || 0 : 0), 0); return { loads: await Promise.all(rows.map((row) => jobLoadShape(ctx, row))), count: rows.length, totalCost: total.toFixed(2) }; } }),
+  updateJobLoad: defineAction({ request: jobLoadInputSchema.extend({ id: z.number().int().positive(), removePhoto: z.boolean().default(false) }), response: z.object({ load: jobLoadSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { load } = await requireJobLoad(ctx, db, args.id); let photoBlobKey = load.photoBlobKey; let photoFilename = load.photoFilename; let photoContentType = load.photoContentType; let staleBlobKey: string | null = null; if (args.photoDataBase64 && args.photoContentType) { photoBlobKey = `job-loads/${load.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType }); photoFilename = args.photoFilename; photoContentType = args.photoContentType; staleBlobKey = load.photoBlobKey; } else if (args.removePhoto) { staleBlobKey = load.photoBlobKey; photoBlobKey = null; photoFilename = ""; photoContentType = ""; } const now = new Date(); await db.update(schema.jobLoads).set({ loadDate: args.date, kind: args.kind, quantity: args.quantity, unit: args.unit, cost: normalizeJobLoadCost(args.cost), vendor: args.vendor, notes: args.notes, photoBlobKey, photoFilename, photoContentType, attested: args.attested, attestedAt: args.attested ? (load.attested && load.attestedAt ? load.attestedAt : now) : null, updatedAt: now }).where(eq(schema.jobLoads.id, load.id)); if (staleBlobKey && staleBlobKey !== photoBlobKey) { try { await ctx.blobs.delete(staleBlobKey); } catch { /* best-effort blob cleanup, like sibling updates */ } } const row = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)).limit(1))[0]!; await syncJobLoadExpense(db, row); const synced = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)).limit(1))[0]!; ctx.invalidateQueries(); return { load: await jobLoadShape(ctx, synced) }; } }),
+  deleteJobLoad: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const { load } = await requireJobLoad(ctx, db, args.id); if (load.expenseId) { await db.delete(schema.businessExpenses).where(eq(schema.businessExpenses.id, load.expenseId)); } await db.delete(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)); if (load.photoBlobKey) { try { await ctx.blobs.delete(load.photoBlobKey); } catch { /* best-effort blob cleanup, like sibling deletes */ } } ctx.invalidateQueries(); return { ok: true }; } }),
   // Public (no session): the token IS the credential, resolved through
   // the same document_links machinery as resolveDocumentLink (hash or
   // short code; revoked/expired rejected identically). Records the view

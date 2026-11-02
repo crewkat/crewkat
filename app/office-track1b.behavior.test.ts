@@ -31,11 +31,11 @@ function check(name: string, cond: boolean, detail = "") {
 }
 
 // --- 1. Migrations: Track 1b itself added none; the journal's newest
-// entry is now 0094_work_summaries. -----------------------------------
+// entry is now 0095_job_loads. -----------------------------------
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("journal newest entry is 0094_work_summaries (1b added no migration)", last.tag === "0094_work_summaries", last.tag);
+check("journal newest entry is 0095_job_loads (1b added no migration)", last.tag === "0095_job_loads", last.tag);
 
 // --- 2. Scratch DB + in-memory blob store --------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-1b-"));

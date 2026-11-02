@@ -5,8 +5,8 @@
 //
 // Covers: migration 0094, create/list/get, preset ranges (today /
 // this_week / custom), range filtering of logs+notes+photos, snapshot
-// frozen after source edits, the loads section present-but-empty
-// (Item 2 fills getJobLoadsInRange), token public read (valid token +
+// frozen after source edits, the loads section filled from job_loads
+// (Item 2, 0095 — in-range loads in, out-of-range loads out), token public read (valid token +
 // short code render; revoked / expired / unknown / wrong-kind fail),
 // company isolation, the job-timeline event, delete, and the
 // permission classification of the new actions.
@@ -39,9 +39,9 @@ const A = BaseActions as any;
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("newest migration tag is 0094_work_summaries", last.tag === "0094_work_summaries", last.tag);
-check("0094 journal idx is 93", last.idx === 93, String(last.idx));
-check("0094 when is 1791738600000", last.when === 1791738600000, String(last.when));
+check("newest migration tag is 0095_job_loads", last.tag === "0095_job_loads", last.tag);
+check("0095 journal idx is 94", last.idx === 94, String(last.idx));
+check("0095 when is 1791738700000", last.when === 1791738700000, String(last.when));
 check("newest journal when exceeds every earlier entry", last.when > Math.max(...entries.slice(0, -1).map((e) => e.when)), `last=${last.when}`);
 
 // --- 2. Scratch DB ------------------------------------------------------------
@@ -107,9 +107,14 @@ await db.insert(schema.photos).values([
   { companyId: 1, jobId, stage: "after", caption: "Outside range shot", blobKey: "photos/late.jpg", filename: "late.jpg", contentType: "image/jpeg", createdAt: new Date("2026-11-02T14:00:00Z") },
 ]);
 
-// --- 3. Loads integration point (Item 2 fills the data source) ----------------
+// --- 3. Loads integration point (Item 2 landed: job_loads, 0095) ----------------
+// One load inside the summary range (costed) and one outside it.
+await A.createJobLoad.handler(ctx, { jobId, date: "2026-10-27", kind: "debris_haul", quantity: "2", unit: "loads", cost: "185.50", vendor: "County Dump", notes: "Demo debris", attested: true, photoFilename: "", photoContentType: "", photoDataBase64: "" });
+await A.createJobLoad.handler(ctx, { jobId, date: "2026-11-03", kind: "dirt", quantity: "6", unit: "yards", cost: "90", vendor: "Dirt Works", notes: "Outside range", attested: false, photoFilename: "", photoContentType: "", photoDataBase64: "" });
 const loadsNow = await getJobLoadsInRange(db as any, { companyId: 1, jobId, rangeStart: "2026-10-26", rangeEnd: "2026-10-30" });
-check("getJobLoadsInRange returns [] until Item 2 lands", Array.isArray(loadsNow) && loadsNow.length === 0);
+check("getJobLoadsInRange returns the in-range loads", loadsNow.length === 1 && loadsNow[0]!.kind === "debris_haul" && loadsNow[0]!.cost === "185.50", JSON.stringify(loadsNow));
+const loadsWide = await getJobLoadsInRange(db as any, { companyId: 1, jobId, rangeStart: "2026-10-26", rangeEnd: "2026-11-05" });
+check("getJobLoadsInRange excludes out-of-range loads only", loadsWide.length === 2, JSON.stringify(loadsWide.map((l: any) => l.date)));
 
 // --- 4. Create (custom range): filtering + snapshot shape ----------------------
 const created = await A.createWorkSummary.handler(ctx, { jobId, preset: "custom", rangeStart: "2026-10-26", rangeEnd: "2026-10-30" });
@@ -121,8 +126,8 @@ check("logs filtered to the range", content.logs.length === 2 && content.logs[0]
 check("log entries carry crew/hours/notes/blockers/clientSummary", content.logs[0].crew === "Crew A" && content.logs[0].clientSummary === "We removed the old cabinets." && content.logs[1].blockers === "Waiting on inspection");
 check("notes filtered to the range", content.notes.length === 1 && content.notes[0].note === "Note inside range", JSON.stringify(content.notes));
 check("photos filtered to the range with storage URLs", content.photos.length === 2 && content.photos[0].url === "blob://test/photos/before.jpg" && content.photos[1].stage === "during", JSON.stringify(content.photos));
-check("loads section present but empty", content.loads.count === 0 && content.loads.items.length === 0 && content.loads.totalCost === "0.00", JSON.stringify(content.loads));
-check("summary counts come from the snapshot", summary.logCount === 2 && summary.photoCount === 2 && summary.loadCount === 0);
+check("loads section carries the in-range load", content.loads.count === 1 && content.loads.items.length === 1 && content.loads.items[0]!.kind === "debris_haul" && content.loads.items[0]!.quantity === "2" && content.loads.totalCost === "185.50", JSON.stringify(content.loads));
+check("summary counts come from the snapshot", summary.logCount === 2 && summary.photoCount === 2 && summary.loadCount === 1);
 check("new summary has no link yet", summary.link === null);
 const storedRow = (await db.select().from(schema.workSummaries).where(eq(schema.workSummaries.id, summary.id)))[0]!;
 check("snapshot persisted on the row", storedRow.contentJson.includes("Demo day") && storedRow.createdByUserId === 1 && storedRow.companyId === 1);
@@ -179,7 +184,7 @@ check("list surfaces the active link state", !!linkedSummary?.link && linkedSumm
 const pub = await A.resolveWorkSummaryLink.handler(ctx, { token: link.token, userAgent: "test-agent" });
 check("public read renders the snapshot", pub.summaryId === summary.id && pub.content.logs.length === 2 && pub.content.logs[0].notes === "Demo day", JSON.stringify(pub.content?.logs?.length));
 check("public read carries the company chrome", pub.company.name === "Summary Test Co" && pub.company.phone === "(813) 555-0100", JSON.stringify(pub.company));
-check("public read carries the loads section", pub.content.loads.count === 0 && Array.isArray(pub.content.loads.items));
+check("public read carries the loads section", pub.content.loads.count === 1 && pub.content.loads.items[0]!.kind === "debris_haul" && pub.content.loads.totalCost === "185.50", JSON.stringify(pub.content.loads));
 const info = await A.getDocumentLinkInfo.handler(ctx, { kind: "work_summary", id: summary.id });
 check("view counted on the link", info.link?.viewCount === 1 && !!info.link?.firstViewedAt, JSON.stringify(info.link));
 const pubByCode = await A.resolveWorkSummaryLink.handler(ctx, { token: link.shortCode, userAgent: "test-agent" });

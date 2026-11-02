@@ -552,8 +552,8 @@ export const clientReviews = sqliteTable("client_reviews", {
 // document_links family (document_kind = "work_summary", document_id =
 // this row's id): token hash, short code, expiry and revocation all live
 // there, exactly like invoice/quote/contract links. The snapshot's
-// "loads" section exists from day one; Item 2 fills its data source in
-// (see getJobLoadsInRange in server/src/workSummaries.ts).
+// "loads" section is filled from job_loads (0095) by getJobLoadsInRange
+// in server/src/workSummaries.ts.
 export const workSummaries = sqliteTable("work_summaries", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -567,6 +567,45 @@ export const workSummaries = sqliteTable("work_summaries", {
 }, (table) => [
   index("work_summaries_job_idx").on(table.jobId),
   index("work_summaries_company_idx").on(table.companyId),
+]);
+
+// Job loads / dump-run log (0095, SimplySub steals Item 2): one row per
+// hauling run logged against a job. COST INTEGRATION: a load with a cost
+// owns exactly one business_expenses row (expenseId, category "hauling",
+// job_id = this job), created / updated / deleted in lockstep with the
+// load by the load actions in actions.ts — so the load's cost flows
+// through the existing job-costing path (jobCosts in wave1.ts,
+// getJobOperations, exports) with no silo totals. cost NULL (or "0.00")
+// is a proof-only record and expenseId stays NULL. The photo is a blob
+// key on the row (photos/selections pattern). Attestation is the
+// lightweight "logged by" form: loggedByUserId + loggedByName snapshot,
+// the attested flag and attestedAt — the punch-signoff drawn-signature
+// flow is a job-completion ceremony and is not reused per load.
+export const jobLoads = sqliteTable("job_loads", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  expenseId: integer("expense_id").references(() => businessExpenses.id, { onDelete: "set null" }),
+  loadDate: text("load_date").notNull(),
+  kind: text("kind", { enum: ["debris_haul", "concrete", "dirt", "delivery", "other"] }).notNull().default("debris_haul"),
+  quantity: text("quantity").notNull().default("1"),
+  unit: text("unit", { enum: ["loads", "yards", "tons"] }).notNull().default("loads"),
+  cost: text("cost"),
+  vendor: text("vendor").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  photoBlobKey: text("photo_blob_key"),
+  photoFilename: text("photo_filename").notNull().default(""),
+  photoContentType: text("photo_content_type").notNull().default(""),
+  loggedByUserId: integer("logged_by_user_id"),
+  loggedByName: text("logged_by_name").notNull().default(""),
+  attested: integer("attested", { mode: "boolean" }).notNull().default(false),
+  attestedAt: integer("attested_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("job_loads_job_idx").on(table.jobId),
+  index("job_loads_company_idx").on(table.companyId),
+  index("job_loads_date_idx").on(table.loadDate),
 ]);
 
 export const completionCertificates = sqliteTable("completion_certificates", {

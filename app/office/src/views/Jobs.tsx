@@ -7,6 +7,7 @@ import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, form
 import type { DocSelection } from "./Documents";
 import { PortalLinkPanel } from "../components/LinkPanel";
 import { WorkSummaryPanel } from "../components/WorkSummaryPanel";
+import { JobLoadsPanel } from "../components/JobLoadsPanel";
 import { ProductionBoard } from "./ProductionBoard";
 import { TimelineFeed } from "./Timeline";
 
@@ -403,6 +404,8 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             {budgetQuery.data ? <JobBudgetBlock budget={budgetQuery.data.budget} /> : null}
             {budgetQuery.isError ? <p className="muted">Budget isn't available right now.</p> : null}
           </section>
+
+          <JobLoadsPanel jobId={job.id} />
 
           <section className="drawer-section">
             <h3>Timeline</h3>

@@ -9679,6 +9679,162 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
   );
 }
 
+// Job loads / dump-run log (0095): hauling runs logged against the job
+// from the Financials tab, next to the job's other costs. A costed load
+// posts into the job's expenses server-side (the linked expense shows
+// up in Profitability's Expenses figure after refresh); an empty cost
+// is a proof-only record. Attestation is the "logged by" checkbox —
+// the server stamps the logger's identity + time.
+const LOAD_KINDS = [
+  { id: "debris_haul", en: "Debris haul", es: "Viaje de escombros" },
+  { id: "concrete", en: "Concrete", es: "Concreto" },
+  { id: "dirt", en: "Dirt", es: "Tierra" },
+  { id: "delivery", en: "Material delivery", es: "Entrega de materiales" },
+  { id: "other", en: "Other", es: "Otro" },
+] as const;
+const LOAD_UNITS = [
+  { id: "loads", en: "loads", es: "viajes" },
+  { id: "yards", en: "yards", es: "yardas" },
+  { id: "tons", en: "tons", es: "toneladas" },
+] as const;
+type LoadKind = (typeof LOAD_KINDS)[number]["id"];
+type LoadUnit = (typeof LOAD_UNITS)[number]["id"];
+
+function JobLoadsSection({ lang, jobId, refresh }: { lang: Lang; jobId: number; refresh: () => void }) {
+  const es = lang === "es";
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["job-loads", jobId], queryFn: () => api.listJobLoads({ jobId }) });
+  const emptyForm = { date: new Date().toLocaleDateString("en-CA"), kind: "debris_haul" as LoadKind, quantity: "1", unit: "loads" as LoadUnit, cost: "", vendor: "", notes: "", attested: true };
+  const [form, setForm] = useState(emptyForm);
+  const [file, setFile] = useState<File | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingPhotoUrl, setEditingPhotoUrl] = useState<string | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [error, setError] = useState("");
+  const refreshLoads = () => { void qc.invalidateQueries({ queryKey: ["job-loads", jobId] }); refresh(); };
+  const kindLabel = (id: string) => { const k = LOAD_KINDS.find((x) => x.id === id); return k ? (es ? k.es : k.en) : id; };
+  const unitLabel = (id: string) => { const u = LOAD_UNITS.find((x) => x.id === id); return u ? (es ? u.es : u.en) : id; };
+  const save = useMutation({
+    mutationFn: async () => {
+      let photo = { photoFilename: "", photoContentType: "" as "" | "image/jpeg" | "image/png" | "image/webp", photoDataBase64: "" };
+      if (file) {
+        const compressed = await compressImageFile(file, "photo");
+        const encoded = await fileToBase64(compressed);
+        photo = { photoFilename: compressed.name, photoContentType: compressed.type as "image/jpeg" | "image/png" | "image/webp", photoDataBase64: encoded.dataBase64 };
+      }
+      const payload = { date: form.date, kind: form.kind, quantity: form.quantity.trim() || "1", unit: form.unit, cost: form.cost.trim(), vendor: form.vendor.trim(), notes: form.notes.trim(), attested: form.attested, ...photo };
+      return editingId ? api.updateJobLoad({ id: editingId, removePhoto, ...payload }) : api.createJobLoad({ jobId, ...payload });
+    },
+    onSuccess: () => { setError(""); setForm(emptyForm); setFile(null); setEditingId(null); setEditingPhotoUrl(null); setRemovePhoto(false); refreshLoads(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteJobLoad({ id }),
+    onSuccess: () => { setError(""); refreshLoads(); },
+    onError: (e) => setError(actionErrorMessage(e)),
+  });
+  const loads = list.data?.loads ?? [];
+  return (
+    <FinModuleShell dot="#f97316" title={es ? "Cargas y viajes" : "Loads / dump runs"} count={loads.length}>
+      {list.data && loads.length > 0 ? (
+        <p className="muted">
+          {loads.length} {es ? "registros" : "logged"} · {es ? "Costo total" : "Total cost"} {usd(money(list.data.totalCost))}
+          {" · "}{es ? "incluido en los gastos del trabajo" : "included in this job's expenses"}
+        </p>
+      ) : null}
+      {loads.map((load) => (
+        <div className="photo-pair-card" key={load.id}>
+          <strong>{kindLabel(load.kind)} · {load.quantity} {unitLabel(load.unit)}</strong>
+          <span>
+            {formatDate(load.date, lang)}
+            {load.vendor ? ` · ${load.vendor}` : ""}
+            {" · "}{load.cost ? usd(money(load.cost)) : es ? "Solo comprobante" : "Proof only"}
+          </span>
+          {load.notes ? <span>{load.notes}</span> : null}
+          <span>
+            {es ? "Registrado por" : "Logged by"} {load.loggedByName || "—"}
+            {load.attested ? ` · ✓ ${es ? "Confirmado" : "Attested"}` : ""}
+          </span>
+          {load.photoUrl ? <img src={load.photoUrl} alt={load.photoFilename || kindLabel(load.kind)} loading="lazy" style={{ maxWidth: 160, borderRadius: 8 }} /> : null}
+          <div className="photo-pair-actions">
+            <button type="button" className="small-button" onClick={() => { setEditingId(load.id); setEditingPhotoUrl(load.photoUrl); setRemovePhoto(false); setFile(null); setForm({ date: load.date, kind: load.kind, quantity: load.quantity, unit: load.unit, cost: load.cost ?? "", vendor: load.vendor, notes: load.notes, attested: load.attested }); }}>
+              {es ? "Editar" : "Edit"}
+            </button>
+            <button type="button" className="small-button danger-text" disabled={remove.isPending} onClick={() => { if (window.confirm(es ? "¿Eliminar esta carga? También se quitará su gasto del trabajo." : "Delete this load? Its job expense is removed too.")) remove.mutate(load.id); }}>
+              {es ? "Eliminar" : "Delete"}
+            </button>
+          </div>
+        </div>
+      ))}
+      <form className="compact-form" onSubmit={(e) => { e.preventDefault(); if (form.date && form.quantity.trim()) save.mutate(); }}>
+        <div className="field-pair">
+          <label>
+            <span>{es ? "Fecha" : "Date"}</span>
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          </label>
+          <label>
+            <span>{es ? "Tipo" : "Kind"}</span>
+            <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as LoadKind })}>
+              {LOAD_KINDS.map((k) => <option key={k.id} value={k.id}>{es ? k.es : k.en}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="field-pair">
+          <label>
+            <span>{es ? "Cantidad" : "Quantity"}</span>
+            <input inputMode="decimal" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          </label>
+          <label>
+            <span>{es ? "Unidad" : "Unit"}</span>
+            <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value as LoadUnit })}>
+              {LOAD_UNITS.map((u) => <option key={u.id} value={u.id}>{es ? u.es : u.en}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="field-pair">
+          <label>
+            <span>{es ? "Costo ($) — vacío = solo comprobante" : "Cost ($) — blank = proof only"}</span>
+            <input inputMode="decimal" placeholder="0.00" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
+          </label>
+          <label>
+            <span>{es ? "Proveedor" : "Vendor"}</span>
+            <input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+          </label>
+        </div>
+        <label>
+          <span>{es ? "Notas" : "Notes"}</span>
+          <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </label>
+        <label>
+          <span>{es ? "Foto (opcional)" : "Photo (optional)"}</span>
+          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+        {editingId && editingPhotoUrl && !file ? (
+          <label>
+            <span>{es ? "Quitar la foto actual" : "Remove the current photo"}</span>
+            <input type="checkbox" checked={removePhoto} onChange={(e) => setRemovePhoto(e.target.checked)} />
+          </label>
+        ) : null}
+        <label>
+          <span>{es ? "Confirmo que esta carga se hizo como se registró" : "I confirm this load happened as logged"}</span>
+          <input type="checkbox" checked={form.attested} onChange={(e) => setForm({ ...form, attested: e.target.checked })} />
+        </label>
+        {error ? <p className="status error" role="alert">{error}</p> : null}
+        <div className="photo-pair-actions">
+          <button type="submit" className="primary-button" disabled={save.isPending || !form.date || !form.quantity.trim()}>
+            {save.isPending ? (es ? "Guardando…" : "Saving…") : editingId ? (es ? "Guardar cambios" : "Save changes") : es ? "Registrar carga" : "Log load"}
+          </button>
+          {editingId ? (
+            <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setEditingPhotoUrl(null); setRemovePhoto(false); setFile(null); setForm(emptyForm); }}>
+              {es ? "Cancelar" : "Cancel"}
+            </button>
+          ) : null}
+        </div>
+      </form>
+    </FinModuleShell>
+  );
+}
+
 function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, operations, contractSummary, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "quotes" | "operations" | "contractSummary" | "setScreen">) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
@@ -9880,6 +10036,7 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
         {operations && (
           <>
             <FinSelectionsSection lang={lang} jobId={jobId} job={job} data={operations} refresh={refresh} />
+            <JobLoadsSection lang={lang} jobId={jobId} refresh={refresh} />
             <FinDailyLogSection lang={lang} jobId={jobId} photos={photos} data={operations} refresh={refresh} />
             <FinPrivateNotesSection lang={lang} jobId={jobId} job={job} data={operations} refresh={refresh} />
             <FinPaymentsSection lang={lang} jobId={jobId} data={operations} refresh={refresh} setScreen={setScreen} />
