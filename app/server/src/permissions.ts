@@ -95,6 +95,14 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // Job loads (0095): deleting a load (which also removes its linked
   // job expense) is a record delete — Admin-only like every other.
   "deleteJobLoad",
+  // Safety (0096, OFFICE ONLY): ALL mutations are Admin-gated — running
+  // (creating) a toolbox-talk session, deleting one, and member
+  // credential create/update/delete. A signed attendance record and a
+  // person's license record are compliance paperwork, not working
+  // records, so Office staff can view them (OFFICE_ACTIONS below) but
+  // only an Admin can create or change them.
+  "createSafetySession", "deleteSafetySession",
+  "saveMemberCredential", "deleteMemberCredential",
   // Wave 2 Item 6: connecting the company's Stripe account is a
   // billing-tier act (like the billing portal session above).
   "startConnectOnboarding",
@@ -157,6 +165,15 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "getReputationInbox", "recordPostedReview",
   "getLeadCaptureInfo", "getLeadSourceReport",
   "getQuickBooksStatus", "runQuickBooksSync", "listQbSyncRecords",
+  // Safety (0096, OFFICE ONLY): the read surface — talk library, session
+  // lists/detail, the branded PDF proof export, member credential lists
+  // and the expiry dashboard. Office+ only: Field/crew members do NOT
+  // get a self-service view of their own credentials in v1 — there is
+  // no existing own-record read pattern in the permission map that
+  // would make it trivial, and credentials carry license numbers an
+  // admin office should control. Mutations are Admin-only (above).
+  "listSafetyTalks", "listSafetySessions", "getSafetySession",
+  "getSafetySessionPdf", "listMemberCredentials", "getSafetyDashboard",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

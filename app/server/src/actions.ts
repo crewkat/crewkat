@@ -43,6 +43,16 @@ import {
   resolveWorkSummaryRange,
   type WorkSummaryContent,
 } from "./workSummaries";
+import {
+  SAFETY_TALKS,
+  buildSafetySessionPdf,
+  credentialBucket,
+  daysUntilExpiry,
+  getSafetyTalk,
+  MEMBER_CREDENTIAL_TYPES,
+  MEMBER_CREDENTIAL_TYPE_LABELS,
+  type CredentialBucket,
+} from "./safety";
 import { authCodeClientResult } from "./auth-email";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
@@ -1013,7 +1023,8 @@ const BACKUP_TABLES = [
   "material_cost_items", "supplier_quotes", "purchase_orders", "equipment", "safety_talks", "incidents",
   "credentials", "crew_pay_rates", "completion_overrides", "marketplace_listings", "marketplace_listing_photos",
   "marketplace_requests", "marketplace_messages", "marketplace_booking_requests",
-  "document_links", "document_link_events", "work_summaries", "job_loads"
+  "document_links", "document_link_events", "work_summaries", "job_loads",
+  "safety_sessions", "safety_session_attendees", "member_credentials"
 ] as const;
 
 function sqlValue(value: BackupScalar) {
@@ -3943,6 +3954,147 @@ async function requireJobLoad(ctx: Ctx, db: ReturnType<Ctx["db"]>, loadId: numbe
   return { identity, job, load: row };
 }
 
+// ---------------------------------------------------------------------------
+// Safety (0096, SimplySub steals Item 3 — OFFICE ONLY): toolbox-talk
+// sessions + per-member credentials. The talk library is content data in
+// server/src/safety.ts; sessions snapshot the library talk's title +
+// bullets (EN) at run time. Permissions (permissions.ts): ALL mutations
+// are Admin-only; reads are Office+ — Field/crew have no Safety surface
+// in v1, including no self-service view of their own credentials.
+// ---------------------------------------------------------------------------
+
+const safetyTalkSchema = z.object({
+  slug: z.string(),
+  titleEn: z.string(),
+  titleEs: z.string(),
+  bulletsEn: z.array(z.string()),
+  bulletsEs: z.array(z.string()),
+});
+
+const safetySessionSchema = z.object({
+  id: z.number(),
+  jobId: z.number().nullable(),
+  jobLabel: z.string().nullable(),
+  date: z.string(),
+  talkSlug: z.string().nullable(),
+  title: z.string(),
+  titleEs: z.string(),
+  bullets: z.array(z.string()),
+  bulletsEs: z.array(z.string()),
+  customBody: z.string(),
+  presenterUserId: z.number().nullable(),
+  presenterName: z.string(),
+  signatureUrl: z.string().nullable(),
+  attendees: z.array(z.object({ userId: z.number().nullable(), name: z.string() })),
+  createdAt: z.string(),
+});
+
+const memberCredentialTypeSchema = z.enum(MEMBER_CREDENTIAL_TYPES);
+
+const memberCredentialSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  memberName: z.string(),
+  type: memberCredentialTypeSchema,
+  typeLabel: z.string(),
+  customLabel: z.string(),
+  number: z.string(),
+  expiresOn: z.string(),
+  daysRemaining: z.number().nullable(),
+  bucket: z.enum(["expired", "due30", "due90", "ok", "no_expiry"]),
+  attachmentUrl: z.string().nullable(),
+  attachmentFilename: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+/** Today as a YYYY-MM-DD key in UTC — the bucket math is date-string based. */
+function safetyTodayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseTalkPoints(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((b): b is string => typeof b === "string") : [];
+  } catch { return []; }
+}
+
+type SafetySessionRow = typeof schema.safetySessions.$inferSelect;
+
+async function safetySessionShape(ctx: Ctx, db: ReturnType<Ctx["db"]>, row: SafetySessionRow) {
+  const attendeeRows = await db.select().from(schema.safetySessionAttendees)
+    .where(eq(schema.safetySessionAttendees.sessionId, row.id))
+    .orderBy(schema.safetySessionAttendees.id);
+  let jobLabel: string | null = null;
+  if (row.jobId) {
+    const job = (await db.select({ clientName: schema.jobs.clientName, jobType: schema.jobs.jobType }).from(schema.jobs).where(eq(schema.jobs.id, row.jobId)).limit(1))[0];
+    if (job) jobLabel = `${job.clientName} · ${job.jobType}`;
+  }
+  const library = row.talkSlug ? getSafetyTalk(row.talkSlug) : null;
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    jobLabel,
+    date: row.sessionDate,
+    talkSlug: row.talkSlug,
+    title: row.talkTitle,
+    titleEs: library?.titleEs ?? "",
+    bullets: parseTalkPoints(row.talkPointsJson),
+    bulletsEs: library?.bulletsEs ?? [],
+    customBody: row.customBody,
+    presenterUserId: row.presenterUserId,
+    presenterName: row.presenterName,
+    signatureUrl: row.signatureBlobKey ? await ctx.blobs.getUrl(row.signatureBlobKey) : null,
+    attendees: attendeeRows.map((a) => ({ userId: a.userId, name: a.attendeeName })),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+async function requireSafetySession(ctx: Ctx, db: ReturnType<Ctx["db"]>, sessionId: number) {
+  const identity = workspaceIdentity(ctx);
+  const row = (await db.select().from(schema.safetySessions).where(eq(schema.safetySessions.id, sessionId)).limit(1))[0];
+  if (!row || row.companyId !== identity.workspaceCompanyId) throw new Error("Safety session not found.");
+  return { identity, session: row };
+}
+
+/** Resolve a team member of THIS company, or throw — presenters,
+ *  attendees and credential owners must all belong to the company. */
+async function requireCompanyMember(db: ReturnType<Ctx["db"]>, companyId: number, userId: number) {
+  const member = (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers)
+    .where(and(eq(schema.authUsers.id, userId), eq(schema.authUsers.companyId, companyId))).limit(1))[0];
+  if (!member) throw new Error("Team member not found.");
+  return member;
+}
+
+type MemberCredentialRow = typeof schema.memberCredentials.$inferSelect;
+
+async function memberCredentialShape(ctx: Ctx, row: MemberCredentialRow, today: string = safetyTodayKey()) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    memberName: row.memberName,
+    type: row.type,
+    typeLabel: row.type === "custom" && row.customLabel ? row.customLabel : MEMBER_CREDENTIAL_TYPE_LABELS[row.type],
+    customLabel: row.customLabel,
+    number: row.number,
+    expiresOn: row.expiresOn,
+    daysRemaining: daysUntilExpiry(row.expiresOn, today),
+    bucket: credentialBucket(row.expiresOn, today) as CredentialBucket,
+    attachmentUrl: row.attachmentBlobKey ? await ctx.blobs.getUrl(row.attachmentBlobKey) : null,
+    attachmentFilename: row.attachmentFilename,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+async function requireMemberCredential(ctx: Ctx, db: ReturnType<Ctx["db"]>, credentialId: number) {
+  const identity = workspaceIdentity(ctx);
+  const row = (await db.select().from(schema.memberCredentials).where(eq(schema.memberCredentials.id, credentialId)).limit(1))[0];
+  if (!row || row.companyId !== identity.workspaceCompanyId) throw new Error("Credential not found.");
+  return { identity, credential: row };
+}
+
 export const BaseActions = {
   // Phase 4: Google Play Billing (TWA). Spread first so the core actions below
   // keep their existing order and names unchanged.
@@ -4878,6 +5030,10 @@ export const BaseActions = {
     const loadRows = await db.select({ id: schema.jobLoads.id, expenseId: schema.jobLoads.expenseId, photoBlobKey: schema.jobLoads.photoBlobKey }).from(schema.jobLoads).where(eq(schema.jobLoads.jobId, jobId));
     for (const row of loadRows) if (row.photoBlobKey) blobKeys.add(row.photoBlobKey);
     const loadExpenseIds = loadRows.map((row) => row.expenseId).filter((id): id is number => id != null);
+    // Safety sessions (0096) linked to this job are job-owned too: their
+    // attendee rows + presenter signature blobs die with the job.
+    const safetySessionRows = await db.select({ id: schema.safetySessions.id, signatureBlobKey: schema.safetySessions.signatureBlobKey }).from(schema.safetySessions).where(eq(schema.safetySessions.jobId, jobId));
+    for (const row of safetySessionRows) if (row.signatureBlobKey) blobKeys.add(row.signatureBlobKey);
     const summaryIdRows = await db.select({ id: schema.workSummaries.id }).from(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId));
     const summaryLinkRows = summaryIdRows.length ? await db.select({ id: schema.documentLinks.id }).from(schema.documentLinks).where(and(eq(schema.documentLinks.documentKind, "work_summary"), inArray(schema.documentLinks.documentId, summaryIdRows.map((row) => row.id)))) : [];
     const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
@@ -4927,6 +5083,8 @@ export const BaseActions = {
       db.delete(schema.completionOverrides).where(eq(schema.completionOverrides.jobId, jobId)),
       db.delete(schema.workSummaries).where(eq(schema.workSummaries.jobId, jobId)),
       db.delete(schema.jobLoads).where(eq(schema.jobLoads.jobId, jobId)),
+      ...(safetySessionRows.length ? [db.delete(schema.safetySessionAttendees).where(inArray(schema.safetySessionAttendees.sessionId, safetySessionRows.map((row) => row.id)))] : []),
+      db.delete(schema.safetySessions).where(eq(schema.safetySessions.jobId, jobId)),
       db.delete(schema.jobs).where(eq(schema.jobs.id, jobId)),
     ];
     await db.batch(cascade as [never, ...never[]]);
@@ -6473,6 +6631,24 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   listJobLoads: defineAction({ request: z.object({ jobId: z.number().int().positive() }), response: z.object({ loads: z.array(jobLoadSchema), count: z.number(), totalCost: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { job } = await requireJobCompany(ctx, db, args.jobId); const rows = await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.jobId, job.id)).orderBy(desc(schema.jobLoads.loadDate), desc(schema.jobLoads.id)); const total = rows.reduce((sum, row) => sum + (row.cost ? Number(row.cost) || 0 : 0), 0); return { loads: await Promise.all(rows.map((row) => jobLoadShape(ctx, row))), count: rows.length, totalCost: total.toFixed(2) }; } }),
   updateJobLoad: defineAction({ request: jobLoadInputSchema.extend({ id: z.number().int().positive(), removePhoto: z.boolean().default(false) }), response: z.object({ load: jobLoadSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { load } = await requireJobLoad(ctx, db, args.id); let photoBlobKey = load.photoBlobKey; let photoFilename = load.photoFilename; let photoContentType = load.photoContentType; let staleBlobKey: string | null = null; if (args.photoDataBase64 && args.photoContentType) { photoBlobKey = `job-loads/${load.jobId}/${crypto.randomUUID()}`; await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType }); photoFilename = args.photoFilename; photoContentType = args.photoContentType; staleBlobKey = load.photoBlobKey; } else if (args.removePhoto) { staleBlobKey = load.photoBlobKey; photoBlobKey = null; photoFilename = ""; photoContentType = ""; } const now = new Date(); await db.update(schema.jobLoads).set({ loadDate: args.date, kind: args.kind, quantity: args.quantity, unit: args.unit, cost: normalizeJobLoadCost(args.cost), vendor: args.vendor, notes: args.notes, photoBlobKey, photoFilename, photoContentType, attested: args.attested, attestedAt: args.attested ? (load.attested && load.attestedAt ? load.attestedAt : now) : null, updatedAt: now }).where(eq(schema.jobLoads.id, load.id)); if (staleBlobKey && staleBlobKey !== photoBlobKey) { try { await ctx.blobs.delete(staleBlobKey); } catch { /* best-effort blob cleanup, like sibling updates */ } } const row = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)).limit(1))[0]!; await syncJobLoadExpense(db, row); const synced = (await db.select().from(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)).limit(1))[0]!; ctx.invalidateQueries(); return { load: await jobLoadShape(ctx, synced) }; } }),
   deleteJobLoad: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const { load } = await requireJobLoad(ctx, db, args.id); if (load.expenseId) { await db.delete(schema.businessExpenses).where(eq(schema.businessExpenses.id, load.expenseId)); } await db.delete(schema.jobLoads).where(eq(schema.jobLoads.id, load.id)); if (load.photoBlobKey) { try { await ctx.blobs.delete(load.photoBlobKey); } catch { /* best-effort blob cleanup, like sibling deletes */ } } ctx.invalidateQueries(); return { ok: true }; } }),
+
+  // ---------------------------------------------------------------------
+  // Safety (0096): toolbox talks + member credentials (Office only).
+  // Reads are Office+; every mutation below is Admin-classified in
+  // permissions.ts, so protectActions rejects Office/Field callers
+  // before these handlers run.
+  // ---------------------------------------------------------------------
+  listSafetyTalks: defineAction({ request: z.object({}), response: z.object({ talks: z.array(safetyTalkSchema) }), async handler() { return { talks: SAFETY_TALKS.map((t) => ({ slug: t.slug, titleEn: t.titleEn, titleEs: t.titleEs, bulletsEn: t.bulletsEn, bulletsEs: t.bulletsEs })) }; } }),
+  listSafetySessions: defineAction({ request: z.object({ jobId: z.number().int().positive().nullable().default(null), memberUserId: z.number().int().positive().nullable().default(null) }), response: z.object({ sessions: z.array(safetySessionSchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const identity = workspaceIdentity(ctx); let rows = await db.select().from(schema.safetySessions).where(eq(schema.safetySessions.companyId, identity.workspaceCompanyId)).orderBy(desc(schema.safetySessions.sessionDate), desc(schema.safetySessions.id)); if (args.jobId) rows = rows.filter((r) => r.jobId === args.jobId); if (args.memberUserId) { const attended = new Set((await db.select({ sessionId: schema.safetySessionAttendees.sessionId }).from(schema.safetySessionAttendees).where(eq(schema.safetySessionAttendees.userId, args.memberUserId))).map((a) => a.sessionId)); rows = rows.filter((r) => r.presenterUserId === args.memberUserId || attended.has(r.id)); } return { sessions: await Promise.all(rows.map((row) => safetySessionShape(ctx, db, row))) }; } }),
+  getSafetySession: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ session: safetySessionSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { session } = await requireSafetySession(ctx, db, args.id); return { session: await safetySessionShape(ctx, db, session) }; } }),
+  createSafetySession: defineAction({ request: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), talkSlug: z.string().max(80).default(""), lang: z.enum(["en", "es"]).default("en"), customTitle: z.string().trim().max(200).default(""), customBody: z.string().trim().max(5000).default(""), presenterUserId: z.number().int().positive(), attendeeUserIds: z.array(z.number().int().positive()).max(100).default([]), jobId: z.number().int().positive().nullable().default(null), signatureDataBase64: z.string().max(5_000_000).default("") }), response: z.object({ session: safetySessionSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const identity = workspaceIdentity(ctx); const companyId = identity.workspaceCompanyId; const presenter = await requireCompanyMember(db, companyId, args.presenterUserId); const attendeeIds = [...new Set(args.attendeeUserIds)]; const attendees: Array<{ id: number; name: string }> = []; for (const uid of attendeeIds) attendees.push(await requireCompanyMember(db, companyId, uid)); let job: typeof schema.jobs.$inferSelect | null = null; if (args.jobId) { const found = await requireJobCompany(ctx, db, args.jobId); job = found.job; } const library = args.talkSlug ? getSafetyTalk(args.talkSlug) : null; if (args.talkSlug && !library) throw new Error("That talk is not in the library."); if (!library && !args.customTitle) throw new Error("Pick a library talk or enter a custom talk title."); const title = library ? (args.lang === "es" ? library.titleEs : library.titleEn) : args.customTitle; const bullets = library ? (args.lang === "es" ? library.bulletsEs : library.bulletsEn) : []; const now = new Date(); const rows = await db.insert(schema.safetySessions).values({ companyId, jobId: job?.id ?? null, sessionDate: args.date, talkSlug: library?.slug ?? null, talkTitle: title, talkPointsJson: JSON.stringify(bullets), customBody: args.customBody, presenterUserId: presenter.id, presenterName: presenter.name, signatureBlobKey: null, createdByUserId: identity.workspaceUserId, createdAt: now, updatedAt: now }).returning({ id: schema.safetySessions.id }); const made = rows[0]; if (!made) throw new Error("Could not save the session."); let signatureBlobKey: string | null = null; if (args.signatureDataBase64) { signatureBlobKey = `safety-sessions/${made.id}/presenter-signature.png`; await ctx.blobs.put(signatureBlobKey, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" }); await db.update(schema.safetySessions).set({ signatureBlobKey, updatedAt: new Date() }).where(eq(schema.safetySessions.id, made.id)); } if (attendees.length) { await db.insert(schema.safetySessionAttendees).values(attendees.map((a) => ({ companyId, sessionId: made.id, userId: a.id, attendeeName: a.name, createdAt: now }))); } const row = (await db.select().from(schema.safetySessions).where(eq(schema.safetySessions.id, made.id)).limit(1))[0]!; ctx.invalidateQueries(); return { session: await safetySessionShape(ctx, db, row) }; } }),
+  deleteSafetySession: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const { session } = await requireSafetySession(ctx, db, args.id); await db.delete(schema.safetySessionAttendees).where(eq(schema.safetySessionAttendees.sessionId, session.id)); await db.delete(schema.safetySessions).where(eq(schema.safetySessions.id, session.id)); if (session.signatureBlobKey) { try { await ctx.blobs.delete(session.signatureBlobKey); } catch { /* best-effort blob cleanup, like sibling deletes */ } } ctx.invalidateQueries(); return { ok: true }; } }),
+  getSafetySessionPdf: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ pdfBase64: z.string(), filename: z.string() }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const { session } = await requireSafetySession(ctx, db, args.id); const shape = await safetySessionShape(ctx, db, session); const settingsRow = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, session.companyId)).limit(1))[0] ?? (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0]; let signatureDataUrl: string | null = null; if (session.signatureBlobKey) { try { const bytes = await ctx.blobs.get(session.signatureBlobKey); if (bytes && bytes.length > 0) signatureDataUrl = `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`; } catch { /* the signature line still certifies */ } } const built = buildSafetySessionPdf({ companyName: settingsRow?.companyName ?? "", companyPhone: settingsRow?.phone ?? "", companyEmail: settingsRow?.email ?? "", companyAddress: settingsRow?.address ?? "", licenseNumber: settingsRow?.licenseNumber ?? "", accentColor: settingsRow?.accentColor ?? "#1f5a4a", title: shape.title, date: shape.date, jobLabel: shape.jobLabel, presenterName: shape.presenterName, bullets: shape.bullets, customBody: shape.customBody, attendees: shape.attendees.map((a) => a.name), signatureDataUrl }); if (built.bytes.length < 100 || String.fromCharCode(...built.bytes.slice(0, 5)) !== "%PDF-") throw new Error("The session PDF could not be generated."); return { pdfBase64: Buffer.from(built.bytes).toString("base64"), filename: built.filename }; } }),
+  listMemberCredentials: defineAction({ request: z.object({ userId: z.number().int().positive().nullable().default(null) }), response: z.object({ credentials: z.array(memberCredentialSchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const identity = workspaceIdentity(ctx); let rows = await db.select().from(schema.memberCredentials).where(eq(schema.memberCredentials.companyId, identity.workspaceCompanyId)).orderBy(schema.memberCredentials.expiresOn, schema.memberCredentials.id); if (args.userId) rows = rows.filter((r) => r.userId === args.userId); return { credentials: await Promise.all(rows.map((row) => memberCredentialShape(ctx, row))) }; } }),
+  saveMemberCredential: defineAction({ request: z.object({ id: z.number().int().positive().nullable().default(null), userId: z.number().int().positive(), type: memberCredentialTypeSchema, customLabel: z.string().trim().max(120).default(""), number: z.string().trim().max(120).default(""), expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""), attachmentFilename: z.string().trim().max(240).default(""), attachmentContentType: z.string().max(120).default(""), attachmentDataBase64: z.string().max(8_000_000).default(""), removeAttachment: z.boolean().default(false) }), response: z.object({ credential: memberCredentialSchema }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const identity = workspaceIdentity(ctx); const companyId = identity.workspaceCompanyId; const member = await requireCompanyMember(db, companyId, args.userId); if (args.type === "custom" && !args.customLabel) throw new Error("Name the custom credential type."); const now = new Date(); if (args.id) { const { credential } = await requireMemberCredential(ctx, db, args.id); let attachmentBlobKey = credential.attachmentBlobKey; let attachmentFilename = credential.attachmentFilename; let attachmentContentType = credential.attachmentContentType; let staleBlobKey: string | null = null; if (args.attachmentDataBase64) { attachmentBlobKey = `member-credentials/${credential.id}/${crypto.randomUUID()}`; await ctx.blobs.put(attachmentBlobKey, Buffer.from(args.attachmentDataBase64, "base64"), { contentType: args.attachmentContentType || "application/octet-stream" }); attachmentFilename = args.attachmentFilename; attachmentContentType = args.attachmentContentType; staleBlobKey = credential.attachmentBlobKey; } else if (args.removeAttachment) { staleBlobKey = credential.attachmentBlobKey; attachmentBlobKey = null; attachmentFilename = ""; attachmentContentType = ""; } await db.update(schema.memberCredentials).set({ userId: member.id, memberName: member.name, type: args.type, customLabel: args.customLabel, number: args.number, expiresOn: args.expiresOn, attachmentBlobKey, attachmentFilename, attachmentContentType, updatedAt: now }).where(eq(schema.memberCredentials.id, credential.id)); if (staleBlobKey && staleBlobKey !== attachmentBlobKey) { try { await ctx.blobs.delete(staleBlobKey); } catch { /* best-effort */ } } const row = (await db.select().from(schema.memberCredentials).where(eq(schema.memberCredentials.id, credential.id)).limit(1))[0]!; ctx.invalidateQueries(); return { credential: await memberCredentialShape(ctx, row) }; } const rows = await db.insert(schema.memberCredentials).values({ companyId, userId: member.id, memberName: member.name, type: args.type, customLabel: args.customLabel, number: args.number, expiresOn: args.expiresOn, attachmentBlobKey: null, attachmentFilename: "", attachmentContentType: "", createdAt: now, updatedAt: now }).returning({ id: schema.memberCredentials.id }); const made = rows[0]; if (!made) throw new Error("Could not save the credential."); if (args.attachmentDataBase64) { const key = `member-credentials/${made.id}/${crypto.randomUUID()}`; await ctx.blobs.put(key, Buffer.from(args.attachmentDataBase64, "base64"), { contentType: args.attachmentContentType || "application/octet-stream" }); await db.update(schema.memberCredentials).set({ attachmentBlobKey: key, attachmentFilename: args.attachmentFilename, attachmentContentType: args.attachmentContentType, updatedAt: new Date() }).where(eq(schema.memberCredentials.id, made.id)); } const row = (await db.select().from(schema.memberCredentials).where(eq(schema.memberCredentials.id, made.id)).limit(1))[0]!; ctx.invalidateQueries(); return { credential: await memberCredentialShape(ctx, row) }; } }),
+  deleteMemberCredential: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> { const db = ctx.db<typeof schema>(); const { credential } = await requireMemberCredential(ctx, db, args.id); await db.delete(schema.memberCredentials).where(eq(schema.memberCredentials.id, credential.id)); if (credential.attachmentBlobKey) { try { await ctx.blobs.delete(credential.attachmentBlobKey); } catch { /* best-effort blob cleanup */ } } ctx.invalidateQueries(); return { ok: true }; } }),
+  getSafetyDashboard: defineAction({ request: z.object({ today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }), response: z.object({ today: z.string(), sessionCount: z.number(), sessionsThisMonth: z.number(), credentialCount: z.number(), buckets: z.object({ expired: z.array(memberCredentialSchema), due30: z.array(memberCredentialSchema), due90: z.array(memberCredentialSchema), ok: z.array(memberCredentialSchema), noExpiry: z.array(memberCredentialSchema) }), counts: z.object({ expired: z.number(), due30: z.number(), due90: z.number(), ok: z.number(), noExpiry: z.number() }), recentSessions: z.array(safetySessionSchema) }), async handler(ctx, args) { const db = ctx.db<typeof schema>(); const identity = workspaceIdentity(ctx); const companyId = identity.workspaceCompanyId; const today = args.today ?? safetyTodayKey(); const credRows = await db.select().from(schema.memberCredentials).where(eq(schema.memberCredentials.companyId, companyId)).orderBy(schema.memberCredentials.expiresOn, schema.memberCredentials.id); const shaped = await Promise.all(credRows.map((row) => memberCredentialShape(ctx, row, today))); const buckets = { expired: shaped.filter((c) => c.bucket === "expired"), due30: shaped.filter((c) => c.bucket === "due30"), due90: shaped.filter((c) => c.bucket === "due90"), ok: shaped.filter((c) => c.bucket === "ok"), noExpiry: shaped.filter((c) => c.bucket === "no_expiry") }; const sessionRows = await db.select().from(schema.safetySessions).where(eq(schema.safetySessions.companyId, companyId)).orderBy(desc(schema.safetySessions.sessionDate), desc(schema.safetySessions.id)); const monthPrefix = today.slice(0, 7); return { today, sessionCount: sessionRows.length, sessionsThisMonth: sessionRows.filter((r) => r.sessionDate.startsWith(monthPrefix)).length, credentialCount: shaped.length, buckets, counts: { expired: buckets.expired.length, due30: buckets.due30.length, due90: buckets.due90.length, ok: buckets.ok.length, noExpiry: buckets.noExpiry.length }, recentSessions: await Promise.all(sessionRows.slice(0, 10).map((row) => safetySessionShape(ctx, db, row))) }; } }),
+
   // Public (no session): the token IS the credential, resolved through
   // the same document_links machinery as resolveDocumentLink (hash or
   // short code; revoked/expired rejected identically). Records the view

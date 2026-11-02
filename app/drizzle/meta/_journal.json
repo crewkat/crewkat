@@ -666,6 +666,13 @@
       "when": 1791738700000,
       "tag": "0095_job_loads",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1791738800000,
+      "tag": "0096_safety",
+      "breakpoints": true
     }
   ]
 }

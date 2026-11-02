@@ -608,6 +608,78 @@ export const jobLoads = sqliteTable("job_loads", {
   index("job_loads_date_idx").on(table.loadDate),
 ]);
 
+// Safety sessions (0096, SimplySub steals Item 3 — OFFICE ONLY): one row
+// per toolbox talk actually run. A library talk's slug is stored AND its
+// title + bullets are snapshotted (talkTitle / talkPointsJson) at run
+// time, so editing the content library later never rewrites a signed
+// attendance record. Custom talks carry talkSlug = NULL plus the typed
+// title/body. The presenter is a team member (auth_users id, nullable
+// only so a deleted login never blocks the record; presenterName is the
+// snapshot shown on the PDF). The presenter's drawn signature follows
+// the punch-signoff storage convention: a PNG blob key, bytes in blob
+// storage. Job-linked sessions are job-owned: deleting the job deletes
+// its sessions + attendee rows (explicit cascade in deleteJob, matching
+// the schema FK below).
+export const safetySessions = sqliteTable("safety_sessions", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+  sessionDate: text("session_date").notNull(),
+  talkSlug: text("talk_slug"),
+  talkTitle: text("talk_title").notNull(),
+  talkPointsJson: text("talk_points_json").notNull().default("[]"),
+  customBody: text("custom_body").notNull().default(""),
+  presenterUserId: integer("presenter_user_id"),
+  presenterName: text("presenter_name").notNull().default(""),
+  signatureBlobKey: text("signature_blob_key"),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("safety_sessions_company_idx").on(table.companyId),
+  index("safety_sessions_job_idx").on(table.jobId),
+  index("safety_sessions_date_idx").on(table.sessionDate),
+]);
+
+export const safetySessionAttendees = sqliteTable("safety_session_attendees", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull().references(() => safetySessions.id, { onDelete: "cascade" }),
+  userId: integer("user_id"),
+  attendeeName: text("attendee_name").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("safety_session_attendees_session_idx").on(table.sessionId),
+  index("safety_session_attendees_user_idx").on(table.userId),
+]);
+
+// Member credentials (0096): licenses/cards held by a PERSON on the team
+// (auth_users id) — contractor license, OSHA 10/30, CPR/First Aid, EPA
+// RRP, driver's license, or a custom kind (customLabel carries its name).
+// Distinct from the legacy `credentials` table (business/subcontractor
+// paperwork). expiresOn "" = no expiry on file (dashboard bucket
+// "no_expiry", never counted as OK). The optional file/photo attachment
+// follows the job-loads blob pattern (key + filename + content type).
+export const memberCredentials = sqliteTable("member_credentials", {
+  companyId: integer("company_id").notNull().default(1),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  memberName: text("member_name").notNull().default(""),
+  type: text("type", { enum: ["contractor_license", "osha_10", "osha_30", "cpr_first_aid", "epa_rrp", "drivers_license", "custom"] }).notNull().default("custom"),
+  customLabel: text("custom_label").notNull().default(""),
+  number: text("number").notNull().default(""),
+  expiresOn: text("expires_on").notNull().default(""),
+  attachmentBlobKey: text("attachment_blob_key"),
+  attachmentFilename: text("attachment_filename").notNull().default(""),
+  attachmentContentType: text("attachment_content_type").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  index("member_credentials_company_idx").on(table.companyId),
+  index("member_credentials_user_idx").on(table.userId),
+  index("member_credentials_expiry_idx").on(table.expiresOn),
+]);
+
 export const completionCertificates = sqliteTable("completion_certificates", {
   companyId: integer("company_id").notNull().default(1),
   id: integer("id").primaryKey({ autoIncrement: true }),

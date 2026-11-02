@@ -308,7 +308,79 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "promotions" | "reputation" | "money" | "settings" | "team" | "admin";
+export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "promotions" | "reputation" | "money" | "settings" | "team" | "admin" | "safety";
+
+/* ---------- Safety (0096): toolbox talks + member credentials ----------
+   Mirrors the server payloads in server/src/actions.ts (safetyTalkSchema /
+   safetySessionSchema / memberCredentialSchema / getSafetyDashboard).
+   Office-only surface; mutations are Admin-only server-side. */
+
+export interface SafetyTalk {
+  slug: string;
+  titleEn: string;
+  titleEs: string;
+  bulletsEn: string[];
+  bulletsEs: string[];
+}
+
+export interface SafetySession {
+  id: number;
+  jobId: number | null;
+  jobLabel: string | null;
+  date: string;
+  talkSlug: string | null;
+  title: string;
+  titleEs: string;
+  bullets: string[];
+  bulletsEs: string[];
+  customBody: string;
+  presenterUserId: number | null;
+  presenterName: string;
+  signatureUrl: string | null;
+  attendees: { userId: number | null; name: string }[];
+  createdAt: string;
+}
+
+export type MemberCredentialType = "contractor_license" | "osha_10" | "osha_30" | "cpr_first_aid" | "epa_rrp" | "drivers_license" | "custom";
+
+export const MEMBER_CREDENTIAL_TYPES: { id: MemberCredentialType; label: string }[] = [
+  { id: "contractor_license", label: "Contractor license" },
+  { id: "osha_10", label: "OSHA 10" },
+  { id: "osha_30", label: "OSHA 30" },
+  { id: "cpr_first_aid", label: "CPR / First Aid" },
+  { id: "epa_rrp", label: "EPA RRP" },
+  { id: "drivers_license", label: "Driver's license" },
+  { id: "custom", label: "Custom" },
+];
+
+export type CredentialBucket = "expired" | "due30" | "due90" | "ok" | "no_expiry";
+
+export interface MemberCredential {
+  id: number;
+  userId: number;
+  memberName: string;
+  type: MemberCredentialType;
+  typeLabel: string;
+  customLabel: string;
+  number: string;
+  expiresOn: string;
+  daysRemaining: number | null;
+  bucket: CredentialBucket;
+  attachmentUrl: string | null;
+  attachmentFilename: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SafetyDashboard {
+  today: string;
+  sessionCount: number;
+  sessionsThisMonth: number;
+  credentialCount: number;
+  buckets: Record<"expired" | "due30" | "due90" | "ok" | "noExpiry", MemberCredential[]>;
+  counts: Record<"expired" | "due30" | "due90" | "ok" | "noExpiry", number>;
+  recentSessions: SafetySession[];
+}
 
 /* ---------- Schedule (Track 1b) ----------
    Mirrors the server appointmentSchema — the same records the phone

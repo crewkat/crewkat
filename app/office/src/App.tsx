@@ -28,6 +28,7 @@ import { JobsView } from "./views/Jobs";
 import { MarketplaceView } from "./views/Marketplace";
 import { MoneyView } from "./views/Money";
 import { PromotionsView } from "./views/Promotions";
+import { SafetyView } from "./views/Safety";
 import { ReputationView } from "./views/Reputation";
 import { PipelineView } from "./views/Pipeline";
 import { ScheduleView } from "./views/Schedule";
@@ -46,6 +47,7 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "schedule", label: "Schedule", icon: "📅" },
   { key: "marketplace", label: "Marketplace", icon: "🏪" },
   { key: "promotions", label: "Promotions", icon: "✉" },
+  { key: "safety", label: "Safety", icon: "⛑" },
   { key: "reputation", label: "Reputation", icon: "★" },
   { key: "money", label: "Money", icon: "$" },
   { key: "settings", label: "Settings", icon: "⚙" },
@@ -243,7 +245,7 @@ export function App() {
           </div>
         </div>
         <nav className="nav" aria-label="Office">
-          {NAV.filter((item) => (item.key !== "team" || user.teamRole === "admin") && (item.key !== "admin" || canAdmin)).map((item) => (
+          {NAV.filter((item) => (item.key !== "team" || user.teamRole === "admin") && (item.key !== "admin" || canAdmin) && (item.key !== "safety" || user.teamRole !== "field")).map((item) => (
             <button
               key={item.key}
               type="button"
@@ -309,6 +311,7 @@ export function App() {
           {view === "schedule" ? <ScheduleView onOpenJob={openJob} canDelete={user.teamRole === "admin"} /> : null}
           {view === "marketplace" ? <MarketplaceView /> : null}
           {view === "promotions" ? <PromotionsView canSend={user.teamRole === "admin"} /> : null}
+          {view === "safety" && user.teamRole !== "field" ? <SafetyView canManage={user.teamRole === "admin"} /> : null}
           {view === "reputation" ? <ReputationView canDelete={user.teamRole === "admin"} /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} userName={user.name} seeMoney={user.access.seeMoney} /> : null}
