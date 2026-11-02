@@ -92,6 +92,12 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  createOfficeStripeCheckout: {
+    request: z.object({ companyId: z.number().int().positive(), email: z.string().email().max(200), plan: z.enum(["monthly", "annual", "founding"]) }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   verifyStripeWebhook: {
     request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
     response: z.object({
@@ -115,6 +121,7 @@ export const privileged = definePrivilegedContracts({
       paymentMethodType: z.string().nullable(),
       paymentStatus: z.string().nullable(),
       connectAccountId: z.string().nullable(),
+      priceId: z.string().nullable(),
     }),
     capabilities: [],
     timeoutMs: 20_000,
@@ -144,6 +151,7 @@ export const privileged = definePrivilegedContracts({
       paymentMethodType: z.string().nullable(),
       paymentStatus: z.string().nullable(),
       connectAccountId: z.string().nullable(),
+      priceId: z.string().nullable(),
     }),
     capabilities: [],
     timeoutMs: 20_000,

@@ -106,6 +106,11 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   // Wave 2 Item 6: connecting the company's Stripe account is a
   // billing-tier act (like the billing portal session above).
   "startConnectOnboarding",
+  // Office billing (0097, Item 5): the company-level Crewkat Office
+  // subscription — plan state read, checkout, and billing-portal
+  // session are company-billing acts, Admin-only like the Premium
+  // billing actions above.
+  "getOfficeBilling", "startOfficeCheckout", "createOfficeBillingPortalSession",
 ]);
 
 export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
@@ -397,6 +402,42 @@ export const MONEY_EXPORT_ACTIONS: ReadonlySet<string> = new Set([
   // same switch as the exports it reverses.
   "previewInvoiceFlyImport", "runInvoiceFlyImport",
 ]);
+
+// ---------------------------------------------------------------------
+// Office billing enforcement classification (0097, Item 5).
+//
+// OFFICE_BILLING_ENABLED (default OFF) makes a lapsed company's Office
+// READ-ONLY. The gate (officeBilling.ts assertOfficeBillingAllows, run
+// from protectActions) fires only for calls tagged with the Office
+// surface signal, and only for MUTATIONS. An action counts as an Office
+// READ when its name starts with get / list / export / preview (the
+// repo's read naming convention) or it is in the small explicit set
+// below of reads whose names don't follow the convention. Everything
+// else called from the Office surface is treated as a mutation — for
+// the handful of borderline generators (generateCampaignContent,
+// verifyBackupRoundTrip) being blocked while lapsed is the safe side.
+//
+// EXEMPT: the actions a lapsed company must always be able to call —
+// the Office billing actions themselves (the upgrade path), Premium
+// billing (Premium is a separate subscription and is never affected by
+// Office enforcement), support (so they can ask for help), and the
+// Play-required self-service account deletion.
+export const OFFICE_BILLING_EXEMPT_ACTIONS: ReadonlySet<string> = new Set([
+  "getOfficeBilling", "startOfficeCheckout", "createOfficeBillingPortalSession",
+  "getSubscription", "getBillingOverview", "createBillingPortalSession", "startPremiumCheckout",
+  "submitSupportReport", "replyToOwnSupportReport", "userSupportThread", "userSupportThreads",
+  "deleteMyAccount",
+]);
+
+const OFFICE_READ_NAME_EXCEPTIONS: ReadonlySet<string> = new Set([
+  "marketplaceConversation", "marketplaceConversations", "globalSearch",
+  "renderPdfPreview", "checkSmsCap", "craneRunGetChampion", "craneRunGetLeaderboard",
+]);
+
+export function isOfficeReadAction(actionName: string): boolean {
+  if (OFFICE_READ_NAME_EXCEPTIONS.has(actionName)) return true;
+  return actionName.startsWith("get") || actionName.startsWith("list") || actionName.startsWith("export") || actionName.startsWith("preview");
+}
 
 const SWITCH_LABELS: Record<AccessSwitch, string> = {
   seeMoney: "seeing money totals",

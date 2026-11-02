@@ -1189,6 +1189,19 @@ export const companies = sqliteTable("companies", {
   id: integer("id").primaryKey(),
   crewCode: text("crew_code").unique(),
   tier: text("tier", { enum: ["app", "office"] }).notNull().default("office"),
+  // Office subscription billing (0097, SimplySub steals Item 5): the
+  // per-company Crewkat Office plan state, maintained by the
+  // subscriptions-account Stripe webhook (see server/src/officeBilling.ts).
+  // officePlanState: "none" (never subscribed), "founding" (active on the
+  // $39 founding price), "active", "past_due", "canceled".
+  // officeFoundingGrantedAt doubles as the founding counter source:
+  // grants used = COUNT(companies WHERE office_founding_granted_at IS
+  // NOT NULL), capped at 100 (see officeBilling.ts).
+  officePlanState: text("office_plan_state", { enum: ["none", "founding", "active", "past_due", "canceled"] }).notNull().default("none"),
+  officeFoundingGrantedAt: integer("office_founding_granted_at", { mode: "timestamp_ms" }),
+  officeStripeCustomerId: text("office_stripe_customer_id"),
+  officeStripeSubscriptionId: text("office_stripe_subscription_id"),
+  officeCurrentPeriodEnd: integer("office_current_period_end", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

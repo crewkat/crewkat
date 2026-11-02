@@ -63,8 +63,8 @@ const entries: Array<{ idx: number; when: number; tag: string }> = journal.entri
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
-check("newest migration tag is 0096_safety", last.tag === "0096_safety", last.tag);
-check("newest migration idx is 95", last.idx === 95, String(last.idx));
+check("newest migration tag is 0097_office_billing", last.tag === "0097_office_billing", last.tag);
+check("newest migration idx is 96", last.idx === 96, String(last.idx));
 
 // --- 2. Scratch DB + migrations --------------------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-t2-"));

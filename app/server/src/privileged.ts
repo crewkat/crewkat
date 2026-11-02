@@ -100,6 +100,21 @@ export const privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20_000,
   },
+  // Office billing (0097, Item 5): the COMPANY-level Crewkat Office
+  // subscription checkout. Same subscriptions Stripe account as
+  // createStripeCheckout above (STRIPE_SECRET_KEY — never the Connect
+  // key), but the buyer is the company: metadata carries plan
+  // "office" / "office_founding" + company_id and NO user_id /
+  // client_reference_id, so the subscription webhook attributes the
+  // event to the company and can never touch a user's Premium state.
+  // Prices come from env only (STRIPE_OFFICE_PRICE_MONTHLY /
+  // _ANNUAL / _FOUNDING); unset -> configured:false setup state.
+  createOfficeStripeCheckout: {
+    request: z.object({ companyId: z.number().int().positive(), email: z.string().email().max(200), plan: z.enum(["monthly", "annual", "founding"]) }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()) }),
+    capabilities: [],
+    timeoutMs: 20_000,
+  },
   verifyStripeWebhook: {
     request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
     response: z.object({
@@ -124,6 +139,10 @@ export const privileged = definePrivilegedContracts({
       paymentMethodType: z.string().nullable(),
       paymentStatus: z.string().nullable(),
       connectAccountId: z.string().nullable(),
+      // Office billing (0097): the subscription's line-item price id,
+      // so the webhook can also recognize Office subscriptions by
+      // matching the env-configured Office price ids.
+      priceId: z.string().nullable(),
     }),
     capabilities: [],
     timeoutMs: 20_000,
@@ -155,6 +174,10 @@ export const privileged = definePrivilegedContracts({
       paymentMethodType: z.string().nullable(),
       paymentStatus: z.string().nullable(),
       connectAccountId: z.string().nullable(),
+      // Office billing (0097): the subscription's line-item price id,
+      // so the webhook can also recognize Office subscriptions by
+      // matching the env-configured Office price ids.
+      priceId: z.string().nullable(),
     }),
     capabilities: [],
     timeoutMs: 20_000,
@@ -441,6 +464,12 @@ function verifyAndParseStripeWebhook(secret: string, payload: string, signature:
   const invoiceIdValue = metadata.invoice_id;
   const parsedInvoiceId = typeof invoiceIdValue === "string" ? Number(invoiceIdValue) : null;
   const paymentIntentId = typeof object.payment_intent === "string" ? object.payment_intent : (event.type.startsWith("payment_intent.") && typeof object.id === "string" ? object.id : null);
+  // Office billing (0097): subscription objects carry their line items;
+  // the first item's price id lets the webhook recognize an Office
+  // subscription even if its metadata were ever lost.
+  const itemsData = (object.items as { data?: unknown } | undefined)?.data;
+  const firstItem = Array.isArray(itemsData) ? itemsData[0] as { price?: { id?: unknown } } | undefined : undefined;
+  const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
   const amountTotalCents = typeof object.amount_total === "number" ? Math.round(object.amount_total) : (typeof object.amount_received === "number" ? Math.round(object.amount_received) : (typeof object.amount === "number" ? Math.round(object.amount) : null));
   const pmTypes = Array.isArray(object.payment_method_types) ? object.payment_method_types.filter((t) => typeof t === "string") as string[] : [];
   return {
@@ -464,6 +493,7 @@ function verifyAndParseStripeWebhook(secret: string, payload: string, signature:
     paymentMethodType: pmTypes[0] ?? null,
     paymentStatus: typeof object.payment_status === "string" ? object.payment_status : null,
     connectAccountId: typeof event.account === "string" ? event.account : null,
+    priceId,
   };
 }
 
@@ -808,6 +838,56 @@ export const privilegedHandlers = definePrivilegedHandlers(privileged, {
       }),
       success_url: `${publicUrl}?checkout=success`,
       cancel_url: `${publicUrl}?checkout=cancelled`,
+      allow_promotion_codes: "true",
+    });
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error("Stripe Checkout could not be started. Check the server billing configuration.");
+    const result = await response.json() as { url?: unknown };
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url)) throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
+  // Office billing (0097, Item 5): company-level Office subscription
+  // checkout on the SUBSCRIPTIONS account (STRIPE_SECRET_KEY — the
+  // Connect key is never read here). Mirrors createStripeCheckout's
+  // configured/missing contract: unset env -> configured:false with the
+  // missing names, never a throw and never a dead checkout URL. The
+  // plan tag ("office" / "office_founding") + company_id ride both the
+  // session metadata and the subscription metadata so every later
+  // subscription webhook event attributes to the company.
+  async createOfficeStripeCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim();
+    const founding = args.plan === "founding";
+    const priceId = (founding ? process.env.STRIPE_OFFICE_PRICE_FOUNDING?.trim() : args.plan === "annual" ? process.env.STRIPE_OFFICE_PRICE_ANNUAL?.trim() : process.env.STRIPE_OFFICE_PRICE_MONTHLY?.trim());
+    const priceEnvVar = founding ? "STRIPE_OFFICE_PRICE_FOUNDING" : args.plan === "annual" ? "STRIPE_OFFICE_PRICE_ANNUAL" : "STRIPE_OFFICE_PRICE_MONTHLY";
+    const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+    const missing = [
+      !publishableKey ? "STRIPE_PUBLISHABLE_KEY" : "",
+      !secretKey ? "STRIPE_SECRET_KEY" : "",
+      !priceId ? priceEnvVar : "",
+      !publicUrl ? "CREWKAT_PUBLIC_URL" : "",
+    ].filter(Boolean);
+    if (missing.length || !secretKey || !priceId || !publicUrl) return { configured: false, checkoutUrl: null, missing };
+    if (!/^https:\/\//i.test(publicUrl)) return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
+    const planTag = founding ? "office_founding" : "office";
+    const body = new URLSearchParams({
+      mode: "subscription",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: args.email,
+      "metadata[type]": "office_subscription",
+      "metadata[plan]": planTag,
+      "metadata[company_id]": String(args.companyId),
+      "subscription_data[metadata][plan]": planTag,
+      "subscription_data[metadata][company_id]": String(args.companyId),
+      success_url: `${publicUrl}/office?officeBilling=success`,
+      cancel_url: `${publicUrl}/office?officeBilling=cancelled`,
       allow_promotion_codes: "true",
     });
     const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {

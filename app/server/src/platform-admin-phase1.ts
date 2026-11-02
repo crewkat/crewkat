@@ -6,7 +6,7 @@
 // Guards: admin-only unless the permission matrix says otherwise —
 //   adminTeamRole gating via requireTeamRole (platform-admin.ts).
 import { defineAction, z, type Ctx } from "@hatch/space-sdk";
-import { and, desc, eq, isNull, like, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, like, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import * as schema from "./schema";
 import {
@@ -16,6 +16,7 @@ import {
   platformDb,
 } from "./actions";
 import { requireTeamRole, teamRoleOf, TEAM_ROLES, type TeamRole } from "./platform-admin";
+import { OFFICE_FOUNDING_TOTAL } from "./officeBilling";
 import { privileged } from "@space/privileged";
 
 type Db = ReturnType<Ctx["db"]>;
@@ -293,7 +294,7 @@ export const platformAdminPhase1Actions = {
    *  rewritten here — the UI says so explicitly. */
   adminPlansGet: defineAction({
     request: z.object({}),
-    response: z.object({ name: z.string(), priceCents: z.number(), interval: z.string(), stripePriceId: z.string() }),
+    response: z.object({ name: z.string(), priceCents: z.number(), interval: z.string(), stripePriceId: z.string(), officeFoundingGrants: z.number(), officeFoundingTotal: z.number() }),
     async handler(ctx) {
       await requireTeamRole(ctx, "admin");
       const db = platformDb(ctx);
@@ -302,7 +303,11 @@ export const platformAdminPhase1Actions = {
         getPlatformSetting(db, "plan_pro_price_cents", "1900"),
         getPlatformSetting(db, "plan_pro_interval", "month"),
       ]);
-      return { name, priceCents: Number.parseInt(priceCents, 10) || 1900, interval, stripePriceId: "price_1UK81ZAZoTlhRfFcUEqPjzxa" };
+      // Office billing (0097): founding grants used / total, counted
+      // from company data (office_founding_granted_at) — the same
+      // counter the founding price rule reads (officeBilling.ts).
+      const officeFoundingGrants = (await db.select({ id: schema.companies.id }).from(schema.companies).where(isNotNull(schema.companies.officeFoundingGrantedAt))).length;
+      return { name, priceCents: Number.parseInt(priceCents, 10) || 1900, interval, stripePriceId: "price_1UK81ZAZoTlhRfFcUEqPjzxa", officeFoundingGrants, officeFoundingTotal: OFFICE_FOUNDING_TOTAL };
     },
   }),
 

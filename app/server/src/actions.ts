@@ -54,6 +54,14 @@ import {
   type CredentialBucket,
 } from "./safety";
 import { authCodeClientResult } from "./auth-email";
+import {
+  OFFICE_FOUNDING_TOTAL,
+  assertOfficeBillingAllows,
+  officeBillingConfigured,
+  officeBillingEnabled,
+  officeFoundingQualification,
+  officePriceIds,
+} from "./officeBilling";
 import { privileged } from "@space/privileged";
 import { playBillingActions } from "./play-billing";
 import { checkSendCap, isFeatureEnabled, platformAdminActions, recordSendAttempt, requireTeamRole } from "./platform-admin";
@@ -1113,7 +1121,12 @@ const AUTH_REFRESH_DAYS = 30;
 const AUTH_REFRESH_ROTATE_MINUTES = 60; // rotate a refresh token at most once per hour
 const AUTH_REFRESH_REUSE_GRACE_MS = 120_000; // concurrent-refresh race window
 const AUTH_REFRESH_RATE_LIMIT = 10; // max refresh attempts per IP per minute
-const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300) });
+// _surface (0097, Item 5): the client surface tag. The Office desktop
+// client sends "office" on every call (app/office/src/api.ts); the
+// phone client never sends it. It exists for ONE purpose: Office
+// billing enforcement (officeBilling.ts) applies to Office-surface
+// mutations only, so the phone app can never be blocked by it.
+const authEnvelopeSchema = z.object({ _sessionToken: z.string().min(32).max(300), _surface: z.enum(["office", "app"]).optional() });
 export { authEnvelopeSchema };
 // Tier 2 (0089): the five per-member access switches. In requests, each
 // switch is optional (absent = inherit the role preset); in
@@ -4765,6 +4778,91 @@ export const BaseActions = {
       return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email, plan: args.plan });
     },
   }),
+  // ------------------------------------------------------------------
+  // Office billing (0097, SimplySub steals Item 5): the COMPANY-level
+  // Crewkat Office subscription — $49/mo flat (unlimited users),
+  // $490/yr, $39/mo founding for the first 100 Office companies
+  // (existing Office users grandfathered). Subscriptions-account Stripe
+  // only; state lives on the companies row (officeBilling.ts). All
+  // three actions are Admin-gated (permissions.ts ADMIN_ACTIONS).
+  // ------------------------------------------------------------------
+  getOfficeBilling: defineAction({
+    request: z.object({}),
+    response: z.object({
+      configured: z.boolean(),
+      billingEnabled: z.boolean(),
+      state: z.enum(["none", "founding", "active", "past_due", "canceled"]),
+      foundingGranted: z.boolean(),
+      grandfathered: z.boolean(),
+      qualifiesForFounding: z.boolean(),
+      foundingGrantsUsed: z.number().int(),
+      foundingGrantsTotal: z.number().int(),
+      currentPeriodEnd: z.string().nullable(),
+      hasSubscription: z.boolean(),
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const qualification = await officeFoundingQualification(db, company);
+      return {
+        configured: officeBillingConfigured(),
+        billingEnabled: officeBillingEnabled(),
+        state: company.officePlanState,
+        foundingGranted: !!company.officeFoundingGrantedAt,
+        grandfathered: qualification.grandfathered,
+        qualifiesForFounding: qualification.qualifies,
+        foundingGrantsUsed: qualification.grantsUsed,
+        foundingGrantsTotal: OFFICE_FOUNDING_TOTAL,
+        currentPeriodEnd: company.officeCurrentPeriodEnd?.toISOString() ?? null,
+        hasSubscription: !!company.officeStripeSubscriptionId,
+      };
+    },
+  }),
+  startOfficeCheckout: defineAction({
+    request: z.object({ cadence: z.enum(["monthly", "annual"]).default("monthly") }),
+    response: z.object({ configured: z.boolean(), checkoutUrl: z.string().nullable(), missing: z.array(z.string()), plan: z.enum(["monthly", "annual", "founding"]) }),
+    privileged: [privileged.createOfficeStripeCheckout],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const user = (await db.select().from(schema.authUsers).where(eq(schema.authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user) throw new Error("Sign in to continue.");
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      // Founding rule (officeBilling.ts): grandfathered Office users and
+      // — while fewer than 100 companies have ever been granted it —
+      // everyone else checks out on the founding price, whatever
+      // cadence they picked (founding is monthly-only, for life).
+      const qualification = await officeFoundingQualification(db, company);
+      const plan = qualification.qualifies ? "founding" as const : args.cadence;
+      const result = await ctx.executePrivileged(privileged.createOfficeStripeCheckout, { companyId: company.id, email: user.email, plan });
+      return { ...result, plan };
+    },
+  }),
+  // Billing Portal for the company's OFFICE subscription: the same
+  // subscriptions-account portal op the Premium flow uses, keyed by the
+  // company's own Office Stripe customer (never the user's Premium
+  // customer — the two subscriptions are managed separately).
+  createOfficeBillingPortalSession: defineAction({
+    request: z.object({}),
+    response: z.object({ url: z.string().nullable(), error: z.enum(["no_stripe_customer", "portal_not_configured", "billing_unavailable"]).nullable() }),
+    privileged: [privileged.createBillingPortalSession],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db<typeof schema>();
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      if (!company.officeStripeCustomerId) return { url: null, error: "no_stripe_customer" as const };
+      const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+      if (!publicUrl) return { url: null, error: "billing_unavailable" as const };
+      try {
+        const result = await ctx.executePrivileged(privileged.createBillingPortalSession, { customerId: company.officeStripeCustomerId, returnUrl: `${publicUrl}/office?billing=return` });
+        if (result.url) return { url: result.url, error: null };
+        return { url: null, error: result.errorCode === "portal_not_configured" ? "portal_not_configured" as const : "billing_unavailable" as const };
+      } catch {
+        return { url: null, error: "billing_unavailable" as const };
+      }
+    },
+  }),
   handleStripeWebhook: defineAction({
     request: z.object({ payload: z.string().min(1).max(1_000_000), signature: z.string().min(1).max(2000) }),
     response: z.object({ ok: z.literal(true), duplicate: z.boolean(), processed: z.boolean() }),
@@ -4811,6 +4909,68 @@ export const BaseActions = {
         } else {
           await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
         }
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: true };
+      }
+      // Office billing (0097, Item 5): company-level Crewkat Office
+      // subscriptions live on THIS subscriptions account too. Attribute
+      // the event to a company — by the plan tag ("office" /
+      // "office_founding") + company_id metadata our Office checkout
+      // sets, else by the company's stored Office subscription /
+      // customer ids, else by a line-item price matching one of the
+      // env-configured Office price ids — and maintain the company's
+      // Office plan state. An Office event NEVER falls through to the
+      // per-user Premium flow below (Office checkouts carry no user_id,
+      // so they could not match a user anyway; this branch is explicit
+      // so that stays true by construction).
+      let officeCompany: typeof schema.companies.$inferSelect | undefined;
+      if ((event.plan === "office" || event.plan === "office_founding") && event.companyId) {
+        officeCompany = (await db.select().from(schema.companies).where(eq(schema.companies.id, event.companyId)).limit(1))[0];
+      }
+      if (!officeCompany && event.subscriptionId) {
+        officeCompany = (await db.select().from(schema.companies).where(eq(schema.companies.officeStripeSubscriptionId, event.subscriptionId)).limit(1))[0];
+      }
+      if (!officeCompany && event.customerId) {
+        officeCompany = (await db.select().from(schema.companies).where(eq(schema.companies.officeStripeCustomerId, event.customerId)).limit(1))[0];
+      }
+      if (!officeCompany && event.priceId && event.companyId) {
+        const ids = officePriceIds();
+        if (event.priceId === ids.monthly || event.priceId === ids.annual || event.priceId === ids.founding) {
+          officeCompany = (await db.select().from(schema.companies).where(eq(schema.companies.id, event.companyId)).limit(1))[0];
+        }
+      }
+      if (officeCompany) {
+        const now = new Date();
+        const end = event.currentPeriodEnd ? new Date(event.currentPeriodEnd * 1000) : null;
+        const patch: Partial<typeof schema.companies.$inferInsert> = { updatedAt: now };
+        if (event.customerId) patch.officeStripeCustomerId = event.customerId;
+        if (event.subscriptionId) patch.officeStripeSubscriptionId = event.subscriptionId;
+        if (end) patch.officeCurrentPeriodEnd = end;
+        if (event.eventType === "checkout.session.completed") {
+          const founding = event.plan === "office_founding";
+          patch.officePlanState = founding ? "founding" : "active";
+          // The founding grant lands when the founding checkout
+          // completes (the price was already chosen at checkout
+          // creation under the <100 counter rule in officeBilling.ts).
+          if (founding && !officeCompany.officeFoundingGrantedAt) patch.officeFoundingGrantedAt = now;
+        } else if (event.eventType === "customer.subscription.deleted") {
+          patch.officePlanState = "canceled";
+        } else if (event.eventType === "customer.subscription.updated") {
+          const status = event.subscriptionStatus ?? "";
+          if (status === "active" || status === "trialing") {
+            // Safety net: a founding-tagged subscription grants the
+            // founding flag on activation even if its
+            // checkout-completed event was somehow missed.
+            if (event.plan === "office_founding" && !officeCompany.officeFoundingGrantedAt) patch.officeFoundingGrantedAt = now;
+            patch.officePlanState = officeCompany.officeFoundingGrantedAt || patch.officeFoundingGrantedAt ? "founding" : "active";
+          } else if (status === "past_due") {
+            patch.officePlanState = "past_due";
+          } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
+            patch.officePlanState = "canceled";
+          }
+        }
+        await db.update(schema.companies).set(patch).where(eq(schema.companies.id, officeCompany.id));
+        await db.insert(schema.stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
       }
@@ -9723,6 +9883,16 @@ function protectActions<T extends ActionsModule>(actions: T): T {
         const access = effectiveAccess(role, parseAccessOverrides(user.accessOverrides));
         assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium") throw new Error("Premium required. Upgrade to unlock this Pro tool.");
+        // Office billing enforcement (0097, Item 5): behind the
+        // OFFICE_BILLING_ENABLED flag (default OFF — the helper returns
+        // immediately, zero behavior change). Only calls carrying the
+        // Office surface tag can ever be blocked, and only mutations
+        // for a company whose Office subscription has lapsed; reads,
+        // the phone app, and Premium are never affected. See
+        // officeBilling.ts for the seam + lapsed definition.
+        if (envelope._surface === "office") {
+          await assertOfficeBillingAllows(ctx.db<typeof schema>(), user.companyId, name);
+        }
         const result = await original(withWorkspace(ctx, user), args);
         return applyAccessShaping(ctx.db<typeof schema>(), user, access, name, result);
       },

@@ -14745,6 +14745,7 @@ function PABillingTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
         months: "Meses", create: "Crear", creating: "Creando…", delete: "Eliminar", deleteTitle: "¿Eliminar este cupón?", cancel: "Cancelar", confirmDelete: "Eliminar",
         planName: "Nombre del plan", planPrice: "Precio (USD/mes o año)", planInterval: "Intervalo", monthly: "Mensual", yearly: "Anual",
         save: "Guardar", saved: "Guardado ✓", stripePriceNote: "El precio vivo de Stripe (price_1UK81ZAZoTlhRfFcUEqPjzxa) no se toca aquí — esto edita solo los metadatos del plan.",
+        officeFounding: "Empresas fundadoras de Office",
         timesRedeemed: "usos", loading: "Cargando…" }
     : { failed: "Failed payments", payments: "Payments", subscriptions: "Subscriptions", promos: "Promo codes", plans: "Plans & pricing", refunds: "Refunds",
         noFailed: "No failed payments. 🎉", retry: "Retry", attempts: "attempts", unconfigured: "Stripe is not configured.",
@@ -14754,6 +14755,7 @@ function PABillingTab({ lang, initialEmail }: { lang: Lang; initialEmail?: strin
         months: "Months", create: "Create", creating: "Creating…", delete: "Delete", deleteTitle: "Delete this coupon?", cancel: "Cancel", confirmDelete: "Delete",
         planName: "Plan name", planPrice: "Price (USD/mo or yr)", planInterval: "Interval", monthly: "Monthly", yearly: "Yearly",
         save: "Save", saved: "Saved ✓", stripePriceNote: "The live Stripe Price (price_1UK81ZAZoTlhRfFcUEqPjzxa) is never rewritten here — this edits plan metadata only.",
+        officeFounding: "Office founding grants",
         timesRedeemed: "uses", loading: "Loading…" };
   return <div className="pa-list">
     <PAFailedPayments lang={lang} t={t} />
@@ -14955,6 +14957,7 @@ function PAPlansSection({ t }: { lang: Lang; t: Record<string, string> }) {
     {error && <p className="status error">{error}</p>}
     {saved && <p className="status auth-success">{t.saved}</p>}
     <p className="pa-muted">{t.stripePriceNote}</p>
+    {query.data ? <p className="pa-muted">{t.officeFounding}: {query.data.officeFoundingGrants} / {query.data.officeFoundingTotal}</p> : null}
     {query.isLoading ? <div className="loading-block" /> : <article className="pa-card">
       <div className="pa-search-row"><label><span>{t.planName}</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></label></div>
       <div className="pa-filters">

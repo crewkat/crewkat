@@ -100,7 +100,7 @@ export function SettingsView({ canManage = false, userName = "", seeMoney = fals
 
       <ProfileSection userName={userName} />
 
-      <BillingSection />
+      <BillingSection canManage={canManage} />
 
       <PaymentsSection canManage={canManage} />
 
@@ -577,7 +577,149 @@ function QuickBooksSection({ canManage }: { canManage: boolean }) {
   );
 }
 
-function BillingSection() {
+/**
+ * Crewkat Office plan card (0097, Item 5): the COMPANY's Office
+ * subscription — $49/mo flat with unlimited users, $490/yr, or the
+ * $39/mo-for-life founding rate (first 100 Office companies; existing
+ * Office users grandfathered). State comes from getOfficeBilling;
+ * checkout / billing portal reuse the Premium subscription machinery
+ * on the subscriptions Stripe account. Until the Stripe prices are
+ * configured this is a clean setup state — no buttons at all, never a
+ * dead one. While OFFICE_BILLING_ENABLED is off, Office stays free and
+ * the card says so.
+ */
+function OfficePlanCard({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const officeQuery = useQuery({ queryKey: ["office-billing"], queryFn: () => api.getOfficeBilling({}) });
+  const [error, setError] = useState("");
+  const checkout = useMutation({
+    mutationFn: (cadence: "monthly" | "annual") => api.startOfficeCheckout({ cadence }),
+    onSuccess: (result) => {
+      if (result.checkoutUrl) {
+        window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+        void queryClient.invalidateQueries({ queryKey: ["office-billing"] });
+      } else {
+        setError("Office billing isn't configured yet — there's nothing to check out with.");
+      }
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not start checkout."),
+  });
+  const portal = useMutation({
+    mutationFn: () => api.createOfficeBillingPortalSession({}),
+    onSuccess: (result) => {
+      if (result.url) {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+      } else if (result.error === "portal_not_configured") {
+        setError("The billing portal isn't set up yet — the Crewkat team needs to finish the Stripe setup first.");
+      } else if (result.error === "no_stripe_customer") {
+        setError("No Office subscription to manage yet — start the plan first.");
+      } else {
+        setError("Billing is unavailable right now. Try again in a bit.");
+      }
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : "Could not open the billing portal."),
+  });
+  const office = officeQuery.data;
+  const periodEnd = office?.currentPeriodEnd ? formatDate(office.currentPeriodEnd) : null;
+  return (
+    <>
+      <h3 className="day-section-title">Crewkat Office plan</h3>
+      {officeQuery.isLoading ? <p className="muted">Loading Office plan…</p> : null}
+      {officeQuery.isError ? (
+        <div className="empty-state small">
+          <div className="empty-icon">◍</div>
+          <p>Couldn't load the Office plan.</p>
+          <button type="button" className="btn btn-primary" onClick={() => void officeQuery.refetch()}>Try again</button>
+        </div>
+      ) : null}
+      {office && !office.configured ? (
+        <div className="empty-state small">
+          <div className="empty-icon">▣</div>
+          <p><strong>Office billing isn't switched on for Crewkat yet.</strong></p>
+          <p className="muted">Crewkat Office is $49/mo flat with unlimited team logins ($490/yr, or $39/mo for life for the first 100 Office companies), with a 100-day money-back guarantee. Once the plan prices are configured, this is where you start and manage your company's Office subscription. Nothing to do here until then — Office is free in the meantime.</p>
+        </div>
+      ) : null}
+      {office && office.configured && office.state === "none" ? (
+        <>
+          {office.qualifiesForFounding ? (
+            <>
+              <p className="plan-name">Founding rate — $39/mo for life</p>
+              <p className="muted small">
+                {office.grandfathered
+                  ? "Your company already uses Crewkat Office, so you're grandfathered into the founding rate — $39/mo for life instead of $49, with unlimited team logins."
+                  : `Your company qualifies for the founding rate — $39/mo for life instead of $49, with unlimited team logins. ${office.foundingGrantsUsed} of ${office.foundingGrantsTotal} founding spots are taken.`}
+                {" "}100-day money-back guarantee.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="plan-name">Crewkat Office — $49/mo</p>
+              <p className="muted small">Flat per company with unlimited team logins — no per-seat charges, ever. Or $490/yr (two months free). 100-day money-back guarantee.</p>
+            </>
+          )}
+          {!office.billingEnabled ? <p className="muted small">Billing isn't being enforced yet — Office is currently free for your company. Starting the plan now just gets your subscription in place for when it switches on.</p> : null}
+          {error ? <p className="status error">{error}</p> : null}
+          <div className="settings-save-row">
+            {canManage ? (
+              office.qualifiesForFounding ? (
+                <button type="button" className="btn btn-primary" disabled={checkout.isPending} onClick={() => { setError(""); checkout.mutate("monthly"); }}>
+                  {checkout.isPending ? "Opening Stripe…" : "Start founding plan — $39/mo"}
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-primary" disabled={checkout.isPending} onClick={() => { setError(""); checkout.mutate("monthly"); }}>
+                    {checkout.isPending ? "Opening Stripe…" : "Subscribe — $49/mo"}
+                  </button>
+                  <button type="button" className="btn" disabled={checkout.isPending} onClick={() => { setError(""); checkout.mutate("annual"); }}>
+                    Subscribe — $490/yr
+                  </button>
+                </>
+              )
+            ) : <span className="muted small">Only an admin can start the Office plan.</span>}
+          </div>
+        </>
+      ) : null}
+      {office && office.configured && office.state !== "none" ? (
+        <>
+          <p className="plan-name">
+            {office.state === "founding" ? "Founding plan — $39/mo for life" : office.state === "active" ? "Crewkat Office — current plan" : office.state === "past_due" ? "Crewkat Office — payment past due" : "Crewkat Office — canceled"}
+          </p>
+          <dl className="detail-list">
+            <div><dt>Status</dt><dd>{office.state === "founding" ? "Founding (active)" : office.state}</dd></div>
+            {periodEnd ? <div><dt>{office.state === "canceled" ? "Period ended" : "Current period ends"}</dt><dd>{periodEnd}</dd></div> : null}
+            <div><dt>Team logins</dt><dd>Unlimited</dd></div>
+          </dl>
+          {office.state === "past_due" ? <p className="muted small">The last Office payment didn't go through. Update the payment method to keep the plan active — Stripe keeps retrying for a while first.</p> : null}
+          {office.state === "canceled" ? (
+            <p className="muted small">
+              {office.foundingGranted
+                ? "This subscription is canceled. Your company's founding rate is grandfathered — restart any time and the $39/mo-for-life rate is still yours."
+                : "This subscription is canceled. Restart the plan below whenever you're ready."}
+              {office.billingEnabled ? " While billing is enforced, Office stays read-only until the plan restarts." : ""}
+            </p>
+          ) : null}
+          {!office.billingEnabled && office.state !== "canceled" ? <p className="muted small">Billing isn't being enforced yet — Office is currently free for every company. This subscription is in place for when it switches on.</p> : null}
+          {error ? <p className="status error">{error}</p> : null}
+          <div className="settings-save-row">
+            {canManage && office.hasSubscription ? (
+              <button type="button" className="btn btn-primary" disabled={portal.isPending} onClick={() => { setError(""); portal.mutate(); }}>
+                {portal.isPending ? "Opening Stripe…" : office.state === "past_due" ? "Update payment method" : "Manage subscription"}
+              </button>
+            ) : null}
+            {canManage && office.state === "canceled" ? (
+              <button type="button" className="btn" disabled={checkout.isPending} onClick={() => { setError(""); checkout.mutate("monthly"); }}>
+                {checkout.isPending ? "Opening Stripe…" : office.foundingGranted ? "Restart founding plan — $39/mo" : "Restart plan"}
+              </button>
+            ) : null}
+            {!canManage ? <span className="muted small">Only an admin can manage the Office plan.</span> : null}
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function BillingSection({ canManage = false }: { canManage?: boolean }) {
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: () => api.getBillingOverview({}) });
   const billing = billingQuery.data;
   const plan = billing?.plan;
@@ -614,6 +756,8 @@ function BillingSection() {
           </p>
         </>
       ) : null}
+
+      <OfficePlanCard canManage={canManage} />
 
       <h3 className="day-section-title">Billing payment history</h3>
       {billing && billing.payments.length === 0 ? <p className="muted">No billing payments yet.</p> : null}

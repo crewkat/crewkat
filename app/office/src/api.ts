@@ -220,7 +220,10 @@ const authenticatedFetch = (async (input: RequestInfo | URL, init?: RequestInit)
   const send = (proof: string) => globalThis.fetch(input, {
     ...init,
     credentials: "same-origin",
-    body: JSON.stringify({ ...payload, args: { ...(payload.args ?? {}), ...(proof ? { _sessionToken: proof } : {}) } }),
+    // _surface: "office" tags every Office call so the server can tell
+    // the surfaces apart (Office billing enforcement, 0097 — the phone
+    // app never sends it, so it can never be blocked by that gate).
+    body: JSON.stringify({ ...payload, args: { ...(payload.args ?? {}), _surface: "office", ...(proof ? { _sessionToken: proof } : {}) } }),
   });
   let response = await send(impersonationProof ?? activeSessionProof);
   let authFailed = false;
