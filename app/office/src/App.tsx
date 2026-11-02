@@ -11,6 +11,7 @@ import {
   isCookieLoginResult,
   isImpersonating,
   persistLegacySessionToken,
+  restoreAdminSessionAfterImpersonation,
   restoreLegacySessionToken,
   setActiveSessionToken,
   trySilentRefresh,
@@ -71,31 +72,62 @@ export function App() {
   const [selectedDoc, setSelectedDoc] = useState<DocSelection | null>(null);
 
   // Session restore — mirrors the phone client (app/client/src/App.tsx
-  // AuthScreen + api.ts): a legacy pre-cookie token if one is stored,
-  // otherwise a silent refresh via the HttpOnly cookie (refreshSession),
-  // then getAuthSession to load the user. getAuthBootstrap is only an
-  // anonymous has-account probe and plays no part in restore.
+  // AuthScreen + api.ts). Priority order:
+  //   0. A resumed impersonation (api.ts rehydrated the persisted proof
+  //      from sessionStorage before this mounted): stay in character. If
+  //      the server has already expired the 30-minute session, restore
+  //      the admin from the refresh cookie — never from a stored token.
+  //   1. The cookie session (silent refresh via the HttpOnly cookie,
+  //      then getAuthSession). This is the current session and wins over
+  //      any stored token; a successful refresh also wipes the stored
+  //      legacy token (see setActiveSessionToken).
+  //   2. A legacy pre-cookie token, only when there is no live cookie
+  //      session (genuinely pre-cookie logins have no cookie marker).
+  // getAuthBootstrap is only an anonymous has-account probe and plays no
+  // part in restore.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // "user": signed in. "none": the server answered and there is no
+      // user for the current proof (a verdict). "error": transport
+      // failure (NOT a verdict — stored credentials must be retained).
+      const loadUser = async (): Promise<"user" | "none" | "error"> => {
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (cancelled) return "none";
+          if (result.user) { setUser(result.user as AuthUser); return "user"; }
+          return "none";
+        } catch { return "error"; }
+      };
+      if (isImpersonating()) {
+        setImpersonating(true);
+        if ((await loadUser()) === "user") { if (!cancelled) setRestoring(false); return; }
+        if (cancelled) return;
+        // The persisted impersonation is dead server-side. Drop it and
+        // restore the admin via the cookie (forced: the cookie is the
+        // credential; an auth-error path may have cleared the marker).
+        endImpersonationLocal();
+        const refreshed = await trySilentRefresh(true).catch(() => false);
+        if (cancelled) return;
+        if (refreshed && (await loadUser()) === "user") { setRestoring(false); return; }
+        if (!cancelled) setRestoring(false);
+        return;
+      }
+      const refreshed = await trySilentRefresh().catch(() => false);
+      if (cancelled) return;
+      if (refreshed && (await loadUser()) === "user") { setRestoring(false); return; }
+      if (cancelled) return;
+      // Read the legacy token only now: had the cookie refresh succeeded
+      // above, setActiveSessionToken already removed it from storage.
       const legacy = getStoredSessionToken();
       if (legacy) {
         restoreLegacySessionToken(legacy);
-        try {
-          const result = await api.getAuthSession({ _sessionToken: "active" });
-          if (cancelled) return;
-          if (result.user) { setUser(result.user as AuthUser); setRestoring(false); return; }
-          clearActiveSessionToken();
-        } catch { /* transport failure is not an auth verdict — try the cookie path */ }
-      }
-      const refreshed = await trySilentRefresh(Boolean(legacy)).catch(() => false);
-      if (cancelled) return;
-      if (refreshed) {
-        try {
-          const result = await api.getAuthSession({ _sessionToken: "active" });
-          if (cancelled) return;
-          if (result.user) { setUser(result.user as AuthUser); setRestoring(false); return; }
-        } catch { /* fall through to sign-in */ }
+        const outcome = await loadUser();
+        if (outcome === "user") { setRestoring(false); return; }
+        if (cancelled) return;
+        // Only a definitive "no user" verdict retires the stored token;
+        // a transport failure keeps it for the next launch.
+        if (outcome === "none") clearActiveSessionToken();
       }
       if (!cancelled) setRestoring(false);
     })();
@@ -148,7 +180,7 @@ export function App() {
   // Impersonation (started from Admin → Users): api.ts swaps the session
   // proof and fires IMPERSONATION_EVENT; reload the session so the whole
   // shell becomes the target user, and back again on End.
-  const [impersonating, setImpersonating] = useState(false);
+  const [impersonating, setImpersonating] = useState(() => isImpersonating());
   useEffect(() => {
     const onImpersonation = () => {
       const active = isImpersonating();
@@ -173,7 +205,12 @@ export function App() {
 
   const endImpersonation = useCallback(async () => {
     try { await api.adminImpersonateEnd({ _sessionToken: "impersonation" }); } catch { /* session may already be gone */ }
-    endImpersonationLocal();
+    // Restore the admin identity from the refresh cookie (impersonation
+    // never touched it), not from the parked in-memory proof — that proof
+    // is short-lived and may be expired or gone by now. The helper fires
+    // IMPERSONATION_EVENT when the fresh proof is in place, and the
+    // listener above reloads the user with it.
+    await restoreAdminSessionAfterImpersonation();
   }, []);
 
   const openJob = useCallback((jobId: number) => { setSelectedJobId(jobId); setView("jobs"); }, []);

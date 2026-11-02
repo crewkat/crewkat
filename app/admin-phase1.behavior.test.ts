@@ -13,7 +13,8 @@
 //  6. Audit: adminAuditLogSearch filters.
 //
 // Run from app/:  bun admin-phase1.behavior.test.ts
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
@@ -254,6 +255,133 @@ check("audit search filters by action", search.entries.length > 0 && search.entr
 const searchTarget = await actions.adminAuditLogSearch.handler(ctxFor(admin), { page: 1, pageSize: 25, action: "", targetType: "stripe_coupon", from: "", to: "" });
 check("audit search filters by targetType", searchTarget.entries.length === 2 && searchTarget.entries.every((e: any) => e.targetType === "stripe_coupon"), String(searchTarget.entries.length));
 await throwsAsync("support blocked from audit search", () => actions.adminAuditLogSearch.handler(ctxFor(support), { page: 1, pageSize: 25, action: "", targetType: "", from: "", to: "" }));
+
+// --- 13. Client impersonation session handling (Office + phone) ------------------------------
+// Regression coverage for the 2026-11-01 live bug: an admin ended an
+// impersonation in Office and landed in a stale legacy identity ("David")
+// because (a) End restored a parked in-memory proof that could be expired
+// or gone, and (b) both bootstraps tried a stored legacy token BEFORE the
+// cookie session. The fix: End restores via the cookie, impersonation
+// persists in sessionStorage across reloads, and both bootstraps run
+// impersonation-resume → cookie → legacy, in that order.
+const officeApiSrc = await readFile("office/src/api.ts", "utf8");
+const officeAppSrc = await readFile("office/src/App.tsx", "utf8");
+const phoneApiSrc = await readFile("client/src/api.ts", "utf8");
+const phoneAppSrc = await readFile("client/src/App.tsx", "utf8");
+
+for (const [label, apiSrc] of [["office", officeApiSrc], ["phone", phoneApiSrc]] as const) {
+  check(`${label} api persists impersonation in sessionStorage`, apiSrc.includes("crewkat-impersonation") && apiSrc.includes("sessionStorage.setItem(IMPERSONATION_STORAGE_KEY"));
+  check(`${label} api resumes persisted impersonation at load`, apiSrc.includes("sessionStorage.getItem(IMPERSONATION_STORAGE_KEY"));
+  check(`${label} api restores admin via forced cookie refresh on End`, apiSrc.includes("restoreAdminSessionAfterImpersonation") && apiSrc.includes("trySilentRefresh(true)"));
+  check(`${label} api clears persisted impersonation on End`, apiSrc.includes("clearPersistedImpersonation()"));
+}
+for (const [label, appSrc, regionMarker, cookieCall] of [
+  ["office", officeAppSrc, "Session restore", "trySilentRefresh()"],
+  ["phone", phoneAppSrc, "Restore the previous session", "trySilentRefresh(googleOkLanding)"],
+] as const) {
+  const region = appSrc.slice(appSrc.indexOf(regionMarker));
+  const idxResume = region.indexOf("isImpersonating()");
+  const idxCookie = region.indexOf(cookieCall);
+  const idxLegacy = region.indexOf("restoreLegacySessionToken(");
+  check(`${label} bootstrap resumes impersonation before cookie/legacy restore`, idxResume !== -1 && idxCookie !== -1 && idxResume < idxCookie, `${idxResume} vs ${idxCookie}`);
+  check(`${label} bootstrap tries cookie session before legacy token`, idxCookie !== -1 && idxLegacy !== -1 && idxCookie < idxLegacy, `${idxCookie} vs ${idxLegacy}`);
+  check(`${label} End handler restores admin via cookie helper`, appSrc.includes("await restoreAdminSessionAfterImpersonation()"));
+}
+
+// Functional checks against the real api.ts modules under a window stub.
+function makeStorageStub() {
+  const map = new Map<string, string>();
+  return {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => { map.set(k, String(v)); },
+    removeItem: (k: string) => { map.delete(k); },
+    clear: () => { map.clear(); },
+  };
+}
+const stubWindow = {
+  localStorage: makeStorageStub(),
+  sessionStorage: makeStorageStub(),
+  dispatchEvent: () => true,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  setTimeout: (fn: () => void, ms?: number) => setTimeout(fn, ms),
+  clearTimeout: (id: unknown) => clearTimeout(id as any),
+};
+(globalThis as any).window = stubWindow;
+(globalThis as any).Event = class { constructor(public type: string) {} };
+
+let fetchMode: "cookie-ok" | "down" = "cookie-ok";
+let lastSentToken: string | null = null;
+const realFetch = globalThis.fetch;
+(globalThis as any).fetch = async (_input: unknown, init?: { body?: string }) => {
+  const payload = JSON.parse(init?.body ?? "{}") as { action?: string; args?: { _sessionToken?: string } };
+  if (payload.action !== "refreshSession") lastSentToken = payload.args?._sessionToken ?? null;
+  if (fetchMode === "down") throw new TypeError("network down");
+  if (payload.action === "refreshSession") {
+    return new Response(JSON.stringify({ data: { sessionToken: "cookie-proof-fresh" } }), { headers: { "content-type": "application/json" } });
+  }
+  return new Response(JSON.stringify({ data: { user: null } }), { headers: { "content-type": "application/json" } });
+};
+
+async function exerciseClientApi(label: string, apiMod: any) {
+  stubWindow.localStorage.clear();
+  stubWindow.sessionStorage.clear();
+  apiMod.setActiveSessionToken("admin-proof-1");
+  apiMod.startImpersonation("imp-proof-1", "Target One");
+  check(`${label}: impersonating after start`, apiMod.isImpersonating() === true);
+  const persisted = JSON.parse(stubWindow.sessionStorage.getItem("crewkat-impersonation") ?? "null") as { proof?: string; name?: string } | null;
+  check(`${label}: start persists proof + target name`, persisted?.proof === "imp-proof-1" && persisted?.name === "Target One");
+  fetchMode = "cookie-ok";
+  lastSentToken = null;
+  const restored = await apiMod.restoreAdminSessionAfterImpersonation();
+  check(`${label}: End restore reports success via cookie`, restored === true);
+  check(`${label}: End clears impersonation + persisted state`, apiMod.isImpersonating() === false && stubWindow.sessionStorage.getItem("crewkat-impersonation") === null);
+  await apiMod.api.getAuthSession({ _sessionToken: "active" }).catch(() => null);
+  check(`${label}: post-End calls carry the fresh cookie proof, not the parked proof`, lastSentToken === "cookie-proof-fresh", String(lastSentToken));
+  // Cookie dead → parked proof is the fallback; nothing left → clean failure.
+  apiMod.setActiveSessionToken("admin-proof-2");
+  apiMod.startImpersonation("imp-proof-2", "Target Two");
+  fetchMode = "down";
+  lastSentToken = null;
+  const restoredFallback = await apiMod.restoreAdminSessionAfterImpersonation();
+  check(`${label}: End restore falls back to parked proof when cookie is dead`, restoredFallback === true);
+  await apiMod.api.getAuthSession({ _sessionToken: "active" }).catch(() => null);
+  check(`${label}: fallback calls carry the parked admin proof`, lastSentToken === "admin-proof-2", String(lastSentToken));
+  apiMod.clearActiveSessionToken();
+  apiMod.startImpersonation("imp-proof-3", "Target Three");
+  const restoredNone = await apiMod.restoreAdminSessionAfterImpersonation();
+  check(`${label}: End restore fails cleanly when no cookie and no parked proof`, restoredNone === false && apiMod.isImpersonating() === false && stubWindow.sessionStorage.getItem("crewkat-impersonation") === null);
+  fetchMode = "cookie-ok";
+}
+const officeApiMod = await import("./office/src/api.ts");
+await exerciseClientApi("office api", officeApiMod);
+const phoneApiMod = await import("./client/src/api.ts");
+await exerciseClientApi("phone api", phoneApiMod);
+(globalThis as any).fetch = realFetch;
+
+// Resume-after-reload, per client, in a fresh process: a sessionStorage
+// seeded with an impersonation must put the module in impersonation mode
+// at load; an empty one must not.
+async function resumeProbe(label: string, modulePath: string, seed: string | null) {
+  const file = join(dir, `resume-probe-${label}.ts`);
+  await writeFile(file, `
+const store = new Map();
+${seed === null ? "" : `store.set("crewkat-impersonation", ${JSON.stringify(seed)});`}
+const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); }, removeItem: (k) => { store.delete(k); }, clear: () => { store.clear(); } };
+globalThis.window = { localStorage: storage, sessionStorage: storage, dispatchEvent: () => true, addEventListener: () => {}, removeEventListener: () => {} };
+globalThis.Event = class { constructor(type) { this.type = type; } };
+const m = await import(${JSON.stringify(modulePath)});
+console.log("RESUMED:" + m.isImpersonating() + ":" + m.impersonationTargetName());
+`);
+  return execFileSync("bun", [file], { encoding: "utf8" }).trim();
+}
+const seeded = JSON.stringify({ proof: "seeded-proof-1234567890", name: "Seeded User" });
+for (const [label, modulePath] of [["office", join(process.cwd(), "office/src/api.ts")], ["phone", join(process.cwd(), "client/src/api.ts")]] as const) {
+  const resumed = await resumeProbe(label, modulePath, seeded);
+  check(`${label}: reload resumes persisted impersonation`, resumed === "RESUMED:true:Seeded User", resumed);
+  const fresh = await resumeProbe(label, modulePath, null);
+  check(`${label}: reload without persisted impersonation starts clean`, fresh === "RESUMED:false:", fresh);
+}
 
 console.log(failures === 0 ? "\nALL PHASE 1 CHECKS PASSED" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

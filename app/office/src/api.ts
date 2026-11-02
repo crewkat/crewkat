@@ -70,17 +70,59 @@ export function clearActiveSessionToken() {
 // every API call goes out with the impersonation proof instead of the
 // admin's own, so Office behaves as the target user. Silent refresh is
 // disabled in this mode (the admin's refresh cookie would otherwise
-// silently restore the admin identity), and the admin's proof is parked
-// in memory to be restored on End. Sessions last 30 minutes server-side.
+// silently restore the admin identity). Sessions last 30 minutes
+// server-side.
+//
+// The impersonation proof + target name are persisted in sessionStorage
+// (per-tab, dies with the tab) so a reload mid-impersonation resumes the
+// preview instead of silently dropping back to whatever identity the
+// bootstrap finds first. The admin's own proof is only parked in memory
+// as a fallback: it is short-lived (~15 min) and can be expired or gone
+// (after a reload) by the time the admin ends the preview, so End
+// restores the admin identity from the HttpOnly refresh cookie — which
+// impersonation never touches — via restoreAdminSessionAfterImpersonation.
+const IMPERSONATION_STORAGE_KEY = "crewkat-impersonation";
 let impersonationProof: string | null = null;
 let parkedAdminProof = "";
 let impersonationName = "";
 export const IMPERSONATION_EVENT = "crewkat:impersonation";
 
+function persistImpersonation() {
+  try {
+    if (impersonationProof) {
+      window.sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, JSON.stringify({ proof: impersonationProof, name: impersonationName }));
+    } else {
+      window.sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+    }
+  } catch { /* storage unavailable */ }
+}
+
+function clearPersistedImpersonation() {
+  try { window.sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY); } catch { /* storage unavailable */ }
+}
+
+// Resume an impersonation that was active before a reload. Runs at module
+// load so the proof is in place before any component mounts or any query
+// fires. The App bootstrap validates the proof against the server; an
+// already-expired one fails cleanly into the cookie restore there.
+try {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    const raw = window.sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { proof?: unknown; name?: unknown };
+      if (typeof parsed.proof === "string" && parsed.proof) {
+        impersonationProof = parsed.proof;
+        impersonationName = typeof parsed.name === "string" ? parsed.name : "";
+      }
+    }
+  }
+} catch { /* storage unavailable or corrupt — start clean */ }
+
 export function startImpersonation(proof: string, userName: string) {
   parkedAdminProof = activeSessionProof;
   impersonationProof = proof;
   impersonationName = userName;
+  persistImpersonation();
   window.dispatchEvent(new Event(IMPERSONATION_EVENT));
 }
 
@@ -89,7 +131,32 @@ export function endImpersonationLocal() {
   activeSessionProof = parkedAdminProof;
   parkedAdminProof = "";
   impersonationName = "";
+  clearPersistedImpersonation();
   window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+}
+
+/**
+ * End-of-impersonation restore: drop the impersonation state, then bring
+ * back the admin identity from the HttpOnly refresh cookie (forced
+ * trySilentRefresh — refreshSession authenticates by cookie only, and
+ * impersonation never touched the cookie). The parked in-memory proof is
+ * kept only as a fallback for legacy (pre-cookie) admin sessions; if
+ * neither path yields a proof the session is left empty and the shell
+ * lands on the sign-in screen — never on a stored legacy identity.
+ * Dispatches IMPERSONATION_EVENT when done so the shell reloads the user.
+ * Call AFTER adminImpersonateEnd has revoked the session server-side.
+ */
+export async function restoreAdminSessionAfterImpersonation(): Promise<boolean> {
+  const parked = parkedAdminProof;
+  impersonationProof = null;
+  impersonationName = "";
+  parkedAdminProof = "";
+  clearPersistedImpersonation();
+  activeSessionProof = parked;
+  const refreshed = await trySilentRefresh(true).catch(() => false);
+  if (!refreshed && !parked) activeSessionProof = "";
+  window.dispatchEvent(new Event(IMPERSONATION_EVENT));
+  return refreshed || !!parked;
 }
 
 export function isImpersonating() {

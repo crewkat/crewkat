@@ -41,7 +41,7 @@ type ReactNode,
 type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreAdminSessionAfterImpersonation, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { blobDataUrl, buildChangeOrderPdf, buildInvoicePdf, buildQuotePdf, changeOrderStrings, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type ChangeOrderPdfData, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, type FillFieldKind, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
@@ -2243,8 +2243,18 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
   useEffect(() => { captureSignupRef(); }, []);
   const [restoring, setRestoring] = useState(true);
   // Restore the previous session so the owner stays signed in across app
-  // restarts: first a legacy pre-cookie token (transition window), otherwise
-  // a silent refresh via the HttpOnly cookie. Falls through to sign-in.
+  // restarts. Priority order:
+  //   0. A resumed impersonation (api.ts rehydrated the persisted proof
+  //      from sessionStorage before this mounted): stay in character. If
+  //      the server has already expired the 30-minute session, restore
+  //      the admin from the refresh cookie — never from a stored token.
+  //   1. The cookie session (silent refresh via the HttpOnly cookie).
+  //      This is the current session and wins over any stored token; a
+  //      successful refresh also wipes the stored legacy token (see
+  //      setActiveSessionToken).
+  //   2. A legacy pre-cookie token, only when there is no live cookie
+  //      session (genuinely pre-cookie logins have no cookie marker).
+  // Falls through to sign-in.
   // A Google redirect sign-in also lands here: #google=ok means the server
   // just set a fresh refresh cookie (force the restore even without the
   // local cookie-session marker); #google=error surfaces the failure.
@@ -2261,35 +2271,49 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
           window.history.replaceState(null, "", window.location.pathname + window.location.search);
         }
       } catch { /* no hash to read */ }
+      // "user": signed in. "none": the server answered and there is no
+      // user for the current proof (a verdict). "error": transport
+      // failure (NOT a verdict — stored credentials must be retained).
+      const loadUser = async (): Promise<"user" | "none" | "error"> => {
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (cancelled) return "none";
+          if (result.user) {
+            onAuthenticated(result.user);
+            return "user";
+          }
+          return "none";
+        } catch { return "error"; }
+      };
+      if (isImpersonating()) {
+        if ((await loadUser()) === "user") return;
+        if (cancelled) return;
+        // The persisted impersonation is dead server-side. Drop it and
+        // restore the admin via the cookie (forced: the cookie is the
+        // credential; an auth-error path may have cleared the marker).
+        // If that yields the admin we're done; otherwise fall through to
+        // the normal restore below instead of trapping the user.
+        endImpersonationLocal();
+        const refreshed = await trySilentRefresh(true).catch(() => false);
+        if (cancelled) return;
+        if (refreshed && (await loadUser()) === "user") return;
+        if (cancelled) return;
+      }
+      const refreshed = await trySilentRefresh(googleOkLanding).catch(() => false);
+      if (cancelled) return;
+      if (refreshed && (await loadUser()) === "user") return;
+      if (cancelled) return;
+      // Read the legacy token only now: had the cookie refresh succeeded
+      // above, setActiveSessionToken already removed it from storage.
       const legacy = getStoredSessionToken();
       if (legacy) {
         restoreLegacySessionToken(legacy);
-        try {
-          const result = await api.getAuthSession({ _sessionToken: "active" });
-          if (cancelled) return;
-          if (result.user) {
-            onAuthenticated(result.user);
-            return;
-          }
-          clearActiveSessionToken();
-        } catch {
-          // A transport/server failure is not an auth verdict: retain the
-          // legacy token and still try the cookie path before showing sign-in.
-        }
-      }
-      const refreshed = await trySilentRefresh(Boolean(legacy) || googleOkLanding).catch(() => false);
-      if (cancelled) return;
-      if (refreshed) {
-        try {
-          const result = await api.getAuthSession({ _sessionToken: "active" });
-          if (cancelled) return;
-          if (result.user) {
-            onAuthenticated(result.user);
-            return;
-          }
-        } catch {
-          // Both restoration paths failed; show the sign-in form below.
-        }
+        const outcome = await loadUser();
+        if (outcome === "user") return;
+        if (cancelled) return;
+        // Only a definitive "no user" verdict retires the stored token;
+        // a transport failure keeps it for the next launch.
+        if (outcome === "none") clearActiveSessionToken();
       }
       if (googleFailedLanding) setError(authStrings(authLang).googleFailed);
       // Boot splash: session restore has settled signed-out — the sign-in
@@ -13214,8 +13238,10 @@ const ADMIN_DEFAULTS: AdminParameters = {
 };
 
 // Admin panel Phase 1: global banner while impersonating another user.
-// End revokes the impersonation session server-side, restores the admin's
-// proof, and refreshes auth state.
+// End revokes the impersonation session server-side, restores the admin
+// identity from the refresh cookie (the parked in-memory proof may be
+// expired by now — impersonation never touches the cookie), and reloads
+// so the shell re-bootstraps as the admin.
 function ImpersonationBanner({ lang }: { lang: Lang }) {
   const [, setTick] = useState(0);
   const [ending, setEnding] = useState(false);
@@ -13229,7 +13255,7 @@ function ImpersonationBanner({ lang }: { lang: Lang }) {
     if (ending) return;
     setEnding(true);
     try { await api.adminImpersonateEnd({ _sessionToken: "impersonation" }); } catch { /* session may already be gone */ }
-    endImpersonationLocal();
+    await restoreAdminSessionAfterImpersonation();
     setEnding(false);
     window.location.reload();
   };
