@@ -949,3 +949,9 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 /* Reputation inbox (Wave 2 item 9) */
 .review-text { display: block; margin-top: 2px; color: var(--ink-2, #444); font-size: 13px; }
 .chip.ok { background: #e7f4ec; color: #1f5a4a; border-color: #bfe0cd; }
+
+/* Lead capture (Wave 2 item 10) */
+.lead-capture-panel { margin-bottom: 14px; }
+.lead-link-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.lead-link-row input { flex: 1; padding: 8px 10px; border: 1px solid var(--line, #e2e6ea); border-radius: 8px; font-size: 13px; background: #f8f9fa; }
+.lead-source-table { margin-top: 12px; }

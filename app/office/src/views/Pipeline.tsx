@@ -38,6 +38,62 @@ function ScoreChip({ score }: { score: number }) {
   return <span className={cls}>{score}</span>;
 }
 
+// Wave 2 item 10: the public lead-capture form link + embed snippet,
+// and where leads come from (with close rate + won value per source).
+function LeadCapturePanel() {
+  const infoQuery = useQuery({ queryKey: ["lead-capture-info"], queryFn: () => api.getLeadCaptureInfo({}) });
+  const reportQuery = useQuery({ queryKey: ["lead-source-report"], queryFn: () => api.getLeadSourceReport({}) });
+  const [copied, setCopied] = useState("");
+  const copy = async (label: string, text: string) => {
+    try { await navigator.clipboard.writeText(text); setCopied(label); } catch { setCopied(""); }
+  };
+  const info = infoQuery.data;
+  const rows = reportQuery.data?.rows ?? [];
+  return (
+    <section className="panel lead-capture-panel">
+      <div className="panel-head"><h2>Lead capture form</h2><span className="muted small">Submissions land here as new leads</span></div>
+      {infoQuery.isLoading ? <p className="muted">Loading your form link…</p> : null}
+      {info ? (
+        <>
+          <div className="lead-link-row">
+            <input readOnly value={info.url} onFocus={(e) => e.target.select()} />
+            <button type="button" className="btn" onClick={() => void copy("link", info.url)}>{copied === "link" ? "Copied ✓" : "Copy link"}</button>
+            <a className="btn" href={info.url} target="_blank" rel="noreferrer">Open form</a>
+          </div>
+          <p className="muted small">
+            Tag the source by adding <code>?src=</code> to the link: <code>?src=website</code> for your website,{" "}
+            <code>?src=google-profile</code> for your Google Business Profile, or any short label for links you paste elsewhere —
+            the report below splits leads by exactly that tag.
+          </p>
+          <details>
+            <summary className="muted small">Embed it on a website instead</summary>
+            <div className="lead-link-row">
+              <input readOnly value={info.embedSnippet} onFocus={(e) => e.target.select()} />
+              <button type="button" className="btn" onClick={() => void copy("embed", info.embedSnippet)}>{copied === "embed" ? "Copied ✓" : "Copy embed"}</button>
+            </div>
+          </details>
+        </>
+      ) : null}
+      {rows.length > 0 ? (
+        <table className="mini-table lead-source-table">
+          <thead><tr><th>Source</th><th>Leads</th><th>Won</th><th>Close rate</th><th>Won value</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.source}>
+                <td>{r.source}</td>
+                <td>{r.count}</td>
+                <td>{r.wonCount}</td>
+                <td>{r.wonCount + r.lostCount > 0 ? `${r.closeRate}%` : "—"}</td>
+                <td>{formatMoney(r.wonValue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </section>
+  );
+}
+
 export function PipelineView({
   focusLeadId,
   onOpenJob,
@@ -107,6 +163,8 @@ export function PipelineView({
         <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New lead</button>
       </div>
       {boardError ? <p className="inline-error">{boardError}</p> : null}
+
+      <LeadCapturePanel />
 
       {leadsQuery.isLoading ? <div className="view-loading">Loading pipeline…</div> : null}
       {leadsQuery.isError ? (

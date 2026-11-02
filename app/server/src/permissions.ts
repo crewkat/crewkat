@@ -149,6 +149,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   // online-payment attempts list (Money visibility).
   "getPaymentsSetup", "refreshConnectStatus", "listInvoicePaymentAttempts", "getProposalAnalytics",
   "getReputationInbox", "recordPostedReview",
+  "getLeadCaptureInfo", "getLeadSourceReport",
 ]);
 
 export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([

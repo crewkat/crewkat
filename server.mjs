@@ -1162,6 +1162,77 @@ const server = createServer(async (req, res) => {
       } catch { /* fall through to the SPA below */ }
     }
 
+    // Wave 2 item 10: public lead-capture form at /lead/:code. The
+    // code (on the company's settings row) names the company and
+    // nothing more; the submit goes through the public submitLeadForm
+    // action, which applies the honeypot, per-IP rate limit, and
+    // duplicate suppression. ?src= picks the source variant (website /
+    // google-profile / any label Danny pastes around).
+    const leadFormMatch = /^\/lead\/([A-Za-z0-9]{8,40})(\/submit)?$/.exec(path);
+    if (leadFormMatch && (req.method === "GET" || req.method === "POST")) {
+      const code = leadFormMatch[1];
+      const isSubmit = !!leadFormMatch[2];
+      const variantRaw = (url.searchParams.get("src") ?? "website").toLowerCase();
+      const variant = /^[a-z0-9-]{1,24}$/.test(variantRaw) ? variantRaw : "website";
+      const page = (title, inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtmlAttr(title)}</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;margin:0;padding:32px 16px"><div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:28px">${inner}</div></body></html>`;
+      const sendPage = (status, html) => {
+        const bytes = Buffer.from(html, "utf8");
+        res.writeHead(status, { "content-type": "text/html; charset=utf-8", "content-length": bytes.length, "x-content-type-options": "nosniff", "cache-control": "private, no-store" });
+        res.end(bytes);
+      };
+      let companyName = "";
+      let companyPhone = "";
+      try {
+        const r = await libsql.execute({ sql: `SELECT company_name, phone FROM settings WHERE lead_form_code = ? LIMIT 1`, args: [code] });
+        companyName = String(r.rows[0]?.company_name ?? "").trim();
+        companyPhone = String(r.rows[0]?.phone ?? "").trim();
+      } catch { /* handled below as unavailable */ }
+      if (!companyName) {
+        sendPage(200, page("Form unavailable · Crewkat", `<h1 style="font-size:20px;margin:0 0 10px;color:#111827">This form isn't available</h1><p style="color:#374151;line-height:1.6;margin:0">Please contact the company directly to request an estimate.</p>`));
+        return;
+      }
+      if (req.method === "POST" && isSubmit) {
+        try {
+          const form = new URLSearchParams(await readBody(req, { raw: true }));
+          await dispatchAction("submitLeadForm", {
+            code,
+            variant,
+            name: form.get("name") ?? "",
+            phone: form.get("phone") ?? "",
+            email: form.get("email") ?? "",
+            address: form.get("address") ?? "",
+            serviceType: form.get("serviceType") ?? "",
+            message: form.get("message") ?? "",
+            company: form.get("company") ?? "",
+          }, { userAgent: req.headers["user-agent"] ?? "", clientIp: clientIp(req) });
+          sendPage(200, page(`Thanks · ${companyName}`, `<h1 style="font-size:20px;margin:0 0 10px;color:#111827">Thanks — we got it</h1><p style="color:#374151;line-height:1.6;margin:0">${escapeHtmlAttr(companyName)} received your request and will be in touch soon.${companyPhone ? ` Need us sooner? Call <strong>${escapeHtmlAttr(companyPhone)}</strong>.` : ""}</p>`));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Something went wrong.";
+          sendPage(200, page(`Not sent · ${companyName}`, `<h1 style="font-size:20px;margin:0 0 10px;color:#111827">That didn't go through</h1><p style="color:#374151;line-height:1.6;margin:0 0 14px">${escapeHtmlAttr(message)}</p><p style="margin:0"><a href="/lead/${code}?src=${variant}" style="color:#1f5a4a;font-weight:700">Back to the form</a></p>`));
+        }
+        return;
+      }
+      if (req.method === "GET" && !isSubmit) {
+        const input = "width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin:4px 0 14px";
+        const label = "display:block;font-size:13px;font-weight:700;color:#374151";
+        sendPage(200, page(`Request an estimate · ${companyName}`, `
+          <h1 style="font-size:22px;margin:0 0 4px;color:#111827">Request an estimate</h1>
+          <p style="color:#374151;line-height:1.6;margin:0 0 18px">${escapeHtmlAttr(companyName)}${companyPhone ? ` · ${escapeHtmlAttr(companyPhone)}` : ""}</p>
+          <form method="POST" action="/lead/${code}/submit?src=${variant}">
+            <label style="${label}">Your name *<input style="${input}" name="name" required maxlength="160" autocomplete="name"></label>
+            <label style="${label}">Phone *<input style="${input}" name="phone" required maxlength="40" autocomplete="tel" inputmode="tel"></label>
+            <label style="${label}">Email<input style="${input}" name="email" type="email" maxlength="200" autocomplete="email"></label>
+            <label style="${label}">Property address / city<input style="${input}" name="address" maxlength="240" autocomplete="street-address"></label>
+            <label style="${label}">What kind of project? *<input style="${input}" name="serviceType" required maxlength="120" placeholder="Kitchen remodel, bathroom, painting…"></label>
+            <label style="${label}">Tell us about the project<textarea style="${input}" name="message" rows="4" maxlength="3000"></textarea></label>
+            <div style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><label>Company<input name="company" tabindex="-1" autocomplete="off"></label></div>
+            <button type="submit" style="width:100%;padding:12px;border:0;border-radius:9px;background:#1f5a4a;color:#fff;font-size:16px;font-weight:700;cursor:pointer">Send request</button>
+            <p style="color:#6b7280;font-size:12px;line-height:1.5;margin:12px 0 0">Your details go only to ${escapeHtmlAttr(companyName)} — no spam, no selling your information.</p>
+          </form>`));
+        return;
+      }
+    }
+
     // Promotions (0092): public unsubscribe for campaign email. The
     // per-recipient token identifies one campaign_recipients row; a hit
     // adds the address to email_suppressions for that company, which

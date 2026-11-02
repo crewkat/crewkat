@@ -528,6 +528,22 @@ async function checkLoginIpRateLimit(ctx: Ctx): Promise<void> {
   await db.insert(schema.rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date() });
 }
 
+// Wave 2 item 10: public lead-form submissions — 10 per IP per 15
+// minutes (a household NAT shares an IP; a bot does not need more).
+const LEAD_FORM_IP_LIMIT_PER_15MIN = 10;
+async function checkLeadFormRateLimit(ctx: Ctx): Promise<void> {
+  const db = ctx.db<typeof schema>();
+  const now = Date.now();
+  const ip = ((ctx as { clientIp?: string }).clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60_000);
+  const hits = await db.select({ id: schema.rateLimitEvents.id }).from(schema.rateLimitEvents)
+    .where(and(eq(schema.rateLimitEvents.scope, "leadform:ip"), eq(schema.rateLimitEvents.key, ip), gte(schema.rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= LEAD_FORM_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many submissions from this network. Please call the office instead.");
+  }
+  await db.insert(schema.rateLimitEvents).values({ scope: "leadform:ip", key: ip, occurredAt: new Date() });
+}
+
 // Google Sign-In rate limit: same shape as the password-login limiter but on
 // its own scope, so a burst of Google attempts can't eat the password-login
 // budget for a shared office IP (and vice versa).
@@ -6995,6 +7011,115 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   }),
 
   // ---------------------------------------------------------------------
+  // Wave 2 Item 10: lead capture form + source reporting. The public
+  // page lives at /lead/:code (server.mjs renders it); the code on the
+  // company's settings row is the only credential — it names the
+  // company, nothing more. Submissions land as Pipeline leads with
+  // source "form:<variant>" so the source report can split website /
+  // google-profile / anywhere-else-the-link-was-pasted.
+  // ---------------------------------------------------------------------
+  getLeadCaptureInfo: defineAction({
+    request: z.object({}),
+    response: z.object({ code: z.string(), url: z.string(), embedSnippet: z.string() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const setting = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0];
+      if (!setting) throw new Error("Company settings not found.");
+      let code = setting.leadFormCode;
+      if (!code) {
+        code = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "").slice(0, 16);
+        await db.update(schema.settings).set({ leadFormCode: code }).where(eq(schema.settings.companyId, companyId));
+      }
+      const url = `${appPublicUrl()}/lead/${code}`;
+      return { code, url, embedSnippet: `<iframe src="${url}" width="100%" height="720" style="border:0;border-radius:12px" title="Request an estimate"></iframe>` };
+    },
+  }),
+  getLeadSourceReport: defineAction({
+    request: z.object({}),
+    response: z.object({
+      rows: z.array(z.object({
+        source: z.string(),
+        count: z.number(),
+        wonCount: z.number(),
+        lostCount: z.number(),
+        closeRate: z.number(),
+        wonValue: z.string(),
+      })),
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db<typeof schema>();
+      const leadRows = await db.select({ source: schema.leads.source, stage: schema.leads.stage, estimatedValue: schema.leads.estimatedValue }).from(schema.leads).where(eq(schema.leads.companyId, companyId));
+      const bySource = new Map<string, { count: number; won: number; lost: number; wonValue: number }>();
+      for (const lead of leadRows) {
+        const key = lead.source.trim() || "(no source)";
+        const agg = bySource.get(key) ?? { count: 0, won: 0, lost: 0, wonValue: 0 };
+        agg.count++;
+        if (lead.stage === "won") { agg.won++; agg.wonValue += Number(lead.estimatedValue) || 0; }
+        if (lead.stage === "lost") agg.lost++;
+        bySource.set(key, agg);
+      }
+      const rows = [...bySource.entries()].map(([source, agg]) => ({
+        source,
+        count: agg.count,
+        wonCount: agg.won,
+        lostCount: agg.lost,
+        closeRate: agg.won + agg.lost > 0 ? Math.round((agg.won / (agg.won + agg.lost)) * 100) : 0,
+        wonValue: agg.wonValue.toFixed(2),
+      })).sort((a, b) => b.count - a.count);
+      return { rows };
+    },
+  }),
+  submitLeadForm: defineAction({
+    request: z.object({
+      code: z.string().trim().min(8).max(40),
+      variant: z.string().trim().regex(/^[a-z0-9-]{1,24}$/).default("website"),
+      name: z.string().trim().min(2).max(160),
+      phone: z.string().trim().min(7).max(40),
+      email: z.string().trim().email().max(200).or(z.literal("")).default(""),
+      address: z.string().trim().max(240).default(""),
+      serviceType: z.string().trim().min(2).max(120),
+      message: z.string().trim().max(3000).default(""),
+      // Honeypot: humans never see or fill this field.
+      company: z.string().max(0).default(""),
+    }),
+    response: z.object({ id: z.number() }),
+    async handler(ctx, args) {
+      if (args.company) throw new Error("Request rejected.");
+      const db = ctx.db<typeof schema>();
+      await checkLeadFormRateLimit(ctx);
+      const setting = (await db.select({ companyId: schema.settings.companyId }).from(schema.settings).where(eq(schema.settings.leadFormCode, args.code)).limit(1))[0];
+      if (!setting) throw new Error("This form is no longer active.");
+      const digits = normalizedPhone(args.phone);
+      if (digits.length < 10) throw new Error("Enter a valid phone number.");
+      // Duplicate suppression, mirroring submitEstimateRequest: the
+      // same phone/email may not open more than 3 form leads a day.
+      const cutoff = Date.now() - 86_400_000;
+      const recent = await db.select().from(schema.leads).where(eq(schema.leads.companyId, setting.companyId)).orderBy(desc(schema.leads.createdAt)).limit(200);
+      const duplicates = recent.filter((l) => l.source.startsWith("form:") && l.createdAt.getTime() >= cutoff && (normalizedPhone(l.phone) === digits || (args.email && l.email.toLowerCase() === args.email.toLowerCase())));
+      if (duplicates.length >= 3) throw new Error("Too many recent requests. Please call the office.");
+      const rows = await db.insert(schema.leads).values({
+        companyId: setting.companyId,
+        name: args.name,
+        phone: args.phone,
+        email: args.email,
+        address: args.address,
+        serviceType: args.serviceType,
+        notes: args.message,
+        source: `form:${args.variant}`,
+        stage: "new",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning({ id: schema.leads.id });
+      const made = rows[0];
+      if (!made) throw new Error("Could not submit the request.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    },
+  }),
+
+  // ---------------------------------------------------------------------
   // Wave 2 Item 6: Pay Now (Stripe Connect). Setup lives in Office
   // Settings; payment starts from the public portal / invoice links
   // (PUBLIC_ACTIONS below) and lands via handleStripeWebhook.
@@ -8935,7 +9060,7 @@ export const PUBLIC_ACTIONS = new Set([
   "getGoogleClientId", "googleSignIn",
   // Growth loop: landing-page click beacon — public, no session exists yet.
   "recordLoopLanding",
-  "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "portalListJobMessages", "portalSendJobMessage",
+  "getPortalData", "getPortalPhotoDownload", "portalUpdateSelection", "portalSignChangeOrder", "getPortalChangeOrderPdf", "saveQuoteOptionSelection", "resolveDocumentLink", "getDocumentLinkPdf", "getDocumentLinkPdfPages", "validateDocumentLinkPdf", "submitDocumentSignature", "getDocumentLinkSignedPdf", "emailDocumentLinkSignedCopy", "submitEstimateRequest", "submitLeadForm", "portalListJobMessages", "portalSendJobMessage",
   // Wave 2 Item 6: Pay Now starts from the public portal / invoice
   // links — the link token is the only credential, exactly like the
   // other portal actions above.
