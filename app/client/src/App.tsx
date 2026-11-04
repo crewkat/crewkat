@@ -1353,11 +1353,19 @@ function PageHeader({
   title,
   onBack,
   actions,
+  subtitle,
+  titleWrap,
 }: {
   lang: Lang;
   title: string;
   onBack?: () => void;
   actions?: ReactNode;
+  // Wave A: a smaller second line under the title (the job screen puts
+  // the job title under the client name).
+  subtitle?: string;
+  // Wave A: let the title wrap instead of truncating with an ellipsis
+  // (the job screen's client name must never be cut off).
+  titleWrap?: boolean;
 }) {
   return (
     <header className="app-header">
@@ -1372,14 +1380,21 @@ function PageHeader({
           </button>
         ) : null}
       </div>
-      <h1>
-        {title === APP_INFO.name ? (
-          <span className="app-brand-lockup">
-            <img src={crewkatLogo} alt="" aria-hidden="true" />
-            <span>{APP_INFO.name}</span>
-          </span>
-        ) : title}
-      </h1>
+      {subtitle ? (
+        <div className="app-header-title">
+          <h1 className={titleWrap ? "wrap" : undefined}>{title}</h1>
+          <p className="app-header-subtitle">{subtitle}</p>
+        </div>
+      ) : (
+        <h1>
+          {title === APP_INFO.name ? (
+            <span className="app-brand-lockup">
+              <img src={crewkatLogo} alt="" aria-hidden="true" />
+              <span>{APP_INFO.name}</span>
+            </span>
+          ) : title}
+        </h1>
+      )}
       <div className="header-actions">
         {actions}
       </div>
@@ -4079,42 +4094,6 @@ function buzz(pattern: number | number[] = 12) {
 type FlowStepState = "done" | "current" | "todo";
 // Job Overview redesign 2026-10-11 (point 5): premium SVG progress ring for
 // the photo-completeness section.
-function ProgressRing({ value, size = 60 }: { value: number; size?: number }) {
-  const r = (size - 8) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(100, value));
-  return (
-    <svg
-      className="progress-ring"
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      role="img"
-      aria-label={`${Math.round(pct)}%`}
-    >
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-2)" strokeWidth="7" />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="var(--green)"
-        strokeWidth="7"
-        strokeLinecap="round"
-        strokeDasharray={c}
-        strokeDashoffset={c - (c * pct) / 100}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      <text x="50%" y="50%" dy=".35em" textAnchor="middle" className="progress-ring-text">
-        {Math.round(pct)}%
-      </text>
-    </svg>
-  );
-}
-
-// The full photo-completeness workflow (required-stage toggles, override
-// note, mark-complete/reopen). Lives in the Photos tab; the Overview shows
-// only a compact summary card that deep-links here.
 function JobCompletionWorkflow({
   lang,
   job,
@@ -4122,11 +4101,9 @@ function JobCompletionWorkflow({
   requirements,
   completionNote,
   setCompletionNote,
-  complete,
   completionError,
-  reopen,
-  optimisticCompleted,
   coveredStages,
+  photoCounts,
 }: {
   lang: Lang;
   job: { id: number; photoCompleteness: number; requiredPhotoStages: Stage[]; completedAt: string | null; completionOverrideNote: string | null };
@@ -4134,14 +4111,12 @@ function JobCompletionWorkflow({
   requirements: { mutate: (stages: Stage[]) => void };
   completionNote: string;
   setCompletionNote: (v: string) => void;
-  complete: { mutate: () => void; isPending: boolean };
   completionError: string;
-  reopen: { mutate: () => void; isPending: boolean };
-  optimisticCompleted: boolean;
   // Stages that already hold at least one photo (from the job's photo
-  // list) — drives the slim status line and the conditional override
-  // field in the 2026-10-24 photos redesign.
+  // list) — drives the missing-stage alert and the stage chips.
   coveredStages?: Stage[];
+  // Wave A: per-stage photo counts for the chips (Before 7 \u00b7 During 0).
+  photoCounts?: Record<Stage, number>;
 }) {
   const stageOrder: Stage[] = ["before", "during", "after"];
   const covered = coveredStages ?? (job.photoCompleteness >= 100 ? stageOrder : []);
@@ -4149,7 +4124,7 @@ function JobCompletionWorkflow({
     (s) => job.requiredPhotoStages.includes(s) && !covered.includes(s),
   );
   const allCovered = missingRequired.length === 0;
-  const isCompleted = Boolean(job.completedAt || optimisticCompleted);
+  const isCompleted = Boolean(job.completedAt);
   const coveredLabels = stageOrder
     .filter((s) => job.requiredPhotoStages.includes(s))
     .map((s) => t[s]);
@@ -4159,43 +4134,50 @@ function JobCompletionWorkflow({
       ? `Completado ${formatDate(job.completedAt.slice(0, 10), lang)}`
       : `Completed ${formatDate(job.completedAt.slice(0, 10), lang)}`
     : lang === "es" ? "Completado" : "Completed";
+  // Wave A: ONE slim alert line names the missing stages; the override
+  // note hides behind an "Add a note instead" affordance and opens on
+  // its own when the server just asked for a note (completionError) or
+  // a note is already drafted. Mark-complete / reopen left this tab —
+  // they live on Overview's next-step card now.
+  const noteNeeded = missingRequired.length > 0 || completionError;
+  const [noteOpen, setNoteOpen] = useState(false);
+  const showNote = noteOpen || Boolean(completionError) || completionNote.trim().length > 0;
+  const joinLabels = (labels: string[]) =>
+    labels.length <= 1
+      ? labels.join("")
+      : lang === "es"
+        ? `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`
+        : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
   return (
-    <section className="completion-panel completion-v2" id="job-completion" aria-label={lang === "es" ? "Completitud de fotos" : "Photo completeness"}>
-      <div className={`completion-status-line${isCompleted ? " is-complete" : allCovered ? " is-ok" : " is-missing"}`}>
-        {isCompleted || allCovered ? (
-          <CheckIcon />
-        ) : (
-          <Icon><path d="M12 3 2.5 20h19L12 3zM12 10v4M12 17.2h.01" /></Icon>
-        )}
-        <span className="completion-status-text">
-          {isCompleted
-            ? `${completedText}${job.completionOverrideNote ? ` · ${job.completionOverrideNote}` : ""}`
-            : allCovered
-              ? coveredLabels.length > 0
-                ? `${lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"} — ${coveredLabels.join(" · ")}`
-                : lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"
-              : `${lang === "es" ? "Faltan fotos" : "Missing photos"} — ${missingLabels.join(" · ")}`}
-        </span>
-        {isCompleted ? (
-          <button
-            type="button"
-            className="small-button reopen-inline"
-            disabled={reopen.isPending}
-            onClick={() => { buzz(8); reopen.mutate(); }}
-          >
-            {lang === "es" ? "Reabrir" : "Reopen"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="primary-button completion-mark-btn"
-            disabled={complete.isPending}
-            onClick={() => complete.mutate()}
-          >
-            {lang === "es" ? "Marcar trabajo completo" : "Mark job complete"}
-          </button>
-        )}
+    <section className="completion-panel completion-v2" id="job-completion" aria-label={lang === "es" ? "Etapas de fotos" : "Photo stages"}>
+      <div className="stage-chips" role="list" aria-label={lang === "es" ? "Fotos por etapa" : "Photos by stage"}>
+        {stageOrder.map((s) => {
+          const missing = job.requiredPhotoStages.includes(s) && !covered.includes(s);
+          return (
+            <span key={s} role="listitem" className={`stage-chip${missing ? " miss" : ""}`}>
+              {t[s]} <b>{photoCounts?.[s] ?? 0}</b>
+            </span>
+          );
+        })}
       </div>
+      {!isCompleted && !allCovered ? (
+        <p className="photos-alert-line" role="status">
+          {lang === "es"
+            ? `Todav\u00eda faltan fotos de ${joinLabels(missingLabels)} para el paquete de evidencia.`
+            : `${joinLabels(missingLabels)} photos are still needed for the proof packet.`}
+        </p>
+      ) : (
+        <div className={`completion-status-line${isCompleted ? " is-complete" : " is-ok"}`}>
+          <CheckIcon />
+          <span className="completion-status-text">
+            {isCompleted
+              ? `${completedText}${job.completionOverrideNote ? ` \u00b7 ${job.completionOverrideNote}` : ""}`
+              : coveredLabels.length > 0
+                ? `${lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"} \u2014 ${coveredLabels.join(" \u00b7 ")}`
+                : lang === "es" ? "Todas las etapas cubiertas" : "All stages covered"}
+          </span>
+        </div>
+      )}
       <fieldset className="completion-stages">
         <legend>
           {lang === "es" ? "Etapas requeridas" : "Required stages"}
@@ -4221,31 +4203,33 @@ function JobCompletionWorkflow({
           ))}
         </div>
       </fieldset>
-      {!isCompleted && (
-        <>
-          {/* Photos redesign (2026-10-24): the override field appears
-              only when a required stage is actually missing photos (or
-              the server just asked for one via completionError). */}
-          {(missingRequired.length > 0 || completionError) && (
-            <label>
-              <span>
-                {lang === "es"
-                  ? "Nota de excepción si faltan fotos"
-                  : "Override note if required photos are missing"}
-              </span>
-              <textarea
-                rows={2}
-                value={completionNote}
-                onChange={(e) => setCompletionNote(e.target.value)}
-              />
-            </label>
-          )}
-          {completionError && (
-            <p className="status error" role="alert">
-              {completionError}
-            </p>
-          )}
-        </>
+      {!isCompleted && noteNeeded && (
+        showNote ? (
+          <label>
+            <span>
+              {lang === "es"
+                ? "Nota de excepci\u00f3n si faltan fotos"
+                : "Override note if required photos are missing"}
+            </span>
+            <textarea
+              rows={2}
+              value={completionNote}
+              onChange={(e) => setCompletionNote(e.target.value)}
+            />
+          </label>
+        ) : (
+          <p className="note-instead">
+            {lang === "es" ? "\u00bfNo puedes completar una etapa? " : "Can't get a stage? "}
+            <button type="button" className="fin-link-action" onClick={() => setNoteOpen(true)}>
+              {lang === "es" ? "Agrega una nota" : "Add a note instead"}
+            </button>
+          </p>
+        )
+      )}
+      {!isCompleted && completionError && (
+        <p className="status error" role="alert">
+          {completionError}
+        </p>
       )}
     </section>
   );
@@ -4274,6 +4258,40 @@ function FlowStepper({
           </button>
         </Fragment>
       ))}
+    </nav>
+  );
+}
+
+// Wave A: the job Overview's slim progress line — the same flow steps
+// as FlowStepper (document screens keep the stepper), compressed into
+// one card row with the job's status pill at the end.
+function JobProgressLine({
+  lang,
+  steps,
+  pill,
+}: {
+  lang: Lang;
+  steps: Array<{ key: string; label: string; state: FlowStepState; onTap?: () => void }>;
+  pill: { label: string; cls: string } | null;
+}) {
+  return (
+    <nav className="job-progress" aria-label={lang === "es" ? "Progreso del trabajo" : "Job progress"}>
+      {steps.map((step, i) => (
+        <Fragment key={step.key}>
+          {i > 0 && <span className="jp-line" aria-hidden="true" />}
+          <button
+            type="button"
+            className={`jp-step ${step.state}`}
+            onClick={step.onTap}
+            disabled={!step.onTap}
+            aria-current={step.state === "current" ? "step" : undefined}
+          >
+            <span className="jp-dot">{step.state === "done" ? <CheckIcon /> : <i>{i + 1}</i>}</span>
+            <span className="jp-label">{step.label}</span>
+          </button>
+        </Fragment>
+      ))}
+      {pill && <span className={`jp-pill ${pill.cls}`}>{pill.label}</span>}
     </nav>
   );
 }
@@ -8339,14 +8357,15 @@ function JobFormScreen({
 // friendly (CSS class hooks), tenant-isolated by the server actions.
 // ---------------------------------------------------------------------------
 
+// Wave A (2026-11-03): six tabs — the old Activity tab folded into
+// Crew Log (chat + timeline in one tab); work summaries moved to Docs.
 type WorkspaceTab =
   | "overview"
   | "schedule"
   | "messages"
   | "documents"
   | "financials"
-  | "photos"
-  | "activity";
+  | "photos";
 
 const WORKSPACE_TABS: Array<{ id: WorkspaceTab; en: string; es: string }> = [
   { id: "overview", en: "Overview", es: "Resumen" },
@@ -8355,7 +8374,6 @@ const WORKSPACE_TABS: Array<{ id: WorkspaceTab; en: string; es: string }> = [
   { id: "documents", en: "Docs", es: "Docs" },
   { id: "financials", en: "Financials", es: "Finanzas" },
   { id: "photos", en: "Photos", es: "Fotos" },
-  { id: "activity", en: "Activity", es: "Actividad" },
 ];
 
 function JobWorkspaceTabs({
@@ -8398,6 +8416,16 @@ function JobWorkspaceTabs({
 }
 
 type JobMessage = Awaited<ReturnType<typeof api.listJobMessages>>["messages"][number];
+
+// System log entries are stored bilingually ("Job created / Trabajo
+// creado" — see logJobSystemMessage on the server). Wave A: the Crew
+// Log pill shows the app's language only, never both at once. Bodies
+// that don't split into exactly two parts render as stored.
+function systemMessageText(body: string, lang: Lang): string {
+  const parts = body.split(" / ");
+  if (parts.length === 2) return (lang === "es" ? parts[1] : parts[0]) ?? body;
+  return body;
+}
 
 // Phase 2: two-way contractor/client thread for a job — text, photos, voice
 // notes, and lifecycle system events. Contractor side (in-app).
@@ -8555,7 +8583,7 @@ function JobMessagesThread({ lang, jobId, clientName }: { lang: Lang; jobId: num
           messages.map((m: JobMessage) => (
             <div key={m.id} className={`thread-bubble ${m.sender}`}>
               {m.sender === "system" ? (
-                <span className="system-event">{m.body}</span>
+                <span className="system-event">{systemMessageText(m.body, lang)}</span>
               ) : (
                 <>
                   <span className="bubble-sender">
@@ -8690,9 +8718,22 @@ type WorkspacePanelProps = {
   setScreen: (s: Screen) => void;
   // Full photo-completeness workflow, rendered by the Photos tab above the gallery.
   completionWorkflow?: React.ReactNode;
+  // Wave A: panels reach JobDetail-owned sheets and file state through
+  // these optional pass-throughs (the sheets/menus themselves stay in
+  // JobDetail, which owns their mutations).
+  jobFiles?: JobData["jobFiles"];
+  receiptsCount?: number;
+  onOpenJobSheet?: (sheet: "invoices" | "contracts" | "payment" | "deposit" | "estimates" | "dates") => void;
+  onUnlinkInvoice?: (invoiceId: number) => void;
+  onShareFile?: () => void;
+  onFileOptions?: (file: JobFileRow) => void;
+  // Wave A: the photo upload block (stage picker + camera/gallery +
+  // social share) is built by JobDetail — it owns the upload mutation —
+  // and rendered by the Photos tab, its only home now.
+  photoTools?: React.ReactNode;
 };
 
-function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "operations">) {
+function WorkspaceSchedulePanel({ lang, jobId, job, operations, onOpenJobSheet }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "operations" | "onOpenJobSheet">) {
   const qc = useQueryClient();
   const appointments = useQuery({
     queryKey: ["appointments"],
@@ -8728,6 +8769,11 @@ function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<Workspace
         >
           {lang === "es" ? "Añadir al calendario" : "Add to calendar"}
         </button>
+        {onOpenJobSheet && (
+          <button type="button" className="secondary-button" onClick={() => onOpenJobSheet("dates")}>
+            {lang === "es" ? "Editar fecha y cita" : "Edit date & appointment"}
+          </button>
+        )}
       </div>
       <div className="panel-card">
         <h3>{lang === "es" ? "Citas" : "Appointments"}</h3>
@@ -8777,7 +8823,7 @@ function WorkspaceSchedulePanel({ lang, jobId, job, operations }: Pick<Workspace
   );
 }
 
-function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "documents" | "setScreen">) {
+function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen, contractSummary, jobFiles, onOpenJobSheet, onShareFile, onFileOptions }: Pick<WorkspacePanelProps, "lang" | "jobId" | "documents" | "setScreen" | "contractSummary" | "jobFiles" | "onOpenJobSheet" | "onShareFile" | "onFileOptions">) {
   const mine = documents.filter((d) => d.jobId === jobId);
   type Doc = (typeof mine)[number];
   const qc = useQueryClient();
@@ -8897,11 +8943,22 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
                     <strong>{d.kind === "change_order" ? d.displayTitle || d.title : d.title}</strong>
                     <small>{kindLabel(d)} · {statusLabel(d)}</small>
                   </span>
+                  <DocRowLinkPill lang={lang} doc={d} />
                   <BackIcon />
                 </button>
               </li>
             ))}
           </ul>
+        )}
+        {contractSummary && mine.some((d) => d.kind === "change_order") && (
+          <div className="job-contract-summary">
+            <ContractSumRow lang={lang} jobId={jobId} summary={contractSummary} />
+            <div><span>{lang === "es" ? "Órdenes de cambio firmadas" : "Signed change orders"}</span><strong>{usd(money(contractSummary.signedChangeOrdersTotal))}</strong></div>
+            <div className="job-contract-summary-total"><span>{lang === "es" ? "Total revisado del contrato" : "Revised contract total"}</span><strong>{usd(money(contractSummary.revisedTotal))}</strong></div>
+            {money(contractSummary.pendingChangeOrdersTotal) !== 0 && (
+              <p className="dim small">{lang === "es" ? "Órdenes de cambio pendientes (no incluidas)" : "Pending change orders (not included)"}: {usd(money(contractSummary.pendingChangeOrdersTotal))}</p>
+            )}
+          </div>
         )}
         {notice && <p className="status" role="status">{notice}</p>}
         <div className="row-actions">
@@ -8911,7 +8968,49 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
           <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>
             {lang === "es" ? "Nueva orden de cambio" : "New change order"}
           </button>
+          {onOpenJobSheet && (
+            <button type="button" className="secondary-button" onClick={() => onOpenJobSheet("contracts")}>
+              {lang === "es" ? "Vincular existente" : "Link existing"}
+            </button>
+          )}
         </div>
+      </div>
+      {/* Wave A: Docs is the single home for client-facing paper — the
+          certificate / updates / summaries / texts / shared-files entry
+          rows live here (they left More job tools, Overview, Activity). */}
+      <div className="panel-card doc-tools-card">
+        <button type="button" className="doc-tool-row" onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}>
+          <Icon><circle cx="12" cy="10" r="6" /><path d="M8.5 15 7 22l5-2.6L17 22l-1.5-7" /></Icon>
+          <span>{lang === "es" ? "Certificado de finalización" : "Completion certificate"}</span>
+          <BackIcon />
+        </button>
+        <button type="button" className="doc-tool-row" onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}>
+          <Icon><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2" /><path d="M20 4v5h-5M4 20v-5h5" /></Icon>
+          <span>{lang === "es" ? "Actualizaciones de progreso" : "Progress updates"}</span>
+          <BackIcon />
+        </button>
+        <button type="button" className="doc-tool-row" onClick={() => document.getElementById("docs-work-summaries")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          <Icon><path d="M6 2h9l5 5v15H6z" /><path d="M9 8h7M9 12h7M9 16h4" /></Icon>
+          <span>{lang === "es" ? "Resúmenes del trabajo" : "Work summaries"}</span>
+          <BackIcon />
+        </button>
+        <button type="button" className="doc-tool-row" onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}>
+          <Icon><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /></Icon>
+          <span>{lang === "es" ? "Textos al cliente" : "Client texts"}</span>
+          <BackIcon />
+        </button>
+        <button type="button" className="doc-tool-row" onClick={() => document.getElementById("docs-shared-files")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          <Icon><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon>
+          <span>{lang === "es" ? "Archivos compartidos" : "Shared files"}</span>
+          <BackIcon />
+        </button>
+      </div>
+      <div id="docs-work-summaries">
+        <JobWorkSummariesCard lang={lang} jobId={jobId} />
+      </div>
+      <div className="panel-card" id="docs-shared-files">
+        <div className="job-section-heading"><p>{lang === "es" ? "Archivos compartidos" : "Shared files"}</p>{onShareFile && <button type="button" className="small-button" onClick={onShareFile}>{lang === "es" ? "+ Compartir archivo" : "+ Share a file"}</button>}</div>
+        {(jobFiles ?? []).length ? <div className="job-linked-list">{(jobFiles ?? []).map((file) => <article key={file.id}><button type="button" onClick={() => window.open(file.url, "_blank", "noopener")}><span><strong>{file.title || file.filename}</strong><small>{file.filename} · {humanFileSize(file.sizeBytes)}</small></span><span className={`ck-pill ${file.sharedWithClient ? "ck-pill-paid" : "ck-pill-draft"}`}>{file.sharedWithClient ? (lang === "es" ? "El cliente lo ve" : "Client can see") : (lang === "es" ? "Oculto" : "Hidden")}</span></button>{onFileOptions && <button type="button" className="unlink-button" aria-label={lang === "es" ? "Opciones del archivo" : "File options"} onClick={() => onFileOptions(file)}>⋯</button>}</article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client's portal."}</p>}
       </div>
       {selected && !viewing && !confirmingDelete && (
         <BottomSheet lang={lang} title={selected.title} onClose={() => setSelected(null)}>
@@ -8920,6 +9019,10 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen }: Pick<Wor
               <button type="button" onClick={() => { setViewing(selected); }}>
                 <Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>
                 <span>{lang === "es" ? "Ver documento" : "View document"}</span>
+              </button>
+              <button type="button" onClick={() => { const docId = selected.id; setSelected(null); setScreen({ name: "document", jobId, documentId: docId }); }}>
+                <Icon><path d="M6 2h9l5 5v15H6z"/><path d="M9 8h7M9 12h7M9 16h4"/></Icon>
+                <span>{lang === "es" ? "Detalles del documento" : "Document details"}</span>
               </button>
               <button type="button" disabled={busy} onClick={() => void sendDoc(selected)}>
                 <Icon><path d="M4 12v7h16v-7M12 3v13M7 8l5-5 5 5"/></Icon>
@@ -9835,7 +9938,7 @@ function JobLoadsSection({ lang, jobId, refresh }: { lang: Lang; jobId: number; 
   );
 }
 
-function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, operations, contractSummary, setScreen }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "quotes" | "operations" | "contractSummary" | "setScreen">) {
+function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, operations, contractSummary, setScreen, onOpenJobSheet, receiptsCount, onUnlinkInvoice }: Pick<WorkspacePanelProps, "lang" | "jobId" | "job" | "photos" | "invoices" | "quotes" | "operations" | "contractSummary" | "setScreen" | "onOpenJobSheet" | "receiptsCount" | "onUnlinkInvoice">) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
   const qc = useQueryClient();
@@ -9847,54 +9950,46 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
   const totalInvoiced = mine.reduce((s, i) => s + Number(i.totalWithLateFee || i.total || 0), 0);
   const totalPaid = mine.reduce((s, i) => s + Number(i.paidToDate || 0), 0);
   const p = operations?.profitability;
-  const selPct = p && p.selectionBudget > 0
-    ? Math.min(100, (p.selectionActual / p.selectionBudget) * 100)
-    : p && p.selectionActual > 0 ? 100 : 0;
   // Honest state (Danny 2026-10-24): "Estimated" reads $0 whenever the
   // job's price lives in an uploaded contract document instead of a
   // Crewkat estimate — the server sums only quotes LINKED to the job.
   // So the honest state keys off estimate linkage, never the $0 itself:
-  // no linked estimate → no Profit/Margin claims, just invoiced − costs.
+  // no linked estimate → no Profit/Margin claims. Wave A (2026-11-03):
+  // that state is now ONE quiet line with the fix in it, not an alarm.
   const hasLinkedEstimate = quotes.some((q) => q.jobId === jobId);
   const costsSoFar = p ? p.materials + p.laborCost + p.expenses + p.subcontractors : 0;
   const balanceDue = totalInvoiced - totalPaid;
   const contractBase = contractSummary ? money(contractSummary.baseAmount) : 0;
-  const contractPct = contractBase > 0
-    ? Math.min(100, Math.max(0, (totalInvoiced / contractBase) * 100))
-    : 0;
+  const showLinkLine = !hasLinkedEstimate;
+  const moneyAllZero = contractBase === 0 && totalInvoiced === 0 && totalPaid === 0 && costsSoFar === 0;
   const t = {
     title: lang === "es" ? "Finanzas del trabajo" : "Job financials",
-    profitability: lang === "es" ? "Rentabilidad" : "Profitability",
-    estimated: lang === "es" ? "Estimado" : "Estimated",
+    money: lang === "es" ? "Dinero" : "Money",
     invoiced: lang === "es" ? "Facturado" : "Invoiced",
-    variance: lang === "es" ? "Diferencia" : "Variance",
     materials: lang === "es" ? "Materiales" : "Materials",
     expenses: lang === "es" ? "Gastos" : "Expenses",
     subcontractors: lang === "es" ? "Subcontratistas" : "Subcontractors",
-    labor: lang === "es" ? "Mano de obra" : "Labor",
-    profit: lang === "es" ? "Ganancia" : "Profit",
     margin: lang === "es" ? "Margen" : "Margin",
     paid: lang === "es" ? "Cobrado" : "Paid",
-    deposit: lang === "es" ? "Depósito" : "Deposit",
-    depositHeld: lang === "es" ? "Depósito retenido" : "Deposit held",
     costsSoFar: lang === "es" ? "Costos hasta ahora" : "Costs so far",
     balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due",
-    estimateNotLinked: lang === "es" ? "Estimado no vinculado" : "Estimate not linked",
-    noEstimateNote: lang === "es"
-      ? "Aún no hay un estimado vinculado — no se puede calcular la ganancia ni el margen. Vincula el estimado y esta tarjeta mostrará los números reales."
-      : "No estimate linked yet — profit and margin can't be calculated. Link the estimate and this card shows the real numbers.",
-    invoicedMinusCosts: lang === "es" ? "Facturado − costos hasta ahora" : "Invoiced − costs so far",
-    contract: lang === "es" ? "Contrato" : "Contract",
+    noEstimateShort: lang === "es"
+      ? "Aún no hay un estimado vinculado — el margen lo necesita."
+      : "No estimate linked yet — margin needs it.",
+    linkEstimate: lang === "es" ? "Vincular estimado" : "Link estimate",
     contractSum: lang === "es" ? "Monto del contrato" : "Contract sum",
-    invoicedSoFar: lang === "es" ? "Facturado hasta ahora" : "Invoiced so far",
-    leftToInvoice: lang === "es" ? "Por facturar" : "Left to invoice",
-    noContract: lang === "es" ? "Aún no hay monto de contrato." : "No contract amount set yet.",
     remaining: lang === "es" ? "Restante" : "Remaining",
-    moneySummary: lang === "es" ? "Resumen de dinero" : "Money summary",
-    budget: lang === "es" ? "Presupuesto" : "Budget",
+    budgetCosts: lang === "es" ? "Presupuesto y costos" : "Budget & costs",
     budgetTotal: lang === "es" ? "Presupuesto total" : "Budget total",
-    changeOrders: lang === "es" ? "Órdenes de cambio" : "Change orders",
-    selections: lang === "es" ? "Selecciones" : "Selections",
+    addExpense: lang === "es" ? "Añadir gasto" : "Add expense",
+    scanReceipt: lang === "es" ? "Escanear recibo" : "Scan receipt",
+    deposits: lang === "es" ? "Depósitos" : "Deposits",
+    paymentNotes: lang === "es" ? "Notas de pago" : "Payment notes",
+    receipts: lang === "es" ? "Recibos" : "Receipts",
+    record: lang === "es" ? "Registrar" : "Record",
+    edit: lang === "es" ? "Editar" : "Edit",
+    add: lang === "es" ? "Agregar" : "Add",
+    linkExisting: lang === "es" ? "Vincular existente" : "Link existing",
     invoicesTitle: lang === "es" ? "Facturas" : "Invoices",
     noInvoices: lang === "es" ? "Sin facturas en este trabajo." : "No invoices on this job.",
     newInvoice: lang === "es" ? "Nueva factura" : "New invoice",
@@ -9902,119 +9997,73 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
   return (
     <ProShowcase lang={lang} isPremium={isPremium} title={t.title} setScreen={setScreen} className="fin-showcase">
       <section className="workspace-panel fin-unified" aria-label={lang === "es" ? "Finanzas" : "Financials"}>
+        {/* Wave A: Profitability + Money summary + Contract merge into
+            ONE Money card — every figure appears exactly once. */}
+        <section className="fin-card fin-money-card" aria-label={t.money}>
+          <div className="fin-card-head">
+            <h2>{t.money}</h2>
+          </div>
+          {showLinkLine && moneyAllZero ? (
+            <p className="fin-link-line">{t.noEstimateShort} <button type="button" className="fin-link-action" onClick={() => onOpenJobSheet?.("estimates")}>{t.linkEstimate}</button></p>
+          ) : (
+            <div className="money-rows">
+              <div className="money-row"><span>{t.contractSum}</span><strong>{contractBase > 0 ? usd(contractBase) : "\u2014"}</strong></div>
+              <div className="money-row"><span>{t.invoiced}</span><strong>{usd(totalInvoiced)}</strong></div>
+              <div className="money-row"><span>{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
+              <div className="money-row"><span>{t.balanceDue}</span><strong>{totalInvoiced > 0 ? usd(balanceDue) : "\u2014"}</strong></div>
+              <div className="money-row"><span>{t.costsSoFar}</span><strong>{usd(costsSoFar)}</strong></div>
+              <div className="money-row total"><span>{t.margin}</span><strong>{hasLinkedEstimate && p ? `${usd(p.profit)} \u00b7 ${p.margin.toFixed(1)}%` : "\u2014"}</strong></div>
+            </div>
+          )}
+        </section>
+        {showLinkLine && !moneyAllZero && (
+          <p className="fin-card fin-link-line">{t.noEstimateShort} <button type="button" className="fin-link-action" onClick={() => onOpenJobSheet?.("estimates")}>{t.linkEstimate}</button></p>
+        )}
         {p && (
-          <section className="fin-card fin-profit" aria-label={t.profitability}>
+          <section className="fin-card fin-budget-card" aria-label={t.budgetCosts}>
             <div className="fin-card-head">
-              <h2>{t.profitability}</h2>
-              {!hasLinkedEstimate && <span className="fin-chip-warn">{t.estimateNotLinked}</span>}
+              <h2>{t.budgetCosts}</h2>
             </div>
-            <div className="fin-grid">
-              <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoiced}</span><strong>{usd(p.invoiced)}</strong></div>
-              <div className="fin-fig f-paid"><span className="fin-fig-label"><i className="fin-dot" />{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
-              <div className="fin-fig f-costs"><span className="fin-fig-label"><i className="fin-dot" />{t.costsSoFar}</span><strong>{usd(costsSoFar)}</strong></div>
-              <div className="fin-fig f-owed"><span className="fin-fig-label"><i className="fin-dot" />{t.balanceDue}</span><strong>{usd(balanceDue)}</strong></div>
+            <div className="money-rows">
+              <div className="money-row"><span>{t.materials}</span><strong>{usd(p.materials)}</strong></div>
+              <div className="money-row"><span>{t.expenses}</span><strong>{usd(p.expenses)}</strong></div>
+              <div className="money-row"><span>{t.subcontractors}</span><strong>{usd(p.subcontractors)}</strong></div>
+              {hasLinkedEstimate && p.budgetTotal > 0 && (
+                <>
+                  <div className="money-row"><span>{t.budgetTotal}</span><strong>{usd(p.budgetTotal)}</strong></div>
+                  <div className="money-row"><span>{t.remaining}</span><strong className={p.budgetTotal - costsSoFar < 0 ? "neg" : "pos"}>{usd(p.budgetTotal - costsSoFar)}</strong></div>
+                </>
+              )}
             </div>
-            <div className="fin-cost-row">
-              <span className="f-costs"><i className="fin-dot" />{t.materials} {usd(p.materials)}</span>
-              <span className="f-costs"><i className="fin-dot" />{t.expenses} {usd(p.expenses)}</span>
-              <span className="f-subs"><i className="fin-dot" />{t.subcontractors} {usd(p.subcontractors)}</span>
+            <div className="budget-actions">
+              <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}>+ {t.addExpense}</button>
+              <button type="button" className="secondary-button" onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}>{t.scanReceipt}</button>
             </div>
-            {hasLinkedEstimate ? (
-              <div className="fin-profit-line">
-                <span>{t.profit}</span>
-                <strong className={p.profit < 0 ? "neg" : "pos"}>{usd(p.profit)} · {t.margin} {p.margin.toFixed(1)}%</strong>
-              </div>
-            ) : (
-              <>
-                <p className="fin-honest-note">{t.noEstimateNote}</p>
-                <div className="fin-profit-line">
-                  <span>{t.invoicedMinusCosts}: {usd(p.profit)}</span>
-                  <strong>{t.margin} —</strong>
-                </div>
-              </>
-            )}
           </section>
         )}
-        <section className="fin-card fin-money" aria-label={t.moneySummary}>
-          <div className="fin-card-head">
-            <h2>{t.moneySummary}</h2>
-          </div>
-          <div className="fin-grid">
-            <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoiced}</span><strong>{usd(totalInvoiced)}</strong></div>
-            <div className="fin-fig f-paid"><span className="fin-fig-label"><i className="fin-dot" />{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
-            <div className="fin-fig f-deposit"><span className="fin-fig-label"><i className="fin-dot" />{t.depositHeld}</span><strong>{usd(money(job.depositAmount))}</strong></div>
-            <div className="fin-fig f-budget"><span className="fin-fig-label"><i className="fin-dot" />{t.budget}</span><strong>{p ? usd(p.budgetTotal) : "—"}</strong></div>
+        {/* Wave A: deposits, payment notes, and receipts live in
+            Financials now — slim rows into their unchanged flows. */}
+        <section className="fin-card fin-slim-card">
+          <div className="fin-slim-row">
+            <span className="fin-slim-label">{t.deposits}</span>
+            <strong>{usd(money(job.depositAmount))}</strong>
+            <button type="button" className="small-button" onClick={() => onOpenJobSheet?.("deposit")}>{job.depositAmount ? t.edit : t.record}</button>
           </div>
         </section>
-        {contractSummary && (
-          <section className="fin-card fin-contract-card" aria-label={t.contract}>
-            <div className="fin-card-head">
-              <h2>{t.contract}</h2>
-            </div>
-            <div className="fin-grid fin-grid-3">
-              <div className="fin-fig f-contract"><span className="fin-fig-label"><i className="fin-dot" />{t.contractSum}</span><strong>{contractBase > 0 ? usd(contractBase) : "—"}</strong></div>
-              <div className="fin-fig f-invoiced"><span className="fin-fig-label"><i className="fin-dot" />{t.invoicedSoFar}</span><strong>{usd(totalInvoiced)}</strong></div>
-              <div className="fin-fig f-owed"><span className="fin-fig-label"><i className="fin-dot" />{t.leftToInvoice}</span><strong>{contractBase > 0 ? usd(contractBase - totalInvoiced) : "—"}</strong></div>
-            </div>
-            {contractBase > 0 ? (
-              <>
-                <div
-                  className="fin-progress f-invoiced"
-                  role="progressbar"
-                  aria-valuenow={Math.round(contractPct)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={t.invoicedSoFar}
-                >
-                  <span style={{ width: `${contractPct}%` }} />
-                </div>
-                <p className="fin-progress-caption">{Math.round(contractPct)}% {lang === "es" ? "facturado" : "invoiced"}</p>
-              </>
-            ) : (
-              <p className="muted fin-card-note">{t.noContract}</p>
-            )}
-          </section>
-        )}
-        {p && (
-          <section className="fin-card fin-budget-card" aria-label={t.budget}>
-            <div className="fin-card-head">
-              <h2>{t.budget}</h2>
-            </div>
-            <ul className="panel-list budget-rows fin-rows">
-              <li className="f-budget">
-                <span className="fin-row-label"><i className="fin-dot" />{t.budgetTotal}</span>
-                <strong>{usd(p.budgetTotal)}</strong>
-              </li>
-              <li className="f-co">
-                <span className="fin-row-label"><i className="fin-dot" />{t.changeOrders}</span>
-                <strong>{usd(p.changeOrdersTotal)}</strong>
-              </li>
-              <li>
-                <span>
-                  {t.selections}
-                  <small>
-                    {usd(p.selectionActual)} / {usd(p.selectionBudget)}
-                  </small>
-                </span>
-                <strong>{(selPct ?? 0).toFixed(0)}%</strong>
-              </li>
-              <li className="fin-remaining-row">
-                <span className="fin-row-label">{t.remaining}</span>
-                <strong className={p.budgetTotal - costsSoFar < 0 ? "neg" : "pos"}>{usd(p.budgetTotal - costsSoFar)}</strong>
-              </li>
-            </ul>
-            <div
-              className={`budget-bar${(selPct ?? 0) >= 100 && p.selectionBudget > 0 ? " over" : ""}`}
-              role="progressbar"
-              aria-valuenow={Math.round(selPct ?? 0)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={lang === "es" ? "Presupuesto de selecciones usado" : "Selection budget used"}
-            >
-              <span style={{ width: `${selPct ?? 0}%` }} />
-            </div>
-          </section>
-        )}
+        <section className="fin-card fin-slim-card">
+          <div className="fin-slim-row">
+            <span className="fin-slim-label">{t.paymentNotes}</span>
+            <strong>{job.paymentNotes ? 1 : 0}</strong>
+            <button type="button" className="small-button" onClick={() => onOpenJobSheet?.("payment")}>{job.paymentNotes ? t.edit : t.add}</button>
+          </div>
+        </section>
+        <button type="button" className="fin-card fin-slim-card fin-slim-button" onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}>
+          <span className="fin-slim-row">
+            <span className="fin-slim-label">{t.receipts}</span>
+            <strong>{receiptsCount ?? 0}</strong>
+            <BackIcon />
+          </span>
+        </button>
         <section className="pa-chart-section">
           <h3 className="pa-chart-title"><span className="pa-chart-dot" style={{ background: "#3b82f6" }} />{t.invoicesTitle}</h3>
           {mine.length === 0 ? (
@@ -10023,8 +10072,15 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
             <ul className="panel-list">
               {mine.map((i) => (
                 <li key={i.id}>
-                  <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
-                  <span className={`status-chip ${i.status}`}>{i.status}</span>
+                  <button type="button" className="fin-invoice-row" onClick={() => setScreen({ name: "invoicePreview", invoiceId: i.id })}>
+                    <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
+                    <span className={`status-chip ${i.status}`}>{i.status}</span>
+                  </button>
+                  {onUnlinkInvoice && (
+                    <button type="button" className="unlink-button" onClick={() => onUnlinkInvoice(i.id)}>
+                      {lang === "es" ? "Desvincular" : "Unlink"}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -10032,6 +10088,11 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
           <button type="button" className="secondary-button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>
             {t.newInvoice}
           </button>
+          {onOpenJobSheet && (
+            <button type="button" className="secondary-button" onClick={() => onOpenJobSheet("invoices")}>
+              {t.linkExisting}
+            </button>
+          )}
         </section>
         {operations && (
           <>
@@ -10172,13 +10233,14 @@ function JobPhotoPairs({ lang, jobId, photos }: { lang: Lang; jobId: number; pho
   );
 }
 
-function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId }: Pick<WorkspacePanelProps, "lang" | "photos" | "completionWorkflow" | "jobId">) {
+function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId, setScreen, photoTools }: Pick<WorkspacePanelProps, "lang" | "photos" | "completionWorkflow" | "jobId" | "setScreen" | "photoTools">) {
   const stages = ["before", "during", "after"] as const;
   const label = (s: string) =>
-    s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "during" ? (lang === "es" ? "Durante" : "During") : (lang === "es" ? "Después" : "After");
+    s === "before" ? (lang === "es" ? "Antes" : "Before") : s === "during" ? (lang === "es" ? "Durante" : "During") : (lang === "es" ? "Despu\u00e9s" : "After");
   return (
     <section className="workspace-panel" aria-label={lang === "es" ? "Fotos" : "Photos"}>
       {completionWorkflow}
+      {photoTools}
       <div className="panel-card">
         <JobPhotoPairs lang={lang} jobId={jobId} photos={photos} />
       </div>
@@ -10186,22 +10248,37 @@ function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId }: Pick<
         const list = photos.filter((p) => p.stage === s);
         return (
           <div className="panel-card" key={s}>
-            <h3>{label(s)} · {list.length}</h3>
+            <h3>{label(s)} \u00b7 {list.length}</h3>
             {list.length === 0 ? (
               <p className="muted">{lang === "es" ? "Sin fotos." : "No photos."}</p>
             ) : (
               <div className="photo-grid">
                 {list.map((p) => (
-                  <figure key={p.id}>
-                    <img src={p.url} alt={p.caption || label(s)} loading="lazy" />
-                    {p.caption && <figcaption>{p.caption}</figcaption>}
-                  </figure>
+                  <PhotoCard key={p.id} photo={p} lang={lang} jobId={jobId} onAnnotate={() => setScreen({ name: "tool", jobId, mode: "annotate", photoId: p.id })} />
                 ))}
               </div>
             )}
           </div>
         );
       })}
+      <button type="button" className="panel-card ba-tool-row" onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}>
+        <span className="proof-packet-text">
+          <strong>{lang === "es" ? "Antes / después" : "Before / after"}</strong>
+          <small>{lang === "es" ? "Imagen con tu marca para compartir" : "Branded share image"}</small>
+        </span>
+        <BackIcon />
+      </button>
+      {/* Wave A: the proof packet's only entry point lives here, next
+          to the photos it is built from. */}
+      <div className="panel-card proof-packet-row">
+        <div className="proof-packet-text">
+          <strong>{copy[lang].proof}</strong>
+          <small>{lang === "es" ? "PDF con tu marca de las fotos de este trabajo" : "Branded PDF of this job's photos"}</small>
+        </div>
+        <button type="button" className="primary-button" onClick={() => setScreen({ name: "proof", jobId })}>
+          {lang === "es" ? "Compartir PDF" : "Share PDF"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -10211,7 +10288,7 @@ type ActivityItem = { at: number; label: string; detail: string };
 // Work summaries (0094): create a frozen client-ready summary for a
 // date range and share it through the document-link family (kind
 // "work_summary" — the same create/revoke actions as document links).
-// Lives on the job's Activity tab, under the timeline.
+// Wave A: lives on the job's Docs tab (it moved out of Activity).
 function JobWorkSummariesCard({ lang, jobId }: { lang: Lang; jobId: number }) {
   const es = lang === "es";
   const qc = useQueryClient();
@@ -10489,7 +10566,11 @@ function JobWorkSummariesCard({ lang, jobId }: { lang: Lang; jobId: number }) {
   );
 }
 
-function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operations }: Pick<WorkspacePanelProps, "lang" | "job" | "quotes" | "invoices" | "documents" | "operations">) {
+// Wave A: the old Activity tab's timeline, folded into Crew Log under
+// the crew chat. Entries are derived from the job's own records (job,
+// estimates, invoices, documents, daily logs) — visually distinct from
+// chat bubbles: a quiet card with a ruled list, no composer.
+function JobTimelineCard({ lang, job, quotes, invoices, documents, operations }: Pick<WorkspacePanelProps, "lang" | "job" | "quotes" | "invoices" | "documents" | "operations">) {
   const items: ActivityItem[] = [];
   const push = (iso: string | null | undefined, label: string, detail: string) => {
     if (!iso) return;
@@ -10499,20 +10580,20 @@ function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operat
   push(job.createdAt, lang === "es" ? "Trabajo creado" : "Job created", job.jobType);
   if (job.completedAt) push(job.completedAt, lang === "es" ? "Trabajo completado" : "Job completed", "");
   quotes.filter((x) => x.jobId === job.id).forEach((x) =>
-    push(x.createdAt, lang === "es" ? "Presupuesto" : "Estimate", `${usd(money(x.total))}${x.accepted ? (lang === "es" ? " · Aceptado" : " · Accepted") : ""}`));
+    push(x.createdAt, lang === "es" ? "Presupuesto" : "Estimate", `${usd(money(x.total))}${x.accepted ? (lang === "es" ? " \u00b7 Aceptado" : " \u00b7 Accepted") : ""}`));
   invoices.filter((x) => x.jobId === job.id).forEach((x) =>
-    push(x.createdAt, lang === "es" ? "Factura" : "Invoice", `${x.invoiceNumber} · ${usd(money(x.totalWithLateFee || x.total))} · ${x.status}`));
+    push(x.createdAt, lang === "es" ? "Factura" : "Invoice", `${x.invoiceNumber} \u00b7 ${usd(money(x.totalWithLateFee || x.total))} \u00b7 ${x.status}`));
   documents.filter((x) => x.jobId === job.id).forEach((x) =>
     push(x.signedAt, x.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order"), x.title));
   (operations?.dailyLogs ?? []).forEach((l) =>
-    push(`${l.logDate}T12:00:00`, lang === "es" ? "Registro diario" : "Daily log", `${l.crew || "—"} · ${l.hours || "0"}h`));
+    push(`${l.logDate}T12:00:00`, lang === "es" ? "Registro diario" : "Daily log", `${l.crew || "\u2014"} \u00b7 ${l.hours || "0"}h`));
   items.sort((a, b) => b.at - a.at);
   return (
-    <section className="workspace-panel" aria-label={lang === "es" ? "Actividad" : "Activity"}>
+    <section className="workspace-panel crew-timeline" aria-label={lang === "es" ? "L\u00ednea de tiempo" : "Timeline"}>
       <div className="panel-card">
-        <h3>{lang === "es" ? "Línea de tiempo" : "Timeline"}</h3>
+        <h3>{lang === "es" ? "L\u00ednea de tiempo" : "Timeline"}</h3>
         {items.length === 0 ? (
-          <p className="muted">{lang === "es" ? "Sin actividad aún." : "No activity yet."}</p>
+          <p className="muted">{lang === "es" ? "Sin actividad a\u00fan." : "No activity yet."}</p>
         ) : (
           <ul className="panel-list timeline">
             {items.map((it, i) => (
@@ -10527,7 +10608,6 @@ function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operat
           </ul>
         )}
       </div>
-      <JobWorkSummariesCard lang={lang} jobId={job.id} />
     </section>
   );
 }
@@ -10535,11 +10615,15 @@ function WorkspaceActivityPanel({ lang, job, quotes, invoices, documents, operat
 function JobWorkspacePanel(props: WorkspacePanelProps & { tab: WorkspaceTab }) {
   const { tab } = props;
   if (tab === "schedule") return <WorkspaceSchedulePanel {...props} />;
-  if (tab === "messages") return <JobMessagesThread lang={props.lang} jobId={props.jobId} clientName={props.job.clientName} />;
+  if (tab === "messages") return (
+    <>
+      <JobMessagesThread lang={props.lang} jobId={props.jobId} clientName={props.job.clientName} />
+      <JobTimelineCard {...props} />
+    </>
+  );
   if (tab === "documents") return <WorkspaceDocumentsPanel {...props} />;
   if (tab === "financials") return <WorkspaceFinancialsPanel {...props} />;
   if (tab === "photos") return <WorkspacePhotosPanel {...props} />;
-  if (tab === "activity") return <WorkspaceActivityPanel {...props} />;
   return null;
 }
 
@@ -10824,7 +10908,7 @@ function PortalMessages({ lang, token }: { lang: Lang; token: string }) {
           messages.map((m) => (
             <div key={m.id} className={`thread-bubble ${m.sender}`}>
               {m.sender === "system" ? (
-                <span className="system-event">{m.body}</span>
+                <span className="system-event">{systemMessageText(m.body, lang)}</span>
               ) : (
                 <>
                   {m.imageUrl && (
@@ -11087,7 +11171,7 @@ function JobDetail({
   const [shareBusy, setShareBusy] = useState(false);
   const [socialNotice, setSocialNotice] = useState("");
   const [socialNoticeError, setSocialNoticeError] = useState(false);
-  const [activeJobSheet, setActiveJobSheet] = useState<"client" | "dates" | "invoices" | "contracts" | "payment" | "deposit" | "address" | null>(null);
+  const [activeJobSheet, setActiveJobSheet] = useState<"client" | "dates" | "invoices" | "contracts" | "payment" | "deposit" | "address" | "estimates" | null>(null);
   const [jobSheetClosing, setJobSheetClosing] = useState(false);
   useEscapeToClose(activeJobSheet !== null, () => closeJobSheet(true));
   const [linkTab, setLinkTab] = useState<"new" | "existing">("new");
@@ -11301,7 +11385,11 @@ function JobDetail({
   // Phase 2: unified workspace tab + unread client-message badge. The badge
   // counts client messages newer than the last time the Messages tab was
   // opened (tracked per job in localStorage).
-  const [wsTab, setWsTab] = useState<WorkspaceTab>(initialTab ?? "overview");
+  // Wave A: a stored/deep-linked "activity" tab (removed in Wave A)
+  // lands on Crew Log, where the timeline lives now.
+  const [wsTab, setWsTab] = useState<WorkspaceTab>(
+    String(initialTab) === "activity" ? "messages" : initialTab ?? "overview",
+  );
   const [lastSeenMsg, setLastSeenMsg] = useState<number>(() =>
     Number(window.localStorage.getItem(`crewkat-job-msg-seen:${jobId}`) ?? 0),
   );
@@ -11411,8 +11499,6 @@ function JobDetail({
       setShareBusy(false);
     }
   };
-  const jobQuotes =
-    quotesQuery.data?.quotes.filter((quote) => quote.jobId === jobId) ?? [];
   const jobInvoices =
     invoicesQuery.data?.invoices.filter((invoice) => invoice.jobId === jobId) ??
     [];
@@ -11432,32 +11518,96 @@ function JobDetail({
     overviewContractBase > 0
       ? Math.min(100, Math.max(0, Math.round((overviewInvoiced / overviewContractBase) * 100)))
       : 0;
-  const documentCount =
-    query.data.documents.length + (query.data.certificate ? 1 : 0);
-  const trackingCount =
-    query.data.timeEntries.length +
-    query.data.receipts.length +
-    query.data.crewTasks.length +
-    query.data.voiceNotes.length +
-    query.data.punchItems.length;
+  // Wave A: next-step card + progress pill, derived only from fields
+  // the job payload already carries (documents, quotes, invoices,
+  // photos). First applicable rule wins: link estimate → create
+  // estimate → view contract → record payment → mark complete.
+  const contractDocs = query.data.documents.filter((doc) => doc.kind === "contract");
+  const awaitingContractDoc = contractDocs.find((doc) => !doc.clientSignedAt);
+  const hasFullySignedContract = contractDocs.some((doc) => doc.clientSignedAt);
+  const isJobCompleted = Boolean(job.completedAt || optimisticCompleted);
+  const unlinkedClientQuotes = (quotesQuery.data?.quotes ?? []).filter(
+    (q) => q.jobId == null && (job.clientId ? q.clientId === job.clientId : q.clientName === job.clientName),
+  );
+  const jobBalanceDue = jobInvoices.reduce(
+    (s, i) => s + money(i.totalWithLateFee || i.total) - money(i.paidToDate),
+    0,
+  );
+  const unpaidInvoice =
+    jobInvoices.find((i) => i.status !== "paid" && money(i.totalWithLateFee || i.total) - money(i.paidToDate) > 0) ??
+    (flowInvoice && flowInvoice.status !== "paid" ? flowInvoice : undefined);
+  const coveredStageSet = new Set(query.data.photos.map((photo) => photo.stage));
+  const missingRequiredStages = job.requiredPhotoStages.filter((s) => !coveredStageSet.has(s));
+  const openJobSheet = (sheet: "invoices" | "contracts" | "payment" | "deposit" | "estimates" | "dates") => {
+    setLinkTab(sheet === "estimates" ? (unlinkedClientQuotes.length ? "existing" : "new") : "new");
+    setActiveJobSheet(sheet);
+  };
+  const nextStep: { label: string; text: string; onClick: () => void; disabled?: boolean } | null = isJobCompleted
+    ? null
+    : contractDocs.length > 0 && !flowQuote
+      ? {
+          label: lang === "es" ? "Vincular estimado" : "Link estimate",
+          text: lang === "es"
+            ? "Vincula el estimado a este trabajo — Finanzas, el margen y el portal del cliente se llenan automáticamente."
+            : "Link the estimate to this job — Financials, margin, and the client portal fill in automatically.",
+          onClick: () => openJobSheet("estimates"),
+        }
+      : !flowQuote && contractDocs.length === 0
+        ? {
+            label: lang === "es" ? "Crear estimado" : "Create estimate",
+            text: lang === "es"
+              ? "Crea el estimado de este trabajo — se vincula automáticamente y llena Finanzas."
+              : "Create the estimate for this job — it links automatically and fills in Financials.",
+            onClick: () => setScreen({ name: "quoteNew", jobId }),
+          }
+        : awaitingContractDoc
+          ? {
+              label: lang === "es" ? "Ver contrato" : "View contract",
+              text: lang === "es"
+                ? "El contrato está firmado por ti y espera la firma del cliente."
+                : "The contract is signed by you and waiting for the client's signature.",
+              onClick: () => setScreen({ name: "document", jobId, documentId: awaitingContractDoc.id }),
+            }
+          : jobBalanceDue > 0 && unpaidInvoice
+            ? {
+                label: lang === "es" ? "Registrar pago" : "Record payment",
+                text: lang === "es"
+                  ? `Hay ${usd(jobBalanceDue)} pendiente en la factura ${unpaidInvoice.invoiceNumber}.`
+                  : `${usd(jobBalanceDue)} is due on invoice ${unpaidInvoice.invoiceNumber}.`,
+                onClick: () => setScreen({ name: "invoicePreview", invoiceId: unpaidInvoice.id }),
+              }
+            : {
+                label: lang === "es" ? "Marcar completo" : "Mark complete",
+                text: missingRequiredStages.length === 0
+                  ? (lang === "es"
+                      ? "Ya están todas las fotos requeridas — cierra este trabajo."
+                      : "All required photos are in — wrap this job up.")
+                  : (lang === "es"
+                      ? "Marca este trabajo como completo cuando el trabajo esté terminado."
+                      : "Mark this job complete when the work is done."),
+                onClick: () => complete.mutate(),
+                disabled: complete.isPending,
+              };
+  const progressPill = isJobCompleted
+    ? { label: lang === "es" ? "COMPLETADO" : "COMPLETED", cls: "is-green" }
+    : hasFullySignedContract
+      ? { label: lang === "es" ? "CONTRATO FIRMADO" : "CONTRACT SIGNED", cls: "is-green" }
+      : awaitingContractDoc
+        ? { label: lang === "es" ? "ESPERANDO FIRMA" : "AWAITING SIGNATURE", cls: "is-gray" }
+        : null;
   return (
     <DetailHero fromRect={heroRect}>
     <main className="page detail-page">
+      {/* Wave A: the header carries the client name (never truncated);
+          the job title rides under it. The proof-packet header button
+          is gone — the packet's only entry point is the Photos tab. */}
       <PageHeader
         lang={lang}
-        title={job.jobType}
+        title={job.clientName.trim() ? job.clientName : job.jobType}
+        subtitle={job.clientName.trim() ? job.jobType : undefined}
+        titleWrap
         onBack={onBack}
-        actions={
-          <button
-            className="icon-button"
-            onClick={() => setScreen({ name: "proof", jobId })}
-            aria-label={t.proof}
-          >
-            <FileIcon />
-          </button>
-        }
       />
-      <FlowStepper lang={lang} steps={flowSteps} />
       {/* Phase 2: unified job workspace — tabbed shell. Overview keeps the
           existing long scroll; other tabs render focused panels. */}
       <JobWorkspaceTabs lang={lang} tab={wsTab} onChange={setWsTab} unreadMessages={wsUnread} />
@@ -11474,6 +11624,22 @@ function JobDetail({
           operations={operationsQuery.data}
           contractSummary={query.data.contractSummary}
           setScreen={setScreen}
+          jobFiles={query.data.jobFiles ?? []}
+          receiptsCount={query.data.receipts.length}
+          onOpenJobSheet={openJobSheet}
+          onUnlinkInvoice={(invoiceId) => linkInvoice.mutate({ invoiceId, linkedJobId: null })}
+          onShareFile={() => { setShareFileError(""); setShareFile(null); setShareFileTitle(""); setShareFileOpen(true); }}
+          onFileOptions={(file) => setFileMenu(file)}
+          photoTools={(
+            <div className="panel-card job-photo-tools">
+              <div className="accordion-actions"><button onClick={shareSocial} disabled={shareBusy}><ShareIcon /><span>{shareBusy ? t.socialWait : t.social}</span></button></div>
+              {socialNotice && <p className={`status social-notice${socialNoticeError ? " error" : ""}`} role="status">{socialNotice}</p>}
+              <div className="photo-workspace">
+                <div className="stage-tabs">{(["before", "during", "after"] as const).map((s) => <button key={s} className={stage === s ? "active" : ""} onClick={() => setStage(s)}>{t[s]} <span>{query.data.photos.filter((p) => p.stage === s).length}</span></button>)}</div>
+                <div className="upload-row"><button type="button" className="camera-button" onClick={() => camera.current?.click()}><span className="camera-button-icon"><CameraIcon /></span><span>{t.camera}</span></button><button type="button" className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files} /><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files} /></div>
+              </div>
+            </div>
+          )}
           completionWorkflow={settings?.simpleMode !== true ? (
             <JobCompletionWorkflow
               lang={lang}
@@ -11482,91 +11648,61 @@ function JobDetail({
               requirements={requirements}
               completionNote={completionNote}
               setCompletionNote={setCompletionNote}
-              complete={complete}
               completionError={completionError}
-              reopen={reopen}
-              optimisticCompleted={optimisticCompleted}
               coveredStages={[...new Set(query.data.photos.map((photo) => photo.stage))]}
+              photoCounts={{
+                before: query.data.photos.filter((photo) => photo.stage === "before").length,
+                during: query.data.photos.filter((photo) => photo.stage === "during").length,
+                after: query.data.photos.filter((photo) => photo.stage === "after").length,
+              }}
             />
           ) : undefined}
         />
       ) : (
         <>
-      {/* Phase 1: contextual quick-action rail — the next lifecycle step only,
-          animated on state change, with a persistent undo affordance. */}
-      <section className="quick-rail" aria-label={lang === "es" ? "Acciones rápidas" : "Quick actions"}>
-        {!flowQuote ? (
-          <button type="button" className="quick-rail-action primary" onClick={() => { buzz(8); setScreen({ name: "quoteNew", jobId }); }}>
-            <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon>
-            <span>{lang === "es" ? "Crear estimado" : "Create estimate"}</span>
-          </button>
-        ) : !flowQuote.accepted ? (
-          <button type="button" className="quick-rail-action" onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: flowQuote.id }); }}>
-            <Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Icon>
-            <span>{lang === "es" ? "Ver estimado" : "View estimate"}</span>
-          </button>
-        ) : null}
-        {flowQuote?.accepted && !flowInvoice && (
-          <button type="button" className="quick-rail-action primary" disabled={convertFlowQuote.isPending} onClick={() => convertFlowQuote.mutate(flowQuote.id)}>
-            <FileIcon />
-            <span>{convertFlowQuote.isPending ? (lang === "es" ? "Creando…" : "Creating…") : (lang === "es" ? "Convertir a factura" : "Convert to invoice")}</span>
-          </button>
-        )}
-        {flowInvoice && flowInvoice.status !== "paid" && (
-          <button type="button" className="quick-rail-action primary" onClick={() => { buzz(8); setScreen({ name: "invoicePreview", invoiceId: flowInvoice.id }); }}>
-            <Icon><path d="M12 2v20M17 6.5c0-2-2.2-3-5-3s-5 1-5 3 2 2.6 5 3.2 5 1.4 5 3.3-2.2 3-5 3-5-1-5-3" /></Icon>
-            <span>{lang === "es" ? "Registrar pago" : "Record payment"}</span>
-          </button>
-        )}
-        {!(job.completedAt || optimisticCompleted) ? (
-          <button type="button" className="quick-rail-action" disabled={complete.isPending} onClick={() => complete.mutate()}>
-            <CheckIcon />
-            <span>{lang === "es" ? "Marcar completo" : "Mark complete"}</span>
-          </button>
-        ) : (
-          <button type="button" className="quick-rail-action" disabled={reopen.isPending} onClick={() => { buzz(8); reopen.mutate(); }}>
-            <Icon><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></Icon>
-            <span>{lang === "es" ? "Reabrir trabajo" : "Reopen job"}</span>
-          </button>
-        )}
-        {(job.completedAt || optimisticCompleted) && (
-          <button
-            type="button"
-            className="quick-rail-action"
-            onClick={async () => {
-              buzz(8);
-              try {
-                const result = await api.sendReviewRequest({ jobId, resend: false });
-                celebrate(result.emailed ? (lang === "es" ? "Solicitud enviada" : "Request sent") : (lang === "es" ? "Ya se envió" : "Already sent"));
-              } catch {
-                // Best-effort: no review link or no client email configured.
-              }
-            }}
-          >
-            <Icon><path d="m12 2 3 6.6 7 .8-5.2 4.8 1.4 7-6.2-3.6L5.8 21l1.4-7L2 9.4l7-.8Z" /></Icon>
-            <span>{lang === "es" ? "Pedir reseña" : "Ask for review"}</span>
-          </button>
-        )}
+      {/* Wave A Overview: slim progress line, ONE next step, summary
+          strips that tap through to their tab, the client card, and the
+          job tools grid. Nothing here duplicates a tab's content — the
+          old quick rail, hub accordions, and completion card are gone. */}
+      <section className="job-progress-card">
+        <JobProgressLine lang={lang} steps={flowSteps} pill={progressPill} />
       </section>
-      <section className="job-client-card">
-        <div className="job-client-card-top">
-          <button type="button" className="job-client-pick" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }} aria-label={lang === "es" ? "Cambiar cliente" : "Change client"}>
-            <strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong>
-            <small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small>
+      {nextStep ? (
+        <section className="next-step-card" aria-label={lang === "es" ? "Siguiente paso" : "Next step"}>
+          <p className="next-step-kicker">{lang === "es" ? "SIGUIENTE PASO" : "NEXT STEP"}</p>
+          <p className="next-step-text">{nextStep.text}</p>
+          <button type="button" className="primary-button" disabled={nextStep.disabled} onClick={() => { buzz(8); nextStep.onClick(); }}>
+            {nextStep.label}
           </button>
-          <button type="button" className={`job-client-expand${clientCardOpen ? " open" : ""}`} onClick={() => setClientCardOpen(!clientCardOpen)} aria-expanded={clientCardOpen} aria-label={lang === "es" ? "Detalles del trabajo" : "Job details"}>
-            <BackIcon />
-          </button>
-        </div>
-        {clientCardOpen && (
-          <div className="job-client-card-details">
-            <p className="job-type">{job.jobType}</p>
-            <button type="button" className="job-address-button" onClick={() => setActiveJobSheet("address")}><h2>{job.jobAddress}</h2><small>{lang === "es" ? "Copiar o abrir en Maps" : "Copy or open in Maps"}</small></button>
-            <p>{formatDate(job.jobDate, lang)}</p>
-            <button className="small-button" onClick={() => setEditing(!editing)}>{editing ? t.done : t.edit}</button>
+        </section>
+      ) : (
+        <section className="next-step-card is-done" aria-label={lang === "es" ? "Trabajo completado" : "Job completed"}>
+          <p className="next-step-text">
+            <strong>{lang === "es" ? "Trabajo completado" : "Job completed"}</strong>
+            {job.completedAt ? ` \u00b7 ${formatDate(job.completedAt.slice(0, 10), lang)}` : ""}
+          </p>
+          <div className="next-step-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={async () => {
+                buzz(8);
+                try {
+                  const result = await api.sendReviewRequest({ jobId, resend: false });
+                  celebrate(result.emailed ? (lang === "es" ? "Solicitud enviada" : "Request sent") : (lang === "es" ? "Ya se envi\u00f3" : "Already sent"));
+                } catch {
+                  // Best-effort: no review link or no client email configured.
+                }
+              }}
+            >
+              {lang === "es" ? "Pedir rese\u00f1a" : "Ask for review"}
+            </button>
+            <button type="button" className="secondary-button" disabled={reopen.isPending} onClick={() => { buzz(8); reopen.mutate(); }}>
+              {lang === "es" ? "Reabrir trabajo" : "Reopen job"}
+            </button>
           </div>
-        )}
-      </section>
+        </section>
+      )}
       {operationsQuery.data && (
         <button
           type="button"
@@ -11610,6 +11746,46 @@ function JobDetail({
       <ProShowcase lang={lang} isPremium={isPremium} title={lang === "es" ? "Portal del cliente" : "Client portal"} setScreen={setScreen}>
         <PortalOwnerPanel lang={lang} jobId={jobId} />
       </ProShowcase>
+      {settings?.simpleMode !== true && (
+        <button
+          type="button"
+          className="job-photos-strip"
+          onClick={() => setWsTab("photos")}
+          aria-label={lang === "es" ? "Ver fotos" : "View photos"}
+        >
+          <span className="job-photos-strip-main">
+            <strong>{lang === "es" ? "Fotos" : "Photos"}</strong>
+            <small>{lang === "es" ? "Etapas para el paquete de evidencia" : "Stages for the proof packet"}</small>
+          </span>
+          <span className="job-stage-counts">
+            {(["before", "during", "after"] as Stage[]).map((s) => (
+              <span key={s} className={`stage-count-chip${job.requiredPhotoStages.includes(s) && !coveredStageSet.has(s) ? " miss" : ""}`}>
+                {t[s]} <b>{query.data.photos.filter((p) => p.stage === s).length}</b>
+              </span>
+            ))}
+          </span>
+          <BackIcon />
+        </button>
+      )}
+      <section className="job-client-card">
+        <div className="job-client-card-top">
+          <button type="button" className="job-client-pick" onClick={() => { setClientSearch(""); setActiveJobSheet("client"); }} aria-label={lang === "es" ? "Cambiar cliente" : "Change client"}>
+            <strong>{job.clientId ? job.clientName : (lang === "es" ? "Sin cliente" : "No client")}</strong>
+            <small>{job.clientId ? (job.clientPhone || job.clientEmail || (lang === "es" ? "Toca para cambiar" : "Tap to change")) : (lang === "es" ? "Toca para vincular" : "Tap to link")}</small>
+          </button>
+          <button type="button" className={`job-client-expand${clientCardOpen ? " open" : ""}`} onClick={() => setClientCardOpen(!clientCardOpen)} aria-expanded={clientCardOpen} aria-label={lang === "es" ? "Detalles del trabajo" : "Job details"}>
+            <BackIcon />
+          </button>
+        </div>
+        {clientCardOpen && (
+          <div className="job-client-card-details">
+            <p className="job-type">{job.jobType}</p>
+            <button type="button" className="job-address-button" onClick={() => setActiveJobSheet("address")}><h2>{job.jobAddress}</h2><small>{lang === "es" ? "Copiar o abrir en Maps" : "Copy or open in Maps"}</small></button>
+            <p>{formatDate(job.jobDate, lang)}</p>
+            <button className="small-button" onClick={() => setEditing(!editing)}>{editing ? t.done : t.edit}</button>
+          </div>
+        )}
+      </section>
       {editing && (
         <BottomSheet
           lang={lang}
@@ -11629,27 +11805,6 @@ function JobDetail({
           )}
         </BottomSheet>
       )}
-      {settings?.simpleMode !== true && (
-        <button
-          type="button"
-          className="completion-summary-card"
-          onClick={() => setWsTab("photos")}
-          aria-label={lang === "es" ? "Ver fotos y completitud" : "View photos and completeness"}
-        >
-          <ProgressRing value={job.photoCompleteness} size={38} />
-          <span className="completion-summary-text">
-            <strong>{lang === "es" ? "Completitud de fotos" : "Photo completeness"}</strong>
-            <small>
-              {lang === "es"
-                ? `${job.requiredPhotoStages.length} de 3 etapas requeridas`
-                : `${job.requiredPhotoStages.length} of 3 stages required`}
-            </small>
-          </span>
-          <span className="completion-summary-cta">
-            {lang === "es" ? "Fotos \u2192" : "Photos \u2192"}
-          </span>
-        </button>
-      )}
       {jobChangeOrders.length > 0 && (
         <button
           type="button"
@@ -11668,58 +11823,30 @@ function JobDetail({
           <BackIcon />
         </button>
       )}
-      <section className="job-accordion job-hub" aria-label={lang === "es" ? "Centro del trabajo" : "Job hub"}>
-        <AccordionSection title={lang === "es" ? "Facturas" : "Invoices"} count={jobInvoices.length} tone="blue" icon={<Icon><path d="M7 3h10v18l-2-1-3 1-3-1-2 1z"/><path d="M9 8h6M9 12h6M9 16h4"/></Icon>} defaultOpen>
-          <div className="job-section-heading"><p>{lang === "es" ? "Facturas vinculadas a este trabajo" : "Invoices linked to this job"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar factura" : "Add invoice"} onClick={() => { setLinkTab("new"); setActiveJobSheet("invoices"); }}>＋</button></div>
-          {jobInvoices.length ? <div className="job-linked-list">{jobInvoices.map((invoice) => <article key={invoice.id}><button type="button" onClick={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}><span><strong>{invoice.invoiceNumber}</strong><small>{usd(money(invoice.totalWithLateFee))}</small></span><span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</span><BackIcon /></button><button type="button" className="unlink-button" onClick={() => linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: null })}>{lang === "es" ? "Desvincular" : "Unlink"}</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay facturas vinculadas." : "No linked invoices yet."}</p>}
-          {jobQuotes.length > 0 && <div className="related-estimates"><strong>{lang === "es" ? "Presupuestos relacionados" : "Related estimates"}</strong>{jobQuotes.map((quote) => <button key={quote.id} type="button" onClick={() => setScreen({ name: "quotePreview", quoteId: quote.id })}><span>#{quote.id} · {usd(money(quote.total))}</span><BackIcon /></button>)}</div>}
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Contratos" : "Contracts"} count={query.data.documents.length} tone="orange" icon={<FileIcon />}>
-          <div className="job-section-heading"><p>{lang === "es" ? "Contratos y órdenes de cambio" : "Contracts & change orders"}</p><button type="button" className="job-round-add" aria-label={lang === "es" ? "Agregar contrato" : "Add contract"} onClick={() => { setLinkTab("new"); setActiveJobSheet("contracts"); }}>＋</button></div>
-          {query.data.contractSummary && query.data.documents.some((doc) => doc.kind === "change_order") && (
-            <div className="job-contract-summary">
-              <ContractSumRow lang={lang} jobId={jobId} summary={query.data.contractSummary} />
-              <div><span>{lang === "es" ? "Órdenes de cambio firmadas" : "Signed change orders"}</span><strong>{usd(money(query.data.contractSummary.signedChangeOrdersTotal))}</strong></div>
-              <div className="job-contract-summary-total"><span>{lang === "es" ? "Total revisado del contrato" : "Revised contract total"}</span><strong>{usd(money(query.data.contractSummary.revisedTotal))}</strong></div>
-              {money(query.data.contractSummary.pendingChangeOrdersTotal) !== 0 && (
-                <p className="dim small">{lang === "es" ? "Órdenes de cambio pendientes (no incluidas)" : "Pending change orders (not included)"}: {usd(money(query.data.contractSummary.pendingChangeOrdersTotal))}</p>
-              )}
-            </div>
-          )}
-          {query.data.documents.length ? <div className="job-linked-list">{query.data.documents.map((doc) => <article key={doc.id}><button type="button" onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}><span><strong>{doc.kind === "change_order" ? doc.displayTitle || doc.title : doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}{doc.kind === "change_order" && doc.amount ? ` · ${usd(money(doc.amount))}` : ""}</small></span><DocRowLinkPill lang={lang} doc={doc} /><BackIcon /></button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>}
-          <div className="job-section-heading"><p>{lang === "es" ? "Archivos compartidos" : "Shared files"}</p><button type="button" className="small-button" onClick={() => { setShareFileError(""); setShareFile(null); setShareFileTitle(""); setShareFileOpen(true); }}>{lang === "es" ? "+ Compartir archivo" : "+ Share a file"}</button></div>
-          {(query.data.jobFiles ?? []).length ? <div className="job-linked-list">{(query.data.jobFiles ?? []).map((file) => <article key={file.id}><button type="button" onClick={() => window.open(file.url, "_blank", "noopener")}><span><strong>{file.title || file.filename}</strong><small>{file.filename} · {humanFileSize(file.sizeBytes)}</small></span><span className={`ck-pill ${file.sharedWithClient ? "ck-pill-paid" : "ck-pill-draft"}`}>{file.sharedWithClient ? (lang === "es" ? "El cliente lo ve" : "Client can see") : (lang === "es" ? "Oculto" : "Hidden")}</span></button><button type="button" className="unlink-button" aria-label={lang === "es" ? "Opciones del archivo" : "File options"} onClick={() => setFileMenu(file)}>⋯</button></article>)}</div> : <p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client's portal."}</p>}
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Notas de pago" : "Payment notes"} count={job.paymentNotes ? 1 : 0} tone="green" icon={<Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></Icon>}>
-          <div className="job-value-row"><p>{job.paymentNotes || (lang === "es" ? "Sin notas de pago" : "No payment notes")}</p><button type="button" className="small-button" onClick={() => setActiveJobSheet("payment")}>{job.paymentNotes ? t.edit : (lang === "es" ? "Agregar" : "Add")}</button></div>
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Depósitos" : "Deposits"} count={job.depositAmount ? 1 : 0} tone="teal" icon={<Icon><path d="M4 7h16v12H4zM8 11h8M8 15h5"/></Icon>}>
-          <div className="job-value-row"><p><strong>{job.depositAmount ? usd(money(job.depositAmount)) : usd(0)}</strong></p><button type="button" className="small-button" onClick={() => setActiveJobSheet("deposit")}>{job.depositAmount ? t.edit : (lang === "es" ? "Registrar" : "Record")}</button></div>
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Fotos" : "Pictures"} count={query.data.photos.length} tone="purple" icon={<CameraIcon />}>
-          <div className="accordion-actions"><button onClick={shareSocial} disabled={shareBusy}><ShareIcon /><span>{shareBusy ? t.socialWait : t.social}</span></button></div>
-          {socialNotice && <p className={`status social-notice${socialNoticeError ? " error" : ""}`} role="status">{socialNotice}</p>}
-          <div className="photo-workspace">
-            <div className="stage-tabs">{(["before", "during", "after"] as const).map((s) => <button key={s} className={stage === s ? "active" : ""} onClick={() => setStage(s)}>{t[s]} <span>{query.data.photos.filter((p) => p.stage === s).length}</span></button>)}</div>
-            <div className="upload-row"><button type="button" className="camera-button" onClick={() => camera.current?.click()}><span className="camera-button-icon"><CameraIcon /></span><span>{t.camera}</span></button><button type="button" className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files}/><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files}/></div>
-            <div className="photo-grid">{query.data.photos.filter((p) => p.stage === stage).map((p) => <PhotoCard key={p.id} photo={p} lang={lang} jobId={jobId} onAnnotate={() => setScreen({ name: "tool", jobId, mode: "annotate", photoId: p.id })}/>)}</div>
-            {query.data.photos.filter((p) => p.stage === stage).length === 0 && <div className="stage-empty"><CameraIcon /><p>{t.noPhotos}</p></div>}
-          </div>
-          <JobPhotoPairs lang={lang} jobId={jobId} photos={query.data.photos} />
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Otra información del trabajo" : "Other job info"} count={[job.notes, job.jobDate, job.appointmentAt].filter(Boolean).length} tone="slate" icon={<Icon><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></Icon>}>
-          <button className="job-plus-row detail-date-row" type="button" onClick={() => setActiveJobSheet("dates")}><span><b>＋</b><span><strong>{lang === "es" ? "Fecha y cita" : "Job date & appointment"}</strong><small>{formatDate(job.jobDate, lang)}{job.appointmentAt ? ` · ${new Date(job.appointmentAt).toLocaleString(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" })}` : ""}</small></span></span><BackIcon /></button>
-          <label className="job-notes-editor"><span>{t.notes}</span><textarea rows={3} value={detailDraft.notes} onChange={(event) => setDetailDraft({ ...detailDraft, notes: event.target.value })}/></label>
-          <button className="secondary-button" type="button" disabled={saveJobInfo.isPending} onClick={() => saveJobInfo.mutate()}>{saveJobInfo.isPending ? t.saving : t.save}</button>
-        </AccordionSection>
-        {/* Build 4: voice notes surfaced directly in job detail — record and
-            play back without leaving the job. */}
-        <AccordionSection title={t.voiceNotes} count={query.data.voiceNotes.length} tone="red" icon={<Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>}>
-          <VoiceNotes lang={lang} data={query.data} />
-        </AccordionSection>
-        <AccordionSection title={lang === "es" ? "Más herramientas" : "More job tools"} count={trackingCount + documentCount} tone="gold" icon={<CheckIcon />}>
-          <div className="tool-grid"><ToolButton label={t.proof} onClick={() => setScreen({ name: "proof", jobId })}/><ToolButton label={lang === "es" ? "Antes / después" : "Before / after"} onClick={() => setScreen({ name: "tool", jobId, mode: "beforeAfter" })}/><ToolButton label={t.completionCertificate} onClick={() => setScreen({ name: "tool", jobId, mode: "completion" })}/><ToolButton label={t.progress} onClick={() => setScreen({ name: "tool", jobId, mode: "progress" })}/><ToolButton label={t.texts} onClick={() => setScreen({ name: "tool", jobId, mode: "texts" })}/><ToolButton label={t.timeTracking} onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}/><ToolButton label={t.receipts} onClick={() => setScreen({ name: "tool", jobId, mode: "receipts" })}/><ToolButton label={t.crewChecklist} onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}/><ToolButton label={lang === "es" ? "Subcontratistas" : "Subcontractors"} onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}/><ToolButton label={t.voiceNotes} onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}/><ToolButton label={t.punch} onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}/><ToolButton label={lang === "es" ? "Finanzas" : "Financials"} onClick={() => setWsTab("financials")}/></div>
-        </AccordionSection>
+      <section className="job-tools" aria-label={lang === "es" ? "Herramientas del trabajo" : "Job tools"}>
+        <p className="job-tools-kicker">{lang === "es" ? "HERRAMIENTAS" : "JOB TOOLS"}</p>
+        <div className="job-tools-grid">
+          <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}>
+            <Icon><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2M9 2h6" /></Icon>
+            <span>{t.timeTracking}</span>
+          </button>
+          <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}>
+            <Icon><rect x="5" y="4" width="14" height="18" rx="2" /><path d="M9 4a3 3 0 0 1 6 0M9 12l2 2 4-4" /></Icon>
+            <span>{t.crewChecklist}</span>
+          </button>
+          <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}>
+            <Icon><path d="M4 6h16M4 12h16M4 18h10" /></Icon>
+            <span>{t.punch}</span>
+          </button>
+          <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}>
+            <Icon><circle cx="9" cy="8" r="3.5" /><path d="M3 20c0-3.5 2.7-5.5 6-5.5s6 2 6 5.5M16 4.7a3.5 3.5 0 0 1 0 6.6M21 20c0-3-1.8-4.8-4.2-5.3" /></Icon>
+            <span>{lang === "es" ? "Subcontratistas" : "Subcontractors"}</span>
+          </button>
+          <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}>
+            <Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>
+            <span>{t.voiceNotes}</span>
+          </button>
+        </div>
       </section>
       </>)}
       {shareFileOpen && <div className="client-sheet-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !uploadJobFile.isPending) setShareFileOpen(false); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Compartir archivo" : "Share a file"}>
@@ -11743,12 +11870,13 @@ function JobDetail({
         <div className="delete-sheet-actions"><button type="button" disabled={deleteJobFile.isPending} onClick={() => setFileDelete(null)}>{lang === "es" ? "Cancelar" : "Cancel"}</button><button type="button" className="danger-button" disabled={deleteJobFile.isPending} onClick={() => deleteJobFile.mutate(fileDelete.id)}>{lang === "es" ? "Eliminar" : "Delete"}</button></div>
       </section></div>}
       {activeJobSheet && <div className={`client-sheet-backdrop${jobSheetClosing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) closeJobSheet(["dates", "payment", "deposit"].includes(activeJobSheet)); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={activeJobSheet}>
-        <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : (lang === "es" ? "Dirección" : "Address")}</h2>{["dates", "payment", "deposit"].includes(activeJobSheet as string) ? <button type="button" className="sheet-save-btn" onClick={() => closeJobSheet(true)}>{lang === "es" ? "Guardar" : "Save"}</button> : <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => closeJobSheet(false)}>×</button>}</header>
+        <div className="sheet-handle"/><header><h2>{activeJobSheet === "client" ? (lang === "es" ? "Elegir cliente" : "Choose client") : activeJobSheet === "dates" ? (lang === "es" ? "Fecha y cita" : "Job date & appointment") : activeJobSheet === "invoices" ? (lang === "es" ? "Agregar factura" : "Add invoice") : activeJobSheet === "contracts" ? (lang === "es" ? "Agregar contrato" : "Add contract") : activeJobSheet === "payment" ? (lang === "es" ? "Notas de pago" : "Payment notes") : activeJobSheet === "deposit" ? (lang === "es" ? "Registrar depósito" : "Record deposit") : activeJobSheet === "estimates" ? (lang === "es" ? "Vincular estimado" : "Link estimate") : (lang === "es" ? "Dirección" : "Address")}</h2>{["dates", "payment", "deposit"].includes(activeJobSheet as string) ? <button type="button" className="sheet-save-btn" onClick={() => closeJobSheet(true)}>{lang === "es" ? "Guardar" : "Save"}</button> : <button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => closeJobSheet(false)}>×</button>}</header>
         {activeJobSheet === "client" && <><label className="client-search"><Icon><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></Icon><span className="sr-only">{t.searchClients}</span><input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={t.searchClients} aria-label={t.searchClients}/></label><div className="sheet-record-list"><button type="button" onClick={() => { setJobClient.mutate(null); closeJobSheet(); }}><span><strong>{lang === "es" ? "Sin cliente" : "No client"}</strong><small>{lang === "es" ? "Conservar los datos copiados en el trabajo" : "Keep the copied details on this job"}</small></span></button>{(clientsQuery.data?.clients ?? []).filter((c) => !clientSearch.trim() || [c.name,c.phone,c.email].some((v) => v.toLowerCase().includes(clientSearch.trim().toLowerCase()))).map((c) => <button type="button" key={c.id} onClick={() => { setJobClient.mutate(c.id); closeJobSheet(); }}><span><strong>{c.name}</strong><small>{[c.phone,c.email].filter(Boolean).join(" · ")}</small></span>{job.clientId === c.id && <CheckIcon/>}</button>)}</div></>}
         {activeJobSheet === "dates" && <div className="compact-form"><label><span>{t.date}</span><input type="date" value={detailDraft.jobDate} onChange={(event) => setDetailDraft({ ...detailDraft, jobDate: event.target.value })}/></label><label><span>{t.appointment}</span><input type="datetime-local" value={detailDraft.appointmentAt} onChange={(event) => setDetailDraft({ ...detailDraft, appointmentAt: event.target.value })}/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
         {(activeJobSheet === "invoices" || activeJobSheet === "contracts") && <><div className="direction-toggle" role="tablist"><button type="button" className={linkTab === "new" ? "active" : ""} onClick={() => setLinkTab("new")}>{lang === "es" ? "Nuevo" : "New"}</button><button type="button" className={linkTab === "existing" ? "active" : ""} onClick={() => setLinkTab("existing")}>{lang === "es" ? "Existente" : "Existing"}</button></div>{linkTab === "new" ? <div className="sheet-new-actions">{activeJobSheet === "invoices" ? <button className="primary-button" type="button" onClick={() => setScreen({ name: "invoiceNew", jobId })}>{lang === "es" ? "Crear factura para este trabajo" : "Create invoice for this job"}</button> : <><button className="primary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "contract" })}>{lang === "es" ? "Nuevo contrato" : "New contract"}</button><button className="secondary-button" type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "change" })}>{lang === "es" ? "Nueva orden de cambio" : "New change order"}</button></>}</div> : <div className="sheet-record-list">{activeJobSheet === "invoices" ? (invoicesQuery.data?.invoices ?? []).filter((invoice) => invoice.jobId !== jobId).map((invoice) => <button type="button" key={invoice.id} onClick={() => { linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: jobId }); closeJobSheet(); }}><span><strong>{invoice.invoiceNumber} · {invoice.clientName}</strong><small>{usd(money(invoice.totalWithLateFee))}</small></span><PlusIcon/></button>) : (documentsQuery.data?.documents ?? []).filter((doc) => doc.jobId !== jobId).map((doc) => <button type="button" key={doc.id} onClick={() => { linkDocument.mutate(doc.id); closeJobSheet(); }}><span><strong>{doc.title}</strong><small>{doc.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order")}</small></span><PlusIcon/></button>)}</div>}</>}
         {activeJobSheet === "payment" && <div className="compact-form"><label><span>{lang === "es" ? "Notas de pago" : "Payment notes"}</span><span className="textarea-grip-wrap"><textarea rows={5} value={detailDraft.paymentNotes} onChange={(event) => setDetailDraft({ ...detailDraft, paymentNotes: event.target.value })}/><ResizeGrip /></span></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar los cambios." : "Tap Save to save your changes."}</p></div>}
         {activeJobSheet === "deposit" && <div className="compact-form"><label><span>{t.depositAmount}</span><input inputMode="decimal" value={detailDraft.depositAmount} onChange={(event) => setDetailDraft({ ...detailDraft, depositAmount: event.target.value })} placeholder="$0.00"/></label><p className="sheet-note">{lang === "es" ? "Toca Guardar para guardar el depósito." : "Tap Save to save the deposit."}</p></div>}
+        {activeJobSheet === "estimates" && <><div className="direction-toggle" role="tablist"><button type="button" className={linkTab === "new" ? "active" : ""} onClick={() => setLinkTab("new")}>{lang === "es" ? "Nuevo" : "New"}</button><button type="button" className={linkTab === "existing" ? "active" : ""} onClick={() => setLinkTab("existing")}>{lang === "es" ? "Existente" : "Existing"}</button></div>{linkTab === "new" ? <div className="sheet-new-actions"><button className="primary-button" type="button" onClick={() => setScreen({ name: "quoteNew", jobId })}>{lang === "es" ? "Crear estimado para este trabajo" : "Create estimate for this job"}</button><p className="sheet-note">{lang === "es" ? "Un estimado creado desde este trabajo se vincula automáticamente." : "An estimate created from this job links automatically."}</p></div> : <><p className="sheet-note">{lang === "es" ? "Los estimados se vinculan cuando se crean desde el trabajo — toca uno para verlo." : "Estimates link when they're created from the job — tap one to view it."}</p>{unlinkedClientQuotes.length > 0 && <div className="sheet-record-list">{unlinkedClientQuotes.map((quote) => <button type="button" key={quote.id} onClick={() => { closeJobSheet(); setScreen({ name: "quotePreview", quoteId: quote.id }); }}><span><strong>#{quote.id} · {usd(money(quote.total))}</strong><small>{formatDate(quote.createdAt.slice(0, 10), lang)}</small></span><BackIcon /></button>)}</div>}{unlinkedClientQuotes.length === 0 && <p className="job-section-empty">{lang === "es" ? "No hay estimados sin vincular para este cliente." : "No unlinked estimates for this client."}</p>}</>}</>}
         {activeJobSheet === "address" && <div className="address-sheet-actions"><p>{job.jobAddress}</p><button type="button" onClick={() => { void copyText(job.jobAddress); closeJobSheet(); }}><Icon><path d="M8 8h11v11H8zM5 16H3V3h13v2"/></Icon><span>{lang === "es" ? "Copiar dirección" : "Copy address"}</span></button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.jobAddress)}`} target="_blank" rel="noreferrer"><Icon><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11z"/><circle cx="12" cy="10" r="2"/></Icon><span>{lang === "es" ? "Abrir en Maps" : "Open in Maps"}</span></a></div>}
         {(setJobClient.isError || saveJobInfo.isError || linkInvoice.isError || linkDocument.isError) && <p className="status error">{t.error}</p>}
       </section></div>}
@@ -11756,62 +11884,6 @@ function JobDetail({
     </DetailHero>
   );
 }
-function AccordionSection({
-  title,
-  count,
-  icon,
-  tone,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  count: number;
-  icon: ReactNode;
-  tone?: "blue" | "orange" | "green" | "teal" | "purple" | "slate" | "red" | "gold";
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const panelId = `job-group-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  return (
-    <section className={`accordion-section${open ? " open" : ""}`}>
-      <button
-        className="accordion-trigger"
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className={`accordion-icon${tone ? ` tone-${tone}` : ""}`}>{icon}</span>
-        <span className="accordion-title">{title}</span>
-        <span className="accordion-count">{count}</span>
-        <span className="accordion-chevron">
-          <BackIcon />
-        </span>
-      </button>
-      {open && (
-        <div className="accordion-panel" id={panelId}>
-          {children}
-        </div>
-      )}
-    </section>
-  );
-}
-function ToolButton({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button onClick={onClick}>
-      <span>{label}</span>
-      <BackIcon />
-    </button>
-  );
-}
-
 function EditJobForm({
   lang,
   job,

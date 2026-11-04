@@ -4,6 +4,12 @@
 // completeness, 6. distinct colored section icons. Plus Docs-tab expansion:
 // tappable document rows with View / Send / Delete (Edit omitted —
 // DocumentSigner has no existing-document load path).
+// Wave A (Danny approved 2026-11-03) supersedes points 5 and 6: photo
+// completeness is now an Overview strip with stage COUNTS + a stages
+// card in Photos (no ring hero), and the accordion hub (with its toned
+// section icons) is deleted — sections live in their tabs and the five
+// tab-less tools form a compact grid. Points 5/6 below pin the Wave A
+// shapes; the other points are unchanged.
 // Run from app/:  bun job-overview-redesign.behavior.test.ts
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -57,14 +63,18 @@ describe("Point 4: full-width portal panel", () => {
   });
 });
 
-describe("Point 5: premium photo completeness", () => {
-  test("ProgressRing component renders", () => {
-    expect(APP).toContain("function ProgressRing");
-    expect(APP).toContain("<ProgressRing value={job.photoCompleteness}");
+describe("Point 5: photo completeness (Wave A shape)", () => {
+  test("Overview carries a photos strip with stage counts, deep-linking to Photos", () => {
+    expect(APP).toContain('className="job-photos-strip"');
+    expect(APP).toContain("stage-count-chip");
+    expect(APP).toContain("Stages for the proof packet");
+    expect(APP).toContain('onClick={() => setWsTab("photos")}');
   });
-  test("completion-v2 hero markup present", () => {
+  test("stages card markup present in the Photos tab workflow", () => {
     expect(APP).toContain("completion-v2");
-    expect(APP).toContain("completion-hero");
+    expect(APP).toContain("stage-chips");
+    expect(APP).toContain("photos-alert-line");
+    expect(APP).toContain("photos are still needed for the proof packet");
   });
   test("all controls preserved: stages, override note, mark complete, reopen, error", () => {
     expect(APP).toContain("requirements.mutate");
@@ -75,15 +85,16 @@ describe("Point 5: premium photo completeness", () => {
   });
 });
 
-describe("Point 6: distinct section icons", () => {
-  test("AccordionSection accepts a tone prop", () => {
-    expect(APP).toContain('tone?: "blue" | "orange" | "green" | "teal" | "purple" | "slate" | "red" | "gold"');
-    expect(APP).toContain("tone-${tone}");
+describe("Point 6: job hub replaced by tabs + tools grid (Wave A)", () => {
+  test("the accordion hub and its toned sections are gone from the job screen", () => {
+    expect(APP).not.toContain("job-accordion job-hub");
+    expect(APP).not.toContain("<AccordionSection");
+    expect(APP).not.toContain('? "Más herramientas" : "More job tools"');
   });
-  test("job hub sections each carry a distinct tone", () => {
-    for (const tone of ["blue", "orange", "green", "teal", "purple", "slate", "red", "gold"]) {
-      expect(APP).toContain(`tone="${tone}"`);
-      expect(CSS).toContain(`.accordion-icon.tone-${tone}`);
+  test("the five tab-less tools form the Overview tools grid", () => {
+    expect(APP).toContain("job-tools-grid");
+    for (const mode of ["time", "crew", "punch", "subcontractors", "voice"]) {
+      expect(APP).toContain(`name: "tool", jobId, mode: "${mode}"`);
     }
   });
 });

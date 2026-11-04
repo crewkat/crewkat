@@ -170,7 +170,9 @@ check("job page toggles sharing through the action", appSrc.includes("api.setJob
 check("job page deletes through the action", appSrc.includes("api.deleteJobFile"));
 check("job page shows the client-visibility chip", appSrc.includes("Client can see") && appSrc.includes("El cliente lo ve") && appSrc.includes("Hidden") && appSrc.includes("Oculto"));
 check("portal page renders the files section", appSrc.includes("(d.files ?? []).length > 0") && appSrc.includes("t.documents"));
-check("job + portal file lists are stale-cache safe (guarded reads)", appSrc.includes("(query.data.jobFiles ?? []).length") && appSrc.includes("(d.files ?? []).map"));
+check("job + portal file lists are stale-cache safe (guarded reads)",
+  // Wave A: the job list lives in the Docs tab behind a guarded prop.
+  appSrc.includes("jobFiles={query.data.jobFiles ?? []}") && appSrc.includes("(jobFiles ?? []).length") && appSrc.includes("(d.files ?? []).map"));
 check("server registers uploadJobFile", serverSrc.includes("uploadJobFile: defineAction"));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);

@@ -1,6 +1,12 @@
 // Danny 2026-10-24: job-screens overhaul — compact chrome, honest
 // Financials with the approved color key, photos-first completion,
 // grouped appointment form, portal feature card + portal page color.
+// Wave A (Danny approved 2026-11-03) supersedes the Financials shape:
+// Profitability + Money summary + Contract merge into ONE Money card,
+// the not-linked alarm becomes one quiet link line, and the contract
+// progress bar lives only on the Overview strip. The Financials pins
+// below assert the Wave A shapes; the honest-state principle (linkage,
+// never the $0) is unchanged.
 // Run from app/:  bun job-screens-overhaul.behavior.test.ts
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -22,19 +28,18 @@ describe("Financials: honest state keys off estimate linkage, not the $0", () =>
   test("linkage is derived from quotes linked to the job", () => {
     expect(fin).toContain("const hasLinkedEstimate = quotes.some((q) => q.jobId === jobId);");
   });
-  test("no-estimate state shows the amber note, chip, and the relabeled line", () => {
-    expect(fin).toContain("fin-honest-note");
-    expect(fin).toContain("No estimate linked yet — profit and margin can't be calculated");
-    expect(fin).toContain("fin-chip-warn");
-    expect(fin).toContain("Estimate not linked");
-    expect(fin).toContain("Estimado no vinculado");
-    expect(fin).toContain("Invoiced − costs so far");
-    expect(fin).toContain("Facturado − costos hasta ahora");
-    expect(fin).toContain("{t.margin} —");
+  test("no-estimate state is one quiet link line (Wave A — no alarm chip, no paragraph)", () => {
+    expect(fin).toContain("fin-link-line");
+    expect(fin).toContain("No estimate linked yet — margin needs it.");
+    expect(fin).toContain("Aún no hay un estimado vinculado");
+    expect(fin).toContain('onOpenJobSheet?.("estimates")');
+    expect(fin).not.toContain("fin-chip-warn");
+    expect(fin).not.toContain("fin-honest-note");
+    expect(fin).not.toContain("Estimate not linked");
   });
   test("with-estimate state still shows real Profit and Margin %", () => {
-    expect(fin).toContain("hasLinkedEstimate ? (");
-    expect(fin).toContain("{t.profit}");
+    expect(fin).toContain("hasLinkedEstimate && p ?");
+    expect(fin).toContain("usd(p.profit)");
     expect(fin).toContain("p.margin.toFixed(1)");
   });
   test("contract summary is threaded from getJob into the panel", () => {
@@ -43,20 +48,22 @@ describe("Financials: honest state keys off estimate linkage, not the $0", () =>
   });
 });
 
-describe("Financials: 4 compact cards with the approved color key", () => {
+describe("Financials: one Money card + Budget & costs (Wave A)", () => {
   const fin = slice("function WorkspaceFinancialsPanel", "function BeforeAfterSlider");
-  test("the four cards exist", () => {
-    expect(fin).toContain("fin-card fin-profit");
-    expect(fin).toContain("fin-card fin-money");
-    expect(fin).toContain("fin-card fin-contract-card");
+  test("the merged cards exist (the four old cards are gone)", () => {
+    expect(fin).toContain("fin-card fin-money-card");
     expect(fin).toContain("fin-card fin-budget-card");
+    expect(fin).toContain("fin-slim-card");
+    expect(fin).not.toContain("fin-card fin-profit");
+    expect(fin).not.toContain("fin-card fin-contract-card");
   });
-  test("figures carry tone classes and dot markers", () => {
-    for (const cls of ["f-invoiced", "f-paid", "f-costs", "f-owed", "f-deposit", "f-budget", "f-contract", "f-co", "f-subs"]) {
-      expect(fin).toContain(cls);
+  test("the Money card shows each figure once, as rows", () => {
+    for (const row of ["money-row", "t.contractSum", "t.invoiced", "t.paid", "t.balanceDue", "t.costsSoFar", "t.margin"]) {
+      expect(fin).toContain(row);
     }
-    expect(fin).toContain("fin-dot");
-    expect(fin).toContain("fin-cost-row");
+    // Invoiced is derived once from the job's invoices, never re-summed per card.
+    expect(fin).toContain("const totalInvoiced = mine.reduce");
+    expect(fin).toContain("const totalPaid = mine.reduce");
   });
   test("CSS maps every tone to the exact mockup hex", () => {
     const tones: Array<[string, string]> = [
@@ -74,8 +81,9 @@ describe("Financials: 4 compact cards with the approved color key", () => {
       expect(CSS).toMatch(new RegExp(`\\.${cls}\\s*\\{\\s*--fc:\\s*${hex};`));
     }
   });
-  test("contract progress bar fills blue (the invoiced tone)", () => {
-    expect(fin).toContain('className="fin-progress f-invoiced"');
+  test("contract progress bar lives only on the Overview strip (not duplicated in Financials)", () => {
+    expect(fin).not.toContain("fin-progress");
+    expect(APP).toContain("ps-progress");
   });
 });
 
@@ -109,13 +117,15 @@ describe("Chrome: slim step bar + slim tab row", () => {
 
 describe("Photos: slim status line, conditional override field", () => {
   const wf = slice("function JobCompletionWorkflow", "function FlowStepper");
-  test("ring hero replaced by one slim status line", () => {
+  test("ring hero replaced by stage chips + one slim alert line (Wave A)", () => {
     expect(wf).toContain("completion-status-line");
     expect(wf).not.toContain("completion-hero");
     expect(wf).toContain("All stages covered");
     expect(wf).toContain("Todas las etapas cubiertas");
-    expect(wf).toContain("Missing photos");
-    expect(wf).toContain("Faltan fotos");
+    expect(wf).toContain("stage-chips");
+    expect(wf).toContain("photos-alert-line");
+    expect(wf).toContain("photos are still needed for the proof packet");
+    expect(wf).toContain("para el paquete de evidencia");
   });
   test("status is driven by covered stages passed from the job photos", () => {
     expect(wf).toContain("coveredStages");

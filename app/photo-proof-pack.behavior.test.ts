@@ -188,7 +188,9 @@ check("pair actions are NOT public actions", !serverSrc.slice(serverSrc.indexOf(
 check("photo_pairs is in the backup table list", serverSrc.includes('"photo_pairs"'));
 check("client has the BeforeAfterSlider component", appSrc.includes("function BeforeAfterSlider") && appSrc.includes("ba-frame") && appSrc.includes("clipPath"));
 check("client has the pair manager", appSrc.includes("function JobPhotoPairs") && appSrc.includes("api.createPhotoPair") && appSrc.includes("api.deletePhotoPair"));
-check("pair manager is mounted in the job photos surfaces", (appSrc.match(/<JobPhotoPairs/g) ?? []).length >= 2);
+check("pair manager is mounted in the job photos surface (Wave A: Photos tab is its only home)",
+  (appSrc.match(/<JobPhotoPairs/g) ?? []).length === 1
+  && appSrc.slice(appSrc.indexOf("function WorkspacePhotosPanel"), appSrc.indexOf("type ActivityItem")).includes("<JobPhotoPairs"));
 check("portal renders the pairs slider read-only", appSrc.includes("d.photoPairs") && appSrc.includes("portal-v2-pairs"));
 check("slider styles exist", cssSrc.includes(".ba-frame") && cssSrc.includes(".ba-handle") && cssSrc.includes(".photo-pairs"));
 check("markup editor still offers pen/arrow/text + 3 colors + undo/clear", appSrc.includes("MARKUP_COLORS = [\"#ef3d2f\", \"#ffc400\", \"#ffffff\"]") && appSrc.includes("function PhotoAnnotator"));

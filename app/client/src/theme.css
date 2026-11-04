@@ -6091,6 +6091,99 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .fin-rows li.fin-remaining-row strong.pos { color: #1e7a46; }
 .fin-rows li.fin-remaining-row strong.neg { color: #b3392e; }
 
+/* ---- Wave A (2026-11-03): job screen consolidation ---- */
+/* Header: client name wraps (never truncated), job title rides under it. */
+.app-header-title { min-width: 0; text-align: center; }
+.app-header h1.wrap { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.05; }
+.app-header-subtitle { margin: 2px 0 0; font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Overview: slim progress line + status pill. */
+.job-progress-card { margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; }
+.job-progress { display: flex; align-items: center; gap: 6px; }
+.jp-step { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; font-weight: 600; color: var(--dim); cursor: pointer; }
+.jp-step:disabled { cursor: default; }
+.jp-step .jp-dot { flex: none; width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--dim) 55%, var(--border)); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--dim); background: var(--surface); }
+.jp-step .jp-dot i { font-style: normal; }
+.jp-step .jp-dot svg { width: 10px; height: 10px; }
+.jp-step.done { color: #1e7a46; }
+.jp-step.done .jp-dot { border-color: #1e7a46; background: color-mix(in srgb, #1e7a46 12%, var(--surface)); color: #1e7a46; }
+.jp-step.current { color: var(--text); }
+.jp-step.current .jp-dot { border-color: var(--navy-700, #173a75); background: var(--navy-700, #173a75); color: #fff; }
+.jp-line { flex: 1; height: 1.5px; background: color-mix(in srgb, var(--dim) 35%, var(--border)); min-width: 8px; }
+.jp-pill { flex: none; margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: .4px; padding: 4px 8px; border-radius: 20px; white-space: nowrap; }
+.jp-pill.is-green { background: color-mix(in srgb, #1e7a46 13%, var(--surface)); color: #1e7a46; }
+.jp-pill.is-gray { background: var(--surface-2); color: var(--dim); }
+/* Overview: next-step card. */
+.next-step-card { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; }
+.next-step-kicker { margin: 0 0 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 1.1px; color: var(--dim); }
+.next-step-text { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; color: var(--text); }
+.next-step-card.is-done .next-step-text { margin-bottom: 10px; }
+.next-step-card .primary-button { min-height: 42px; border-radius: 8px; font-size: 13.5px; }
+.next-step-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.next-step-actions .secondary-button { min-height: 42px; border-radius: 8px; font-size: 13.5px; }
+/* Overview: photos summary strip with stage counts. */
+.job-photos-strip { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.job-photos-strip-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.job-photos-strip-main strong { font-size: 14px; font-weight: 700; }
+.job-photos-strip-main small { font-size: 12px; color: var(--dim); }
+.job-photos-strip > svg { flex: none; color: var(--dim); }
+.job-stage-counts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.stage-count-chip, .stage-chip { font-size: 11.5px; font-weight: 700; padding: 4px 9px; border-radius: 20px; background: var(--surface-2); color: var(--dim); white-space: nowrap; }
+.stage-count-chip b, .stage-chip b { color: var(--text); }
+.stage-count-chip.miss, .stage-chip.miss { background: #fdeee2; color: #a3540f; }
+.stage-count-chip.miss b, .stage-chip.miss b { color: #a3540f; }
+/* Overview: job tools grid (Tools-screen density). */
+.job-tools { margin-top: 14px; }
+.job-tools-kicker { margin: 0 2px 7px; font-size: 10.5px; font-weight: 700; letter-spacing: 1.1px; color: var(--dim); }
+.job-tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.job-tools-grid button { display: flex; align-items: center; gap: 9px; min-height: 59px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.job-tools-grid button svg { flex: none; width: 17px; height: 17px; color: var(--dim); }
+.job-tools-grid button:active { background: var(--surface-2); }
+/* Financials: merged Money card rows + quiet link line + slim rows. */
+.money-rows { display: grid; }
+.money-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); font-size: 13.5px; }
+.money-row:last-child { border-bottom: none; }
+.money-row > span { color: var(--dim); }
+.money-row > strong { font-weight: 700; white-space: nowrap; }
+.money-row > strong.pos { color: #1e7a46; }
+.money-row > strong.neg { color: #b3392e; }
+.money-row.total > span { color: var(--text); font-weight: 700; }
+.money-row.total > strong { font-size: 15px; font-weight: 800; }
+.fin-link-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--dim); }
+.fin-link-action { padding: 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: #e05f14; cursor: pointer; }
+.budget-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.budget-actions .secondary-button { min-height: 38px; font-size: 12.5px; }
+.fin-slim-card { width: 100%; }
+.fin-slim-row { display: flex; align-items: center; gap: 10px; width: 100%; }
+.fin-slim-label { flex: 1; font-size: 14px; font-weight: 700; text-align: left; }
+.fin-slim-row > strong { font-size: 13px; font-weight: 600; color: var(--dim); }
+.fin-slim-row > svg { flex: none; color: var(--dim); }
+button.fin-slim-button { font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.fin-invoice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+/* Docs: paper entry rows + shared-files heading inside a panel card. */
+.doc-tools-card { padding: 4px 14px; }
+.doc-tool-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); background: none; color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left; }
+.doc-tool-row:last-child { border-bottom: none; }
+.doc-tool-row > span { flex: 1; }
+.doc-tool-row > svg { flex: none; color: var(--dim); }
+.panel-card .job-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.panel-card .job-section-heading p { margin: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; font-weight: 700; color: var(--dim); }
+/* Photos tab: stage chips, one slim alert, collapsed override note, proof row. */
+.stage-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.photos-alert-line { margin: 0; background: #fdf3e7; border: 1px solid #f3ddc2; color: #8a5410; font-size: 12.5px; font-weight: 600; border-radius: 8px; padding: 9px 11px; }
+.note-instead { margin: 0; font-size: 12px; color: var(--dim); }
+.note-instead .fin-link-action { font-size: 12px; }
+.proof-packet-row { display: flex; align-items: center; gap: 10px; }
+.proof-packet-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.proof-packet-text strong { font-size: 14px; font-weight: 700; }
+.proof-packet-text small { font-size: 12px; color: var(--dim); }
+.proof-packet-row .primary-button { flex: none; min-height: 40px; border-radius: 8px; font-size: 13px; padding: 0 14px; }
+.job-photo-tools .photo-workspace { margin-top: 10px; }
+button.ba-tool-row { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+button.ba-tool-row > svg { flex: none; color: var(--dim); }
+/* Crew Log: timeline card under the chat; Send stays full-strength orange. */
+.crew-timeline { padding-top: 0; }
+.job-thread .composer-row .primary-button:disabled { opacity: 1; cursor: default; }
+
 /* ---- Portal feature card (Overview): navy/orange, status at a glance ---- */
 .portal-owner.portal-feature { overflow: hidden; border-radius: 14px; border: 1px solid color-mix(in srgb, #0b1f4d 45%, var(--border)); box-shadow: 0 8px 22px rgb(11 31 77 / .13); }
 .portal-feature-head { display: flex; align-items: center; gap: 9px; padding: 11px 13px; background: linear-gradient(120deg, #0b1f4d 0%, #173a75 72%, #8a4410 135%); color: #fff; }

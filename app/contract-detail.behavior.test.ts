@@ -63,7 +63,11 @@ check("document screen maps to the jobs tab",
 check("router renders DocumentDetailScreen for the document screen",
   appSrc.includes('screen.name === "document"') && appSrc.includes("<DocumentDetailScreen"));
 check("Contracts row tap routes to the document detail, not the signer form",
-  appSrc.includes('onClick={() => setScreen({ name: "document", jobId, documentId: doc.id })}'));
+  // Wave A (2026-11-03): the Overview contracts row is gone; the route
+  // lives on the Docs tab's action sheet ("Document details") and on
+  // Overview's next-step card for an awaiting-signature contract.
+  appSrc.includes('setScreen({ name: "document", jobId, documentId: docId })')
+  && appSrc.includes('setScreen({ name: "document", jobId, documentId: awaitingContractDoc.id })'));
 check("the old contract-row -> tool-screen route is gone",
   !appSrc.includes('mode: doc.kind === "contract" ? "contract" : "change"'));
 

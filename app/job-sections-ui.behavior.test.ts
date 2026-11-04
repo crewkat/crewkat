@@ -1,5 +1,12 @@
 // Job sections design pass (Danny, 2026-10-15 — "New construct" screenshots).
 //
+// Wave A (Danny approved 2026-11-03) deleted the Overview accordion
+// hub: invoices live in Financials, contracts/files in Docs, deposits
+// and payment notes in Financials. The pins below that asserted the
+// accordion structure now assert the same intents (tappable rows with
+// status chips, dashed empty states, sheet handlers) at their Wave A
+// homes. The shared row/empty-state CSS (.job-linked-list,
+// .job-section-empty) still ships and is still used by Docs.
 // The eight job-detail accordion sections each improvised their own
 // spacing: bodies started flush under the title bar, empty states were
 // loose text, and list rows did not read as tappable. Danny approved a
@@ -44,9 +51,11 @@ describe("one spacing system for all eight sections", () => {
     expect(rule(".accordion-panel {")).toContain("padding:14px 16px 16px");
   });
 
-  test("all eight AccordionSection usages survive in JobDetail", () => {
+  test("Wave A: the accordion hub is gone — sections live in their tabs", () => {
     const uses = APP.match(/<AccordionSection title=/g) ?? [];
-    expect(uses.length).toBe(8);
+    expect(uses.length).toBe(0);
+    expect(APP).toContain("job-tools-grid");
+    expect(APP).toContain("fin-money-card");
   });
 
   test("share-to-social action no longer double-pads the panel top", () => {
@@ -63,23 +72,19 @@ describe("inset tappable rows with status chips", () => {
     expect(rule(".job-accordion .job-linked-list article")).toContain("border-radius: 12px");
   });
 
-  test("invoice rows carry the shared ck-pill status mapping and keep their route", () => {
-    const seg = slice('title={lang === "es" ? "Facturas" : "Invoices"}', 'title={lang === "es" ? "Contratos" : "Contracts"}');
-    expect(seg).toContain('setScreen({ name: "invoicePreview", invoiceId: invoice.id })');
-    expect(seg).toContain("ck-pill-paid");
-    expect(seg).toContain("ck-pill-overdue");
-    expect(seg).toContain("ck-pill-draft");
-    expect(seg).toContain("ck-pill-pending");
-    // Status moved into the chip — the small line no longer duplicates it.
-    expect(seg).not.toContain("· {t[invoice.status]}");
-    // Unlink behavior untouched.
-    expect(seg).toContain("linkInvoice.mutate({ invoiceId: invoice.id, linkedJobId: null })");
+  test("invoice rows keep their preview route and unlink (now in Financials)", () => {
+    const seg = slice("function WorkspaceFinancialsPanel", "function BeforeAfterSlider");
+    expect(seg).toContain('setScreen({ name: "invoicePreview", invoiceId: i.id })');
+    expect(seg).toContain("status-chip");
+    expect(seg).toContain("onUnlinkInvoice");
+    // Unlink behavior untouched — JobDetail wires the same mutation.
+    expect(APP).toContain("linkInvoice.mutate({ invoiceId, linkedJobId: null })");
   });
 
-  test("contract rows keep the document route and render the link-state pill", () => {
-    const seg = slice('title={lang === "es" ? "Contratos" : "Contracts"}', 'title={lang === "es" ? "Notas de pago" : "Payment notes"}');
-    expect(seg).toContain('setScreen({ name: "document", jobId, documentId: doc.id })');
-    expect(seg).toContain("<DocRowLinkPill lang={lang} doc={doc} />");
+  test("contract rows render the link-state pill (now in the Docs tab)", () => {
+    const seg = slice("function WorkspaceDocumentsPanel", "function FinSelectionsSection");
+    expect(seg).toContain('className="doc-row"');
+    expect(seg).toContain("<DocRowLinkPill lang={lang} doc={d} />");
   });
 
   test("row link pill precedence: Signed > Opened (first-opened date) > Awaiting > none", () => {
@@ -146,9 +151,9 @@ describe("dashed empty states", () => {
     expect(r).toContain("text-align: center");
   });
 
-  test("invoices + contracts empties still render through job-section-empty", () => {
-    expect(APP).toContain('<p className="job-section-empty">{lang === "es" ? "No hay facturas vinculadas." : "No linked invoices yet."}</p>');
-    expect(APP).toContain('<p className="job-section-empty">{lang === "es" ? "No hay contratos vinculados." : "No linked contracts yet."}</p>');
+  test("shared-files + estimates-sheet empties render through job-section-empty", () => {
+    expect(APP).toContain('<p className="job-section-empty">{lang === "es" ? "No hay archivos compartidos. El cliente ve los archivos compartidos en su portal." : "No shared files yet. Shared files appear in the client\'s portal."}</p>');
+    expect(APP).toContain('<p className="job-section-empty">{lang === "es" ? "No hay estimados sin vincular para este cliente." : "No unlinked estimates for this client."}</p>');
   });
 
   test("photo stage empty state gets the dashed box inside the panel", () => {
@@ -172,11 +177,14 @@ describe("actions on one baseline", () => {
     expect(rule(".job-accordion .job-round-add")).toContain("width: 40px; height: 40px");
   });
 
-  test("add buttons keep their sheet handlers", () => {
-    expect(APP).toContain('setActiveJobSheet("invoices")');
-    expect(APP).toContain('setActiveJobSheet("contracts")');
-    expect(APP).toContain('setActiveJobSheet("payment")');
-    expect(APP).toContain('setActiveJobSheet("deposit")');
+  test("sheet handlers survive — panels open JobDetail's sheets via onOpenJobSheet", () => {
+    expect(APP).toContain('onOpenJobSheet("invoices")');
+    expect(APP).toContain('onOpenJobSheet("contracts")');
+    expect(APP).toContain('onOpenJobSheet?.("payment")');
+    expect(APP).toContain('onOpenJobSheet?.("deposit")');
+    expect(APP).toContain('onOpenJobSheet?.("estimates")');
+    expect(APP).toContain('openJobSheet("estimates")');
+    expect(APP).toContain("setActiveJobSheet(sheet)");
   });
 
   test("value rows (payment notes / deposits) end flush with the panel bottom", () => {
