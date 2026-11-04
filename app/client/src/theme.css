@@ -2700,7 +2700,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .pro-gate-sheet > p { margin:0; color:var(--dim); line-height:1.5; }
 .pro-gate-sheet > .primary-button { width:100%; }
 .toolbox-modal-backdrop { position:fixed; inset:0; z-index:210; display:flex; align-items:flex-end; justify-content:center; padding-top:max(14px,env(safe-area-inset-top)); background:rgba(9,14,13,.62); animation:toolbox-backdrop-in .18s ease-out both; }
-.toolbox-window { width:min(100%,680px); max-height:calc(94dvh - env(safe-area-inset-top)); overflow:hidden; display:grid; grid-template-rows:auto minmax(0,1fr); border-radius:22px 22px 0 0; background:var(--bg); box-shadow:0 -18px 48px rgba(0,0,0,.28); animation:toolbox-window-in .24s cubic-bezier(.2,.72,.2,1) both; }
+.toolbox-window { width:min(100%,680px); max-height:calc(94dvh - env(safe-area-inset-top)); overflow:hidden; display:grid; grid-template-rows:auto auto minmax(0,1fr); border-radius:22px 22px 0 0; background:var(--bg); box-shadow:0 -18px 48px rgba(0,0,0,.28); animation:toolbox-window-in .24s cubic-bezier(.2,.72,.2,1) both; }
 .toolbox-window-head { display:grid; grid-template-columns:42px minmax(0,1fr) 42px; align-items:center; gap:11px; min-height:72px; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--surface); }
 .toolbox-head-icon { width:40px; height:40px; display:grid; place-items:center; border-radius:11px; background:color-mix(in srgb,var(--accent) 14%,var(--surface)); color:var(--accent); }
 .toolbox-head-icon svg { width:21px; height:21px; }
