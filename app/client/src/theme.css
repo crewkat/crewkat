@@ -6102,7 +6102,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .app-header-subtitle { margin: 2px 0 0; font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, .72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Overview: slim progress line + status pill. */
 .job-progress-card { margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; }
-.job-progress { display: flex; align-items: center; gap: 6px; }
+.job-progress { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 6px; }
 .jp-step { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; font: inherit; font-size: 11px; font-weight: 600; color: var(--dim); cursor: pointer; }
 .jp-step:disabled { cursor: default; }
 .jp-step .jp-dot { flex: none; width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--dim) 55%, var(--border)); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--dim); background: var(--surface); }

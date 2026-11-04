@@ -10094,7 +10094,7 @@ function WorkspacePhotosPanel({ lang, photos, completionWorkflow, jobId, setScre
         const list = photos.filter((p) => p.stage === s);
         return (
           <div className="panel-card" key={s}>
-            <h3>{label(s)} \u00b7 {list.length}</h3>
+            <h3>{label(s)} · {list.length}</h3>
             {list.length === 0 ? (
               <p className="muted">{lang === "es" ? "Sin fotos." : "No photos."}</p>
             ) : (
