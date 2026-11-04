@@ -227,7 +227,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "getOnboardingChecklist", "getPlayBillingConfig", "getPortalLinkInfo",
   "getReferralStats", "getSettings", "getUsageLimits",
   "getVapidPublicKey", "getWeatherOutlook", "globalSearch",
-  "linkDocumentToJob", "linkInvoiceToJob", "listAppointments",
+  "linkDocumentToJob", "linkInvoiceToJob", "linkQuoteToJob", "listAppointments",
   "listClients", "listDocumentAttachments", "listDocuments",
   "listInvoices", "listJobMessages", "listJobs",
   "listMarketplaceAlerts", "listMarketplaceBookings", "listMarketplaceListings",
