@@ -47,6 +47,21 @@ services:
         sync: false # optional: max MB kept in /data/backups (default 1024)
       - key: BACKUP_FULL_SIZE_ALERT_MB
         sync: false # optional: warn when the weekly full exceeds this (default 30)
+      # Backup Phase 2 offsite (optional): S3-compatible upload of each
+      # backup (Cloudflare R2). All four required vars must be set to enable;
+      # some-but-not-all triggers a misconfiguration alert.
+      - key: BACKUP_S3_ENDPOINT
+        sync: false # e.g. https://<account-id>.r2.cloudflarestorage.com
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BACKUP_S3_REGION
+        sync: false # optional (default "auto")
+      - key: BACKUP_S3_PREFIX
+        sync: false # optional (default "backups/")
       # Secure persistent login: salt for hashing client IPs on session rows
       # (theft-detection signal only, never a hard block).
       - key: SESSION_IP_SALT

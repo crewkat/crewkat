@@ -2,7 +2,7 @@ import { defineAction, z, type ActionDefinition, type ActionsModule, type Ctx } 
 import { and, asc, desc, eq, getTableColumns, gte, inArray, isNull, isTable, like, lt, lte, ne, or, sql } from "drizzle-orm";
 import { gzipSync, gunzipSync, strFromU8, strToU8, zipSync } from "fflate";
 import { execFile } from "node:child_process";
-import { randomInt } from "node:crypto";
+import { createHash, createHmac, randomInt } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -1994,11 +1994,27 @@ const execFileAsync = promisify(execFile);
 
 type BackupKind = "daily-db" | "weekly-full" | "manual";
 
+interface BackupS3Config {
+  endpoint: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  prefix: string;
+  /** True only when endpoint, bucket, and both keys are all set. */
+  configured: boolean;
+  /** True when some but not all of the required vars are set. */
+  partial: boolean;
+  /** Names of the required env vars that are missing (never values). */
+  missing: string[];
+}
+
 interface BackupConfig {
   alertEmail: string;
   hour: number;
   diskCapMB: number;
   fullSizeAlertMB: number;
+  s3: BackupS3Config;
 }
 
 function backupConfig(): BackupConfig {
@@ -2006,11 +2022,38 @@ function backupConfig(): BackupConfig {
     const parsed = Number.parseInt(value ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
+  // Phase 2 offsite (dev-briefs/automated-backups.md §2.5): S3-compatible
+  // object storage (Cloudflare R2 / Backblaze B2) via BACKUP_S3_* env vars.
+  const s3Endpoint = (process.env.BACKUP_S3_ENDPOINT || "").trim().replace(/\/+$/, "");
+  const s3Bucket = (process.env.BACKUP_S3_BUCKET || "").trim();
+  const s3AccessKeyId = (process.env.BACKUP_S3_ACCESS_KEY_ID || "").trim();
+  const s3SecretAccessKey = (process.env.BACKUP_S3_SECRET_ACCESS_KEY || "").trim();
+  const s3Required: Array<[string, string]> = [
+    ["BACKUP_S3_ENDPOINT", s3Endpoint],
+    ["BACKUP_S3_BUCKET", s3Bucket],
+    ["BACKUP_S3_ACCESS_KEY_ID", s3AccessKeyId],
+    ["BACKUP_S3_SECRET_ACCESS_KEY", s3SecretAccessKey],
+  ];
+  const s3Missing = s3Required.filter(([, value]) => !value).map(([name]) => name);
+  let s3Prefix = (process.env.BACKUP_S3_PREFIX || "backups/").trim();
+  if (s3Prefix && !s3Prefix.endsWith("/")) s3Prefix += "/";
+  const s3: BackupS3Config = {
+    endpoint: s3Endpoint,
+    bucket: s3Bucket,
+    accessKeyId: s3AccessKeyId,
+    secretAccessKey: s3SecretAccessKey,
+    region: (process.env.BACKUP_S3_REGION || "auto").trim() || "auto",
+    prefix: s3Prefix,
+    configured: s3Missing.length === 0,
+    partial: s3Missing.length > 0 && s3Missing.length < s3Required.length,
+    missing: s3Missing,
+  };
   return {
     alertEmail: (process.env.BACKUP_ALERT_EMAIL || "").trim(),
     hour: Math.min(23, Math.max(0, int(process.env.BACKUP_HOUR, 3))),
     diskCapMB: Math.max(128, int(process.env.BACKUP_DISK_CAP_MB, 1024)),
     fullSizeAlertMB: Math.max(5, int(process.env.BACKUP_FULL_SIZE_ALERT_MB, 30)),
+    s3,
   };
 }
 
@@ -2035,6 +2078,79 @@ async function sendBackupAlert(ctx: Ctx, cfg: BackupConfig, subject: string, tex
   } catch (error) {
     console.error("[crewkat][backup] alert email failed:", error);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 offsite: S3-compatible upload (Cloudflare R2 / Backblaze B2).
+// Hand-rolled AWS Signature Version 4 using only node:crypto — no AWS SDK.
+// Path-style URLs (`<endpoint>/<bucket>/<key>`) work for both R2 and B2.
+// The file is read into memory for hashing + upload, consistent with the
+// existing email path (which base64-loads the same archive); archives are
+// tens of MB, so this stays well within the server's memory envelope.
+// ---------------------------------------------------------------------------
+
+function sha256Hex(data: string | Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function hmacSha256(key: string | Buffer, data: string): Buffer {
+  return createHmac("sha256", key).update(data, "utf8").digest();
+}
+
+function signS3Request(s3: BackupS3Config, method: "PUT" | "HEAD", key: string, payloadHash: string): { url: string; headers: Record<string, string> } {
+  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const dateStamp = amzDate.slice(0, 8);
+  const canonicalUri = "/" + [s3.bucket, ...key.split("/")].map((segment) => encodeURIComponent(segment)).join("/");
+  const host = new URL(s3.endpoint).host;
+  const signedHeaders: Record<string, string> = {
+    host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate,
+  };
+  const headerNames = Object.keys(signedHeaders).sort();
+  const canonicalHeaders = headerNames.map((name) => `${name}:${signedHeaders[name]}\n`).join("");
+  const canonicalRequest = [method, canonicalUri, "", canonicalHeaders, headerNames.join(";"), payloadHash].join("\n");
+  const scope = `${dateStamp}/${s3.region}/s3/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256Hex(canonicalRequest)].join("\n");
+  const kDate = hmacSha256(`AWS4${s3.secretAccessKey}`, dateStamp);
+  const kRegion = hmacSha256(kDate, s3.region);
+  const kService = hmacSha256(kRegion, "s3");
+  const kSigning = hmacSha256(kService, "aws4_request");
+  const signature = createHmac("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
+  return {
+    url: `${s3.endpoint}${canonicalUri}`,
+    headers: {
+      ...signedHeaders,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${s3.accessKeyId}/${scope}, SignedHeaders=${headerNames.join(";")}, Signature=${signature}`,
+    },
+  };
+}
+
+/**
+ * Uploads one file to the configured bucket and verifies the stored size via
+ * a signed HEAD. Throws an Error with a safe (secret-free) message on any
+ * HTTP or size-mismatch failure.
+ */
+async function uploadBackupToS3(s3: BackupS3Config, filePath: string, key: string, contentType: string): Promise<{ key: string; bytes: number }> {
+  const body = await readFile(filePath);
+  const put = signS3Request(s3, "PUT", key, sha256Hex(body));
+  const putRes = await fetch(put.url, {
+    method: "PUT",
+    headers: { ...put.headers, "content-type": contentType },
+    body,
+  });
+  if (!putRes.ok) {
+    const detail = (await putRes.text().catch(() => "")).slice(0, 300).trim();
+    throw new Error(`S3 PUT ${key} failed with HTTP ${putRes.status}${detail ? `: ${detail}` : ""}`);
+  }
+  const head = signS3Request(s3, "HEAD", key, sha256Hex(""));
+  const headRes = await fetch(head.url, { method: "HEAD", headers: head.headers });
+  if (!headRes.ok) throw new Error(`S3 HEAD ${key} failed with HTTP ${headRes.status}`);
+  const remoteSize = Number(headRes.headers.get("content-length"));
+  if (!Number.isFinite(remoteSize) || remoteSize !== body.length) {
+    throw new Error(`S3 size mismatch for ${key}: uploaded ${body.length} bytes but the bucket reports ${headRes.headers.get("content-length") ?? "no size"}.`);
+  }
+  return { key, bytes: body.length };
 }
 
 async function pruneBackups(dir: string, cfg: BackupConfig, notes: string[]) {
@@ -2082,6 +2198,10 @@ interface BackupResult {
   offsiteSent: boolean;
   integrityOk: boolean;
   error: string | null;
+  /** Phase 2 S3 offsite outcome (absent/false when S3 is not configured). */
+  s3Uploaded?: boolean;
+  s3Key?: string | null;
+  s3Error?: string | null;
 }
 
 export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Promise<BackupResult> {
@@ -2096,7 +2216,7 @@ export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Pro
       await db.update(schema.backupRuns).set({ status: "failed", finishedAt: new Date(), error: error.slice(0, 2000) }).where(eq(schema.backupRuns.id, runId));
     }
     await sendBackupAlert(ctx, cfg, `[Crewkat backup] backup FAILED (${kind})`, `An automated Crewkat backup failed.\n\nKind: ${kind}\nTime: ${new Date().toISOString()}\nError: ${error}\nBackup run row: ${runId ?? "n/a"}\n\nOpen Crewkat → Settings → Backups to retry manually.`);
-    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error };
+    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error, s3Uploaded: false, s3Key: null, s3Error: null };
   };
 
   try {
@@ -2151,6 +2271,30 @@ export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Pro
     const pruneNotes: string[] = [];
     await pruneBackups(dir, cfg, pruneNotes);
 
+    // Phase 2 offsite: S3-compatible upload (R2/B2) when configured. Runs
+    // before the email step so a successful upload is noted in the completion
+    // email. An S3 failure never fails the backup itself (disk + email are
+    // intact) — it is recorded in the run notes and alerted on below.
+    let s3Key: string | null = null;
+    let s3Bytes = 0;
+    let s3Error: string | null = null;
+    if (cfg.s3.partial) {
+      pruneNotes.push(`S3 offsite partially configured (missing env: ${cfg.s3.missing.join(", ")}); upload skipped.`);
+    } else if (cfg.s3.configured) {
+      const target = tarPath
+        ? { path: tarPath, key: `${cfg.s3.prefix}${basename(tarPath)}`, contentType: "application/gzip" }
+        : { path: snapshotPath, key: `${cfg.s3.prefix}${snapshotName}`, contentType: "application/x-sqlite3" };
+      try {
+        const uploaded = await uploadBackupToS3(cfg.s3, target.path, target.key, target.contentType);
+        s3Key = uploaded.key;
+        s3Bytes = uploaded.bytes;
+        pruneNotes.push(`S3 offsite upload ok: ${uploaded.key} (${formatBytes(uploaded.bytes)}).`);
+      } catch (error) {
+        s3Error = error instanceof Error ? error.message : String(error);
+        pruneNotes.push(`S3 offsite upload FAILED: ${s3Error}`);
+      }
+    }
+
     // Offsite: email the snapshot (always) and the full archive when it fits.
     let offsiteSent = false;
     const dateLabel = startedAt.toISOString().slice(0, 10);
@@ -2179,9 +2323,28 @@ export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Pro
       } else if (tarPath) {
         text += `\nFull snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) was NOT emailed (over the ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)} email limit) — it is retained on the server disk.`;
       }
+      if (s3Key) {
+        text += tarPath
+          ? `\nFull snapshot also uploaded to S3 offsite: ${s3Key} (${formatBytes(s3Bytes)}).`
+          : `\nDatabase snapshot also uploaded to S3 offsite: ${s3Key} (${formatBytes(s3Bytes)}).`;
+      }
       const delivery = await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments });
       offsiteSent = delivery.delivery === "sent";
       if (!offsiteSent) pruneNotes.push("Offsite email failed to send.");
+    }
+
+    // S3 offsite problems get their own alert (throttled for the partial-
+    // config case, which would otherwise repeat on every run).
+    if (cfg.s3.partial && Date.now() - lastS3ConfigAlertAt > 24 * 3600 * 1000) {
+      lastS3ConfigAlertAt = Date.now();
+      await sendBackupAlert(ctx, cfg,
+        "[Crewkat backup] S3 offsite is partially configured",
+        `Backup Phase 2 (S3 offsite) is partially configured, so no S3 upload was attempted.\n\nMissing env vars: ${cfg.s3.missing.join(", ")}\n\nSet BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY in the Render env to enable S3 offsite, or clear all BACKUP_S3_* vars to disable it.`);
+    }
+    if (s3Error) {
+      await sendBackupAlert(ctx, cfg,
+        "[Crewkat backup] S3 offsite upload FAILED",
+        `The backup itself completed — the on-disk copy and the email offsite are intact — but the S3 offsite upload failed.\n\nKind: ${kind}\nTime: ${new Date().toISOString()}\nError: ${s3Error}\n\nCheck the BACKUP_S3_* env vars and the bucket's availability.`);
     }
 
     // Warn as the weekly full approaches the email size ceiling.
@@ -2196,7 +2359,7 @@ export async function performBackup(ctx: Ctx, kind: BackupKind, notes = ""): Pro
       status: "ok", finishedAt: new Date(), dbBytes, blobBytes, totalBytes,
       filePath, offsiteSent, integrityOk: true, notes: pruneNotes.join(" ") || null,
     }).where(eq(schema.backupRuns.id, runId));
-    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null };
+    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null, s3Uploaded: Boolean(s3Key), s3Key, s3Error };
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
@@ -2268,6 +2431,7 @@ export async function performMonthlyVerify(ctx: Ctx, cfg: BackupConfig) {
 
 let backupInProgress = false;
 let lastMissedRunAlertAt = 0;
+let lastS3ConfigAlertAt = 0;
 
 async function checkMissedRuns(ctx: Ctx, cfg: BackupConfig) {
   const db = ctx.db<typeof schema>();
