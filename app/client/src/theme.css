@@ -2699,6 +2699,10 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .toolbox-window-head small { color:var(--dim); font-size:11px; font-weight:800; }
 .toolbox-window-head h1 { overflow:hidden; margin:0; font:800 22px/1.1 "IBM Plex Sans Condensed","Aptos Narrow",ui-sans-serif,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
 .toolbox-window-head > button { width:40px; height:40px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; background:var(--surface-2); color:var(--text); font-size:27px; line-height:1; cursor:pointer; }
+.toolbox-tab-strip { display:flex; gap:8px; overflow-x:auto; overscroll-behavior:contain; padding:12px 14px; border-bottom:1px solid var(--border); background:var(--surface); scrollbar-width:none; }
+.toolbox-tab-strip::-webkit-scrollbar { display:none; }
+.toolbox-tab-strip > button { flex:0 0 auto; padding:8px 13px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text); font-size:13px; font-weight:700; cursor:pointer; }
+.toolbox-tab-strip > button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
 .toolbox-window-body { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:18px 16px calc(28px + env(safe-area-inset-bottom)); }
 .toolbox-window .calculator-panel { margin:0; }
 .toolbox-window .calculator-panel > h2 { font-size:20px; }

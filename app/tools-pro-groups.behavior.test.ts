@@ -14,32 +14,27 @@ const THEME = readFileSync(join(import.meta.dir, "client/src/theme.css"), "utf8"
 const APPCSS = readFileSync(join(import.meta.dir, "client/src/app.css"), "utf8");
 
 describe("Tools page group structure", () => {
+  // Tools cleanup (2026-11-03, Danny-approved cut list): 10 groups /
+  // 54 rows down to 3 groups — Estimate and Run the day are the free
+  // groups; Money & records is the one Pro group (next test).
   test("free groups exist in EN and ES", () => {
-    for (const t of ["Estimating toolbox", "Money", "Clients & leads", "Jobs & crew", "Marketing", "Account & settings", "Just for fun"]) {
-      expect(APP).toContain(t);
-    }
-    for (const t of ["Herramientas de estimación", "Dinero", "Clientes y prospectos", "Trabajos y equipo", "Cuenta y ajustes", "Solo por diversión"]) {
+    for (const t of ['"Estimate"', '"Run the day"', '"Estimación"', '"El día a día"']) {
       expect(APP).toContain(t);
     }
   });
 
   // Fix 7 refinement (2026-10-12): the "Pro — " prefix is gone from the
   // group titles; the standard PRO badge next to the title marks them.
-  test("Pro groups exist in EN and ES, at the bottom", () => {
-    for (const t of ["Money & office", "Field & crew", "Clients & admin"]) {
-      expect(APP).toContain(t);
-    }
-    for (const t of ["Dinero y oficina", "Campo y equipo", "Clientes y administración"]) {
-      expect(APP).toContain(t);
-    }
-    expect(APP).not.toContain("Pro — Money & office");
-    expect(APP).not.toContain("Pro — Clients & admin");
-    // Pro groups are declared after every free group in the groups array.
+  test("the one Pro group exists in EN and ES, at the bottom", () => {
+    expect(APP).toContain('"Money & records"');
+    expect(APP).toContain('"Dinero y registros"');
+    expect(APP).not.toContain("Pro — Money & records");
+    // The Pro group is declared after both free groups in the array.
     const lastFree = Math.max(
-      APP.indexOf('"Just for fun"'),
-      APP.indexOf('"Cuenta y ajustes"'),
+      APP.indexOf('? "Estimación" : "Estimate"'),
+      APP.indexOf('? "El día a día" : "Run the day"'),
     );
-    const firstPro = APP.indexOf('"Money & office"');
+    const firstPro = APP.indexOf('? "Dinero y registros" : "Money & records"');
     expect(firstPro).toBeGreaterThan(lastFree);
   });
 
@@ -63,8 +58,14 @@ describe("Tools page group structure", () => {
     expect(THEME).toContain(".pro-tool-group");
   });
 
-  test("Admin controls tile (previously in no group) is now grouped", () => {
-    expect(APP).toContain('"followups", "admin", "expansion:warranties"');
+  test("Admin console entry lives in Settings (Tools tile cut)", () => {
+    // Tools cleanup (2026-11-03): the Admin controls tile is cut; the
+    // console opens from the Settings "Manage crew & team" accordion.
+    expect(APP).toContain("admin-launch");
+    expect(APP).toContain("Open admin panel");
+    expect(APP).toContain('setScreen({ name: "admin" })');
+    // Money & records carries the follow-ups + warranties doors.
+    expect(APP).toContain('"expansion:warranties", "reports", "followups"');
   });
 });
 

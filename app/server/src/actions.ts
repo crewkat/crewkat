@@ -2992,8 +2992,13 @@ async function checkNewUserListingCap(db: ReturnType<Ctx["db"]>, userCreatedAt: 
 type ToolRegistryEntry = { screen: string; tab: string | null; titleEn: string; titleEs: string; iconPath: string };
 
 const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
+  // Tools cleanup (2026-11-03): one Calculators door opens the tabbed
+  // toolbox; the per-calculator entries below stay valid and land on
+  // their tab. The standalone Material prices list merged into Saved
+  // prices (migration 0099), so the legacy materials id repoints there.
+  "toolbox": { screen: "toolbox", tab: null, titleEn: "Calculators", titleEs: "Calculadoras", iconPath: "M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" },
   "toolbox:loan": { screen: "toolbox", tab: "loan", titleEn: "Loan payment", titleEs: "Pago de préstamo", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
-  "toolbox:materials": { screen: "toolbox", tab: "materials", titleEn: "Material guide", titleEs: "Guía de materiales", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  "toolbox:materials": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
   "toolbox:angle": { screen: "toolbox", tab: "angle", titleEn: "Angles", titleEs: "Ángulos", iconPath: "M4 19h16L4 5zM8 15h5" },
   "toolbox:convert": { screen: "toolbox", tab: "convert", titleEn: "Unit converter", titleEs: "Convertidor de unidades", iconPath: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
   "toolbox:area": { screen: "toolbox", tab: "area", titleEn: "Measurements", titleEs: "Medidas", iconPath: "M4 4h16v16H4zM8 4v16M4 10h16" },
@@ -3012,23 +3017,31 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   "toolbox:insulation": { screen: "toolbox", tab: "insulation", titleEn: "Insulation batts", titleEs: "Aislante en rollos", iconPath: "M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" },
   "toolbox:gutter": { screen: "toolbox", tab: "gutter", titleEn: "Gutter & downspouts", titleEs: "Canalones y bajantes", iconPath: "M4 6h16v4H4zM17 10v8h-4M17 18H6" },
   "toolbox:rate": { screen: "toolbox", tab: "rate", titleEn: "Billable rate", titleEs: "Tarifa facturable", iconPath: "M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" },
-  "toolbox:punchlist": { screen: "toolbox", tab: "punchlist", titleEn: "Punch list", titleEs: "Lista de pendientes", iconPath: "M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" },
   "businessTools:price": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M5 5h14v14H5zM8 9h8M8 13h5" },
-  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Quote templates", titleEs: "Plantillas de presupuestos", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Estimate templates", titleEs: "Plantillas de estimados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
   "businessTools:mileage": { screen: "businessTools", tab: "mileage", titleEn: "Mileage", titleEs: "Millaje", iconPath: "M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" },
   "businessTools:expenses": { screen: "businessTools", tab: "expenses", titleEn: "Expenses & receipts", titleEs: "Gastos y recibos", iconPath: "M4 6h16v14H4zM8 3v6M16 3v6" },
   "expansion:warranties": { screen: "expansion", tab: "warranties", titleEn: "Warranties", titleEs: "Garantías", iconPath: "M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" },
-  "expansion:scanner": { screen: "expansion", tab: "scanner", titleEn: "Document scanner", titleEs: "Escáner de documentos", iconPath: "M6 3h12v18H6zM9 7h6M4 16h16" },
   "reports": { screen: "reports", tab: null, titleEn: "Reports", titleEs: "Informes", iconPath: "M4 20V10M10 20V4M16 20v-7M22 20V7" },
   "operations:calendar": { screen: "operations", tab: "calendar", titleEn: "Schedule", titleEs: "Calendario", iconPath: "M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" },
+  // Tools cleanup (2026-11-03): Lead scoring and Crew day get registry
+  // entries (both were unpinnable before). The document-scanner entry is
+  // gone — pins to it drop silently in listPinnedTools; scanning lives on
+  // as an action inside Expenses & receipts.
+  "operations:leads": { screen: "operations", tab: "leads", titleEn: "Lead scoring", titleEs: "Puntaje de prospectos", iconPath: "M4 5h16l-6 7v6l-4 2v-8z" },
+  "crewDay": { screen: "crewDay", tab: null, titleEn: "Crew day", titleEs: "Día del equipo", iconPath: "M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" },
   "followups": { screen: "followups", tab: null, titleEn: "Collections & follow-ups", titleEs: "Cobros y seguimientos", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
-  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders waiting on suppliers", titleEs: "Pedidos esperando proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders & suppliers", titleEs: "Pedidos y proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   "fieldIntelligence:equipment": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" },
-  "expansion:plans": { screen: "expansion", tab: "plans", titleEn: "Equipment upkeep", titleEs: "Cuidado del equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
+  // Legacy id repointed to its folded home (2026-11-03): the upkeep
+  // plans now live inside Equipment.
+  "expansion:plans": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
   "fieldIntelligence:safety": { screen: "fieldIntelligence", tab: "safety", titleEn: "Safety & incidents", titleEs: "Seguridad e incidentes", iconPath: "M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" },
   "fieldIntelligence:credentials": { screen: "fieldIntelligence", tab: "credentials", titleEn: "Licenses & certificates", titleEs: "Licencias y certificados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
-  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Payroll", titleEs: "Nómina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
-  "expansion:crew": { screen: "expansion", tab: "crew", titleEn: "Crew hours", titleEs: "Horas del equipo", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
+  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Time & payroll", titleEs: "Tiempo y nómina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
+  // Legacy id repointed to its folded home (2026-11-03): crew hours now
+  // live inside Time & payroll.
+  "expansion:crew": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Time & payroll", titleEs: "Tiempo y nómina", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
 };
 
 // INV-0001+ sequence (migration 0038): the next invoice number is derived

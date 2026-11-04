@@ -36,7 +36,7 @@ await migrate(db, { migrationsFolder: "./drizzle" });
 // --- 2. Migration check ------------------------------------------------------
 const journal = await import("./drizzle/meta/_journal.json");
 const last = journal.entries[journal.entries.length - 1];
-check("newest migration tag is 0098_ai_usage", last.tag === "0098_ai_usage", last.tag);
+check("newest migration tag is 0099_material_prices_merge", last.tag === "0099_material_prices_merge", last.tag);
 
 // Verify tables exist by inserting.
 const now = new Date();

@@ -245,10 +245,12 @@ check("login exposes verify-email recovery",
   clientSrc.includes("resendVerification") && /verify email/i.test(clientSrc));
 check("password fields stay empty (no fake value)",
   clientSrc.includes('useState("")') && !/value="•+"/.test(clientSrc));
-check("material guide describes editable material prices (EN)",
-  clientSrc.includes("Save your material names, units, and prices"));
-check("material guide describes editable material prices (ES)",
-  clientSrc.includes("Guarda nombres, unidades y precios de materiales"));
+// Tools cleanup (2026-11-03): Material prices folded into Saved prices
+// (migration 0099 merged the material list into the price book).
+check("saved prices tile describes saving reusable prices (EN)",
+  clientSrc.includes("Save prices you use often"));
+check("saved prices tile describes saving reusable prices (ES)",
+  clientSrc.includes("Guarda precios que usas con frecuencia"));
 
 // --- Build 0.7 motion system static guards -----------------------------------
 check("motion: shared easing/duration vars", cssSrc.includes("--ease-out") && cssSrc.includes("--dur-fast"));

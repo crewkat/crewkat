@@ -364,11 +364,10 @@ type Screen =
   | { name: "toolbox"; tab?: "loan" | "materials" | "angle" | "convert" | "area" | "yards" | "board" | "drywall" | "roofing" | "tile" | "margin" | "paint" | "flooring" | "fence" | "block" | "gravel" | "stairs" | "insulation" | "gutter" | "rate" | "punchlist" }
   | { name: "jobs" }
   | { name: "new" }
-  | { name: "expansion"; tab?: "losses" | "warranties" | "videos" | "crew" | "scanner" | "tax" | "suppliers" | "plans" }
-  | { name: "fieldIntelligence"; tab?: "purchasing" | "equipment" | "safety" | "credentials" | "payroll" | "costs" }
+  | { name: "expansion"; tab?: "warranties" }
+  | { name: "fieldIntelligence"; tab?: "purchasing" | "equipment" | "safety" | "credentials" | "payroll" }
   | { name: "detail"; jobId: number; tab?: WorkspaceTab }
   | { name: "bidBoard" }
-  | { name: "dispatch" }
   | { name: "proof"; jobId: number }
   | { name: "settings" }
   | { name: "billing" }
@@ -388,12 +387,11 @@ type Screen =
   | { name: "client"; clientId: number }
   | { name: "followups" }
   | { name: "gallery" }
-  | { name: "referrals" }
   | { name: "referContractor" }
   | { name: "crewDay" }
   | { name: "operations"; tab?: "calendar" | "leads" }
   | { name: "reports" }
-  | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" | "analysis" }
+  | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" }
   | { name: "admin" }
   | { name: "platformAdmin"; tab?: PlatformAdminTab; refundEmail?: string }
   | { name: "platformAdminUser"; userId: number }
@@ -1211,12 +1209,7 @@ const LinkIcon = () => (
     <path d="M14 10a5 5 0 0 0-7.1-.4l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.6-1.6" />
   </Icon>
 );
-const GearIcon = () => (
-  <Icon>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </Icon>
-);
+
 const ShareIcon = () => (
   <Icon>
     <circle cx="18" cy="5" r="2" />
@@ -3693,9 +3686,6 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
       {screen.name === "gallery" && (
         <GalleryScreen lang={lang} onBack={goBack} />
       )}
-      {screen.name === "referrals" && (
-        <ReferralsScreen lang={lang} onBack={goBack} setScreen={setScreen} />
-      )}
       {screen.name === "referContractor" && (
         <ReferContractorScreen lang={lang} onBack={goBack} />
       )}
@@ -3712,16 +3702,13 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
         />
       )}
       {screen.name === "reports" && (
-        <ReportsScreen lang={lang} onBack={goBackOrTools} />
+        <ReportsScreen lang={lang} onBack={goBackOrTools} setScreen={setScreen} />
       )}
       {screen.name === "marketplace" && (
         <MarketplaceScreen lang={lang} setScreen={setScreen} />
       )}
       {screen.name === "bidBoard" && (
         <BidBoardScreen lang={lang} onBack={goBack} />
-      )}
-      {screen.name === "dispatch" && (
-        <DispatchScreen lang={lang} onBack={goBackOrTools} />
       )}
       {screen.name === "marketplaceNew" && (
         <MarketplaceListingForm lang={lang} settings={appSettings} initialIntent={screen.intent} onBack={goBack} onSaved={(listingId) => replaceScreen({ name: "marketplaceDetail", listingId })} />
@@ -3759,7 +3746,6 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
       {screen.name === "expansion" && (
         <ExpansionSuiteScreen
           lang={lang}
-          settings={appSettings}
           onBack={goBackOrTools}
           initialTab={screen.tab}
         />
@@ -5462,6 +5448,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       <button className="market-menu-row" onClick={() => { close(); setView("alerts"); }}><span className="market-category-icon"><Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></Icon></span><span><strong>{lang === "es" ? "Alertas" : "Alerts"}{(alerts.data?.alerts.length ?? 0) > 0 ? ` · ${alerts.data?.alerts.length}` : ""}</strong><small>{lang === "es" ? "Avisos cuando se publique lo que buscas" : "Get notified when what you want gets posted"}</small></span><BackIcon/></button>
       {/* Phase 2: Bid Board — external bid pipeline, launched from Marketplace. */}
       <button className="market-menu-row" onClick={() => { close(); setScreen({ name: "bidBoard" }); }}><span className="market-category-icon"><Icon><path d="M4 5h16v12H4zM4 7l8 6 8-6"/></Icon></span><span><strong>{lang === "es" ? "Tablero de licitaciones" : "Bid Board"}</strong><small>{lang === "es" ? "Sigue tus ofertas externas" : "Track your external project bids"}</small></span><BackIcon/></button>
+      <button className="market-menu-row crane-run-row" onClick={() => { close(); setScreen({ name: "craneRun" }); }}><span className="market-category-icon"><Icon><path d="M4 20h16M7 20V9l5-5 5 5v11M10 20v-4h4v4"/></Icon></span><span><strong>{lang === "es" ? "Carrera de la Grulla" : "Crane Run"}</strong><small>{lang === "es" ? "Juego semanal: el campeón encabeza el Marketplace" : "Weekly game — the champion headlines the Marketplace"}</small></span><BackIcon/></button>
       <button className="market-menu-row profile-menu-row" onClick={() => { close(); setScreen({ name: "companyProfile" }); }}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil de empresa" : "Edit company profile"}</strong><small>{lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links"}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); setSearch(""); setCategory("all"); setLocation(""); setView("mine"); }}><span className="market-category-icon"><Icon><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 11h8M8 15h5"/></Icon></span><span><strong>{text.myListings}</strong><small>{text.myListingsNote}</small></span><BackIcon/></button>
       <button className="market-menu-row" onClick={() => { close(); setSavedOnly(true); setCategory("all"); setView("explore"); }}><span className="market-category-icon"><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></span><span><strong>{text.saved}</strong><small>{text.savedNote}</small></span><BackIcon/></button>
@@ -5971,50 +5958,13 @@ function LimitReachedSheet({ lang, kind, onClose, onUpgrade }: { lang: Lang; kin
 const toolTileIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
 // Build 3.1: tool tile catalogs shared by the Tools home page and the More menu.
 function estimatingToolTiles(lang: Lang): ToolTile[] {
+  // Tools cleanup (2026-11-03): all 19 calculators live behind ONE door —
+  // the tabbed ToolboxScreen. Material prices merged into Saved prices
+  // (migration 0099); the punch list's home is the job, not a Tools tile.
   return lang === "es" ? [
-    { title: "Pago de préstamo", description: "Calcula pago mensual e interés", screen: { name: "toolbox", tab: "loan" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Precios de materiales", description: "Guarda nombres, unidades y precios de materiales", screen: { name: "toolbox", tab: "materials" }, icon: toolTileIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
-    { title: "Ángulos", description: "Calcula ángulos y pendientes", screen: { name: "toolbox", tab: "angle" }, icon: toolTileIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
-    { title: "Convertidor de unidades", description: "Convierte medidas de obra", screen: { name: "toolbox", tab: "convert" }, icon: toolTileIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
-    { title: "Medidas", description: "Suma áreas y estima pintura", screen: { name: "toolbox", tab: "area" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
-    { title: "Concreto", description: "Yardas cúbicas y bolsas", screen: { name: "toolbox", tab: "yards" }, icon: toolTileIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
-    { title: "Madera", description: "Calcula pies tabla", screen: { name: "toolbox", tab: "board" }, icon: toolTileIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
-    { title: "Paneles de yeso", description: "Hojas, tornillos y compuesto", screen: { name: "toolbox", tab: "drywall" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
-    { title: "Techos", description: "Cuadrados, desperdicio y paquetes", screen: { name: "toolbox", tab: "roofing" }, icon: toolTileIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
-    { title: "Cajas de loseta", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "tile" }, icon: toolTileIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
-    { title: "Margen y recargo", description: "Convierte costo, margen y recargo", screen: { name: "toolbox", tab: "margin" }, icon: toolTileIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
-    { title: "Estimador de pintura", description: "Galones según área y manos", screen: { name: "toolbox", tab: "paint" }, icon: toolTileIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
-    { title: "Cajas de piso", description: "Cobertura, desperdicio y cajas", screen: { name: "toolbox", tab: "flooring" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
-    { title: "Cerca y deck", description: "Estacas, postes y rieles", screen: { name: "toolbox", tab: "fence" }, icon: toolTileIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
-    { title: "Bloques y adoquines", description: "Bloques y adoquines por área", screen: { name: "toolbox", tab: "block" }, icon: toolTileIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
-    { title: "Grava y tierra", description: "Yardas cúbicas y toneladas", screen: { name: "toolbox", tab: "gravel" }, icon: toolTileIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
-    { title: "Zanca de escalera", description: "Contrahuellas, huellas y trazado", screen: { name: "toolbox", tab: "stairs" }, icon: toolTileIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
-    { title: "Aislante en rollos", description: "Rollos según área de pared o ático", screen: { name: "toolbox", tab: "insulation" }, icon: toolTileIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
-    { title: "Canalones y bajantes", description: "Pies de canalón, bajantes y codos", screen: { name: "toolbox", tab: "gutter" }, icon: toolTileIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
-    { title: "Tarifa facturable", description: "Calcula tu tarifa por hora", screen: { name: "toolbox", tab: "rate" }, icon: toolTileIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
-    { title: "Lista de pendientes", description: "Pendientes por trabajo con estados", screen: { name: "toolbox", tab: "punchlist" }, icon: toolTileIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
+    { title: "Calculadoras", description: "19 calculadoras de obra en un solo lugar", screen: { name: "toolbox" }, icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
   ] : [
-    { title: "Loan payment", description: "Calculate monthly payment and interest", screen: { name: "toolbox", tab: "loan" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Material prices", description: "Save your material names, units, and prices", screen: { name: "toolbox", tab: "materials" }, icon: toolTileIcon(<path d="M4 18h16M6 18V7h12v11M9 7V4h6v3" />) },
-    { title: "Angles", description: "Calculate angles and slopes", screen: { name: "toolbox", tab: "angle" }, icon: toolTileIcon(<path d="M4 19h16L4 5zM8 15h5" />) },
-    { title: "Unit converter", description: "Convert job-site measurements", screen: { name: "toolbox", tab: "convert" }, icon: toolTileIcon(<path d="M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" />) },
-    { title: "Measurements", description: "Add areas and estimate paint", screen: { name: "toolbox", tab: "area" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM8 4v16M4 10h16" />) },
-    { title: "Concrete", description: "Cubic yards and bag counts", screen: { name: "toolbox", tab: "yards" }, icon: toolTileIcon(<path d="M4 8h16v10H4zM4 12h16M9 8v10M15 8v10" />) },
-    { title: "Lumber", description: "Calculate board feet", screen: { name: "toolbox", tab: "board" }, icon: toolTileIcon(<path d="M4 7h16v10H4zM8 7v10M13 7v10" />) },
-    { title: "Drywall sheets", description: "Sheets, screws, and compound", screen: { name: "toolbox", tab: "drywall" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 4v16M5 10h14" />) },
-    { title: "Roofing squares", description: "Squares, waste, and bundles", screen: { name: "toolbox", tab: "roofing" }, icon: toolTileIcon(<path d="M3 13 12 4l9 9M6 11v9h12v-9" />) },
-    { title: "Tile boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "tile" }, icon: toolTileIcon(<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />) },
-    { title: "Markup & margin", description: "Convert cost, margin, and markup", screen: { name: "toolbox", tab: "margin" }, icon: toolTileIcon(<path d="M6 18 18 6M7 7h.01M17 17h.01" />) },
-    { title: "Paint estimator", description: "Gallons from wall area and coats", screen: { name: "toolbox", tab: "paint" }, icon: toolTileIcon(<path d="M4 4h13v4H4zM17 6v5h3M7 10v10h3V10" />) },
-    { title: "Flooring boxes", description: "Coverage, waste, and box count", screen: { name: "toolbox", tab: "flooring" }, icon: toolTileIcon(<path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16M14 4v16" />) },
-    { title: "Fence & deck", description: "Pickets, posts, and rails", screen: { name: "toolbox", tab: "fence" }, icon: toolTileIcon(<path d="M4 20V6M8 20V6M12 20V6M16 20V6M20 20V6M3 10h18M3 15h18" />) },
-    { title: "Block & pavers", description: "Blocks and pavers by area", screen: { name: "toolbox", tab: "block" }, icon: toolTileIcon(<path d="M4 10h7V4H4zM13 10h7V4h-7zM4 20h7v-6H4zM13 20h7v-6h-7z" />) },
-    { title: "Gravel & soil", description: "Cubic yards and tons", screen: { name: "toolbox", tab: "gravel" }, icon: toolTileIcon(<path d="M4 15 9 6l5 6 3-4 3 7zM4 20h16" />) },
-    { title: "Stair stringer", description: "Risers, treads, and layout", screen: { name: "toolbox", tab: "stairs" }, icon: toolTileIcon(<path d="M4 20h4v-4h4v-4h4V8h4V4" />) },
-    { title: "Insulation batts", description: "Batts by wall or attic area", screen: { name: "toolbox", tab: "insulation" }, icon: toolTileIcon(<path d="M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" />) },
-    { title: "Gutter & downspouts", description: "Gutter feet, downspouts, and elbows", screen: { name: "toolbox", tab: "gutter" }, icon: toolTileIcon(<path d="M4 6h16v4H4zM17 10v8h-4M17 18H6" />) },
-    { title: "Billable rate", description: "Build your hourly rate", screen: { name: "toolbox", tab: "rate" }, icon: toolTileIcon(<path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" />) },
-    { title: "Punch list", description: "Per-job open-items checklist", screen: { name: "toolbox", tab: "punchlist" }, icon: toolTileIcon(<path d="M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" />) },
+    { title: "Calculators", description: "19 job-site calculators in one place", screen: { name: "toolbox" }, icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
   ];
 }
 
@@ -6022,18 +5972,14 @@ function officeToolTiles(lang: Lang): ToolTile[] {
   return lang === "es" ? [
     { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
     { title: "Plantillas de estimados", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Millaje", description: "Registra viajes y totales mensuales", screen: { name: "businessTools", tab: "mileage" }, icon: toolTileIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
     { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
     { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Escáner de documentos", description: "Guarda recibos, contratos y archivos", screen: { name: "expansion", tab: "scanner" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
     { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
   ] : [
     { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
     { title: "Estimate templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Mileage", description: "Record work trips and monthly totals", screen: { name: "businessTools", tab: "mileage" }, icon: toolTileIcon(<path d="M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" />) },
     { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
     { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Document scanner", description: "Save receipts, contracts, and files", screen: { name: "expansion", tab: "scanner" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 7h6M4 16h16" />) },
     { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
   ];
 }
@@ -6041,47 +5987,36 @@ function officeToolTiles(lang: Lang): ToolTile[] {
 function operationsToolTiles(lang: Lang): ToolTile[] {
   return lang === "es" ? [
     { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Despacho", description: "Calendario de citas con arrastrar y soltar", screen: { name: "dispatch" }, icon: toolTileIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
+    { title: "Día del equipo", description: "Quién está en cada trabajo hoy", screen: { name: "crewDay" }, icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
     { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Pedidos esperando proveedores", description: "Compara cotizaciones y registra entregas", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Pedidos y proveedores", description: "Compara cotizaciones, registra entregas y contactos de proveedores", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
     { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Cuidado del equipo", description: "Servicios y mantenimiento completado", screen: { name: "expansion", tab: "plans" }, icon: toolTileIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
     { title: "Seguridad e incidentes", description: "Charlas, firmas e informes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
     { title: "Licencias y certificados", description: "Vencimientos y renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Nómina", description: "Horas por tarifa y descarga CSV", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Horas del equipo", description: "Revisa las horas guardadas por persona", screen: { name: "expansion", tab: "crew" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Tiempo y nómina", description: "Reloj GPS, horas del equipo y tarifas", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
   ] : [
     { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Dispatch", description: "Drag-and-drop appointment calendar", screen: { name: "dispatch" }, icon: toolTileIcon(<path d="M4 5h16v15H4zM8 3v4M16 3v4M6 12h3l2 2 3-4 2 2h2" />) },
+    { title: "Crew day", description: "Who's on what job today", screen: { name: "crewDay" }, icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
     { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Orders waiting on suppliers", description: "Compare bids and record deliveries", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Orders & suppliers", description: "Compare bids, record deliveries, and supplier contacts", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
     { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Equipment upkeep", description: "Service schedules and completed maintenance", screen: { name: "expansion", tab: "plans" }, icon: toolTileIcon(<path d="M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" />) },
     { title: "Safety & incidents", description: "Talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
     { title: "Licenses & certificates", description: "Expiry dates and renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Payroll", description: "Hours by rate and CSV download", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
-    { title: "Crew hours", description: "Review saved hours by crew member", screen: { name: "expansion", tab: "crew" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Time & payroll", description: "GPS clock, crew hours, and pay rates", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
   ];
 }
 
-// Build 3.1: Pro-directory tiles whose destinations are not in the Tools
-// home catalog (the rest are shared by screen key, so the More menu shows
-// each destination exactly once).
+// Extra catalog tiles whose destinations are not in the other catalogs
+// (shared by screen key, so the Tools page shows each destination once).
 function proExtraTiles(lang: Lang): ToolTile[] {
+  // Tools cleanup (2026-11-03): Supplier directory folded into Orders &
+  // suppliers; Budget alerts moved into Reports; Recurring invoices,
+  // Admin controls, and Client portal tiles cut (their destinations live
+  // on their own screens — invoices list, Settings, and each job).
   return lang === "es" ? [
-    { title: "Directorio de proveedores", description: "Guarda contactos y archivos fiscales", screen: { name: "expansion", tab: "suppliers" }, icon: toolTileIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
     { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
-    { title: "Alertas de presupuesto", description: "Compara costos registrados con el valor cotizado", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolTileIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
-    { title: "Facturas recurrentes", description: "Programa la frecuencia y genera cada factura al vencer", screen: { name: "invoices" }, icon: toolTileIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Controles del dueño", description: "Administra equipo, reglas, bandeja y datos guardados", screen: { name: "admin" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Portal del cliente", description: "Abre un trabajo → Portal del cliente para crear un enlace seguro para tu cliente", screen: { name: "jobs" }, icon: toolTileIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
   ] : [
-    { title: "Supplier directory", description: "Save contacts and tax files", screen: { name: "expansion", tab: "suppliers" }, icon: toolTileIcon(<path d="M4 9h16v11H4zM7 9V5h10v4" />) },
     { title: "Lead scoring", description: "Prioritize the pipeline and turn leads into estimates", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
-    { title: "Budget alerts", description: "Compare recorded costs with the quoted job value", screen: { name: "fieldIntelligence", tab: "costs" }, icon: toolTileIcon(<path d="M4 19V9M10 19V5M16 19v-8M22 19H2" />) },
-    { title: "Recurring invoices", description: "Set a schedule and generate each invoice when due", screen: { name: "invoices" }, icon: toolTileIcon(<path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Admin controls", description: "Manage team, rules, inbox, and stored data", screen: { name: "admin" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Client portal", description: "Open a job → Client portal to create a secure link for your client", screen: { name: "jobs" }, icon: toolTileIcon(<path d="M4 5h16v14H4zM8 9h8M8 13h5" />) },
   ];
 }
 
@@ -6683,89 +6618,18 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     const key = toolIdForTile(tile) ?? tile.title;
     if (!byKey.has(key)) byKey.set(key, tile);
   }
-  const extra = (title: string, description: string, icon: ReactNode, screen: Screen): ToolTile => ({ title, description, icon, screen });
-  // Standalone destinations that are not tool tiles.
-  const crewDayTile = extra(
-    lang === "es" ? "Día del equipo" : "Crew day",
-    lang === "es" ? "Quién está en cada trabajo hoy" : "Who's on what job today",
-    toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>),
-    { name: "crewDay" },
-  );
-  const referralsTile = extra(
-    lang === "es" ? "Referidos" : "Referrals",
-    lang === "es" ? "Programa de referidos y recompensas" : "Referral program and rewards",
-    toolTileIcon(<path d="M12 21s-7-4.5-7-11a7 7 0 0 1 14 0c0 6.5-7 11-7 11Z" />),
-    { name: "referrals" },
-  );
-  const referContractorTile = extra(
-    lang === "es" ? "Invita a un contratista" : "Refer a contractor",
-    lang === "es" ? "Comparte Crewkat con otro contratista" : "Share Crewkat with another contractor",
-    toolTileIcon(<path d="M4 12v7h16v-7M12 3v12M8 7l4-4 4 4" />),
-    { name: "referContractor" },
-  );
-  const galleryTile = extra(
-    lang === "es" ? "Galería web" : "Website gallery",
-    lang === "es" ? "Fotos de trabajos para tu sitio" : "Job photos for your website",
-    toolTileIcon(<path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4M9 9h.01" />),
-    { name: "gallery" },
-  );
-  const reportsTile = extra(
-    lang === "es" ? "Informes" : "Reports",
-    lang === "es" ? "Ingresos, gastos y estimado frente a real" : "Revenue, expenses, and estimate vs. actual",
-    toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />),
-    { name: "reports" },
-  );
-  const companyTile = extra(
-    lang === "es" ? "Perfil de empresa" : "Company profile",
-    lang === "es" ? "Logo, portada, información y redes sociales" : "Logo, cover, company info, and social links",
-    toolTileIcon(<path d="M4 21V7l8-4 8 4v14M8 21v-5h8v5" />),
-    { name: "companyProfile" },
-  );
-  const settingsTile = extra(
-    lang === "es" ? "Configuración" : "Settings",
-    lang === "es" ? "Cuenta, apariencia, idioma y más" : "Account, appearance, language, and more",
-    <span className="tool-tile-icon"><GearIcon /></span>,
-    { name: "settings" },
-  );
-  const helpTile = extra(
-    lang === "es" ? "Ayuda y soporte" : "Help & support",
-    lang === "es" ? "Respuestas rápidas y guías" : "Quick answers and walkthroughs",
-    toolTileIcon(<path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM9.5 9a2.6 2.6 0 1 1 4.2 2c-1 .7-1.7 1.2-1.7 2.5M12 17h.01" />),
-    { name: "settings" },
-  );
-  const craneRunTile = extra(
-    lang === "es" ? "Carrera de la Grulla" : "Crane Run",
-    lang === "es" ? "Minijuego: esquiva conos y cajas con la grulla" : "Endless runner: dodge cones and toolboxes with the crane",
-    toolTileIcon(<><path d="M8.5 21v-4.5M13 21v-4.5" /><path d="M5 15.5c0-2.4 2.7-4 5.8-4 1.5 0 2.9.4 3.9 1.1l1.7-4.2.8-3.4" /><circle cx="17.4" cy="4.6" r="1.7" /><path d="M19 4.9l3 1.2-3.1 1.2" /></>),
-    { name: "craneRun" },
-  );
-  byKey.set("crewDay", crewDayTile);
-  byKey.set("referrals", referralsTile);
-  byKey.set("referContractor", referContractorTile);
-  byKey.set("gallery", galleryTile);
-  byKey.set("reports", reportsTile);
-  byKey.set("companyProfile", companyTile);
-  byKey.set("settings", settingsTile);
-  byKey.set("help", helpTile);
-  byKey.set("craneRun", craneRunTile);
   const pick = (keys: string[]): ToolTile[] =>
     keys.map((k) => byKey.get(k)).filter((t): t is ToolTile => Boolean(t));
-  // Danny 2026-10-11: all tools in one place, clear divisions. Free groups on
-  // top; Pro tools grouped together at the bottom (standalone Pro screen retired).
-  // Fix 7 (2026-10-12): each group carries its own icon from the app icon
-  // set; the Pro groups dropped the "Pro — " title prefix and wear the
-  // standard PRO badge next to the title instead (same badge as Pro rows).
+  // Tools cleanup (2026-11-03, Danny-approved cut list): 10 groups / 54
+  // rows down to 3 groups / 15 doors. Folds: calculators behind one door,
+  // Dispatch inside Schedule, crew hours inside Time & payroll, mileage
+  // inside Expenses, upkeep inside Equipment, suppliers inside Orders,
+  // referrals inside Clients, admin inside Settings, gallery inside
+  // Settings, Crane Run inside the Marketplace More sheet.
   const groups: Array<{ title: string; tiles: ToolTile[]; pro?: boolean; icon: ReactNode }> = [
-    { title: lang === "es" ? "Dinero" : "Money", icon: <Icon size={19}><path d="M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" /></Icon>, tiles: pick(["toolbox:rate", "toolbox:margin", "toolbox:loan", "invoices"]) },
-    { title: lang === "es" ? "Herramientas de estimación" : "Estimating toolbox", icon: <Icon size={19}><path d="M4 19h16L4 5zM8 15h5" /></Icon>, tiles: pick(["toolbox:materials", "toolbox:angle", "toolbox:convert", "toolbox:area", "toolbox:yards", "toolbox:board", "toolbox:drywall", "toolbox:roofing", "toolbox:tile", "toolbox:paint", "toolbox:flooring", "toolbox:fence", "toolbox:block", "toolbox:gravel", "toolbox:stairs", "toolbox:insulation", "toolbox:gutter", "toolbox:punchlist"]) },
-    { title: lang === "es" ? "Clientes y prospectos" : "Clients & leads", icon: <Icon size={19}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon>, tiles: pick(["operations:leads", "jobs", "referrals", "referContractor"]) },
-    { title: lang === "es" ? "Trabajos y equipo" : "Jobs & crew", icon: <Icon size={19}><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>, tiles: pick(["crewDay", "operations:calendar", "dispatch"]) },
-    { title: lang === "es" ? "Marketing" : "Marketing", icon: <Icon size={19}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4M9 9h.01" /></Icon>, tiles: pick(["gallery"]) },
-    { title: lang === "es" ? "Cuenta y ajustes" : "Account & settings", icon: <span className="tool-group-gear"><GearIcon /></span>, tiles: pick(["companyProfile", "settings", "help"]) },
-    { title: lang === "es" ? "Solo por diversión" : "Just for fun", icon: <Icon size={19}><path d="M8.5 21v-4.5M13 21v-4.5" /><path d="M5 15.5c0-2.4 2.7-4 5.8-4 1.5 0 2.9.4 3.9 1.1l1.7-4.2.8-3.4" /><circle cx="17.4" cy="4.6" r="1.7" /><path d="M19 4.9l3 1.2-3.1 1.2" /></Icon>, tiles: pick(["craneRun"]) },
-    { title: lang === "es" ? "Dinero y oficina" : "Money & office", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:price", "businessTools:templates", "businessTools:mileage", "businessTools:expenses", "expansion:scanner", "reports", "fieldIntelligence:payroll", "fieldIntelligence:costs"]), pro: true },
-    { title: lang === "es" ? "Campo y equipo" : "Field & crew", icon: <Icon size={19}><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z" /></Icon>, tiles: pick(["fieldIntelligence:purchasing", "expansion:suppliers", "fieldIntelligence:equipment", "expansion:plans", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:crew"]), pro: true },
-    { title: lang === "es" ? "Clientes y administración" : "Clients & admin", icon: <Icon size={19}><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon>, tiles: pick(["followups", "admin", "expansion:warranties"]), pro: true },
+    { title: lang === "es" ? "Estimación" : "Estimate", icon: <Icon size={19}><path d="M4 19h16L4 5zM8 15h5" /></Icon>, tiles: pick(["toolbox", "businessTools:price", "businessTools:templates", "operations:leads"]) },
+    { title: lang === "es" ? "El día a día" : "Run the day", icon: <Icon size={19}><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon>, tiles: pick(["operations:calendar", "crewDay", "fieldIntelligence:payroll"]) },
+    { title: lang === "es" ? "Dinero y registros" : "Money & records", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:expenses", "fieldIntelligence:purchasing", "fieldIntelligence:equipment", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties", "reports", "followups"]), pro: true },
   ];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
@@ -6792,10 +6656,6 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
       </div>
     );
   };
-  const clockTitle = lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock";
-  const clockDesc = lang === "es" ? "Marca horas y ubicación por trabajo." : "Record time and location by job.";
-  const bookingTitle = lang === "es" ? "Formulario público de estimado" : "Public estimate form";
-  const bookingDesc = lang === "es" ? "Recibe solicitudes desde tu sitio web." : "Collect estimate requests from your website.";
   return (
     <main className="page more-page">
       <PageHeader lang={lang} title={lang === "es" ? "Herramientas" : "Tools"} onBack={onBack} />
@@ -6811,12 +6671,6 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
           </summary>
           <div className="tool-directory">
             {group.tiles.map((tile) => row(tile, toolIdForTile(tile) ?? tile.title))}
-            {group.title === (lang === "es" ? "Trabajos y equipo" : "Jobs & crew") && (
-              isPremium ? <CrewClockPanel lang={lang} /> : <ProFeatureCard title={clockTitle} description={clockDesc} onClick={() => setLockedTool({ title: clockTitle, description: "", icon: null, pro: true })} />
-            )}
-            {group.title === (lang === "es" ? "Marketing" : "Marketing") && (
-              isPremium ? <BookingLinkPanel lang={lang} /> : <ProFeatureCard title={bookingTitle} description={bookingDesc} onClick={() => setLockedTool({ title: bookingTitle, description: "", icon: null, pro: true })} />
-            )}
           </div>
         </details>
       ))}
@@ -6826,14 +6680,6 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   );
 }
 
-
-function ProFeatureCard({ title, description, onClick }: { title: string; description: string; onClick: () => void }) {
-  return <button type="button" className="pro-feature-card" onClick={onClick}>
-    <span className="tool-tile-icon"><Icon><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon></span>
-    <span><strong>{title}</strong><small>{description}</small></span>
-    <b className="pro-row-badge">PRO</b>
-  </button>;
-}
 
 function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const auth = useContext(AuthContext);
@@ -13011,6 +12857,7 @@ function SettingsScreen({
             }
           >
             <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil del mercado" : "Edit Marketplace profile"}</strong><small>{lang === "es" ? "Portada, descripción, área y redes sociales" : "Cover, description, service area, and social links"}</small></span><BackIcon/></button>
+            <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "gallery" })}><span className="market-category-icon"><Icon><path d="M4 5h16v14H4z"/><circle cx="9" cy="9" r="1.6"/><path d="m5 18 5-5 3 3 3-3 3 3"/></Icon></span><span><strong>{lang === "es" ? "Galería del sitio web" : "Website gallery"}</strong><small>{lang === "es" ? "Tu portafolio público y su enlace para compartir" : "Your public portfolio page and its share link"}</small></span><BackIcon/></button>
             <fieldset className="brand-settings">
               <legend>{t.companyLogo}</legend>
               <div className="logo-preview">
@@ -19939,6 +19786,7 @@ function ClientsScreen({
         ))}
       </section>
       {!query.isPending && visibleClients.length === 0 && <EmptyState lang={lang} icon={<Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>} title={allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")} body={allClients.length === 0 ? (lang === "es" ? "Agrega tu primer cliente para empezar a cotizar." : "Add your first client to start estimating.") : (lang === "es" ? "Prueba con otro nombre." : "Try a different name.")} actionLabel={allClients.length === 0 ? (lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT") : undefined} onAction={allClients.length === 0 ? () => setScreen({ name: "clientNew" }) : undefined} />}
+      <ReferralsSection lang={lang} clients={allClients} setScreen={setScreen} />
       <button className="primary-button add-client-fab" onClick={() => setScreen({ name: "clientNew" })}><PlusIcon />{lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT"}</button>
       {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}>
         {activeSheet === "sort" ? <section className="client-sheet" role="dialog" aria-modal="true" aria-labelledby="client-sort-title">
@@ -24612,25 +24460,21 @@ function ReferContractorScreen({
   );
 }
 
-function ReferralsScreen({
+// Tools cleanup (2026-11-03): Referrals folded into the Clients screen
+// as its closing section (the standalone screen + tile are gone).
+function ReferralsSection({
   lang,
-  onBack,
+  clients,
   setScreen,
 }: {
   lang: Lang;
-  onBack: () => void;
+  clients: ApiResponse<typeof api, "listClients">["clients"];
   setScreen: (s: Screen) => void;
 }) {
   const t = copy[lang];
-  const query = useQuery({
-    queryKey: ["clients", ""],
-    queryFn: () => api.listClients({ search: "" }),
-  });
-  const clients = query.data?.clients ?? [];
   const referred = clients.filter((c) => c.referredByClientId);
   return (
-    <main className="page">
-      <PageHeader lang={lang} title={t.referrals} onBack={onBack} />
+    <>
       <section className="referral-leaders">
         {clients
           .filter((c) => c.referralCount > 0)
@@ -24663,17 +24507,11 @@ function ReferralsScreen({
             <BackIcon />
           </button>
         ))}
+        {referred.length === 0 && <p className="detail-empty">{t.noReferrer}</p>}
       </section>
-      {referred.length === 0 && (
-        <div className="empty-state">
-          <h2>{t.noReferrer}</h2>
-        </div>
-      )}
-    </main>
+    </>
   );
 }
-
-// Build 0.6: "actions worth your attention" opens a floating options page.
 function AttentionSheet({ lang, onClose, setScreen, rows }: {
   lang: Lang;
   onClose: () => void;
@@ -25131,7 +24969,7 @@ function TodayScreen({
               {fieldIntel.today.poAwaiting > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "purchasing" })}><Icon><path d="M5 4h14v16H5zM8 8h8M8 12h8" /></Icon><strong>{fieldIntel.today.poAwaiting}</strong>{lang === "es" ? "Pedidos esperando al proveedor" : "Orders waiting on suppliers"}</button>}
               {fieldIntel.today.maintenanceDue > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "equipment" })}><Icon><path d="M14 6a4 4 0 0 0-5 5L4 16l4 4 5-5a4 4 0 0 0 5-5l-3 3-4-4z" /></Icon><strong>{fieldIntel.today.maintenanceDue}</strong>{lang === "es" ? "Cuidado del equipo" : "Equipment upkeep"}</button>}
               {fieldIntel.today.credentialWarnings > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "credentials" })}><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" /></Icon><strong>{fieldIntel.today.credentialWarnings}</strong>{lang === "es" ? "Licencias y certificados" : "Licenses & certificates"}</button>}
-              {fieldIntel.today.costAlerts > 0 && <button onClick={() => setScreen({ name: "fieldIntelligence", tab: "costs" })}><Icon><path d="M4 19V9M10 19V5M16 19v-8M22 19H2" /></Icon><strong>{fieldIntel.today.costAlerts}</strong>{lang === "es" ? "Alertas de presupuesto" : "Budget alerts"}</button>}
+              {fieldIntel.today.costAlerts > 0 && <button onClick={() => setScreen({ name: "reports" })}><Icon><path d="M4 19V9M10 19V5M16 19v-8M22 19H2" /></Icon><strong>{fieldIntel.today.costAlerts}</strong>{lang === "es" ? "Alertas de presupuesto" : "Budget alerts"}</button>}
               {fieldIntel.today.hotLeads > 0 && <button onClick={() => setScreen({ name: "operations", tab: "leads" })}><Icon><path d="M5 5h14M7 10h10M9 15h6M11 20h2" /></Icon><strong>{fieldIntel.today.hotLeads}</strong>{lang === "es" ? "Mejores prospectos" : "Best leads"}</button>}
             </div>
           </section> : <button className="today-pro-clear" type="button" onClick={() => setScreen({ name: "tools" })}><span><strong>PRO</strong>{lang === "es" ? "Operaciones al día" : "Operations are all caught up"}</span><BackIcon /></button>
@@ -26427,7 +26265,70 @@ function MonthDetail({
   );
 }
 
-function ReportsScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+// Tools cleanup (2026-11-03): Budget alerts lost their tile — Reports is
+// now their surface (same flags the old Field Intelligence costs tab
+// showed). The growth Analysis tab's content (estimate vs. actual) also
+// lives in Reports above, and the Tax export moved here from the old
+// expansion suite.
+function BudgetAlertsSection({
+  lang,
+  setScreen,
+}: {
+  lang: Lang;
+  setScreen: (s: Screen) => void;
+}) {
+  const today = new Date().toLocaleDateString("en-CA");
+  const query = useQuery({
+    queryKey: ["field-intelligence", today, today, today],
+    queryFn: () =>
+      api.getFieldIntelligence({ today, periodStart: today, periodEnd: today }),
+  });
+  const alerts = query.data?.costAlerts ?? [];
+  return (
+    <section className="analysis-list report-analysis">
+      <h2>{lang === "es" ? "Alertas de presupuesto" : "Budget alerts"}</h2>
+      <p className="section-note">
+        {lang === "es"
+          ? "Alertas configuradas cuando los costos registrados se acercan o superan el valor estimado."
+          : "Alerts trigger when recorded costs approach or exceed the estimated job value."}
+      </p>
+      <div className="cost-alert-list">
+        {alerts.map((row) => (
+          <button
+            key={row.jobId}
+            className={row.level}
+            onClick={() => setScreen({ name: "detail", jobId: row.jobId })}
+          >
+            <div>
+              <strong>{row.jobLabel}</strong>
+              <span>
+                {usd(row.cost)} / {usd(row.quoted)}
+              </span>
+            </div>
+            <b>{row.percent.toFixed(0)}%</b>
+          </button>
+        ))}
+        {!query.isLoading && alerts.length === 0 && (
+          <p className="detail-empty">
+            {lang === "es"
+              ? "Los costos están dentro de los límites configurados."
+              : "Job costs are within the configured threshold."}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ReportsScreen({
+  lang,
+  onBack,
+  setScreen,
+}: {
+  lang: Lang;
+  onBack: () => void;
+  setScreen: (s: Screen) => void;
+}) {
   const quotesQuery = useQuery({
     queryKey: ["quotes"],
     queryFn: () => api.listQuotes({}),
@@ -26556,6 +26457,8 @@ function ReportsScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
       <HistoryPanel lang={lang} kind="comparison" months={months} />
       <HistoryPanel lang={lang} kind="revenue" months={months} />
       <HistoryPanel lang={lang} kind="estimates" months={months} />
+      <BudgetAlertsSection lang={lang} setScreen={setScreen} />
+      <TaxExport lang={lang} />
     </main>
   );
 }
@@ -26741,24 +26644,33 @@ function BusinessToolsScreen({
 }: {
   lang: Lang;
   onBack: () => void;
-  initialTab?: "price" | "templates" | "mileage" | "expenses" | "analysis";
+  initialTab?: "price" | "templates" | "mileage" | "expenses";
 }) {
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ["growth-toolkit"],
     queryFn: () => api.getGrowthToolkit({}),
   });
-  const suppliers =
-    useQuery({
-      queryKey: ["expansion-suite", new Date().toLocaleDateString("en-CA")],
-      queryFn: () =>
-        api.getExpansionSuite({
-          today: new Date().toLocaleDateString("en-CA"),
-        }),
-    }).data?.suppliers ?? [];
-  const [tab] = useState<
-    "price" | "templates" | "mileage" | "expenses" | "analysis"
-  >(initialTab ?? "price");
+  const expansionQuery = useQuery({
+    queryKey: ["expansion-suite", new Date().toLocaleDateString("en-CA")],
+    queryFn: () =>
+      api.getExpansionSuite({
+        today: new Date().toLocaleDateString("en-CA"),
+      }),
+  });
+  const suppliers = expansionQuery.data?.suppliers ?? [];
+  const refreshExpansion = () =>
+    qc.invalidateQueries({ queryKey: ["expansion-suite"] });
+  const [tab] = useState<"price" | "templates" | "mileage" | "expenses">(
+    initialTab ?? "price",
+  );
+  // Tools cleanup (2026-11-03): Mileage folded into Expenses & receipts
+  // as its Trips view. A legacy "mileage" entry lands here with Trips
+  // already selected.
+  const [expenseView, setExpenseView] = useState<"expenses" | "trips">(
+    initialTab === "mileage" ? "trips" : "expenses",
+  );
+  const inExpenses = tab === "expenses" || tab === "mileage";
   const today = new Date().toLocaleDateString("en-CA");
   const [price, setPrice] = useState({
     id: null as number | null,
@@ -26849,7 +26761,11 @@ function BusinessToolsScreen({
         };
   return (
     <main className="page toolkit-page">
-      <PageHeader lang={lang} title={labels[tab]} onBack={onBack} />
+      <PageHeader
+        lang={lang}
+        title={labels[tab === "mileage" ? "expenses" : tab]}
+        onBack={onBack}
+      />
       {tab === "price" && (
         <section className="toolkit-section">
           <form
@@ -27047,7 +26963,25 @@ function BusinessToolsScreen({
           </div>
         </section>
       )}
-      {tab === "mileage" && (
+      {inExpenses && (
+        <div className="calendar-toolbar business-subtabs">
+          <div>
+            <button
+              className={expenseView === "expenses" ? "active" : ""}
+              onClick={() => setExpenseView("expenses")}
+            >
+              {lang === "es" ? "Gastos" : "Expenses"}
+            </button>
+            <button
+              className={expenseView === "trips" ? "active" : ""}
+              onClick={() => setExpenseView("trips")}
+            >
+              {lang === "es" ? "Viajes" : "Trips"}
+            </button>
+          </div>
+        </div>
+      )}
+      {inExpenses && expenseView === "trips" && (
         <section className="toolkit-section">
           <form
             className="compact-form"
@@ -27183,7 +27117,7 @@ function BusinessToolsScreen({
           </div>
         </section>
       )}
-      {tab === "expenses" && (
+      {inExpenses && expenseView === "expenses" && (
         <section className="toolkit-section">
           <form
             className="compact-form"
@@ -27365,42 +27299,12 @@ function BusinessToolsScreen({
           </div>
         </section>
       )}
-      {tab === "analysis" && (
-        <section className="toolkit-section">
-          <div className="analysis-list">
-            {query.data?.estimateActual.map((row) => (
-              <article key={row.jobId}>
-                <div>
-                  <strong>{row.clientName}</strong>
-                  <small>{row.jobType}</small>
-                </div>
-                <dl>
-                  <div>
-                    <dt>{labels.quoted}</dt>
-                    <dd>{usd(row.quoted)}</dd>
-                  </div>
-                  <div>
-                    <dt>{labels.invoiced}</dt>
-                    <dd>{usd(row.invoiced)}</dd>
-                  </div>
-                  <div>
-                    <dt>{labels.variance}</dt>
-                    <dd className={row.variance > 0 ? "negative" : "positive"}>
-                      {row.variance >= 0 ? "+" : ""}
-                      {usd(row.variance)}
-                      {row.variancePercent !== null
-                        ? ` (${row.variancePercent.toFixed(1)}%)`
-                        : ""}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-            ))}
-            {query.data?.estimateActual.length === 0 && (
-              <p className="detail-empty">{labels.empty}</p>
-            )}
-          </div>
-        </section>
+      {inExpenses && expansionQuery.data && (
+        <ScannerTool
+          lang={lang}
+          data={expansionQuery.data}
+          refresh={refreshExpansion}
+        />
       )}
     </main>
   );
@@ -27422,7 +27326,9 @@ function OperationsScreen({
   const qc = useQueryClient();
   const estTerms = estimateTerms(lang, settings);
   const [tab] = useState<"calendar" | "leads">(initialTab ?? "calendar");
-  const [view, setView] = useState<"day" | "week">("week");
+  // Tools cleanup (2026-11-03): Dispatch folded in as the board view —
+  // one appointment editor (AppointmentSheet), two views of it.
+  const [view, setView] = useState<"day" | "week" | "board">("week");
   const appointments = useQuery({
     queryKey: ["appointments"],
     queryFn: () => api.listAppointments({}),
@@ -27543,22 +27449,32 @@ function OperationsScreen({
               >
                 {lang === "es" ? "Semana" : "Week"}
               </button>
+              <button
+                className={view === "board" ? "active" : ""}
+                onClick={() => setView("board")}
+              >
+                {lang === "es" ? "Tablero" : "Board"}
+              </button>
             </div>
-            <input
-              type="date"
-              value={focusDate}
-              onChange={(e) => setFocusDate(e.target.value)}
-              aria-label={lang === "es" ? "Fecha" : "Date"}
-            />
-            <button
-              className="primary-button"
-              onClick={() => setShowAppointment(!showAppointment)}
-            >
-              <PlusIcon />
-              {lang === "es" ? "Cita" : "Appointment"}
-            </button>
+            {view !== "board" && (
+              <>
+                <input
+                  type="date"
+                  value={focusDate}
+                  onChange={(e) => setFocusDate(e.target.value)}
+                  aria-label={lang === "es" ? "Fecha" : "Date"}
+                />
+                <button
+                  className="primary-button"
+                  onClick={() => setShowAppointment(!showAppointment)}
+                >
+                  <PlusIcon />
+                  {lang === "es" ? "Cita" : "Appointment"}
+                </button>
+              </>
+            )}
           </div>
-          {showAppointment && (
+          {showAppointment && view !== "board" && (
             <form
               className="compact-form operation-editor appt-form"
               onSubmit={(e) => {
@@ -27710,6 +27626,9 @@ function OperationsScreen({
               </div>
             </form>
           )}
+          {view === "board" ? (
+            <DispatchBoard lang={lang} />
+          ) : (
           <section className="calendar-list">
             {visible.map((a) => (
               <article key={a.id}>
@@ -27760,6 +27679,7 @@ function OperationsScreen({
               </div>
             )}
           </section>
+          )}
         </>
       ) : (
         <>
@@ -28533,7 +28453,8 @@ function AppointmentSheet({
   );
 }
 
-function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+// The dispatch board, folded into Schedule as its board view (2026-11-03).
+function DispatchBoard({ lang }: { lang: Lang }) {
   const qc = useQueryClient();
   const [view, setView] = useState<"day" | "week">("day");
   const [focusDate, setFocusDate] = useState(() =>
@@ -28736,22 +28657,7 @@ function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
   const visibleDays = view === "day" ? [focusDate] : weekDays;
 
   return (
-    <main className="page dispatch-page">
-      <PageHeader
-        lang={lang}
-        title={lang === "es" ? "Despacho" : "Dispatch"}
-        onBack={onBack}
-        actions={
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={lang === "es" ? "Nueva cita" : "New appointment"}
-            onClick={newAppointment}
-          >
-            <PlusIcon />
-          </button>
-        }
-      />
+    <section className="dispatch-board">
       <div className="calendar-toolbar dispatch-toolbar">
         <div>
           <button
@@ -28789,6 +28695,14 @@ function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             ›
           </button>
         </div>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={lang === "es" ? "Nueva cita" : "New appointment"}
+          onClick={newAppointment}
+        >
+          <PlusIcon />
+        </button>
       </div>
       {selectedId != null && (
         <p className="dispatch-hint" role="status">
@@ -28874,28 +28788,18 @@ function DispatchScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
           onSaved={() => setSheetInitial(null)}
         />
       )}
-    </main>
+    </section>
   );
 }
 
 
-type ExpansionTab =
-  | "losses"
-  | "warranties"
-  | "videos"
-  | "crew"
-  | "scanner"
-  | "tax"
-  | "suppliers"
-  | "plans";
+type ExpansionTab = "warranties";
 function ExpansionSuiteScreen({
   lang,
-  settings,
   onBack,
   initialTab,
 }: {
   lang: Lang;
-  settings: Settings | null;
   onBack: () => void;
   initialTab?: ExpansionTab;
 }) {
@@ -28908,121 +28812,18 @@ function ExpansionSuiteScreen({
   const [tab] = useState<ExpansionTab>(initialTab ?? "warranties");
   const data = query.data;
   const refresh = () => qc.invalidateQueries({ queryKey: ["expansion-suite"] });
-  const names: Record<ExpansionTab, string> =
-    lang === "es"
-      ? {
-          losses: "Ganadas/perdidas",
-          warranties: "Garantías",
-          videos: "Videos",
-          crew: "Horas",
-          scanner: "Escáner",
-          tax: "Impuestos",
-          suppliers: "Proveedores",
-          plans: "Cuidado del equipo",
-        }
-      : {
-          losses: "Win/loss",
-          warranties: "Warranties",
-          videos: "Videos",
-          crew: "Crew hours",
-          scanner: "Scanner",
-          tax: "Tax file download",
-          suppliers: "Suppliers",
-          plans: "Equipment upkeep",
-        };
+  const names: Record<ExpansionTab, string> = {
+    warranties: lang === "es" ? "Garantías" : "Warranties",
+  };
   return (
     <main className="page expansion-page">
-      <PageHeader
-        lang={lang}
-        title={names[tab]}
-        onBack={onBack}
-      />
+      <PageHeader lang={lang} title={names[tab]} onBack={onBack} />
       {!data ? (
         <div className="loading-block" />
       ) : (
-        <>
-          {tab === "losses" && (
-            <LossReport lang={lang} rows={data.lossReport} />
-          )}{" "}
-          {tab === "warranties" && (
-            <WarrantyManager lang={lang} data={data} refresh={refresh} />
-          )}{" "}
-          {tab === "videos" && (
-            <SlideshowManager
-              lang={lang}
-              data={data}
-              settings={settings}
-              refresh={refresh}
-            />
-          )}{" "}
-          {tab === "crew" && (
-            <CrewHoursReport lang={lang} rows={data.crewHours} />
-          )}{" "}
-          {tab === "scanner" && (
-            <ScannerTool lang={lang} data={data} refresh={refresh} />
-          )}{" "}
-          {tab === "tax" && <TaxExport lang={lang} />}{" "}
-          {tab === "suppliers" && (
-            <SupplierManager lang={lang} data={data} refresh={refresh} />
-          )}{" "}
-          {tab === "plans" && (
-            <MaintenanceManager lang={lang} data={data} refresh={refresh} />
-          )}
-        </>
+        <WarrantyManager lang={lang} data={data} refresh={refresh} />
       )}
     </main>
-  );
-}
-function LossReport({
-  lang,
-  rows,
-}: {
-  lang: Lang;
-  rows: Array<{ reason: string; count: number; value: number }>;
-}) {
-  const label = (r: string) =>
-    ({
-      price: lang === "es" ? "Precio muy alto" : "Price too high",
-      timing: lang === "es" ? "Calendario" : "Timing",
-      competitor: lang === "es" ? "Eligió competidor" : "Chose competitor",
-      no_response: lang === "es" ? "Sin respuesta" : "No response",
-      other: lang === "es" ? "Otro" : "Other",
-    })[r] ?? r;
-  const total = rows.reduce((s, r) => s + r.value, 0);
-  return (
-    <section className="toolkit-section">
-      <div className="metric-hero">
-        <span>
-          {lang === "es" ? "Valor total perdido" : "Total value lost"}
-        </span>
-        <strong>{usd(total)}</strong>
-        <small>
-          {rows.reduce((s, r) => s + r.count, 0)}{" "}
-          {lang === "es" ? "estimados" : "estimates"}
-        </small>
-      </div>
-      <div className="loss-bars">
-        {rows.map((r) => (
-          <article key={r.reason}>
-            <div>
-              <strong>{label(r.reason)}</strong>
-              <span>
-                {r.count} · {usd(r.value)}
-              </span>
-            </div>
-            <progress
-              max={Math.max(1, ...rows.map((x) => x.value))}
-              value={r.value}
-            />
-          </article>
-        ))}
-      </div>
-      <p className="privacy-note">
-        {lang === "es"
-          ? "Marca un estimado como Perdido en Hoy para registrar el motivo."
-          : "Mark an estimate Lost in Today to capture the reason."}
-      </p>
-    </section>
   );
 }
 function WarrantyManager({
@@ -29167,387 +28968,6 @@ function WarrantyManager({
             </article>
           );
         })}
-      </div>
-    </section>
-  );
-}
-function CrewHoursReport({
-  lang,
-  rows,
-}: {
-  lang: Lang;
-  rows: Array<{
-    crewMember: string;
-    jobId: number;
-    jobLabel: string;
-    hours: number;
-  }>;
-}) {
-  const grouped = new Map<string, number>();
-  for (const r of rows)
-    grouped.set(r.crewMember, (grouped.get(r.crewMember) ?? 0) + r.hours);
-  const text = [
-    lang === "es" ? "Informe semanal de horas" : "Weekly crew hours",
-    ...Array.from(grouped).map(([n, h]) => `${n}: ${h.toFixed(2)}h`),
-    "",
-    ...rows.map(
-      (r) => `${r.crewMember} · ${r.jobLabel}: ${r.hours.toFixed(2)}h`,
-    ),
-  ].join("\n");
-  return (
-    <section className="toolkit-section">
-      <div className="toolkit-summary">
-        {Array.from(grouped).map(([name, h]) => (
-          <article key={name}>
-            <span>{name}</span>
-            <strong>{h.toFixed(1)}h</strong>
-          </article>
-        ))}
-      </div>
-      <button
-        className="primary-button"
-        onClick={async () => {
-          const blob = new Blob([text], { type: "text/plain" });
-          await nativeShare(
-            blob,
-            "crew-hours-week.txt",
-            lang === "es" ? "Horas del equipo" : "Crew hours",
-            text,
-          );
-        }}
-      >
-        <ShareIcon />
-        {lang === "es" ? "Compartir informe" : "Share report"}
-      </button>
-      <div className="tool-records">
-        {rows.map((r, i) => (
-          <article key={`${r.jobId}-${r.crewMember}-${i}`}>
-            <div>
-              <strong>
-                {r.crewMember} · {r.hours.toFixed(2)}h
-              </strong>
-              <small>{r.jobLabel}</small>
-            </div>
-          </article>
-        ))}
-      </div>
-      {rows.length === 0 && (
-        <p className="detail-empty">
-          {lang === "es"
-            ? "Asigna nombres al registrar tiempo para ver el informe semanal."
-            : "Assign crew names when tracking time to build the weekly report."}
-        </p>
-      )}
-    </section>
-  );
-}
-function SupplierManager({
-  lang,
-  data,
-  refresh,
-}: {
-  lang: Lang;
-  data: ApiResponse<typeof api, "getExpansionSuite">;
-  refresh: () => void;
-}) {
-  const [form, setForm] = useState({
-    id: null as number | null,
-    name: "",
-    category: "",
-    phone: "",
-    email: "",
-    notes: "",
-  });
-  return (
-    <section className="toolkit-section">
-      <form
-        className="compact-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!form.name) return;
-          await api.saveSupplier(form);
-          setForm({
-            id: null,
-            name: "",
-            category: "",
-            phone: "",
-            email: "",
-            notes: "",
-          });
-          refresh();
-        }}
-      >
-        <div className="field-pair">
-          <label>
-            <span>{lang === "es" ? "Nombre" : "Name"}</span>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{lang === "es" ? "Categoría" : "Category"}</span>
-            <input
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            />
-          </label>
-        </div>
-        <div className="field-pair">
-          <label>
-            <span>{lang === "es" ? "Teléfono" : "Phone"}</span>
-            <input
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{lang === "es" ? "Correo" : "Email"}</span>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </label>
-        </div>
-        <label>
-          <span>{lang === "es" ? "Notas" : "Notes"}</span>
-          <textarea
-            rows={2}
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          />
-        </label>
-        <button className="primary-button">
-          {lang === "es" ? "Guardar proveedor" : "Save supplier"}
-        </button>
-      </form>
-      <div className="tool-records">
-        {data.suppliers.map((s) => (
-          <article key={s.id}>
-            <div>
-              <strong>
-                {s.name} · {s.category}
-              </strong>
-              <span>
-                {s.orderCount} {lang === "es" ? "compras" : "orders"} ·{" "}
-                {usd(s.orderTotal)}
-              </span>
-              <small>
-                {[s.phone, s.email, s.notes].filter(Boolean).join(" · ")}
-              </small>
-            </div>
-            <div className="row-actions">
-              <button
-                onClick={() =>
-                  setForm({
-                    id: s.id,
-                    name: s.name,
-                    category: s.category,
-                    phone: s.phone,
-                    email: s.email,
-                    notes: s.notes,
-                  })
-                }
-              >
-                {lang === "es" ? "Editar" : "Edit"}
-              </button>
-              {s.phone && (
-                <a href={`tel:${s.phone}`}>
-                  {lang === "es" ? "Llamar" : "Call"}
-                </a>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-function MaintenanceManager({
-  lang,
-  data,
-  refresh,
-}: {
-  lang: Lang;
-  data: ApiResponse<typeof api, "getExpansionSuite">;
-  refresh: () => void;
-}) {
-  const today = new Date().toLocaleDateString("en-CA");
-  const [form, setForm] = useState({
-    id: null as number | null,
-    clientId: null as number | null,
-    clientName: "",
-    clientPhone: "",
-    title: "",
-    tasks: "",
-    startDate: today,
-    intervalMonths: 12,
-    active: true,
-  });
-  const choose = (id: number) => {
-    const c = data.clients.find((x) => x.id === id);
-    if (c)
-      setForm({
-        ...form,
-        clientId: c.id,
-        clientName: c.name,
-        clientPhone: c.phone,
-      });
-  };
-  return (
-    <section className="toolkit-section">
-      <form
-        className="compact-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!form.clientName || !form.title) return;
-          await api.saveMaintenancePlan(form);
-          setForm({
-            id: null,
-            clientId: null,
-            clientName: "",
-            clientPhone: "",
-            title: "",
-            tasks: "",
-            startDate: today,
-            intervalMonths: 12,
-            active: true,
-          });
-          refresh();
-        }}
-      >
-        <label>
-          <span>{lang === "es" ? "Cliente existente" : "Existing client"}</span>
-          <select
-            value={form.clientId ?? ""}
-            onChange={(e) =>
-              e.target.value
-                ? choose(Number(e.target.value))
-                : setForm({ ...form, clientId: null })
-            }
-          >
-            <option value="">—</option>
-            {data.clients.map((c) => (
-              <option value={c.id} key={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="field-pair">
-          <label>
-            <span>{lang === "es" ? "Cliente" : "Client"}</span>
-            <input
-              value={form.clientName}
-              onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{lang === "es" ? "Teléfono" : "Phone"}</span>
-            <input
-              value={form.clientPhone}
-              onChange={(e) =>
-                setForm({ ...form, clientPhone: e.target.value })
-              }
-            />
-          </label>
-        </div>
-        <label>
-          <span>{lang === "es" ? "Nombre del plan" : "Plan name"}</span>
-          <input
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder={lang === "es" ? "Revisión anual" : "Annual check-up"}
-          />
-        </label>
-        <label>
-          <span>{lang === "es" ? "Tareas" : "Tasks"}</span>
-          <textarea
-            rows={3}
-            value={form.tasks}
-            onChange={(e) => setForm({ ...form, tasks: e.target.value })}
-            placeholder={
-              lang === "es"
-                ? "Calafateo, lechada, retoques de pintura"
-                : "Caulk, grout, paint touch-ups"
-            }
-          />
-        </label>
-        <div className="field-pair">
-          <label>
-            <span>{lang === "es" ? "Inicio" : "Start"}</span>
-            <input
-              type="date"
-              value={form.startDate}
-              onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-            />
-          </label>
-          <label>
-            <span>{lang === "es" ? "Cada (meses)" : "Every (months)"}</span>
-            <input
-              type="number"
-              min="1"
-              value={form.intervalMonths}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  intervalMonths: Number(e.target.value) || 1,
-                })
-              }
-            />
-          </label>
-        </div>
-        <button className="primary-button">
-          {lang === "es" ? "Guardar plan" : "Save plan"}
-        </button>
-      </form>
-      <div className="tool-records">
-        {data.plans.map((p) => (
-          <article key={p.id}>
-            <div>
-              <strong>
-                {p.clientName} · {p.title}
-              </strong>
-              <span>
-                {lang === "es" ? "Próximo" : "Next"}:{" "}
-                {formatDate(p.nextDueDate, lang)} · {p.intervalMonths}{" "}
-                {lang === "es" ? "meses" : "months"}
-              </span>
-              <small>{p.tasks}</small>
-            </div>
-            <div className="row-actions">
-              <button
-                onClick={() =>
-                  setForm({
-                    id: p.id,
-                    clientId: p.clientId,
-                    clientName: p.clientName,
-                    clientPhone: p.clientPhone,
-                    title: p.title,
-                    tasks: p.tasks,
-                    startDate: p.startDate,
-                    intervalMonths: p.intervalMonths,
-                    active: p.active,
-                  })
-                }
-              >
-                {lang === "es" ? "Editar" : "Edit"}
-              </button>
-              <button
-                onClick={async () => {
-                  await api.completeMaintenancePlan({ id: p.id });
-                  refresh();
-                }}
-              >
-                {lang === "es"
-                  ? "Completar y programar siguiente"
-                  : "Complete & schedule next"}
-              </button>
-            </div>
-          </article>
-        ))}
       </div>
     </section>
   );
@@ -30058,202 +29478,6 @@ function ScannerTool({
     </section>
   );
 }
-function SlideshowManager({
-  lang,
-  data,
-  settings,
-  refresh,
-}: {
-  lang: Lang;
-  data: ApiResponse<typeof api, "getExpansionSuite">;
-  settings: Settings | null;
-  refresh: () => void;
-}) {
-  const [jobId, setJobId] = useState(data.jobs[0]?.id ?? 0);
-  const [caption, setCaption] = useState("");
-  const [branded, setBranded] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const make = async () => {
-    if (!jobId) return;
-    setBusy(true);
-    try {
-      const detail = await api.getJob({ id: jobId });
-      const job = detail.job;
-      if (!job || detail.photos.length === 0) return;
-      const ordered = [
-        ...detail.photos.filter((p) => !p.excludeFromSocial),
-      ].sort((a, b) => {
-        const stage = { before: 0, during: 1, after: 2 };
-        return (
-          stage[a.stage] - stage[b.stage] ||
-          a.capturedAt.localeCompare(b.capturedAt)
-        );
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = 720;
-      canvas.height = 720;
-      const c = canvas.getContext("2d");
-      if (!c) return;
-      const stream = canvas.captureStream(30);
-      const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9"
-        : "video/webm";
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data);
-      };
-      const done = new Promise<Blob>((resolve) => {
-        recorder.onstop = () =>
-          resolve(new Blob(chunks, { type: "video/webm" }));
-      });
-      recorder.start();
-      for (const p of ordered) {
-        const blob = await fetch(sameOriginBlobPath(p.url)).then((r) => r.blob());
-        const img = await createImageBitmap(blob);
-        for (let frame = 0; frame < 45; frame++) {
-          c.fillStyle = "#101615";
-          c.fillRect(0, 0, 720, 720);
-          const scale = Math.max(720 / img.width, 720 / img.height);
-          const sw = 720 / scale,
-            sh = 720 / scale;
-          c.drawImage(
-            img,
-            (img.width - sw) / 2,
-            (img.height - sh) / 2,
-            sw,
-            sh,
-            0,
-            0,
-            720,
-            720,
-          );
-          c.fillStyle = "rgba(0,0,0,.58)";
-          c.fillRect(0, 0, 720, 70);
-          c.fillStyle = "#fff";
-          c.font = "700 28px system-ui";
-          c.fillText(p.stage.toUpperCase(), 28, 44);
-          if (branded) {
-            c.fillStyle = "rgba(0,0,0,.68)";
-            c.fillRect(0, 650, 720, 70);
-            c.fillStyle = "#fff";
-            c.font = "700 22px system-ui";
-            c.fillText(settings?.companyName || job.jobType, 24, 684);
-            c.font = "16px system-ui";
-            c.fillText(
-              [settings?.licenseNumber, settings?.phone]
-                .filter(Boolean)
-                .join(" · "),
-              24,
-              707,
-            );
-          }
-          await new Promise((r) => setTimeout(r, 33));
-        }
-        img.close();
-      }
-      recorder.stop();
-      const video = await done;
-      const filename = `${safeName(job.clientName)}-progress.webm`;
-      const b64 = (await blobDataUrl(video)).split(",")[1] ?? "";
-      await api.saveSlideshowVideo({
-        jobId,
-        caption,
-        branded,
-        filename,
-        contentType: "video/webm",
-        dataBase64: b64,
-        photoIds: ordered.map((p) => p.id),
-      });
-      refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <section className="toolkit-section">
-      <p className="privacy-note">
-        {lang === "es"
-          ? "Ordena automáticamente las fotos Antes → Durante → Después por fecha. El video se guarda aquí y compartir abre el menú del teléfono."
-          : "Automatically orders Before → During → After photos by date. The video is saved here and Share opens your phone’s share sheet."}
-      </p>
-      <form
-        className="compact-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void make();
-        }}
-      >
-        <label>
-          <span>{lang === "es" ? "Trabajo" : "Job"}</span>
-          <select
-            value={jobId}
-            onChange={(e) => setJobId(Number(e.target.value))}
-          >
-            {data.jobs.map((j) => (
-              <option value={j.id} key={j.id}>
-                {j.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>{lang === "es" ? "Descripción" : "Caption"}</span>
-          <textarea
-            rows={3}
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-          />
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={branded}
-            onChange={(e) => setBranded(e.target.checked)}
-          />
-          <span>
-            {lang === "es"
-              ? "Agregar marca de la empresa"
-              : "Add company branding"}
-          </span>
-        </label>
-        <button className="primary-button" disabled={busy || !jobId}>
-          {busy
-            ? lang === "es"
-              ? "Creando video…"
-              : "Creating video…"
-            : lang === "es"
-              ? "Crear y guardar video"
-              : "Create & save video"}
-        </button>
-      </form>
-      <div className="video-grid">
-        {data.videos.map((v) => (
-          <article key={v.id}>
-            <video controls preload="metadata" src={v.url} />
-            <div>
-              <strong>{v.jobLabel}</strong>
-              <small>
-                {v.caption || formatDate(v.createdAt.slice(0, 10), lang)}
-              </small>
-              <button
-                className="small-button"
-                onClick={async () => {
-                  const blob = await fetch(sameOriginBlobPath(v.url)).then((r) => r.blob());
-                  await nativeShare(blob, v.filename, v.jobLabel, v.caption);
-                }}
-              >
-                <ShareIcon />
-                {lang === "es" ? "Compartir / guardar" : "Share / save"}
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function PortalOwnerPanel({ lang, jobId }: { lang: Lang; jobId: number }) {
   const qc = useQueryClient();
   // Tap-to-dropdown (Danny 2026-10-24): the colorful navy head is the
@@ -33895,9 +33119,15 @@ function NumInput({
     </label>
   );
 }
+// Tools cleanup (2026-11-03): ONE Calculators door opens this window with
+// its own tab strip — all 19 calculators are tabs here. Material prices
+// moved into Saved prices and the punch list's home is the job, so those
+// two tabs are not in the strip (their panels still serve the public
+// tools page below).
+const CALCULATOR_TABS: ToolboxTab[] = ["loan", "rate", "margin", "convert", "area", "yards", "board", "drywall", "roofing", "tile", "paint", "flooring", "fence", "block", "gravel", "stairs", "insulation", "gutter", "angle"];
 function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () => void; initialTab?: ToolboxTab }) {
   useEscapeToClose(true, onBack);
-  const tab = initialTab ?? "loan";
+  const [tab, setTab] = useState<ToolboxTab>(initialTab && CALCULATOR_TABS.includes(initialTab) ? initialTab : "loan");
   const labels: Record<ToolboxTab, string> = {
     loan: lang === "es" ? "Préstamo" : "Loan payment",
     materials: lang === "es" ? "Precios de materiales" : "Material prices",
@@ -33924,9 +33154,13 @@ function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () =>
   return <div className="toolbox-modal-backdrop" role="presentation" onClick={onBack}>
     <section className="toolbox-window" role="dialog" aria-modal="true" aria-labelledby="toolbox-title" onClick={(event) => event.stopPropagation()}>
       <header className="toolbox-window-head"><div className="toolbox-head-icon"><Icon><path d="M4 19h16M6 16l4-5 3 2 5-7" /></Icon></div><div><small>{lang === "es" ? "Herramienta de estimación" : "Estimating tool"}</small><h1 id="toolbox-title">{labels[tab]}</h1></div><button type="button" aria-label={lang === "es" ? "Cerrar herramienta" : "Close tool"} onClick={onBack}>×</button></header>
+      <div className="toolbox-tab-strip" role="tablist" aria-label={lang === "es" ? "Calculadoras" : "Calculators"}>
+        {CALCULATOR_TABS.map((key) => (
+          <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{labels[key]}</button>
+        ))}
+      </div>
       <div className="toolbox-window-body">
         {tab === "loan" && <LoanCalculator lang={lang} />}
-        {tab === "materials" && <MaterialReference lang={lang} />}
         {tab === "angle" && <AngleCalculator lang={lang} />}
         {tab === "convert" && <UnitConverter lang={lang} />}
         {tab === "area" && <AreaCalculator lang={lang} />}
@@ -33945,7 +33179,6 @@ function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () =>
         {tab === "insulation" && <InsulationCalculator lang={lang} />}
         {tab === "gutter" && <GutterCalculator lang={lang} />}
         {tab === "rate" && <RateBuilderCalculator lang={lang} />}
-        {tab === "punchlist" && <PunchListPanel lang={lang} />}
       </div>
     </section>
   </div>;
@@ -34808,183 +34041,3 @@ function PunchListPanel({ lang }: { lang: Lang }) {
   return <section className="calculator-panel"><h2>{lang === "es" ? "Lista de pendientes" : "Punch list"}</h2><p>{lang === "es" ? "Elige un trabajo y lleva la cuenta de los pendientes." : "Pick a job and track its punch items."}</p><div className="field-pair"><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>{jobsQuery.data?.jobs.map((j) => <option key={j.id} value={j.id}>{j.clientName} · {j.jobType}</option>)}</select></label></div>{jobId && <><div className="punch-add"><input value={text} onChange={(e) => setText(e.target.value)} placeholder={lang === "es" ? "Agregar pendiente…" : "Add a punch item…"} maxLength={500}/><button type="button" className="primary-button" disabled={!text.trim() || add.isPending} onClick={() => add.mutate()}><PlusIcon />{lang === "es" ? "Agregar" : "Add"}</button></div><p className="result-callout">{doneCount} / {items.length} {lang === "es" ? "completados" : "done"}</p><div className="punch-list">{items.map((item) => <article key={item.id} className={item.completed ? "punch-done" : ""}><button type="button" aria-label={item.completed ? (lang === "es" ? "Marcar pendiente" : "Mark open") : (lang === "es" ? "Marcar completado" : "Mark done")} onClick={() => toggle.mutate({ id: item.id, completed: !item.completed })}><CheckIcon /></button><span>{item.text}</span><button type="button" aria-label={lang === "es" ? "Eliminar pendiente" : "Delete punch item"} onClick={() => remove.mutate(item.id)}><TrashIcon /></button></article>)}</div>{items.length === 0 && <p>{lang === "es" ? "No hay pendientes todavía. Agrega el primero arriba." : "No punch items yet. Add the first one above."}</p>}</>}<ResultHistory lang={lang} tool="punchlist" value={listCopy || `${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"}`}/></section>;
 }
 
-function CrewClockPanel({ lang }: { lang: Lang }) {
-  const qc = useQueryClient();
-  const jobs = useQuery({
-    queryKey: ["jobs"],
-    queryFn: () => api.listJobs({ search: "" }),
-  });
-  const status = useQuery({
-    queryKey: ["crew-clock"],
-    queryFn: () => api.getCrewClockStatus({}),
-    refetchInterval: 60000,
-  });
-  const [name, setName] = useState(""),
-    [jobId, setJobId] = useState(""),
-    [coords, setCoords] = useState<{
-      latitude: number;
-      longitude: number;
-    } | null>(null),
-    [nearby, setNearby] = useState<
-      { id: number; label: string; distanceMiles: number }[]
-    >([]),
-    [gpsMsg, setGpsMsg] = useState("");
-  const locate = () =>
-    navigator.geolocation
-      ? navigator.geolocation.getCurrentPosition(
-          async (p) => {
-            const c = {
-              latitude: p.coords.latitude,
-              longitude: p.coords.longitude,
-            };
-            setCoords(c);
-            setGpsMsg(lang === "es" ? "Ubicación lista." : "Location ready.");
-            const r = await api.suggestJobsByLocation(c);
-            setNearby(r.jobs);
-            if (!jobId && r.jobs[0]) setJobId(String(r.jobs[0].id));
-          },
-          () =>
-            setGpsMsg(
-              lang === "es"
-                ? "GPS no disponible. Seleccione el trabajo manualmente."
-                : "GPS unavailable. Choose the job manually.",
-            ),
-          { enableHighAccuracy: true, timeout: 10000 },
-        )
-      : setGpsMsg(lang === "es" ? "GPS no disponible." : "GPS unavailable.");
-  const refresh = () => qc.invalidateQueries({ queryKey: ["crew-clock"] });
-  return (
-    <details className="action-details crew-clock-panel">
-      <summary>
-        {lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock"}{" "}
-        {status.data?.active.length ? `· ${status.data.active.length}` : ""}
-      </summary>
-      <div className="compact-form">
-        <label>
-          <span>{lang === "es" ? "Nombre del trabajador" : "Crew member"}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <label>
-          <span>{lang === "es" ? "Trabajo" : "Job"}</span>
-          <select value={jobId} onChange={(e) => setJobId(e.target.value)}>
-            <option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>
-            {nearby.map((j) => (
-              <option key={`n${j.id}`} value={j.id}>
-                {j.label} · {j.distanceMiles} mi
-              </option>
-            ))}
-            {jobs.data?.jobs
-              .filter((j) => !nearby.some((n) => n.id === j.id))
-              .map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.clientName} · {j.jobType}
-                </option>
-              ))}
-          </select>
-        </label>
-        <div className="row-actions">
-          <button onClick={locate}>
-            {lang === "es" ? "Usar GPS" : "Use GPS"}
-          </button>
-          <button
-            className="primary-button"
-            disabled={!name || !jobId}
-            onClick={async () => {
-              await api.clockInCrew({
-                jobId: Number(jobId),
-                crewMember: name,
-                latitude: coords?.latitude ?? null,
-                longitude: coords?.longitude ?? null,
-                note: "",
-              });
-              refresh();
-            }}
-          >
-            {lang === "es" ? "Marcar entrada" : "Clock in"}
-          </button>
-          {coords && jobId && (
-            <button
-              onClick={async () => {
-                await api.updateJobSiteLocation({
-                  jobId: Number(jobId),
-                  ...coords,
-                });
-                setGpsMsg(
-                  lang === "es"
-                    ? "Ubicación del sitio guardada."
-                    : "Job-site location saved.",
-                );
-              }}
-            >
-              {lang === "es" ? "Guardar sitio aquí" : "Save site here"}
-            </button>
-          )}
-        </div>
-        {gpsMsg && <p className="status">{gpsMsg}</p>}
-        <h3>{lang === "es" ? "En el sitio ahora" : "On site now"}</h3>
-        {status.data?.active.map((a) => (
-          <article className="tool-record" key={a.id}>
-            <span>
-              <strong>{a.crewMember}</strong>
-              <small>
-                {a.jobLabel} · {a.hours.toFixed(1)} h{" "}
-                {a.missingGps
-                  ? `· ${lang === "es" ? "sin GPS" : "no GPS"}`
-                  : ""}
-              </small>
-            </span>
-            {a.overTwelveHours && (
-              <b className="urgency-badge">
-                {lang === "es" ? "Más de 12 h" : "Over 12 hr"}
-              </b>
-            )}
-            <button
-              onClick={async () => {
-                await api.clockOutCrew({
-                  id: a.id,
-                  latitude: coords?.latitude ?? null,
-                  longitude: coords?.longitude ?? null,
-                });
-                refresh();
-              }}
-            >
-              {lang === "es" ? "Marcar salida" : "Clock out"}
-            </button>
-          </article>
-        ))}
-        {!status.data?.active.length && (
-          <p>
-            {lang === "es"
-              ? "Nadie ha marcado entrada."
-              : "No one is clocked in."}
-          </p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function BookingLinkPanel({ lang }: { lang: Lang }) {
-  const snippet =
-    '<iframe src="PASTE_SHARED_ARTIFACT_URL_HERE?booking=1" title="Estimate request" width="100%" height="720"></iframe>';
-  return (
-    <details className="action-details crew-clock-panel">
-      <summary>
-        {lang === "es"
-          ? "Formulario público de estimado"
-          : "Public estimate form"}
-      </summary>
-      <div className="compact-form">
-        <p>
-          {lang === "es"
-            ? "Use ?booking=1 al final del enlace compartido de Crewkat para Facebook o su sitio web."
-            : "Add ?booking=1 to the end of the shared Crewkat link for Facebook or your website."}
-        </p>
-        <label>
-          <span>{lang === "es" ? "Código para insertar" : "Embed code"}</span>
-          <textarea readOnly rows={4} value={snippet} />
-        </label>
-      </div>
-    </details>
-  );
-}

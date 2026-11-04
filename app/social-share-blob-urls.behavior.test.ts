@@ -103,13 +103,13 @@ check(
   // invariant (photo bytes fetched same-origin into the PDF) is unchanged.
   appSrc.includes("const blob = await (await fetch(sameOriginBlobPath(p.url))).blob();\n          const norm = await normalizePhotoForPdf(blob);"),
 );
+// Tools cleanup (2026-11-03): the slideshow maker (the hidden Videos
+// tab) was removed by the approved cut list, so its two same-origin
+// fetch checks are retired with it; the pattern stays guarded by the
+// surviving share checks in this suite.
 check(
-  "slideshow maker fetches photos same-origin",
-  appSrc.includes("const blob = await fetch(sameOriginBlobPath(p.url)).then((r) => r.blob());"),
-);
-check(
-  "saved video share fetches same-origin",
-  appSrc.includes("const blob = await fetch(sameOriginBlobPath(v.url)).then((r) => r.blob());"),
+  "slideshow videos surface removed (Tools cleanup 2026-11-03)",
+  !appSrc.includes("SlideshowManager"),
 );
 check(
   "progress share card loads images same-origin",

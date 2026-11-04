@@ -27,19 +27,23 @@ describe("Crane Run screen registration", () => {
   });
 });
 
-describe("Crane Run Tools tile", () => {
-  test("tile registered in the Tools catalog", () => {
-    expect(APP).toContain('byKey.set("craneRun"');
+// Tools cleanup (2026-11-03): Crane Run left the Tools catalog (the
+// "Just for fun" group is gone); its entrance is a row in the
+// Marketplace More sheet. The game itself is unchanged.
+describe("Crane Run entrance (Marketplace More sheet)", () => {
+  test("game row lives in the Marketplace More sheet, not the Tools catalog", () => {
+    expect(APP).toContain("crane-run-row");
+    expect(APP).toContain('setScreen({ name: "craneRun" })');
+    expect(APP).not.toContain('byKey.set("craneRun"');
+    expect(APP).not.toContain("Just for fun");
+    expect(APP).not.toContain("Solo por diversión");
   });
 
-  test("'Just for fun' group exists at the end of the catalog (EN+ES)", () => {
-    expect(APP).toContain("Just for fun");
-    expect(APP).toContain("Solo por diversión");
-  });
-
-  test("tile has EN+ES title and description", () => {
+  test("row has EN+ES title and description", () => {
     expect(APP).toContain("Crane Run");
     expect(APP).toContain("Carrera de la Grulla");
+    expect(APP).toContain("Weekly game — the champion headlines the Marketplace");
+    expect(APP).toContain("Juego semanal: el campeón encabeza el Marketplace");
   });
 });
 

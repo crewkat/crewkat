@@ -8,7 +8,8 @@ type Data = ApiResponse<typeof api, "getFieldIntelligence">;
 type Equipment = Data["equipment"][number];
 type PurchaseOrder = Data["purchaseOrders"][number];
 type Credential = Data["credentials"][number];
-type Tab = "purchasing" | "equipment" | "safety" | "credentials" | "payroll" | "costs";
+type Tab = "purchasing" | "equipment" | "safety" | "credentials" | "payroll";
+type ExpansionData = ApiResponse<typeof api, "getExpansionSuite">;
 type Topic = "ladder" | "ppe" | "electrical" | "heat" | "silica" | "fall";
 
 const usd = (value: string | number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(String(value).replace(/[^0-9.-]/g, "")) || 0);
@@ -36,16 +37,21 @@ export function FieldIntelligenceScreen({ lang, onBack, onOpenSettings, onOpenJo
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["field-intelligence", today, period.start, period.end], queryFn: () => api.getFieldIntelligence({ today, periodStart: period.start, periodEnd: period.end }) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["field-intelligence"] });
+  // Tools cleanup (2026-11-03): the supplier directory, upkeep plans, and
+  // crew-hours report folded into these tabs; they read the expansion
+  // suite payload.
+  const expansionQuery = useQuery({ queryKey: ["expansion-suite", today], queryFn: () => api.getExpansionSuite({ today }), enabled: tab === "purchasing" || tab === "equipment" || tab === "payroll" });
+  const expansion = expansionQuery.data;
+  const refreshExpansion = () => { void qc.invalidateQueries({ queryKey: ["expansion-suite"] }); void qc.invalidateQueries({ queryKey: ["field-intelligence"] }); };
   const d = query.data;
-  const labels: Record<Tab, string> = lang === "es" ? { purchasing: "Pedidos esperando proveedores", equipment: "Equipo", safety: "Seguridad e incidentes", credentials: "Licencias y certificados", payroll: "Nómina", costs: "Alertas de presupuesto" } : { purchasing: "Orders waiting on suppliers", equipment: "Equipment", safety: "Safety & incidents", credentials: "Licenses & certificates", payroll: "Payroll", costs: "Budget alerts" };
+  const labels: Record<Tab, string> = lang === "es" ? { purchasing: "Pedidos y proveedores", equipment: "Equipo", safety: "Seguridad e incidentes", credentials: "Licencias y certificados", payroll: "Tiempo y nómina" } : { purchasing: "Orders & suppliers", equipment: "Equipment", safety: "Safety & incidents", credentials: "Licenses & certificates", payroll: "Time & payroll" };
   return <main className="page intelligence-page"><PageHeader title={labels[tab]} back={onBack} openSettings={onOpenSettings} lang={lang}/>
     {!d ? <div className="loading-block"/> : <>
-      {tab === "purchasing" && <Purchasing lang={lang} data={d} refresh={refresh}/>} 
-      {tab === "equipment" && <EquipmentPanel lang={lang} data={d} refresh={refresh}/>} 
+      {tab === "purchasing" && <><Purchasing lang={lang} data={d} refresh={refresh}/>{expansion && <SupplierManager lang={lang} data={expansion} refresh={refreshExpansion}/>}</>} 
+      {tab === "equipment" && <><EquipmentPanel lang={lang} data={d} refresh={refresh}/>{expansion && <MaintenanceManager lang={lang} data={expansion} refresh={refreshExpansion}/>}</>} 
       {tab === "safety" && <SafetyPanel lang={lang} data={d} refresh={refresh} onOpenJob={onOpenJob}/>} 
       {tab === "credentials" && <CredentialsPanel lang={lang} data={d} refresh={refresh}/>} 
-      {tab === "payroll" && <PayrollPanel lang={lang} data={d} period={period} setPeriod={setPeriod} refresh={refresh}/>} 
-      {tab === "costs" && <CostPanel lang={lang} data={d} onOpenJob={onOpenJob}/>} 
+      {tab === "payroll" && <><CrewClockPanel lang={lang}/>{expansion && <CrewHoursReport lang={lang} rows={expansion.crewHours}/>}<PayrollPanel lang={lang} data={d} period={period} setPeriod={setPeriod} refresh={refresh}/></>} 
     </>}
   </main>;
 }
@@ -53,7 +59,7 @@ export function FieldIntelligenceScreen({ lang, onBack, onOpenSettings, onOpenJo
 function Purchasing({ lang, data, refresh }: { lang: Lang; data: Data; refresh: () => void }) {
   const [form, setForm] = useState({ supplierId: data.suppliers[0]?.id ?? 0, jobId: null as number | null, title: "", description: "", qty: "1", unitPrice: "" });
   const submit = async (e: FormEvent) => { e.preventDefault(); if (!form.supplierId || !form.title || !form.description) return; await api.saveSupplierQuote({ supplierId: form.supplierId, jobId: form.jobId, title: form.title, lineItems: [{ description: form.description, qty: Math.max(0.01, Number(form.qty) || 1), unitPrice: form.unitPrice }] }); setForm({ ...form, title: "", description: "", qty: "1", unitPrice: "" }); refresh(); };
-  return <section className="intelligence-section"><h2>{lang === "es" ? "Cotizaciones de proveedores" : "Supplier bids"}</h2>{data.suppliers.length === 0 ? <Empty>{lang === "es" ? "Agrega proveedores en Control y crecimiento antes de comparar ofertas." : "Add suppliers in Control & growth before comparing bids."}</Empty> : <form className="compact-form" onSubmit={submit}><div className="field-pair"><label><span>{lang === "es" ? "Proveedor" : "Supplier"}</span><select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: Number(e.target.value) })}>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={form.jobId ?? ""} onChange={(e) => setForm({ ...form, jobId: e.target.value ? Number(e.target.value) : null })}><option value="">{lang === "es" ? "Sin trabajo" : "No job"}</option>{data.jobs.map((j) => <option key={j.id} value={j.id}>{j.label}</option>)}</select></label></div><label><span>{lang === "es" ? "Nombre de la comparación" : "Bid group name"}</span><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={lang === "es" ? "Gabinetes de cocina" : "Kitchen cabinets"}/></label><div className="line-item"><input aria-label={lang === "es" ? "Artículo" : "Item"} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={lang === "es" ? "Artículo" : "Item"}/><input aria-label={lang === "es" ? "Cantidad" : "Quantity"} inputMode="decimal" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })}/><input aria-label={lang === "es" ? "Precio unitario" : "Unit price"} inputMode="decimal" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}/></div><button className="primary-button">{lang === "es" ? "Guardar oferta" : "Save bid"}</button></form>}
+  return <section className="intelligence-section"><h2>{lang === "es" ? "Cotizaciones de proveedores" : "Supplier bids"}</h2>{data.suppliers.length === 0 ? <Empty>{lang === "es" ? "Agrega tu primer proveedor abajo antes de comparar ofertas." : "Add your first supplier below before comparing bids."}</Empty> : <form className="compact-form" onSubmit={submit}><div className="field-pair"><label><span>{lang === "es" ? "Proveedor" : "Supplier"}</span><select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: Number(e.target.value) })}>{data.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={form.jobId ?? ""} onChange={(e) => setForm({ ...form, jobId: e.target.value ? Number(e.target.value) : null })}><option value="">{lang === "es" ? "Sin trabajo" : "No job"}</option>{data.jobs.map((j) => <option key={j.id} value={j.id}>{j.label}</option>)}</select></label></div><label><span>{lang === "es" ? "Nombre de la comparación" : "Bid group name"}</span><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder={lang === "es" ? "Gabinetes de cocina" : "Kitchen cabinets"}/></label><div className="line-item"><input aria-label={lang === "es" ? "Artículo" : "Item"} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={lang === "es" ? "Artículo" : "Item"}/><input aria-label={lang === "es" ? "Cantidad" : "Quantity"} inputMode="decimal" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })}/><input aria-label={lang === "es" ? "Precio unitario" : "Unit price"} inputMode="decimal" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })}/></div><button className="primary-button">{lang === "es" ? "Guardar oferta" : "Save bid"}</button></form>}
     <div className="tool-records">{data.supplierQuotes.map((q) => <article className={q.selected ? "selected-bid" : ""} key={q.id}><div><strong>{q.title} · {q.supplierName}</strong><span>{usd(q.total)}</span><small>{q.lineItems.map((i) => `${i.description} × ${i.qty}`).join(" · ")}</small></div><button className="small-button" disabled={q.selected} onClick={async () => { await api.createPurchaseOrder({ supplierQuoteId: q.id }); refresh(); }}>{q.selected ? (lang === "es" ? "Seleccionada" : "Selected") : (lang === "es" ? "Elegir y crear PO" : "Choose & create PO")}</button></article>)}{data.supplierQuotes.length === 0 && <Empty>{lang === "es" ? "No hay ofertas guardadas." : "No supplier bids yet."}</Empty>}</div>
     <h2>{lang === "es" ? "Pedidos a proveedores" : "Supplier orders"}</h2><div className="tool-records">{data.purchaseOrders.map((po) => <PurchaseOrderRow key={po.id} po={po} lang={lang} refresh={refresh}/>)}{data.purchaseOrders.length === 0 && <Empty>{lang === "es" ? "Elige una oferta para crear un pedido." : "Choose a bid to create a supplier order."}</Empty>}</div>
   </section>;
@@ -81,4 +87,559 @@ function CredentialRow({ item, lang, refresh }: { item: Credential; lang: Lang; 
 
 function PayrollPanel({ lang, data, period, setPeriod, refresh }: { lang: Lang; data: Data; period: { start: string; end: string }; setPeriod: (p: { start: string; end: string }) => void; refresh: () => void }) { const [rate, setRate] = useState({ crewMember: "", hourlyRate: "" }); const total = data.payroll.reduce((sum, row) => sum + Number(row.grossPay), 0); const download = () => { const csv = [["Period start", "Period end", "Crew member", "Hours", "Hourly rate", "Gross pay"].map(safeCsv).join(","), ...data.payroll.map((row) => [period.start, period.end, row.crewMember, row.hours.toFixed(2), Number(row.hourlyRate).toFixed(2), Number(row.grossPay).toFixed(2)].map(safeCsv).join(","))].join("\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `payroll-${period.start}-${period.end}.csv`; a.click(); URL.revokeObjectURL(a.href); };
   return <section className="intelligence-section"><div className="field-pair payroll-period"><label><span>{lang === "es" ? "Inicio" : "Start"}</span><input type="date" value={period.start} onChange={(e) => setPeriod({ ...period, start: e.target.value })}/></label><label><span>{lang === "es" ? "Fin" : "End"}</span><input type="date" value={period.end} onChange={(e) => setPeriod({ ...period, end: e.target.value })}/></label></div><form className="compact-form" onSubmit={async (e) => { e.preventDefault(); if (!rate.crewMember) return; await api.saveCrewPayRate(rate); setRate({ crewMember: "", hourlyRate: "" }); refresh(); }}><div className="field-pair"><label><span>{lang === "es" ? "Miembro del equipo" : "Crew member"}</span><input value={rate.crewMember} onChange={(e) => setRate({ ...rate, crewMember: e.target.value })}/></label><label><span>{lang === "es" ? "Tarifa por hora" : "Hourly rate"}</span><input inputMode="decimal" value={rate.hourlyRate} onChange={(e) => setRate({ ...rate, hourlyRate: e.target.value })}/></label></div><button className="primary-button">{lang === "es" ? "Guardar tarifa" : "Save rate"}</button></form><div className="payroll-total"><span>{lang === "es" ? "Nómina bruta" : "Gross payroll"}</span><strong>{usd(total)}</strong></div><div className="tool-records">{data.payroll.map((row) => <article key={row.crewMember}><div><strong>{row.crewMember}</strong><span>{row.hours.toFixed(2)}h × {usd(row.hourlyRate)}</span></div><strong>{usd(row.grossPay)}</strong></article>)}{data.payroll.length === 0 && <Empty>{lang === "es" ? "No hay horas registradas en este período." : "No time entries in this pay period."}</Empty>}</div><button className="secondary-button full-button" disabled={!data.payroll.length} onClick={download}>{lang === "es" ? "Descargar CSV" : "Download CSV"}</button></section>; }
-function CostPanel({ lang, data, onOpenJob }: { lang: Lang; data: Data; onOpenJob: (id: number) => void }) { return <section className="intelligence-section"><p className="section-note">{lang === "es" ? "Alertas configuradas cuando los costos registrados se acercan o superan el valor estimado." : "Alerts trigger when recorded costs approach or exceed the estimated job value."}</p><div className="cost-alert-list">{data.costAlerts.map((row) => <button key={row.jobId} className={row.level} onClick={() => onOpenJob(row.jobId)}><div><strong>{row.jobLabel}</strong><span>{usd(row.cost)} / {usd(row.quoted)}</span></div><b>{row.percent.toFixed(0)}%</b></button>)}{data.costAlerts.length === 0 && <Empty>{lang === "es" ? "Los costos están dentro de los límites configurados." : "Job costs are within the configured threshold."}</Empty>}</div></section>; }
+
+// ---------------------------------------------------------------------------
+// Tools cleanup (2026-11-03): components folded into these tabs from the
+// old Tools catalog — the crew GPS clock + weekly crew-hours report (Time
+// & payroll), the supplier directory (Orders & suppliers), and the upkeep
+// plans (Equipment). They read/write the expansion-suite payload.
+// ---------------------------------------------------------------------------
+
+function CrewClockPanel({ lang }: { lang: Lang }) {
+  const qc = useQueryClient();
+  const jobs = useQuery({
+    queryKey: ["jobs"],
+    queryFn: () => api.listJobs({ search: "" }),
+  });
+  const status = useQuery({
+    queryKey: ["crew-clock"],
+    queryFn: () => api.getCrewClockStatus({}),
+    refetchInterval: 60000,
+  });
+  const [name, setName] = useState(""),
+    [jobId, setJobId] = useState(""),
+    [coords, setCoords] = useState<{
+      latitude: number;
+      longitude: number;
+    } | null>(null),
+    [nearby, setNearby] = useState<
+      { id: number; label: string; distanceMiles: number }[]
+    >([]),
+    [gpsMsg, setGpsMsg] = useState("");
+  const locate = () =>
+    navigator.geolocation
+      ? navigator.geolocation.getCurrentPosition(
+          async (p) => {
+            const c = {
+              latitude: p.coords.latitude,
+              longitude: p.coords.longitude,
+            };
+            setCoords(c);
+            setGpsMsg(lang === "es" ? "Ubicación lista." : "Location ready.");
+            const r = await api.suggestJobsByLocation(c);
+            setNearby(r.jobs);
+            if (!jobId && r.jobs[0]) setJobId(String(r.jobs[0].id));
+          },
+          () =>
+            setGpsMsg(
+              lang === "es"
+                ? "GPS no disponible. Seleccione el trabajo manualmente."
+                : "GPS unavailable. Choose the job manually.",
+            ),
+          { enableHighAccuracy: true, timeout: 10000 },
+        )
+      : setGpsMsg(lang === "es" ? "GPS no disponible." : "GPS unavailable.");
+  const refresh = () => qc.invalidateQueries({ queryKey: ["crew-clock"] });
+  return (
+    <details className="action-details crew-clock-panel">
+      <summary>
+        {lang === "es" ? "Reloj GPS del equipo" : "Crew GPS clock"}{" "}
+        {status.data?.active.length ? `· ${status.data.active.length}` : ""}
+      </summary>
+      <div className="compact-form">
+        <label>
+          <span>{lang === "es" ? "Nombre del trabajador" : "Crew member"}</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          <span>{lang === "es" ? "Trabajo" : "Job"}</span>
+          <select value={jobId} onChange={(e) => setJobId(e.target.value)}>
+            <option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>
+            {nearby.map((j) => (
+              <option key={`n${j.id}`} value={j.id}>
+                {j.label} · {j.distanceMiles} mi
+              </option>
+            ))}
+            {jobs.data?.jobs
+              .filter((j) => !nearby.some((n) => n.id === j.id))
+              .map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.clientName} · {j.jobType}
+                </option>
+              ))}
+          </select>
+        </label>
+        <div className="row-actions">
+          <button onClick={locate}>
+            {lang === "es" ? "Usar GPS" : "Use GPS"}
+          </button>
+          <button
+            className="primary-button"
+            disabled={!name || !jobId}
+            onClick={async () => {
+              await api.clockInCrew({
+                jobId: Number(jobId),
+                crewMember: name,
+                latitude: coords?.latitude ?? null,
+                longitude: coords?.longitude ?? null,
+                note: "",
+              });
+              refresh();
+            }}
+          >
+            {lang === "es" ? "Marcar entrada" : "Clock in"}
+          </button>
+          {coords && jobId && (
+            <button
+              onClick={async () => {
+                await api.updateJobSiteLocation({
+                  jobId: Number(jobId),
+                  ...coords,
+                });
+                setGpsMsg(
+                  lang === "es"
+                    ? "Ubicación del sitio guardada."
+                    : "Job-site location saved.",
+                );
+              }}
+            >
+              {lang === "es" ? "Guardar sitio aquí" : "Save site here"}
+            </button>
+          )}
+        </div>
+        {gpsMsg && <p className="status">{gpsMsg}</p>}
+        <h3>{lang === "es" ? "En el sitio ahora" : "On site now"}</h3>
+        {status.data?.active.map((a) => (
+          <article className="tool-record" key={a.id}>
+            <span>
+              <strong>{a.crewMember}</strong>
+              <small>
+                {a.jobLabel} · {a.hours.toFixed(1)} h{" "}
+                {a.missingGps
+                  ? `· ${lang === "es" ? "sin GPS" : "no GPS"}`
+                  : ""}
+              </small>
+            </span>
+            {a.overTwelveHours && (
+              <b className="urgency-badge">
+                {lang === "es" ? "Más de 12 h" : "Over 12 hr"}
+              </b>
+            )}
+            <button
+              onClick={async () => {
+                await api.clockOutCrew({
+                  id: a.id,
+                  latitude: coords?.latitude ?? null,
+                  longitude: coords?.longitude ?? null,
+                });
+                refresh();
+              }}
+            >
+              {lang === "es" ? "Marcar salida" : "Clock out"}
+            </button>
+          </article>
+        ))}
+        {!status.data?.active.length && (
+          <p>
+            {lang === "es"
+              ? "Nadie ha marcado entrada."
+              : "No one is clocked in."}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function CrewHoursReport({
+  lang,
+  rows,
+}: {
+  lang: Lang;
+  rows: Array<{
+    crewMember: string;
+    jobId: number;
+    jobLabel: string;
+    hours: number;
+  }>;
+}) {
+  const grouped = new Map<string, number>();
+  for (const r of rows)
+    grouped.set(r.crewMember, (grouped.get(r.crewMember) ?? 0) + r.hours);
+  const text = [
+    lang === "es" ? "Informe semanal de horas" : "Weekly crew hours",
+    ...Array.from(grouped).map(([n, h]) => `${n}: ${h.toFixed(2)}h`),
+    "",
+    ...rows.map(
+      (r) => `${r.crewMember} · ${r.jobLabel}: ${r.hours.toFixed(2)}h`,
+    ),
+  ].join("\n");
+  return (
+    <section className="toolkit-section">
+      <div className="toolkit-summary">
+        {Array.from(grouped).map(([name, h]) => (
+          <article key={name}>
+            <span>{name}</span>
+            <strong>{h.toFixed(1)}h</strong>
+          </article>
+        ))}
+      </div>
+      <button
+        className="primary-button"
+        onClick={async () => {
+          const title = lang === "es" ? "Horas del equipo" : "Crew hours";
+          if (navigator.share) {
+            try {
+              await navigator.share({ title, text });
+            } catch {
+              /* share sheet dismissed */
+            }
+            return;
+          }
+          const url = URL.createObjectURL(
+            new Blob([text], { type: "text/plain" }),
+          );
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "crew-hours-week.txt";
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+      >
+        {lang === "es" ? "Compartir informe" : "Share report"}
+      </button>
+      <div className="tool-records">
+        {rows.map((r, i) => (
+          <article key={`${r.jobId}-${r.crewMember}-${i}`}>
+            <div>
+              <strong>
+                {r.crewMember} · {r.hours.toFixed(2)}h
+              </strong>
+              <small>{r.jobLabel}</small>
+            </div>
+          </article>
+        ))}
+      </div>
+      {rows.length === 0 && (
+        <p className="detail-empty">
+          {lang === "es"
+            ? "Asigna nombres al registrar tiempo para ver el informe semanal."
+            : "Assign crew names when tracking time to build the weekly report."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SupplierManager({
+  lang,
+  data,
+  refresh,
+}: {
+  lang: Lang;
+  data: ExpansionData;
+  refresh: () => void;
+}) {
+  const [form, setForm] = useState({
+    id: null as number | null,
+    name: "",
+    category: "",
+    phone: "",
+    email: "",
+    notes: "",
+  });
+  return (
+    <section className="toolkit-section">
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!form.name) return;
+          await api.saveSupplier(form);
+          setForm({
+            id: null,
+            name: "",
+            category: "",
+            phone: "",
+            email: "",
+            notes: "",
+          });
+          refresh();
+        }}
+      >
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Nombre" : "Name"}</span>
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Categoría" : "Category"}</span>
+            <input
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+            />
+          </label>
+        </div>
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Teléfono" : "Phone"}</span>
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Correo" : "Email"}</span>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </label>
+        </div>
+        <label>
+          <span>{lang === "es" ? "Notas" : "Notes"}</span>
+          <textarea
+            rows={2}
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          />
+        </label>
+        <button className="primary-button">
+          {lang === "es" ? "Guardar proveedor" : "Save supplier"}
+        </button>
+      </form>
+      <div className="tool-records">
+        {data.suppliers.map((s) => (
+          <article key={s.id}>
+            <div>
+              <strong>
+                {s.name} · {s.category}
+              </strong>
+              <span>
+                {s.orderCount} {lang === "es" ? "compras" : "orders"} ·{" "}
+                {usd(s.orderTotal)}
+              </span>
+              <small>
+                {[s.phone, s.email, s.notes].filter(Boolean).join(" · ")}
+              </small>
+            </div>
+            <div className="row-actions">
+              <button
+                onClick={() =>
+                  setForm({
+                    id: s.id,
+                    name: s.name,
+                    category: s.category,
+                    phone: s.phone,
+                    email: s.email,
+                    notes: s.notes,
+                  })
+                }
+              >
+                {lang === "es" ? "Editar" : "Edit"}
+              </button>
+              {s.phone && (
+                <a href={`tel:${s.phone}`}>
+                  {lang === "es" ? "Llamar" : "Call"}
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MaintenanceManager({
+  lang,
+  data,
+  refresh,
+}: {
+  lang: Lang;
+  data: ExpansionData;
+  refresh: () => void;
+}) {
+  const today = new Date().toLocaleDateString("en-CA");
+  const [form, setForm] = useState({
+    id: null as number | null,
+    clientId: null as number | null,
+    clientName: "",
+    clientPhone: "",
+    title: "",
+    tasks: "",
+    startDate: today,
+    intervalMonths: 12,
+    active: true,
+  });
+  const choose = (id: number) => {
+    const c = data.clients.find((x) => x.id === id);
+    if (c)
+      setForm({
+        ...form,
+        clientId: c.id,
+        clientName: c.name,
+        clientPhone: c.phone,
+      });
+  };
+  return (
+    <section className="toolkit-section">
+      <form
+        className="compact-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!form.clientName || !form.title) return;
+          await api.saveMaintenancePlan(form);
+          setForm({
+            id: null,
+            clientId: null,
+            clientName: "",
+            clientPhone: "",
+            title: "",
+            tasks: "",
+            startDate: today,
+            intervalMonths: 12,
+            active: true,
+          });
+          refresh();
+        }}
+      >
+        <label>
+          <span>{lang === "es" ? "Cliente existente" : "Existing client"}</span>
+          <select
+            value={form.clientId ?? ""}
+            onChange={(e) =>
+              e.target.value
+                ? choose(Number(e.target.value))
+                : setForm({ ...form, clientId: null })
+            }
+          >
+            <option value="">—</option>
+            {data.clients.map((c) => (
+              <option value={c.id} key={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Cliente" : "Client"}</span>
+            <input
+              value={form.clientName}
+              onChange={(e) => setForm({ ...form, clientName: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Teléfono" : "Phone"}</span>
+            <input
+              value={form.clientPhone}
+              onChange={(e) =>
+                setForm({ ...form, clientPhone: e.target.value })
+              }
+            />
+          </label>
+        </div>
+        <label>
+          <span>{lang === "es" ? "Nombre del plan" : "Plan name"}</span>
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder={lang === "es" ? "Revisión anual" : "Annual check-up"}
+          />
+        </label>
+        <label>
+          <span>{lang === "es" ? "Tareas" : "Tasks"}</span>
+          <textarea
+            rows={3}
+            value={form.tasks}
+            onChange={(e) => setForm({ ...form, tasks: e.target.value })}
+            placeholder={
+              lang === "es"
+                ? "Calafateo, lechada, retoques de pintura"
+                : "Caulk, grout, paint touch-ups"
+            }
+          />
+        </label>
+        <div className="field-pair">
+          <label>
+            <span>{lang === "es" ? "Inicio" : "Start"}</span>
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+            />
+          </label>
+          <label>
+            <span>{lang === "es" ? "Cada (meses)" : "Every (months)"}</span>
+            <input
+              type="number"
+              min="1"
+              value={form.intervalMonths}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  intervalMonths: Number(e.target.value) || 1,
+                })
+              }
+            />
+          </label>
+        </div>
+        <button className="primary-button">
+          {lang === "es" ? "Guardar plan" : "Save plan"}
+        </button>
+      </form>
+      <div className="tool-records">
+        {data.plans.map((p) => (
+          <article key={p.id}>
+            <div>
+              <strong>
+                {p.clientName} · {p.title}
+              </strong>
+              <span>
+                {lang === "es" ? "Próximo" : "Next"}:{" "}
+                {dateLabel(p.nextDueDate, lang)} · {p.intervalMonths}{" "}
+                {lang === "es" ? "meses" : "months"}
+              </span>
+              <small>{p.tasks}</small>
+            </div>
+            <div className="row-actions">
+              <button
+                onClick={() =>
+                  setForm({
+                    id: p.id,
+                    clientId: p.clientId,
+                    clientName: p.clientName,
+                    clientPhone: p.clientPhone,
+                    title: p.title,
+                    tasks: p.tasks,
+                    startDate: p.startDate,
+                    intervalMonths: p.intervalMonths,
+                    active: p.active,
+                  })
+                }
+              >
+                {lang === "es" ? "Editar" : "Edit"}
+              </button>
+              <button
+                onClick={async () => {
+                  await api.completeMaintenancePlan({ id: p.id });
+                  refresh();
+                }}
+              >
+                {lang === "es"
+                  ? "Completar y programar siguiente"
+                  : "Complete & schedule next"}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
