@@ -5819,7 +5819,20 @@ type ToolTile = {
   screen?: Screen;
   comingSoon?: string;
   pro?: boolean;
+  // Tools distinction (Danny 2026-11-03): each door carries its own icon
+  // chip colors (accent glyph on a tint chip, applied via the --tile-accent
+  // / --tile-tint custom properties in row()) plus a hidden EN+ES keyword
+  // string the Tools search matches against on top of name + description.
+  accent?: string;
+  tint?: string;
+  keywords?: string;
 };
+
+// Case- and accent-insensitive fold for Tools search: typing "nomina"
+// matches "nómina" in either app language.
+function foldToolSearchText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
 
 function isProToolScreen(screen?: Screen) {
   if (!screen) return false;
@@ -5962,47 +5975,47 @@ function estimatingToolTiles(lang: Lang): ToolTile[] {
   // the tabbed ToolboxScreen. Material prices merged into Saved prices
   // (migration 0099); the punch list's home is the job, not a Tools tile.
   return lang === "es" ? [
-    { title: "Calculadoras", description: "19 calculadoras de obra en un solo lugar", screen: { name: "toolbox" }, icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
+    { title: "Calculadoras", description: "19 calculadoras de obra en un solo lugar", screen: { name: "toolbox" }, accent: "#4a5fd0", tint: "#e6ebfb", keywords: "math measure area volume concrete paint tile drywall medidas calculos", icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
   ] : [
-    { title: "Calculators", description: "19 job-site calculators in one place", screen: { name: "toolbox" }, icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
+    { title: "Calculators", description: "19 job-site calculators in one place", screen: { name: "toolbox" }, accent: "#4a5fd0", tint: "#e6ebfb", keywords: "math measure area volume concrete paint tile drywall medidas calculos", icon: toolTileIcon(<path d="M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" />) },
   ];
 }
 
 function officeToolTiles(lang: Lang): ToolTile[] {
   return lang === "es" ? [
-    { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
-    { title: "Plantillas de estimados", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
-    { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
+    { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, accent: "#22713f", tint: "#e2f3e7", keywords: "price book precios lista guardados", icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
+    { title: "Plantillas de estimados", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, accent: "#7a4fc9", tint: "#efe7fb", keywords: "reuse line items plantillas reutilizar", icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, accent: "#cf4436", tint: "#fdeceb", keywords: "expenses receipts costs bills scanner scan trips mileage pay bills gastos recibos escanear viajes millaje pagar cuentas", icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
+    { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, accent: "#c98a04", tint: "#fdf3d3", keywords: "warranties coverage expiry garantias cobertura", icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
+    { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, accent: "#3d5a99", tint: "#e8ecf5", keywords: "reports revenue taxes budget alerts analysis informes ingresos impuestos presupuesto alertas", icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
   ] : [
-    { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
-    { title: "Estimate templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
-    { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
-    { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
+    { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, accent: "#22713f", tint: "#e2f3e7", keywords: "price book precios lista guardados", icon: toolTileIcon(<path d="M5 5h14v14H5zM8 9h8M8 13h5" />) },
+    { title: "Estimate templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, accent: "#7a4fc9", tint: "#efe7fb", keywords: "reuse line items plantillas reutilizar", icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, accent: "#cf4436", tint: "#fdeceb", keywords: "expenses receipts costs bills scanner scan trips mileage pay bills gastos recibos escanear viajes millaje pagar cuentas", icon: toolTileIcon(<path d="M4 6h16v14H4zM8 3v6M16 3v6" />) },
+    { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, accent: "#c98a04", tint: "#fdf3d3", keywords: "warranties coverage expiry garantias cobertura", icon: toolTileIcon(<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" />) },
+    { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, accent: "#3d5a99", tint: "#e8ecf5", keywords: "reports revenue taxes budget alerts analysis informes ingresos impuestos presupuesto alertas", icon: toolTileIcon(<path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />) },
   ];
 }
 
 function operationsToolTiles(lang: Lang): ToolTile[] {
   return lang === "es" ? [
-    { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Día del equipo", description: "Quién está en cada trabajo hoy", screen: { name: "crewDay" }, icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
-    { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Pedidos y proveedores", description: "Compara cotizaciones, registra entregas y contactos de proveedores", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Seguridad e incidentes", description: "Charlas, firmas e informes", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Licencias y certificados", description: "Vencimientos y renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Tiempo y nómina", description: "Reloj GPS, horas del equipo y tarifas", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
+    { title: "Calendario", description: "Citas, plazos y horas guardadas", screen: { name: "operations", tab: "calendar" }, accent: "#1c77c3", tint: "#e1f0fc", keywords: "calendar appointments dispatch board calendario citas tablero", icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Día del equipo", description: "Quién está en cada trabajo hoy", screen: { name: "crewDay" }, accent: "#0f9d63", tint: "#e0f5ea", keywords: "crew today assignments equipo hoy", icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
+    { title: "Cobros y seguimientos", description: "Facturas vencidas y presupuestos pendientes", screen: { name: "followups" }, accent: "#c13a7d", tint: "#fbe7f1", keywords: "collections overdue get paid payments follow-ups cobros vencidas pagos seguimiento", icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Pedidos y proveedores", description: "Compara cotizaciones, registra entregas y contactos de proveedores", screen: { name: "fieldIntelligence", tab: "purchasing" }, accent: "#b05c2a", tint: "#f9e9dd", keywords: "orders purchase bids deliveries suppliers pedidos proveedores entregas", icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Equipo", description: "Inventario, préstamos y ubicación", screen: { name: "fieldIntelligence", tab: "equipment" }, accent: "#527a8a", tint: "#e6eef1", keywords: "equipment inventory tools maintenance service plans equipo inventario mantenimiento", icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
+    { title: "Seguridad e incidentes", description: "Charlas, firmas e informes", screen: { name: "fieldIntelligence", tab: "safety" }, accent: "#e01f26", tint: "#fdecea", keywords: "safety talks incidents seguridad charlas incidentes", icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
+    { title: "Licencias y certificados", description: "Vencimientos y renovaciones", screen: { name: "fieldIntelligence", tab: "credentials" }, accent: "#8e44ad", tint: "#f2e7f7", keywords: "licenses certificates expiry renewals licencias certificados vencimiento", icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Tiempo y nómina", description: "Reloj GPS, horas del equipo y tarifas", screen: { name: "fieldIntelligence", tab: "payroll" }, accent: "#e8710a", tint: "#fdeede", keywords: "pay payroll clock hours gps nomina pago horas reloj", icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
   ] : [
-    { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
-    { title: "Crew day", description: "Who's on what job today", screen: { name: "crewDay" }, icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
-    { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
-    { title: "Orders & suppliers", description: "Compare bids, record deliveries, and supplier contacts", screen: { name: "fieldIntelligence", tab: "purchasing" }, icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
-    { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
-    { title: "Safety & incidents", description: "Talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
-    { title: "Licenses & certificates", description: "Expiry dates and renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
-    { title: "Time & payroll", description: "GPS clock, crew hours, and pay rates", screen: { name: "fieldIntelligence", tab: "payroll" }, icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
+    { title: "Schedule", description: "Appointments, deadlines, and saved hours", screen: { name: "operations", tab: "calendar" }, accent: "#1c77c3", tint: "#e1f0fc", keywords: "calendar appointments dispatch board calendario citas tablero", icon: toolTileIcon(<path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" />) },
+    { title: "Crew day", description: "Who's on what job today", screen: { name: "crewDay" }, accent: "#0f9d63", tint: "#e0f5ea", keywords: "crew today assignments equipo hoy", icon: toolTileIcon(<><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></>) },
+    { title: "Collections & follow-ups", description: "Overdue invoices and pending estimates", screen: { name: "followups" }, accent: "#c13a7d", tint: "#fbe7f1", keywords: "collections overdue get paid payments follow-ups cobros vencidas pagos seguimiento", icon: toolTileIcon(<path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" />) },
+    { title: "Orders & suppliers", description: "Compare bids, record deliveries, and supplier contacts", screen: { name: "fieldIntelligence", tab: "purchasing" }, accent: "#b05c2a", tint: "#f9e9dd", keywords: "orders purchase bids deliveries suppliers pedidos proveedores entregas", icon: toolTileIcon(<path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />) },
+    { title: "Equipment", description: "Inventory, checkout, and current location", screen: { name: "fieldIntelligence", tab: "equipment" }, accent: "#527a8a", tint: "#e6eef1", keywords: "equipment inventory tools maintenance service plans equipo inventario mantenimiento", icon: toolTileIcon(<path d="M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" />) },
+    { title: "Safety & incidents", description: "Talks, sign-offs, and incident reports", screen: { name: "fieldIntelligence", tab: "safety" }, accent: "#e01f26", tint: "#fdecea", keywords: "safety talks incidents seguridad charlas incidentes", icon: toolTileIcon(<path d="M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" />) },
+    { title: "Licenses & certificates", description: "Expiry dates and renewals", screen: { name: "fieldIntelligence", tab: "credentials" }, accent: "#8e44ad", tint: "#f2e7f7", keywords: "licenses certificates expiry renewals licencias certificados vencimiento", icon: toolTileIcon(<path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" />) },
+    { title: "Time & payroll", description: "GPS clock, crew hours, and pay rates", screen: { name: "fieldIntelligence", tab: "payroll" }, accent: "#e8710a", tint: "#fdeede", keywords: "pay payroll clock hours gps nomina pago horas reloj", icon: toolTileIcon(<path d="M4 7h16v12H4zM8 11h8M8 15h5" />) },
   ];
 }
 
@@ -6014,9 +6027,9 @@ function proExtraTiles(lang: Lang): ToolTile[] {
   // Admin controls, and Client portal tiles cut (their destinations live
   // on their own screens — invoices list, Settings, and each job).
   return lang === "es" ? [
-    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
+    { title: "Puntaje de prospectos", description: "Prioriza el embudo y convierte prospectos en estimados", screen: { name: "operations", tab: "leads" }, accent: "#b97e10", tint: "#fdf0d7", keywords: "leads pipeline prospects clientes potenciales", icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
   ] : [
-    { title: "Lead scoring", description: "Prioritize the pipeline and turn leads into estimates", screen: { name: "operations", tab: "leads" }, icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
+    { title: "Lead scoring", description: "Prioritize the pipeline and turn leads into estimates", screen: { name: "operations", tab: "leads" }, accent: "#b97e10", tint: "#fdf0d7", keywords: "leads pipeline prospects clientes potenciales", icon: toolTileIcon(<path d="M5 5h14M7 10h10M9 15h6M11 20h2" />) },
   ];
 }
 
@@ -6595,6 +6608,8 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   const isPremium = auth?.user.tier === "premium";
   const [soon, setSoon] = useState<ToolTile | null>(null);
   const [lockedTool, setLockedTool] = useState<ToolTile | null>(null);
+  // Tools search (Danny 2026-11-03): live-filters the 15 doors below.
+  const [toolQuery, setToolQuery] = useState("");
   // Home-screen pinning, same as the Tools home page.
   const qc = useQueryClient();
   const pinsQuery = useQuery({ queryKey: ["home-pins"], queryFn: () => api.listPinnedTools({}) });
@@ -6631,6 +6646,26 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
     { title: lang === "es" ? "El día a día" : "Run the day", icon: <Icon size={19}><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon>, tiles: pick(["operations:calendar", "crewDay", "fieldIntelligence:payroll"]) },
     { title: lang === "es" ? "Dinero y registros" : "Money & records", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:expenses", "fieldIntelligence:purchasing", "fieldIntelligence:equipment", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties", "reports", "followups"]), pro: true },
   ];
+  // Search matches each door's name + description in BOTH languages plus
+  // its hidden keywords, folded case- and accent-insensitively, so a door
+  // is findable by what Danny calls it in either language. Every query
+  // token must hit the door's haystack.
+  const otherCatalog = lang === "es"
+    ? [...estimatingToolTiles("en"), ...officeToolTiles("en"), ...operationsToolTiles("en"), ...proExtraTiles("en")]
+    : [...estimatingToolTiles("es"), ...officeToolTiles("es"), ...operationsToolTiles("es"), ...proExtraTiles("es")];
+  const otherByKey = new Map(otherCatalog.map((t) => [toolIdForTile(t) ?? t.title, t]));
+  const searchHaystack = (tile: ToolTile): string => {
+    const other = otherByKey.get(toolIdForTile(tile) ?? tile.title);
+    return foldToolSearchText([tile.title, tile.description, tile.keywords ?? "", other?.title ?? "", other?.description ?? "", other?.keywords ?? ""].join(" "));
+  };
+  const queryTokens = foldToolSearchText(toolQuery).split(/\s+/).filter(Boolean);
+  const searching = queryTokens.length > 0;
+  const searchResults = searching
+    ? groups.flatMap((group) => group.tiles).filter((tile) => {
+        const haystack = searchHaystack(tile);
+        return queryTokens.every((token) => haystack.includes(token));
+      })
+    : [];
   const catalogKeys = new Set(catalog.map((t) => toolIdForTile(t) ?? t.title));
   const row = (tile: ToolTile, key: string) => {
     const toolId = catalogKeys.has(key) ? toolIdForTile(tile) : null;
@@ -6644,7 +6679,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
       ? <ToolStatus lang={lang} comingSoon={tile.comingSoon} />
       : !isPro ? <ToolStatus lang={lang} pro={false} /> : null;
     return (
-      <div key={key} className="tool-row">
+      <div key={key} className="tool-row" style={tile.accent ? { "--tile-accent": tile.accent, "--tile-tint": tile.tint } as CSSProperties : undefined}>
         <button type="button" className="tool-row-main" onClick={() => openTool(tile)}>
           {tile.icon}<span><span className="tool-row-title"><strong>{tile.title}</strong>{isPro && <span className={`pro-badge${isPremium ? "" : " is-locked"}`}>PRO</span>}</span><small>{tile.description}</small>{status}</span><span className="tool-row-end"><BackIcon /></span>
         </button>
@@ -6659,6 +6694,46 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   return (
     <main className="page more-page">
       <PageHeader lang={lang} title={lang === "es" ? "Herramientas" : "Tools"} onBack={onBack} />
+      <div className="tool-search">
+        <Icon size={17}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Icon>
+        <input
+          type="text"
+          className="tool-search-input"
+          value={toolQuery}
+          onChange={(event) => setToolQuery(event.target.value)}
+          placeholder={lang === "es" ? "Buscar herramientas…" : "Search tools…"}
+          aria-label={lang === "es" ? "Buscar herramientas" : "Search tools"}
+          autoComplete="off"
+        />
+        {toolQuery.length > 0 && (
+          <button type="button" className="tool-search-clear" aria-label={lang === "es" ? "Borrar búsqueda" : "Clear search"} onClick={() => setToolQuery("")}>✕</button>
+        )}
+      </div>
+      {searching && (
+        <>
+          <p className="tool-search-count" role="status">
+            {lang === "es"
+              ? searchResults.length === 1
+                ? `1 herramienta coincide con "${toolQuery.trim()}"`
+                : `${searchResults.length} herramientas coinciden con "${toolQuery.trim()}"`
+              : searchResults.length === 1
+                ? `1 tool matches "${toolQuery.trim()}"`
+                : `${searchResults.length} tools match "${toolQuery.trim()}"`}
+          </p>
+          {searchResults.length > 0 ? (
+            <section className="tool-group tool-search-results" aria-label={lang === "es" ? "Resultados de búsqueda" : "Search results"}>
+              <div className="tool-directory">
+                {searchResults.map((tile) => row(tile, toolIdForTile(tile) ?? tile.title))}
+              </div>
+            </section>
+          ) : (
+            <p className="tool-search-empty">{lang === "es" ? `Ninguna herramienta coincide con "${toolQuery.trim()}".` : `No tools match "${toolQuery.trim()}".`}</p>
+          )}
+        </>
+      )}
+      {/* Groups stay mounted (only hidden) while searching so each
+          <details> keeps its expand/collapse state when the query clears. */}
+      <div className="tool-groups" style={searching ? { display: "none" } : undefined}>
       {groups.map((group) => group.tiles.length > 0 && (
         <details key={group.title} className={`tool-group everyday-tool-group${group.pro ? " pro-tool-group" : ""}`}>
           <summary className="tool-group-heading">
@@ -6674,6 +6749,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
           </div>
         </details>
       ))}
+      </div>
       {soon && <ComingSoonSheet lang={lang} tool={soon} onClose={() => setSoon(null)} />}
       {lockedTool && <UpgradeGateSheet lang={lang} tool={lockedTool} onClose={() => setLockedTool(null)} onUpgrade={() => { setLockedTool(null); setScreen({ name: "upgrade" }); }} />}
     </main>

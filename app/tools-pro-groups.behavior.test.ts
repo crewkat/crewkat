@@ -131,6 +131,66 @@ describe("proWorkspace screen is gone", () => {
   });
 });
 
+// Danny 2026-11-03 (evening): the cleanup made Tools organized but flat —
+// every door wore the same peach chip, so finding one meant reading every
+// title. Each door now carries its own accent/tint in the catalog data,
+// and a search bar live-filters all 15 doors by name/description/keywords
+// in both languages, accent-insensitively.
+describe("Tools distinction + search (Danny 2026-11-03)", () => {
+  test("search input exists at the top with EN/ES placeholder and a clear button", () => {
+    expect(APP).toContain('className="tool-search"');
+    expect(APP).toContain('placeholder={lang === "es" ? "Buscar herramientas…" : "Search tools…"}');
+    expect(APP).toContain("tool-search-clear");
+    expect(APP).toContain('onChange={(event) => setToolQuery(event.target.value)}');
+    expect(THEME).toContain(".tool-search {");
+    expect(THEME).toContain(".tool-search-input");
+  });
+
+  test("matching folds case + accents and spans both languages plus hidden keywords", () => {
+    expect(APP).toContain("function foldToolSearchText");
+    expect(APP).toContain('normalize("NFD")');
+    // The other language's catalog is indexed by the same tool ids.
+    expect(APP).toContain("otherByKey");
+    expect(APP).toContain("queryTokens.every");
+    // Keyword sets ride on the catalog tiles themselves.
+    expect(APP).toContain('keywords: "pay payroll clock hours gps nomina pago horas reloj"');
+    expect(APP).toContain("escanear"); // scanner words must find Expenses & receipts
+    expect(APP).toContain("impuestos presupuesto alertas"); // tax + budget alerts find Reports
+  });
+
+  test("results render as one flat card through the same row(), groups stay mounted", () => {
+    expect(APP).toContain("tool-search-results");
+    expect(APP).toContain("searchResults.map((tile) => row(tile, toolIdForTile(tile) ?? tile.title))");
+    // Groups are hidden, never unmounted, so <details> open state survives.
+    expect(APP).toContain('style={searching ? { display: "none" } : undefined}');
+    expect(APP).toContain("1 tool matches");
+    expect(APP).toContain("tools match");
+    expect(APP).toContain("1 herramienta coincide con");
+    expect(APP).toContain("herramientas coinciden con");
+    expect(APP).toContain("No tools match");
+    expect(APP).toContain("Ninguna herramienta coincide con");
+  });
+
+  test("all 15 doors carry distinct accent + tint colors in the catalog data", () => {
+    const accents = [...APP.matchAll(/accent: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+    expect(accents.length).toBe(30); // 15 doors × EN + ES literals
+    expect(new Set(accents).size).toBe(15);
+    for (const hex of ["#4a5fd0", "#22713f", "#7a4fc9", "#b97e10", "#1c77c3", "#0f9d63", "#e8710a", "#cf4436", "#b05c2a", "#527a8a", "#e01f26", "#8e44ad", "#c98a04", "#3d5a99", "#c13a7d"]) {
+      expect(accents).toContain(hex);
+    }
+    const tints = [...APP.matchAll(/tint: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
+    expect(tints.length).toBe(30);
+    expect(new Set(tints).size).toBe(15);
+  });
+
+  test("door colors reach the chip via --tile-accent / --tile-tint with the old peach as fallback", () => {
+    expect(APP).toContain('"--tile-accent": tile.accent');
+    expect(APP).toContain('"--tile-tint": tile.tint');
+    expect(THEME).toContain("background: var(--tile-tint,");
+    expect(THEME).toContain("color: var(--tile-accent, var(--accent))");
+  });
+});
+
 describe("premium gating untouched", () => {
   test("locked Pro tools still open the upgrade prompt", () => {
     expect(APP).toContain("setLockedTool(tile)");

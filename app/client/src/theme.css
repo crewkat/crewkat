@@ -1285,8 +1285,17 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .tool-pin-toggle:active { background: var(--surface-2); }
 .tool-pin-toggle.pinned { color: var(--accent); }
 .tool-pin-toggle:disabled { opacity: 0.5; }
-.tool-tile-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); }
+.tool-tile-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: var(--tile-tint, color-mix(in srgb, var(--accent) 12%, var(--surface))); color: var(--tile-accent, var(--accent)); }
 .tool-tile-icon svg { width: 21px; height: 21px; }
+/* Tools search (2026-11-03): bar at the top of the Tools screen; while a
+   query is active the groups hide (mounted, state kept) and one flat
+   results card renders through the same .tool-directory rows. */
+.tool-search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 0 8px 0 12px; margin: 2px 0 12px; color: var(--dim); box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 6%, transparent); }
+.tool-search-input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 15px; color: var(--text); outline: none; padding: 11px 0; }
+.tool-search-input::placeholder { color: var(--dim); }
+.tool-search-clear { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--dim); font-size: 13px; display: grid; place-items: center; cursor: pointer; }
+.tool-search-count { font-size: 13px; color: var(--dim); margin: 0 2px 10px; }
+.tool-search-empty { text-align: center; color: var(--dim); font-size: 14.5px; line-height: 1.5; padding: 30px 16px; }
 .client-payment { display: flex !important; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; margin-top: 4px; }
 .client-payment b { font-size: 15px; }
 .client-money { grid-template-columns: repeat(2, 1fr); margin-bottom: 10px; }
