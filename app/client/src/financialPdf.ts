@@ -191,6 +191,9 @@ export type FinancialDocument = {
   status?: InvoiceStatus;
   depositType?: "none" | "percent" | "fixed";
   depositValue?: string;
+  // Card fee pass-through (0100): cents of Stripe card processing fee
+  // inside `total` on an invoice; rendered as its own totals row.
+  cardFeeCents?: number;
   // Estimate options (0076): the client's selection state, when the caller
   // has it (in-app quote objects and the document-link payload both carry
   // it). The accepted snapshot drives the ACCEPTED OPTIONS section of the
@@ -734,6 +737,8 @@ export async function buildFinancialPdf(
     if (custom.showTax && document.showTaxLine && totals.tax > 0) rows.push({ label: `${strings.tax}:`, value: usd(totals.tax) });
     if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && paidToDate > 0) rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
     if (lateFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
+    const cardFee = kind === "invoice" ? (document.cardFeeCents ?? 0) / 100 : 0;
+    if (cardFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}:`, value: usd(cardFee) });
     const totalRowH = custom.showAmount ? 24 : 0;
     const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + (depInPanel ? 35 : 0) + 8;
     ensureSpace(panelH + 6);

@@ -694,6 +694,13 @@
       "when": 1791739100000,
       "tag": "0099_material_prices_merge",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "6",
+      "when": 1791739200000,
+      "tag": "0100_invoice_card_options",
+      "breakpoints": true
     }
   ]
 }

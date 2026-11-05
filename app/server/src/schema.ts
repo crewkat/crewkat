@@ -247,6 +247,13 @@ export const invoices = sqliteTable("invoices", {
   // Deposit carried over from the estimate on conversion.
   depositType: text("deposit_type", { enum: ["none", "percent", "fixed"] }).notNull().default("none"),
   depositValue: text("deposit_value").notNull().default("0"),
+  // Card payment controls (0100, Danny 2026-11-05): per-invoice Pay Now
+  // switch (default ON — existing invoices keep Pay Now) + passing the
+  // Stripe card fee to the client. cardFeeCents is the computed fee,
+  // baked into `total` by the action layer on every create/update.
+  cardPaymentsEnabled: integer("card_payments_enabled", { mode: "boolean" }).notNull().default(true),
+  cardFeeEnabled: integer("card_fee_enabled", { mode: "boolean" }).notNull().default(false),
+  cardFeeCents: integer("card_fee_cents").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });

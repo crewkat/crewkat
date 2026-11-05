@@ -30,7 +30,7 @@ const A = BaseActions as any;
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("newest migration tag is 0099_material_prices_merge", last.tag === "0099_material_prices_merge", last.tag);
+check("newest migration tag is 0100_invoice_card_options", last.tag === "0100_invoice_card_options", last.tag);
 // (Historical pairs like 0035/0036 share a `when` — the production rule
 // is that the NEWEST entry must exceed every earlier one.)
 check("newest journal when exceeds every earlier entry", last.when > Math.max(...entries.slice(0, -1).map((e) => e.when)), `last=${last.when}`);

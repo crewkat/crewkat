@@ -7130,6 +7130,67 @@ function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (scre
   );
 }
 
+// Card payment controls (0100, Danny 2026-11-05): the invoice detail
+// screen's payment switches, modeled on Invoice Fly — a "Card payments"
+// row with card-brand marks, and a smaller fee row that drops down under
+// it only while card payments are on for this invoice. The row is
+// three-state, driven by the same getPaymentsSetup state as the existing
+// Pay Now gates: not Pro -> the Premium plans screen; Pro without Stripe
+// connected -> the Take payments setup screen; Pro + connected -> the
+// real per-invoice switch (server: setInvoiceCardOptions recomputes the
+// fee and the total). Renders nothing until the setup state is known —
+// no dead rows.
+function InvoiceCardPaymentsSection({ lang, invoice, setScreen, onChanged }: { lang: Lang; invoice: { id: number; cardPaymentsEnabled: boolean; cardFeeEnabled: boolean }; setScreen: (screen: Screen) => void; onChanged: () => void }) {
+  const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 60_000 });
+  const [busy, setBusy] = useState(false);
+  const data = setup.data;
+  if (!data?.platformConfigured) return null;
+  const brands = (
+    <span className="card-brand-marks" aria-hidden="true">
+      <span className="card-brand-chip card-brand-visa">VISA</span>
+      <span className="card-brand-chip card-brand-mc"><i /><i /></span>
+      <span className="card-brand-chip card-brand-amex">AMEX</span>
+      <span className="card-brand-chip card-brand-discover">DISCOVER</span>
+    </span>
+  );
+  const apply = async (next: { cardPaymentsEnabled?: boolean; cardFeeEnabled?: boolean }) => {
+    setBusy(true);
+    try { await api.setInvoiceCardOptions({ id: invoice.id, ...next }); onChanged(); } finally { setBusy(false); }
+  };
+  const connected = data.status === "connected" && data.chargesEnabled;
+  return (
+    <section className="card-payments-section" aria-label={lang === "es" ? "Pagos con tarjeta" : "Card payments"}>
+      {!data.proActive ? (
+        <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "upgrade" })}>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
+          <span className="card-payments-side"><span className="pro-badge">PRO</span><BackIcon /></span>
+        </button>
+      ) : !connected ? (
+        <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "takePayments" })}>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
+          <span className="card-payments-side"><small>{lang === "es" ? "Conectar Stripe" : "Connect Stripe"}</small><BackIcon /></span>
+        </button>
+      ) : (
+        <>
+          <label className="switch-row card-payments-row">
+            <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
+            <Switch checked={invoice.cardPaymentsEnabled} disabled={busy} onChange={(v) => void apply({ cardPaymentsEnabled: v })} />
+          </label>
+          {invoice.cardPaymentsEnabled && (
+            <div className="card-fee-dropdown">
+              <label className="switch-row card-fee-row">
+                <span>{lang === "es" ? "Pasar el cargo por tarjeta al cliente" : "Pass the card fee to the client"}</span>
+                <Switch checked={invoice.cardFeeEnabled} disabled={busy} onChange={(v) => void apply({ cardFeeEnabled: v })} />
+              </label>
+              <p className="card-fee-note">{lang === "es" ? "Agrega el cargo por tarjeta (2.9% + 30¢) para que un pago con tarjeta te deje el monto completo." : "Adds the card fee (2.9% + 30¢) so a card payment nets the full amount."}</p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function InvoicePayLinkNote({ lang, balance, status }: { lang: Lang; balance: number; status: string }) {
   const setup = useQuery({ queryKey: ["payments-setup"], queryFn: () => api.getPaymentsSetup({}), retry: false, staleTime: 300_000 });
   if (status === "paid" || balance <= 0 || !setup.data?.chargesEnabled) return null;
@@ -17442,6 +17503,7 @@ function QuotePaper({
         {c.showSubtotal && <span>{labels.subtotal}<strong>{usd(totals.subtotal)}</strong></span>}
         {c.showDiscount && quote.showDiscountLine && totals.discount > 0 && <span>{lang === "es" ? "Descuento" : "Discount"}<strong>-{usd(totals.discount)}</strong></span>}
         {c.showTax && quote.showTaxLine && totals.tax > 0 && <span>{lang === "es" ? "Impuesto" : "Tax"}<strong>{usd(totals.tax)}</strong></span>}
+        {kind === "invoice" && (quote.cardFeeCents ?? 0) > 0 && <span>{lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}<strong>{usd((quote.cardFeeCents ?? 0) / 100)}</strong></span>}
         {kind === "invoice" && c.showPaidSummary && quote.showPaidLine && paid > 0 && <span>{labels.paid}<strong>-{usd(paid)}</strong></span>}
         {c.showAmount && <span className="grand-total">{labels.total}<strong>{usd(kind === "invoice" ? money(quote.totalWithLateFee ?? quote.total) : totals.total)}</strong></span>}
         {kind === "invoice" && c.showBalanceDue && <span className="balance-due">{labels.balanceDue}<strong>{usd(balance)}</strong></span>}
@@ -17722,12 +17784,12 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // missing. Keep an item when it has either, and fall back to the name when
   // the description is blank (same rule as the new-invoice form).
   const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const,...(item.id?{id:item.id}:{}),...(item.optional?{optional:true}:{})}));
-  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument({...payload,issueDate:form.issueDate,dueDate:form.dueDate});else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
+  const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(kind==="invoice"?totals.total+(document.cardFeeCents??0)/100:totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument({...payload,issueDate:form.issueDate,dueDate:form.dueDate});else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
   // the current (unsaved) form values.
   const previewPdf = async () => {
     const items = editableItems();
-    const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total), footnote: form.footnote, ...(kind === "invoice" ? { issueDate: form.issueDate, dueDate: form.dueDate } : {}) };
+    const doc = { ...document, lineItems: items.length ? items : form.lineItems.map((item) => ({ description: item.description, amount: item.amount, name: item.name ?? "", quantity: item.quantity ?? 1, discount: item.discount ?? "0", unit: item.unit ?? "none" as const })), discountType: form.discountType, discountValue: showDiscount ? form.discountValue : "0", taxType: form.taxType, taxValue: showTax ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(kind === "invoice" ? totals.total + (document.cardFeeCents ?? 0) / 100 : totals.total), footnote: form.footnote, ...(kind === "invoice" ? { issueDate: form.issueDate, dueDate: form.dueDate } : {}) };
     const strings = { discount: t.discount, tax: t.tax, paymentInstructions: t.paymentInstructions };
     const pdf = kind === "invoice" ? await buildInvoicePdf(doc, settings ?? null, lang, strings) : await buildQuotePdf(doc, settings ?? null, lang, strings);
     setEditorPreview(new Blob([pdf], { type: "application/pdf" }));
@@ -17820,8 +17882,8 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
           onClose={() => setEditingItem(null)}
         />
       )}
-      <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(totals.total)}</strong></div></section>
-      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total - Number(document.paidToDate ?? "0")))}</strong></div><InvoicePayLinkNote lang={lang} balance={Math.max(0, totals.total - Number(document.paidToDate ?? "0"))} status={document.status ?? ""} /><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
+      <section className="editor-section totals-editor"><div><span>{t.subtotal}</span><strong>{usd(totals.subtotal)}</strong></div>{!showDiscount?<button type="button" onClick={()=>setShowDiscount(true)}>+ {t.discount}</button>:<AdjustmentField lang={lang} label={t.discount} type={form.discountType} value={form.discountValue} onType={(discountType)=>setForm({...form,discountType})} onValue={(discountValue)=>setForm({...form,discountValue})} onCollapse={collapseDiscount}/>} {!showTax?<button type="button" onClick={()=>setShowTax(true)}>+ {t.tax}</button>:<AdjustmentField lang={lang} label={t.tax} type={form.taxType} value={form.taxValue} onType={(taxType)=>setForm({...form,taxType})} onValue={(taxValue)=>setForm({...form,taxValue})} onCollapse={collapseTax}/>}{kind === "invoice" && (document.cardFeeCents ?? 0) > 0 && <div><span>{lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}</span><strong>{usd((document.cardFeeCents ?? 0) / 100)}</strong></div>}<div className="editor-grand-total"><span>{t.total}</span><strong>{usd(kind === "invoice" ? totals.total + (document.cardFeeCents ?? 0) / 100 : totals.total)}</strong></div></section>
+      {kind === "invoice" && <section className="editor-section"><div className="section-title-row"><h2>{t.partialPayments}</h2><button type="button" onClick={()=>setPaymentOpen(!paymentOpen)}>+ {lang === "es" ? "Agregar pago" : "Add payment"}</button></div><div className="balance-row"><span>{t.balanceRemaining}</span><strong>{usd(Math.max(0, totals.total + (document.cardFeeCents ?? 0) / 100 - Number(document.paidToDate ?? "0")))}</strong></div><InvoicePayLinkNote lang={lang} balance={Math.max(0, totals.total + (document.cardFeeCents ?? 0) / 100 - Number(document.paidToDate ?? "0"))} status={document.status ?? ""} /><label className="switch-row"><span>{lang === "es" ? "Marcar como pagada" : "Mark as paid"}</span><Switch checked={document.status === "paid"} onChange={async(v)=>{await api.toggleInvoicePaid({id:document.id,paid:v,today:localToday()});onSaved();}}/></label>{paymentOpen&&<div className="compact-form"><label><span>{t.amount}</span><input inputMode="decimal" value={amount} onChange={(e)=>setAmount(e.target.value)}/></label><label><span>{t.method}</span><input value={method} onChange={(e)=>setMethod(e.target.value)}/></label><label><span>{t.notes}</span><input value={note} onChange={(e)=>setNote(e.target.value)}/></label><button type="button" className="secondary-button" onClick={async()=>{if(money(amount)<=0)return;await api.addPayment({invoiceId:document.id,amount,paymentDate:localToday(),method,note});celebrate(lang==="es"?"Pago registrado":"Payment recorded");setAmount("");setMethod("");setNote("");setPaymentOpen(false);onSaved();}}>{t.recordPayment}</button></div>}</section>}
       <section className="editor-section"><label><span>{t.notes}</span><textarea rows={3} value={form.footnote} onChange={(e)=>setForm({...form,footnote:e.target.value})}/></label><small className="muted-note">{lang === "es" ? "Tu nota predeterminada, incluida la tarifa de procesamiento de tarjeta del 3%, está disponible desde Configuración." : "Your saved default note, including the 3% card processing fee, stays available from Settings."}</small></section>
       {!confirmDelete?<button className="editor-delete-quiet" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar estimado" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
@@ -18930,6 +18992,9 @@ type InvoiceFormState = {
   showTaxLine: boolean; showDiscountLine: boolean; showPaidLine: boolean; showPaymentTerms: boolean;
   showFooterNotes: boolean; showLogo: boolean; showCompanyInfo: boolean; customizeJson: string;
   footnote: string; discountType: AdjustmentType; discountValue: string; taxType: AdjustmentType; taxValue: string;
+  // Card payment controls (0100): carried at their defaults here — the
+  // switches themselves live on the invoice detail screen.
+  cardPaymentsEnabled: boolean; cardFeeEnabled: boolean;
   lineItems: Array<{ name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours" }>;
 };
 function invoiceDraftHasContent(form: any): boolean {
@@ -18997,6 +19062,7 @@ function InvoiceBuilder({
     customizeJson: settings?.defaultCustomizeJson ?? JSON.stringify(defaultDocumentCustomize("invoice", lang)),
     footnote: settings?.defaultFootnote ?? "", discountType: "percent" as AdjustmentType, discountValue: "0",
     taxType: "percent" as AdjustmentType, taxValue: "0",
+    cardPaymentsEnabled: true, cardFeeEnabled: false,
     lineItems: [{ name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" as "none" | "days" | "hours" }],
   };
   const [form, setForm] = useState<InvoiceFormState>(() => initialForm);
@@ -19460,6 +19526,7 @@ function InvoicePreview({
         <div><span>{t.subtotal}</span><strong>{usd(money(invoice.subtotal))}</strong></div>
         {money(invoice.discountValue) > 0 && <div><span>{t.discount}</span><strong>-{usd(money(invoice.discountValue))}</strong></div>}
         <div><span>{t.tax}</span><strong>{usd(money(invoice.taxValue))}</strong></div>
+        {invoice.cardFeeCents > 0 && <div><span>{lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}</span><strong>{usd(invoice.cardFeeCents / 100)}</strong></div>}
       </div>
       {/* Design overhaul (Danny 2026-10-12): the giant in-page pay bar is
           gone — the bottom action bar is the only action row (Paid opens the
@@ -19493,6 +19560,7 @@ function InvoicePreview({
     <details className="action-details document-details"><summary><span className="doc-chip" aria-hidden="true"><Icon><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></Icon></span><span>{t.recurring}</span>{isPremium ? null : <span className="pro-badge">PRO</span>}</summary>{isPremium ? <><div className="recurring-subsection"><h4>{lang==="es"?"Manual":"Manual"}</h4><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></div><div className="recurring-subsection"><h4>{lang==="es"?"Automática":"Automatic"}</h4><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></div></> : <p className="privacy-note">{lang==="es"?"Las facturas recurrentes son una función Pro.":"Recurring invoices are a Pro feature."} <button type="button" className="text-button" onClick={()=>setScreen({name:"upgrade"})}>{lang==="es"?"Ver planes":"See plans"}</button></p>}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
+    <InvoiceCardPaymentsSection lang={lang} invoice={invoice} setScreen={setScreen} onChanged={() => void refresh()} />
     <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><span className="doc-action-chip" aria-hidden="true"><Icon><path d="M4 20l4.5-1L20 7.5 16.5 4 5 15.5 4 20zM13.5 6.5l4 4" /></Icon></span><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><span className="doc-action-chip" aria-hidden="true"><CheckIcon/></span><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button className="doc-action-send" onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><span className="doc-action-chip" aria-hidden="true"><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon></span><span>{lang==="es"?"Más":"More"}</span></button></div>
     {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${t.pdfPreview}`} /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
@@ -31204,6 +31272,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         showLogo: doc.showLogo,
         showCompanyInfo: doc.showCompanyInfo,
         customizeJson: doc.customizeJson || "{}",
+        cardFeeCents: doc.cardFeeCents ?? 0,
       }
     : null;
   const downloadPdf = () => {
@@ -32601,7 +32670,7 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
           return (
             <div key={inv.id}>
               {row}
-              {d.payNowAvailable && Number(inv.balanceDue) > 0 ? (
+              {d.payNowAvailable && inv.cardPaymentsEnabled && Number(inv.balanceDue) > 0 ? (
                 <>
                   <button type="button" className="primary-button portal-v2-pay-btn" disabled={portalPay.isPending} onClick={() => { setPayError(""); portalPay.mutate(inv.id); }}>
                     {portalPay.isPending ? (lang === "es" ? "Abriendo…" : "Opening…") : `${lang === "es" ? "Pagar ahora" : "Pay now"} · ${usd(money(inv.balanceDue))}`}

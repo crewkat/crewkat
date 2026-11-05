@@ -91,6 +91,8 @@ export interface DocumentLinkPdfPayload {
   paidToDate?: string;
   lateFeeAccrued?: string;
   totalWithLateFee?: string;
+  // Card fee pass-through (0100): cents of processing fee inside `total`.
+  cardFeeCents?: number;
   discountType: string;
   discountValue: string;
   taxType: string;
@@ -184,6 +186,7 @@ export async function buildDocumentLinkPdf(
     totalWithLateFee: payload.totalWithLateFee,
     depositType: (payload.depositType === "percent" || payload.depositType === "fixed" ? payload.depositType : "none") as FinancialDocument["depositType"],
     depositValue: payload.depositValue || "0",
+    cardFeeCents: payload.cardFeeCents ?? 0,
   };
 
   const companySettings = {
