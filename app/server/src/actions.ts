@@ -2631,6 +2631,24 @@ async function notifyNudgeFallback(db: ReturnType<Ctx["db"]>, quote: typeof sche
 // ---------------------------------------------------------------------------
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Human title for an automation_logs review stage code. The stage is a
+ * machine key ("auto" from the completion automation/scheduler, "manual"
+ * from a hand send, "next_day" from the phone follow-up flow) — the
+ * Reputation inbox must never render the raw code (audit 2026-11-04).
+ * Unknown codes fall back to a de-snaked, capitalized label instead of
+ * leaking snake_case. */
+const REVIEW_STAGE_TITLES: Record<string, string> = {
+  auto: "Automatic",
+  manual: "Manual",
+  next_day: "Next day",
+};
+export function reviewStageTitle(stage: string): string {
+  const known = REVIEW_STAGE_TITLES[stage];
+  if (known) return known;
+  const words = stage.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "—";
+}
+
 /** The shared "review requested" record for a job: the latest review email
  * logged in automation_logs (kind "review", channel "email"). The completion
  * automation, the scheduler tick, and the manual Office send all key off
@@ -7901,6 +7919,11 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
       const jobIds = [...new Set(logs.map((l) => l.entityId))];
       const jobRows = jobIds.length ? await db.select({ id: schema.jobs.id, jobType: schema.jobs.jobType, clientName: schema.jobs.clientName, clientId: schema.jobs.clientId }).from(schema.jobs).where(inArray(schema.jobs.id, jobIds)) : [];
       const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      // Jobs whose snapshot name is blank fall back to the client
+      // record's name so the row never renders nameless.
+      const missingClientIds = [...new Set(jobRows.filter((j) => !j.clientName && j.clientId != null).map((j) => j.clientId as number))];
+      const clientRows = missingClientIds.length ? await db.select({ id: schema.clients.id, name: schema.clients.name }).from(schema.clients).where(inArray(schema.clients.id, missingClientIds)) : [];
+      const clientNameById = new Map(clientRows.map((c) => [c.id, c.name]));
       const seenJobs = new Set<number>();
       const requests = [];
       for (const log of logs) {
@@ -7913,8 +7936,8 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
           jobId: log.entityId,
           jobTitle: job?.jobType || `Job #${log.entityId}`,
           clientId: job?.clientId ?? null,
-          clientName: job?.clientName ?? "",
-          stageTitle: log.stage,
+          clientName: job?.clientName || (job?.clientId != null ? clientNameById.get(job.clientId) ?? "" : ""),
+          stageTitle: reviewStageTitle(log.stage),
           sentAt: log.sentAt.toISOString(),
           posted: !!posted,
           reviewId: posted?.id ?? null,

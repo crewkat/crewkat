@@ -208,7 +208,7 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
                       <button type="button" onClick={() => onOpenDocument({ kind: "invoice", id: inv.id })}>
                         <span>{inv.invoiceNumber} · {inv.clientName}</span>
                         <span className="feed-meta">
-                          Balance {formatMoney(inv.balanceRemaining)} of {formatMoney(inv.total)}
+                          {`Balance ${formatMoney(inv.balanceRemaining)} of ${formatMoney(inv.total)}`}
                           {inv.dueDate ? ` · Due ${formatDate(inv.dueDate)}${inv.dueDate < todayIso() ? " · overdue" : ""}` : ""}
                         </span>
                       </button>

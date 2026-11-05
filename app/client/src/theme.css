@@ -1242,7 +1242,9 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 .money-snapshot article > svg { width:20px; height:20px; color:var(--accent); }
 .money-snapshot article + article, .client-money article + article { border-left: 1px solid var(--border); }
 .money-snapshot span, .client-money span { color: var(--dim); font-size: 11px; line-height: 1.2; }
-.money-snapshot strong, .client-money strong { font: 800 19px/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; }
+/* Amounts shrink, never truncate (design law): the font scales down on
+   narrow screens instead of clipping with an ellipsis. */
+.money-snapshot strong, .client-money strong { font: 800 clamp(14px, 5vw, 19px)/1.1 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; }
 .today-field-strip > span { min-width: 78px; }
 .section-switcher, .document-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 4px 0 12px; padding: 3px; border-radius: 10px; background: var(--surface-2); }
 .document-tabs { grid-template-columns: repeat(2, 1fr); margin-top: 12px; }
@@ -2782,6 +2784,21 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .app-shell.has-bottom-nav .page.more-page {
   padding-bottom: calc(168px + env(safe-area-inset-bottom));
 }
+/* Batch 1 (audit 2026-11-04): the same fixed-element clearance for the
+   other screens carrying a floating bottom element — document detail
+   (fixed .document-action-bar: bottom 92px + ~62px tall), Settings
+   (floating .sticky-submit Save: bottom 96px + 44px tall), Clients
+   (fixed .add-client-fab: bottom 96px + 52px tall). Bottom padding must
+   clear the element's top edge or the last rows rest trapped under it. */
+.app-shell.has-bottom-nav .page.financial-detail-page {
+  padding-bottom: calc(176px + env(safe-area-inset-bottom));
+}
+.app-shell.has-bottom-nav .page.settings-page {
+  padding-bottom: calc(160px + env(safe-area-inset-bottom));
+}
+.app-shell.has-bottom-nav .page.clients-page {
+  padding-bottom: calc(168px + env(safe-area-inset-bottom));
+}
 .quick-create-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: center; padding: 18px 12px 0; background: rgba(9, 13, 18, .58); }
 .quick-create-sheet { width: min(100%, 560px); padding: 18px 16px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface); box-shadow: 0 -20px 55px rgba(0,0,0,.2); }
 .quick-create-sheet > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
@@ -3354,7 +3371,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .home-referral-banner:active { transform: scale(.98); }
 .home-referral-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #fff; flex: none; }
 .home-referral-icon svg { width: 22px; height: 22px; }
-.home-referral-banner > svg:last-child { color: var(--accent); }
+.home-referral-banner > svg:last-child { color: var(--accent); transform: rotate(180deg); }
 .home-referral-banner strong { display: block; font-size: .95rem; }
 .home-referral-banner small { color: var(--muted); font-size: .82rem; }
 
@@ -3457,6 +3474,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .crew-day-crosslink:active { transform: scale(.98); }
 .crew-day-crosslink-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: var(--accent); flex: none; }
 .crew-day-crosslink > span:nth-child(2) { flex: 1; }
+.crew-day-crosslink > svg { flex: none; transform: rotate(180deg); color: var(--dim); }
 .crew-day-crosslink strong { display: block; font-size: .93rem; }
 .crew-day-crosslink small { color: var(--muted); font-size: .82rem; }
 .crew-day-loading { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
@@ -3857,7 +3875,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .market-search, .market-location { min-height: 44px; }
 
 /* Settings group headers: small muted small-caps like the reference */
-.settings-group-title { margin: 22px 0 4px; padding: 0 16px; color: var(--dim); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; }
+.settings-group-title { margin: 22px 0 4px; padding: 0 16px; color: var(--dim); font-size: 12px; font-weight: 800; letter-spacing: .09em; }
 .settings-group-title:first-child { margin-top: 6px; }
 
 /* Client list: slimmer rows + smaller avatars/tool buttons */
@@ -4055,7 +4073,7 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .ck-invoice-row-copy strong { font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ck-invoice-row-copy > small { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ck-invoice-row-copy .ck-pill { margin-top: 2px; }
-.ck-invoice-row-amount { font-size: 12.5px; font-weight: 800; white-space: nowrap; }
+.ck-invoice-row-amount { font-size: clamp(11px, 3.3vw, 12.5px); font-weight: 800; white-space: nowrap; }
 .document-tap.ck-invoice-row .row-actions { grid-column: 1 / -1; margin-top: 2px; flex-wrap: nowrap; }
 
 /* Invoice detail: mockup layout */
@@ -5730,7 +5748,7 @@ a.portal-v2-doc-row:hover { border-color: var(--accent); }
 .completion-hero-text strong { font-size:1rem; letter-spacing:-.01em; }
 .completion-hero-text span { font-size:.82rem; color:var(--dim); }
 .completion-stages { border:0; padding:0; margin:0; }
-.completion-stages legend { font-size:.78rem; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; padding:0; }
+.completion-stages legend { font-size:.78rem; font-weight:700; color:var(--dim); letter-spacing:.05em; margin-bottom:8px; padding:0; }
 .completion-v2 .requirement-checks label { transition:border-color .15s ease, background .15s ease; cursor:pointer; }
 .completion-v2 .requirement-checks label.on { border-color:var(--green); background:color-mix(in srgb,var(--green) 10%,var(--surface)); }
 .completion-v2 .requirement-checks label.on span { color:var(--text); font-weight:700; }
@@ -6046,7 +6064,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .job-co-row { display: flex; align-items: center; gap: 10px; width: 100%; margin: 10px 0 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
 .job-co-row-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13.5px; }
 .job-co-row-label::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 2.5px; background: #c2570a; }
-.job-co-row-value { margin-left: auto; color: #c2570a; font-weight: 800; font-size: 13px; white-space: nowrap; }
+.job-co-row-value { margin-left: auto; color: #c2570a; font-weight: 800; font-size: clamp(11.5px, 3.5vw, 13px); white-space: nowrap; }
 .job-co-row > svg { flex: none; width: 16px; height: 16px; color: var(--dim); transform: rotate(180deg); }
 
 /* ---- Overview: slimmer photo-completeness summary row ---- */
@@ -6138,7 +6156,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .job-photos-strip-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .job-photos-strip-main strong { font-size: 14px; font-weight: 700; }
 .job-photos-strip-main small { font-size: 12px; color: var(--dim); }
-.job-photos-strip > svg { flex: none; color: var(--dim); }
+.job-photos-strip > svg { flex: none; color: var(--dim); transform: rotate(180deg); }
 .job-stage-counts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .stage-count-chip, .stage-chip { font-size: 11.5px; font-weight: 700; padding: 4px 9px; border-radius: 20px; background: var(--surface-2); color: var(--dim); white-space: nowrap; }
 .stage-count-chip b, .stage-chip b { color: var(--text); }
@@ -6169,7 +6187,7 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .fin-slim-row { display: flex; align-items: center; gap: 10px; width: 100%; }
 .fin-slim-label { flex: 1; font-size: 14px; font-weight: 700; text-align: left; }
 .fin-slim-row > strong { font-size: 13px; font-weight: 600; color: var(--dim); }
-.fin-slim-row > svg { flex: none; color: var(--dim); }
+.fin-slim-row > svg { flex: none; color: var(--dim); transform: rotate(180deg); }
 button.fin-slim-button { font: inherit; color: var(--text); cursor: pointer; text-align: left; }
 .fin-invoice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
 /* Docs: paper entry rows + shared-files heading inside a panel card. */
@@ -6177,7 +6195,7 @@ button.fin-slim-button { font: inherit; color: var(--text); cursor: pointer; tex
 .doc-tool-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 2px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); background: none; color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: left; }
 .doc-tool-row:last-child { border-bottom: none; }
 .doc-tool-row > span { flex: 1; }
-.doc-tool-row > svg { flex: none; color: var(--dim); }
+.doc-tool-row > svg { flex: none; color: var(--dim); transform: rotate(180deg); }
 .panel-card .job-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .panel-card .job-section-heading p { margin: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; font-weight: 700; color: var(--dim); }
 /* Photos tab: stage chips, one slim alert, collapsed override note, proof row. */
@@ -6192,9 +6210,11 @@ button.fin-slim-button { font: inherit; color: var(--text); cursor: pointer; tex
 .proof-packet-row .primary-button { flex: none; min-height: 40px; border-radius: 8px; font-size: 13px; padding: 0 14px; }
 .job-photo-tools .photo-workspace { margin-top: 10px; }
 button.ba-tool-row { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
-button.ba-tool-row > svg { flex: none; color: var(--dim); }
+button.ba-tool-row > svg { flex: none; color: var(--dim); transform: rotate(180deg); }
 /* Crew Log: timeline card under the chat; Send stays full-strength orange. */
-.crew-timeline { padding-top: 0; }
+/* Crew Log: clearance so the sticky message composer (~51px) never
+   covers the Timeline heading that follows the thread. */
+.crew-timeline { padding-top: 0; margin-top: 64px; }
 .job-thread .composer-row .primary-button:disabled { opacity: 1; cursor: default; }
 
 /* ---- Portal feature card (Overview): navy/orange, status at a glance ---- */

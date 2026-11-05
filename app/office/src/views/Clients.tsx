@@ -55,7 +55,7 @@ export function ClientsView({
       <div className="view-head">
         <div>
           <h1>Clients</h1>
-          <p className="view-sub">{clients.length} clients on file.</p>
+          <p className="view-sub">{`${clients.length} clients on file.`}</p>
         </div>
         <div className="search-box">
           <input

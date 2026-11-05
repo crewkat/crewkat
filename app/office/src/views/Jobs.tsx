@@ -82,7 +82,7 @@ export function JobsView({
       <div className="view-head">
         <div>
           <h1>Jobs</h1>
-          <p className="view-sub">{jobs.length} jobs · {jobs.filter((j) => !j.completedAt).length} active.</p>
+          <p className="view-sub">{`${jobs.length} jobs · ${jobs.filter((j) => !j.completedAt).length} active.`}</p>
         </div>
         <div className="head-controls">
           <div className="segmented" role="group" aria-label="Jobs view mode">

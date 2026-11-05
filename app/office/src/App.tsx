@@ -59,10 +59,6 @@ const NAV: { key: ViewKey; label: string; icon: string }[] = [
   { key: "admin", label: "Admin", icon: "🛡" },
 ];
 
-// Wave 1 shipped the automation recipes (they live in Settings), so
-// only Reports remains parked here.
-const PHASE2_NAV = ["Reports"];
-
 export function App() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -257,17 +253,9 @@ export function App() {
               {item.key === "followups" && followUpBadge > 0 ? <span className="nav-badge">{followUpBadge}</span> : null}
             </button>
           ))}
-          <div className="nav-group-label">Phase 2</div>
-          {PHASE2_NAV.map((label) => (
-            <span key={label} className="nav-item disabled" aria-disabled="true" title="Coming in Phase 2">
-              <span className="nav-icon" aria-hidden="true">·</span>
-              {label}
-              <span className="phase-tag">Soon</span>
-            </span>
-          ))}
         </nav>
         <div className="sidebar-foot">
-          <span className="muted small">Crewkat Office · Phase 1</span>
+          <span className="muted small">Crewkat Office</span>
         </div>
       </aside>
 

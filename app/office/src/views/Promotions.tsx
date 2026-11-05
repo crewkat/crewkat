@@ -336,7 +336,7 @@ function CampaignEditor({ campaignId, canSend, onBack }: { campaignId: number | 
               ) : aiAvailability && !aiAvailability.entitled ? (
                 <span className="muted small">✨ Write with AI is a Crewkat Premium / Office feature — upgrade to have AI draft from your brief. Templates stay free.</span>
               ) : aiAvailability && aiAvailability.usedThisMonth >= aiAvailability.monthlyCap ? (
-                <span className="muted small">✨ This month's AI writing limit is reached ({aiAvailability.usedThisMonth} of {aiAvailability.monthlyCap}) — template drafts still work.</span>
+                <span className="muted small">{`✨ This month's AI writing limit is reached (${aiAvailability.usedThisMonth} of ${aiAvailability.monthlyCap}) — template drafts still work.`}</span>
               ) : (
                 <>
                   <button type="button" className="btn btn-ghost" disabled={locked || aiGenerateMutation.isPending || draft.prompt.trim().length < 3} onClick={() => aiGenerateMutation.mutate(draft)}>

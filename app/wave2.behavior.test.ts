@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { BaseActions, stripeApplicationFeeCents } from "./server/src/actions.ts";
 import { privileged, privilegedHandlers } from "./server/src/privileged.ts";
 import * as schema from "./server/src/schema.ts";
@@ -240,6 +240,24 @@ await A.recordPostedReview.handler(ctx, { jobId, clientId: null, clientName: "",
 const inbox1 = await A.getReputationInbox.handler(ctx, {});
 check("recording the review marks the request posted", inbox1.requests[0]!.posted === true, JSON.stringify(inbox1.requests));
 check("posted review is captured with rating + text", inbox1.reviews.length === 1 && inbox1.reviews[0]!.rating === 5 && inbox1.reviews[0]!.clientName === "Hot Harry", JSON.stringify(inbox1.reviews));
+
+// Batch 1 (audit 2026-11-04): stage codes never render raw, and a job
+// with a blank snapshot name falls back to the client record's name.
+const [namedClient] = await db.insert(schema.clients).values({ companyId: 1, name: "Fallback Fran" }).returning({ id: schema.clients.id });
+const jobId2 = (await db.insert(schema.jobs).values({ companyId: 1, clientId: namedClient!.id, clientName: "", clientEmail: "fran@example.com", jobAddress: "4 Elm St", jobType: "Kitchen remodel", jobDate: "2026-10-20", createdAt: now, updatedAt: now }).returning({ id: schema.jobs.id }))[0]!.id;
+await db.insert(schema.automationLogs).values({ companyId: 1, kind: "review", entityId: jobId2, stage: "next_day", channel: "sms", sentAt: new Date() });
+const jobId3 = (await db.insert(schema.jobs).values({ companyId: 1, clientName: "Auto Ann", clientEmail: "ann@example.com", jobAddress: "7 Oak St", jobType: "Bathroom remodel", jobDate: "2026-10-21", createdAt: now, updatedAt: now }).returning({ id: schema.jobs.id }))[0]!.id;
+await db.insert(schema.automationLogs).values({ companyId: 1, kind: "review", entityId: jobId3, stage: "auto", channel: "email", sentAt: new Date() });
+const inbox2 = await A.getReputationInbox.handler(ctx, {});
+const nextDayReq = inbox2.requests.find((r: any) => r.jobId === jobId2);
+check("next_day stage renders as the human label 'Next day'", nextDayReq?.stageTitle === "Next day", JSON.stringify(nextDayReq));
+check("blank job clientName falls back to the client record name", nextDayReq?.clientName === "Fallback Fran", JSON.stringify(nextDayReq));
+const autoReq = inbox2.requests.find((r: any) => r.jobId === jobId3);
+check("auto stage renders as 'Automatic', never the raw code", autoReq?.stageTitle === "Automatic", JSON.stringify(autoReq));
+// Clean up this block's rows: later sections sync every company client.
+await db.delete(schema.automationLogs).where(inArray(schema.automationLogs.entityId, [jobId2, jobId3]));
+await db.delete(schema.jobs).where(inArray(schema.jobs.id, [jobId2, jobId3]));
+await db.delete(schema.clients).where(eq(schema.clients.id, namedClient!.id));
 
 // --- 8. Lead capture form + source report -------------------------------------------
 const capture = await A.getLeadCaptureInfo.handler(ctx, {});

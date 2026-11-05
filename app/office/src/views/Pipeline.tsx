@@ -157,7 +157,7 @@ export function PipelineView({
         <div>
           <h1>Pipeline</h1>
           <p className="view-sub">
-            {leads.length} leads{leadsQuery.data ? ` · ${leadsQuery.data.winRate}% win rate on decided leads` : ""}
+            {`${leads.length} leads${leadsQuery.data ? ` · ${leadsQuery.data.winRate}% win rate on decided leads` : ""}`}
           </p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New lead</button>

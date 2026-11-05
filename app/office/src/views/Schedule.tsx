@@ -120,7 +120,7 @@ export function ScheduleView({ onOpenJob, canDelete }: { onOpenJob: (jobId: numb
       <div className="view-head">
         <div>
           <h1>Schedule</h1>
-          <p className="view-sub">{appointments.length} appointments · {jobs.length} jobs — the same calendar the phone app works from.</p>
+          <p className="view-sub">{`${appointments.length} appointments · ${jobs.length} jobs — the same calendar the phone app works from.`}</p>
         </div>
         <div className="head-controls">
           <div className="segmented" role="group" aria-label="Calendar mode">

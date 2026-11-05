@@ -142,7 +142,7 @@ export function SafetyView({ canManage }: { canManage: boolean }) {
                   {b.label}: {dashboard.counts[b.key]}
                 </button>
               ))}
-              <span className="muted small">{dashboard.credentialCount} credentials · {dashboard.sessionCount} talk sessions ({dashboard.sessionsThisMonth} this month)</span>
+              <span className="muted small">{`${dashboard.credentialCount} credentials · ${dashboard.sessionCount} talk sessions (${dashboard.sessionsThisMonth} this month)`}</span>
             </div>
             {BUCKET_DEFS.filter((b) => b.key !== "ok" && dashboard.buckets[b.key].length > 0).map((b) => (
               <p key={b.key} className="feed-meta block">

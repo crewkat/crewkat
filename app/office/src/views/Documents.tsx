@@ -193,7 +193,7 @@ export function DocumentsView({
               <li key={`${i.kind}-${i.documentId}`}>
                 <span>{i.title} · {i.clientName}</span>
                 <span className="feed-meta">
-                  Sent {i.sentAt ? formatDate(i.sentAt.slice(0, 10)) : "—"}
+                  {`Sent ${i.sentAt ? formatDate(i.sentAt.slice(0, 10)) : "—"}`}
                   {" → "}Opened {i.firstViewedAt ? formatDate(i.firstViewedAt.slice(0, 10)) : "—"}
                   {` → ${i.viewCount} view${i.viewCount === 1 ? "" : "s"}`}
                   {i.signed ? ` → Signed${i.signedAt ? ` ${formatDate(i.signedAt.slice(0, 10))}` : ""}` : ""}

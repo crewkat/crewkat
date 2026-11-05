@@ -6893,7 +6893,7 @@ function UpgradeScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
             <span className="plan-option-note">{lang === "es" ? "Cancela cuando quieras" : "Cancel anytime"}</span>
           </button>
           <button type="button" role="radio" aria-checked={plan === "annual"} className={`plan-option${plan === "annual" ? " selected" : ""}`} onClick={() => setPlan("annual")} disabled={!foundingQuery.data?.annualConfigured}>
-            <span className="plan-option-badge">{lang === "es" ? "AHORRA 2 MESES" : "SAVE 2 MONTHS"}</span>
+            <span className="plan-option-badge">{lang === "es" ? "Ahorra 2 meses" : "Save 2 months"}</span>
             <span className="plan-option-name">{lang === "es" ? "Anual" : "Annual"}</span>
             <span className="plan-option-price"><strong>{foundingQuery.data?.annualConfigured ? <><span>$189</span><small>{lang === "es" ? "/año" : "/yr"}</small></> : lang === "es" ? "Próximamente" : "Coming soon"}</strong></span>
             {foundingQuery.data?.annualConfigured && <span className="plan-option-permonth">{lang === "es" ? "$15.75/mes, facturado anualmente" : "$15.75/mo billed yearly"}</span>}
@@ -9462,7 +9462,7 @@ function FinDailyLogSection({ lang, jobId, photos, data, refresh }: {
               <p>{l.notes || "—"}</p>
               {l.blockers && <p className="log-blockers"><strong>{lang === "es" ? "Bloqueos: " : "Blockers: "}</strong>{l.blockers}</p>}
               <small>
-                {l.photoIds.length} {copy[lang].photos}
+                {`${l.photoIds.length} ${copy[lang].photos}`}
                 {l.sharedWithClient ? (lang === "es" ? " · Compartido" : " · Shared") : (lang === "es" ? " · Privado" : " · Private")}
               </small>
             </div>
@@ -9763,7 +9763,7 @@ function JobLoadsSection({ lang, jobId, refresh }: { lang: Lang; jobId: number; 
     <FinModuleShell dot="#f97316" title={es ? "Cargas y viajes" : "Loads / dump runs"} count={loads.length}>
       {list.data && loads.length > 0 ? (
         <p className="muted">
-          {loads.length} {es ? "registros" : "logged"} · {es ? "Costo total" : "Total cost"} {usd(money(list.data.totalCost))}
+          {`${loads.length} ${es ? "registros" : "logged"}`} · {es ? "Costo total" : "Total cost"} {usd(money(list.data.totalCost))}
           {" · "}{es ? "incluido en los gastos del trabajo" : "included in this job's expenses"}
         </p>
       ) : null}
@@ -11512,11 +11512,11 @@ function JobDetail({
                 disabled: complete.isPending,
               };
   const progressPill = isJobCompleted
-    ? { label: lang === "es" ? "COMPLETADO" : "COMPLETED", cls: "is-green" }
+    ? { label: lang === "es" ? "Completado" : "Completed", cls: "is-green" }
     : hasFullySignedContract
-      ? { label: lang === "es" ? "CONTRATO FIRMADO" : "CONTRACT SIGNED", cls: "is-green" }
+      ? { label: lang === "es" ? "Contrato firmado" : "Contract signed", cls: "is-green" }
       : awaitingContractDoc
-        ? { label: lang === "es" ? "ESPERANDO FIRMA" : "AWAITING SIGNATURE", cls: "is-gray" }
+        ? { label: lang === "es" ? "Esperando firma" : "Awaiting signature", cls: "is-gray" }
         : null;
   return (
     <DetailHero fromRect={heroRect}>
@@ -11592,7 +11592,7 @@ function JobDetail({
       </section>
       {nextStep ? (
         <section className="next-step-card" aria-label={lang === "es" ? "Siguiente paso" : "Next step"}>
-          <p className="next-step-kicker">{lang === "es" ? "SIGUIENTE PASO" : "NEXT STEP"}</p>
+          <p className="next-step-kicker">{lang === "es" ? "Siguiente paso" : "Next step"}</p>
           <p className="next-step-text">{nextStep.text}</p>
           <button type="button" className="primary-button" disabled={nextStep.disabled} onClick={() => { buzz(8); nextStep.onClick(); }}>
             {nextStep.label}
@@ -11747,7 +11747,7 @@ function JobDetail({
         </button>
       )}
       <section className="job-tools" aria-label={lang === "es" ? "Herramientas del trabajo" : "Job tools"}>
-        <p className="job-tools-kicker">{lang === "es" ? "HERRAMIENTAS" : "JOB TOOLS"}</p>
+        <p className="job-tools-kicker">{lang === "es" ? "Herramientas" : "Job tools"}</p>
         <div className="job-tools-grid">
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}>
             <Icon><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2M9 2h6" /></Icon>
@@ -13143,7 +13143,7 @@ function SettingsScreen({
             <label className="backup-action restore-picker"><Icon><path d="M12 21V9M7 14l5-5 5 5M4 5h16" /></Icon><span><strong>{lang === "es" ? "Restaurar desde una copia" : "Restore from backup"}</strong><small>{restoreFile?.name ?? (lang === "es" ? "Elegir archivo .crewkat" : "Choose a .crewkat file")}</small></span><input className="sr-only" type="file" accept=".crewkat,.fhq,application/gzip" onChange={(e) => { const file = e.target.files?.[0] ?? null; setRestoreFile(file); setConfirmRestore(Boolean(file)); setBackupNotice(""); }} /></label>
             {confirmRestore && restoreFile && <div className="restore-warning" role="alert"><strong>{lang === "es" ? "Esto reemplazará todos los datos actuales." : "This will replace all current data."}</strong><p>{lang === "es" ? "No cierres la app durante la restauración." : "Do not close the app while restore is running."}</p><div><button type="button" className="danger-button" disabled={restore.isPending} onClick={() => restore.mutate(restoreFile)}>{restore.isPending ? (lang === "es" ? "Restaurando…" : "Restoring…") : (lang === "es" ? "Sí, reemplazar y restaurar" : "Yes, replace and restore")}</button><button type="button" className="secondary-button" onClick={() => { setConfirmRestore(false); setRestoreFile(null); }}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div></div>}
             {backupNotice && <p className={`status ${backup.isError || restore.isError ? "error" : "success"}`} role="status">{backupNotice}</p>}
-            <p className="privacy-note">{lang === "es" ? "La copia protege contra pérdida accidental. El acceso con cuenta en cualquier dispositivo se añadirá con el sistema de inicio de sesión del lanzamiento." : "Backups protect against accidental loss. Account sign-in on any device will arrive with the launch authentication system."}</p>
+            <p className="privacy-note">{lang === "es" ? "La copia protege contra pérdida accidental." : "Backups protect against accidental loss."}</p>
             {auth?.user.access.seeMoney ? <BillingExports lang={lang} /> : null}
             {auth?.user.access.seeMoney ? <BillingImport lang={lang} /> : null}
           </SettingsAccordion>
@@ -13848,7 +13848,7 @@ function PAChart({ data, kind, color, label }: { data: { date: string; count: nu
     {ticks.map((t) => (
       <g key={t}>
         <line className="pa-chart-grid" x1={PL} y1={y(t)} x2={W - PR} y2={y(t)} />
-        <text className="pa-chart-axis" x={PL - 4} y={y(t) + 3} textAnchor="end">{t}</text>
+        <text className="pa-chart-axis" x={PL - 4} y={y(t) + 3} textAnchor="end">{Number(t.toFixed(1))}</text>
       </g>
     ))}
     {data.map((d, i) => (i % labelEvery === 0 || i === n - 1) && (
@@ -18586,7 +18586,7 @@ function QuotePreview({
         : { key: "paid", label: lang === "es" ? "Pago" : "Payment", state: "todo" as FlowStepState },
     ]} />
     <button className="document-preview-card" onClick={()=>setFullScreen(true)} aria-label={lang==="es"?"Abrir vista previa completa":"Open full-screen preview"}><PdfFrame blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`} /><span><span aria-hidden="true"><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></span>{lang==="es"?"Toca para ampliar":"Tap to enlarge"}</span></button>
-    <section className="document-detail-summary ck-quote-summary"><div className="ck-inv-head"><div className="ck-quote-total"><span className="ck-inv-label">{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`ck-pill ${acceptedNow ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : quote.sentAt ? "ck-pill-pending" : "ck-pill-draft"}`}>{status}</span></div><div className="ck-quote-client-row"><button type="button" className="ck-quote-client" onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button><ViewedBadge lang={lang} kind="quote" id={quote.id} />{quote.jobId && <button type="button" className="ck-quote-job-link" onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{lang==="es"?"Firmada por":"Signed by"} {signature.data.signature.signerName}</small>}</section>
+    <section className="document-detail-summary ck-quote-summary"><div className="ck-inv-head"><div className="ck-quote-total"><span className="ck-inv-label">{t.total}</span><strong>{usd(money(quote.total))}</strong></div><span className={`ck-pill ${acceptedNow ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : quote.sentAt ? "ck-pill-pending" : "ck-pill-draft"}`}>{status}</span></div><div className="ck-quote-client-row"><button type="button" className="ck-quote-client" onClick={() => quote.clientId ? setScreen({ name: "client", clientId: quote.clientId }) : setScreen({ name: "clients" })}>{quote.clientName}</button><ViewedBadge lang={lang} kind="quote" id={quote.id} />{quote.jobId && <button type="button" className="ck-quote-job-link" onClick={() => setScreen({ name: "detail", jobId: quote.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}</div>{signature.data?.signature&&<small className="signed-label"><CheckIcon/>{`${lang==="es"?"Firmada por":"Signed by"} ${signature.data.signature.signerName}`}</small>}</section>
     <DocumentLinkPanel lang={lang} kind="quote" id={quote.id} />
     <DocumentAttachmentsRow lang={lang} docType="quote" docId={quote.id} onOpen={() => setScreen({ name: "quoteAttachments", quoteId: quote.id })} />
     {/* Materials buy list (0075): the estimate's own synced checklist.
@@ -18744,8 +18744,8 @@ function InvoicesScreen({
     else if (dx >= 48) { buzz(8); shiftMonth(-1); }
   };
   const heroLabel = period === "year"
-    ? (lang === "es" ? `TOTAL ${month.slice(0, 4)}` : `${month.slice(0, 4)} TOTAL`)
-    : (lang === "es" ? `TOTAL DE ${monthName(monthKey).toUpperCase()}` : `${monthName(monthKey).toUpperCase()} TOTAL`);
+    ? (lang === "es" ? `Total ${month.slice(0, 4)}` : `${month.slice(0, 4)} total`)
+    : (lang === "es" ? `Total de ${monthName(monthKey)}` : `${monthName(monthKey)} total`);
   const isExpanded = (key: string, isFirst: boolean) => (expandedKey === null ? isFirst : expandedKey === key);
   const toggleExpand = (key: string) => setExpandedKey((cur) => (cur === key ? "none" : key));
   return (
@@ -18774,16 +18774,16 @@ function InvoicesScreen({
         </div>
         <div className="doc-strip-main">
           <div className="doc-strip-hero">
-            <span className="doc-strip-label">{heroLabel} — {tab === "invoices" ? (lang === "es" ? "FACTURADO" : "INVOICED") : estimateWord.toUpperCase()}</span>
+            <span className="doc-strip-label">{heroLabel} — {tab === "invoices" ? (lang === "es" ? "Facturado" : "Invoiced") : estimateWord}</span>
             <strong className="doc-strip-num">{usd(tab === "invoices" ? periodInvoiced : periodEstimated)}</strong>
           </div>
           <div className="doc-strip-stats">
             {tab === "invoices" ? <>
-              <span className="doc-strip-stat"><small>{lang === "es" ? "PAGADO" : "PAID"}</small><strong>{usd(periodPaid)}</strong></span>
-              <span className="doc-strip-stat"><small>{lang === "es" ? "SALDO PENDIENTE" : "BALANCE DUE"}</small><strong>{usd(periodBalance)}</strong></span>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "Pagado" : "Paid"}</small><strong>{usd(periodPaid)}</strong></span>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "Saldo pendiente" : "Balance due"}</small><strong>{usd(periodBalance)}</strong></span>
             </> : <>
-              <span className="doc-strip-stat"><small>{lang === "es" ? "ACEPTADO" : "ACCEPTED"}</small><strong>{usd(periodAccepted)}</strong></span>
-              <span className="doc-strip-stat"><small>{estimateWord.toUpperCase()}</small><strong>{periodQuotes.length}</strong></span>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "Aceptado" : "Accepted"}</small><strong>{usd(periodAccepted)}</strong></span>
+              <span className="doc-strip-stat"><small>{estimateWord}</small><strong>{periodQuotes.length}</strong></span>
             </>}
           </div>
         </div>
@@ -18884,7 +18884,7 @@ function InvoicesScreen({
           );
         })}
         {visibleInvoices.length === 0 && !query.isLoading && (query.data?.invoices.length ?? 0) > 0 && <p className="privacy-note">{invTerm || invStatus !== "all" ? (lang === "es" ? "No hay facturas que coincidan con la búsqueda." : "No invoices match your search.") : (lang === "es" ? `No hay facturas en ${monthLabel(monthKey)}.` : `No invoices in ${monthLabel(monthKey)}.`)}</p>}
-        {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "CREAR FACTURA" : "CREATE INVOICE"} onAction={() => setScreen({ name: "invoiceNew" })} />}
+        {query.data?.invoices.length === 0 && !query.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={t.invoiceEmpty} body={lang === "es" ? "Crea tu primera factura para empezar a cobrar." : "Create your first invoice to start getting paid."} actionLabel={lang === "es" ? "Crear factura" : "Create invoice"} onAction={() => setScreen({ name: "invoiceNew" })} />}
       </section> : <section className="quote-list document-list doc-list-v2 stagger-children" key={`est-${period}-${monthKey}`}>
         {quotes.isLoading && <SkeletonList rows={5} />}
         {visibleQuotes.map((quote) => {
@@ -18908,7 +18908,7 @@ function InvoicesScreen({
           );
         })}
         {visibleQuotes.length === 0 && !quotes.isLoading && (quotes.data?.quotes.length ?? 0) > 0 && <p className="privacy-note">{estTerm ? (lang === "es" ? `Ningún ${estTerms.singular} coincide con la búsqueda.` : `No ${estTerms.plural} match your search.`) : (lang === "es" ? `No hay ${estTerms.plural} en ${monthLabel(monthKey)}.` : `No ${estTerms.plural} in ${monthLabel(monthKey)}.`)}</p>}
-        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc.toUpperCase()} onAction={() => setScreen({ name: "quoteNew" })} />}
+        {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<FileIcon />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
   );
@@ -19477,7 +19477,7 @@ function InvoicePreview({
         {invoice.jobId && <button onClick={() => setScreen({ name: "detail", jobId: invoice.jobId as number })}>{lang === "es" ? "Ver trabajo" : "View job"}</button>}
         <ViewedBadge lang={lang} kind="invoice" id={invoice.id} />
       </div>
-      {signature.data?.signature && <small className="signed-label"><CheckIcon />{lang === "es" ? "Firmada por" : "Signed by"} {signature.data.signature.signerName}</small>}
+      {signature.data?.signature && <small className="signed-label"><CheckIcon />{`${lang === "es" ? "Firmada por" : "Signed by"} ${signature.data.signature.signerName}`}</small>}
     </section>
     {/* Design overhaul (Danny 2026-10-12): the full-width in-page Send
         button is gone — Send lives in the bottom action bar only. Page
@@ -19855,15 +19855,15 @@ function ClientsScreen({
           ]}>
           <button onClick={() => setScreen({ name: "client", clientId: c.id })}>
             <span className={`client-avatar tone-${c.id % 6}`}>{clientInitials(c.name)}</span>
-            <span className="client-row-copy"><strong>{c.name}</strong><small>{c.invoiceCount} {c.invoiceCount === 1 ? (lang === "es" ? "Factura" : "Invoice") : (lang === "es" ? "Facturas" : "Invoices")}</small></span>
+            <span className="client-row-copy"><strong>{c.name}</strong><small>{`${c.invoiceCount} ${c.invoiceCount === 1 ? (lang === "es" ? "Factura" : "Invoice") : (lang === "es" ? "Facturas" : "Invoices")}`}</small></span>
             <span className="client-row-money"><strong>{usd(c.totalInvoiced)}</strong><small>{c.paymentPercent}% {lang === "es" ? "pagado" : "paid"}</small></span>
           </button>
           </SwipeRow>
         ))}
       </section>
-      {!query.isPending && visibleClients.length === 0 && <EmptyState lang={lang} icon={<Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>} title={allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")} body={allClients.length === 0 ? (lang === "es" ? "Agrega tu primer cliente para empezar a cotizar." : "Add your first client to start estimating.") : (lang === "es" ? "Prueba con otro nombre." : "Try a different name.")} actionLabel={allClients.length === 0 ? (lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT") : undefined} onAction={allClients.length === 0 ? () => setScreen({ name: "clientNew" }) : undefined} />}
+      {!query.isPending && visibleClients.length === 0 && <EmptyState lang={lang} icon={<Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.5-6.5 8-6.5s8 2.5 8 6.5" /></Icon>} title={allClients.length === 0 ? t.noClients : (lang === "es" ? "No hay clientes que coincidan." : "No matching clients.")} body={allClients.length === 0 ? (lang === "es" ? "Agrega tu primer cliente para empezar a cotizar." : "Add your first client to start estimating.") : (lang === "es" ? "Prueba con otro nombre." : "Try a different name.")} actionLabel={allClients.length === 0 ? (lang === "es" ? "Agregar cliente" : "Add client") : undefined} onAction={allClients.length === 0 ? () => setScreen({ name: "clientNew" }) : undefined} />}
       <ReferralsSection lang={lang} clients={allClients} setScreen={setScreen} />
-      <button className="primary-button add-client-fab" onClick={() => setScreen({ name: "clientNew" })}><PlusIcon />{lang === "es" ? "AGREGAR CLIENTE" : "ADD CLIENT"}</button>
+      <button className="primary-button add-client-fab" onClick={() => setScreen({ name: "clientNew" })}><PlusIcon />{lang === "es" ? "Agregar cliente" : "Add client"}</button>
       {activeSheet && <div className={`client-sheet-backdrop${sheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}>
         {activeSheet === "sort" ? <section className="client-sheet" role="dialog" aria-modal="true" aria-labelledby="client-sort-title">
           <div className="sheet-handle"/><header><h2 id="client-sort-title">{lang === "es" ? "Ordenar" : "Sorting"}</h2><button type="button" onClick={() => { setDraftSortBy("alphabetical"); setDraftDirection("asc"); }}>{lang === "es" ? "Restablecer" : "Reset"}</button></header>
@@ -24042,7 +24042,7 @@ function ReceiptManager({ lang, data }: { lang: Lang; data: JobData }) {
         <span>{t.materialsTotal}</span>
         <strong>{usd(total)}</strong>
         <small>
-          {data.receipts.length} {t.receipts.toLowerCase()}
+          {`${data.receipts.length} ${t.receipts.toLowerCase()}`}
         </small>
       </div>
       <form
@@ -24933,7 +24933,7 @@ function TodayScreen({
         </button>
         <span>{lang === "es" ? "Trabajos abiertos" : "Open jobs"}</span>
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
-        <small>{activeThisWeek} {lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : (activeThisWeek === 1 ? "active this week" : "active this week")}</small>
+        <small>{`${activeThisWeek} ${lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : "active this week"}`}</small>
       </section>
       {/* Build 3: "at a glance" — what needs attention right now, tappable. */}
       {(() => {
@@ -24978,7 +24978,7 @@ function TodayScreen({
         </div>
       </section>
       {latestInvoice && <button type="button" className="home-invoice-card" onClick={() => setScreen({ name: "invoicePreview", invoiceId: latestInvoice.id })}>
-        <span><small>{lang === "es" ? "Factura" : "Invoice"} {latestInvoice.invoiceNumber}</small><strong>{usd(money(latestInvoice.totalWithLateFee))}</strong></span>
+        <span><small>{`${lang === "es" ? "Factura" : "Invoice"} ${latestInvoice.invoiceNumber}`}</small><strong>{usd(money(latestInvoice.totalWithLateFee))}</strong></span>
         <b className={`status-chip ${latestInvoice.status}`}>{invoiceStatusLabel(latestInvoice.status)}</b>
       </button>}
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
@@ -25483,11 +25483,19 @@ function TodayScreen({
         <div>
           <span>
             {lang === "es"
-              ? "Mensaje matutino del equipo"
-              : "Crew morning message"}
+              ? hour < 12
+                ? "Mensaje matutino del equipo"
+                : hour < 18
+                  ? "Mensaje vespertino del equipo"
+                  : "Mensaje nocturno del equipo"
+              : hour < 12
+                ? "Crew morning message"
+                : hour < 18
+                  ? "Crew afternoon message"
+                  : "Crew evening message"}
           </span>
           <strong>
-            {d.crew.length} {lang === "es" ? "trabajos de hoy" : "jobs today"}
+            {`${d.crew.length} ${lang === "es" ? "trabajos de hoy" : "jobs today"}`}
           </strong>
         </div>
         {d.crew.length > 0 && (

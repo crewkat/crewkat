@@ -128,7 +128,7 @@ function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: numb
   return (
     <div className="pager">
       <button type="button" className="btn btn-ghost btn-small" disabled={page <= 1} onClick={() => onPage(page - 1)}>← Prev</button>
-      <span className="muted small">Page {page} of {pages} · {total} total</span>
+      <span className="muted small">{`Page ${page} of ${pages} · ${total} total`}</span>
       <button type="button" className="btn btn-ghost btn-small" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next →</button>
     </div>
   );
@@ -171,7 +171,7 @@ function OverviewTab() {
           <div className="kpi-card"><span className="kpi-label">Total users</span><span className="kpi-value">{a.totalUsers}</span><span className="kpi-sub">+{a.newToday} today · +{a.newThisWeek} this week · +{a.newThisMonth} this month</span></div>
           <div className="kpi-card"><span className="kpi-label">Active premium</span><span className="kpi-value">{a.activePremium}</span><span className="kpi-sub">+{a.premiumToday} today · +{a.premiumThisWeek} this week</span></div>
           <div className="kpi-card"><span className="kpi-label">Est. MRR (local)</span><span className="kpi-value">{formatMoney(a.mrr)}</span><span className="kpi-sub">From subscription events, excl. lifetime</span></div>
-          <div className="kpi-card"><span className="kpi-label">Founding members</span><span className="kpi-value">{a.foundingClaimed}</span><span className="kpi-sub">{a.foundingRemaining} of 100 remaining</span></div>
+          <div className="kpi-card"><span className="kpi-label">Founding members</span><span className="kpi-value">{a.foundingClaimed}</span><span className="kpi-sub">{`${a.foundingRemaining} of 100 remaining`}</span></div>
           <div className="kpi-card"><span className="kpi-label">Churn (30d)</span><span className="kpi-value">{a.churnRate}%</span><span className="kpi-sub">{a.cancelledLast30d} cancellations</span></div>
           {g ? <div className="kpi-card"><span className="kpi-label">Signup growth WoW</span><span className="kpi-value">{g.signupGrowthWow}%</span><span className="kpi-sub">{g.wowHasBaseline ? "vs prior 7 days" : "No prior-week baseline"}</span></div> : null}
         </div>
@@ -201,7 +201,7 @@ function OverviewTab() {
           {growthQuery.isError ? <p className="inline-error">Couldn't load growth metrics.</p> : null}
           {g ? (
             <dl className="detail-list">
-              <div><dt>Premium conversion</dt><dd>{g.premiumConversionRate}% ({g.premiumTotal} premium)</dd></div>
+              <div><dt>Premium conversion</dt><dd>{`${g.premiumConversionRate}% (${g.premiumTotal} premium)`}</dd></div>
               <div><dt>Active listings</dt><dd>{g.activeListings}</dd></div>
               <div><dt>Avg messages / listing</dt><dd>{g.avgMessagesPerListing}</dd></div>
               <div><dt>Open support tickets</dt><dd>{g.supportOpenCount}</dd></div>
@@ -212,7 +212,7 @@ function OverviewTab() {
               <div className="drawer-section">
                 <h3>Marketplace</h3>
                 <dl className="detail-list">
-                  <div><dt>Listings</dt><dd>{m.listingsActive} active of {m.listingsTotal} ({m.listingsLast30d} in 30d)</dd></div>
+                  <div><dt>Listings</dt><dd>{`${m.listingsActive} active of ${m.listingsTotal} (${m.listingsLast30d} in 30d)`}</dd></div>
                   <div><dt>Need / offer</dt><dd>{m.listingsByIntent.need} / {m.listingsByIntent.offer}</dd></div>
                   <div><dt>Messages</dt><dd>{m.messagesTotal} ({m.messagesLast30d} in 30d)</dd></div>
                   <div><dt>Conversations</dt><dd>{m.conversationsTotal} · {m.listingToMessageRate}% of listings</dd></div>

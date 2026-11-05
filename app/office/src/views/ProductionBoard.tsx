@@ -117,7 +117,7 @@ export function ProductionBoard({ onOpenJob }: { onOpenJob: (jobId: number) => v
                   >
                     <div className="lead-card-top">
                       <span className="lead-name">{job.clientName}</span>
-                      {job.stuck ? <span className="stuck-flag" title={`No activity for ${job.idleDays} days`}>Stuck {job.idleDays}d</span> : null}
+                      {job.stuck ? <span className="stuck-flag" title={`No activity for ${job.idleDays} days`}>{`Stuck ${job.idleDays}d`}</span> : null}
                     </div>
                     {job.jobType ? <span className="lead-service">{job.jobType}</span> : null}
                     {job.jobAddress ? <span className="lead-source">{job.jobAddress}</span> : null}

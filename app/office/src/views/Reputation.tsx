@@ -124,7 +124,7 @@ export function ReputationView({ canDelete = false }: { canDelete?: boolean }) {
       <section className="panel">
         <div className="panel-head">
           <h2>Review requests</h2>
-          {requests.length ? <span className="muted small">{postedCount} of {requests.length} posted</span> : null}
+          {requests.length ? <span className="muted small">{`${postedCount} of ${requests.length} posted`}</span> : null}
         </div>
         {inboxQuery.isLoading ? <p className="muted">Loading…</p> : null}
         {!inboxQuery.isLoading && requests.length === 0 ? (
