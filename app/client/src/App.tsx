@@ -7153,6 +7153,7 @@ function InvoiceCardPaymentsSection({ lang, invoice, setScreen, onChanged }: { l
       <span className="card-brand-chip card-brand-discover">DISCOVER</span>
     </span>
   );
+  const proPill = <span className="card-pro-pill">PRO</span>;
   const apply = async (next: { cardPaymentsEnabled?: boolean; cardFeeEnabled?: boolean }) => {
     setBusy(true);
     try { await api.setInvoiceCardOptions({ id: invoice.id, ...next }); onChanged(); } finally { setBusy(false); }
@@ -7162,18 +7163,18 @@ function InvoiceCardPaymentsSection({ lang, invoice, setScreen, onChanged }: { l
     <section className="card-payments-section" aria-label={lang === "es" ? "Pagos con tarjeta" : "Card payments"}>
       {!data.proActive ? (
         <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "upgrade" })}>
-          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
-          <span className="card-payments-side"><span className="pro-badge">PRO</span><BackIcon /></span>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
+          <span className="card-payments-side"><BackIcon /></span>
         </button>
       ) : !connected ? (
         <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "takePayments" })}>
-          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
           <span className="card-payments-side"><small>{lang === "es" ? "Conectar Stripe" : "Connect Stripe"}</small><BackIcon /></span>
         </button>
       ) : (
         <>
           <label className="switch-row card-payments-row">
-            <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{brands}</span>
+            <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
             <Switch checked={invoice.cardPaymentsEnabled} disabled={busy} onChange={(v) => void apply({ cardPaymentsEnabled: v })} />
           </label>
           {invoice.cardPaymentsEnabled && (
