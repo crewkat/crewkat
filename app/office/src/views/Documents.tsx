@@ -52,7 +52,7 @@ function quoteStatus(q: Quote): { label: string; cls: string; group: StatusGroup
   if (q.accepted) return { label: "Accepted", cls: "signed", group: "accepted" };
   if (q.automationStatus === "lost") return { label: "Lost", cls: "overdue", group: "closed" };
   if (q.convertedToInvoiceId) return { label: "Invoiced", cls: "viewed", group: "closed" };
-  if (q.automationStatus === "won") return { label: "Won", cls: "signed", group: "accepted" };
+  if (q.automationStatus === "won") return { label: "Accepted", cls: "signed", group: "accepted" };
   if (q.sentAt) return { label: "Sent", cls: "sent", group: "sent" };
   return { label: "Draft", cls: "draft", group: "draft" };
 }
@@ -61,7 +61,7 @@ function invoiceStatus(inv: Invoice): { label: string; cls: string; group: Statu
   if (inv.status === "paid") return { label: "Paid", cls: "signed", group: "paid" };
   const overdue = inv.status === "overdue" || (inv.status === "sent" && inv.dueDate && inv.dueDate < todayIso() && parseMoney(inv.balanceRemaining) > 0);
   if (overdue) return { label: "Overdue", cls: "overdue", group: "overdue" };
-  if (inv.status === "sent") return { label: parseMoney(inv.paidToDate) > 0 ? "Sent · part paid" : "Sent", cls: "sent", group: "sent" };
+  if (inv.status === "sent") return { label: "Sent", cls: "sent", group: "sent" };
   return { label: "Draft", cls: "draft", group: "draft" };
 }
 
@@ -618,7 +618,7 @@ function TotalsBlock({ doc, extra }: { doc: Quote | Invoice; extra?: { paid: str
           <>
             <div><dt>Paid to date</dt><dd>{formatMoney(extra.paid)}</dd></div>
             {parseMoney(extra.lateFee) > 0 ? <div><dt>Late fee accrued</dt><dd>{formatMoney(extra.lateFee)}</dd></div> : null}
-            <div><dt>Balance remaining</dt><dd><strong>{formatMoney(extra.balance)}</strong></dd></div>
+            <div><dt>Balance</dt><dd><strong>{formatMoney(extra.balance)}</strong></dd></div>
           </>
         ) : null}
       </dl>

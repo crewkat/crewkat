@@ -483,7 +483,7 @@ const copy = {
     depositFixedLabel: "Fixed amount ($)",
     annotations: "Annotate",
     galleryPick: "Gallery pick",
-    amountDue: "Amount due",
+    amountDue: "Balance",
     dueDate: "Due date",
     depositAmount: "Deposit amount",
     paymentNotes: "Payment notes",
@@ -647,7 +647,7 @@ const copy = {
     partialPayments: "Payments",
     recordPayment: "Record payment",
     paidToDate: "Paid to date",
-    balanceRemaining: "Balance remaining",
+    balanceRemaining: "Balance",
     method: "Method",
     paymentDate: "Payment date",
     recurring: "Recurring",
@@ -833,7 +833,7 @@ const copy = {
     depositFixedLabel: "Monto fijo ($)",
     annotations: "Anotar",
     galleryPick: "Elegir para galería",
-    amountDue: "Saldo pendiente",
+    amountDue: "Saldo",
     dueDate: "Fecha de vencimiento",
     depositAmount: "Monto del depósito",
     paymentNotes: "Notas de pago",
@@ -997,7 +997,7 @@ const copy = {
     partialPayments: "Pagos",
     recordPayment: "Registrar pago",
     paidToDate: "Pagado",
-    balanceRemaining: "Saldo restante",
+    balanceRemaining: "Saldo",
     method: "Método",
     paymentDate: "Fecha de pago",
     recurring: "Recurrente",
@@ -10182,7 +10182,7 @@ function FinPaymentsSection({ lang, jobId, data, refresh, setScreen }: {
                         ? lang === "es" ? "Vencida" : "Overdue"
                         : m.invoiceStatus === "draft"
                           ? lang === "es" ? "Borrador" : "Draft"
-                          : lang === "es" ? "Pendiente" : "Pending"}
+                          : lang === "es" ? "Enviada" : "Sent"}
                   </span>
                 </button>
               ) : (
@@ -10397,7 +10397,7 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
     margin: lang === "es" ? "Margen" : "Margin",
     paid: lang === "es" ? "Cobrado" : "Paid",
     costsSoFar: lang === "es" ? "Costos hasta ahora" : "Costs so far",
-    balanceDue: lang === "es" ? "Saldo pendiente" : "Balance due",
+    balanceDue: lang === "es" ? "Saldo" : "Balance",
     noEstimateShort: lang === "es"
       ? "Aún no hay un estimado vinculado — el margen lo necesita."
       : "No estimate linked yet — margin needs it.",
@@ -17858,7 +17858,7 @@ function QuotePaper({
   const depositRows = depAmount > 0 ? (
     <>
       <span className="deposit-due">{lang === "es" ? "Anticipo al firmar" : "Deposit due at signing"}{depDetail}<strong>{usd(depAmount)}</strong></span>
-      <span>{lang === "es" ? "Saldo restante" : "Remaining balance"}<strong>{usd(Math.max(0, depTotalNum - depAmount))}</strong></span>
+      <span>{lang === "es" ? "Saldo" : "Balance"}<strong>{usd(Math.max(0, depTotalNum - depAmount))}</strong></span>
     </>
   ) : null;
   const logoSize = { huge: 74, big: 58, medium: 42, small: 30 }[c.logoSize];
@@ -19017,7 +19017,7 @@ function QuotePreview({
   const filename = `${safeName(quote.clientName)}-estimate-${quote.id}.pdf`;
   const refresh=async()=>{await qc.invalidateQueries({queryKey:["quotes"]});await qc.invalidateQueries({queryKey:["quote-versions",quoteId]});};
   const acceptedNow = optimisticAccepted ?? quote.accepted;
-  const status = acceptedNow || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Abierta" : "Opened") : (lang === "es" ? "Borrador" : "Draft");
+  const status = acceptedNow || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Enviada" : "Sent") : (lang === "es" ? "Borrador" : "Draft");
   const toggleAccepted = async () => {
     buzz(12);
     const next = !acceptedNow;
@@ -19247,7 +19247,7 @@ function InvoicesScreen({
           <div className="doc-strip-stats">
             {tab === "invoices" ? <>
               <span className="doc-strip-stat"><small>{lang === "es" ? "Pagado" : "Paid"}</small><strong>{usd(periodPaid)}</strong></span>
-              <span className="doc-strip-stat"><small>{lang === "es" ? "Saldo pendiente" : "Balance due"}</small><strong>{usd(periodBalance)}</strong></span>
+              <span className="doc-strip-stat"><small>{lang === "es" ? "Saldo" : "Balance"}</small><strong>{usd(periodBalance)}</strong></span>
             </> : <>
               <span className="doc-strip-stat"><small>{lang === "es" ? "Aceptado" : "Accepted"}</small><strong>{usd(periodAccepted)}</strong></span>
               <span className="doc-strip-stat"><small>{estimateWord}</small><strong>{periodQuotes.length}</strong></span>
@@ -19259,7 +19259,7 @@ function InvoicesScreen({
         {tab === "invoices" ? <>
           <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? "Buscar facturas" : "Search invoices"}</span><input value={invSearch} onChange={(e) => setInvSearch(e.target.value)} placeholder={lang === "es" ? "Buscar facturas" : "Search invoices"} aria-label={lang === "es" ? "Buscar facturas" : "Search invoices"} /></label>
           <select className="ck-btn-sm doc-filter-chip" value={invStatus} onChange={(e) => setInvStatus(e.target.value as "all" | InvoiceStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
-            <option value="all">{lang === "es" ? "Todas" : "All"}</option><option value="draft">{t.draft}</option><option value="sent">{lang === "es" ? "Pendiente" : "Pending"}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option>
+            <option value="all">{lang === "es" ? "Todas" : "All"}</option><option value="draft">{t.draft}</option><option value="sent">{lang === "es" ? "Enviada" : "Sent"}</option><option value="paid">{t.paid}</option><option value="overdue">{t.overdueStatus}</option>
           </select>
         </> : <>
           <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`}</span><input value={estSearch} onChange={(e) => setEstSearch(e.target.value)} placeholder={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} aria-label={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} /></label>
@@ -19338,7 +19338,7 @@ function InvoicesScreen({
             </span>
             <span className="ck-invoice-row-side">
               <strong className="ck-invoice-row-amount">{usd(money(invoice.totalWithLateFee))}</strong>
-              <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Pendiente" : "Pending")}</span>
+              <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{invoice.status === "paid" ? t.paid : invoice.status === "overdue" ? t.overdueStatus : invoice.status === "draft" ? t.draft : (lang === "es" ? "Enviada" : "Sent")}</span>
             </span>
             <button type="button" className={`ck-doc-chev${expanded ? " open" : ""}`} aria-label={expanded ? (lang === "es" ? "Ocultar acciones" : "Hide actions") : (lang === "es" ? "Mostrar acciones" : "Show actions")} aria-expanded={expanded} onClick={() => toggleExpand(rowKey)}><Icon size={15}><path d="m6 9 6 6 6-6" /></Icon></button>
             {expanded && <span className="ck-invoice-actions">
@@ -19365,7 +19365,7 @@ function InvoicesScreen({
               <span className="ck-est-row-l2">{quote.jobType || capFirst(estTerms.plural)} · {usd(money(quote.total))}</span>
             </span>
             <span className="ck-est-row-side">
-              <span className={`ck-pill ${quote.accepted || quote.automationStatus === "won" ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : "ck-pill-pending"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : (lang === "es" ? "Pendiente" : "Pending")}</span>
+              <span className={`ck-pill ${quote.accepted || quote.automationStatus === "won" ? "ck-pill-paid" : quote.automationStatus === "lost" ? "ck-pill-overdue" : quote.sentAt ? "ck-pill-pending" : "ck-pill-draft"}`}>{quote.accepted || quote.automationStatus === "won" ? (lang === "es" ? "Aceptada" : "Accepted") : quote.automationStatus === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quote.sentAt ? (lang === "es" ? "Enviada" : "Sent") : (lang === "es" ? "Borrador" : "Draft")}</span>
               <span className="ck-est-row-ref">#{quote.id} · v{quote.versionNumber}{quote.expiryDate ? ` · ${formatDate(quote.expiryDate, lang)}` : ""}</span>
             </span>
             <button type="button" className={`ck-doc-chev${expanded ? " open" : ""}`} aria-label={expanded ? (lang === "es" ? "Ocultar acciones" : "Hide actions") : (lang === "es" ? "Mostrar acciones" : "Show actions")} aria-expanded={expanded} onClick={() => toggleExpand(rowKey)}><Icon size={15}><path d="m6 9 6 6 6-6" /></Icon></button>
@@ -19887,7 +19887,7 @@ function InvoicePreview({
   const invoiceSchedules=(schedulesQuery.data?.schedules??[]).filter((s)=>s.invoiceId===invoiceId&&s.active);
   if(!invoice)return <main className="page"><PageHeader lang={lang} title={t.invoices} onBack={onBack}/>{query.isError?<div className="empty-state"><p>{lang === "es" ? "Esta factura ya no existe." : "This invoice no longer exists."}</p><button className="secondary-button" type="button" onClick={onBack}>{t.back}</button></div>:<div className="loading-block"/>}</main>;
   const filename=`${safeName(invoice.clientName)}-invoice-${invoice.id}.pdf`;
-  const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Abierta":"Opened"):t.draft;
+  const statusLabel=invoice.status==="paid"?t.paid:invoice.status==="overdue"?t.overdueStatus:invoice.status==="sent"?(lang==="es"?"Enviada":"Sent"):t.draft;
   // Payment actions now go through the payment sheet (details + history).
   // Build 0.4 (item 3): Send opens the send-options sheet; each option marks
   // the invoice sent first, then performs its action.
@@ -20342,7 +20342,7 @@ function ClientsScreen({
           <div className="sheet-handle"/><header><h2 id="client-sort-title">{lang === "es" ? "Ordenar" : "Sorting"}</h2><button type="button" onClick={() => { setDraftSortBy("alphabetical"); setDraftDirection("asc"); }}>{lang === "es" ? "Restablecer" : "Reset"}</button></header>
           <fieldset className="sheet-options"><legend>{lang === "es" ? "Ordenar por" : "Sorted by"}</legend>{([
             ["alphabetical", lang === "es" ? "Orden alfabético" : "Sorted alphabetically"],
-            ["balance", lang === "es" ? "Saldo pendiente" : "Sorted by balance due"],
+            ["balance", lang === "es" ? "Saldo" : "Sorted by balance"],
             ["paid", lang === "es" ? "Total pagado" : "Sorted by total paid"],
             ["invoices", lang === "es" ? "Total de facturas" : "Sorted by total invoices"],
           ] as Array<[ClientSort,string]>).map(([value,label]) => <label key={value}><input type="radio" name="client-sort" value={value} checked={draftSortBy === value} onChange={() => setDraftSortBy(value)} /><span>{label}</span><i>{draftSortBy === value && <CheckIcon/>}</i></label>)}</fieldset>
@@ -25814,7 +25814,7 @@ function TodayScreen({
                   }}
                 >
                   <Icon><path d="M4 12l5 5L20 6" /></Icon>
-                  {lang === "es" ? "Ganada" : "Won"}
+                  {lang === "es" ? "Aceptada" : "Accepted"}
                 </button>
                 <button className="qc-lost" onClick={() => setLostQuote(q.id)}>
                   <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>
@@ -26740,15 +26740,15 @@ function MonthDetail({
   const statusLabel = (status: EstimateDetail["status"]) =>
     status === "won"
       ? lang === "es"
-        ? "Ganada"
-        : "Won"
+        ? "Aceptada"
+        : "Accepted"
       : status === "lost"
         ? lang === "es"
           ? "Perdida"
           : "Lost"
         : lang === "es"
-          ? "Pendiente"
-          : "Pending";
+          ? "Enviada"
+          : "Sent";
   return (
     <div className="month-detail">
       <h3>{monthLabel(month.month, lang)}</h3>

@@ -96,7 +96,7 @@ export function ClientsView({
                   <th>Address</th>
                   <th className="num"><button type="button" className="th-btn" onClick={() => toggleSort("jobCount")}>Jobs{arrow("jobCount")}</button></th>
                   <th className="num"><button type="button" className="th-btn" onClick={() => toggleSort("totalInvoiced")}>Invoiced{arrow("totalInvoiced")}</button></th>
-                  <th className="num"><button type="button" className="th-btn" onClick={() => toggleSort("balanceDue")}>Balance due{arrow("balanceDue")}</button></th>
+                  <th className="num"><button type="button" className="th-btn" onClick={() => toggleSort("balanceDue")}>Balance{arrow("balanceDue")}</button></th>
                 </tr>
               </thead>
               <tbody>
@@ -346,7 +346,7 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
         <div className="mini-stats">
           <div><span>Invoiced</span><strong>{formatMoney(c.totalInvoiced)}</strong></div>
           <div><span>Paid</span><strong>{formatMoney(c.totalPaid)}</strong></div>
-          <div><span>Balance due</span><strong>{formatMoney(c.balanceDue)}</strong></div>
+          <div><span>Balance</span><strong>{formatMoney(c.balanceDue)}</strong></div>
           <div><span>Invoices</span><strong>{c.invoiceCount}</strong></div>
         </div>
         {c.totalInvoiced > 0 ? (

@@ -142,7 +142,7 @@ export function JobsView({
                   <th>Address</th>
                   <th>Date</th>
                   <th className="num">Contract sum</th>
-                  <th className="num">Amount due</th>
+                  <th className="num">Balance</th>
                   <th>Stage</th>
                   <th>Status</th>
                 </tr>
@@ -344,7 +344,7 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             <h3>Amounts</h3>
             <div className="mini-stats">
               <div><span>Contract sum</span><strong>{formatMoney(job.contractSum)}</strong></div>
-              <div><span>Amount due</span><strong>{formatMoney(job.amountDue)}</strong></div>
+              <div><span>Balance</span><strong>{formatMoney(job.amountDue)}</strong></div>
               <div><span>Deposit</span><strong>{formatMoney(job.depositAmount)}</strong></div>
               <div><span>Photos</span><strong>{job.photoCount}</strong></div>
             </div>
