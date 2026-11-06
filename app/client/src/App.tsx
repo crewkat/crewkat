@@ -11915,42 +11915,95 @@ function JobDetail({
     setJobSheetClosing(true);
     window.setTimeout(() => { setActiveJobSheet(null); setJobSheetClosing(false); }, 180);
   };
-  const upload = useMutation({
-    mutationFn: async ({
-      file,
-      annotatedFromId = null,
-    }: {
-      file: File;
-      annotatedFromId?: number | null;
-    }) => {
-      const compressed = await compressImageFile(file, "photo");
-      const data = await fileToBase64(compressed);
-      return api.addPhoto({
-        jobId,
-        stage,
-        caption: "",
-        filename: compressed.name,
-        contentType: compressed.type as
-          "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-        capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
-        dataBase64: data.dataBase64,
-        annotatedFromId,
-      });
-    },
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["job", jobId] });
-      client.invalidateQueries({ queryKey: ["jobs"] });
-    },
+  // Batch 5 #8: photo upload queue with auto-retry + visible sync
+  // state (HCP's Feb 2026 fix; CompanyCam's Oct 2026 complaint wave —
+  // on a jobsite, upload trust beats upload features). Picked files
+  // queue with the stage they were picked under; a sequential
+  // processor uploads them, retrying automatically with backoff and
+  // again when the device comes back online. Nothing fails silently:
+  // every unsynced photo shows its state under the upload row until
+  // it lands, is retried, or is dismissed.
+  type PhotoQueueItem = { key: number; file: File; previewUrl: string; stage: Stage; status: "queued" | "uploading" | "failed"; attempts: number };
+  const [photoQueue, setPhotoQueue] = useState<PhotoQueueItem[]>([]);
+  const photoQueueRef = useRef<PhotoQueueItem[]>([]);
+  photoQueueRef.current = photoQueue;
+  const photoQueueBusyRef = useRef(false);
+  const photoQueueKeyRef = useRef(0);
+  const processPhotoQueue = useCallback(async () => {
+    if (photoQueueBusyRef.current) return;
+    photoQueueBusyRef.current = true;
+    try {
+      for (;;) {
+        const next = photoQueueRef.current.find((i) => i.status === "queued");
+        if (!next) break;
+        setPhotoQueue((q) => q.map((i) => (i.key === next.key ? { ...i, status: "uploading" as const } : i)));
+        try {
+          const compressed = await compressImageFile(next.file, "photo");
+          const data = await fileToBase64(compressed);
+          await api.addPhoto({
+            jobId,
+            stage: next.stage,
+            caption: "",
+            filename: compressed.name,
+            contentType: compressed.type as
+              "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+            capturedAt: new Date(next.file.lastModified || Date.now()).toISOString(),
+            dataBase64: data.dataBase64,
+            annotatedFromId: null,
+          });
+          URL.revokeObjectURL(next.previewUrl);
+          setPhotoQueue((q) => q.filter((i) => i.key !== next.key));
+          client.invalidateQueries({ queryKey: ["job", jobId] });
+          client.invalidateQueries({ queryKey: ["jobs"] });
+        } catch {
+          const attempts = next.attempts + 1;
+          if (attempts >= 3) {
+            setPhotoQueue((q) => q.map((i) => (i.key === next.key ? { ...i, status: "failed" as const, attempts } : i)));
+          } else {
+            setPhotoQueue((q) => q.map((i) => (i.key === next.key ? { ...i, status: "queued" as const, attempts } : i)));
+            await new Promise((resolve) => setTimeout(resolve, attempts === 1 ? 2000 : 6000));
+          }
+        }
+      }
+    } finally {
+      photoQueueBusyRef.current = false;
+    }
+  }, [client, jobId]);
+  useEffect(() => { void processPhotoQueue(); }, [photoQueue, processPhotoQueue]);
+  useEffect(() => {
+    const onOnline = () => {
+      // Back online: uploads that gave up get another round of attempts.
+      setPhotoQueue((q) => q.map((i) => (i.status === "failed" ? { ...i, status: "queued" as const, attempts: 0 } : i)));
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
+  const retryPhoto = (key: number) => setPhotoQueue((q) => q.map((i) => (i.key === key ? { ...i, status: "queued" as const, attempts: 0 } : i)));
+  const dropPhoto = (key: number) => setPhotoQueue((q) => {
+    const item = q.find((i) => i.key === key);
+    if (item) URL.revokeObjectURL(item.previewUrl);
+    return q.filter((i) => i.key !== key);
   });
-  const files = async (e: ChangeEvent<HTMLInputElement>) => {
-    for (const file of Array.from(e.target.files ?? []))
-      if (
-        ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(
-          file.type,
-        )
-      )
-        await upload.mutateAsync({ file });
+  const photoQueuePending = photoQueue.filter((i) => i.status !== "failed").length;
+  const photoQueueFailed = photoQueue.length - photoQueuePending;
+  const files = (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []).filter((file) =>
+      ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type),
+    );
     e.target.value = "";
+    if (!picked.length) return;
+    buzz(6);
+    setPhotoQueue((q) => [
+      ...q,
+      ...picked.map((file) => ({
+        key: ++photoQueueKeyRef.current,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        stage,
+        status: "queued" as const,
+        attempts: 0,
+      })),
+    ]);
   };
   // Build 4: shared-element entrance from the tapped job row.
   const [heroRect] = useState<DOMRect | null>(() => consumeDetailHeroRect());
@@ -12209,6 +12262,28 @@ function JobDetail({
               <div className="photo-workspace">
                 <div className="stage-tabs">{(["before", "during", "after"] as const).map((s) => <button key={s} className={stage === s ? "active" : ""} onClick={() => setStage(s)}>{t[s]} <span>{query.data.photos.filter((p) => p.stage === s).length}</span></button>)}</div>
                 <div className="upload-row"><button type="button" className="camera-button" onClick={() => camera.current?.click()}><span className="camera-button-icon"><CameraIcon /></span><span>{t.camera}</span></button><button type="button" className="gallery-button" onClick={() => gallery.current?.click()}>{t.gallery}</button><input className="sr-only" ref={camera} type="file" accept="image/*" capture="environment" onChange={files} /><input className="sr-only" ref={gallery} type="file" accept="image/*" multiple onChange={files} /></div>
+                {photoQueue.length > 0 && (
+                  <div className="photo-queue">
+                    <p className="photo-queue-summary">
+                      {photoQueuePending > 0 && <span>{lang === "es" ? `Sincronizando ${photoQueuePending} ${photoQueuePending === 1 ? "foto" : "fotos"}…` : `Syncing ${photoQueuePending} ${photoQueuePending === 1 ? "photo" : "photos"}…`}</span>}
+                      {photoQueueFailed > 0 && <span className="photo-queue-failed-note">{lang === "es" ? `${photoQueueFailed} ${photoQueueFailed === 1 ? "foto falló" : "fotos fallaron"}` : `${photoQueueFailed} ${photoQueueFailed === 1 ? "photo" : "photos"} failed`}</span>}
+                    </p>
+                    <div className="photo-queue-strip">
+                      {photoQueue.map((item) => (
+                        <div key={item.key} className={`photo-queue-item is-${item.status}`}>
+                          <img src={item.previewUrl} alt="" />
+                          <span className="photo-queue-state">{item.status === "uploading" ? (lang === "es" ? "Subiendo…" : "Uploading…") : item.status === "failed" ? (lang === "es" ? "Falló" : "Failed") : (lang === "es" ? "En espera" : "Waiting")}</span>
+                          {item.status === "failed" && (
+                            <span className="photo-queue-actions">
+                              <button type="button" onClick={() => retryPhoto(item.key)}>{lang === "es" ? "Reintentar" : "Retry"}</button>
+                              <button type="button" aria-label={lang === "es" ? "Descartar" : "Dismiss"} onClick={() => dropPhoto(item.key)}>×</button>
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

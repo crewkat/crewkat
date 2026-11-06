@@ -6304,6 +6304,19 @@ button.fin-slim-button { font: inherit; color: var(--text); cursor: pointer; tex
 .proof-packet-text small { font-size: 12px; color: var(--dim); }
 .proof-packet-row .primary-button { flex: none; min-height: 40px; border-radius: 8px; font-size: 13px; padding: 0 14px; }
 .job-photo-tools .photo-workspace { margin-top: 10px; }
+/* Batch 5 #8: photo upload queue — visible sync state under the upload row. */
+.photo-queue { margin-top: 12px; display: grid; gap: 8px; }
+.photo-queue-summary { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; font-weight: 700; color: var(--dim); }
+.photo-queue-failed-note { color: var(--danger, #b3261e); }
+.photo-queue-strip { display: flex; gap: 8px; flex-wrap: wrap; }
+.photo-queue-item { position: relative; width: 76px; display: grid; gap: 3px; }
+.photo-queue-item img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.photo-queue-item.is-failed img { border-color: var(--danger, #b3261e); opacity: .75; }
+.photo-queue-item.is-uploading img { opacity: .65; }
+.photo-queue-state { font-size: 11px; font-weight: 700; color: var(--dim); text-align: center; }
+.photo-queue-item.is-failed .photo-queue-state { color: var(--danger, #b3261e); }
+.photo-queue-actions { display: flex; gap: 4px; justify-content: center; }
+.photo-queue-actions button { border: 1px solid var(--border); background: var(--surface); border-radius: 7px; font-size: 11px; font-weight: 700; padding: 3px 7px; cursor: pointer; }
 button.ba-tool-row { display: flex; align-items: center; gap: 10px; width: 100%; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
 button.ba-tool-row > svg { flex: none; color: var(--dim); transform: rotate(180deg); }
 /* Crew Log: timeline card under the chat; Send stays full-strength orange. */
