@@ -293,9 +293,9 @@ describe("Build 2.0: Danny's UI fix list", () => {
     expect(CSS).toContain(".textarea-grip-wrap");
   });
 
-  test("clients screen: slim search, edge-to-edge compressed cards, vivid avatars", () => {
+  test("clients screen: slim search, edge-to-edge compressed cards, plain avatars (theme item 6)", () => {
     expect(CSS).toContain(".clients-page .client-list");
-    expect(CSS).toContain(".client-avatar.tone-0 { background: #1f7a5c; color: #fff; }");
+    expect(CSS).toContain(".client-avatar.tone-0 { background: transparent; color: var(--text); }");
     expect(CSS).toContain("min-height: 64px");
   });
 

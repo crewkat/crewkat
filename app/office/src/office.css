@@ -221,7 +221,7 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .empty-state.small { padding: 22px 14px; }
 .empty-state p { margin: 0; max-width: 420px; }
 .empty-icon {
-  width: 44px; height: 44px; border-radius: 50%; background: var(--line-soft);
+  width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center; font-size: 19px; color: var(--navy-700);
 }
 
@@ -876,10 +876,7 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .queue-new { margin-bottom: 16px; }
 .queue-summary { margin: 0 0 8px; }
 .timeline-feed .feed-item { align-items: flex-start; }
-.timeline-dot { flex: none; width: 26px; height: 26px; border-radius: 99px; background: var(--line-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px; }
-.timeline-dot.kind-stage { background: #e4ecf7; }
-.timeline-dot.kind-automation { background: #fdf1dc; }
-.timeline-dot.kind-signed, .timeline-dot.kind-payment { background: #e2f2e8; }
+.timeline-dot { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px; }
 .automation-list { display: flex; flex-direction: column; }
 .automation-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px; border-radius: var(--radius-sm); }
 .automation-row:hover { background: #eef3f8; }
