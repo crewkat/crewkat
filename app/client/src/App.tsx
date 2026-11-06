@@ -4288,6 +4288,12 @@ function marketplaceCategoryLabel(category: MarketplaceCategory, lang: Lang) {
   return item ? item[lang] : category;
 }
 function marketplacePrice(listing: MarketplaceListing, lang: Lang) {
+  // One price format everywhere (crawl round 2): a bookable listing's
+  // price is its daily rate — "$25/day" — and every surface (Explore
+  // card, seller-profile card, detail header, aria labels) renders
+  // through this function, so no surface can drift back to a bare
+  // "$25.00" without the /day.
+  if (listing.bookable) return `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}`;
   if (listing.priceKind === "free") return lang === "es" ? "Gratis" : "Free";
   if (listing.priceKind === "contact") return lang === "es" ? "Consultar precio" : "Contact for price";
   const amount = new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(listing.price || 0));
@@ -5527,12 +5533,20 @@ function DeleteListingDialog({
 function MarketCardPhoto({ listing, lang, labels }: { listing: MarketplaceListing; lang: Lang; labels: { just: string; promoted: string; featured: string } }) {
   const [failed, setFailed] = useState(false);
   const photo = listing.photos[0];
+  const category = MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category);
+  // No-photo state (crawl round 2): the "other" category's icon is three
+  // dots, which on the beige-tinted tile read as a broken/loading "…",
+  // not a placeholder. The placeholder now names its category, and
+  // "other" borrows the generic storefront glyph instead of the dots.
+  const placeholderIcon = !category || listing.category === "other"
+    ? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>
+    : category.icon;
   return (
     <div className="market-card-photo">
       {photo && !failed ? (
         <img src={photo.url} alt={listing.title} onError={() => setFailed(true)} />
       ) : (
-        <span className="market-card-placeholder">{MARKETPLACE_CATEGORIES.find((item) => item.value === listing.category)?.icon ?? <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6"/></Icon>}</span>
+        <span className="market-card-placeholder">{placeholderIcon}<span className="market-card-placeholder-label">{marketplaceCategoryLabel(listing.category, lang)}</span></span>
       )}
       <span className="card-badges"><span className={`intent-pill ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "SE BUSCA" : "WANTED") : (lang === "es" ? "DISPONIBLE" : "AVAILABLE")}</span>{listing.justListed && <b className="just-listed-pill">{labels.just}</b>}{listing.promoted && <em className="market-promoted-badge">{labels.promoted}</em>}{listing.featured && <em className="market-featured-badge">★ {labels.featured}</em>}</span>
     </div>
@@ -5862,7 +5876,7 @@ function MarketplaceScreen({ lang, setScreen }: { lang: Lang; setScreen: (screen
       {listings.isLoading ? <div className="market-grid market-loading"><div/><div/><div/><div/></div> : visibleListings.length ? <div className="market-grid">{visibleListings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
           <MarketCardPhoto listing={listing} lang={lang} labels={text} />
-          <div className="market-card-copy"><span className="market-card-title">{listing.title}</span><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
+          <div className="market-card-copy"><span className="market-card-title">{listing.title}</span><strong className="market-price-line">{marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : (lang === "es" ? "Guardar publicación" : "Save listing")}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
       </article>)}
@@ -6201,7 +6215,7 @@ function MarketplaceProProfile({ lang, companyId, listingId, onBack, setScreen }
       {profile.listings.length ? <div className="market-grid">{profile.listings.map((listing) => <article className="market-card" key={listing.id}>
         <button className="market-card-main" onClick={() => setScreen({ name: "marketplaceDetail", listingId: listing.id })} aria-label={`${listing.title}, ${marketplacePrice(listing, lang)}`}>
           <MarketCardPhoto listing={listing} lang={lang} labels={t} />
-          <div className="market-card-copy"><span className="market-card-title">{listing.title}</span><strong className="market-price-line">{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
+          <div className="market-card-copy"><span className="market-card-title">{listing.title}</span><strong className="market-price-line">{marketplacePrice(listing, lang)}</strong><span className="market-card-category">{marketplaceCategoryLabel(listing.category, lang)}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</span></div>
         </button>
         <button className={`market-save${savedIds.includes(listing.id) ? " saved" : ""}`} onClick={() => toggleSaved(listing.id)} aria-label={savedIds.includes(listing.id) ? (lang === "es" ? "Quitar de guardados" : "Remove from saved") : t.save}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon></button>
       </article>)}</div> : <p className="muted-note">{t.noListings}</p>}
@@ -6252,7 +6266,7 @@ function MarketplaceListingDetail({ lang, listingId, onBack, onOpenThread, onEdi
   const toggle = () => { const ids = savedMarketplaceIds(); const next = ids.includes(listingId) ? ids.filter((id) => id !== listingId) : [...ids, listingId]; window.localStorage.setItem("crewkat-marketplace-saved", JSON.stringify(next)); setSaved(next.includes(listingId)); };
   return <main className="page marketplace-detail"><PageHeader lang={lang} title={lang === "es" ? "Publicación" : "Listing"} onBack={onBack}/>{query.isLoading ? <div className="loading-block"/> : !listing ? <div className="market-empty"><h2>{t.notFound}</h2></div> : <>
     <section className="market-detail-gallery">{listing.photos.length ? listing.photos.map((photo, index) => <button type="button" key={photo.id} className={`market-detail-photo${index === 0 ? " primary" : ""}`} onClick={() => { buzz(8); setLightboxIndex(index); }} aria-label={lang === "es" ? `Ver foto ${index + 1}` : `View photo ${index + 1}`}><img src={photo.url} alt={`${listing.title} ${index + 1}`} loading="lazy"/></button>) : <div className="market-detail-placeholder"><Icon size={44}><path d="M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4"/></Icon></div>}</section>
-    <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-intent ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "Se busca" : "Wanted") : (lang === "es" ? "Disponible" : "Available")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{listing.bookable ? `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}` : marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && Number(listing.originalPrice) > Number(listing.price || 0) && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div><p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
+    <section className="market-detail-main"><div className="market-detail-kickers"><span className={`inline-intent ${listing.intent}`}>{listing.intent === "need" ? (lang === "es" ? "Se busca" : "Wanted") : (lang === "es" ? "Disponible" : "Available")}</span>{listing.justListed && <span>{t.just}</span>}<small>{marketplaceCategoryLabel(listing.category, lang)}</small></div><h1>{listing.title}</h1><div className="market-price detail"><strong>{marketplacePrice(listing, lang)}</strong>{listing.originalPrice && listing.priceKind === "amount" && Number(listing.originalPrice) > Number(listing.price || 0) && <del>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.originalPrice))}</del>}</div><p className="market-detail-area"><Icon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/></Icon>{listing.serviceArea}</p><button className={`market-detail-save${saved ? " saved" : ""}`} onClick={toggle}><Icon><path d="M6 3h12v18l-6-4-6 4z"/></Icon>{saved ? t.saved : t.save}</button></section>
     {!listing.isMine && <div className={`market-contact-actions${listing.bookable ? " bookable" : ""}`}><button className="primary-button" disabled={startConvo.isPending} onClick={() => { startConvo.mutate(); }}><Icon><path d="M4 5h16v12H8l-4 4z"/></Icon>{startConvo.isPending ? t.starting : t.message}</button>{listing.bookable && <button className="primary-button" onClick={() => { setSentBooking(false); setBookingOpen(true); }}><Icon><path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8"/></Icon>{t.book}</button>}</div>}{startConvo.isError && <p className="status error">{t.startError}</p>}
     {listing.isMine && <section className="market-owner-actions" aria-label={t.manage}><button onClick={onEdit}><Icon><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></Icon>{t.edit}</button><button className="danger" onClick={() => setDeleteOpen(true)}><TrashIcon/>{t.remove}</button></section>}
     <section className="market-detail-section"><h2>{t.about}</h2><p>{listing.description || "—"}</p></section><section className="market-detail-section company"><h2>{t.company}</h2>{listing.companyName ? <strong>{listing.companyName}{listing.verified && <span className="verified-badge"><Icon><path d="M4 12l5 5L20 6" /></Icon>{lang === "es" ? "Verificado" : "Verified"}</span>}</strong> : null}{listing.companyName ? <button type="button" className="market-profile-link" onClick={onOpenProfile}>{lang === "es" ? "Ver perfil" : "View profile"}</button> : null}{!listing.isMine && (listing.contactUnlocked ? (listing.companyPhone ? <p className="market-phone">{listing.companyPhone}</p> : <p className="muted-note">{t.noPhone}</p>) : <MarketplaceContactReveal lang={lang} listingId={listingId} />)}</section>
