@@ -19255,6 +19255,7 @@ function InvoicesScreen({
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<"all" | InvoiceStatus>("all");
   const [estSearch, setEstSearch] = useState("");
+  const [estStatus, setEstStatus] = useState<"all" | "draft" | "sent" | "accepted" | "lost">("all");
   // Doc redesign (Danny approved 2026-10-24): the navy money strip leads
   // with one period total — Year (the current year's totals; the feed keeps
   // its current behavior) or a picked Month, which also narrows the feed
@@ -19287,8 +19288,15 @@ function InvoicesScreen({
   );
   const sortedQuotes = sortDocuments((quotes.data?.quotes ?? []).map((quote) => ({ ...quote, dueDate: quote.expiryDate })));
   const estTerm = estSearch.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");
+  // Crawl fix round 2: this Estimates tab had Search + New but no status
+  // filter, while the Invoices tab right beside it has one — round 1's
+  // filter landed on the standalone QuotesScreen instead. Same one-word
+  // statuses the rows already wear (Draft/Sent/Accepted/Lost).
+  const estStatusOf = (quote: (typeof sortedQuotes)[number]): "draft" | "sent" | "accepted" | "lost" =>
+    quote.accepted || quote.automationStatus === "won" ? "accepted" : quote.automationStatus === "lost" ? "lost" : quote.sentAt ? "sent" : "draft";
   const searchedQuotes = sortedQuotes.filter((quote) =>
-    !estTerm || [quote.clientName, quote.jobType, String(quote.id)].some((v) => (v ?? "").toLocaleLowerCase(lang === "es" ? "es" : "en").includes(estTerm))
+    (estStatus === "all" || estStatusOf(quote) === estStatus) &&
+    (!estTerm || [quote.clientName, quote.jobType, String(quote.id)].some((v) => (v ?? "").toLocaleLowerCase(lang === "es" ? "es" : "en").includes(estTerm)))
   );
   const estTerms = estimateTerms(lang, settings); const estimateWord = capFirst(estTerms.plural);
   const convertQuote = useMutation({ mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["quotes"] }); qc.invalidateQueries({ queryKey: ["jobs"] }); } });
@@ -19426,6 +19434,13 @@ function InvoicesScreen({
           </select>
         </> : <>
           <label className="ck-search"><Icon size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></Icon><span className="sr-only">{lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`}</span><input value={estSearch} onChange={(e) => setEstSearch(e.target.value)} placeholder={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} aria-label={lang === "es" ? `Buscar ${estTerms.plural}` : `Search ${estTerms.plural}`} /></label>
+          <select className="ck-btn-sm doc-filter-chip" value={estStatus} onChange={(e) => setEstStatus(e.target.value as typeof estStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
+            <option value="all">{lang === "es" ? "Todas" : "All"}</option>
+            <option value="draft">{lang === "es" ? "Borrador" : "Draft"}</option>
+            <option value="sent">{lang === "es" ? "Enviada" : "Sent"}</option>
+            <option value="accepted">{lang === "es" ? "Aceptada" : "Accepted"}</option>
+            <option value="lost">{lang === "es" ? "Perdida" : "Lost"}</option>
+          </select>
         </>}
         <button type="button" className="doc-new-btn" onClick={() => setScreen(tab === "invoices" ? { name: "invoiceNew" } : { name: "quoteNew" })}><Icon size={13}><path d="M12 4v16M4 12h16" /></Icon>{lang === "es" ? (tab === "invoices" ? "Nueva" : "Nuevo") : "New"}</button>
       </div>
@@ -19537,7 +19552,7 @@ function InvoicesScreen({
           </SwipeRow>
           );
         })}
-        {visibleQuotes.length === 0 && !quotes.isLoading && (quotes.data?.quotes.length ?? 0) > 0 && <p className="privacy-note">{estTerm ? (lang === "es" ? `Ningún ${estTerms.singular} coincide con la búsqueda.` : `No ${estTerms.plural} match your search.`) : (lang === "es" ? `No hay ${estTerms.plural} en ${monthLabel(monthKey)}.` : `No ${estTerms.plural} in ${monthLabel(monthKey)}.`)}</p>}
+        {visibleQuotes.length === 0 && !quotes.isLoading && (quotes.data?.quotes.length ?? 0) > 0 && <p className="privacy-note">{estTerm ? (lang === "es" ? `Ningún ${estTerms.singular} coincide con la búsqueda.` : `No ${estTerms.plural} match your search.`) : estStatus !== "all" ? (lang === "es" ? `Ningún ${estTerms.singular} coincide con el filtro.` : `No ${estTerms.plural} match this filter.`) : (lang === "es" ? `No hay ${estTerms.plural} en ${monthLabel(monthKey)}.` : `No ${estTerms.plural} in ${monthLabel(monthKey)}.`)}</p>}
         {quotes.data?.quotes.length === 0 && !quotes.isLoading && <EmptyState lang={lang} icon={<GlyphDoc />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />}
       </section>}
     </main>
