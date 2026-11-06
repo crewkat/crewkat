@@ -1946,6 +1946,17 @@ function formatDate(value: string, lang: Lang) {
 }
 // The user's calendar day in their own timezone (YYYY-MM-DD). Pass as `today`
 // to server actions that stamp user-visible dates so they never use UTC.
+/** The settled one-word invoice status vocabulary (theme item 5) for
+ *  surfaces that would otherwise print the raw stored status —
+ *  "draft" in the Crew Log timeline, the Financials invoice rows. */
+function invoiceStatusWord(status: string, lang: Lang): string {
+  if (status === "paid") return lang === "es" ? "Pagada" : "Paid";
+  if (status === "overdue") return lang === "es" ? "Vencida" : "Overdue";
+  if (status === "sent") return lang === "es" ? "Enviada" : "Sent";
+  if (status === "draft") return lang === "es" ? "Borrador" : "Draft";
+  return status;
+}
+
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA");
 }
@@ -10439,7 +10450,7 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
               <div className="money-row"><span>{t.paid}</span><strong>{usd(totalPaid)}</strong></div>
               <div className="money-row"><span>{t.balanceDue}</span><strong>{totalInvoiced > 0 ? usd(balanceDue) : "\u2014"}</strong></div>
               <div className="money-row"><span>{t.costsSoFar}</span><strong>{usd(costsSoFar)}</strong></div>
-              <div className="money-row total"><span>{t.margin}</span><strong>{hasLinkedEstimate && p ? `${usd(p.profit)} \u00b7 ${p.margin.toFixed(1)}%` : "\u2014"}</strong></div>
+              <div className="money-row total"><span>{t.margin}</span><strong>{hasLinkedEstimate && p && costsSoFar > 0 ? `${usd(p.profit)} \u00b7 ${p.margin.toFixed(1)}%` : "\u2014"}</strong></div>
             </div>
           )}
         </section>
@@ -10501,7 +10512,7 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
                 <li key={i.id}>
                   <button type="button" className="fin-invoice-row" onClick={() => setScreen({ name: "invoicePreview", invoiceId: i.id })}>
                     <strong>{i.invoiceNumber} · {usd(money(i.totalWithLateFee || i.total))}</strong>
-                    <span className={`status-chip ${i.status}`}>{i.status}</span>
+                    <span className={`status-chip ${i.status}`}>{invoiceStatusWord(i.status, lang)}</span>
                   </button>
                   {onUnlinkInvoice && (
                     <button type="button" className="unlink-button" onClick={() => onUnlinkInvoice(i.id)}>
@@ -11009,7 +11020,7 @@ function JobTimelineCard({ lang, job, quotes, invoices, documents, operations }:
   quotes.filter((x) => x.jobId === job.id).forEach((x) =>
     push(x.createdAt, lang === "es" ? "Presupuesto" : "Estimate", `${usd(money(x.total))}${x.accepted ? (lang === "es" ? " \u00b7 Aceptado" : " \u00b7 Accepted") : ""}`));
   invoices.filter((x) => x.jobId === job.id).forEach((x) =>
-    push(x.createdAt, lang === "es" ? "Factura" : "Invoice", `${x.invoiceNumber} \u00b7 ${usd(money(x.totalWithLateFee || x.total))} \u00b7 ${x.status}`));
+    push(x.createdAt, lang === "es" ? "Factura" : "Invoice", `${x.invoiceNumber} \u00b7 ${usd(money(x.totalWithLateFee || x.total))} \u00b7 ${invoiceStatusWord(x.status, lang)}`));
   documents.filter((x) => x.jobId === job.id).forEach((x) =>
     push(x.signedAt, x.kind === "contract" ? (lang === "es" ? "Contrato" : "Contract") : (lang === "es" ? "Orden de cambio" : "Change order"), x.title));
   (operations?.dailyLogs ?? []).forEach((l) =>
@@ -26458,10 +26469,13 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
   const bucketDefs = lang === "es"
     ? [{ label: "Al día", test: (d: number) => d <= 0 }, { label: "1–30 días", test: (d: number) => d > 0 && d <= 30 }, { label: "31–60 días", test: (d: number) => d > 30 && d <= 60 }, { label: "61+ días", test: (d: number) => d > 60 }]
     : [{ label: "Current", test: (d: number) => d <= 0 }, { label: "1–30 days", test: (d: number) => d > 0 && d <= 30 }, { label: "31–60 days", test: (d: number) => d > 30 && d <= 60 }, { label: "61+ days", test: (d: number) => d > 60 }];
+  // An invoice with no due date is not overdue — it belongs in Current.
+  // (It used to be filtered out of EVERY bucket while still counting in
+  // the dialog total, so the aging bars all read $0.00 — crawl A2.)
   const buckets = bucketDefs.map((def) => ({
     label: def.label,
     total: outstandingRows
-      .filter((row) => row.due && def.test(Math.floor((today.getTime() - new Date(`${row.due}T00:00:00`).getTime()) / 86400000)))
+      .filter((row) => def.test(row.due ? Math.floor((today.getTime() - new Date(`${row.due}T00:00:00`).getTime()) / 86400000) : -1))
       .reduce((sum, row) => sum + row.balance, 0),
   }));
   const weekRows = outstandingRows

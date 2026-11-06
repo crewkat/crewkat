@@ -70,6 +70,30 @@ export function JobsView({
     queryKey: ["jobs", debounced],
     queryFn: () => api.listJobs({ search: debounced }),
   });
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const boardQuery = useQuery({ queryKey: ["production-board"], queryFn: () => api.getProductionBoard({}) });
+  // The list's money columns resolve the way every other surface does.
+  // The raw job-row fields read "—"/$0 for any job whose contract lives
+  // in a signed contract document or whose balance lives in its
+  // invoices (crawl A4): Contract comes from the board's resolved
+  // contract (contract summary incl. signed change orders), Balance
+  // from the job's invoice balances — the stored amountDue stays the
+  // fallback for jobs with no invoices yet (a converted quote carries
+  // its total there until it is invoiced).
+  const contractByJob = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const bj of boardQuery.data?.jobs ?? []) map.set(bj.id, parseMoney(bj.contractSum));
+    return map;
+  }, [boardQuery.data]);
+  const balanceByJob = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const inv of invoicesQuery.data?.invoices ?? []) {
+      if (inv.jobId != null) map.set(inv.jobId, (map.get(inv.jobId) ?? 0) + parseMoney(inv.balanceRemaining));
+    }
+    return map;
+  }, [invoicesQuery.data]);
+  const contractFor = (j: Job) => contractByJob.get(j.id) ?? parseMoney(j.contractSum);
+  const balanceFor = (j: Job) => (balanceByJob.has(j.id) ? balanceByJob.get(j.id)! : parseMoney(j.amountDue));
   const jobs = useMemo(() => jobsQuery.data?.jobs ?? [], [jobsQuery.data]);
   const filtered = useMemo(
     () => jobs.filter((j) => statusFilter === "all" || (statusFilter === "completed" ? !!j.completedAt : !j.completedAt)),
@@ -154,8 +178,8 @@ export function JobsView({
                     <td>{j.jobType || "—"}</td>
                     <td className="cell-address">{j.jobAddress || "—"}</td>
                     <td>{formatDate(j.jobDate)}</td>
-                    <td className="num">{parseMoney(j.contractSum) > 0 ? formatMoney(j.contractSum) : "—"}</td>
-                    <td className="num">{parseMoney(j.amountDue) > 0 ? <span className="overdue">{formatMoney(j.amountDue)}</span> : formatMoney(0)}</td>
+                    <td className="num">{contractFor(j) > 0 ? formatMoney(contractFor(j)) : "—"}</td>
+                    <td className="num">{balanceFor(j) > 0 ? <span className="overdue">{formatMoney(balanceFor(j))}</span> : formatMoney(0)}</td>
                     <td><span className={`stage-pill stage-${j.productionStage}`}>{PRODUCTION_STAGE_LABELS[j.productionStage]}</span></td>
                     <td><span className={`status-pill${j.completedAt ? " done" : ""}`}>{j.completedAt ? "Completed" : "Active"}</span></td>
                   </tr>
@@ -343,8 +367,8 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
           <section className="drawer-section">
             <h3>Amounts</h3>
             <div className="mini-stats">
-              <div><span>Contract sum</span><strong>{formatMoney(job.contractSum)}</strong></div>
-              <div><span>Balance</span><strong>{formatMoney(job.amountDue)}</strong></div>
+              <div><span>Contract sum</span><strong>{formatMoney(data?.contractSummary ? data.contractSummary.revisedTotal : job.contractSum)}</strong></div>
+              <div><span>Balance</span><strong>{formatMoney(jobInvoices.length > 0 ? jobInvoices.reduce((s, inv) => s + parseMoney(inv.balanceRemaining), 0) : job.amountDue)}</strong></div>
               <div><span>Deposit</span><strong>{formatMoney(job.depositAmount)}</strong></div>
               <div><span>Photos</span><strong>{job.photoCount}</strong></div>
             </div>
