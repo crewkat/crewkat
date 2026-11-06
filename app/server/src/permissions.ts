@@ -68,7 +68,7 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "startListingBumpCheckout", "verifyPlaySubscription", "refreshPlaySubscription",
   "exportBackup", "restoreBackup", "verifyBackupRoundTrip",
   "getBackupStatus", "runAutomatedBackup", "deleteClient", "mergeClients",
-  "deleteLead", "deleteBusinessExpense", "deleteMaterialCost",
+  "deleteLead", "deleteBusinessExpense",
   "deletePriceBookItem", "deleteQuoteTemplate", "deleteSubcontractor",
   "deleteMileageTrip", "deleteFieldTestRecord", "loadSampleData",
   // All deletes are Admin-only (Danny 2026-10-24): the working-record
@@ -140,7 +140,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   // Invoice Fly import: the reverse flow of the exports — same Office
   // surface, same seeMoney family membership below.
   "previewInvoiceFlyImport", "runInvoiceFlyImport",
-  "listBidBoard", "listLeads", "listMaterialCosts",
+  "listBidBoard", "listLeads",
   "listRecurringSchedules", "listShareImages", "listSubcontractors",
   "markMarketplaceConversationRead", "marketplaceConversation", "marketplaceConversations",
   "moveBidBoardItem", "prepareLeadQuote", "processRecurringInvoices",
@@ -148,7 +148,7 @@ export const OFFICE_ACTIONS: ReadonlySet<string> = new Set([
   "reopenJob", "revokePortalLink", "rotatePortalLink",
   "saveBidBoardItem", "saveBusinessExpense", "saveCredential",
   "saveDocumentDesignDefault", "saveInternalNote", "saveLead",
-  "saveMaintenancePlan", "saveMaterialCost", "saveMileageTrip",
+  "saveMaintenancePlan", "saveMileageTrip",
   "saveMilestone", "savePriceBookItem", "saveQuoteTemplate",
   "saveSelection", "saveShareImage", "saveSlideshowVideo",
   "saveSubcontractor", "saveSupplier", "saveSupplierQuote",

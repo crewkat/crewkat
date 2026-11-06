@@ -33314,9 +33314,9 @@ function ClientPortalScreen({ lang, token }: { lang: Lang; token: string }) {
 // ---------------------------------------------------------------------------
 
 const PUBLIC_TOOL_ORDER: ToolboxTab[] = [
-  "loan", "materials", "angle", "convert", "area", "yards", "board", "drywall",
+  "loan", "angle", "convert", "area", "yards", "board", "drywall",
   "roofing", "tile", "margin", "paint", "flooring", "fence", "block", "gravel",
-  "stairs", "insulation", "gutter", "rate", "punchlist",
+  "stairs", "insulation", "gutter", "rate",
 ];
 
 const PUBLIC_TOOL_META: Record<ToolboxTab, { en: string; es: string; blurbEn: string; blurbEs: string; icon: string }> = {
@@ -33446,7 +33446,6 @@ function PublicToolsScreen({ slug }: { slug: string }) {
       </section>
       <section className="public-tool-body" aria-label={meta[lang]}>
         {tool === "loan" && <LoanCalculator lang={lang} />}
-        {tool === "materials" && <MaterialReference lang={lang} />}
         {tool === "angle" && <AngleCalculator lang={lang} />}
         {tool === "convert" && <UnitConverter lang={lang} />}
         {tool === "area" && <AreaCalculator lang={lang} />}
@@ -33465,7 +33464,6 @@ function PublicToolsScreen({ slug }: { slug: string }) {
         {tool === "insulation" && <InsulationCalculator lang={lang} />}
         {tool === "gutter" && <GutterCalculator lang={lang} />}
         {tool === "rate" && <RateBuilderCalculator lang={lang} />}
-        {tool === "punchlist" && <PunchListPanel lang={lang} />}
       </section>
       {cta}
       <section className="public-more-tools" aria-label={lang === "es" ? "Más calculadoras" : "More calculators"}>
@@ -33889,158 +33887,6 @@ function LoanCalculator({ lang }: { lang: Lang }) {
         </table>
       </div>
       <ResultHistory lang={lang} tool="loan" value={`${lang === "es" ? "Pago mensual" : "Monthly payment"}: ${usd(payment)} · ${lang === "es" ? "Interés" : "Interest"}: ${usd(interest)}`} />
-    </section>
-  );
-}
-type MaterialDraft = {
-  id: number | null;
-  nameEn: string;
-  nameEs: string;
-  unitEn: string;
-  unitEs: string;
-  price: string;
-};
-function MaterialReference({ lang }: { lang: Lang }) {
-  const qc = useQueryClient();
-  const q = useQuery({
-    queryKey: ["material-costs"],
-    queryFn: () => api.listMaterialCosts({}),
-  });
-  const empty: MaterialDraft = {
-    id: null,
-    nameEn: "",
-    nameEs: "",
-    unitEn: "",
-    unitEs: "",
-    price: "",
-  };
-  const [draft, setDraft] = useState<MaterialDraft | null>(null);
-  const save = useMutation({
-    mutationFn: (d: MaterialDraft) => api.saveMaterialCost(d),
-    onSuccess: () => {
-      setDraft(null);
-      qc.invalidateQueries({ queryKey: ["material-costs"] });
-    },
-  });
-  return (
-    <section className="calculator-panel">
-      <div className="section-heading">
-        <div>
-          <h2>
-            {lang === "es"
-              ? "Referencia de materiales"
-              : "Material cost reference"}
-          </h2>
-          <p>
-            {lang === "es"
-              ? "Precios editables para planificar. Verifique antes de cotizar."
-              : "Editable planning prices. Verify before quoting."}
-          </p>
-        </div>
-        <button className="primary-button" onClick={() => setDraft(empty)}>
-          <PlusIcon />
-          {lang === "es" ? "Material" : "Material"}
-        </button>
-      </div>
-      {q.data?.lastUpdated && (
-        <p className="updated-stamp">
-          {lang === "es" ? "Actualizado" : "Updated"}:{" "}
-          {formatDate(q.data.lastUpdated.slice(0, 10), lang)}
-        </p>
-      )}
-      {draft && (
-        <form
-          className="compact-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate(draft);
-          }}
-        >
-          <div className="field-pair">
-            <label>
-              <span>{lang === "es" ? "Nombre en inglés" : "English name"}</span>
-              <input
-                required
-                value={draft.nameEn}
-                onChange={(e) => setDraft({ ...draft, nameEn: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>
-                {lang === "es" ? "Nombre en español" : "Spanish name"}
-              </span>
-              <input
-                required
-                value={draft.nameEs}
-                onChange={(e) => setDraft({ ...draft, nameEs: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>{lang === "es" ? "Unidad en inglés" : "English unit"}</span>
-              <input
-                required
-                value={draft.unitEn}
-                onChange={(e) => setDraft({ ...draft, unitEn: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>
-                {lang === "es" ? "Unidad en español" : "Spanish unit"}
-              </span>
-              <input
-                required
-                value={draft.unitEs}
-                onChange={(e) => setDraft({ ...draft, unitEs: e.target.value })}
-              />
-            </label>
-          </div>
-          <NumInput
-            label={lang === "es" ? "Precio" : "Price"}
-            value={draft.price}
-            onChange={(v) => setDraft({ ...draft, price: v })}
-          />
-          <div className="row-actions">
-            <button className="primary-button">
-              {lang === "es" ? "Guardar" : "Save"}
-            </button>
-            <button type="button" onClick={() => setDraft(null)}>
-              {lang === "es" ? "Cancelar" : "Cancel"}
-            </button>
-          </div>
-        </form>
-      )}
-      <div className="material-list">
-        {q.data?.items.map((i) => (
-          <article className="tool-record" key={i.id}>
-            <span>
-              <strong>{lang === "es" ? i.nameEs : i.nameEn}</strong>
-              <small>{lang === "es" ? i.unitEs : i.unitEn}</small>
-            </span>
-            <b>{usd(money(i.price))}</b>
-            <div className="row-actions">
-              <button
-                aria-label={
-                  lang === "es" ? `Editar ${i.nameEs}` : `Edit ${i.nameEn}`
-                }
-                onClick={() => setDraft({ ...i, id: i.id })}
-              >
-                {lang === "es" ? "Editar" : "Edit"}
-              </button>
-              <button
-                aria-label={
-                  lang === "es" ? `Eliminar ${i.nameEs}` : `Delete ${i.nameEn}`
-                }
-                onClick={async () => {
-                  await api.deleteMaterialCost({ id: i.id });
-                  qc.invalidateQueries({ queryKey: ["material-costs"] });
-                }}
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
     </section>
   );
 }
@@ -34616,35 +34462,4 @@ function RateBuilderCalculator({ lang }: { lang: Lang }) {
   return <section className="calculator-panel"><h2>{lang === "es" ? "Tarifa facturable" : "Billable rate builder"}</h2><p>{lang === "es" ? "Convierte salarios y gastos en tarifa por hora." : "Turn wages and costs into an hourly rate."}</p><div className="field-pair"><NumInput label={lang === "es" ? "Salario por hora ($)" : "Hourly wage ($)"} value={wages} onChange={setWages}/><NumInput label={lang === "es" ? "Cargas laborales %" : "Labor burden %"} value={burden} onChange={setBurden}/><NumInput label={lang === "es" ? "Gastos generales por hora ($)" : "Overhead per hour ($)"} value={overhead} onChange={setOverhead}/><NumInput label={lang === "es" ? "Ganancia %" : "Profit %"} value={profit} onChange={setProfit}/></div><div className="calculator-results"><div><span>{lang === "es" ? "Costo real por hora" : "True cost per hour"}</span><strong>{usd(trueCost)}</strong></div><div><span>{lang === "es" ? "Tarifa facturable" : "Billable rate"}</span><strong>{usd(rate)}</strong></div><div><span>{lang === "es" ? "Ganancia por hora" : "Profit per hour"}</span><strong>{usd(profitPerHr)}</strong></div></div><ResultHistory lang={lang} tool="rate" value={`${lang === "es" ? "Tarifa" : "Rate"}: ${result}`}/></section>;
 }
 
-function PunchListPanel({ lang }: { lang: Lang }) {
-  const client = useQueryClient();
-  const [jobId, setJobId] = useState("");
-  const [text, setText] = useState("");
-  const jobsQuery = useQuery({ queryKey: ["jobs", "punchlist-picker"], queryFn: () => api.listJobs({ search: "" }) });
-  const itemsQuery = useQuery({
-    queryKey: ["punch-items", jobId],
-    queryFn: () => api.listPunchItems({ jobId: Number(jobId) }),
-    enabled: !!jobId,
-  });
-  const invalidate = () => client.invalidateQueries({ queryKey: ["punch-items", jobId] });
-  const add = useMutation({
-    mutationFn: () => api.addPunchItem({ jobId: Number(jobId), text }),
-    onSuccess: () => { setText(""); invalidate(); },
-  });
-  const toggle = useMutation({
-    mutationFn: ({ id, completed }: { id: number; completed: boolean }) => api.togglePunchItem({ id, completed }),
-    onSuccess: invalidate,
-  });
-  const remove = useMutation({
-    mutationFn: (id: number) => api.deletePunchItem({ id }),
-    onSuccess: invalidate,
-  });
-  const items = itemsQuery.data?.items ?? [];
-  const doneCount = items.filter((i) => i.completed).length;
-  // Build0.3: the saved/copied result is the actual list, not just the counter.
-  const listCopy = items.length
-    ? [`${lang === "es" ? "Lista de pendientes" : "Punch list"} (${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"})`, ...items.map((i) => `${i.completed ? "✓" : "□"} ${i.text}`)].join("\n")
-    : "";
-  return <section className="calculator-panel"><h2>{lang === "es" ? "Lista de pendientes" : "Punch list"}</h2><p>{lang === "es" ? "Elige un trabajo y lleva la cuenta de los pendientes." : "Pick a job and track its punch items."}</p><div className="field-pair"><label><span>{lang === "es" ? "Trabajo" : "Job"}</span><select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">{lang === "es" ? "Seleccione" : "Choose"}</option>{jobsQuery.data?.jobs.map((j) => <option key={j.id} value={j.id}>{j.clientName} · {j.jobType}</option>)}</select></label></div>{jobId && <><div className="punch-add"><input value={text} onChange={(e) => setText(e.target.value)} placeholder={lang === "es" ? "Agregar pendiente…" : "Add a punch item…"} maxLength={500}/><button type="button" className="primary-button" disabled={!text.trim() || add.isPending} onClick={() => add.mutate()}><PlusIcon />{lang === "es" ? "Agregar" : "Add"}</button></div><p className="result-callout">{doneCount} / {items.length} {lang === "es" ? "completados" : "done"}</p><div className="punch-list">{items.map((item) => <article key={item.id} className={item.completed ? "punch-done" : ""}><button type="button" aria-label={item.completed ? (lang === "es" ? "Marcar pendiente" : "Mark open") : (lang === "es" ? "Marcar completado" : "Mark done")} onClick={() => toggle.mutate({ id: item.id, completed: !item.completed })}><CheckIcon /></button><span>{item.text}</span><button type="button" aria-label={lang === "es" ? "Eliminar pendiente" : "Delete punch item"} onClick={() => remove.mutate(item.id)}><TrashIcon /></button></article>)}</div>{items.length === 0 && <p>{lang === "es" ? "No hay pendientes todavía. Agrega el primero arriba." : "No punch items yet. Add the first one above."}</p>}</>}<ResultHistory lang={lang} tool="punchlist" value={listCopy || `${doneCount}/${items.length} ${lang === "es" ? "completados" : "done"}`}/></section>;
-}
 
