@@ -166,3 +166,105 @@ export function buildSummaryPolishAiPrompt(args: {
       ].join("\n");
   return { system: SUMMARY_SYSTEM[args.lang], user };
 }
+
+// ---------------------------------------------------------------------------
+// Weekly client update (Batch 5 #7 — Buildertrend's AI Client Updates
+// shape: one week back, one week forward). The TEMPLATE below is the
+// feature: it assembles the draft from the job's real week with no AI
+// involved. When the AI hookup is live, the prompt at the bottom asks
+// the provider to polish the template — same facts, same order, same
+// two-part structure, cleaner prose only (the summary rules above).
+// ---------------------------------------------------------------------------
+
+export type WeeklyUpdateFacts = {
+  lang: AiLang;
+  clientName: string;
+  jobType: string;
+  companyName: string;
+  /** Work lines from the past 7 days (daily logs + sent updates). */
+  doneLines: string[];
+  /** Progress photos added in the past 7 days. */
+  photoCount: number;
+  /** Upcoming appointments in the next 7 days, pre-formatted lines. */
+  upcomingLines: string[];
+};
+
+export function buildWeeklyUpdateTemplate(facts: WeeklyUpdateFacts): string {
+  const es = facts.lang === "es";
+  const lines: string[] = [];
+  lines.push(es ? `Hola ${facts.clientName || "qué tal"},` : `Hi ${facts.clientName || "there"},`);
+  lines.push("");
+  lines.push(es
+    ? `Aquí está el resumen semanal de su proyecto (${facts.jobType || "su trabajo"}):`
+    : `Here's your weekly update on the ${facts.jobType || "project"}:`);
+  lines.push("");
+  lines.push(es ? "Esta semana:" : "This past week:");
+  if (facts.doneLines.length) {
+    for (const line of facts.doneLines.slice(0, 8)) lines.push(`• ${line}`);
+  } else {
+    lines.push(es ? "• El trabajo continuó en el proyecto." : "• Work continued on the project.");
+  }
+  if (facts.photoCount > 0) {
+    lines.push(es
+      ? `• Se agregaron ${facts.photoCount} ${facts.photoCount === 1 ? "foto nueva" : "fotos nuevas"} del progreso.`
+      : `• ${facts.photoCount} new progress ${facts.photoCount === 1 ? "photo was" : "photos were"} added.`);
+  }
+  lines.push("");
+  lines.push(es ? "La próxima semana:" : "Coming up next week:");
+  if (facts.upcomingLines.length) {
+    for (const line of facts.upcomingLines.slice(0, 5)) lines.push(`• ${line}`);
+  } else {
+    lines.push(es ? "• Confirmaremos el horario de la próxima semana muy pronto." : "• We'll confirm next week's schedule shortly.");
+  }
+  lines.push("");
+  lines.push(es ? "¿Preguntas? Responda a este mensaje cuando quiera." : "Questions? Just reply to this message anytime.");
+  lines.push("");
+  lines.push(es ? "Gracias," : "Thanks,");
+  lines.push(facts.companyName);
+  return lines.join("\n");
+}
+
+const WEEKLY_SYSTEM: Record<AiLang, string> = {
+  en: [
+    "You polish a contractor's weekly progress update to a homeowner.",
+    "Rules you must follow:",
+    "- Use ONLY the facts in the draft. Never invent work performed, dates, prices, deadlines, or promises that are not stated.",
+    "- Keep the two-part structure (this past week / coming up next week), the same items in the same order. Cleaner prose only — nothing added, nothing dropped.",
+    "- Write in a professional, plain, friendly tone. No hype.",
+    "- Write in English. Return ONLY the polished update text, no subject line, no markdown.",
+  ].join("\n"),
+  es: [
+    "Pules el resumen semanal de progreso que un contratista envía al dueño de la vivienda.",
+    "Reglas que debes seguir:",
+    "- Usa SOLO los datos del borrador. Nunca inventes trabajo realizado, fechas, precios, plazos ni promesas que no estén indicados.",
+    "- Mantén la estructura en dos partes (esta semana / la próxima semana), los mismos puntos en el mismo orden. Solo prosa más limpia — nada agregado, nada eliminado.",
+    "- Escribe con un tono profesional, sencillo y amable. Sin exageraciones.",
+    "- Escribe en español. Devuelve SOLO el texto pulido del resumen, sin asunto y sin markdown.",
+  ].join("\n"),
+};
+
+export function buildWeeklyUpdateAiPrompt(args: {
+  lang: AiLang;
+  jobType: string;
+  clientName: string;
+  template: string;
+}): { system: string; user: string } {
+  const user = args.lang === "es"
+    ? [
+        `Trabajo: ${args.jobType || "Proyecto"}${args.clientName ? ` para ${args.clientName}` : ""}`,
+        "",
+        "Borrador:",
+        `"""${args.template.trim()}"""`,
+        "",
+        "Devuelve el resumen pulido ahora.",
+      ].join("\n")
+    : [
+        `Job: ${args.jobType || "Project"}${args.clientName ? ` for ${args.clientName}` : ""}`,
+        "",
+        "Draft:",
+        `"""${args.template.trim()}"""`,
+        "",
+        "Return the polished update now.",
+      ].join("\n");
+  return { system: WEEKLY_SYSTEM[args.lang], user };
+}

@@ -23413,6 +23413,20 @@ function ProgressUpdate({
       setSelected([]);
     },
   });
+  // Batch 5 #7: weekly update draft (look-back + look-ahead) — fills
+  // the composer; the contractor reviews/edits, then saves or sends
+  // through the normal buttons. Nothing auto-sends.
+  const [weeklyNote, setWeeklyNote] = useState("");
+  const weekly = useMutation({
+    mutationFn: () => api.draftWeeklyClientUpdate({ jobId: job?.id ?? 0, lang }),
+    onSuccess: (r) => {
+      setNote(r.text);
+      setWeeklyNote(r.source === "ai"
+        ? (lang === "es" ? "Borrador listo — revísalo y edítalo antes de enviar." : "Draft ready — review and edit it before sending.")
+        : (lang === "es" ? "Borrador listo (plantilla) — revísalo y edítalo antes de enviar." : "Draft ready (template) — review and edit it before sending."));
+    },
+    onError: () => setWeeklyNote(lang === "es" ? "No se pudo redactar el resumen." : "Could not draft the update."),
+  });
   const remove = useMutation({
     mutationFn: (id: number) => api.deleteProgressUpdate({ id }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["job", job?.id] }),
@@ -23445,6 +23459,12 @@ function ProgressUpdate({
             onChange={(e) => setDay(Number(e.target.value) || 1)}
           />
         </label>
+        <div className="weekly-draft-row">
+          <button type="button" className="secondary-button" disabled={weekly.isPending} onClick={() => weekly.mutate()}>
+            {weekly.isPending ? (lang === "es" ? "Redactando…" : "Drafting…") : (lang === "es" ? "Redactar resumen semanal" : "Draft weekly update")}
+          </button>
+          {weeklyNote && <span className="status success">{weeklyNote}</span>}
+        </div>
         <label>
           <span>{t.updateNote}</span>
           <textarea

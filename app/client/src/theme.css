@@ -406,6 +406,9 @@ fieldset { padding: 0; border: 0; }
 .legal-note strong { color:var(--green); }
 .legal-note p { margin:6px 0 0; color:var(--dim); font-size:13px; }
 .tool-form { display:grid; gap:13px; padding:16px 0; }
+/* Batch 5 #7: weekly-update draft row in the progress composer. */
+.weekly-draft-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.weekly-draft-row .status { margin: 0; }
 .tool-form label, .eta-field { display:grid; gap:5px; }
 .tool-form label > span, .eta-field span { color:var(--dim); font-size:12px; font-weight:800; }
 .tool-form input, .tool-form textarea, .eta-field input { min-height:44px; padding:9px 12px; }

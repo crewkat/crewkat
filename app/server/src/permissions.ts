@@ -263,7 +263,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   // owner / Office active-or-founding) and the monthly cap are
   // enforced in the handlers, not by role; the Promotions AI writer
   // rides generateCampaignContent (Office-classified with Promotions).
-  "getAiAvailability", "previewWorkSummary", "polishWorkSummary",
+  "getAiAvailability", "previewWorkSummary", "polishWorkSummary", "draftWeeklyClientUpdate",
   // Job loads (0095): field working surface like daily logs — the crew
   // on site logs the dump run (with its "logged by" attestation) from
   // either client; the linked expense posts inside the handler through
