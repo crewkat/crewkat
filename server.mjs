@@ -668,7 +668,7 @@ const OFFICE_DIST = join(APP_DIR, "office/dist");
 
 const MARKETING_DIST = join(CLIENT_DIST, "marketing");
 
-async function sendFile(res, filePath, cacheControl) {
+async function sendFile(res, filePath, cacheControl, status = 200) {
   const bytes = await readFile(filePath);
   const headers = {
     "content-type": mimeFor(filePath),
@@ -676,7 +676,7 @@ async function sendFile(res, filePath, cacheControl) {
     "x-content-type-options": "nosniff",
   };
   if (cacheControl) headers["cache-control"] = cacheControl;
-  res.writeHead(200, headers);
+  res.writeHead(status, headers);
   res.end(bytes);
 }
 
@@ -717,8 +717,8 @@ async function serveStatic(res, urlPath) {
   }
   // Phase 1 marketing feature pages (2026-10-18): one static HTML file per
   // feature in the marketing dir, Invoice Fly-style. Explicit routes are
-  // required — unknown paths fall back to the marketing homepage below, which
-  // would soft-duplicate it for crawlers.
+  // required — unknown paths get the real 404 below, never a homepage
+  // soft-duplicate for crawlers.
   const marketingPage = /^\/(pricing|invoicing|estimates|contracts|jobs|clients|marketplace)\/?$/.exec(urlPath);
   if (marketingPage) {
     return sendFile(res, join(MARKETING_DIST, `${marketingPage[1]}.html`));
@@ -833,8 +833,12 @@ async function serveStatic(res, urlPath) {
     res.end();
     return;
   }
-  // Unknown paths fall back to the marketing site.
-  return sendFile(res, join(MARKETING_DIST, "index.html"));
+  // Unknown paths: a real 404 (Batch 4, 2026-11-06). Every legitimate
+  // surface is matched above or earlier in the request handler — the SPA
+  // shells (/app/*, /office/*, /tools/*), the token routes (/d/, /p/,
+  // /lead/, /u/, /doc/<token>/pdf), /blobs/*, and the API/webhook POSTs —
+  // so anything reaching this line is a path that does not exist.
+  return sendFile(res, join(MARKETING_DIST, "404.html"), undefined, 404);
 }
 
 async function serveBlob(res, urlPath) {
@@ -1114,7 +1118,7 @@ const server = createServer(async (req, res) => {
           const meta = await documentLinkMeta(rows.rows[0]);
           const title = escapeHtmlAttr(meta.title);
           const description = escapeHtmlAttr(meta.description);
-          const image = escapeHtmlAttr(`${base}/marketing/og-image-v2.jpg`);
+          const image = escapeHtmlAttr(`${base}/marketing/og-image.jpg`);
           const html =
             `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
             `<title>${title}</title>` +
