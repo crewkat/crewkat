@@ -28314,6 +28314,27 @@ function OperationsScreen({
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+  // Batch 5 #5: bulk shift — move a whole day's appointments together
+  // (weather weeks) via the bulkShiftAppointments action.
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [shiftDays, setShiftDays] = useState(1);
+  const [shiftNote, setShiftNote] = useState("");
+  const bulkShift = useMutation({
+    mutationFn: () => api.bulkShiftAppointments({ date: focusDate, days: shiftDays }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["appointments"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      if (r.moved > 0) {
+        setShiftNote(lang === "es"
+          ? `Se ${r.moved === 1 ? "movió 1 cita" : `movieron ${r.moved} citas`} al ${formatDate(r.newDate, lang)}.`
+          : `Moved ${r.moved} ${r.moved === 1 ? "appointment" : "appointments"} to ${formatDate(r.newDate, lang)}.`);
+        setFocusDate(r.newDate);
+      } else {
+        setShiftNote(lang === "es" ? "No hay citas para mover ese día." : "No appointments to move on that day.");
+      }
+    },
+    onError: () => setShiftNote(lang === "es" ? "No se pudieron mover las citas." : "Could not shift the appointments."),
+  });
   const saveLead = useMutation({
     mutationFn: () => api.saveLead(lead),
     onSuccess: () => {
@@ -28422,6 +28443,27 @@ function OperationsScreen({
               </>
             )}
           </div>
+          )}
+          {view !== "board" && (
+            <div className="bulk-shift">
+              <button type="button" className="small-button" onClick={() => { setShiftOpen(!shiftOpen); setShiftNote(""); }}>
+                {lang === "es" ? "Mover el día" : "Shift day"}
+              </button>
+              {shiftOpen && (
+                <div className="bulk-shift-panel">
+                  <span>{lang === "es" ? `Mover todas las citas del ${formatDate(focusDate, lang)}:` : `Move all appointments on ${formatDate(focusDate, lang)}:`}</span>
+                  <select value={shiftDays} onChange={(e) => setShiftDays(Number(e.target.value))} aria-label={lang === "es" ? "Días a mover" : "Days to shift"}>
+                    {[-7, -3, -2, -1, 1, 2, 3, 7].map((d) => (
+                      <option key={d} value={d}>{`${d > 0 ? "+" : ""}${d} ${Math.abs(d) === 1 ? (lang === "es" ? "día" : "day") : (lang === "es" ? "días" : "days")}`}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="primary-button" disabled={bulkShift.isPending} onClick={() => bulkShift.mutate()}>
+                    {bulkShift.isPending ? (lang === "es" ? "Moviendo…" : "Shifting…") : (lang === "es" ? "Mover" : "Shift")}
+                  </button>
+                </div>
+              )}
+              {shiftNote && <p className="status success">{shiftNote}</p>}
+            </div>
           )}
           {showAppointment && view !== "board" && (
             <form
@@ -28576,7 +28618,7 @@ function OperationsScreen({
             </form>
           )}
           {view === "board" ? (
-            <DispatchBoard lang={lang} onExitBoard={() => setView("week")} onOpenJob={(jobId) => setScreen({ name: "detail", jobId })} />
+            <DispatchBoard lang={lang} onExitBoard={() => setView("week")} onOpenJob={(jobId) => setScreen({ name: "detail", jobId })} signature={companySignature(settings)} />
           ) : (
           <section className="calendar-list">
             {visible.map((a) => (
@@ -29108,6 +29150,7 @@ function AppointmentSheet({
   hasShareLink,
   onClose,
   onSaved,
+  signature = "",
 }: {
   lang: Lang;
   initial: AppointmentForm;
@@ -29115,10 +29158,16 @@ function AppointmentSheet({
   hasShareLink: boolean;
   onClose: () => void;
   onSaved: () => void;
+  signature?: string;
 }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(initial);
   const [prevStatus] = useState(initial.status);
+  // Batch 5 #5: when an existing appointment's date/time actually moved,
+  // saving swaps the form for a "notify the client?" prompt (draft text
+  // via the user's own messaging app — nothing auto-sends).
+  const [initialStartsAt] = useState(initial.startsAt);
+  const [movedNotice, setMovedNotice] = useState(false);
   const [prevEta] = useState(
     initial.etaMinutes.trim() === "" ? null : Number(initial.etaMinutes),
   );
@@ -29180,7 +29229,12 @@ function AppointmentSheet({
       buzz(10);
       qc.invalidateQueries({ queryKey: ["appointments"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      onSaved();
+      // Reschedule? Offer the notify prompt instead of closing silently.
+      if (initial.id != null && initialStartsAt.slice(0, 16) !== form.startsAt) {
+        setMovedNotice(true);
+      } else {
+        onSaved();
+      }
     },
     onError: (e) =>
       setError(
@@ -29217,6 +29271,33 @@ function AppointmentSheet({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="sheet-handle" />
+        {movedNotice ? (
+          <div className="reschedule-notify">
+            <h2>{lang === "es" ? "Cita movida" : "Appointment moved"}</h2>
+            {(() => {
+              const when = new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(form.startsAt.length === 16 ? `${form.startsAt}:00` : form.startsAt));
+              const message = lang === "es"
+                ? `Hola ${form.clientName}, movimos su cita para el ${when}. Responda aquí si no le funciona.${signature ? ` — ${signature}` : ""}`
+                : `Hi ${form.clientName}, we moved your appointment to ${when}. Reply here if that doesn't work for you.${signature ? ` — ${signature}` : ""}`;
+              return (
+                <>
+                  <p>{lang === "es" ? `La cita de ${form.clientName} ahora es el ${when}. ¿Avisarle del cambio?` : `${form.clientName}'s appointment is now ${when}. Let them know about the change?`}</p>
+                  {form.clientPhone ? (
+                    <SmsLink className="primary-button" href={smsHref(form.clientPhone, message)} onOpen={() => onSaved()}>
+                      {lang === "es" ? "Enviar texto al cliente" : "Text the client"}
+                    </SmsLink>
+                  ) : (
+                    <p className="status">{lang === "es" ? "Este cliente no tiene un teléfono guardado." : "No phone number saved for this client."}</p>
+                  )}
+                  <button type="button" className="secondary-button" onClick={onSaved}>
+                    {lang === "es" ? "Ahora no" : "Not now"}
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        ) : (
+        <>
         <h2>
           {form.id
             ? lang === "es"
@@ -29424,13 +29505,15 @@ function AppointmentSheet({
               ))}
           </div>
         </form>
+        </>
+        )}
       </section>
     </div>
   );
 }
 
 // The dispatch board, folded into Schedule as its board view (2026-11-03).
-function DispatchBoard({ lang, onExitBoard, onOpenJob }: { lang: Lang; onExitBoard?: () => void; onOpenJob?: (jobId: number) => void }) {
+function DispatchBoard({ lang, onExitBoard, onOpenJob, signature = "" }: { lang: Lang; onExitBoard?: () => void; onOpenJob?: (jobId: number) => void; signature?: string }) {
   const qc = useQueryClient();
   const [view, setView] = useState<"day" | "week">("day");
   const [focusDate, setFocusDate] = useState(() =>
@@ -29813,6 +29896,7 @@ function DispatchBoard({ lang, onExitBoard, onOpenJob }: { lang: Lang; onExitBoa
           }
           onClose={() => setSheetInitial(null)}
           onSaved={() => setSheetInitial(null)}
+          signature={signature}
         />
       )}
     </section>

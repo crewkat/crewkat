@@ -3838,6 +3838,14 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .dispatch-sheet { width:min(100%,520px); margin:0 auto; background:var(--surface); color:var(--text); border-radius:1rem; padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom)); display:grid; gap:.85rem; max-height:92dvh; overflow-y:auto; }
 .dispatch-sheet h2 { margin:0; font-size:1.05rem; }
+/* Batch 5 #5: reschedule notify prompt + Schedule bulk shift. */
+.reschedule-notify { display: grid; gap: 12px; }
+.reschedule-notify h2 { margin: 0; }
+.reschedule-notify p { margin: 0; font-size: 14px; line-height: 1.5; }
+.bulk-shift { display: grid; gap: 8px; margin: 0 0 14px; justify-items: start; }
+.bulk-shift-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; }
+.bulk-shift-panel select { min-height: 40px; padding: 6px 8px; }
+.bulk-shift .status { margin: 0; }
 .dispatch-sheet-actions { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; }
 .dispatch-sheet-actions .primary-button { flex:1 1 auto; }
 

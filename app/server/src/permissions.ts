@@ -237,7 +237,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "marketplaceListingFlag", "pendingCancellationFeedback", "pinTool",
   "removePushSubscription", "renameClient", "renderPdfPreview", "replyToOwnSupportReport",
   "requestAccountDeletion", "revokeDocumentLink", "revokeOnMyWay",
-  "saveAppointment", "saveCertificate", "saveClient",
+  "saveAppointment", "bulkShiftAppointments", "saveCertificate", "saveClient",
   "saveCrewTask", "saveDailyLog", "saveDocument",
   "saveDocumentFillFields", "saveDocumentSignatureFields", "saveEquipment",
   "saveFinancialSignature", "saveIncident", "saveInvoice",
