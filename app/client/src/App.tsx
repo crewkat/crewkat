@@ -20679,7 +20679,17 @@ function ClientDetail({
   return (
     <main className="page form-page">
       <PageHeader lang={lang} title={c.name} onBack={onBack} />
-      <section className="client-money"><article><span>{lang === "es" ? "Facturado" : "Invoiced"}</span><strong>{usd(c.totalInvoiced)}</strong></article><article><span>{lang === "es" ? "Pagado" : "Paid"}</span><strong>{c.paymentPercent}%</strong></article></section>
+      {/* Batch 5 #3: money at a glance — invoiced / paid / balance in
+          dollars (server totals follow the one money rule), plus the
+          last invoice and last payment dates for the follow-up call. */}
+      <section className="client-money"><article><span>{lang === "es" ? "Facturado" : "Invoiced"}</span><strong>{usd(c.totalInvoiced)}</strong></article><article><span>{lang === "es" ? "Pagado" : "Paid"}</span><strong>{usd(c.totalPaid)}</strong></article><article><span>{lang === "es" ? "Saldo" : "Balance"}</span><strong>{usd(c.balanceDue)}</strong></article></section>
+      {(c.lastInvoiceAt || c.lastPaymentAt) && (
+        <p className="client-money-last">
+          {c.lastInvoiceAt && <span>{lang === "es" ? "Última factura" : "Last invoice"} {formatDate(c.lastInvoiceAt, lang)}</span>}
+          {c.lastInvoiceAt && c.lastPaymentAt && <span aria-hidden="true"> · </span>}
+          {c.lastPaymentAt && <span>{lang === "es" ? "Último pago" : "Last payment"} {formatDate(c.lastPaymentAt, lang)}</span>}
+        </p>
+      )}
       <nav className="client-links" aria-label={lang === "es" ? "Registros del cliente" : "Client records"}><button onClick={() => (query.data?.jobs.length ?? 0) > 0 ? scrollToHistoryGroup("jobs", historyJobsRef) : setScreen({ name: "jobs" })}>{t.jobs} ({query.data?.jobs.length ?? 0})</button><button onClick={() => clientInvoices.length > 0 ? scrollToHistoryGroup("invoices", historyInvoicesRef) : setScreen({ name: "invoices" })}>{t.invoices} ({clientInvoices.length})</button><button onClick={() => (query.data?.quotes.length ?? 0) > 0 ? scrollToHistoryGroup("quotes", historyQuotesRef) : setScreen({ name: "quoteNew", clientId })}>{lang === "es" ? "Presupuestos" : "Estimates"} ({query.data?.quotes.length ?? 0})</button></nav>
       <ClientForm
         lang={lang}
