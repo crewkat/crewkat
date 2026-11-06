@@ -3545,8 +3545,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .crew-day-empty { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: .88rem; margin: 0; padding: 10px 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border-radius: 12px; }
 
 /* === Build 3.0 item 13: Crew day empty state — color, content, quick actions === */
-.crew-day-empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin: 18px 0 30px; padding: 30px 20px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 16px; }
-.crew-day-empty-icon { width: 72px; height: 72px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 42%, transparent); }
+.crew-day-empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; margin: 18px 0 30px; padding: 30px 20px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; }
+.crew-day-empty-icon { width: 72px; height: 72px; display: grid; place-items: center; color: var(--accent); }
 .crew-day-empty-icon svg { width: 34px; height: 34px; }
 .crew-day-empty-state h2 { margin: 0; font-size: 1.25rem; }
 .crew-day-empty-state p { margin: 0; color: var(--dim); font-size: .9rem; line-height: 1.5; max-width: 300px; }

@@ -66,7 +66,7 @@
 .client-doc-pay-btn { flex: none; padding: 11px 20px; border: 0; border-radius: 10px; background: #1f5a4a; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
 .client-doc-pay-btn:disabled { opacity: .6; }
 .portal-v2-pay-btn { width: 100%; margin: 8px 0 4px; }
-.payments-connect-card { margin-top: 18px; padding: 14px; border: 1px solid var(--line, #e2e6ea); border-radius: 12px; background: var(--surface-2, #f7f9fa); }
+.payments-connect-card { margin-top: 18px; padding: 14px; border: 1px solid var(--line, #e2e6ea); border-radius: 12px; background: var(--surface); }
 .payments-connect-card .settings-group-title { margin-top: 0; }
 .payments-connect-note { margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; color: #5b6672; }
 .payments-connect-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
