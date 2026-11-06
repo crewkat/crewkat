@@ -11734,6 +11734,26 @@ function JobDetail({
       client.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
+  // Delete job (crawl round 2, 2026-11-06): deleteJob + getJobDeletePreview
+  // have existed since the Jobs-list swipe-to-delete (2026-10-24), but the
+  // job detail had no delete control anywhere — a job opened here (e.g. a
+  // test job) could not be removed without discovering the list swipe.
+  // This is the same confirm the list shows: the preview names exactly
+  // what is attached before anything is destroyed; estimates/invoices
+  // (and their payments) survive, unlinked.
+  const [jobDeleteOpen, setJobDeleteOpen] = useState(false);
+  const jobDeletePreview = useQuery({
+    queryKey: ["job-delete-preview", jobId],
+    queryFn: () => api.getJobDeletePreview({ jobId }),
+    enabled: jobDeleteOpen,
+  });
+  const deleteJobDetail = useMutation({
+    mutationFn: () => api.deleteJob({ jobId }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+      onBack();
+    },
+  });
   const refreshJob = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["job", jobId] }),
@@ -12318,7 +12338,70 @@ function JobDetail({
           </button>
         </div>
       </section>
+      <section className="job-danger-zone" aria-label={lang === "es" ? "Eliminar trabajo" : "Delete job"}>
+        <p className="job-tools-kicker">{lang === "es" ? "Zona de peligro" : "Danger zone"}</p>
+        <button type="button" className="danger-button job-delete-open" onClick={() => setJobDeleteOpen(true)}>
+          <TrashIcon />
+          {lang === "es" ? "Eliminar trabajo" : "Delete job"}
+        </button>
+        <p className="privacy-note">
+          {lang === "es"
+            ? "Elimina este trabajo y lo que tiene adjunto. Los estimados y las facturas se conservan en tus registros, solo desvinculados."
+            : "Deletes this job and what is attached to it. Estimates and invoices stay in your records, just unlinked."}
+        </p>
+      </section>
       </>)}
+      {jobDeleteOpen && job && (
+        <FloatPopup
+          lang={lang}
+          title={lang === "es" ? "¿Eliminar este trabajo?" : "Delete this job?"}
+          onClose={() => { if (!deleteJobDetail.isPending) setJobDeleteOpen(false); }}
+        >
+          {(close) => {
+            const preview = jobDeletePreview.data;
+            const deletedParts: string[] = [];
+            if (preview) {
+              if (preview.documents) deletedParts.push(lang === "es" ? `${preview.documents} documento${preview.documents === 1 ? "" : "s"}` : `${preview.documents} document${preview.documents === 1 ? "" : "s"}`);
+              if (preview.photos) deletedParts.push(lang === "es" ? `${preview.photos} foto${preview.photos === 1 ? "" : "s"}` : `${preview.photos} photo${preview.photos === 1 ? "" : "s"}`);
+              if (preview.files) deletedParts.push(lang === "es" ? `${preview.files} archivo${preview.files === 1 ? "" : "s"}` : `${preview.files} file${preview.files === 1 ? "" : "s"}`);
+              if (preview.portalLink) deletedParts.push(lang === "es" ? "el enlace del portal del cliente" : "the client portal link");
+            }
+            const keptParts: string[] = [];
+            if (preview) {
+              if (preview.estimates) keptParts.push(lang === "es" ? `${preview.estimates} presupuesto${preview.estimates === 1 ? "" : "s"}` : `${preview.estimates} estimate${preview.estimates === 1 ? "" : "s"}`);
+              if (preview.invoices) keptParts.push(lang === "es" ? `${preview.invoices} factura${preview.invoices === 1 ? "" : "s"}` : `${preview.invoices} invoice${preview.invoices === 1 ? "" : "s"}`);
+              if (preview.payments) keptParts.push(lang === "es" ? `${preview.payments} pago${preview.payments === 1 ? "" : "s"}` : `${preview.payments} payment${preview.payments === 1 ? "" : "s"}`);
+            }
+            const nothingAttached = preview && deletedParts.length === 0 && keptParts.length === 0;
+            return (
+              <div className="job-delete-confirm">
+                <strong className="job-delete-name">{job.clientName}</strong>
+                <span className="job-delete-sub">{job.jobType} · {job.jobAddress}</span>
+                {jobDeletePreview.isPending && <p className="job-delete-note">{lang === "es" ? "Revisando qué tiene adjunto…" : "Checking what's attached…"}</p>}
+                {preview && deletedParts.length > 0 && (
+                  <p className="job-delete-warn">
+                    {deletedParts.join(" · ")}
+                    {preview.signedDocuments > 0 ? (lang === "es" ? " — incluye documentos firmados." : " — includes signed documents.") : ""}
+                    <br />
+                    {lang === "es" ? "También se eliminará todo esto. Esto no se puede deshacer." : "These will be deleted too. This can't be undone."}
+                  </p>
+                )}
+                {preview && keptParts.length > 0 && (
+                  <p className="job-delete-note">
+                    {keptParts.join(" · ")} {lang === "es" ? "se conservan en tus registros — solo se desvinculan de este trabajo." : "stay in your records — just unlinked from this job."}
+                  </p>
+                )}
+                {nothingAttached && <p className="job-delete-note">{lang === "es" ? "Este trabajo no tiene nada adjunto." : "This job has nothing attached."}</p>}
+                {deleteJobDetail.isError && <p className="status error">{deleteJobDetail.error instanceof Error ? deleteJobDetail.error.message : (lang === "es" ? "No se pudo eliminar el trabajo." : "The job could not be deleted.")}</p>}
+                <div className="job-delete-actions">
+                  <button type="button" className="secondary-button" disabled={deleteJobDetail.isPending} onClick={close}>{lang === "es" ? "Cancelar" : "Cancel"}</button>
+                  <button type="button" className="danger-button" disabled={deleteJobDetail.isPending || jobDeletePreview.isPending} onClick={() => deleteJobDetail.mutate()}>{deleteJobDetail.isPending ? (lang === "es" ? "Eliminando…" : "Deleting…") : (lang === "es" ? "Eliminar" : "Delete")}</button>
+                </div>
+              </div>
+            );
+          }}
+        </FloatPopup>
+      )}
       {shareFileOpen && <div className="client-sheet-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !uploadJobFile.isPending) setShareFileOpen(false); }}><section className="client-sheet job-action-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Compartir archivo" : "Share a file"}>
         <div className="sheet-handle"/><header><h2>{lang === "es" ? "Compartir archivo" : "Share a file"}</h2><button type="button" aria-label={lang === "es" ? "Cerrar" : "Close"} onClick={() => setShareFileOpen(false)}>×</button></header>
         <div className="compact-form">

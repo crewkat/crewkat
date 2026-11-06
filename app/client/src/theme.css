@@ -6225,6 +6225,9 @@ button.profit-strip-link:hover{border-color:var(--green)}
 .stage-count-chip.miss b, .stage-chip.miss b { color: #a3540f; }
 /* Overview: job tools grid (Tools-screen density). */
 .job-tools { margin-top: 14px; }
+.job-danger-zone { margin-top: 22px; display: grid; gap: 8px; justify-items: start; }
+.job-danger-zone .privacy-note { margin: 0; }
+.job-delete-open { display: inline-flex; align-items: center; gap: 6px; }
 .job-tools-kicker { margin: 0 2px 7px; font-size: 11px; font-weight: 700; letter-spacing: 1.1px; color: var(--dim); }
 .job-tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .job-tools-grid button { display: flex; align-items: center; gap: 9px; min-height: 59px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
