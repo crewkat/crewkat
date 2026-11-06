@@ -187,8 +187,8 @@ const importedSum = imported.reduce((s, inv) => s + Number(inv.total), 0);
 check("run: imported invoice totals sum to $148,193.95 (file total minus duplicate + collision)",
   imported.length === 19 && Math.abs(importedSum - 148193.95) < 0.001, `${imported.length} rows, sum ${importedSum}`);
 
-const inv0007 = imported.find((inv) => inv.invoiceNumber === "INV0007")!;
-check("run: imported invoice keeps the Invoice Fly number verbatim (no dash, no renumber)",
+const inv0007 = imported.find((inv) => inv.invoiceNumber === "INV-0007")!;
+check("run: imported invoice keeps the Invoice Fly number, canonicalized to the dashed native form (audit Batch 2)",
   !!inv0007 && inv0007.total === "50950.00" && inv0007.status === "paid", JSON.stringify(inv0007?.invoiceNumber));
 check("run: imported invoice carries fixed discount/tax so totals reconcile",
   inv0007.discountType === "fixed" && inv0007.taxType === "fixed" && inv0007.discountValue === "0.00" && inv0007.taxValue === "0.00");
@@ -198,7 +198,7 @@ check("run: the single line item is the import marker at the subtotal",
 const pay0007 = companyPayments.find((p) => p.invoiceId === inv0007.id)!;
 check("run: paid invoice got a payment row dated Paid Date with method Imported",
   !!pay0007 && pay0007.amount === "50950.00" && pay0007.paymentDate === "2026-04-03" && pay0007.method === "Imported", JSON.stringify(pay0007));
-const inv0019 = imported.find((inv) => inv.invoiceNumber === "INV0019")!;
+const inv0019 = imported.find((inv) => inv.invoiceNumber === "INV-0019")!;
 const pay0019 = companyPayments.find((p) => p.invoiceId === inv0019.id)!;
 check("run: INV0019 (paid, no Paid Date in file) falls back to the due date",
   !!pay0019 && pay0019.paymentDate === "2026-09-21", JSON.stringify(pay0019));

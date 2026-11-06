@@ -45,7 +45,7 @@ const dupStart = actionsSrc.indexOf("duplicateInvoice: defineAction");
 const dupEnd = actionsSrc.indexOf("duplicateQuote: defineAction", dupStart);
 const DUP = actionsSrc.slice(dupStart, dupEnd);
 check("server duplicateInvoice exists", dupStart > -1);
-check("duplicate mints a fresh number via nextInvoiceNumber", DUP.includes("const invoiceNumber=await nextInvoiceNumber(db)") && DUP.includes("invoiceNumber,quoteId:null"));
+check("duplicate mints a fresh number via nextInvoiceNumber", DUP.includes("const invoiceNumber=await nextInvoiceNumber(db, row.companyId)") && DUP.includes("invoiceNumber,quoteId:null"));
 check("duplicate keeps the new-document resets (draft, no quote, no due date, no recurring, parent set)",
   DUP.includes('status:"draft"') && DUP.includes('dueDate:""') && DUP.includes('recurringFrequency:"none"') && DUP.includes("parentInvoiceId:row.id"));
 check("duplicate copies documentAttachments best-effort (mirrors conversion)",

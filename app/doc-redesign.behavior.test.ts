@@ -71,7 +71,7 @@ describe("Year | Month period behavior", () => {
 
   test("paid reconciles with the hero: paid = total - balance over the period set", () => {
     expect(APP).toContain(
-      "sum + Math.max(0, money(invoice.totalWithLateFee) - money(invoice.balanceRemaining))",
+      "sum + money(invoice.paidApplied ?? invoice.paidToDate)",
     );
   });
 });

@@ -173,7 +173,7 @@ check("chip labels are bilingual", appSrc.includes('"Pagada"') && appSrc.include
 check("create-invoice action is still the unlinked path", appSrc.includes("api.invoiceMilestone") && appSrc.includes('"Create invoice"') && appSrc.includes('"Crear factura"'));
 check("chip styling exists", cssSrc.includes(".milestone-invoice-link"));
 check("server payload derives number/status from the linked invoice", serverSrc.includes("invoiceStatus: linked ? linked.status : null") && serverSrc.includes("invoiceNumber: linked ?"));
-check("invoiceMilestone is company-scoped and numbers its invoice", serverSrc.includes("requireJobCompany(ctx, db, milestone.jobId)") && serverSrc.includes("const invoiceNumber = await nextInvoiceNumber(db); const rows = await db.insert(schema.invoices)"));
+check("invoiceMilestone is company-scoped and numbers its invoice", serverSrc.includes("requireJobCompany(ctx, db, milestone.jobId)") && serverSrc.includes("const invoiceNumber = await nextInvoiceNumber(db, job.companyId); const rows = await db.insert(schema.invoices)"));
 check("deleteInvoice clears milestone links", serverSrc.includes("paymentMilestones).set({invoiceId:null"));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
