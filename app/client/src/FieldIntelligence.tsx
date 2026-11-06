@@ -16,7 +16,7 @@ const usd = (value: string | number) => new Intl.NumberFormat("en-US", { style: 
 const dateLabel = (value: string, lang: Lang) => value ? new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { dateStyle: "medium" }).format(new Date(`${value.slice(0, 10)}T12:00:00`)) : "—";
 const safeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
 function BackIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>; }
-function GearIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12h3M2 12h3M12 2v3M12 19v3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>; }
+function GearIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>; }
 function PageHeader({ title, back, openSettings, lang }: { title: string; back: () => void; openSettings: () => void; lang: Lang }) { return <header className="page-header"><button className="icon-button" onClick={back} aria-label={lang === "es" ? "Atrás" : "Back"}><BackIcon/></button><h1>{title}</h1><button className="icon-button master-settings-button" onClick={openSettings} aria-label={lang === "es" ? "Abrir configuración" : "Open settings"}><GearIcon/></button></header>; }
 function Empty({ children }: { children: ReactNode }) { return <p className="detail-empty">{children}</p>; }
 
@@ -276,6 +276,7 @@ function CrewHoursReport({
   ].join("\n");
   return (
     <section className="toolkit-section">
+      <h2>{lang === "es" ? "Horas del equipo" : "Crew hours"}</h2>
       <div className="toolkit-summary">
         {Array.from(grouped).map(([name, h]) => (
           <article key={name}>
@@ -350,6 +351,7 @@ function SupplierManager({
   });
   return (
     <section className="toolkit-section">
+      <h2>{lang === "es" ? "Proveedores" : "Suppliers"}</h2>
       <form
         className="compact-form"
         onSubmit={async (e) => {
@@ -489,6 +491,7 @@ function MaintenanceManager({
   };
   return (
     <section className="toolkit-section">
+      <h2>{lang === "es" ? "Planes de mantenimiento" : "Maintenance plans"}</h2>
       <form
         className="compact-form"
         onSubmit={async (e) => {

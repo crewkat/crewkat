@@ -29934,6 +29934,7 @@ function ScannerTool({
   };
   return (
     <section className="toolkit-section">
+      <h2>{lang === "es" ? "Escáner de recibos" : "Receipt scanner"}</h2>
       <p className="privacy-note">
         {lang === "es"
           ? "El escáner mejora el contraste y guarda un PDF limpio. Los recibos también crean un gasto del negocio enlazado."
