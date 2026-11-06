@@ -7464,7 +7464,7 @@ function TakePaymentsSettingsEntry({ lang, setScreen }: { lang: Lang; setScreen:
   }
   return (
     <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "takePayments" })}>
-      <span className="market-category-icon"><Icon><circle cx="12" cy="12" r="9" /><path d="M12 7v10M15 9.2c-.6-.9-1.7-1.4-3-1.4-1.7 0-3 .8-3 2 0 2.8 6 1.5 6 3.9 0 1.2-1.3 2.1-3 2.1-1.3 0-2.4-.5-3-1.4" /></Icon></span>
+      <span className="market-category-icon"><GlyphDollar /></span>
       <span><strong>{lang === "es" ? "Recibir pagos" : "Take payments"}</strong><small>{subtitle}</small></span>
       <BackIcon />
     </button>
@@ -12517,7 +12517,7 @@ function AutomaticBackupCard({ lang }: { lang: Lang }) {
         ? "El servidor guarda una copia diaria y una copia completa con fotos cada domingo, y las envía por correo."
         : "The server saves a daily snapshot and a full copy with photos every Sunday, and emails them offsite."}</p>
       <button type="button" className="backup-action" disabled={runNow.isPending} onClick={() => { setNotice(""); runNow.mutate(); }}>
-        <Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon>
+        <GlyphDownload />
         <span>
           <strong>{runNow.isPending ? (lang === "es" ? "Creando copia…" : "Creating backup…") : (lang === "es" ? "Hacer copia ahora" : "Back up now")}</strong>
           <small>{lang === "es" ? "Copia completa del servidor + correo" : "Full server snapshot + email"}</small>
@@ -13410,7 +13410,7 @@ function SettingsScreen({
         <div className="settings-accordion-list">
           {auth && <>
             <h2 className="settings-group-title">{lang === "es" ? "Cuenta" : "Account"}</h2>
-            <SettingsAccordion title={auth.user.name} icon={<Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0" /></Icon>}>
+            <SettingsAccordion title={auth.user.name} icon={<GlyphPerson />}>
               <div className="account-settings">
                 <div><strong>{auth.user.email}</strong><small>{auth.user.tier === "premium" ? (lang === "es" ? "Propietario verificado · Premium" : "Verified owner · Premium") : (lang === "es" ? "Propietario verificado · Gratis" : "Verified owner · Free")}</small></div>
                 <div className="unlock-status-row"><span>{lang === "es" ? "Desbloqueos de contacto del mercado" : "Marketplace contact unlocks"}</span><UnlockStatusPill lang={lang} /></div>
@@ -13420,24 +13420,20 @@ function SettingsScreen({
                 <DeleteAccountSection lang={lang} />
               </div>
             </SettingsAccordion>
-            <SettingsAccordion title={lang === "es" ? "Facturación" : "Billing"} icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}>
-              <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "billing" })}><span className="market-category-icon"><Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon></span><span><strong>{lang === "es" ? "Plan y pagos" : "Plan & payments"}</strong><small>{lang === "es" ? "Suscripción, recibos e historial de pagos" : "Subscription, receipts, and payment history"}</small></span><BackIcon /></button>
+            <SettingsAccordion title={lang === "es" ? "Facturación" : "Billing"} icon={<GlyphCard />}>
+              <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "billing" })}><span className="market-category-icon"><GlyphCard /></span><span><strong>{lang === "es" ? "Plan y pagos" : "Plan & payments"}</strong><small>{lang === "es" ? "Suscripción, recibos e historial de pagos" : "Subscription, receipts, and payment history"}</small></span><BackIcon /></button>
               <TakePaymentsSettingsEntry lang={lang} setScreen={setScreen} />
             </SettingsAccordion>
-            <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<Icon><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z" /></Icon>}>
+            <SettingsAccordion title={lang === "es" ? "Datos de ejemplo" : "Sample data"} icon={<GlyphSparkle />}>
               <SampleDataButton lang={lang} />
             </SettingsAccordion>
           </>}
           <SettingsAccordion
             title={lang === "es" ? "Información de la empresa" : "Company info"}
-            icon={
-              <Icon>
-                <path d="M4 21V7l8-4 8 4v14M8 21v-5h8v5M8 9h1M12 9h1M16 9h1M8 13h1M12 13h1M16 13h1" />
-              </Icon>
-            }
+            icon={<GlyphBuilding />}
           >
-            <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0M18 3l3 3M19.5 4.5l-4 4"/></Icon></span><span><strong>{lang === "es" ? "Editar perfil del mercado" : "Edit Marketplace profile"}</strong><small>{lang === "es" ? "Portada, descripción, área y redes sociales" : "Cover, description, service area, and social links"}</small></span><BackIcon/></button>
-            <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "gallery" })}><span className="market-category-icon"><Icon><path d="M4 5h16v14H4z"/><circle cx="9" cy="9" r="1.6"/><path d="m5 18 5-5 3 3 3-3 3 3"/></Icon></span><span><strong>{lang === "es" ? "Galería del sitio web" : "Website gallery"}</strong><small>{lang === "es" ? "Tu portafolio público y su enlace para compartir" : "Your public portfolio page and its share link"}</small></span><BackIcon/></button>
+            <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><GlyphPersonEdit /></span><span><strong>{lang === "es" ? "Editar perfil del mercado" : "Edit Marketplace profile"}</strong><small>{lang === "es" ? "Portada, descripción, área y redes sociales" : "Cover, description, service area, and social links"}</small></span><BackIcon/></button>
+            <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "gallery" })}><span className="market-category-icon"><GlyphImage /></span><span><strong>{lang === "es" ? "Galería del sitio web" : "Website gallery"}</strong><small>{lang === "es" ? "Tu portafolio público y su enlace para compartir" : "Your public portfolio page and its share link"}</small></span><BackIcon/></button>
             <fieldset className="brand-settings">
               <legend>{t.companyLogo}</legend>
               <div className="logo-preview">
@@ -13586,10 +13582,10 @@ function SettingsScreen({
           </SettingsAccordion>
 
           <h2 className="settings-group-title">{lang === "es" ? "Negocio" : "Business"}</h2>
-          <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><Icon><path d="M4 21V7l8-4 8 4v14M8 21v-5h8v5" /></Icon></span><span><strong>{lang === "es" ? "Perfil de empresa" : "Company profile"}</strong><small>{lang === "es" ? "Logo, información de la empresa y redes sociales" : "Logo, company info, and social links"}</small></span><BackIcon /></button>
+          <button type="button" className="market-profile-shortcut" onClick={() => setScreen({ name: "companyProfile" })}><span className="market-category-icon"><GlyphBuilding /></span><span><strong>{lang === "es" ? "Perfil de empresa" : "Company profile"}</strong><small>{lang === "es" ? "Logo, información de la empresa y redes sociales" : "Logo, company info, and social links"}</small></span><BackIcon /></button>
           <SettingsAccordion
             title={lang === "es" ? "Opciones de pago" : "Payment options"}
-            icon={<Icon><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></Icon>}
+            icon={<GlyphCard />}
           >
             <label>
               <span>{t.paymentInstructions}</span>
@@ -13602,16 +13598,16 @@ function SettingsScreen({
             <p className="privacy-note">{lang === "es" ? "Estas instrucciones aparecen en las facturas y estimados que envía." : "These instructions appear on the invoices and estimates you send."}</p>
           </SettingsAccordion>
 
-          <SettingsAccordion title={lang === "es" ? "Más opciones" : "More options"} icon={<FileIcon />}>
+          <SettingsAccordion title={lang === "es" ? "Más opciones" : "More options"} icon={<GlyphDoc />}>
             <div className="more-options-groups">
               <section className="more-options-section">
                 <h3>{lang === "es" ? "Comunicaciones con clientes" : "Client Communications"}</h3>
                 <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "email" ? null : "email")} aria-expanded={morePanel === "email"}>
-                  <span className="option-row-icon email"><Icon><path d="M3 5h18v14H3zM3 6l9 7 9-7" /></Icon></span><span>{lang === "es" ? "Configuración de correo" : "Email Settings"}</span><BackIcon />
+                  <span className="option-row-icon email"><GlyphEnvelope /></span><span>{lang === "es" ? "Configuración de correo" : "Email Settings"}</span><BackIcon />
                 </button>
                 {morePanel === "email" && <div className="more-option-detail"><label><span>{lang === "es" ? "Correo de respuesta" : "Reply-to email"}</span><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label><p>{lang === "es" ? "Aparece como el correo de contacto en documentos y mensajes." : "Used as the contact email on documents and client messages."}</p></div>}
                 <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "payments" ? null : "payments")} aria-expanded={morePanel === "payments"}>
-                  <span className="option-row-icon reminder"><Icon><circle cx="12" cy="13" r="8"/><path d="M12 9v5l3 2M8 2h8" /></Icon></span><span>{lang === "es" ? "Recordatorios de pago" : "Payment Reminders"}</span><BackIcon />
+                  <span className="option-row-icon reminder"><GlyphAlarm /></span><span>{lang === "es" ? "Recordatorios de pago" : "Payment Reminders"}</span><BackIcon />
                 </button>
                 {morePanel === "payments" && <div className="more-option-detail"><label className="switch-row"><span>{lang === "es" ? "Mostrar recordatorios de pago" : "Show payment reminders"}</span><Switch checked={form.paymentRemindersEnabled} onChange={(v) => setForm({ ...form, paymentRemindersEnabled: v })} /></label><label><span>{t.paymentInstructions}</span><textarea rows={3} value={form.paymentInstructions} onChange={(e) => setForm({ ...form, paymentInstructions: e.target.value })} /></label></div>}
                 <label className="more-option-row toggle-row"><span>{lang === "es" ? "Firma en línea" : "Online signature"} <span className="info-icon" title={lang === "es" ? "Permite recoger firmas en estimados y facturas" : "Lets you collect signatures on estimates and invoices"}>i</span></span><Switch checked={form.onlineSignatureEnabled} onChange={(v) => setForm({ ...form, onlineSignatureEnabled: v })} /></label>
@@ -13632,19 +13628,19 @@ function SettingsScreen({
                 <label className="more-option-row toggle-row"><span>{lang === "es" ? "Convertir en cotización" : "Convert to Quote"} <span className="info-icon" title={lang === "es" ? "Usa la palabra Cotización para los presupuestos" : "Uses Quote wording for estimates"}>i</span></span><Switch checked={form.convertToQuote} onChange={(v) => setForm({ ...form, convertToQuote: v })} /></label>
               </section>
               <section className="more-options-section"><h3>{lang === "es" ? "Otros" : "Other"}</h3>
-                <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "notifications" ? null : "notifications")} aria-expanded={morePanel === "notifications"}><span className="option-row-icon notification"><Icon><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></Icon></span><span>{lang === "es" ? "Notificaciones" : "Notifications"}</span><BackIcon /></button>
+                <button type="button" className="more-option-row" onClick={() => setMorePanel(morePanel === "notifications" ? null : "notifications")} aria-expanded={morePanel === "notifications"}><span className="option-row-icon notification"><GlyphBell /></span><span>{lang === "es" ? "Notificaciones" : "Notifications"}</span><BackIcon /></button>
                 {morePanel === "notifications" && <div className="more-option-detail"><label className="switch-row"><span>{lang === "es" ? "Mostrar avisos y seguimientos" : "Show alerts and follow-ups"}</span><Switch checked={form.notificationsEnabled} onChange={(v) => setForm({ ...form, notificationsEnabled: v })} /></label><label className="switch-row"><span>{lang === "es" ? "Nuevo mensaje del Marketplace" : "New Marketplace message"}</span><Switch checked={form.notifyNewMessage} onChange={(v) => setForm({ ...form, notifyNewMessage: v })} /></label><label className="switch-row"><span>{lang === "es" ? "Cliente firmó un documento" : "Client signed a document"}</span><Switch checked={form.notifyDocSigned} onChange={(v) => setForm({ ...form, notifyDocSigned: v })} /></label><label className="switch-row"><span>{lang === "es" ? "Cliente vio una factura" : "Client viewed an invoice"}</span><Switch checked={form.notifyInvoiceViewed} onChange={(v) => setForm({ ...form, notifyInvoiceViewed: v })} /></label><label className="switch-row"><span>{lang === "es" ? "Cliente vio un estimado" : "Client viewed an estimate"}</span><Switch checked={form.notifyEstimateViewed} onChange={(v) => setForm({ ...form, notifyEstimateViewed: v })} /></label><label className="switch-row"><span>{lang === "es" ? "Cliente abrió un contrato" : "Client opened a contract"}</span><Switch checked={form.notifyContractViewed} onChange={(v) => setForm({ ...form, notifyContractViewed: v })} /></label><PushToggle lang={lang} /></div>}
-                <button type="button" className="more-option-row danger-row" onClick={() => setMorePanel(morePanel === "trash" ? null : "trash")} aria-expanded={morePanel === "trash"}><span className="option-row-icon trash"><TrashIcon /></span><span>{lang === "es" ? "Papelera" : "Trash"}</span><BackIcon /></button>
+                <button type="button" className="more-option-row danger-row" onClick={() => setMorePanel(morePanel === "trash" ? null : "trash")} aria-expanded={morePanel === "trash"}><span className="option-row-icon trash"><GlyphTrash /></span><span>{lang === "es" ? "Papelera" : "Trash"}</span><BackIcon /></button>
                 {morePanel === "trash" && <div className="more-option-detail"><p>{lang === "es" ? "Los elementos eliminados se quitan de inmediato. Haz una copia de seguridad antes de borrar registros importantes." : "Deleted items are removed immediately. Make a backup before deleting important records."}</p></div>}
               </section>
             </div>
           </SettingsAccordion>
 
-          <SettingsAccordion title={lang === "es" ? "Copia de seguridad y restauración" : "Backup & restore"} icon={<Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon>}>
+          <SettingsAccordion title={lang === "es" ? "Copia de seguridad y restauración" : "Backup & restore"} icon={<GlyphDownload />}>
             <AutomaticBackupCard lang={lang} />
             <div className="settings-heading"><p>{lang === "es" ? "Guarda una copia completa de trabajos, clientes, facturas, fotos, documentos y configuración." : "Save a complete copy of jobs, clients, invoices, photos, documents, and settings."}</p></div>
-            <button type="button" className="backup-action" disabled={backup.isPending} onClick={() => { setBackupNotice(""); backup.mutate(); }}><Icon><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></Icon><span><strong>{backup.isPending ? (lang === "es" ? "Creando copia…" : "Creating backup…") : (lang === "es" ? "Guardar copia de mis datos" : "Back up my data")}</strong><small>{lang === "es" ? "Descarga un archivo .crewkat" : "Downloads one .crewkat file"}</small></span></button>
-            <label className="backup-action restore-picker"><Icon><path d="M12 21V9M7 14l5-5 5 5M4 5h16" /></Icon><span><strong>{lang === "es" ? "Restaurar desde una copia" : "Restore from backup"}</strong><small>{restoreFile?.name ?? (lang === "es" ? "Elegir archivo .crewkat" : "Choose a .crewkat file")}</small></span><input className="sr-only" type="file" accept=".crewkat,.fhq,application/gzip" onChange={(e) => { const file = e.target.files?.[0] ?? null; setRestoreFile(file); setConfirmRestore(Boolean(file)); setBackupNotice(""); }} /></label>
+            <button type="button" className="backup-action" disabled={backup.isPending} onClick={() => { setBackupNotice(""); backup.mutate(); }}><GlyphDownload /><span><strong>{backup.isPending ? (lang === "es" ? "Creando copia…" : "Creating backup…") : (lang === "es" ? "Guardar copia de mis datos" : "Back up my data")}</strong><small>{lang === "es" ? "Descarga un archivo .crewkat" : "Downloads one .crewkat file"}</small></span></button>
+            <label className="backup-action restore-picker"><GlyphUpload /><span><strong>{lang === "es" ? "Restaurar desde una copia" : "Restore from backup"}</strong><small>{restoreFile?.name ?? (lang === "es" ? "Elegir archivo .crewkat" : "Choose a .crewkat file")}</small></span><input className="sr-only" type="file" accept=".crewkat,.fhq,application/gzip" onChange={(e) => { const file = e.target.files?.[0] ?? null; setRestoreFile(file); setConfirmRestore(Boolean(file)); setBackupNotice(""); }} /></label>
             {confirmRestore && restoreFile && <div className="restore-warning" role="alert"><strong>{lang === "es" ? "Esto reemplazará todos los datos actuales." : "This will replace all current data."}</strong><p>{lang === "es" ? "No cierres la app durante la restauración." : "Do not close the app while restore is running."}</p><div><button type="button" className="danger-button" disabled={restore.isPending} onClick={() => restore.mutate(restoreFile)}>{restore.isPending ? (lang === "es" ? "Restaurando…" : "Restoring…") : (lang === "es" ? "Sí, reemplazar y restaurar" : "Yes, replace and restore")}</button><button type="button" className="secondary-button" onClick={() => { setConfirmRestore(false); setRestoreFile(null); }}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div></div>}
             {backupNotice && <p className={`status ${backup.isError || restore.isError ? "error" : "success"}`} role="status">{backupNotice}</p>}
             <p className="privacy-note">{lang === "es" ? "La copia protege contra pérdida accidental." : "Backups protect against accidental loss."}</p>
@@ -13658,11 +13654,7 @@ function SettingsScreen({
                 ? "Impuestos y moneda"
                 : "Tax & currency"
             }
-            icon={
-              <Icon>
-                <path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6" />
-              </Icon>
-            }
+            icon={<GlyphDollar />}
           >
             <label>
               <span>
@@ -13748,12 +13740,7 @@ function SettingsScreen({
 
           <SettingsAccordion
             title={appearanceText.title}
-            icon={
-              <Icon>
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 3a9 9 0 0 0 0 18z" />
-              </Icon>
-            }
+            icon={<GlyphAppearance />}
           >
             <div className="settings-heading">
               <p>{appearanceText.note}</p>
@@ -13815,12 +13802,7 @@ function SettingsScreen({
           <h2 className="settings-group-title">{lang === "es" ? "Ayuda y comentarios" : "Help & Feedback"}</h2>
           <SettingsAccordion
             title={lang === "es" ? "Sitio web y ayuda" : "Website & help"}
-            icon={
-              <Icon>
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9.5 9a2.6 2.6 0 1 1 4.2 2c-1 .7-1.7 1.2-1.7 2.5M12 17h.01" />
-              </Icon>
-            }
+            icon={<GlyphHelp />}
           >
             <div className="settings-heading">
               <p>
@@ -13874,12 +13856,7 @@ function SettingsScreen({
 
           <SettingsAccordion
             title={lang === "es" ? "Atención al cliente" : "Customer support"}
-            icon={
-              <Icon>
-                <path d="M3 5h18v14H3z" />
-                <path d="m3 6 9 7 9-7" />
-              </Icon>
-            }
+            icon={<GlyphEnvelope />}
           >
             <div className="settings-heading">
               <p>
@@ -14053,21 +14030,21 @@ function SettingsScreen({
 
           <SettingsAccordion
             title={lang === "es" ? "Calificar la app" : "Rate the app"}
-            icon={<Icon><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></Icon>}
+            icon={<GlyphStar />}
           >
             <p className="privacy-note">{lang === "es" ? "Cuéntanos qué funciona bien o qué debemos mejorar usando Atención al cliente arriba." : "Tell us what works well or what needs improvement in Customer support above."}</p>
           </SettingsAccordion>
 
           <SettingsAccordion
             title={lang === "es" ? "Compartir la app" : "Share the app"}
-            icon={<ShareIcon />}
+            icon={<GlyphShare />}
           >
             <p className="privacy-note">{lang === "es" ? "Usa el botón Compartir de Muse para invitar a alguien sin exponer información privada del negocio." : "Use Muse’s Share control to invite someone without exposing private business information."}</p>
           </SettingsAccordion>
 
           <SettingsAccordion
             title={lang === "es" ? "Invitar y ganar" : "Invite & earn"}
-            icon={<Icon><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7c-1.7 0-3-1.3-3-3h6c0 1.7-1.3 3-3 3z" /></Icon>}
+            icon={<GlyphGift />}
           >
             <ReferralPanel lang={lang} />
           </SettingsAccordion>
@@ -14077,12 +14054,7 @@ function SettingsScreen({
             title={
               lang === "es" ? "Administrar equipo" : "Manage crew & team"
             }
-            icon={
-              <Icon>
-                <path d="M4 21V9l8-6 8 6v12M9 21v-7h6v7" />
-                <path d="M8 10h8" />
-              </Icon>
-            }
+            icon={<GlyphCrew />}
           >
             <div className="settings-heading">
               <p>
@@ -14114,12 +14086,7 @@ function SettingsScreen({
           {canAccessPlatformAdmin && (
             <SettingsAccordion
               title={lang === "es" ? "Administración de la plataforma" : "Platform admin"}
-              icon={
-                <Icon>
-                  <path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z" />
-                  <path d="m9 12 2 2 4-4" />
-                </Icon>
-              }
+              icon={<GlyphShield />}
             >
               <div className="settings-heading">
                 <p>
@@ -14150,12 +14117,7 @@ function SettingsScreen({
 
           <SettingsAccordion
             title={lang === "es" ? "Acerca de" : "About"}
-            icon={
-              <Icon>
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 11v6M12 7h.01" />
-              </Icon>
-            }
+            icon={<GlyphInfo />}
           >
             <div className="settings-heading">
               <p>
