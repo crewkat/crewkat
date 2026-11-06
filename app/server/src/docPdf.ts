@@ -89,6 +89,7 @@ export interface DocumentLinkPdfPayload {
   // Payment truth (invoiceShape-derived in getDocumentLinkPayload). Without
   // these the server render showed every invoice as unpaid (Danny 2026-10-12).
   paidToDate?: string;
+  credit?: string;
   lateFeeAccrued?: string;
   totalWithLateFee?: string;
   // Card fee pass-through (0100): cents of processing fee inside `total`.

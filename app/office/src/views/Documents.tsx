@@ -438,7 +438,7 @@ function DocDetail({
         <>
           <InvoiceSummary invoice={invoice} onOpenJob={onOpenJob} onOpenClient={onOpenClient} />
           <LineItemsTable doc={invoice} />
-          <TotalsBlock doc={invoice} extra={{ paid: invoice.paidToDate, balance: invoice.balanceRemaining, lateFee: invoice.lateFeeAccrued }} />
+          <TotalsBlock doc={invoice} extra={{ paid: invoice.paidApplied ?? invoice.paidToDate, credit: invoice.credit ?? "0", balance: invoice.balanceRemaining, lateFee: invoice.lateFeeAccrued }} />
           <PaymentsSection invoice={invoice} onError={setActionError} canDelete={canDelete} />
           <DocumentLinkPanel kind="invoice" id={invoice.id} />
           {invoice.jobId ? <PortalLinkPanel jobId={invoice.jobId} /> : <InvoiceJobLinker invoice={invoice} jobs={jobs} onError={setActionError} />}
@@ -604,7 +604,7 @@ function LineItemsTable({ doc }: { doc: Quote | Invoice }) {
   );
 }
 
-function TotalsBlock({ doc, extra }: { doc: Quote | Invoice; extra?: { paid: string; balance: string; lateFee: string } }) {
+function TotalsBlock({ doc, extra }: { doc: Quote | Invoice; extra?: { paid: string; credit: string; balance: string; lateFee: string } }) {
   const totals = financialTotals(doc.lineItems, doc.discountType, doc.discountValue, doc.taxType, doc.taxValue);
   return (
     <section className="drawer-section">
@@ -617,6 +617,7 @@ function TotalsBlock({ doc, extra }: { doc: Quote | Invoice; extra?: { paid: str
         {extra ? (
           <>
             <div><dt>Paid to date</dt><dd>{formatMoney(extra.paid)}</dd></div>
+            {parseMoney(extra.credit) > 0 ? <div><dt>Credit</dt><dd>{formatMoney(extra.credit)}</dd></div> : null}
             {parseMoney(extra.lateFee) > 0 ? <div><dt>Late fee accrued</dt><dd>{formatMoney(extra.lateFee)}</dd></div> : null}
             <div><dt>Balance</dt><dd><strong>{formatMoney(extra.balance)}</strong></dd></div>
           </>

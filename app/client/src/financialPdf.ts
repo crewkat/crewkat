@@ -789,7 +789,13 @@ export async function buildFinancialPdf(
     if (custom.showSubtotal) rows.push({ label: `${labels.subtotal}:`, value: usd(totals.subtotal) });
     if (custom.showDiscount && document.showDiscountLine && totals.discount > 0) rows.push({ label: `${strings.discount}:`, value: `-${usd(totals.discount)}` });
     if (custom.showTax && document.showTaxLine && totals.tax > 0) rows.push({ label: `${strings.tax}:`, value: usd(totals.tax) });
-    if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && paidToDate > 0) rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
+    // Numbers integrity (audit Batch 2): the Amount paid row shows money
+    // APPLIED to this invoice (capped at the total); any overpayment is
+    // its own Credit row instead of inflating the paid row past the total.
+    const paidApplied = kind === "invoice" ? Math.max(0, totalNum - balanceDue) : 0;
+    const creditAmount = kind === "invoice" ? Math.max(0, paidToDate - paidApplied) : 0;
+    if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && paidApplied > 0) rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidApplied)}` });
+    if (kind === "invoice" && custom.showPaidSummary && document.showPaidLine && creditAmount > 0) rows.push({ label: `${lang === "es" ? "Crédito" : "Credit"}:`, value: usd(creditAmount) });
     if (lateFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
     const cardFee = kind === "invoice" ? (document.cardFeeCents ?? 0) / 100 : 0;
     if (cardFee > 0) rows.push({ label: `${lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}:`, value: usd(cardFee) });

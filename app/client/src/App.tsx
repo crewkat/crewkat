@@ -647,6 +647,7 @@ const copy = {
     partialPayments: "Payments",
     recordPayment: "Record payment",
     paidToDate: "Paid to date",
+    credit: "Credit",
     balanceRemaining: "Balance",
     method: "Method",
     paymentDate: "Payment date",
@@ -997,6 +998,7 @@ const copy = {
     partialPayments: "Pagos",
     recordPayment: "Registrar pago",
     paidToDate: "Pagado",
+    credit: "Crédito",
     balanceRemaining: "Saldo",
     method: "Método",
     paymentDate: "Fecha de pago",
@@ -10373,7 +10375,7 @@ function WorkspaceFinancialsPanel({ lang, jobId, job, photos, invoices, quotes, 
   };
   const mine = invoices.filter((i) => i.jobId === jobId);
   const totalInvoiced = mine.reduce((s, i) => s + Number(i.totalWithLateFee || i.total || 0), 0);
-  const totalPaid = mine.reduce((s, i) => s + Number(i.paidToDate || 0), 0);
+  const totalPaid = mine.reduce((s, i) => s + Number(i.paidApplied ?? i.paidToDate ?? 0), 0);
   const p = operations?.profitability;
   // Honest state (Danny 2026-10-24): "Estimated" reads $0 whenever the
   // job's price lives in an uploaded contract document instead of a
@@ -11956,11 +11958,11 @@ function JobDetail({
     (q) => q.jobId == null && (job.clientId ? q.clientId === job.clientId : q.clientName === job.clientName),
   );
   const jobBalanceDue = jobInvoices.reduce(
-    (s, i) => s + money(i.totalWithLateFee || i.total) - money(i.paidToDate),
+    (s, i) => s + money(i.balanceRemaining),
     0,
   );
   const unpaidInvoice =
-    jobInvoices.find((i) => i.status !== "paid" && money(i.totalWithLateFee || i.total) - money(i.paidToDate) > 0) ??
+    jobInvoices.find((i) => i.status !== "paid" && money(i.balanceRemaining) > 0) ??
     (flowInvoice && flowInvoice.status !== "paid" ? flowInvoice : undefined);
   const coveredStageSet = new Set(query.data.photos.map((photo) => photo.stage));
   const missingRequiredStages = job.requiredPhotoStages.filter((s) => !coveredStageSet.has(s));
@@ -18144,7 +18146,7 @@ function buildPaymentReceipt(invoice: Invoice, settings: Settings | null, lang: 
   doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text(lang === "es" ? "Recibo de pago" : "Payment receipt", 42, 56);
   doc.setFontSize(11); doc.setFont("helvetica", "normal");
   doc.text(settings?.companyName || "", 42, 82); doc.text(`${lang === "es" ? "Factura" : "Invoice"} #${invoice.id}`, 42, 118); doc.text(`${lang === "es" ? "Cliente" : "Client"}: ${invoice.clientName}`, 42, 140);
-  doc.text(`${lang === "es" ? "Pagado" : "Paid"}: ${usd(Number(invoice.paidToDate))}`, 42, 174); doc.text(`${lang === "es" ? "Saldo" : "Balance"}: ${usd(Number(invoice.balanceRemaining))}`, 42, 196);
+  doc.text(`${lang === "es" ? "Pagado" : "Paid"}: ${usd(Number(invoice.paidApplied ?? invoice.paidToDate))}`, 42, 174); doc.text(`${lang === "es" ? "Saldo" : "Balance"}: ${usd(Number(invoice.balanceRemaining))}`, 42, 196);
   doc.setDrawColor(210); doc.line(42, 218, 570, 218);
   let y = 244; for (const payment of invoice.payments) { doc.text(`${formatDate(payment.paymentDate, lang)}  ${payment.method || (lang === "es" ? "Pago" : "Payment")}`, 42, y); doc.text(usd(money(payment.amount)), 570, y, { align: "right" }); y += 24; }
   doc.setFontSize(9); doc.text(companyContact(settings), 42, 744); return doc.output("blob");
@@ -19161,7 +19163,7 @@ function InvoicesScreen({
   const periodInvoices = sortedInvoices.filter((invoice) => inPeriod(invMonthKey(invoice)));
   const periodQuotes = sortedQuotes.filter((quote) => inPeriod(quoteMonthKey(quote)));
   const periodInvoiced = periodInvoices.reduce((sum, invoice) => sum + money(invoice.totalWithLateFee), 0);
-  const periodPaid = periodInvoices.reduce((sum, invoice) => sum + Math.max(0, money(invoice.totalWithLateFee) - money(invoice.balanceRemaining)), 0);
+  const periodPaid = periodInvoices.reduce((sum, invoice) => sum + money(invoice.paidApplied ?? invoice.paidToDate), 0);
   const periodBalance = periodInvoices.reduce((sum, invoice) => sum + money(invoice.balanceRemaining), 0);
   const periodEstimated = periodQuotes.reduce((sum, quote) => sum + money(quote.total), 0);
   const periodAccepted = periodQuotes.filter((quote) => quote.accepted || quote.automationStatus === "won").reduce((sum, quote) => sum + money(quote.total), 0);
@@ -19661,6 +19663,8 @@ function PaymentSheet({
     id: number;
     totalWithLateFee: string;
     paidToDate: string | number | null;
+    paidApplied?: string | number | null;
+    credit?: string | number | null;
     balanceRemaining: string | number | null;
     status: string;
     payments: Array<{ id: number; amount: string; paymentDate: string; method: string; note: string }>;
@@ -19673,7 +19677,8 @@ function PaymentSheet({
   const close = () => { if (closing) return; setClosing(true); window.setTimeout(onClose, 180); };
   useEscapeToClose(true, close);
   const total = money(invoice.totalWithLateFee);
-  const paid = Number(invoice.paidToDate ?? 0);
+  const paid = Number(invoice.paidApplied ?? invoice.paidToDate ?? 0);
+  const creditAmount = Number(invoice.credit ?? 0);
   const balance = Math.max(0, total - paid);
   const [amount, setAmount] = useState(balance > 0 ? balance.toFixed(2) : "");
   const [paymentDate, setPaymentDate] = useState(localToday());
@@ -19727,6 +19732,7 @@ function PaymentSheet({
         <div className="payment-summary">
           <div><span>{t.total}</span><strong>{usd(total)}</strong></div>
           <div><span>{t.paidToDate}</span><strong>{usd(paid)}</strong></div>
+          {creditAmount > 0 && <div><span>{t.credit}</span><strong>{usd(creditAmount)}</strong></div>}
           <div><span>{t.balanceRemaining}</span><strong>{usd(balance)}</strong></div>
         </div>
         {visiblePayments.length > 0 && (
@@ -19940,7 +19946,7 @@ function InvoicePreview({
           shrink-to-fit, never truncated. */}
       <div className="ck-money-tiles">
         <div className="ck-money-tile is-total"><span>{t.total}</span><FitLabel as="strong" text={usd(money(invoice.totalWithLateFee))} /></div>
-        <div className="ck-money-tile"><span>{t.paidToDate}</span><FitLabel as="strong" text={usd(Number(invoice.paidToDate))} /></div>
+        <div className="ck-money-tile"><span>{t.paidToDate}</span><FitLabel as="strong" text={usd(Number(invoice.paidApplied ?? invoice.paidToDate))} /></div>
         <div className="ck-money-tile"><span>{t.balanceRemaining}</span><FitLabel as="strong" text={usd(Number(invoice.balanceRemaining))} /></div>
       </div>
       <button type="button" className="ck-btn-sm ck-btn-ghost" onClick={() => setFullScreen(true)}>{t.previewPdf}</button>
@@ -19962,7 +19968,7 @@ function InvoicePreview({
       <button className="secondary-button payment-record-button" onClick={openPaymentSheet}>{t.recordPayment}</button>
     </section>
     <DocumentAttachmentsRow lang={lang} docType="invoice" docId={invoice.id} onOpen={() => setScreen({ name: "invoiceAttachments", invoiceId: invoice.id })} />
-    <details className="action-details document-details"><summary><span className="doc-chip" aria-hidden="true"><GlyphRefresh /></span><span>{t.recurring}</span>{isPremium ? null : <span className="pro-badge">PRO</span>}</summary>{isPremium ? <><div className="recurring-subsection"><h4>{lang==="es"?"Manual":"Manual"}</h4><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></div><div className="recurring-subsection"><h4>{lang==="es"?"Automática":"Automatic"}</h4><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></div></> : <p className="privacy-note">{lang==="es"?"Las facturas recurrentes son una función Pro.":"Recurring invoices are a Pro feature."} <button type="button" className="text-button" onClick={()=>setScreen({name:"upgrade"})}>{lang==="es"?"Ver planes":"See plans"}</button></p>}</details>
+    <details className="action-details document-details"><summary><span className="doc-chip" aria-hidden="true"><GlyphRefresh /></span><span>{t.recurring}</span>{isPremium ? null : <span className="pro-badge">PRO</span>}</summary>{isPremium ? <><div className="recurring-subsection"><h4>{lang==="es"?"Manual":"Manual"}</h4><div className="payment-summary compact"><div><span>{t.paidToDate}</span><strong>{usd(Number(invoice.paidApplied ?? invoice.paidToDate))}</strong></div><div><span>{t.balanceRemaining}</span><strong>{usd(Number(invoice.balanceRemaining))}</strong></div></div><div className="compact-form"><label><span>{t.frequency}</span><select value={frequency} onChange={(e)=>setFrequency(e.target.value as typeof frequency)}><option value="none">{t.none}</option><option value="daily">{lang==="es"?"Diaria":"Daily"}</option><option value="weekly">{t.weekly}</option><option value="monthly">{t.monthly}</option><option value="quarterly">{lang==="es"?"Trimestral":"Quarterly"}</option></select></label>{frequency!=="none"&&<><label><span>{t.nextDue}</span><input type="date" value={nextDue} onChange={(e)=>setNextDue(e.target.value)}/></label><label><span>{lang==="es"?"Termina":"Ends"}</span><input type="date" value={recurringEnd} onChange={(e)=>setRecurringEnd(e.target.value)}/></label></>}<button className="secondary-button" onClick={async()=>{await api.updateInvoiceRecurrence({id:invoice.id,recurringFrequency:frequency,nextDueDate:nextDue,recurringEndDate:recurringEnd});await refresh();}}>{t.save}</button></div></div><div className="recurring-subsection"><h4>{lang==="es"?"Automática":"Automatic"}</h4><div className="compact-form">{invoiceSchedules.length>0?invoiceSchedules.map((s)=><div className="payment-row" key={s.id}><span><strong>{s.frequency==="weekly"?(lang==="es"?"Semanal":"Weekly"):(lang==="es"?"Mensual":"Monthly")}</strong><small>{lang==="es"?"Próxima":"Next"}: {formatDate(s.nextRunDate,lang)}</small></span><button className="danger-button" disabled={cancelSchedule.isPending} onClick={()=>cancelSchedule.mutate(s.id)}>{lang==="es"?"Cancelar":"Cancel"}</button></div>):<><label><span>{t.frequency}</span><select value={scheduleFrequency} onChange={(e)=>setScheduleFrequency(e.target.value as "weekly"|"monthly")}><option value="weekly">{lang==="es"?"Semanal":"Weekly"}</option><option value="monthly">{lang==="es"?"Mensual":"Monthly"}</option></select></label><p className="privacy-note">{lang==="es"?"Se creará automáticamente una nueva factura con los mismos conceptos en cada ciclo.":"A new invoice with the same line items will be created automatically each cycle."}</p><button className="secondary-button" disabled={startSchedule.isPending} onClick={()=>startSchedule.mutate()}>{lang==="es"?"Activar recurrencia":"Make recurring"}</button></>}</div></div></> : <p className="privacy-note">{lang==="es"?"Las facturas recurrentes son una función Pro.":"Recurring invoices are a Pro feature."} <button type="button" className="text-button" onClick={()=>setScreen({name:"upgrade"})}>{lang==="es"?"Ver planes":"See plans"}</button></p>}</details>
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
     <InvoiceCardPaymentsSection lang={lang} invoice={invoice} setScreen={setScreen} onChanged={() => void refresh()} />
@@ -32351,8 +32357,8 @@ function ReceiptSendSheet({
         const subject = `${title} — ${docNumber} — ${companyName}`.trim();
         const body =
           lang === "es"
-            ? `Hola ${clientName || "cliente"},\n\nAquí está tu recibo de pago de la factura ${docNumber}.\nPagado: ${usd(Number(invoice.paidToDate))} · Saldo: ${usd(Number(invoice.balanceRemaining))}\nVer factura: ${link}`
-            : `Hi ${clientName || "there"},\n\nHere is your payment receipt for invoice ${docNumber}.\nPaid: ${usd(Number(invoice.paidToDate))} · Balance: ${usd(Number(invoice.balanceRemaining))}\nView invoice: ${link}`;
+            ? `Hola ${clientName || "cliente"},\n\nAquí está tu recibo de pago de la factura ${docNumber}.\nPagado: ${usd(Number(invoice.paidApplied ?? invoice.paidToDate))} · Saldo: ${usd(Number(invoice.balanceRemaining))}\nVer factura: ${link}`
+            : `Hi ${clientName || "there"},\n\nHere is your payment receipt for invoice ${docNumber}.\nPaid: ${usd(Number(invoice.paidApplied ?? invoice.paidToDate))} · Balance: ${usd(Number(invoice.balanceRemaining))}\nView invoice: ${link}`;
         window.location.href = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         onClose();
       } catch (e) {

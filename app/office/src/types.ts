@@ -710,6 +710,8 @@ export interface Invoice {
   recurringEndDate: string;
   recurringCancelled: boolean;
   paidToDate: string;
+  paidApplied: string;
+  credit: string;
   balanceRemaining: string;
   lateFeeAccrued: string;
   totalWithLateFee: string;

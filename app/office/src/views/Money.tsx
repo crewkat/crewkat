@@ -74,8 +74,18 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
   const year = new Date().getFullYear();
   const inYear = (dateStr: string) => dateStr.slice(0, 4) === String(year);
   const ytdInvoiced = invoices.filter((i) => inYear(i.issueDate)).reduce((sum, i) => sum + parseMoney(i.total), 0);
-  const ytdCollected = paymentsAcross.filter((r) => inYear(r.payment.paymentDate)).reduce((sum, r) => sum + parseMoney(r.payment.amount), 0);
-  const openQuotes = quotes.filter((q) => q.sentAt !== "" && !q.accepted);
+  // Numbers integrity (audit Batch 2): "collected" is the money APPLIED to
+  // invoices (server-shaped paidApplied — capped at each invoice's total,
+  // overpayment excluded and shown as credit below), bucketed by the
+  // invoice's issue period — the exact rule the phone app's totals use, so
+  // app and Office can only agree. Raw payment rows remain the ledger for
+  // the "Payments received" history list.
+  const ytdCollected = invoices.filter((i) => inYear(i.issueDate)).reduce((sum, i) => sum + parseMoney(i.paidApplied ?? i.paidToDate), 0);
+  const totalCredit = invoices.reduce((sum, i) => sum + parseMoney(i.credit ?? "0"), 0);
+  // One shared "open estimate" definition (audit Batch 2): sent, not
+  // accepted/won/lost, not converted, not superseded — the same predicate
+  // the automation center and dashboard use server-side.
+  const openQuotes = quotes.filter((q) => q.sentAt !== "" && !q.accepted && q.automationStatus === "awaiting" && q.convertedToInvoiceId == null && !q.superseded);
   const openQuotesTotal = openQuotes.reduce((sum, q) => sum + parseMoney(q.total), 0);
   const activeJobs = jobs.filter((j) => j.productionStage !== "complete" && j.productionStage !== "paid_in_full").length;
 
@@ -88,12 +98,8 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
         const b = list[Number(inv.issueDate.slice(5, 7)) - 1];
         if (!b) continue;
         b.invoiced += parseMoney(inv.total);
+        b.collected += parseMoney(inv.paidApplied ?? inv.paidToDate);
         b.stillOwed += Math.max(0, parseMoney(inv.balanceRemaining));
-      }
-      for (const r of paymentsAcross) {
-        if (!inYear(r.payment.paymentDate)) continue;
-        const b = list[Number(r.payment.paymentDate.slice(5, 7)) - 1];
-        if (b) b.collected += parseMoney(r.payment.amount);
       }
       return list;
     }
@@ -113,11 +119,8 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
       const idx = indexOf(inv.issueDate);
       if (idx < 0) continue;
       list[idx]!.invoiced += parseMoney(inv.total);
+      list[idx]!.collected += parseMoney(inv.paidApplied ?? inv.paidToDate);
       list[idx]!.stillOwed += Math.max(0, parseMoney(inv.balanceRemaining));
-    }
-    for (const r of paymentsAcross) {
-      const idx = indexOf(r.payment.paymentDate);
-      if (idx >= 0) list[idx]!.collected += parseMoney(r.payment.amount);
     }
     return list;
   }, [mode, invoices, paymentsAcross, year]);
@@ -153,6 +156,7 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
             <div><span>Invoiced · {year}</span><strong>{formatMoney(ytdInvoiced)}</strong></div>
             <div><span>Collected · {year}</span><strong>{formatMoney(ytdCollected)}</strong></div>
             <div><span>To be received</span><strong>{openInvoices.length} open · {formatMoney(toReceive)}</strong></div>
+            {totalCredit > 0 ? <div><span>Client credit</span><strong>{formatMoney(totalCredit)}</strong></div> : null}
             <div><span>Active jobs</span><strong>{jobsQuery.isLoading ? "…" : `${activeJobs} of ${jobs.length}`}</strong></div>
           </div>
 
