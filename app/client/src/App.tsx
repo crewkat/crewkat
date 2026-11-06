@@ -27919,6 +27919,16 @@ function BusinessToolsScreen({
       )}
       {inExpenses && expenseView === "expenses" && (
         <section className="toolkit-section">
+          {/* Crawl fix round 2: this manual form had no heading and its
+              fields (Date, Amount, Vendor, Category, Note) repeat the
+              Receipt scanner's below, so the page read as one duplicated
+              form. It now announces itself and says how it differs. */}
+          <h2>{lang === "es" ? "Agregar gasto" : "Add expense"}</h2>
+          <p className="privacy-note">
+            {lang === "es"
+              ? "Escribe un gasto a mano, sin foto. Si tienes el recibo en papel, usa el escáner de recibos más abajo y los datos se completan solos."
+              : "Type an expense in by hand — no photo needed. Have the paper receipt? Use the Receipt scanner below and the fields fill themselves in."}
+          </p>
           <form
             className="compact-form"
             onSubmit={async (e) => {
