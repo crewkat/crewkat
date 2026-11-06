@@ -7147,13 +7147,13 @@ function InvoiceCardPaymentsSection({ lang, invoice, setScreen, onChanged }: { l
   if (!data?.platformConfigured) return null;
   const brands = (
     <span className="card-brand-marks" aria-hidden="true">
-      <span className="card-brand-chip card-brand-visa">VISA</span>
-      <span className="card-brand-chip card-brand-mc"><i /><i /></span>
-      <span className="card-brand-chip card-brand-amex">AMEX</span>
-      <span className="card-brand-chip card-brand-discover">DISCOVER</span>
+      <span className="card-brand-visa">VISA</span>
+      <span className="card-brand-mc"><i /><i /></span>
+      <span className="card-brand-amex">AMERICAN EXPRESS</span>
+      <span className="card-brand-discover">Discover®</span>
     </span>
   );
-  const proPill = <span className="card-pro-pill">PRO</span>;
+  const proText = <span>PRO</span>;
   const apply = async (next: { cardPaymentsEnabled?: boolean; cardFeeEnabled?: boolean }) => {
     setBusy(true);
     try { await api.setInvoiceCardOptions({ id: invoice.id, ...next }); onChanged(); } finally { setBusy(false); }
@@ -7162,28 +7162,28 @@ function InvoiceCardPaymentsSection({ lang, invoice, setScreen, onChanged }: { l
   return (
     <section className="card-payments-section" aria-label={lang === "es" ? "Pagos con tarjeta" : "Card payments"}>
       {!data.proActive ? (
-        <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "upgrade" })}>
-          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
+        <button type="button" className="card-payments-nav" onClick={() => setScreen({ name: "upgrade" })}>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proText}{brands}</span>
           <span className="card-payments-side"><BackIcon /></span>
         </button>
       ) : !connected ? (
-        <button type="button" className="card-payments-row card-payments-nav" onClick={() => setScreen({ name: "takePayments" })}>
-          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
-          <span className="card-payments-side"><small>{lang === "es" ? "Conectar Stripe" : "Connect Stripe"}</small><BackIcon /></span>
+        <button type="button" className="card-payments-nav" onClick={() => setScreen({ name: "takePayments" })}>
+          <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proText}{brands}</span>
+          <span className="card-payments-side"><small>{lang === "es" ? "No conectado" : "Not connected"}</small><BackIcon /></span>
         </button>
       ) : (
         <>
-          <label className="switch-row card-payments-row">
-            <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proPill}{brands}</span>
+          <div className="cp-row" onClick={(e) => { if ((e.target as HTMLElement).closest('.ck-switch')) return; void apply({ cardPaymentsEnabled: !invoice.cardPaymentsEnabled }); }}>
+            <span className="card-payments-label">{lang === "es" ? "Pagos con tarjeta" : "Card payments"}{proText}{brands}</span>
             <Switch checked={invoice.cardPaymentsEnabled} disabled={busy} onChange={(v) => void apply({ cardPaymentsEnabled: v })} />
-          </label>
+          </div>
           {invoice.cardPaymentsEnabled && (
             <div className="card-fee-dropdown">
-              <label className="switch-row card-fee-row">
+              <div className="cp-fee-row" onClick={(e) => { if ((e.target as HTMLElement).closest('.ck-switch')) return; void apply({ cardFeeEnabled: !invoice.cardFeeEnabled }); }}>
                 <span>{lang === "es" ? "Pasar el cargo por tarjeta al cliente" : "Pass the card fee to the client"}</span>
                 <Switch checked={invoice.cardFeeEnabled} disabled={busy} onChange={(v) => void apply({ cardFeeEnabled: v })} />
-              </label>
-              <p className="card-fee-note">{lang === "es" ? "Agrega el cargo por tarjeta (2.9% + 30¢) para que un pago con tarjeta te deje el monto completo." : "Adds the card fee (2.9% + 30¢) so a card payment nets the full amount."}</p>
+              </div>
+              <p className="card-fee-note">{lang === "es" ? "El cliente paga 2.9% + 30¢ de cargo. Tú recibes el monto completo." : "Client pays 2.9% + 30¢ fee. You receive the full amount."}</p>
             </div>
           )}
         </>

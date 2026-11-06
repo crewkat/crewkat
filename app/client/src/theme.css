@@ -6729,26 +6729,24 @@ button.ba-tool-row > svg { flex: none; color: var(--dim); transform: rotate(180d
 /* Card payment controls (0100): the invoice detail screen's Card
    payments row (Invoice Fly-modeled) + the subordinate fee row that
    drops down under it while card payments are on for the invoice.
-   Variant B skin (Danny 2026-11-05, approved mockup): the section is a
-   flat light-navy tint card with a 3px navy left edge and a navy title,
-   since card payments are a Pro feature. */
-.card-payments-section { margin: 12px 0; padding: 4px 12px; border: 1px solid #c3cfd9; border-left: 3px solid var(--navy-700); border-radius: 8px; background: #edf2f7; overflow: hidden; }
-.card-payments-section .card-payments-row, .card-payments-section .card-fee-row, .card-payments-section .card-fee-dropdown { background: transparent; }
-.card-payments-row { width: 100%; min-height: 52px; }
-button.card-payments-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: none; border: none; padding: 6px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.card-payments-label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 650; min-width: 0; color: var(--navy-700); }
+   Reference skin (Danny 2026-11-05): a plain white card matching the
+   sibling cards on the invoice screen, with the 3px navy left edge
+   kept; flat brand marks and plain-text PRO. The rows are self-styled
+   (.cp-row / .cp-fee-row) so no shared row styling can box them. */
+.card-payments-section { margin: 12px 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-left: 3px solid var(--navy-700); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); overflow: hidden; }
+.cp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; background: transparent; cursor: pointer; }
+.cp-fee-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; font-size: 13.5px; color: var(--text); background: transparent; cursor: pointer; }
+button.card-payments-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; background: none; border: none; padding: 6px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.card-payments-label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 650; min-width: 0; color: var(--text); }
 .card-payments-side { display: inline-flex; align-items: center; gap: 8px; flex: none; color: var(--dim); }
 .card-payments-side small { font-weight: 650; }
-.card-pro-pill { flex: none; padding: 3px 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .05em; line-height: 1; }
-.card-brand-marks { display: inline-flex; align-items: center; gap: 4px; }
-.card-brand-chip { display: inline-flex; align-items: center; justify-content: center; height: 17px; padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; background: rgba(255,255,255,.55); font-size: 7.5px; font-weight: 800; letter-spacing: .02em; line-height: 1; color: #3c4043; }
-.card-brand-visa { color: #1a1f71; font-style: italic; font-size: 8.5px; }
-.card-brand-amex { background: #2e77bc; border-color: #2e77bc; color: #fff; }
-.card-brand-discover { color: #e76f00; }
-.card-brand-mc { padding: 0 5px; }
-.card-brand-mc i { display: block; width: 10px; height: 10px; border-radius: 50%; background: #eb001b; }
-.card-brand-mc i + i { background: #f79e1b; margin-left: -4px; mix-blend-mode: multiply; }
-.card-fee-dropdown { border-top: 1px solid #d3dde6; margin-top: 2px; padding: 2px 0 6px 0; animation: card-fee-drop .18s ease-out; }
+.card-brand-marks { display: inline-flex; align-items: center; gap: 10px; height: 18px; }
+.card-brand-visa { color: #1a1f71; font-style: italic; font-weight: 800; font-size: 11px; letter-spacing: .02em; line-height: 1; }
+.card-brand-mc { display: inline-flex; align-items: center; }
+.card-brand-mc i { display: block; width: 15px; height: 15px; border-radius: 50%; background: #eb001b; }
+.card-brand-mc i + i { background: #f79e1b; margin-left: -5px; mix-blend-mode: multiply; }
+.card-brand-amex { color: #2e77bc; font-size: 8px; font-weight: 800; letter-spacing: .03em; line-height: 1; }
+.card-brand-discover { color: #e76f00; font-size: 10px; font-weight: 800; line-height: 1; }
+.card-fee-dropdown { border-top: 1px solid var(--border); margin-top: 2px; padding: 2px 0 6px 0; background: transparent; animation: card-fee-drop .18s ease-out; }
 @keyframes card-fee-drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.card-fee-row { min-height: 40px; font-size: 13.5px; color: var(--dim); }
 .card-fee-note { margin: 0 0 4px; font-size: 12px; line-height: 1.45; color: var(--dim); }
