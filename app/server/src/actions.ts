@@ -373,6 +373,13 @@ function parseClientAddresses(raw: unknown, legacyAddress: string): ClientAddres
 function clientAddressesOf(row: { addressesJson?: string | null; address: string }): ClientAddress[] {
   return parseClientAddresses(row.addressesJson ?? "[]", row.address);
 }
+/** The ONE overdue definition (audit Batch 2): not paid, a due date in
+ * the past, and money still owed. Surfaces that skipped the balance
+ * check flagged settled invoices as overdue. */
+function isInvoiceOverdue(row: { status: string; dueDate: string; total: string }, paidSum: number, today: string): boolean {
+  return row.status !== "paid" && row.dueDate !== "" && row.dueDate < today && Number(String(row.total).replace(/[^0-9.-]/g, "") || 0) - paidSum > 0.005;
+}
+
 function clientBalanceDue(totalInvoiced: number, totalPaid: number): number {
   return Math.max(0, Math.round((totalInvoiced - totalPaid) * 100) / 100);
 }
@@ -5990,7 +5997,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // follow-up aggregates in one call. Money math mirrors getDashboard
   // (payments summed by paymentDate month; outstanding = invoice totals
   // minus payments, floored per invoice at 0).
-  getOfficeDashboard: defineAction({ request: z.object({}), response: z.object({ pipelineValue: z.number(), openLeads: z.number(), leadsByStage: z.object({ new: z.number(), contacted: z.number(), quoted: z.number(), won: z.number(), lost: z.number() }), activeJobs: z.number(), invoicedMonth: z.number(), collectedMonth: z.number(), outstanding: z.number(), overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })), followUps: z.array(z.object({ id: z.number(), note: z.string(), reminderDate: z.string(), jobId: z.number().nullable(), clientId: z.number().nullable() })), recentActivity: z.array(z.object({ id: z.number(), leadId: z.number(), leadName: z.string(), kind: leadActivityKindSchema, body: z.string(), createdAt: z.string() })) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [leadRows, jobRows, invoiceRows, paymentRows, noteRows, activityRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.jobs), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.leadActivities).orderBy(desc(schema.leadActivities.createdAt), desc(schema.leadActivities.id)).limit(10)]); const now = new Date(); const today = now.toISOString().slice(0, 10); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const money = (value: string) => Number(String(value).replace(/[^0-9.-]/g, "") || 0); const open = leadRows.filter((row) => row.stage !== "won" && row.stage !== "lost"); const pipelineValue = open.reduce((sum, row) => sum + money(row.estimatedValue), 0); const leadsByStage = { new: 0, contacted: 0, quoted: 0, won: 0, lost: 0 }; for (const row of leadRows) leadsByStage[row.stage]++; const invoicedMonth = invoiceRows.filter((row) => row.issueDate && new Date(`${row.issueDate}T12:00:00`).getTime() >= monthStart).reduce((sum, row) => sum + money(row.total), 0); const collectedMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + money(p.amount), 0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + money(p.amount), 0); return sum + Math.max(0, money(invoice.total) - paid); }, 0); const leadNameById = new Map(leadRows.map((row) => [row.id, row.name])); return { pipelineValue, openLeads: open.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) }; }}),
+  getOfficeDashboard: defineAction({ request: z.object({}), response: z.object({ pipelineValue: z.number(), openLeads: z.number(), leadsByStage: z.object({ new: z.number(), contacted: z.number(), quoted: z.number(), won: z.number(), lost: z.number() }), activeJobs: z.number(), invoicedMonth: z.number(), collectedMonth: z.number(), outstanding: z.number(), overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })), followUps: z.array(z.object({ id: z.number(), note: z.string(), reminderDate: z.string(), jobId: z.number().nullable(), clientId: z.number().nullable() })), recentActivity: z.array(z.object({ id: z.number(), leadId: z.number(), leadName: z.string(), kind: leadActivityKindSchema, body: z.string(), createdAt: z.string() })) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [leadRows, jobRows, invoiceRows, paymentRows, noteRows, activityRows] = await Promise.all([db.select().from(schema.leads), db.select().from(schema.jobs), db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.leadActivities).orderBy(desc(schema.leadActivities.createdAt), desc(schema.leadActivities.id)).limit(10)]); const now = new Date(); const today = now.toISOString().slice(0, 10); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const money = (value: string) => Number(String(value).replace(/[^0-9.-]/g, "") || 0); const open = leadRows.filter((row) => row.stage !== "won" && row.stage !== "lost"); const pipelineValue = open.reduce((sum, row) => sum + money(row.estimatedValue), 0); const leadsByStage = { new: 0, contacted: 0, quoted: 0, won: 0, lost: 0 }; for (const row of leadRows) leadsByStage[row.stage]++; const invoicedMonth = invoiceRows.filter((row) => row.issueDate && new Date(`${row.issueDate}T12:00:00`).getTime() >= monthStart).reduce((sum, row) => sum + money(row.total), 0); const collectedMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + money(p.amount), 0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + money(p.amount), 0); return sum + Math.max(0, money(invoice.total) - paid); }, 0); const leadNameById = new Map(leadRows.map((row) => [row.id, row.name])); return { pipelineValue, openLeads: open.length, leadsByStage, activeJobs: jobRows.filter((row) => !row.completedAt).length, invoicedMonth, collectedMonth, outstanding, overdueInvoices: invoiceRows.filter((row) => isInvoiceOverdue(row, paymentRows.filter((p) => p.invoiceId === row.id).reduce((s, p) => s + money(p.amount), 0), today)).map((row) => ({ id: row.id, invoiceNumber: row.invoiceNumber, clientName: row.clientName, total: row.total, dueDate: row.dueDate })), followUps: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, note: row.note, reminderDate: row.reminderDate, jobId: row.jobId, clientId: row.clientId })), recentActivity: activityRows.map((row) => ({ id: row.id, leadId: row.leadId, leadName: leadNameById.get(row.leadId) ?? "", kind: row.kind, body: row.body, createdAt: row.createdAt.toISOString() })) }; }}),
   // 0087 (Office CRM): global office search across leads, clients, and jobs.
   // ---------------------------------------------------------------------
   // Wave 1 (Office): Production Board, follow-up queue, automation
@@ -6106,13 +6113,14 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       // queue fresh between hourly ticks.
       await runAutomationSweep(db, companyId).catch(() => ({ created: 0 }));
       const rows = await db.select().from(schema.followUps).where(eq(schema.followUps.companyId, companyId)).orderBy(asc(schema.followUps.dueDate), desc(schema.followUps.createdAt));
-      const [memberRows, leadRows, jobRows, clientRows, invoiceRows, paymentRows] = await Promise.all([
+      const [memberRows, leadRows, jobRows, clientRows, invoiceRows, paymentRows, quoteRows] = await Promise.all([
         db.select({ id: schema.authUsers.id, name: schema.authUsers.name, role: schema.authUsers.role }).from(schema.authUsers).where(eq(schema.authUsers.companyId, companyId)),
-        db.select({ id: schema.leads.id, name: schema.leads.name }).from(schema.leads).where(eq(schema.leads.companyId, companyId)),
+        db.select({ id: schema.leads.id, name: schema.leads.name, stage: schema.leads.stage }).from(schema.leads).where(eq(schema.leads.companyId, companyId)),
         db.select({ id: schema.jobs.id, jobType: schema.jobs.jobType, clientName: schema.jobs.clientName }).from(schema.jobs).where(eq(schema.jobs.companyId, companyId)),
         db.select({ id: schema.clients.id, name: schema.clients.name }).from(schema.clients).where(eq(schema.clients.companyId, companyId)),
-        db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, total: schema.invoices.total }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId)),
+        db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber, total: schema.invoices.total, status: schema.invoices.status }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId)),
         db.select().from(schema.payments).where(eq(schema.payments.companyId, companyId)),
+        db.select({ id: schema.quotes.id, accepted: schema.quotes.accepted, automationStatus: schema.quotes.automationStatus, convertedToInvoiceId: schema.quotes.convertedToInvoiceId, superseded: schema.quotes.superseded }).from(schema.quotes).where(eq(schema.quotes.companyId, companyId)),
       ]);
       const memberName = new Map(memberRows.map((m) => [m.id, m.name]));
       const leadName = new Map(leadRows.map((l) => [l.id, l.name]));
@@ -6122,6 +6130,40 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       const paidByInvoice = new Map<number, number>();
       for (const p of paymentRows) paidByInvoice.set(p.invoiceId, (paidByInvoice.get(p.invoiceId) ?? 0) + parseMoneyLoose(p.amount));
       const today = todayKey();
+      // Numbers integrity (audit Batch 2): the queue is a PERSISTED table,
+      // so a card created while an invoice was open kept nagging after the
+      // invoice was paid (its body/due date froze at creation). Reconcile
+      // open AUTOMATION items against live state on every load: when the
+      // trigger no longer holds — invoice settled or gone, estimate
+      // accepted/converted/superseded or gone, lead won/lost or gone —
+      // the item resolves itself instead of lying to the user.
+      const quoteById = new Map(quoteRows.map((q) => [q.id, q]));
+      const leadStageById = new Map(leadRows.map((l) => [l.id, l.stage]));
+      const reconcileNow = new Date();
+      for (const row of rows) {
+        if (row.status !== "open" || row.source !== "automation") continue;
+        let settled = false;
+        if (row.recipe === "invoice_overdue" || row.invoiceId != null) {
+          const invId = row.invoiceId ?? Number(/^overdue-invoice:(\d+)/.exec(row.sourceKey)?.[1] ?? NaN);
+          const inv = Number.isFinite(invId) ? invoiceById.get(invId) : undefined;
+          if (!inv) settled = true;
+          else if (inv.status === "paid") settled = true;
+          else if (parseMoneyLoose(inv.total) - (paidByInvoice.get(inv.id) ?? 0) <= 0.005) settled = true;
+        } else if (row.recipe === "proposal_follow_up") {
+          const quoteId = Number(/^proposal:(\d+):/.exec(row.sourceKey)?.[1] ?? NaN);
+          const quote = Number.isFinite(quoteId) ? quoteById.get(quoteId) : undefined;
+          if (!quote) settled = true;
+          else if (quote.accepted || quote.automationStatus !== "awaiting" || quote.convertedToInvoiceId != null || quote.superseded) settled = true;
+        } else if (row.recipe === "lead_stale" && row.leadId != null) {
+          const stage = leadStageById.get(row.leadId);
+          if (!stage || stage === "won" || stage === "lost") settled = true;
+        }
+        if (settled) {
+          await db.update(schema.followUps).set({ status: "done", completedAt: reconcileNow, updatedAt: reconcileNow }).where(eq(schema.followUps.id, row.id));
+          row.status = "done";
+          row.completedAt = reconcileNow;
+        }
+      }
       const items = rows
         .filter((row) => args.includeDone || row.status === "open")
         .map((row) => {
@@ -6330,11 +6372,12 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     async handler(ctx) {
       const db = ctx.db<typeof schema>();
       const today = new Date().toISOString().slice(0, 10);
-      const [jobRows, appointmentRows, invoiceRows, logRows] = await Promise.all([
+      const [jobRows, appointmentRows, invoiceRows, logRows, paymentRows] = await Promise.all([
         db.select().from(schema.jobs),
         db.select().from(schema.appointments).orderBy(schema.appointments.startsAt),
         db.select().from(schema.invoices),
         db.select({ crew: schema.dailyLogs.crew, logDate: schema.dailyLogs.logDate }).from(schema.dailyLogs),
+        db.select().from(schema.payments),
       ]);
       const jobsToday = jobRows
         .filter((j) => j.jobDate === today || (j.appointmentAt && j.appointmentAt.slice(0, 10) === today))
@@ -6344,19 +6387,19 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         .map((a) => ({ id: a.id, jobId: a.jobId, clientName: a.clientName, clientPhone: a.clientPhone, startsAt: a.startsAt, notes: a.notes }));
       const crewToday = [...new Set(logRows.filter((l) => l.logDate === today).flatMap((l) => String(l.crew || "").split(",").map((s) => s.trim()).filter(Boolean)))];
       const overdueInvoices = invoiceRows
-        .filter((inv) => inv.status !== "paid" && inv.dueDate && inv.dueDate < today)
+        .filter((inv) => isInvoiceOverdue(inv, paymentRows.filter((p) => p.invoiceId === inv.id).reduce((s, p) => s + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0), today))
         .map((inv) => ({ id: inv.id, invoiceNumber: inv.invoiceNumber, clientName: inv.clientName, total: inv.total, dueDate: inv.dueDate }));
       return { date: today, jobsToday, appointmentsToday, crewToday, overdueInvoices };
     },
   }),
-  getDashboard: defineAction({ request: z.object({}), response: z.object({ revenueMonth: z.number(), expensesMonth: z.number(), actualProfitMonth: z.number(), outstanding: z.number(), hoursWeek: z.number(), winRate: z.number(), appointments: z.array(appointmentSchema), overdueCount: z.number(), quoteFollowupCount: z.number(), reminders: z.array(internalNoteSchema) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [invoiceRows, paymentRows, timeRows, leadRows, appointmentRows, noteRows, quoteRows, settingRows, expenseRows] = await Promise.all([db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.timeEntries), db.select().from(schema.leads), db.select().from(schema.appointments).orderBy(schema.appointments.startsAt), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.quotes), db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(schema.businessExpenses)]); const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const revenueMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const expensesMonth = expenseRows.filter((row) => new Date(`${row.expenseDate}T12:00:00`).getTime() >= monthStart).reduce((sum,row)=>sum+Number(row.amount.replace(/[^0-9.-]/g,"")||0),0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); return sum + Math.max(0, Number(invoice.total.replace(/[^0-9.-]/g, "") || 0) - paid); }, 0); const day = now.getDay(); const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((day + 6) % 7)); weekStart.setHours(0,0,0,0); const hoursWeek = timeRows.filter((row) => row.startedAt >= weekStart).reduce((sum, row) => sum + Math.max(0, ((row.endedAt?.getTime() ?? now.getTime()) - row.startedAt.getTime()) / 3600000), 0); const decided = leadRows.filter((row) => row.stage === "won" || row.stage === "lost"); const winRate = decided.length ? Math.round(decided.filter((row) => row.stage === "won").length / decided.length * 100) : 0; const today = now.toISOString().slice(0,10); const followDays = settingRows[0]?.quoteFollowUpDays ?? 3; const quoteFollowupCount = quoteRows.filter((q) => !q.jobId && q.sentAt && Math.floor((now.getTime() - new Date(`${q.sentAt}T00:00:00`).getTime()) / 86400000) >= followDays).length; return { revenueMonth, expensesMonth, actualProfitMonth: revenueMonth - expensesMonth, outstanding, hoursWeek, winRate, appointments: appointmentRows.filter((row) => row.startsAt.slice(0,10) >= today).slice(0,6).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork, status: row.status, crewMember: row.crewMember, etaMinutes: row.etaMinutes, hasShareLink: !!row.shareTokenHash })), overdueCount: invoiceRows.filter((row) => row.status !== "paid" && row.dueDate && row.dueDate < today).length, quoteFollowupCount, reminders: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })) }; }}),
+  getDashboard: defineAction({ request: z.object({}), response: z.object({ revenueMonth: z.number(), expensesMonth: z.number(), actualProfitMonth: z.number(), outstanding: z.number(), hoursWeek: z.number(), winRate: z.number(), appointments: z.array(appointmentSchema), overdueCount: z.number(), quoteFollowupCount: z.number(), reminders: z.array(internalNoteSchema) }), async handler(ctx) { const db = ctx.db<typeof schema>(); const [invoiceRows, paymentRows, timeRows, leadRows, appointmentRows, noteRows, quoteRows, settingRows, expenseRows] = await Promise.all([db.select().from(schema.invoices), db.select().from(schema.payments), db.select().from(schema.timeEntries), db.select().from(schema.leads), db.select().from(schema.appointments).orderBy(schema.appointments.startsAt), db.select().from(schema.internalNotes).orderBy(schema.internalNotes.reminderDate), db.select().from(schema.quotes), db.select().from(schema.settings).where(eq(schema.settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1), db.select().from(schema.businessExpenses)]); const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); const revenueMonth = paymentRows.filter((p) => new Date(`${p.paymentDate}T12:00:00`).getTime() >= monthStart).reduce((sum, p) => sum + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); const expensesMonth = expenseRows.filter((row) => new Date(`${row.expenseDate}T12:00:00`).getTime() >= monthStart).reduce((sum,row)=>sum+Number(row.amount.replace(/[^0-9.-]/g,"")||0),0); const outstanding = invoiceRows.reduce((sum, invoice) => { const paid = paymentRows.filter((p) => p.invoiceId === invoice.id).reduce((s, p) => s + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0); return sum + Math.max(0, Number(invoice.total.replace(/[^0-9.-]/g, "") || 0) - paid); }, 0); const day = now.getDay(); const weekStart = new Date(now); weekStart.setDate(now.getDate() - ((day + 6) % 7)); weekStart.setHours(0,0,0,0); const hoursWeek = timeRows.filter((row) => row.startedAt >= weekStart).reduce((sum, row) => sum + Math.max(0, ((row.endedAt?.getTime() ?? now.getTime()) - row.startedAt.getTime()) / 3600000), 0); const decided = leadRows.filter((row) => row.stage === "won" || row.stage === "lost"); const winRate = decided.length ? Math.round(decided.filter((row) => row.stage === "won").length / decided.length * 100) : 0; const today = now.toISOString().slice(0,10); const followDays = settingRows[0]?.quoteFollowUpDays ?? 3; const quoteFollowupCount = quoteRows.filter((q) => !q.jobId && q.sentAt && !q.accepted && q.automationStatus === "awaiting" && q.convertedToInvoiceId == null && !q.superseded && Math.floor((now.getTime() - new Date(`${q.sentAt}T00:00:00`).getTime()) / 86400000) >= followDays).length; return { revenueMonth, expensesMonth, actualProfitMonth: revenueMonth - expensesMonth, outstanding, hoursWeek, winRate, appointments: appointmentRows.filter((row) => row.startsAt.slice(0,10) >= today).slice(0,6).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, startsAt: row.startsAt, notes: row.notes, exteriorWork: row.exteriorWork, status: row.status, crewMember: row.crewMember, etaMinutes: row.etaMinutes, hasShareLink: !!row.shareTokenHash })), overdueCount: invoiceRows.filter((row) => isInvoiceOverdue(row, paymentRows.filter((p) => p.invoiceId === row.id).reduce((s, p) => s + Number(p.amount.replace(/[^0-9.-]/g, "") || 0), 0), today)).length, quoteFollowupCount, reminders: noteRows.filter((row) => !row.completed && row.reminderDate && row.reminderDate <= today).map((row) => ({ id: row.id, jobId: row.jobId, clientId: row.clientId, note: row.note, reminderDate: row.reminderDate, completed: row.completed, createdAt: row.createdAt.toISOString() })) }; }}),
 
   getAutomationCenter: defineAction({
     request: z.object({ today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
     response: z.object({
       appointments: z.array(appointmentSchema),
       quoteChase: z.array(z.object({ id:z.number(), clientName:z.string(), clientPhone:z.string(), total:z.string(), daysWaiting:z.number(), score:z.number(), expiryDate:z.string() })),
-      paymentEscalations: z.array(z.object({ id:z.number(), clientName:z.string(), clientPhone:z.string(), balance:z.number(), dueDate:z.string(), daysOverdue:z.number(), stage:z.number(), lastSentAt:z.string().nullable() })),
+      paymentEscalations: z.array(z.object({ id:z.number(), invoiceNumber:z.string(), clientName:z.string(), clientPhone:z.string(), balance:z.number(), dueDate:z.string(), daysOverdue:z.number(), stage:z.number(), lastSentAt:z.string().nullable() })),
       materials: z.array(z.object({ selectionId:z.number(), jobId:z.number(), clientName:z.string(), category:z.string(), item:z.string(), jobDate:z.string(), orderByDate:z.string(), daysUntil:z.number(), leadTimeDays:z.number() })),
       quoteExpiry: z.array(z.object({ id:z.number(), clientName:z.string(), clientPhone:z.string(), total:z.string(), expiryDate:z.string(), daysUntil:z.number() })),
       reviews: z.array(z.object({ jobId:z.number(), clientId:z.number().nullable(), clientName:z.string(), clientPhone:z.string(), jobType:z.string(), dueDate:z.string() })),
@@ -6407,7 +6450,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
         };
         const wasSent = (kind: typeof schema.automationLogs.$inferSelect["kind"], entityId: number, stage: string) => logRows.some((l) => l.kind === kind && l.entityId === entityId && l.stage === stage);
         const quoteChase = quoteRows
-          .filter((q) => q.automationStatus === "awaiting" && Boolean(dateOnlyString(q.sentAt)))
+          .filter((q) => q.automationStatus === "awaiting" && !q.accepted && q.convertedToInvoiceId == null && !q.superseded && Boolean(dateOnlyString(q.sentAt)))
           .map((q) => {
             const diff = dayDiff(q.sentAt);
             const days = Number.isFinite(diff) ? Math.max(0, -diff) : 0;
@@ -6425,7 +6468,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
             const days = -dayDiff(i.dueDate);
             const stage = days >= paymentDay3 ? paymentDay3 : days >= paymentDay2 ? paymentDay2 : paymentDay1;
             const latest = logRows.filter((l) => l.kind === "payment" && l.entityId === i.id && l.stage === String(stage)).sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
-            return { id: i.id, clientName: safeText(i.clientName), clientPhone: safeText(i.clientPhone), balance: Math.max(0, safeMoney(i.total) - paid), dueDate: dateOnlyString(i.dueDate), daysOverdue: days, stage, lastSentAt: latest?.sentAt?.toISOString?.() ?? null };
+            return { id: i.id, invoiceNumber: safeText(i.invoiceNumber) || `INV-${String(i.id).padStart(4, "0")}`, clientName: safeText(i.clientName), clientPhone: safeText(i.clientPhone), balance: Math.max(0, safeMoney(i.total) - paid), dueDate: dateOnlyString(i.dueDate), daysOverdue: days, stage, lastSentAt: latest?.sentAt?.toISOString?.() ?? null };
           })
           .filter((i) => i.balance > 0)
           .sort((a, b) => b.daysOverdue - a.daysOverdue);
@@ -6447,7 +6490,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           .filter((v) => v.daysUntil <= 14)
           .sort((a, b) => a.daysUntil - b.daysUntil);
         const quoteExpiry = quoteRows
-          .filter((q) => q.automationStatus === "awaiting" && Boolean(dateOnlyString(q.expiryDate)))
+          .filter((q) => q.automationStatus === "awaiting" && !q.accepted && q.convertedToInvoiceId == null && !q.superseded && Boolean(dateOnlyString(q.expiryDate)))
           .map((q) => ({ id: q.id, clientName: safeText(q.clientName), clientPhone: safeText(q.clientPhone), total: safeText(q.total), expiryDate: dateOnlyString(q.expiryDate), daysUntil: dayDiff(q.expiryDate) }))
           .filter((q) => Number.isFinite(q.daysUntil) && q.daysUntil <= expiryWarning)
           .sort((a, b) => a.daysUntil - b.daysUntil);

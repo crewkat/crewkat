@@ -25246,11 +25246,11 @@ function TodayScreen({
         : `Hi ${i.clientName}, a friendly reminder that ${usd(i.balance)} remains due. Let me know if you need another copy of the invoice. — ${sig}`
       : i.stage === 14
         ? lang === "es"
-          ? `Hola ${i.clientName}, la factura #${i.id} tiene ${i.daysOverdue} días de atraso con un saldo de ${usd(i.balance)}. Por favor indíquenos cuándo podemos esperar el pago. — ${sig}`
-          : `Hi ${i.clientName}, invoice #${i.id} is ${i.daysOverdue} days overdue with ${usd(i.balance)} remaining. Please let us know when we can expect payment. — ${sig}`
+          ? `Hola ${i.clientName}, la factura ${i.invoiceNumber} tiene ${i.daysOverdue} días de atraso con un saldo de ${usd(i.balance)}. Por favor indíquenos cuándo podemos esperar el pago. — ${sig}`
+          : `Hi ${i.clientName}, invoice ${i.invoiceNumber} is ${i.daysOverdue} days overdue with ${usd(i.balance)} remaining. Please let us know when we can expect payment. — ${sig}`
         : lang === "es"
-          ? `AVISO FINAL: La factura #${i.id} tiene ${i.daysOverdue} días de atraso. Saldo pendiente: ${usd(i.balance)}. Contáctenos hoy para resolverlo. — ${sig}`
-          : `FINAL NOTICE: Invoice #${i.id} is ${i.daysOverdue} days overdue. Balance due: ${usd(i.balance)}. Please contact us today to resolve it. — ${sig}`;
+          ? `AVISO FINAL: La factura ${i.invoiceNumber} tiene ${i.daysOverdue} días de atraso. Saldo pendiente: ${usd(i.balance)}. Contáctenos hoy para resolverlo. — ${sig}`
+          : `FINAL NOTICE: Invoice ${i.invoiceNumber} is ${i.daysOverdue} days overdue. Balance due: ${usd(i.balance)}. Please contact us today to resolve it. — ${sig}`;
   const expiryMessage = (q: NonNullable<typeof d>["quoteExpiry"][number]) =>
     lang === "es"
       ? `Hola ${q.clientName}, su ${estTerms.singular} #${q.id} por ${usd(money(q.total))} ${q.daysUntil < 0 ? "venció" : "vence pronto"}. Puedo renovarla o responder cualquier pregunta. — ${sig}`
