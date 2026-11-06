@@ -19113,10 +19113,12 @@ function InvoicesScreen({
     queryFn: () => api.listInvoices({}),
   });
   const quotes = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
-  const sortDocuments = <T extends { clientName: string; createdAt: string; dueDate?: string }>(rows: T[]) => [...rows].sort((a, b) => {
+  const sortDocuments = <T extends { id: number; clientName: string; createdAt: string; dueDate?: string }>(rows: T[]) => [...rows].sort((a, b) => {
     if (settings?.invoiceGroupBy === "client") return a.clientName.localeCompare(b.clientName);
     if (settings?.invoiceGroupBy === "due_date") return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31");
-    return b.createdAt.localeCompare(a.createdAt);
+    // id tie-break: imported rows share one createdAt, so newest-first
+    // needs a deterministic secondary key (audit Batch 2).
+    return b.createdAt.localeCompare(a.createdAt) || b.id - a.id;
   });
   const sortedInvoices = sortDocuments(query.data?.invoices ?? []);
   const invTerm = invSearch.trim().toLocaleLowerCase(lang === "es" ? "es" : "en");

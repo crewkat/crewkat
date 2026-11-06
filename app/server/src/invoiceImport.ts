@@ -12,15 +12,16 @@
 //   same file (Invoice Fly happily exports the same person twice with
 //   differently-cased emails), so classification runs sequentially over
 //   a pool that grows with each NEW row.
-// - Invoices keep their Invoice Fly number verbatim ("INV0021", no
-//   dash). That is deliberate: Crewkat's native sequence derives from
-//   max(invoice id) + 1 in nextInvoiceNumber, never from the stored
-//   text, so imported numbers can neither advance nor collide with the
-//   native sequence, and the undashed form stays visibly distinct from
-//   native "INV-0021" numbers. The line item carries the IMPORT_MARKER
-//   text, which is what idempotency keys on (number + marker): re-running
-//   the same file classifies every previously-imported row "imported"
-//   and writes nothing twice.
+// - Invoices keep their Invoice Fly number, canonicalized to the dashed
+//   native form ("INV0021" -> "INV-0021"). [Changed by audit Batch 2:
+//   the old verbatim rule left an imported "INV0015" and a native
+//   "INV-0015" as two different stored strings for the same display
+//   number.] If the canonical key is already displayed by a live
+//   invoice, the row is stored under the next free native number; the
+//   line item's IMPORT_MARKER still carries the original file number,
+//   and idempotency keys on (stored key OR marker number) + marker:
+//   re-running the same file classifies every previously-imported row
+//   "imported" and writes nothing twice.
 // - DUPLICATE-FLAG = same client + same total + issue date within 45
 //   days of an existing Crewkat invoice (the same real-world job kept in
 //   both systems). NUMBER-COLLISION = same normalized display number,
@@ -422,12 +423,28 @@ export interface InvoiceClassification {
   included: boolean;
 }
 
+/** Canonical display form of a native invoice number: INV- + zero-padded digits. */
+export function canonicalInvoiceNumber(n: number): string {
+  return `INV-${String(Math.max(0, Math.floor(n))).padStart(4, "0")}`;
+}
+
+/** Numeric value of a plain INV number ("INV-0015" / "INV0015" -> 15); null for anything else. */
+export function invoiceNumberNumericValue(text: string): number | null {
+  const m = /^INV-?(\d+)$/i.exec((text ?? "").trim());
+  return m ? Number(m[1]) : null;
+}
+
 function displayNumberOf(inv: InvoiceRow): string {
   return inv.invoiceNumber || `INV-${String(inv.id).padStart(4, "0")}`;
 }
 
 function isImportedInvoice(inv: InvoiceRow, number: string): boolean {
-  return inv.invoiceNumber === number && inv.lineItemsJson.includes(IMPORT_MARKER);
+  if (!inv.lineItemsJson.includes(IMPORT_MARKER)) return false;
+  if (normalizeInvoiceNumberKey(inv.invoiceNumber) === normalizeInvoiceNumberKey(number)) return true;
+  // A row whose file number was already taken at import time is stored
+  // under the next free native number; its marker still carries the
+  // original file number, so re-imports still recognize it.
+  return inv.lineItemsJson.includes(`${IMPORT_MARKER} — ${number}`);
 }
 
 interface InvoiceClientResolution {
@@ -785,6 +802,23 @@ export const invoiceFlyImportActions = {
       let invoicesSkipped = 0;
       let paymentsCreated = 0;
       const importedNumbersThisRun = new Set<string>();
+      // Numbers integrity (audit Batch 2): imported numbers are stored in
+      // the canonical dashed form (INV0021 -> INV-0021) and may never take
+      // a number key a live invoice already displays — a clashing row is
+      // assigned the next free native number instead of colliding.
+      const takenNumberKeys = new Set(existingInvoices.map((inv) => normalizeInvoiceNumberKey(displayNumberOf(inv))));
+      let nextFreeNumber = existingInvoices.reduce((max, inv) => Math.max(max, invoiceNumberNumericValue(displayNumberOf(inv)) ?? inv.id), 0) + 1;
+      const claimStoredNumber = (fileNumber: string): string => {
+        const numeric = invoiceNumberNumericValue(fileNumber);
+        let candidate = numeric != null ? canonicalInvoiceNumber(numeric) : fileNumber;
+        if (takenNumberKeys.has(normalizeInvoiceNumberKey(candidate))) {
+          do { candidate = canonicalInvoiceNumber(nextFreeNumber++); } while (takenNumberKeys.has(normalizeInvoiceNumberKey(candidate)));
+        }
+        takenNumberKeys.add(normalizeInvoiceNumberKey(candidate));
+        const cv = invoiceNumberNumericValue(candidate);
+        if (cv != null && cv >= nextFreeNumber) nextFreeNumber = cv + 1;
+        return candidate;
+      };
       const createdClientByProbe = new Map<string, ClientRow>();
 
       for (const ic of preview.invoices) {
@@ -814,6 +848,7 @@ export const invoiceFlyImportActions = {
             clientsCreated++;
           }
         }
+        const storedNumber = claimStoredNumber(row.number);
         const balance = Math.round((row.total - row.paid) * 100) / 100;
         const status = balance <= 0.005 ? "paid" : "sent";
         const lineItems = [{
@@ -826,7 +861,7 @@ export const invoiceFlyImportActions = {
         }];
         const madeRows = await db.insert(schema.invoices).values({
           companyId,
-          invoiceNumber: row.number,
+          invoiceNumber: storedNumber,
           clientId: client.id,
           clientName: client.name,
           clientPhone: client.phone,

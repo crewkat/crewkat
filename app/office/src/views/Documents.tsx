@@ -147,7 +147,7 @@ export function DocumentsView({
         searchText: `${d.title} ${d.displayTitle} ${jobById.get(d.jobId)?.clientName ?? ""} ${jobById.get(d.jobId)?.clientPhone ?? ""} ${jobById.get(d.jobId)?.clientEmail ?? ""} ${jobById.get(d.jobId)?.jobAddress ?? ""} ${d.kind}`,
       });
     }
-    out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes, invoices, signables, jobById]);
