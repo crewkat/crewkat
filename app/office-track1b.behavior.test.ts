@@ -35,7 +35,7 @@ function check(name: string, cond: boolean, detail = "") {
 const journal = JSON.parse(await readFile(join("drizzle", "meta", "_journal.json"), "utf8"));
 const entries: Array<{ idx: number; when: number; tag: string }> = journal.entries;
 const last = entries[entries.length - 1]!;
-check("journal newest entry is 0100_invoice_card_options", last.tag === "0100_invoice_card_options", last.tag);
+check("journal newest entry is 0101_price_book_description_cleanup", last.tag === "0101_price_book_description_cleanup", last.tag);
 
 // --- 2. Scratch DB + in-memory blob store --------------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-1b-"));

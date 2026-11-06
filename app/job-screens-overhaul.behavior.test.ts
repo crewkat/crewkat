@@ -38,7 +38,11 @@ describe("Financials: honest state keys off estimate linkage, not the $0", () =>
     expect(fin).not.toContain("Estimate not linked");
   });
   test("with-estimate state still shows real Profit and Margin %", () => {
-    expect(fin).toContain("hasLinkedEstimate && p ?");
+    // Crawl fix A21 (2026-11-06): the row additionally requires real
+    // costs — with $0 costs recorded it printed a misleading
+    // "Margin $3,250 · 100%" and now shows an em dash instead. With an
+    // estimate linked AND costs recorded, real Profit and Margin % show.
+    expect(fin).toContain("hasLinkedEstimate && p && costsSoFar > 0 ?");
     expect(fin).toContain("usd(p.profit)");
     expect(fin).toContain("p.margin.toFixed(1)");
   });

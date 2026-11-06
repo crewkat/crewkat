@@ -127,10 +127,12 @@ export function defaultDocumentCustomize(kind: "quote" | "invoice", lang: PdfLan
     logoSize: "medium", removeLogoBackground: false, colorMode: "solid",
     showQuantityUnitPrice: true, showDiscount: true, showTax: true, showAmount: true,
     showSummaryInfo: true, showSubtotal: true, showPaidSummary: true, showBalanceDue: true,
-    // Crawl A23: the PAID stamp defaults OFF — a fresh document should
-    // not opt into a stamp the user never asked for (it only renders on
-    // paid invoices anyway, yet the toggle read ON for new estimates).
-    showPaidStamp: false, showBusinessSignature: false, showThankYou: true,
+    // Crawl A23: the PAID stamp defaults OFF for estimates — a fresh
+    // estimate read as opted into a stamp that can never appear on it.
+    // Invoices keep the stamp ON by default: a paid invoice's client
+    // link PDF carrying the PAID stamp is pinned product behavior
+    // (doc-link-pdf-parity suite).
+    showPaidStamp: kind === "invoice", showBusinessSignature: false, showThankYou: true,
     showBusinessName: true, showShortBusinessName: false, showLicenseNumber: true, showDueDate: true,
     headline: kind === "invoice" ? (lang === "es" ? "FACTURA" : "INVOICE") : (lang === "es" ? "ESTIMADO" : "ESTIMATE"),
     dateFormat: "long", termsConditions: "", signatureDataUrl: "",

@@ -10,9 +10,13 @@
 //  1. The save button clips its content to its 30px circle and its icon
 //     has a fully pinned box (width AND height + display:block) — the old
 //     rule sized only the svg width, leaving its height to the attribute.
-//  2. A card photo whose URL fails must degrade invisibly (onError hides
-//     the img) so the browser's native broken-image box can never paint
-//     on a card — at BOTH card call sites (Explore grid, Pro Profile).
+//  2. A card photo whose URL fails must degrade gracefully so the
+//     browser's native broken-image box can never paint on a card — at
+//     BOTH card call sites (Explore grid, Pro Profile). Original guard:
+//     onError set visibility:hidden. Crawl fix A12 (2026-11-06) replaced
+//     that with the shared MarketCardPhoto component: a failed photo
+//     swaps to the category placeholder (the hidden img left an empty
+//     beige tile), so the img leaves the tree entirely.
 //
 // Run from app/:  bun test listing-card-corner.behavior.test.ts
 import { describe, expect, test } from "bun:test";
@@ -42,14 +46,18 @@ describe("market card corner overlay (save button)", () => {
 });
 
 describe("card photo degrade", () => {
-  test("both card call sites hide a failed photo instead of painting the broken-image box", () => {
-    const guarded = APP.match(/listing\.photos\[0\]\.url[^>]*?onError/g) ?? [];
-    expect(guarded.length).toBe(2);
-    expect(APP).toContain('e.currentTarget.style.visibility = "hidden"');
+  test("both card call sites render the shared MarketCardPhoto", () => {
+    const sites = APP.match(/<MarketCardPhoto /g) ?? [];
+    expect(sites.length).toBe(2);
+  });
+
+  test("a failed photo swaps to the placeholder instead of painting the broken-image box", () => {
+    expect(APP).toContain("onError={() => setFailed(true)}");
+    expect(APP).toContain("market-card-placeholder");
+    expect(APP).not.toContain('e.currentTarget.style.visibility = "hidden"');
   });
 
   test("photo still renders normally when its URL loads", () => {
-    const imgs = APP.match(/<img src=\{listing\.photos\[0\]\.url\}/g) ?? [];
-    expect(imgs.length).toBe(2);
+    expect(APP).toContain("<img src={photo.url} alt={listing.title} onError={() => setFailed(true)} />");
   });
 });

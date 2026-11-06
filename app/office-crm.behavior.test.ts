@@ -48,8 +48,8 @@ check("journal when values are non-decreasing", nonDecreasing);
 const last = entries[entries.length - 1]!;
 const maxBefore = Math.max(...entries.slice(0, -1).map((e) => e.when));
 check("newest migration when is strictly greater than every earlier entry", last.when > maxBefore, `last=${last.when} maxBefore=${maxBefore}`);
-check("newest migration tag is 0100_invoice_card_options", last.tag === "0100_invoice_card_options", last.tag);
-check("newest migration idx is 99", last.idx === 99, String(last.idx));
+check("newest migration tag is 0101_price_book_description_cleanup", last.tag === "0101_price_book_description_cleanup", last.tag);
+check("newest migration idx is 100", last.idx === 100, String(last.idx));
 
 // --- 2. Apply all migrations on a scratch DB ----------------------------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-office-crm-"));
