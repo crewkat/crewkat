@@ -4292,8 +4292,11 @@ function marketplacePrice(listing: MarketplaceListing, lang: Lang) {
   // price is its daily rate — "$25/day" — and every surface (Explore
   // card, seller-profile card, detail header, aria labels) renders
   // through this function, so no surface can drift back to a bare
-  // "$25.00" without the /day.
-  if (listing.bookable) return `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}`;
+  // "$25.00" without the /day. Crawl round 3: keep the rate exact —
+  // minimumFractionDigits 0 / maximumFractionDigits 2 renders "$25/day"
+  // for whole dollars but "$25.50/day" for a fractional rate, where the
+  // old maximumFractionDigits 0 silently rounded the rate to "$26/day".
+  if (listing.bookable) return `${new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(listing.dailyRate || 0))}/${lang === "es" ? "día" : "day"}`;
   if (listing.priceKind === "free") return lang === "es" ? "Gratis" : "Free";
   if (listing.priceKind === "contact") return lang === "es" ? "Consultar precio" : "Contact for price";
   const amount = new Intl.NumberFormat(lang === "es" ? "es-US" : "en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(listing.price || 0));
