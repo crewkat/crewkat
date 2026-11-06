@@ -28059,6 +28059,7 @@ function OperationsScreen({
       />
       {tab === "calendar" ? (
         <>
+          {view !== "board" && (
           <div className="calendar-toolbar appt-toolbar">
             <div>
               <button
@@ -28098,6 +28099,7 @@ function OperationsScreen({
               </>
             )}
           </div>
+          )}
           {showAppointment && view !== "board" && (
             <form
               className="compact-form operation-editor appt-form"
@@ -28251,7 +28253,7 @@ function OperationsScreen({
             </form>
           )}
           {view === "board" ? (
-            <DispatchBoard lang={lang} />
+            <DispatchBoard lang={lang} onExitBoard={() => setView("week")} />
           ) : (
           <section className="calendar-list">
             {visible.map((a) => (
@@ -29105,7 +29107,7 @@ function AppointmentSheet({
 }
 
 // The dispatch board, folded into Schedule as its board view (2026-11-03).
-function DispatchBoard({ lang }: { lang: Lang }) {
+function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => void }) {
   const qc = useQueryClient();
   const [view, setView] = useState<"day" | "week">("day");
   const [focusDate, setFocusDate] = useState(() =>
@@ -29323,6 +29325,11 @@ function DispatchBoard({ lang }: { lang: Lang }) {
           >
             {lang === "es" ? "Semana" : "Week"}
           </button>
+          {onExitBoard && (
+            <button type="button" onClick={onExitBoard}>
+              {lang === "es" ? "Lista" : "List"}
+            </button>
+          )}
         </div>
         <div className="dispatch-date-nav">
           <button
