@@ -6410,7 +6410,6 @@ function LimitReachedSheet({ lang, kind, onClose, onUpgrade }: { lang: Lang; kin
   </div>;
 }
 
-const toolTileIcon = (path: ReactNode) => <span className="tool-tile-icon"><Icon>{path}</Icon></span>;
 // Build 3.1: tool tile catalogs shared by the Tools home page and the More menu.
 function estimatingToolTiles(lang: Lang): ToolTile[] {
   // Tools cleanup (2026-11-03): all 19 calculators live behind ONE door —
@@ -25457,7 +25456,7 @@ function TodayScreen({
       </button>}
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
         <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><GlyphPerson /></span><span><FitLabel as="strong" text={lang === "es" ? "Clientes" : "Clients"} /><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
-        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><GlyphStorefront /></span>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><FitLabel as="strong" text={lang === "es" ? "Mercado" : "Marketplace"} /><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><GlyphStorefront />{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><FitLabel as="strong" text={lang === "es" ? "Mercado" : "Marketplace"} /><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
         <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><GlyphClock /></span><span><FitLabel as="strong" text={lang === "es" ? "Día del equipo" : "Crew day"} /><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
         <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><GlyphWrench /></span><span><FitLabel as="strong" text={lang === "es" ? "Herramientas" : "Tools"} /><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
