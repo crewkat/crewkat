@@ -28333,7 +28333,7 @@ function OperationsScreen({
             </form>
           )}
           {view === "board" ? (
-            <DispatchBoard lang={lang} onExitBoard={() => setView("week")} />
+            <DispatchBoard lang={lang} onExitBoard={() => setView("week")} onOpenJob={(jobId) => setScreen({ name: "detail", jobId })} />
           ) : (
           <section className="calendar-list">
             {visible.map((a) => (
@@ -29187,7 +29187,7 @@ function AppointmentSheet({
 }
 
 // The dispatch board, folded into Schedule as its board view (2026-11-03).
-function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => void }) {
+function DispatchBoard({ lang, onExitBoard, onOpenJob }: { lang: Lang; onExitBoard?: () => void; onOpenJob?: (jobId: number) => void }) {
   const qc = useQueryClient();
   const [view, setView] = useState<"day" | "week">("day");
   const [focusDate, setFocusDate] = useState(() =>
@@ -29389,6 +29389,43 @@ function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => 
 
   const visibleDays = view === "day" ? [focusDate] : weekDays;
 
+  // Crawl fix round 2 (2026-11-06): the board rendered appointments only,
+  // so a date-only job vanished here exactly the way it used to vanish
+  // from the Day/Week lists — the board read "No appointments in this
+  // period" on a day with work on it. Jobs dated on a day ride the board
+  // as all-day cards (the Office Production Board shows jobs, not just
+  // appointments) unless an appointment already covers that job that day.
+  const allDayJobsOn = (dateStr: string) =>
+    (jobs.data?.jobs ?? []).filter(
+      (j) =>
+        j.jobDate === dateStr &&
+        !all.some((a) => a.jobId === j.id && a.startsAt.slice(0, 10) === dateStr),
+    );
+
+  const renderJobCard = (job: NonNullable<typeof jobs.data>["jobs"][number]) => (
+    <article
+      key={`job-${job.id}`}
+      className="dispatch-card job-allday"
+      onClick={() => onOpenJob?.(job.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpenJob?.(job.id);
+      }}
+    >
+      <div className="dispatch-card-top">
+        <strong className="dispatch-client">{job.clientName}</strong>
+        <span className="dispatch-status">
+          {lang === "es" ? "Todo el día" : "All day"}
+        </span>
+      </div>
+      <div className="dispatch-card-meta">
+        {job.jobType && <span>{job.jobType}</span>}
+        {job.jobAddress && <span>{job.jobAddress}</span>}
+      </div>
+    </article>
+  );
+
   return (
     <section className="dispatch-board">
       <div className="calendar-toolbar dispatch-toolbar">
@@ -29453,6 +29490,14 @@ function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => 
         <div className="loading-block" />
       ) : view === "day" ? (
         <section className="dispatch-day" aria-label={focusDate}>
+          {allDayJobsOn(focusDate).length > 0 && (
+            <div className="dispatch-allday">
+              <span className="dispatch-allday-label">
+                {lang === "es" ? "Todo el día" : "All day"}
+              </span>
+              {allDayJobsOn(focusDate).map(renderJobCard)}
+            </div>
+          )}
           {Array.from({ length: 15 }, (_, i) => i + 6).map((hour) => {
             const cards = all
               .filter((a) => {
@@ -29493,7 +29538,7 @@ function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => 
                   <span>{dayLabel(dateStr)}</span>
                   <strong>{dayNum(dateStr)}</strong>
                 </header>
-                <div className="dispatch-day-cards">{cards.map(renderCard)}</div>
+                <div className="dispatch-day-cards">{allDayJobsOn(dateStr).map(renderJobCard)}{cards.map(renderCard)}</div>
               </div>
             );
           })}
@@ -29502,12 +29547,13 @@ function DispatchBoard({ lang, onExitBoard }: { lang: Lang; onExitBoard?: () => 
       {visibleDays.length > 0 &&
         all.every(
           (a) => !visibleDays.includes(a.startsAt.slice(0, 10)),
-        ) && (
+        ) &&
+        visibleDays.every((d) => allDayJobsOn(d).length === 0) && (
           <div className="empty-state">
             <h2>
               {lang === "es"
-                ? "No hay citas en este período."
-                : "No appointments in this period."}
+                ? "No hay citas ni trabajos en este período."
+                : "No appointments or jobs in this period."}
             </h2>
           </div>
         )}
