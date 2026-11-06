@@ -3319,7 +3319,7 @@ function OnboardingTour({ lang }: { lang: Lang }) {
 // ---------------------------------------------------------------------------
 function CrewDayScreen({ lang, onBack, setScreen }: { lang: Lang; onBack: () => void; setScreen: (s: Screen) => void }) {
   const qc = useQueryClient();
-  const day = useQuery({ queryKey: ["crew-day"], queryFn: () => api.getCrewDayView({}) });
+  const day = useQuery({ queryKey: ["crew-day"], queryFn: () => api.getCrewDayView({ today: localToday() }) });
   const dateLabel = new Date().toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" });
   return (
     <main className="page crew-day-page">
@@ -25197,6 +25197,7 @@ function TodayScreen({
     queryFn: () => api.getAutomationCenter({ today }),
   });
   const jobsQuery = useQuery({ queryKey: ["jobs", ""], queryFn: () => api.listJobs({ search: "" }) });
+  const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
   const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: () => api.listAppointments({}) });
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
@@ -25463,7 +25464,12 @@ function TodayScreen({
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
         const upcomingJobs = openJobs.filter((job) => job.jobDate === today || job.jobDate === tomorrowStr);
-        const awaitingQuotes = d?.quoteChase ?? [];
+        // "Estimates pending" means every estimate still awaiting an outcome
+        // — drafts included. The chase list alone read 0 while a Draft
+        // estimate existed (crawl finding, 2026-11-06).
+        const awaitingQuotes = (quotesQuery.data?.quotes ?? []).filter(
+          (q) => !q.accepted && !q.jobId && q.convertedToInvoiceId == null && !q.superseded && q.automationStatus !== "lost",
+        );
         return (
           <section className="glance-strip" aria-label={lang === "es" ? "De un vistazo" : "At a glance"}>
             <button type="button" className={`glance-card${paymentEscalations.length > 0 ? " alert" : ""}`} onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
@@ -28014,6 +28020,18 @@ function OperationsScreen({
     const date = new Date(a.startsAt);
     return date >= start && date < end;
   });
+  // Crawl fix (2026-11-06): jobs dated inside the period with no appointment
+  // were invisible in Day/Week — a job dated today read as "No appointments".
+  // They ride along as all-day rows unless an appointment already covers
+  // that job on that date.
+  const startKey = start.toLocaleDateString("en-CA");
+  const endKey = end.toLocaleDateString("en-CA");
+  const visibleJobs = (jobs.data?.jobs ?? []).filter((j) => {
+    if (!j.jobDate || j.jobDate < startKey || j.jobDate >= endKey) return false;
+    return !visible.some(
+      (a) => a.jobId === j.id && a.startsAt.slice(0, 10) === j.jobDate,
+    );
+  });
   const stages = ["new", "contacted", "quoted", "won", "lost"] as const;
   const chooseJob = (id: number) => {
     const j = jobs.data?.jobs.find((row) => row.id === id);
@@ -28275,12 +28293,39 @@ function OperationsScreen({
                 </div>
               </article>
             ))}
-            {visible.length === 0 && (
+            {visibleJobs.map((j) => (
+              <article key={`job-${j.id}`} className="calendar-job-row">
+                <time>
+                  {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  }).format(new Date(`${j.jobDate}T12:00:00`))}
+                  {" · "}
+                  {lang === "es" ? "Todo el día" : "All day"}
+                </time>
+                <div>
+                  <strong>{j.jobType || j.clientName}</strong>
+                  <p>
+                    {j.clientName}
+                    {j.jobAddress ? ` · ${j.jobAddress}` : ""}
+                  </p>
+                </div>
+                <div className="row-actions">
+                  <button
+                    onClick={() => setScreen({ name: "detail", jobId: j.id })}
+                  >
+                    {lang === "es" ? "Trabajo" : "Job"}
+                  </button>
+                </div>
+              </article>
+            ))}
+            {visible.length === 0 && visibleJobs.length === 0 && (
               <div className="empty-state">
                 <h2>
                   {lang === "es"
-                    ? "No hay citas en este período."
-                    : "No appointments in this period."}
+                    ? "No hay citas ni trabajos en este período."
+                    : "No appointments or jobs in this period."}
                 </h2>
               </div>
             )}

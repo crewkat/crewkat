@@ -6378,7 +6378,7 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // today's appointments, who's assigned (from daily logs crew field), and
   // what's overdue.
   getCrewDayView: defineAction({
-    request: z.object({}),
+    request: z.object({ today: clientTodaySchema }),
     response: z.object({
       date: z.string(),
       jobsToday: z.array(z.object({ id: z.number(), clientName: z.string(), jobType: z.string(), jobAddress: z.string(), jobDate: z.string(), appointmentAt: z.string() })),
@@ -6386,9 +6386,11 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
       crewToday: z.array(z.string()),
       overdueInvoices: z.array(z.object({ id: z.number(), invoiceNumber: z.string(), clientName: z.string(), total: z.string(), dueDate: z.string() })),
     }),
-    async handler(ctx) {
+    async handler(ctx, args) {
       const db = ctx.db<typeof schema>();
-      const today = new Date().toISOString().slice(0, 10);
+      // The client's calendar day, not the server's UTC day — after 7pm ET
+      // the UTC date is already tomorrow and today's jobs vanished.
+      const today = clientToday(args);
       const [jobRows, appointmentRows, invoiceRows, logRows, paymentRows] = await Promise.all([
         db.select().from(schema.jobs),
         db.select().from(schema.appointments).orderBy(schema.appointments.startsAt),
@@ -6535,11 +6537,20 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
           .filter((a) => dateOnlyString(a.startsAt) === args.today)
           .sort((a, b) => safeText(a.startsAt).localeCompare(safeText(b.startsAt)))
           .map((a) => ({ id: a.id, jobId: a.jobId, clientId: a.clientId, clientName: safeText(a.clientName), clientPhone: safeText(a.clientPhone), startsAt: safeText(a.startsAt), notes: safeText(a.notes), exteriorWork: Boolean(a.exteriorWork), status: (["scheduled", "confirmed", "on_my_way", "arrived", "completed", "cancelled"] as const).includes(a.status as never) ? (a.status as "scheduled" | "confirmed" | "on_my_way" | "arrived" | "completed" | "cancelled") : "scheduled", crewMember: safeText(a.crewMember), etaMinutes: typeof a.etaMinutes === "number" ? a.etaMinutes : null, hasShareLink: !!a.shareTokenHash }));
-        const crew = appointments.flatMap((a) => {
+        const crewFromAppointments = appointments.flatMap((a) => {
           const job = jobRows.find((j) => j.id === a.jobId);
           if (!job) return [];
           return [{ jobId: job.id, clientName: safeText(job.clientName), jobType: safeText(job.jobType), jobAddress: safeText(job.jobAddress), startsAt: a.startsAt, tasks: crewRows.filter((t) => t.jobId === job.id && !t.completed).map((t) => safeText(t.text)) }];
         });
+        // Crawl fix (2026-11-06): a job dated today with no appointment was
+        // invisible here — Home read "0 jobs today" while the job existed.
+        // Date-only jobs join the crew plan at 9:00 (the app's default
+        // appointment hour) unless the job carries its own appointment time.
+        const crewJobIds = new Set(crewFromAppointments.map((c) => c.jobId));
+        const crewFromDates = jobRows
+          .filter((j) => !crewJobIds.has(j.id) && (dateOnlyString(j.jobDate) === args.today || dateOnlyString(j.appointmentAt) === args.today))
+          .map((j) => ({ jobId: j.id, clientName: safeText(j.clientName), jobType: safeText(j.jobType), jobAddress: safeText(j.jobAddress), startsAt: dateOnlyString(j.appointmentAt) === args.today && safeText(j.appointmentAt).length > 10 ? safeText(j.appointmentAt) : `${args.today}T09:00`, tasks: crewRows.filter((t) => t.jobId === j.id && !t.completed).map((t) => safeText(t.text)) }));
+        const crew = [...crewFromAppointments, ...crewFromDates].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
         const reminders = noteRows
           .filter((n) => !n.completed && Boolean(n.reminderDate) && safeText(n.reminderDate) <= args.today)
           .map((n) => ({ id: n.id, jobId: n.jobId, clientId: n.clientId, note: safeText(n.note), reminderDate: safeText(n.reminderDate), completed: Boolean(n.completed), createdAt: (n.createdAt as unknown as Date | null)?.toISOString?.() ?? "" }));
