@@ -29915,6 +29915,32 @@ function DispatchBoard({ lang, onExitBoard, onOpenJob, signature = "" }: { lang:
 
   return (
     <section className="dispatch-board">
+      {/* Crawl fix round 3: Board mode names itself. Rounds 1–2 left the
+          board wearing only its Day/Week sub-view controls plus a "List"
+          button inside the segmented group, so the screen read as the
+          Day timeline and Board looked like it did nothing. The board
+          now opens with its own header band — the word Board/Tablero as
+          the active mode, what the surface does, and the exit labelled
+          as a back action outside the mode group. */}
+      <div className="dispatch-board-head">
+        <div className="dispatch-board-title">
+          <strong>{lang === "es" ? "Tablero" : "Board"}</strong>
+          <span>
+            {lang === "es"
+              ? "Arrastra una tarjeta — o tócala y luego toca un horario — para mover una cita."
+              : "Drag a card — or tap it, then tap a time slot — to move an appointment."}
+          </span>
+        </div>
+        {onExitBoard && (
+          <button
+            type="button"
+            className="small-button dispatch-exit"
+            onClick={onExitBoard}
+          >
+            {lang === "es" ? "‹ Volver a la lista" : "‹ Back to list"}
+          </button>
+        )}
+      </div>
       <div className="calendar-toolbar dispatch-toolbar">
         <div>
           <button
@@ -29929,11 +29955,6 @@ function DispatchBoard({ lang, onExitBoard, onOpenJob, signature = "" }: { lang:
           >
             {lang === "es" ? "Semana" : "Week"}
           </button>
-          {onExitBoard && (
-            <button type="button" onClick={onExitBoard}>
-              {lang === "es" ? "Lista" : "List"}
-            </button>
-          )}
         </div>
         <div className="dispatch-date-nav">
           <button
