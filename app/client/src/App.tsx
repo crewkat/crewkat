@@ -8774,6 +8774,7 @@ function JobFormScreen({
   onCreated: (id: number) => void;
 }) {
   const t = copy[lang];
+  const qc = useQueryClient();
   const [form, setForm] = useState(
     emptyJob(new Date().toLocaleDateString("en-CA")),
   );
@@ -8783,7 +8784,15 @@ function JobFormScreen({
   const closeDateSheet = () => { setDateSheetClosing(true); window.setTimeout(() => { setDateSheetOpen(false); setDateSheetClosing(false); }, 180); };
   const create = useMutation({
     mutationFn: () => api.createJob(form),
-    onSuccess: (v) => onCreated(v.id),
+    // Crawl fix round 2: creating a job never invalidated the jobs
+    // list, and the shared query client holds queries for 30s — the
+    // new job was missing from Jobs until a manual refresh or a
+    // search (a new key) forced a fetch. The quote->job conversions
+    // already invalidate ["jobs"] on success; create does the same.
+    onSuccess: (v) => {
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+      onCreated(v.id);
+    },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   const submit = (e: FormEvent) => {
