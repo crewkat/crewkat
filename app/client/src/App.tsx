@@ -1274,7 +1274,7 @@ function rootTabLabel(tab: RootTab, lang: Lang): string {
   const entry = ROOT_TABS.find((item) => item.tab === tab);
   return lang === "es" ? entry?.es ?? "" : entry?.en ?? "";
 }
-function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; onSelect: (tab: RootTab) => void }) {
+function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab | null; onSelect: (tab: RootTab) => void }) {
   // Build 3.1.1: the Marketplace badge (unread messages + notifications) lives
   // on the tab again, like pre-3.1. The marketplace_enabled flag hides the tab.
   const inboxQuery = useQuery({ queryKey: ["marketplace-inbox"], queryFn: () => api.marketplaceConversations({}), refetchInterval: 10000 });
@@ -3955,11 +3955,14 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
   // Crew day, etc.
   const showMasterNav = screen.name === "today" || screen.name === "jobs" || screen.name === "clients" || screen.name === "invoices" || screen.name === "marketplace" || screen.name === "tools" || screen.name === "settings";
   const hideMasterNav = !showMasterNav;
-  // Build 3.1.1: sticky root tab — Tools/Settings keep the underlying tab
-  // highlighted (standard tab-bar behavior for pushed screens).
+  // Build 3.1.1: sticky root tab — sub-pages keep the underlying tab
+  // highlighted. Tools and Settings are header destinations, not
+  // children of any tab: leaving the previous tab lit under them read
+  // as the WRONG tab highlighted (crawl A15), so they show no active
+  // tab at all.
   const rootTab = rootTabFor(screen);
   if (rootTab) stickyRootRef.current = rootTab;
-  const activeRootTab = rootTab ?? stickyRootRef.current;
+  const activeRootTab: RootTab | null = screen.name === "tools" || screen.name === "settings" ? null : (rootTab ?? stickyRootRef.current);
   return (
   <>
     <div className={`app-shell${showMasterNav ? " has-bottom-nav" : ""}${hideMasterNav && screen.name !== "legal" ? " master-nav-hidden" : ""}`} ref={appShellRef}>
@@ -6320,7 +6323,10 @@ function toolIdForTile(tile: ToolTile): string | null {
   const tab = "tab" in tile.screen ? tile.screen.tab : undefined;
   return tab ? `${tile.screen.name}:${tab}` : tile.screen.name;
 }
-const PIN_ICON_PATH = "M9 4h6l1 8 3 3v2H5v-2l3-3zM12 16v5";
+// Filled thumbtack for the pin toggles: the old stroke outline (dome,
+// flared skirt, center stem) read as a notification bell at 18px
+// (crawl A19). Drawn filled so it can only read as a pin.
+const PIN_ICON_PATH = "M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3H4v2h7v6.05c0 .55.45 1 1 1s1-.45 1-1V14h7v-2h-1c-1.66 0-3-1.34-3-3z";
 function pinnedScreenTarget(pin: { screen: string; tab: string | null }): Screen {
   return { name: pin.screen, ...(pin.tab ? { tab: pin.tab } : {}) } as Screen;
 }
@@ -7076,6 +7082,12 @@ function CraneRunScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
 // the Pro Tools directory grouped into labeled categories, then the
 // standalone rows (Crew Day, Reports, Company profile, Settings, Help &
 // support). Same premium gating and Home pinning as the Tools home page.
+// Tools group expand/collapse survives leaving for a tool and coming
+// back: the screen remounts on navigation, which used to reset every
+// <details> to closed (crawl A19). Module-level on purpose — it only
+// needs to live for the session, not across app restarts.
+const toolsGroupOpen = new Map<string, boolean>();
+
 function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (screen: Screen) => void; onBack: () => void }) {
   const auth = useContext(AuthContext);
   const isPremium = auth?.user.tier === "premium";
@@ -7158,7 +7170,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
         </button>
         {toolId && (
           <button type="button" className={`tool-pin-toggle${pinned ? " pinned" : ""}`} aria-pressed={pinned} aria-label={pinLabel} title={pinLabel} disabled={pinMutation.isPending} onClick={() => pinMutation.mutate(toolId)}>
-            <Icon size={18}><path d={PIN_ICON_PATH} /></Icon>
+            <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" aria-hidden="true"><path d={PIN_ICON_PATH} /></svg>
           </button>
         )}
       </div>
@@ -7208,7 +7220,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
           <details> keeps its expand/collapse state when the query clears. */}
       <div className="tool-groups" style={searching ? { display: "none" } : undefined}>
       {groups.map((group) => group.tiles.length > 0 && (
-        <details key={group.title} className={`tool-group everyday-tool-group${group.pro ? " pro-tool-group" : ""}`}>
+        <details key={group.title} className={`tool-group everyday-tool-group${group.pro ? " pro-tool-group" : ""}`} open={toolsGroupOpen.get(group.title) ?? false} onToggle={(e) => { toolsGroupOpen.set(group.title, e.currentTarget.open); }}>
           <summary className="tool-group-heading">
             <span className="tool-group-title">
               <span className="tool-group-icon" aria-hidden="true">{group.icon}</span>
@@ -14182,7 +14194,7 @@ function SettingsScreen({
                   <dt>{lang === "es" ? "Año" : "Year"}</dt>
                   <dd>{APP_INFO.releaseYear}</dd>
                 </div>
-                <div>
+                <div className="app-info-wide">
                   <dt>{lang === "es" ? "Desarrollador" : "Developer"}</dt>
                   <dd>{APP_INFO.developer}</dd>
                 </div>
@@ -20630,6 +20642,9 @@ function FollowupsScreen({
   return (
     <main className="page">
       <PageHeader lang={lang} title={t.followups} onBack={onBack} />
+      {/* Each section renders only when it has rows — an "Overdue"
+          heading standing over nothing read as a broken page (A20). */}
+      {(overdue.length > 0 || overdueInvoices.length > 0) && (
       <section className="reminder-section">
         <h2>{t.overdue}</h2>
         {overdue.map((j) => {
@@ -20688,6 +20703,8 @@ function FollowupsScreen({
           );
         })}
       </section>
+      )}
+      {follow.length > 0 && (
       <section className="reminder-section">
         <h2>{lang === "es" ? `Seguimiento de ${estTerms.plural}` : `${capFirst(estTerms.plural)} follow-ups`}</h2>
         {follow.map((q) => {
@@ -20719,6 +20736,7 @@ function FollowupsScreen({
           );
         })}
       </section>
+      )}
       {overdue.length + overdueInvoices.length + follow.length === 0 && (
         <div className="empty-state">
           <CheckIcon />
@@ -33819,6 +33837,12 @@ const CALCULATOR_TABS: ToolboxTab[] = ["loan", "rate", "margin", "convert", "are
 function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () => void; initialTab?: ToolboxTab }) {
   useEscapeToClose(true, onBack);
   const [tab, setTab] = useState<ToolboxTab>(initialTab && CALCULATOR_TABS.includes(initialTab) ? initialTab : "loan");
+  // The 19-tab strip scrolls sideways; keep the active tab fully in
+  // view instead of leaving it half cut at the edge (crawl A19).
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    stripRef.current?.querySelector("button.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [tab]);
   const labels: Record<ToolboxTab, string> = {
     loan: lang === "es" ? "Préstamo" : "Loan payment",
     materials: lang === "es" ? "Precios de materiales" : "Material prices",
@@ -33845,7 +33869,7 @@ function ToolboxScreen({ lang, onBack, initialTab }: { lang: Lang; onBack: () =>
   return <div className="toolbox-modal-backdrop" role="presentation" onClick={onBack}>
     <section className="toolbox-window" role="dialog" aria-modal="true" aria-labelledby="toolbox-title" onClick={(event) => event.stopPropagation()}>
       <header className="toolbox-window-head"><div className="toolbox-head-icon"><Icon><path d="M4 19h16M6 16l4-5 3 2 5-7" /></Icon></div><div><small>{lang === "es" ? "Herramienta de estimación" : "Estimating tool"}</small><h1 id="toolbox-title">{labels[tab]}</h1></div><button type="button" aria-label={lang === "es" ? "Cerrar herramienta" : "Close tool"} onClick={onBack}>×</button></header>
-      <div className="toolbox-tab-strip" role="tablist" aria-label={lang === "es" ? "Calculadoras" : "Calculators"}>
+      <div className="toolbox-tab-strip" role="tablist" aria-label={lang === "es" ? "Calculadoras" : "Calculators"} ref={stripRef}>
         {CALCULATOR_TABS.map((key) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{labels[key]}</button>
         ))}

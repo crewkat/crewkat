@@ -389,7 +389,10 @@ fieldset { padding: 0; border: 0; }
 .reminder-section { margin-top:22px; }
 .reminder-section h2, .saved-section h2 { font:700 21px/1.15 "IBM Plex Sans Condensed",sans-serif; }
 .reminder-section article { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:68px; padding:12px 0; border-bottom:1px solid var(--border); }
-.reminder-section article div { display:grid; gap:3px; }
+.reminder-section article div { display:grid; gap:3px; min-width:0; flex:1 1 auto; }
+.reminder-section article strong { overflow-wrap:anywhere; }
+.reminder-section article > small { flex:0 1 auto; min-width:0; overflow-wrap:anywhere; text-align:right; }
+.reminder-section article > .small-button { flex:none; }
 .reminder-section article span, .reminder-section article small { color:var(--dim); font-size:13px; }
 .reminder-section a { display:inline-flex; align-items:center; text-decoration:none; }
 .gallery-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
@@ -835,6 +838,7 @@ fieldset { padding: 0; border: 0; }
 .support-form .status svg { width: 18px; height: 18px; }
 .app-info-section dl { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; margin: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--border); }
 .app-info-section dl div { min-width: 0; padding: 12px; background: var(--surface); }
+.app-info-section dl div.app-info-wide { grid-column: 1 / -1; }
 .app-info-section dt { color: var(--dim); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .app-info-section dd { margin: 4px 0 0; font-weight: 800; overflow-wrap: anywhere; }
 .app-info-section > p { margin: 0; color: var(--dim); line-height: 1.5; }
@@ -1308,8 +1312,14 @@ html[data-theme="dark"] .kind-problem{background:#4b2423;color:#ffb9b3}html[data
 @media (min-width: 760px) {
   /* b12: floating pill stays a centered pill on desktop — narrower than the page. */
   .bottom-nav { left: 50%; right: auto; width: min(640px, 100%); transform: translateX(-50%); }
-  .tool-directory { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); }
-  .tool-row { border-bottom: 0; background: var(--surface); }
+  .tool-directory { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; background: transparent; }
+  .tool-row { border-bottom: 1px solid var(--border); background: var(--surface); }
+  .tool-row:last-child { border-bottom: 0; }
+  /* Search results are a list, not a directory: one column at every
+     width (crawl A19 — results crammed two-per-row, and the 2-col
+     grid's painted background left a solid blank rectangle in the
+     empty cell when the count was odd). */
+  .tool-search-results .tool-directory { grid-template-columns: minmax(0, 1fr); }
   .money-snapshot strong { font-size: 25px; }
 }
 
@@ -1483,7 +1493,7 @@ input[role="switch"]:checked::before { transform:translateX(16px) !important; }
 .backup-action + .backup-action { margin-top:10px; }
 .backup-action > svg { width:24px; color:var(--green); }
 .backup-action > span { min-width:0; display:grid; gap:2px; }
-.backup-action small { color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.backup-action small { color:var(--dim); overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
 .backup-action:disabled { opacity:.65; cursor:wait; }
 .restore-picker { cursor:pointer; }
 .restore-warning { display:grid; gap:9px; margin-top:12px; padding:14px; border:1px solid color-mix(in srgb,var(--danger) 40%,var(--border)); border-radius:10px; background:color-mix(in srgb,var(--danger) 8%,var(--surface)); }
@@ -2234,7 +2244,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .auth-success { background:color-mix(in srgb, var(--green) 12%, var(--surface)); color:var(--green); }
 .account-settings { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px; }
 .account-settings > div { min-width:0; display:grid; gap:3px; }
-.account-settings strong { overflow:hidden; text-overflow:ellipsis; }
+.account-settings strong { overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; }
 .account-settings small { color:var(--dim); }
 .account-signout { flex:0 0 auto; color:var(--danger); }
 @media (max-width:420px) { .account-settings { align-items:stretch; flex-direction:column; } .account-signout { width:100%; } }
@@ -2759,7 +2769,7 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .toolbox-window-head small { color:var(--dim); font-size:11px; font-weight:800; }
 .toolbox-window-head h1 { overflow:hidden; margin:0; font:800 22px/1.1 "IBM Plex Sans Condensed","Aptos Narrow",ui-sans-serif,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
 .toolbox-window-head > button { width:40px; height:40px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; background:var(--surface-2); color:var(--text); font-size:27px; line-height:1; cursor:pointer; }
-.toolbox-tab-strip { display:flex; gap:8px; overflow-x:auto; overscroll-behavior:contain; padding:12px 14px; border-bottom:1px solid var(--border); background:var(--surface); scrollbar-width:none; }
+.toolbox-tab-strip { display:flex; gap:8px; overflow-x:auto; overscroll-behavior:contain; padding:12px 14px; border-bottom:1px solid var(--border); background:var(--surface); scrollbar-width:none; -webkit-mask-image:linear-gradient(90deg, #000 93%, transparent); mask-image:linear-gradient(90deg, #000 93%, transparent); }
 .toolbox-tab-strip::-webkit-scrollbar { display:none; }
 .toolbox-tab-strip > button { flex:0 0 auto; padding:8px 13px; border:1px solid var(--border); border-radius:999px; background:var(--surface-2); color:var(--text); font-size:13px; font-weight:700; cursor:pointer; }
 .toolbox-tab-strip > button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
