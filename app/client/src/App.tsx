@@ -7528,6 +7528,64 @@ function TakePaymentsSettingsEntry({ lang, setScreen }: { lang: Lang; setScreen:
   );
 }
 
+// Pay Now activation carousel (audit Batch 5 #1 — Joist's pattern:
+// replacing vague pop-ups with a short benefit carousel lifted their
+// payments activation 23% and cut time-to-first-payment from 51h to
+// 30h). Lives INSIDE the Take payments card, only for Pro accounts that
+// have not finished connecting Stripe: it walks through what Pay Now
+// actually does in Crewkat (nothing it can't keep: pay-from-the-link,
+// pass-the-fee, self-recording payments, bank payouts) and ends where
+// the existing Connect action already sits below it. Dismissible
+// (remembered), never blocks the Connect button. Basic accounts never
+// see it — they get the upgrade path instead.
+function PayNowCarousel({ lang }: { lang: Lang }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("crewkat.paynow.carouselDismissed") === "1"; } catch { return false; }
+  });
+  const [index, setIndex] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  if (dismissed) return null;
+  const slides = lang === "es" ? [
+    { icon: <GlyphCard size={26} />, title: "Pago desde el enlace de la factura", body: "Tus clientes pagan con tarjeta o transferencia bancaria (ACH) desde el enlace de la factura que ya envías — sin perseguir cheques." },
+    { icon: <GlyphClock size={26} />, title: "Listo en minutos", body: "Los datos de tu negocio y tu cuenta bancaria, en la configuración segura de Stripe. La mayoría de los contratistas termina de una sentada." },
+    { icon: <GlyphDollar size={26} />, title: "Pasa el cargo al cliente — tú decides", body: "Activa la opción en cada factura y el cargo por tarjeta (2.9% + 30¢) se agrega como su propia línea. Tú recibes el monto completo de la factura." },
+    { icon: <GlyphBell size={26} />, title: "Entérate en cuanto te paguen", body: "Los pagos se registran solos en la factura y los depósitos llegan directo a tu cuenta bancaria." },
+  ] : [
+    { icon: <GlyphCard size={26} />, title: "Paid from the invoice link", body: "Clients pay by card or bank transfer (ACH) right from the invoice link you already send — no chasing checks." },
+    { icon: <GlyphClock size={26} />, title: "Set up in minutes", body: "Your business details and bank account, in Stripe's secure setup. Most contractors finish in one sitting." },
+    { icon: <GlyphDollar size={26} />, title: "Pass the fee to the client — your call", body: "Turn on the per-invoice option and the card fee (2.9% + 30¢) is added as its own line. You receive the full invoice amount." },
+    { icon: <GlyphBell size={26} />, title: "Know the moment you're paid", body: "Payments record themselves on the invoice, and payouts land straight in your bank account." },
+  ];
+  const dismiss = () => {
+    setDismissed(true);
+    try { localStorage.setItem("crewkat.paynow.carouselDismissed", "1"); } catch { /* private mode */ }
+  };
+  return (
+    <div className="paynow-carousel">
+      <button type="button" className="paynow-dismiss" aria-label={lang === "es" ? "Descartar" : "Dismiss"} onClick={dismiss}>×</button>
+      <div
+        className="paynow-track"
+        ref={trackRef}
+        onScroll={() => {
+          const el = trackRef.current;
+          if (el && el.clientWidth > 0) setIndex(Math.min(slides.length - 1, Math.round(el.scrollLeft / el.clientWidth)));
+        }}
+      >
+        {slides.map((slide) => (
+          <article key={slide.title} className="paynow-slide">
+            <span className="paynow-slide-icon" aria-hidden="true">{slide.icon}</span>
+            <strong>{slide.title}</strong>
+            <p>{slide.body}</p>
+          </article>
+        ))}
+      </div>
+      <div className="paynow-dots" aria-hidden="true">
+        {slides.map((slide, i) => <i key={slide.title} className={i === index ? "active" : ""} />)}
+      </div>
+    </div>
+  );
+}
+
 function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (screen: Screen) => void }) {
   const text = lang === "es" ? {
     title: "Cobros con tarjeta",
@@ -7611,6 +7669,7 @@ function PaymentsConnectCard({ lang, setScreen }: { lang: Lang; setScreen: (scre
         </>
       ) : (
         <>
+          <PayNowCarousel lang={lang} />
           <p className="payments-connect-note">{data.status === "onboarding" ? text.onboardingCopy : text.connectCopy}</p>
           {error && <p className="status error" role="alert">{error}</p>}
           <div className="payments-connect-actions">
