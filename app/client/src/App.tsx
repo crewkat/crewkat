@@ -18976,6 +18976,26 @@ function DocumentAttachmentsScreen({
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["document-attachments", docType, docId] });
 
+  // Batch 5 #6: "Attach from this job" — pick media already on the
+  // linked job instead of re-uploading; the server copies the blobs in.
+  const jobPhotos = query.data?.jobPhotos ?? [];
+  const jobFiles = query.data?.jobFiles ?? [];
+  const [pickPhotos, setPickPhotos] = useState<number[]>([]);
+  const [pickFiles, setPickFiles] = useState<number[]>([]);
+  const [attachNote, setAttachNote] = useState("");
+  const attachFromJob = useMutation({
+    mutationFn: () => api.attachJobMediaToDocument({ docType, docId, photoIds: pickPhotos, jobFileIds: pickFiles }),
+    onSuccess: (r) => {
+      setPickPhotos([]);
+      setPickFiles([]);
+      setAttachNote(r.attached > 0
+        ? (lang === "es" ? `Se adjuntaron ${r.attached} ${r.attached === 1 ? "archivo" : "archivos"} del trabajo.` : `Attached ${r.attached} ${r.attached === 1 ? "item" : "items"} from the job.`)
+        : (lang === "es" ? "No se pudo adjuntar nada de lo elegido." : "Nothing from the selection could be attached."));
+      void refresh();
+    },
+    onError: (e) => setAttachNote(e instanceof Error ? e.message : (lang === "es" ? "No se pudo adjuntar." : "Could not attach.")),
+  });
+
   const setPerPage = useMutation({
     mutationFn: (n: 1 | 2 | 4) => api.setDocumentImagesPerPage({ docType, docId, perPage: n }),
     onSuccess: () => { setModeOpen(false); void refresh(); },
@@ -19026,6 +19046,48 @@ function DocumentAttachmentsScreen({
         <span>{t.displayMode}</span>
         <strong>{modeLabel}</strong>
       </button>
+
+      {query.data?.jobId != null && (jobPhotos.length > 0 || jobFiles.length > 0) && (
+        <section className="attachment-section">
+          <h3>{lang === "es" ? "Desde este trabajo" : "From this job"}</h3>
+          <p className="attachment-job-note">{lang === "es" ? "Adjunta fotos y archivos que ya están en el trabajo — viajan con el documento que ve el cliente." : "Attach photos and files already on the job — they travel with the document your client sees."}</p>
+          {jobPhotos.length > 0 && (
+            <div className="attachment-grid">
+              {jobPhotos.map((p) => (
+                <label key={p.id} className="attachment-thumb attachment-pick">
+                  <input
+                    type="checkbox"
+                    checked={pickPhotos.includes(p.id)}
+                    onChange={(e) => setPickPhotos(e.target.checked ? [...pickPhotos, p.id] : pickPhotos.filter((id) => id !== p.id))}
+                  />
+                  {p.url ? <img src={p.url} alt={p.caption || p.stage} loading="lazy" /> : <div className="attachment-thumb-fallback"><Icon size={22}><path d="M4 16l5-5 4 4 3-3 4 4M4 20h16M4 4h16v16H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></Icon></div>}
+                  <span>{p.caption || p.stage}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {jobFiles.length > 0 && (
+            <div className="attachment-pdf-list">
+              {jobFiles.map((f) => (
+                <label key={f.id} className="attachment-pdf-row attachment-pick-row">
+                  <input
+                    type="checkbox"
+                    checked={pickFiles.includes(f.id)}
+                    onChange={(e) => setPickFiles(e.target.checked ? [...pickFiles, f.id] : pickFiles.filter((id) => id !== f.id))}
+                  />
+                  <span>{f.title || f.fileName}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {(pickPhotos.length + pickFiles.length) > 0 && (
+            <button type="button" className="attachment-add" disabled={attachFromJob.isPending} onClick={() => attachFromJob.mutate()}>
+              <span>{attachFromJob.isPending ? (lang === "es" ? "Adjuntando…" : "Attaching…") : (lang === "es" ? `Adjuntar seleccionados (${pickPhotos.length + pickFiles.length})` : `Attach selected (${pickPhotos.length + pickFiles.length})`)}</span>
+            </button>
+          )}
+          {attachNote && <p className="status success">{attachNote}</p>}
+        </section>
+      )}
 
       <section className="attachment-section">
         <h3>{t.attachedImages}</h3>

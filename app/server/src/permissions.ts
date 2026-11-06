@@ -212,7 +212,7 @@ export const PLATFORM_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 
 export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
-  "acceptMarketplaceTerms", "addPhoto", "addPunchItem",
+  "acceptMarketplaceTerms", "addPhoto", "addPunchItem", "attachJobMediaToDocument",
   "addReceipt", "addVoiceNote", "appendClientAddress",
   "checkSmsCap", "clockInCrew", "clockOutCrew",
   "completeEquipmentMaintenance", "completeJob", "convertQuoteToInvoice",

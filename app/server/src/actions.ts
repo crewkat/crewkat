@@ -5956,13 +5956,31 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
     ctx.invalidateQueries();
     return hydrateDocumentAttachment(ctx, made);
   } }),
-  listDocumentAttachments: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive() }), response: z.object({ attachments: z.array(documentAttachmentSchema), imagesPerPage: z.number() }), async handler(ctx, args) {
+  // Batch 5 #6: attach EXISTING job media — pick the job's photos and
+  // files from the document's attachments screen instead of
+  // re-uploading them. Each pick COPIES the blob into the attachments
+  // namespace, so deleting the attachment later can never destroy the
+  // job's own photo or file. Only kinds the document PDF can carry
+  // (JPEG/PNG/WebP images, PDFs) are attachable; anything else is
+  // skipped and the count reports what actually attached.
+  attachJobMediaToDocument: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive(), photoIds: z.array(z.number().int().positive()).max(24).default([]), jobFileIds: z.array(z.number().int().positive()).max(24).default([]) }), response: z.object({ attached: z.number() }), async handler(ctx, args) { const companyId = await assertDocumentAttachmentAccess(ctx, args.docType, args.docId); const db = ctx.db<typeof schema>(); const table = args.docType === "quote" ? schema.quotes : schema.invoices; const doc = (await db.select({ jobId: table.jobId }).from(table).where(eq(table.id, args.docId)).limit(1))[0]; if (!doc?.jobId) throw new Error("This document isn't linked to a job yet — link it to a job to attach its photos and files."); const last = (await db.select({ sortOrder: schema.documentAttachments.sortOrder }).from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType, args.docType), eq(schema.documentAttachments.docId, args.docId))).orderBy(desc(schema.documentAttachments.sortOrder)).limit(1))[0]; let sort = last?.sortOrder ?? -1; const now = new Date(); let attached = 0; const extFor = (contentType: string) => contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : contentType === "application/pdf" ? "pdf" : "jpg"; const copyIn = async (blobKey: string, fileName: string, contentType: string, kind: "image" | "pdf") => { const bytes = await ctx.blobs.get(blobKey); if (!bytes) return false; const key = `attachments/${args.docType}/${args.docId}/${crypto.randomUUID()}.${extFor(contentType)}`; await ctx.blobs.put(key, bytes, { contentType }); await db.insert(schema.documentAttachments).values({ companyId, docType: args.docType, docId: args.docId, kind, blobKey: key, fileName, contentType, sortOrder: ++sort, createdAt: now }); attached++; return true; }; for (const photoId of args.photoIds) { const photo = (await db.select().from(schema.photos).where(and(eq(schema.photos.id, photoId), eq(schema.photos.jobId, doc.jobId))).limit(1))[0]; if (!photo || !["image/jpeg", "image/png", "image/webp"].includes(photo.contentType)) continue; await copyIn(photo.blobKey, photo.filename, photo.contentType, "image"); } for (const fileId of args.jobFileIds) { const file = (await db.select().from(schema.jobFiles).where(and(eq(schema.jobFiles.id, fileId), eq(schema.jobFiles.jobId, doc.jobId))).limit(1))[0]; if (!file) continue; if (file.contentType === "application/pdf") await copyIn(file.blobKey, file.filename || file.title || "document.pdf", file.contentType, "pdf"); else if (["image/jpeg", "image/png", "image/webp"].includes(file.contentType)) await copyIn(file.blobKey, file.filename || file.title || "image.jpg", file.contentType, "image"); } if (attached) { await touchDocumentForAttachments(ctx, args.docType, args.docId); ctx.invalidateQueries(); } return { attached }; }}),
+  listDocumentAttachments: defineAction({ request: z.object({ docType: z.enum(["quote", "invoice"]), docId: z.number().int().positive() }), response: z.object({ attachments: z.array(documentAttachmentSchema), imagesPerPage: z.number(), jobId: z.number().nullable(), jobPhotos: z.array(z.object({ id: z.number(), url: z.string().nullable(), stage: z.string(), caption: z.string() })), jobFiles: z.array(z.object({ id: z.number(), title: z.string(), fileName: z.string(), contentType: z.string() })) }), async handler(ctx, args) {
     const companyId = await assertDocumentAttachmentAccess(ctx, args.docType, args.docId);
     const db = ctx.db<typeof schema>();
     const table = args.docType === "quote" ? schema.quotes : schema.invoices;
-    const doc = (await db.select({ imagesPerPage: table.imagesPerPage }).from(table).where(eq(table.id, args.docId)).limit(1))[0];
+    const doc = (await db.select({ imagesPerPage: table.imagesPerPage, jobId: table.jobId }).from(table).where(eq(table.id, args.docId)).limit(1))[0];
     const rows = await db.select().from(schema.documentAttachments).where(and(eq(schema.documentAttachments.docType, args.docType), eq(schema.documentAttachments.docId, args.docId), eq(schema.documentAttachments.companyId, companyId))).orderBy(asc(schema.documentAttachments.sortOrder), asc(schema.documentAttachments.id));
-    return { attachments: await Promise.all(rows.map((r) => hydrateDocumentAttachment(ctx, r))), imagesPerPage: doc?.imagesPerPage ?? 1 };
+    // Batch 5 #6: the linked job's attachable media, for the
+    // "attach from this job" picker (document-carryable kinds only).
+    let jobPhotos: Array<{ id: number; url: string | null; stage: string; caption: string }> = [];
+    let jobFiles: Array<{ id: number; title: string; fileName: string; contentType: string }> = [];
+    if (doc?.jobId) {
+      const photoRows = (await db.select().from(schema.photos).where(eq(schema.photos.jobId, doc.jobId)).orderBy(desc(schema.photos.createdAt))).filter((p) => ["image/jpeg", "image/png", "image/webp"].includes(p.contentType));
+      jobPhotos = await Promise.all(photoRows.map(async (p) => { let url: string | null = null; try { url = await ctx.blobs.getUrl(p.blobKey); } catch { url = null; } return { id: p.id, url, stage: p.stage, caption: p.caption }; }));
+      const fileRows = await db.select().from(schema.jobFiles).where(eq(schema.jobFiles.jobId, doc.jobId)).orderBy(desc(schema.jobFiles.createdAt));
+      jobFiles = fileRows.filter((f) => f.contentType === "application/pdf" || ["image/jpeg", "image/png", "image/webp"].includes(f.contentType)).map((f) => ({ id: f.id, title: f.title, fileName: f.filename, contentType: f.contentType }));
+    }
+    return { attachments: await Promise.all(rows.map((r) => hydrateDocumentAttachment(ctx, r))), imagesPerPage: doc?.imagesPerPage ?? 1, jobId: doc?.jobId ?? null, jobPhotos, jobFiles };
   } }),
   deleteDocumentAttachment: defineAction({ request: z.object({ id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx, args): Promise<{ ok: true }> {
     const db = ctx.db<typeof schema>();
