@@ -175,7 +175,7 @@ describe("Tools distinction + search (Danny 2026-11-03)", () => {
     const accents = [...APP.matchAll(/accent: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
     expect(accents.length).toBe(30); // 15 doors × EN + ES literals
     expect(new Set(accents).size).toBe(15);
-    for (const hex of ["#4a5fd0", "#22713f", "#7a4fc9", "#b97e10", "#1c77c3", "#0f9d63", "#e8710a", "#cf4436", "#b05c2a", "#527a8a", "#e01f26", "#8e44ad", "#c98a04", "#3d5a99", "#c13a7d"]) {
+    for (const hex of ["#4a5fd0", "#22713f", "#7a4fc9", "#8c620a", "#1c77c3", "#0f9d63", "#ae5104", "#cf4436", "#b05c2a", "#527a8a", "#e01f26", "#8e44ad", "#8f6100", "#3d5a99", "#c13a7d"]) {
       expect(accents).toContain(hex);
     }
     const tints = [...APP.matchAll(/tint: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
