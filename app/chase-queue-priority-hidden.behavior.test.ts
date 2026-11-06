@@ -122,8 +122,8 @@ check("card still shows client name and total",
   chaseBlock.includes("{q.clientName}") && chaseBlock.includes("qc-amount") && chaseBlock.includes("usd(money(q.total))"));
 check("top card still carries the Text first badge (ranking still surfaced)",
   chaseBlock.includes("text-first") && chaseBlock.includes('"Text first"'));
-check("card actions unchanged (Open text / Won / Lost / View estimate)",
-  chaseBlock.includes('"Open text"') && chaseBlock.includes('"Won"') && chaseBlock.includes('"Lost"') && chaseBlock.includes('"View estimate"') && chaseBlock.includes('"Ver presupuesto"'));
+check("card actions unchanged (Open text / Accepted / Lost / View estimate; Won renamed by theme item 5)",
+  chaseBlock.includes('"Open text"') && chaseBlock.includes('"Accepted"') && chaseBlock.includes('"Lost"') && chaseBlock.includes('"View estimate"') && chaseBlock.includes('"Ver presupuesto"'));
 check("server still computes score = total × daysWaiting",
   serverSrc.includes("score: safeMoney(q.total) * days"));
 check("server still sorts the queue by score descending",
