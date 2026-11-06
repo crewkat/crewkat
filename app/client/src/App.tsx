@@ -8252,7 +8252,7 @@ function JobsScreen({
                   : `Required photos ${job.photoCompleteness}%`
               }
             >
-              <CameraIcon />
+              <GlyphCamera />
               {job.photoCount} · {job.photoCompleteness}%
             </span>
             <BackIcon />
@@ -8262,7 +8262,7 @@ function JobsScreen({
         {!jobs.isPending && visibleJobs.length === 0 && (
           <EmptyState
             lang={lang}
-            icon={<CameraIcon />}
+            icon={<GlyphCamera />}
             title={search ? t.noResults : t.noJobs}
             body={search ? (lang === "es" ? "Prueba con otro nombre o dirección." : "Try a different name or address.") : t.firstHint}
             actionLabel={search ? undefined : t.newJob}
@@ -12254,23 +12254,23 @@ function JobDetail({
         <p className="job-tools-kicker">{lang === "es" ? "Herramientas" : "Job tools"}</p>
         <div className="job-tools-grid">
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "time" })}>
-            <Icon><circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2M9 2h6" /></Icon>
+            <GlyphStopwatch />
             <span>{t.timeTracking}</span>
           </button>
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "crew" })}>
-            <Icon><rect x="5" y="4" width="14" height="18" rx="2" /><path d="M9 4a3 3 0 0 1 6 0M9 12l2 2 4-4" /></Icon>
+            <GlyphClipboardCheck />
             <span>{t.crewChecklist}</span>
           </button>
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "punch" })}>
-            <Icon><path d="M4 6h16M4 12h16M4 18h10" /></Icon>
+            <GlyphList />
             <span>{t.punch}</span>
           </button>
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "subcontractors" })}>
-            <Icon><circle cx="9" cy="8" r="3.5" /><path d="M3 20c0-3.5 2.7-5.5 6-5.5s6 2 6 5.5M16 4.7a3.5 3.5 0 0 1 0 6.6M21 20c0-3-1.8-4.8-4.2-5.3" /></Icon>
+            <GlyphCrew />
             <span>{lang === "es" ? "Subcontratistas" : "Subcontractors"}</span>
           </button>
           <button type="button" onClick={() => setScreen({ name: "tool", jobId, mode: "voice" })}>
-            <Icon><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>
+            <GlyphMic />
             <span>{t.voiceNotes}</span>
           </button>
         </div>
@@ -12288,7 +12288,7 @@ function JobDetail({
       </section></div>}
       {fileMenu && <div className="sheet-backdrop" onClick={() => setFileMenu(null)}><section className="more-sheet" role="dialog" aria-modal="true" aria-label={fileMenu.title || fileMenu.filename} onClick={(event) => event.stopPropagation()}>
         <div className="sheet-handle" /><h2>{fileMenu.title || fileMenu.filename}</h2>
-        <button type="button" onClick={() => { window.open(fileMenu.url, "_blank", "noopener"); setFileMenu(null); }}><Icon><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Icon>{lang === "es" ? "Ver" : "View"}</button>
+        <button type="button" onClick={() => { window.open(fileMenu.url, "_blank", "noopener"); setFileMenu(null); }}><GlyphEye />{lang === "es" ? "Ver" : "View"}</button>
         <button type="button" disabled={setJobFileShared.isPending} onClick={() => setJobFileShared.mutate({ id: fileMenu.id, shared: !fileMenu.sharedWithClient })}><Icon><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></Icon>{fileMenu.sharedWithClient ? (lang === "es" ? "Ocultar del cliente" : "Hide from client") : (lang === "es" ? "Compartir con el cliente" : "Share with client")}</button>
         <button type="button" className="danger-row" onClick={() => { setFileDelete(fileMenu); setFileMenu(null); }}><Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>{lang === "es" ? "Eliminar" : "Delete"}</button>
       </section></div>}
