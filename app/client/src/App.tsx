@@ -1299,12 +1299,437 @@ function BottomNav({ lang, active, onSelect }: { lang: Lang; active: RootTab; on
     </nav>
   );
 }
+// Custom glyphs (icons batches 2–6, Danny 2026-11-05): the filled
+// navy + orange family approved with the v2 sheet and the tab-bar
+// batch, extended to Home, Jobs, Money/Documents, Tools doors, and
+// Settings. Same construction as TabIcon — bold filled silhouettes,
+// white cut-outs, exactly one orange hit — but scoped per call site:
+// the shared stroke Icon set stays untouched, so any screen outside
+// these batches keeps its current glyph. Colors ride the --gi-*
+// variables in theme.css; dark theme flips the navy ink like the tab
+// bar does. Danny's calibration: "a little bulk mixed with simplicity."
+function Glyph({ children, size = 20 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg className="glyph-icon" viewBox="0 0 24 24" width={size} height={size} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+type GlyphProps = { size?: number };
+// Briefcase — the Jobs glyph (same artwork as the tab bar's).
+const GlyphBriefcase = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-ns" strokeWidth={2.7} d="M8.4 8.2V6.1a2.3 2.3 0 0 1 2.3-2.3h2.6a2.3 2.3 0 0 1 2.3 2.3v2.1" />
+    <rect className="g-f" x="2.8" y="7.6" width="18.4" height="12.8" rx="2.6" />
+    <rect className="g-sf" x="2.8" y="12.2" width="18.4" height="2.4" />
+    <rect className="g-fo" x="10.1" y="11.2" width="3.8" height="4" rx="1" />
+    <circle className="g-w" cx="12" cy="13.2" r="0.85" />
+  </Glyph>
+);
+// Plain document — work summaries, document details, generic doc rows.
+const GlyphDoc = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M6.3 2.8h6.9L18 7.6v11.9a1.7 1.7 0 0 1-1.7 1.7H6.3A1.7 1.7 0 0 1 4.6 19.5V4.5a1.7 1.7 0 0 1 1.7-1.7Z" />
+    <path className="g-sf" d="M13.2 2.8v3.4a1.4 1.4 0 0 0 1.4 1.4H18Z" />
+    <rect className="g-w" x="7.6" y="10.6" width="8.8" height="1.8" rx="0.9" />
+    <rect className="g-w" x="7.6" y="14" width="8.8" height="1.8" rx="0.9" />
+    <rect className="g-w" x="7.6" y="17.4" width="5.2" height="1.8" rx="0.9" />
+  </Glyph>
+);
+// Estimate — document with the orange $ badge from Danny's sheet.
+const GlyphEstimate = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M6.3 2.8h6.9L18 7.6v11.9a1.7 1.7 0 0 1-1.7 1.7H6.3A1.7 1.7 0 0 1 4.6 19.5V4.5a1.7 1.7 0 0 1 1.7-1.7Z" />
+    <path className="g-sf" d="M13.2 2.8v3.4a1.4 1.4 0 0 0 1.4 1.4H18Z" />
+    <rect className="g-w" x="7.6" y="10.4" width="7.6" height="1.8" rx="0.9" />
+    <rect className="g-w" x="7.6" y="13.8" width="5.4" height="1.8" rx="0.9" />
+    <circle className="g-fo" cx="16.6" cy="17" r="3.9" />
+    <text className="g-w" x="16.6" y="19.6" textAnchor="middle" fontSize="7.5" fontWeight={800}>$</text>
+  </Glyph>
+);
+// Invoice — receipt with orange $ and orange rule (Danny's sheet).
+const GlyphInvoice = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M5.6 2.8h12.8v18.4l-2.1-1.4-2.2 1.4-2.1-1.4-2.2 1.4-2.1-1.4-2.1 1.4Z" />
+    <rect className="g-w" x="8" y="6.2" width="8" height="1.7" rx="0.85" />
+    <text className="g-fo" x="12" y="16.5" textAnchor="middle" fontSize="10.5" fontWeight={800}>$</text>
+    <rect className="g-fo" x="9.2" y="17.9" width="5.6" height="1.6" rx="0.8" />
+  </Glyph>
+);
+// Person — orange head, navy shoulders (Danny's sheet, as the tab bar).
+const GlyphPerson = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-fo" cx="12" cy="7.9" r="3.9" />
+    <path className="g-f" d="M4.5 20.5c.95-4.35 3.8-6.5 7.5-6.5s6.55 2.15 7.5 6.5Z" />
+  </Glyph>
+);
+// New client — person with the orange plus.
+const GlyphPersonPlus = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-fo" cx="10" cy="7.9" r="3.6" />
+    <path className="g-f" d="M3.2 20.3c.85-4.05 3.4-6.1 6.8-6.1s5.95 2.05 6.8 6.1Z" />
+    <rect className="g-fo" x="16.3" y="13.4" width="2.5" height="8" rx="1.1" />
+    <rect className="g-fo" x="13.55" y="16.15" width="8" height="2.5" rx="1.1" />
+  </Glyph>
+);
+// Crew — two people, the second in orange (v2 sheet).
+const GlyphCrew = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-f" cx="9.9" cy="8.3" r="3.9" />
+    <path className="g-f" d="M3.6 20.4c.9-4.2 3.3-6.3 6.3-6.3 1.2 0 2.3.3 3.3.9-.9 1.2-1.4 2.9-1.6 5.4Z" />
+    <path className="g-fo" d="M14.9 14.6c2.9.2 4.9 2.1 5.6 5.4h-6.9c.2-2.3.6-4.1 1.3-5.4Z" />
+    <circle className="g-fo" cx="17" cy="8" r="3.1" />
+  </Glyph>
+);
+// Storefront — the Marketplace quick-access glyph (v2 sheet; the tab
+// bar keeps its shopping-bag variant).
+const GlyphStorefront = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M5 10.8h14v8.2a1.8 1.8 0 0 1-1.8 1.8H6.8A1.8 1.8 0 0 1 5 19Z" />
+    <path className="g-f" d="M4.2 4h15.6l1.3 5.4H2.9Z" />
+    <circle className="g-fo" cx="6.2" cy="9.9" r="1.6" />
+    <circle className="g-fo" cx="12" cy="9.9" r="1.6" />
+    <circle className="g-fo" cx="17.8" cy="9.9" r="1.6" />
+    <rect className="g-w" x="10.2" y="14.2" width="3.6" height="6.6" />
+  </Glyph>
+);
+// Clock — white hour hand, orange minute hand (v2 sheet).
+const GlyphClock = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-f" cx="12" cy="12" r="9.2" />
+    <path className="g-ws" strokeWidth={2.3} d="M12 12V7.6" />
+    <path className="g-os" strokeWidth={2.3} d="M12 12l3.6 2.2" />
+    <circle className="g-w" cx="12" cy="12" r="1.25" />
+  </Glyph>
+);
+// Alarm clock — payment reminders.
+const GlyphAlarm = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-fo" x="4.1" y="3.4" width="4" height="2.4" rx="1.2" transform="rotate(-28 6.1 4.6)" />
+    <rect className="g-fo" x="15.9" y="3.4" width="4" height="2.4" rx="1.2" transform="rotate(28 17.9 4.6)" />
+    <circle className="g-f" cx="12" cy="13" r="7.9" />
+    <path className="g-ws" strokeWidth={2.2} d="M12 13V9.4" />
+    <path className="g-os" strokeWidth={2.2} d="M12 13l3 1.9" />
+    <circle className="g-w" cx="12" cy="13" r="1.2" />
+  </Glyph>
+);
+// Wrench — the Tools glyph (v2 sheet).
+const GlyphWrench = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" fillRule="evenodd" d="M16.8 2.5a4.3 4.3 0 1 0 .01 0ZM16.8 6.8l4.7-4.6.4 5.3Z" />
+    <rect className="g-f" x="10.7" y="9" width="2.6" height="11.5" rx="1.3" transform="rotate(45 12 12)" />
+    <circle className="g-fo" cx="6.6" cy="17.4" r="1.4" />
+  </Glyph>
+);
+// Camera — the Photos glyph (v2 sheet).
+const GlyphCamera = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M8.4 8.4 10 5.2h4l1.6 3.2Z" />
+    <rect className="g-f" x="2.8" y="8" width="18.4" height="11.8" rx="2.4" />
+    <circle className="g-fo" cx="12" cy="13.9" r="3.7" />
+    <circle className="g-w" cx="12" cy="13.9" r="2.35" />
+    <circle className="g-f" cx="12" cy="13.9" r="1.25" />
+    <circle className="g-w" cx="5.9" cy="10.7" r="0.95" />
+  </Glyph>
+);
+// Calendar — Schedule (v2 sheet).
+const GlyphCalendar = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="3.4" y="5.8" width="17.2" height="14.8" rx="2.2" />
+    <path className="g-sf" d="M3.4 8a2.2 2.2 0 0 1 2.2-2.2h12.8a2.2 2.2 0 0 1 2.2 2.2v2.2H3.4Z" />
+    <rect className="g-w" x="6.9" y="3.4" width="2.3" height="4.6" rx="1.15" />
+    <rect className="g-w" x="14.8" y="3.4" width="2.3" height="4.6" rx="1.15" />
+    <circle className="g-w" cx="7.5" cy="14" r="1.1" />
+    <circle className="g-w" cx="7.5" cy="17.4" r="1.1" />
+    <rect className="g-fo" x="13.4" y="13.2" width="3.8" height="3.8" rx="0.9" />
+  </Glyph>
+);
+// Banknote — Money (v2 sheet).
+const GlyphMoney = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="2.2" y="5.9" width="19.6" height="12.4" rx="2" />
+    <circle className="g-fo" cx="12" cy="12.1" r="3.4" />
+    <circle className="g-w" cx="12" cy="12.1" r="1.15" />
+    <circle className="g-w" cx="5.7" cy="12.1" r="1.05" />
+    <circle className="g-w" cx="18.3" cy="12.1" r="1.05" />
+  </Glyph>
+);
+// Card — Card payments (v2 sheet).
+const GlyphCard = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="2.4" y="5.4" width="19.2" height="13.6" rx="2.4" />
+    <path className="g-fo" d="M2.4 8.7h19.2v3H2.4Z" />
+    <rect className="g-w" x="5.5" y="14.1" width="3.7" height="2.9" rx="0.8" />
+    <rect className="g-w" x="11" y="14.8" width="6.6" height="1.6" rx="0.8" />
+  </Glyph>
+);
+// Refresh — recurring / progress updates: chunky navy arc, orange head.
+const GlyphRefresh = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-ns" strokeWidth={3} d="M20.5 15.5A9 9 0 1 1 18.4 5.6" />
+    <path className="g-os" strokeWidth={3} d="M21 3.5V9h-5.5" />
+  </Glyph>
+);
+// Paperclip — attachments: chunky navy clip, orange end rivet.
+const GlyphPaperclip = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-ns" strokeWidth={2.7} d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    <circle className="g-fo" cx="21.4" cy="11.05" r="1.35" />
+  </Glyph>
+);
+// Pulse — document activity: navy plate, white pulse, orange spike.
+const GlyphPulse = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="2.8" y="2.8" width="18.4" height="18.4" rx="5" />
+    <path className="g-ws" strokeWidth={2.2} d="M5.5 12h3.4l1.9-4.6" />
+    <path className="g-os" strokeWidth={2.2} d="M10.8 7.4l2.7 7.4" />
+    <path className="g-ws" strokeWidth={2.2} d="M13.5 14.8l1.9-2.8h3.1" />
+  </Glyph>
+);
+// Pencil — Edit (v2 sheet).
+const GlyphPencil = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M16.9 3.1a2.4 2.4 0 0 1 3.4 0l.6.6a2.4 2.4 0 0 1 0 3.4L9.4 18.6l-5.3 1.5 1.5-5.3Z" />
+    <path className="g-sf" d="M14.9 5.1l3.4 3.4 2-2a2.4 2.4 0 0 0 0-3.4l-.6-.6a2.4 2.4 0 0 0-3.4 0Z" />
+    <path className="g-fo" d="M4.1 20.1l1.5-5.3 3.8 3.8Z" />
+  </Glyph>
+);
+// Medal — completion certificate: checked medal, one orange ribbon.
+const GlyphMedal = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-sf" d="M8 14.2 6 20.8l3.2-1.6 2 1.8.6-5.4A6.2 6.2 0 0 1 8 14.2Z" />
+    <path className="g-fo" d="M16 14.2l2 6.6-3.2-1.6-2 1.8-.6-5.4A6.2 6.2 0 0 0 16 14.2Z" />
+    <circle className="g-f" cx="12" cy="9.8" r="5.9" />
+    <path className="g-ws" strokeWidth={2.1} d="m9.3 9.9 2 2 3.5-4" />
+  </Glyph>
+);
+// Chat bubble — client texts (v2 Message).
+const GlyphChat = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M4.8 3.6h14.4A2.8 2.8 0 0 1 22 6.4v7.2a2.8 2.8 0 0 1-2.8 2.8h-6.9L7 20.6v-4.2H4.8A2.8 2.8 0 0 1 2 13.6V6.4a2.8 2.8 0 0 1 2.8-2.8Z" />
+    <circle className="g-w" cx="7.6" cy="10" r="1.4" />
+    <circle className="g-fo" cx="12" cy="10" r="1.4" />
+    <circle className="g-w" cx="16.4" cy="10" r="1.4" />
+  </Glyph>
+);
+// Folder — shared files (v2 sheet).
+const GlyphFolder = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M3 6.2A2.2 2.2 0 0 1 5.2 4h4.3l2.3 3H19a2.2 2.2 0 0 1 2.2 2.2v8.6A2.2 2.2 0 0 1 19 20H5.2A2.2 2.2 0 0 1 3 17.8Z" />
+    <path className="g-fo" d="M3 6.2A2.2 2.2 0 0 1 5.2 4h4.3l2.3 3H3Z" />
+    <path className="g-sf" d="M3 10.2h18.2v7.6A2.2 2.2 0 0 1 19 20H5.2A2.2 2.2 0 0 1 3 17.8Z" />
+  </Glyph>
+);
+// Stopwatch — time tracking: orange button, navy body, two-tone hands.
+const GlyphStopwatch = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-fo" x="10.3" y="2.2" width="3.4" height="2.6" rx="1.1" />
+    <rect className="g-f" x="11.1" y="4.4" width="1.8" height="2.2" />
+    <circle className="g-f" cx="12" cy="13.6" r="7.7" />
+    <path className="g-ws" strokeWidth={2.2} d="M12 13.6V10" />
+    <path className="g-os" strokeWidth={2.2} d="M12 13.6l2.8 1.7" />
+    <circle className="g-w" cx="12" cy="13.6" r="1.2" />
+  </Glyph>
+);
+// Clipboard with check — crew checklist.
+const GlyphClipboardCheck = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="5" y="4.4" width="14" height="17" rx="2.2" />
+    <rect className="g-fo" x="8.9" y="2.4" width="6.2" height="3.8" rx="1.3" />
+    <path className="g-ws" strokeWidth={2.3} d="m8.7 13.2 2.3 2.3 4.3-5" />
+    <rect className="g-w" x="8.7" y="17.9" width="6.6" height="1.7" rx="0.85" />
+  </Glyph>
+);
+// Punch list — navy bars, orange bullet column.
+const GlyphList = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-fo" x="3.2" y="4.9" width="3" height="3" rx="0.9" />
+    <rect className="g-f" x="8" y="4.9" width="12.8" height="3" rx="1.5" />
+    <rect className="g-fo" x="3.2" y="10.5" width="3" height="3" rx="0.9" />
+    <rect className="g-f" x="8" y="10.5" width="12.8" height="3" rx="1.5" />
+    <rect className="g-fo" x="3.2" y="16.1" width="3" height="3" rx="0.9" />
+    <rect className="g-f" x="8" y="16.1" width="9" height="3" rx="1.5" />
+  </Glyph>
+);
+// Microphone — voice notes: navy capsule, orange recording light.
+const GlyphMic = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="9" y="2.4" width="6" height="11.2" rx="3" />
+    <circle className="g-fo" cx="12" cy="6.2" r="1.15" />
+    <path className="g-ns" strokeWidth={2.4} d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0" />
+    <rect className="g-f" x="11.1" y="17.4" width="1.8" height="3" />
+    <rect className="g-f" x="7.4" y="20.2" width="9.2" height="1.8" rx="0.9" />
+  </Glyph>
+);
+// Dollar disc — tax & currency, take payments.
+const GlyphDollar = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-f" cx="12" cy="12" r="9.3" />
+    <text className="g-w" x="12" y="16.9" textAnchor="middle" fontSize="13" fontWeight={800}>$</text>
+  </Glyph>
+);
+// Building — company info: navy tower, lighter wing, orange door.
+const GlyphBuilding = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="5.6" y="3.2" width="9.6" height="17.6" rx="1.2" />
+    <rect className="g-sf" x="15.2" y="8.8" width="5" height="12" rx="1.2" />
+    <rect className="g-w" x="7.6" y="6.2" width="1.9" height="1.9" rx="0.5" />
+    <rect className="g-w" x="10.9" y="6.2" width="1.9" height="1.9" rx="0.5" />
+    <rect className="g-w" x="7.6" y="9.9" width="1.9" height="1.9" rx="0.5" />
+    <rect className="g-w" x="10.9" y="9.9" width="1.9" height="1.9" rx="0.5" />
+    <rect className="g-w" x="7.6" y="13.6" width="1.9" height="1.9" rx="0.5" />
+    <rect className="g-w" x="16.9" y="11.6" width="1.7" height="1.7" rx="0.5" />
+    <rect className="g-w" x="16.9" y="15" width="1.7" height="1.7" rx="0.5" />
+    <rect className="g-fo" x="9.9" y="16.6" width="2.5" height="4.2" rx="0.8" />
+  </Glyph>
+);
+// Landscape image — website gallery: navy frame, orange sun, white ridge.
+const GlyphImage = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="2.8" y="4.4" width="18.4" height="15.2" rx="2.2" />
+    <circle className="g-fo" cx="8.4" cy="9.2" r="1.8" />
+    <path className="g-w" d="M4.6 18.4 10.2 11.8l3.2 3.4 2.2-2.2 3.8 4.2v1.2Z" />
+  </Glyph>
+);
+// Sparkle — sample data: big navy star, small orange star.
+const GlyphSparkle = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M10.5 3.4 12.5 9.5 18.6 11.5l-6.1 2-2 6.1-2-6.1-6.1-2 6.1-2Z" />
+    <path className="g-fo" d="M18.6 2.8l.95 2.35 2.35.95-2.35.95-.95 2.35-.95-2.35-2.35-.95 2.35-.95Z" />
+  </Glyph>
+);
+// Envelope — email (v2 sheet).
+const GlyphEnvelope = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="2.6" y="5.4" width="18.8" height="13.2" rx="2" />
+    <path className="g-os" strokeWidth={2.2} d="m4.3 7.6 7.7 6 7.7-6" />
+  </Glyph>
+);
+// Bell — notifications (v2 sheet).
+const GlyphBell = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M12 3.1a1.7 1.7 0 0 1 1.7 1.7v.5c3 .8 5 3.2 5 6.4v3l1.4 2.8a1.1 1.1 0 0 1-1 1.6H4.9a1.1 1.1 0 0 1-1-1.6l1.4-2.8v-3c0-3.2 2-5.6 5-6.4v-.5A1.7 1.7 0 0 1 12 3.1Z" />
+    <circle className="g-fo" cx="12" cy="20.6" r="1.9" />
+  </Glyph>
+);
+// Trash can — settings trash row: orange lid, navy body, white slots.
+const GlyphTrash = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-f" x="9.6" y="2.6" width="4.8" height="2" rx="1" />
+    <rect className="g-fo" x="3.6" y="4.6" width="16.8" height="2.3" rx="1.15" />
+    <path className="g-f" d="M5.8 7.6h12.4l-1 11.6a2.1 2.1 0 0 1-2.1 1.9H8.9a2.1 2.1 0 0 1-2.1-1.9Z" />
+    <rect className="g-w" x="9.2" y="10.6" width="1.8" height="6.6" rx="0.9" />
+    <rect className="g-w" x="13" y="10.6" width="1.8" height="6.6" rx="0.9" />
+  </Glyph>
+);
+// Download tray — back up my data: navy tray, orange arrow down.
+const GlyphDownload = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <rect className="g-fo" x="10.7" y="2.6" width="2.6" height="6.6" />
+    <path className="g-fo" d="M12 15 5.8 8.8h12.4Z" />
+    <path className="g-f" d="M4 15.8h3.2l1.2 2.2h7.2l1.2-2.2H20v3a2.2 2.2 0 0 1-2.2 2.2H6.2A2.2 2.2 0 0 1 4 18.8Z" />
+  </Glyph>
+);
+// Upload tray — restore from backup: navy tray, orange arrow up.
+const GlyphUpload = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-fo" d="M12 2.4 18.2 8.6H5.8Z" />
+    <rect className="g-fo" x="10.7" y="8" width="2.6" height="6.6" />
+    <path className="g-f" d="M4 15.8h3.2l1.2 2.2h7.2l1.2-2.2H20v3a2.2 2.2 0 0 1-2.2 2.2H6.2A2.2 2.2 0 0 1 4 18.8Z" />
+  </Glyph>
+);
+// Help — navy disc, white question mark.
+const GlyphHelp = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-f" cx="12" cy="12" r="9.3" />
+    <text className="g-w" x="12" y="17.1" textAnchor="middle" fontSize="13.5" fontWeight={800}>?</text>
+  </Glyph>
+);
+// Star — rate the app (v2 sheet).
+const GlyphStar = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="m12 2.7 2.9 5.5 6.2.9-4.5 4.3 1.1 6.1L12 16.6l-5.7 2.9 1.1-6.1L2.9 9.1l6.2-.9Z" />
+    <circle className="g-fo" cx="12" cy="11.4" r="1.55" />
+  </Glyph>
+);
+// Share — connected nodes, one orange (v2 sheet).
+const GlyphShare = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-ns" strokeWidth={2.7} d="M8.6 10.8 15.2 6.8M8.6 13.2l6.6 4" />
+    <circle className="g-f" cx="5.9" cy="12" r="3" />
+    <circle className="g-fo" cx="17.9" cy="5.3" r="3" />
+    <circle className="g-f" cx="17.9" cy="18.7" r="3" />
+  </Glyph>
+);
+// Gift — invite & earn: navy box and lid, white ribbon, orange bow.
+const GlyphGift = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-fo" d="M12 7.6c-2.9.3-4.9-.6-4.9-2.3 0-1.4 1.1-2.4 2.5-2.4C11.3 2.9 12 4.9 12 7.6Z" />
+    <path className="g-fo" d="M12 7.6c2.9.3 4.9-.6 4.9-2.3 0-1.4-1.1-2.4-2.5-2.4C12.7 2.9 12 4.9 12 7.6Z" />
+    <rect className="g-f" x="2.6" y="7.6" width="18.8" height="3.6" rx="1.2" />
+    <rect className="g-f" x="3.4" y="11.8" width="17.2" height="8.8" rx="1.4" />
+    <rect className="g-w" x="10.9" y="7.6" width="2.2" height="13" />
+  </Glyph>
+);
+// Info — navy disc, orange dot, white stem.
+const GlyphInfo = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-f" cx="12" cy="12" r="9.3" />
+    <circle className="g-fo" cx="12" cy="7.1" r="1.6" />
+    <rect className="g-w" x="10.85" y="10.4" width="2.3" height="6.4" rx="1.15" />
+  </Glyph>
+);
+// Appearance — half-filled disc, orange center.
+const GlyphAppearance = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-ns" strokeWidth={2.2} cx="12" cy="12" r="8.8" />
+    <path className="g-f" d="M12 3.2a8.8 8.8 0 0 0 0 17.6Z" />
+    <circle className="g-fo" cx="12" cy="12" r="1.7" />
+  </Glyph>
+);
+// Shield with check — platform admin / warranty (v2 sheet).
+const GlyphShield = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M12 2.7 19.6 5.5v6.2c0 4.7-3.2 7.9-7.6 9.6-4.4-1.7-7.6-4.9-7.6-9.6V5.5Z" />
+    <path className="g-os" strokeWidth={2.4} d="m8.5 11.7 2.5 2.5 4.6-5.3" />
+  </Glyph>
+);
+// Eye — view document / view file: navy eye, white iris, orange pupil.
+const GlyphEye = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <path className="g-f" d="M12 5.2c4.9 0 8.6 3.4 10 6.8-1.4 3.4-5.1 6.8-10 6.8S3.4 15.4 2 12c1.4-3.4 5.1-6.8 10-6.8Z" />
+    <circle className="g-w" cx="12" cy="12" r="3.2" />
+    <circle className="g-fo" cx="12" cy="12" r="1.6" />
+  </Glyph>
+);
+// Person with pencil — edit Marketplace profile shortcut.
+const GlyphPersonEdit = ({ size }: GlyphProps) => (
+  <Glyph size={size}>
+    <circle className="g-fo" cx="9.8" cy="7.6" r="3.5" />
+    <path className="g-f" d="M2.9 20.2c.8-3.9 3.3-5.9 6.9-5.9 1.3 0 2.5.3 3.5.8-.4 1.5-.6 3.2-.6 5.1Z" />
+    <g transform="rotate(45 17.6 14.2)">
+      <rect className="g-fo" x="16.5" y="9.4" width="2.3" height="7.2" rx="1" />
+      <path className="g-f" d="M16.5 16.6h2.3l-1.15 2.8Z" />
+    </g>
+  </Glyph>
+);
+// Tools door glyphs: same family, but the silhouette rides the door's
+// own accent color (currentColor from .tool-tile-icon), cut-outs stay
+// paper white, and each door keeps a single orange hit.
+function DoorGlyph({ children }: { children: ReactNode }) {
+  return (
+    <svg className="door-glyph" viewBox="0 0 24 24" width={20} height={20} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+const doorTileIcon = (glyph: ReactNode) => <span className="tool-tile-icon"><DoorGlyph>{glyph}</DoorGlyph></span>;
 function quickActionsFor(lang: Lang): Array<{ label: string; destination: Screen; icon: ReactNode }> {
   return [
-    { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon> },
-    { label: lang === "es" ? "Nuevo estimado" : "New estimate", destination: { name: "quoteNew" }, icon: <Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h3" /></Icon> },
-    { label: lang === "es" ? "Nueva factura" : "New invoice", destination: { name: "invoiceNew" }, icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon> },
-    { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7M19 4v6M16 7h6" /></Icon> },
+    { label: lang === "es" ? "Nuevo trabajo" : "New job", destination: { name: "new" }, icon: <GlyphBriefcase /> },
+    { label: lang === "es" ? "Nuevo estimado" : "New estimate", destination: { name: "quoteNew" }, icon: <GlyphEstimate /> },
+    { label: lang === "es" ? "Nueva factura" : "New invoice", destination: { name: "invoiceNew" }, icon: <GlyphInvoice /> },
+    { label: lang === "es" ? "Nuevo cliente" : "New client", destination: { name: "clientNew" }, icon: <GlyphPersonPlus /> },
   ];
 }
 // Build 3: the + sheet suggests the most relevant action for the current tab first.
@@ -25032,17 +25457,17 @@ function TodayScreen({
         return (
           <section className="glance-strip" aria-label={lang === "es" ? "De un vistazo" : "At a glance"}>
             <button type="button" className={`glance-card${paymentEscalations.length > 0 ? " alert" : ""}`} onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
-              <span className="glance-icon tone-red" aria-hidden="true"><Icon><path d="M6 3h12v18H6zM9 8h6M9 12h6M12 15v4M10 17h4" /></Icon></span>
+              <span className="glance-icon tone-red" aria-hidden="true"><GlyphInvoice /></span>
               <strong><CountUp value={paymentEscalations.length} format={(n) => String(Math.round(n))} /></strong>
               <FitLabel as="small" text={lang === "es" ? "Facturas vencidas" : "Overdue invoices"} />
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen(upcomingJobs[0] ? { name: "detail", jobId: upcomingJobs[0].id } : { name: "jobs" }); }}>
-              <span className="glance-icon tone-blue" aria-hidden="true"><Icon><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" /></Icon></span>
+              <span className="glance-icon tone-blue" aria-hidden="true"><GlyphCalendar /></span>
               <strong><CountUp value={upcomingJobs.length} format={(n) => String(Math.round(n))} /></strong>
               <FitLabel as="small" text={lang === "es" ? "Hoy y mañana" : "Today & tomorrow"} />
             </button>
             <button type="button" className="glance-card" onClick={() => { buzz(8); setScreen({ name: "quotes" }); }}>
-              <span className="glance-icon tone-purple" aria-hidden="true"><Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /></Icon></span>
+              <span className="glance-icon tone-purple" aria-hidden="true"><GlyphEstimate /></span>
               <strong><CountUp value={awaitingQuotes.length} format={(n) => String(Math.round(n))} /></strong>
               <FitLabel as="small" text={lang === "es" ? "Estimados pendientes" : "Estimates pending"} />
             </button>
@@ -25055,7 +25480,7 @@ function TodayScreen({
         <header><h2>{lang === "es" ? "Trabajos" : "Jobs"}</h2><button type="button" onClick={() => setScreen({ name: "jobs" })}>{lang === "es" ? "Ver todo" : "View all"}</button></header>
         <div className="home-job-list">
           {recentJobs.map((job, index) => <button type="button" key={job.id} className="home-job-card" onClick={() => setScreen({ name: "detail", jobId: job.id })}>
-            <span className={`home-job-icon${index % 2 === 1 ? " alternate" : ""}`}><Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon></span>
+            <span className={`home-job-icon${index % 2 === 1 ? " alternate" : ""}`}><GlyphBriefcase /></span>
             <span><strong>{job.clientName}</strong><small>{job.jobType} · {compactJobDate(job.jobDate)}</small></span>
             <BackIcon />
           </button>)}
@@ -25069,10 +25494,10 @@ function TodayScreen({
         <b className={`status-chip ${latestInvoice.status}`}>{invoiceStatusLabel(latestInvoice.status)}</b>
       </button>}
       <section className="home-quick-access" aria-label={lang === "es" ? "Acceso rápido" : "Quick access"}>
-        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><Icon><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3-7 8-7s8 3 8 7"/></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Clientes" : "Clients"} /><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
-        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><FitLabel as="strong" text={lang === "es" ? "Mercado" : "Marketplace"} /><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><Icon><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" /></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Día del equipo" : "Crew day"} /><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
-        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><Icon><path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-4-4z"/></Icon></span><span><FitLabel as="strong" text={lang === "es" ? "Herramientas" : "Tools"} /><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "clients" })}><span className="home-access-icon qa-orange"><GlyphPerson /></span><span><FitLabel as="strong" text={lang === "es" ? "Clientes" : "Clients"} /><small>{lang === "es" ? "Contactos e historial" : "Contacts & history"}</small></span><BackIcon /></button>
+        <button type="button" className="home-marketplace-link" onClick={() => setScreen({ name: "marketplace" })}><span className="home-access-icon qa-purple"><GlyphStorefront /></span>{unreadMarketplace > 0 && <b aria-label={`${unreadMarketplace} ${lang === "es" ? "mensajes sin leer" : "unread messages"}`}>{Math.min(unreadMarketplace, 99)}</b>}</span><span><FitLabel as="strong" text={lang === "es" ? "Mercado" : "Marketplace"} /><small>{lang === "es" ? "Trabajos y conexiones" : "Work & connections"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "crewDay" })}><span className="home-access-icon qa-blue"><GlyphClock /></span><span><FitLabel as="strong" text={lang === "es" ? "Día del equipo" : "Crew day"} /><small>{lang === "es" ? "Despacho del equipo — quién está en qué hoy" : "Crew dispatch — who's on what today"}</small></span><BackIcon /></button>
+        <button type="button" onClick={() => setScreen({ name: "tools" })}><span className="home-access-icon qa-green"><GlyphWrench /></span><span><FitLabel as="strong" text={lang === "es" ? "Herramientas" : "Tools"} /><small>{lang === "es" ? "Calculadoras y utilidades" : "Calculators & utilities"}</small></span><BackIcon /></button>
       </section>
       {pinnedTools.length > 0 && (
         <section className="home-pinned" aria-label={lang === "es" ? "Fijados" : "Pinned"}>
@@ -25242,7 +25667,7 @@ function TodayScreen({
               <button
                 onClick={() => setScreen({ name: "detail", jobId: m.jobId, tab: "financials" })}
               >
-                <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>
+                <GlyphBriefcase />
                 {lang === "es" ? "Abrir selección" : "Open selection"}
               </button>
             </TapArticle>
@@ -25302,7 +25727,7 @@ function TodayScreen({
                       setScreen({ name: "detail", jobId: a.jobId as number })
                     }
                   >
-                    <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16" /></Icon>
+                    <GlyphBriefcase />
                     {lang === "es" ? "Trabajo" : "Job"}
                   </button>
                 )}
@@ -26059,9 +26484,9 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
     : `${n} ${n === 1 ? "invoice" : "invoices"}`;
   const monthCount = invoices.data.invoices.filter((invoice) => invoice.issueDate.slice(0, 7) === month).length;
   const cards: { id: MoneyCardId; label: string; value: string; sub: string; icon: ReactNode; accent: string }[] = [
-    { id: "collect", label: lang === "es" ? "Por cobrar" : "Money to collect", value: usd(dashboard.data.outstanding), sub: invoiceCountLabel(outstandingRows.length), icon: <path d="M4 7h16v12H4zM7 7V5h10v2M8 12h8" />, accent: "orange" },
-    { id: "week", label: lang === "es" ? "Vence esta semana" : "Due this week", value: usd(dueThisWeek), sub: invoiceCountLabel(weekRows.length), icon: <path d="M5 5h14v15H5zM8 3v4M16 3v4M8 11h8M8 15h5" />, accent: "sky" },
-    { id: "month", label: lang === "es" ? "Facturado este mes" : "Billed this month", value: usd(monthInvoiced), sub: invoiceCountLabel(monthCount), icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />, accent: "green" },
+    { id: "collect", label: lang === "es" ? "Por cobrar" : "Money to collect", value: usd(dashboard.data.outstanding), sub: invoiceCountLabel(outstandingRows.length), icon: <GlyphMoney />, accent: "orange" },
+    { id: "week", label: lang === "es" ? "Vence esta semana" : "Due this week", value: usd(dueThisWeek), sub: invoiceCountLabel(weekRows.length), icon: <GlyphCalendar />, accent: "sky" },
+    { id: "month", label: lang === "es" ? "Facturado este mes" : "Billed this month", value: usd(monthInvoiced), sub: invoiceCountLabel(monthCount), icon: <GlyphInvoice />, accent: "green" },
   ];
   const openMeta: Record<MoneyCardId, string> = {
     collect: usd(dashboard.data.outstanding),
@@ -26072,7 +26497,7 @@ function TodayMoneySnapshot({ lang, setScreen }: { lang: Lang; setScreen: (s: Sc
     <section className="money-snapshot b06-money" aria-label={lang === "es" ? "Resumen de dinero" : "Money snapshot"}>
       {cards.map((card, index) => (
         <button key={card.id} type="button" className={`b06-money-card stagger-in b06-accent-${card.accent}`} style={{ animationDelay: `${index * 80}ms` }} onClick={() => setOpenCard(card.id)} aria-haspopup="dialog">
-          <span className="b06-money-icon"><Icon>{card.icon}</Icon></span>
+          <span className="b06-money-icon">{card.icon}</span>
           <FitLabel as="span" className="b06-money-label" text={card.label} />
           <strong>{card.value}</strong>
           <span className="b06-money-sub">{card.sub}</span>

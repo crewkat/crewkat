@@ -1954,6 +1954,34 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .bottom-nav .ti-w { fill: var(--ti-w); }
 .bottom-nav .ti-ns { stroke: var(--ti-f); fill: none; }
 .bottom-nav .ti-os { stroke: var(--ti-fo); fill: none; }
+/* Custom glyphs (icons batches 2–6, Danny 2026-11-05): the same filled
+   navy + orange family as the tab bar, for Home, Jobs, Money/Documents,
+   and Settings. Brand hexes ride --gi-* variables scoped to the glyph
+   itself; dark theme flips the navy ink to the reversed (on-navy)
+   treatment exactly like the tab bar, so glyphs stay legible. */
+.glyph-icon { --gi-f: #0B2A44; --gi-sf: #12395C; --gi-fo: #f97316; --gi-w: #ffffff; }
+:root[data-theme="dark"] .glyph-icon { --gi-f: #eef4fa; --gi-sf: #8fb0d1; --gi-w: #0B2A44; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .glyph-icon { --gi-f: #eef4fa; --gi-sf: #8fb0d1; --gi-w: #0B2A44; }
+}
+.glyph-icon .g-f { fill: var(--gi-f); }
+.glyph-icon .g-sf { fill: var(--gi-sf); }
+.glyph-icon .g-fo { fill: var(--gi-fo); }
+.glyph-icon .g-w { fill: var(--gi-w); }
+.glyph-icon .g-ns { stroke: var(--gi-f); fill: none; }
+.glyph-icon .g-os { stroke: var(--gi-fo); fill: none; }
+.glyph-icon .g-ws { stroke: var(--gi-w); fill: none; }
+/* Tools door glyphs: the silhouette rides the door's own accent color
+   (the tile's currentColor, set from --tile-accent), cut-outs stay
+   paper white, and each door keeps a single orange hit. */
+.tool-tile-icon .dg-f { fill: currentColor; }
+.tool-tile-icon .dg-w { fill: #ffffff; }
+.tool-tile-icon .dg-o { fill: #f97316; }
+.tool-tile-icon .dg-os { stroke: #f97316; fill: none; }
+.tool-tile-icon .dg-ws { stroke: #ffffff; fill: none; }
+/* Docs-tab rows rotate every direct svg child (the back-chevron trick);
+   the filled glyphs lead those rows and must stay upright. */
+.doc-tool-row > svg.glyph-icon { transform: none; }
 .marketplace-inbox-button { position:relative; overflow:visible; }
 .marketplace-inbox-button > b { position:absolute; top:1px; right:0; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border:2px solid var(--surface); border-radius:999px; background:#c9342c; color:#fff; font-size:9px; line-height:1; }
 .market-inbox { display:grid; gap:14px; }
