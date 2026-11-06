@@ -1934,6 +1934,25 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 /* Marketplace inbox */
 .bottom-nav .bottom-nav-icon { position:relative; display:grid; place-items:center; overflow:visible; }
 .bottom-nav .nav-unread-badge { position:absolute; top:-7px; right:-11px; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border:2px solid var(--surface); border-radius:999px; background:#c9342c; color:#fff; font-size:9px; line-height:1; font-weight:850; }
+/* Custom tab glyphs (icons batch 1, Danny 2026-11-05): the tab bar's
+   filled navy + orange artwork from Danny's reference sheet. Inactive
+   tabs remap to the muted palette; dark theme flips the navy ink to
+   the reversed (on-navy) treatment so the glyphs stay legible. Brand
+   hexes are literal so the icons never follow the accent picker. */
+.bottom-nav { --ti-f: #0B2A44; --ti-sf: #12395C; --ti-fo: #f97316; --ti-w: #ffffff; }
+.bottom-nav > button:not(.active) { --ti-f: #8496a7; --ti-sf: #a7b8c7; --ti-fo: #c3cfdb; }
+:root[data-theme="dark"] .bottom-nav { --ti-f: #eef4fa; --ti-sf: #8fb0d1; --ti-w: #0B2A44; }
+:root[data-theme="dark"] .bottom-nav > button:not(.active) { --ti-f: #8496a7; --ti-sf: #63768c; --ti-fo: #c3cfdb; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .bottom-nav { --ti-f: #eef4fa; --ti-sf: #8fb0d1; --ti-w: #0B2A44; }
+  :root:not([data-theme]) .bottom-nav > button:not(.active) { --ti-f: #8496a7; --ti-sf: #63768c; --ti-fo: #c3cfdb; }
+}
+.bottom-nav .ti-f { fill: var(--ti-f); }
+.bottom-nav .ti-sf { fill: var(--ti-sf); }
+.bottom-nav .ti-fo { fill: var(--ti-fo); }
+.bottom-nav .ti-w { fill: var(--ti-w); }
+.bottom-nav .ti-ns { stroke: var(--ti-f); fill: none; }
+.bottom-nav .ti-os { stroke: var(--ti-fo); fill: none; }
 .marketplace-inbox-button { position:relative; overflow:visible; }
 .marketplace-inbox-button > b { position:absolute; top:1px; right:0; min-width:17px; height:17px; padding:0 4px; display:grid; place-items:center; border:2px solid var(--surface); border-radius:999px; background:#c9342c; color:#fff; font-size:9px; line-height:1; }
 .market-inbox { display:grid; gap:14px; }

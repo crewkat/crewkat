@@ -1244,12 +1244,27 @@ function rootTabFor(screen: Screen): RootTab | null {
   // tab bar keeps the last root tab highlighted underneath them.
   return null;
 }
+// Custom tab glyphs (icons batch 1, Danny 2026-11-05): bold filled
+// navy + orange artwork drawn from Danny's own reference sheet, used
+// ONLY by the bottom tab bar — the shared stroke Icon set above is
+// untouched, so no other screen changes. Colors ride the --ti-* CSS
+// variables in theme.css so inactive tabs remap to the muted palette
+// and dark theme flips to the reversed (on-navy) treatment. The
+// quick-create + is not a tab (it is the floating action button), so
+// it keeps its existing glyph in this batch.
+function TabIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
 const ROOT_TABS: Array<{ tab: RootTab; en: string; es: string; icon: ReactNode; badge?: number }> = [
-  { tab: "today", en: "Home", es: "Inicio", icon: <Icon><path d="m3 11 9-8 9 8M5 10v10h14V10M9 20v-6h6v6" /></Icon> },
-  { tab: "jobs", en: "Jobs", es: "Trabajos", icon: <Icon><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2" /></Icon> },
-  { tab: "clients", en: "Clients", es: "Clientes", icon: <Icon><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3-7 8-7s8 3 8 7" /></Icon> },
-  { tab: "invoices", en: "Invoices", es: "Facturas", icon: <Icon><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4" /></Icon> },
-  { tab: "marketplace", en: "Marketplace", es: "Mercado", icon: <Icon><path d="M4 10h16v10H4zM3 10l2-6h14l2 6M8 10v2M16 10v2M9 20v-5h6v5" /></Icon> },
+  { tab: "today", en: "Home", es: "Inicio", icon: <TabIcon><rect className="ti-f" x="16.6" y="4.9" width="2.5" height="3.6" rx="0.5" /><path className="ti-f" d="M5.4 12.2 12 7.4l6.6 4.8V20a1.7 1.7 0 0 1-1.7 1.7H7.1A1.7 1.7 0 0 1 5.4 20Z" /><path className="ti-fo" d="M12 3 22 10.6l-2.4 2.3L12 8.1 4.4 12.9 2 10.6Z" /><path className="ti-w" d="M10.1 21.7v-4.7a1.9 1.9 0 0 1 3.8 0v4.7Z" /></TabIcon> },
+  { tab: "jobs", en: "Jobs", es: "Trabajos", icon: <TabIcon><path className="ti-ns" strokeWidth={2.7} d="M8.4 8.2V6.1a2.3 2.3 0 0 1 2.3-2.3h2.6a2.3 2.3 0 0 1 2.3 2.3v2.1" /><rect className="ti-f" x="2.8" y="7.6" width="18.4" height="12.8" rx="2.6" /><rect className="ti-sf" x="2.8" y="12.2" width="18.4" height="2.4" /><rect className="ti-fo" x="10.1" y="11.2" width="3.8" height="4" rx="1" /></TabIcon> },
+  { tab: "clients", en: "Clients", es: "Clientes", icon: <TabIcon><circle className="ti-fo" cx="12" cy="7.9" r="3.9" /><path className="ti-f" d="M4.5 20.5c.95-4.35 3.8-6.5 7.5-6.5s6.55 2.15 7.5 6.5Z" /></TabIcon> },
+  { tab: "invoices", en: "Invoices", es: "Facturas", icon: <TabIcon><path className="ti-ns" strokeWidth={2.3} d="M6.8 3.2h6.4l4.3 4.3v11.7a1.6 1.6 0 0 1-1.6 1.6H6.8a1.6 1.6 0 0 1-1.6-1.6V4.8a1.6 1.6 0 0 1 1.6-1.6Z" /><path className="ti-ns" strokeWidth={2} d="M13.2 3.2v3a1.3 1.3 0 0 0 1.3 1.3h3" /><text className="ti-fo" x="12" y="13.9" textAnchor="middle" fontSize="10" fontWeight={800}>$</text><rect className="ti-fo" x="9.3" y="15.7" width="5.4" height="1.5" rx="0.75" /><rect className="ti-fo" x="10.3" y="18.2" width="3.4" height="1.5" rx="0.75" /></TabIcon> },
+  { tab: "marketplace", en: "Marketplace", es: "Mercado", icon: <TabIcon><path className="ti-os" strokeWidth={2.5} d="M9 11.2V7.8a3 3 0 0 1 6 0v3.4" /><rect className="ti-f" x="5" y="8.6" width="14" height="12.2" rx="1.8" /></TabIcon> },
 ];
 function rootTabLabel(tab: RootTab, lang: Lang): string {
   const entry = ROOT_TABS.find((item) => item.tab === tab);
