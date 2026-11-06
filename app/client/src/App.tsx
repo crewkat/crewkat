@@ -4239,7 +4239,7 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
         />
       )}
       {screen.name !== "legal" && !hideMasterNav && <BottomNav lang={lang} active={activeRootTab} onSelect={openRoot} />}
-      {screen.name !== "legal" && !hideMasterNav && SCREENS_WITH_QUICK_CREATE_FAB.has(screen.name) && <QuickCreateFab lang={lang} active={activeRootTab} onNavigate={setScreen} />}
+      {screen.name !== "legal" && !hideMasterNav && SCREENS_WITH_QUICK_CREATE_FAB.has(screen.name) && <QuickCreateFab lang={lang} active={activeRootTab ?? stickyRootRef.current} onNavigate={setScreen} />}
       <CelebrationOverlay />
       {/* SMS cap pre-check: shown when a text is blocked before the SMS app opens. */}
       <SmsBlockedBanner lang={lang} />
@@ -17030,6 +17030,13 @@ function QuotesScreen({
     },
     onError: (e) => handleLimitError(e, () => {}),
   });
+  // Crawl A10: this list gets the same status filter + one-word status
+  // pills the Invoices list has (it had neither — a linked estimate wore
+  // a green "Jobs" tag instead of its status).
+  const [estStatus, setEstStatus] = useState<"all" | "draft" | "sent" | "accepted" | "lost">("all");
+  const quoteStatusOf = (q: NonNullable<typeof query.data>["quotes"][number]): "draft" | "sent" | "accepted" | "lost" =>
+    q.accepted || q.automationStatus === "won" ? "accepted" : q.automationStatus === "lost" ? "lost" : q.sentAt ? "sent" : "draft";
+  const visibleQuotes = (query.data?.quotes ?? []).filter((q) => estStatus === "all" || quoteStatusOf(q) === estStatus);
   return (
     <main className="page">
       <PageHeader lang={lang} title={capFirst(estTerms.plural)} onBack={onBack} />
@@ -17041,10 +17048,17 @@ function QuotesScreen({
           <PlusIcon />
           {estTerms.newDoc}
         </button>
+        <select className="ck-btn-sm doc-filter-chip" value={estStatus} onChange={(e) => setEstStatus(e.target.value as typeof estStatus)} aria-label={lang === "es" ? "Filtrar por estado" : "Filter by status"}>
+          <option value="all">{lang === "es" ? "Todas" : "All"}</option>
+          <option value="draft">{lang === "es" ? "Borrador" : "Draft"}</option>
+          <option value="sent">{lang === "es" ? "Enviada" : "Sent"}</option>
+          <option value="accepted">{lang === "es" ? "Aceptada" : "Accepted"}</option>
+          <option value="lost">{lang === "es" ? "Perdida" : "Lost"}</option>
+        </select>
       </div>
       <section className="quote-list">
         {query.isLoading && <SkeletonList rows={5} />}
-        {query.data?.quotes.map((q) => (
+        {visibleQuotes.map((q) => (
           <article key={q.id} className="quote-card-compact" onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: q.id }); }}>
             <div>
               <h2>{q.clientName}</h2>
@@ -17054,6 +17068,9 @@ function QuotesScreen({
               <small>
                 {q.sentAt ? `${t.sentDate}: ${formatDate(q.sentAt, lang)}` : ""}
               </small>
+              <div>
+                <span className={`ck-pill ${quoteStatusOf(q) === "accepted" ? "ck-pill-paid" : quoteStatusOf(q) === "lost" ? "ck-pill-overdue" : quoteStatusOf(q) === "sent" ? "ck-pill-pending" : "ck-pill-draft"}`}>{quoteStatusOf(q) === "accepted" ? (lang === "es" ? "Aceptada" : "Accepted") : quoteStatusOf(q) === "lost" ? (lang === "es" ? "Perdida" : "Lost") : quoteStatusOf(q) === "sent" ? (lang === "es" ? "Enviada" : "Sent") : (lang === "es" ? "Borrador" : "Draft")}</span>
+              </div>
             </div>
             <div className="row-actions" onClick={(e) => e.stopPropagation()}>
               <button
@@ -17071,7 +17088,7 @@ function QuotesScreen({
                   {t.convertJob}
                 </button>
               ) : (
-                <span>
+                <span className="quote-job-linked">
                   <CheckIcon />
                   {t.jobs}
                 </span>
@@ -17079,6 +17096,9 @@ function QuotesScreen({
             </div>
           </article>
         ))}
+        {visibleQuotes.length === 0 && estStatus !== "all" && (query.data?.quotes.length ?? 0) > 0 && !query.isLoading && (
+          <p className="privacy-note">{lang === "es" ? `Ningún ${estTerms.singular} coincide con el filtro.` : `No ${estTerms.plural} match this filter.`}</p>
+        )}
         {query.data?.quotes.length === 0 && !query.isLoading && (
           <EmptyState lang={lang} icon={<GlyphDoc />} title={lang === "es" ? `Aún no hay ${estTerms.plural}.` : `No ${estTerms.plural} yet.`} body={lang === "es" ? `Crea tu primer ${estTerms.singular} y conviértelo en factura con un toque.` : `Create your first ${estTerms.singular} and convert it to an invoice in one tap.`} actionLabel={estTerms.newDoc} onAction={() => setScreen({ name: "quoteNew" })} />
         )}
@@ -19967,7 +19987,7 @@ function InvoicePreview({
       </div>
       <div className="ck-inv-meta">
         <span>{lang === "es" ? "Cliente" : "Client"}: <strong>{invoice.clientName}</strong></span>
-        <span>{lang === "es" ? "Fecha" : "Date"}: {formatDate(invoice.issueDate, lang)} · {lang === "es" ? "Vence" : "Due"}: {invoice.dueDate ? formatDate(invoice.dueDate, lang) : "—"}</span>
+        <span>{lang === "es" ? "Fecha" : "Date"}: {formatDate(invoice.issueDate, lang)}{invoice.dueDate ? <> · {lang === "es" ? "Vence" : "Due"}: {formatDate(invoice.dueDate, lang)}</> : null}</span>
       </div>
       <span className={`ck-pill ${invoice.status === "paid" ? "ck-pill-paid" : invoice.status === "overdue" ? "ck-pill-overdue" : invoice.status === "draft" ? "ck-pill-draft" : "ck-pill-pending"}`}>{statusLabel}</span>
       <ul className="ck-inv-items">
@@ -28089,6 +28109,10 @@ function OperationsScreen({
     );
   });
   const stages = ["new", "contacted", "quoted", "won", "lost"] as const;
+  // Pre-computed before the JSX: comparing `view` to "board" inside the
+  // {!isBoard && ...} branch trips TS narrowing (the branch proves view
+  // is "day" | "week"), so the toolbar uses this flag instead.
+  const isBoard = view === "board";
   const chooseJob = (id: number) => {
     const j = jobs.data?.jobs.find((row) => row.id === id);
     if (j)
@@ -28131,13 +28155,13 @@ function OperationsScreen({
                 {lang === "es" ? "Semana" : "Week"}
               </button>
               <button
-                className={view === "board" ? "active" : ""}
+                className={isBoard ? "active" : ""}
                 onClick={() => setView("board")}
               >
                 {lang === "es" ? "Tablero" : "Board"}
               </button>
             </div>
-            {view !== "board" && (
+            {!isBoard && (
               <>
                 <input
                   type="date"

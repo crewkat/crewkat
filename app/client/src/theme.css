@@ -381,6 +381,7 @@ fieldset { padding: 0; border: 0; }
 .quote-card-compact .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .quote-card-compact .row-actions button { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
 .quote-card-compact .row-actions span { font-size: 12px; }
+.quote-card-compact .row-actions span.quote-job-linked { color: var(--dim); font-weight: 700; }
 .quote-list p, .quote-list small { color:var(--dim); }
 .row-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }
 .row-actions span { display:inline-flex; gap:5px; align-items:center; color:var(--green); font-weight:800; }
@@ -2453,9 +2454,10 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .design-feedback button{display:grid;place-items:center;padding:0;color:var(--dim);}
 .design-feedback button.active{color:var(--accent);}
 .design-feedback svg{width:19px;height:19px;}
-.template-carousel{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:6px 2px 10px;margin-bottom:10px;scrollbar-width:none;}
-.template-carousel::-webkit-scrollbar{display:none;}
-.template-carousel>button{flex:0 0 150px;scroll-snap-align:start;min-width:0;display:grid;gap:7px;padding:6px;border:2px solid transparent;border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 2px 10px color-mix(in srgb,#000 7%,transparent);}
+/* Crawl A23: the horizontal carousel left the 4th template thumbnail
+   cut off at the panel edge; a 2x2 grid shows all four templates whole. */
+.template-carousel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 2px 10px;margin-bottom:10px;}
+.template-carousel>button{min-width:0;display:grid;gap:7px;padding:6px;border:2px solid transparent;border-radius:10px;background:var(--surface);color:var(--text);box-shadow:0 2px 10px color-mix(in srgb,#000 7%,transparent);}
 .template-carousel>button.active{border-color:var(--accent);}
 .template-paper{position:relative;height:150px;overflow:hidden;background:#e6e9e8;}
 .template-paper>.quote-paper{position:absolute;left:50%;top:3px;width:612px;min-height:760px;margin:0;transform:translateX(-50%) scale(.22);transform-origin:top center;pointer-events:none;}
@@ -4166,10 +4168,10 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
    carries the accent tint. Amounts render through FitLabel (shrink-to-fit,
    never truncated), so the tile value just needs min-width:0 + nowrap. */
 .ck-money-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ck-money-tile { display: grid; gap: 3px; min-width: 0; padding: 8px 9px; border-radius: 12px; background: var(--surface-2); }
+.ck-money-tile { display: grid; gap: 3px; min-width: 0; padding: 8px 9px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .ck-money-tile span { font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--dim); line-height: 1.25; }
 .ck-money-tile strong { font-size: 15.5px; font-weight: 850; line-height: 1.2; }
-.ck-money-tile.is-total { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.ck-money-tile.is-total { background: var(--surface); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .ck-money-tile.is-total strong { color: color-mix(in srgb, var(--accent) 82%, var(--text)); }
 .ck-invoice-detail .ck-btn-ghost { justify-self: center; }
 @media (prefers-reduced-motion: reduce) { .ck-btn-sm:active { transform: none; } }
@@ -4289,7 +4291,7 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .document-action-bar button.doc-action-send svg { width: 18px; height: 18px; color: #fff; }
 .document-action-bar button.doc-action-send:active { background: color-mix(in srgb, var(--accent) 84%, #000); color: #fff; }
 .document-detail-summary.ck-quote-summary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
-.financial-detail-page .ck-invoice-detail { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
+.financial-detail-page .ck-invoice-detail { background: var(--surface); }
 .ck-quote-total .ck-inv-label { justify-self: start; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: color-mix(in srgb, var(--accent) 80%, var(--text)); font-size: 11px; }
 .ck-quote-summary .ck-pill-pending, .ck-invoice-detail .ck-pill-pending { background: color-mix(in srgb, #f97316 32%, var(--surface)); color: color-mix(in srgb, #f97316 80%, var(--text)); }
 .ck-quote-summary .ck-pill-paid, .ck-invoice-detail .ck-pill-paid { background: color-mix(in srgb, #22c55e 30%, var(--surface)); color: color-mix(in srgb, #22c55e 74%, var(--text)); }

@@ -193,7 +193,10 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
                     <td>{mode === "month" ? `${b.label} ${year}` : b.label}</td>
                     <td>{formatMoney(b.invoiced)}</td>
                     <td>{formatMoney(b.collected)}</td>
-                    <td>{b.stillOwed > 0 ? formatMoney(b.stillOwed) : "—"}</td>
+                    {/* Crawl A16: an over-collected bucket (late fees, a
+                        total edited down after payment) showed "—"; show
+                        the negative gap instead of hiding it. */}
+                    <td>{b.stillOwed > 0 ? formatMoney(b.stillOwed) : b.collected > b.invoiced ? formatMoney(b.invoiced - b.collected) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
