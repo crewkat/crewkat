@@ -8478,7 +8478,7 @@ function ClientPicker({
 }: {
   lang: Lang;
   value: string;
-  selectedClient?: { name: string; phone: string } | null;
+  selectedClient?: { name: string; phone: string; email?: string } | null;
   onValueChange: (value: string) => void;
   onPick: (client: Client) => void;
 }) {
@@ -8500,7 +8500,7 @@ function ClientPicker({
     <section className="client-picker selected">
       <span className="client-picker-label">{t.chooseClient}</span>
       <button type="button" className="selected-client-row" onClick={() => setOpen(true)}>
-        <span><strong>{selectedClient.name}</strong><small>{selectedClient.phone || (lang === "es" ? "Sin teléfono" : "No phone")}</small></span>
+        <span><strong>{selectedClient.name}</strong><small>{[selectedClient.phone || (lang === "es" ? "Sin teléfono" : "No phone"), selectedClient.email].filter(Boolean).join(" · ")}</small></span>
         <b>{lang === "es" ? "Cambiar" : "Change"}</b>
       </button>
     </section>
@@ -8791,7 +8791,7 @@ function JobFormScreen({
         <ClientPicker
           lang={lang}
           value={form.clientName}
-          selectedClient={form.clientId ? { name: form.clientName, phone: form.clientPhone } : null}
+          selectedClient={form.clientId ? { name: form.clientName, phone: form.clientPhone, email: form.clientEmail } : null}
           onValueChange={(clientName) => setForm({ ...form, clientId: null, clientName })}
           onPick={(c) =>
             setForm({
@@ -9219,7 +9219,7 @@ function WorkspaceSchedulePanel({ lang, jobId, job, operations, onOpenJobSheet }
       <div className="panel-card">
         <h3>{lang === "es" ? "Fecha del trabajo" : "Job date"}</h3>
         <p>
-          <strong>{job.jobDate || "—"}</strong>
+          <strong>{job.jobDate ? formatDate(job.jobDate, lang) : "—"}</strong>
           {job.appointmentAt && <> · {fmt(job.appointmentAt)}</>}
         </p>
         <button
@@ -17531,11 +17531,11 @@ function QuoteBuilder({
         <div className="field-pair">
           <label>
             <span>{t.sentDate}</span>
-            <input
-              type="date"
-              value={form.sentAt}
-              onChange={(e) => setForm({ ...form, sentAt: e.target.value })}
-            />
+            {/* The builder is creation-only and a new estimate is a
+                draft: the sent date is stamped by the send flow, so an
+                editable empty mm/dd/yyyy field here was pure noise
+                (crawl A22). */}
+            <span className="date-stamp-note">{lang === "es" ? "Se registra al enviar" : "Recorded when sent"}</span>
           </label>
           <label>
             <span>{t.expiry}</span>
@@ -27015,8 +27015,13 @@ function ReportsScreen({
         <div className="loading-block" />
       </main>
     );
+  // A quote's report date is its sent date, else its creation date IN
+  // THE USER'S timezone — slicing the raw UTC timestamp put evening
+  // creations on the next day (crawl A22: a Nov 5 estimate dated Nov 6).
+  const quoteReportDate = (quote: (typeof quotesQuery.data.quotes)[number]) =>
+    quote.sentAt || new Date(quote.createdAt).toLocaleDateString("en-CA");
   const quoteDates = quotesQuery.data.quotes
-    .map((quote) => validMonth(quote.sentAt || quote.createdAt))
+    .map((quote) => validMonth(quoteReportDate(quote)))
     .filter(Boolean);
   const payments = invoicesQuery.data.invoices.flatMap((invoice) =>
     invoice.payments.map((payment) => ({
@@ -27046,12 +27051,12 @@ function ReportsScreen({
       (payment) => validMonth(payment.date) === month,
     );
     const estimates = quotesQuery.data.quotes
-      .filter((quote) => validMonth(quote.sentAt || quote.createdAt) === month)
+      .filter((quote) => validMonth(quoteReportDate(quote)) === month)
       .map((quote) => ({
         id: quote.id,
         clientName: quote.clientName,
         total: money(quote.total),
-        date: quote.sentAt || quote.createdAt.slice(0, 10),
+        date: quoteReportDate(quote),
         status: quote.automationStatus,
       }));
     return {

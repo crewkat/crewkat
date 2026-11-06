@@ -330,6 +330,7 @@ fieldset { padding: 0; border: 0; }
 .desk-nav button { min-width:0; min-height:74px; display:grid; place-items:center; align-content:center; gap:5px; padding:9px 5px; border:1px solid var(--border); border-radius:10px; background:var(--surface); font-size:11px; font-weight:800; cursor:pointer; }
 .desk-nav svg { color:var(--green); }
 .field-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.date-stamp-note { display:flex; align-items:center; min-height:48px; color:var(--dim); font-size:13px; }
 .form-section { display:grid; gap:14px; padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
 .form-section legend { padding:0 7px; color:var(--green); }
 .quick-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:22px; }
