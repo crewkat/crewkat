@@ -266,7 +266,7 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
   border-radius: var(--radius) var(--radius) 0 0;
 }
 .stage-new .kanban-head { border-top-color: #3d7ab8; }
-.stage-contacted .kanban-head { border-top-color: #7c6bb0; }
+.stage-contacted .kanban-head { border-top-color: #12395C; }
 .stage-quoted .kanban-head { border-top-color: #e8a33d; }
 .stage-won .kanban-head { border-top-color: #2e9e6b; }
 .stage-lost .kanban-head { border-top-color: #b0533d; }

@@ -17,7 +17,7 @@ import { asRecordArray, formatDate, formatMoney, parseMoney, pickNumber, pickStr
 
 const STAGE_COLORS: Record<LeadStage, string> = {
   new: "#3d7ab8",
-  contacted: "#7c6bb0",
+  contacted: "#12395C",
   quoted: "#e8a33d",
   won: "#2e9e6b",
   lost: "#b0533d",
