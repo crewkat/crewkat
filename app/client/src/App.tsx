@@ -1341,7 +1341,7 @@ function QuickCreateFab({ lang, active, onNavigate }: { lang: Lang; active: Root
     window.setTimeout(() => onNavigate(destination), 200);
   };
   return <>
-    <button type="button" className="quick-create-fab" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><span aria-hidden="true">+</span></button>
+    <button type="button" className="quick-create-fab" aria-label={lang === "es" ? "Crear nuevo" : "Create new"} aria-expanded={quickCreateOpen} onClick={() => setQuickCreateOpen(true)}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.5v17M3.5 12h17" fill="none" stroke="#f97316" strokeWidth="3.6" strokeLinecap="round" /></svg></button>
     {quickCreateOpen && <BottomSheet lang={lang} title={lang === "es" ? "¿Qué deseas crear?" : "What would you like to create?"} onClose={() => setQuickCreateOpen(false)}>
       {(close) => (<>
         <p className="quick-create-suggest">{lang === "es" ? `Sugerido en ${activeTabLabel}` : `Suggested for ${activeTabLabel}`} · {orderedQuickActions[0]?.label ?? ""}</p>

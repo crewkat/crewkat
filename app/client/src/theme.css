@@ -2769,7 +2769,12 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .bottom-nav > button { min-height: 48px; border-radius: 12px; }
 .bottom-nav > button.active { color: var(--accent); background: transparent; }
 .bottom-nav > button.active .bottom-nav-icon { transform: translateY(-1px); }
-/* Build 3.1: quick-create floats above the tab bar on the main tabs. */
+/* Build 3.1: quick-create floats above the tab bar on the main tabs.
+   Face restyled 2026-11-05 to Danny's reference Plus glyph (navy ring +
+   bold orange plus on white). Brand literals, not theme vars: the face
+   stays white in dark theme too, where --surface goes dark and the navy
+   ring would vanish; the plus stays #f97316 even if the accent picker
+   changes --accent. */
 .quick-create-fab {
   position: fixed;
   right: 20px;
@@ -2779,15 +2784,14 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
   height: 56px;
   display: grid;
   place-items: center;
-  border: 0;
+  border: 2.5px solid #0B2A44;
   border-radius: 50%;
-  background: var(--accent);
-  color: #ffffff;
+  background: #ffffff;
   box-shadow: var(--shadow-btn);
   cursor: pointer;
 }
-.quick-create-fab:active { transform: translateY(1px); }
-.quick-create-fab > span { display: block; overflow: visible; font-size: 30px; line-height: 1; font-weight: 500; transform: translateY(-1px); }
+.quick-create-fab:active { transform: translateY(1px); background: color-mix(in srgb, #0B2A44 9%, #ffffff); }
+.quick-create-fab > svg { display: block; width: 40px; height: 40px; }
 @media (min-width: 700px) {
   .quick-create-fab { right: calc(50% - 320px + 20px); }
 }
