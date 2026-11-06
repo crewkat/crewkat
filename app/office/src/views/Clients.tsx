@@ -121,13 +121,13 @@ export function ClientsView({
           ) : null}
         </section>
 
-        {selected ? <ClientDetail client={selected} onClose={() => onSelectClient(null)} onOpenJob={onOpenJob} onOpenDocument={onOpenDocument} /> : null}
+        {selected ? <ClientDetail client={selected} onClose={() => onSelectClient(null)} onOpenJob={onOpenJob} onOpenDocument={onOpenDocument} onSelectClient={onSelectClient} /> : null}
       </div>
     </div>
   );
 }
 
-function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: Client; onClose: () => void; onOpenJob: (jobId: number) => void; onOpenDocument: (sel: DocSelection) => void }) {
+function ClientDetail({ client, onClose, onOpenJob, onOpenDocument, onSelectClient }: { client: Client; onClose: () => void; onOpenJob: (jobId: number) => void; onOpenDocument: (sel: DocSelection) => void; onSelectClient: (id: number | null) => void }) {
   const queryClient = useQueryClient();
   const detailQuery = useQuery({
     queryKey: ["client", client.id],
@@ -138,6 +138,25 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
     queryFn: () => api.getClientTimeline({ clientId: client.id }),
   });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  // Duplicate merge (audit Batch 2): this record is the duplicate; the
+  // picked client survives. Two-step confirm — the merge deletes this
+  // record and re-points its jobs/documents.
+  const allClientsQuery = useQuery({ queryKey: ["clients", ""], queryFn: () => api.listClients({ search: "" }) });
+  const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
+  const [mergeConfirm, setMergeConfirm] = useState(false);
+  const [mergeError, setMergeError] = useState("");
+  const mergeTarget = (allClientsQuery.data?.clients ?? []).find((o) => o.id === mergeTargetId);
+  const mergeMutation = useMutation({
+    mutationFn: () => api.mergeClients({ survivorId: mergeTargetId!, duplicateId: c.id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      void queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      void queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      onSelectClient(mergeTargetId!);
+    },
+    onError: (e) => setMergeError(cleanError(e)),
+  });
   const signablesQuery = useQuery({ queryKey: ["documents"], queryFn: () => api.listDocuments({}) });
   const detail = detailQuery.data;
   const c = detail?.client ?? client;
@@ -404,6 +423,29 @@ function ClientDetail({ client, onClose, onOpenJob, onOpenDocument }: { client: 
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="drawer-section">
+        <h3>Duplicate client?</h3>
+        <p className="muted small">Merge this record into another client — its jobs, estimates, invoices, appointments, and follow-ups move to the record you keep, and this record is deleted.</p>
+        <label className="field">
+          <span>Keep this record</span>
+          <select value={mergeTargetId ?? ""} onChange={(e) => { setMergeTargetId(e.target.value ? Number(e.target.value) : null); setMergeConfirm(false); setMergeError(""); }}>
+            <option value="">Select a client…</option>
+            {(allClientsQuery.data?.clients ?? []).filter((o) => o.id !== c.id).map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </label>
+        {mergeTarget && !mergeConfirm ? (
+          <button type="button" className="btn" onClick={() => setMergeConfirm(true)}>Merge into {mergeTarget.name}</button>
+        ) : null}
+        {mergeTarget && mergeConfirm ? (
+          <button type="button" className="btn btn-danger-ghost" disabled={mergeMutation.isPending} onClick={() => mergeMutation.mutate()}>
+            Confirm: merge into {mergeTarget.name} and delete this record
+          </button>
+        ) : null}
+        {mergeError ? <p className="inline-error">{mergeError}</p> : null}
       </section>
 
       <section className="drawer-section">

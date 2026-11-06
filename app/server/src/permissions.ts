@@ -67,7 +67,7 @@ export const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   "createBillingPortalSession", "startPremiumCheckout", "createCreditPackCheckout",
   "startListingBumpCheckout", "verifyPlaySubscription", "refreshPlaySubscription",
   "exportBackup", "restoreBackup", "verifyBackupRoundTrip",
-  "getBackupStatus", "runAutomatedBackup", "deleteClient",
+  "getBackupStatus", "runAutomatedBackup", "deleteClient", "mergeClients",
   "deleteLead", "deleteBusinessExpense", "deleteMaterialCost",
   "deletePriceBookItem", "deleteQuoteTemplate", "deleteSubcontractor",
   "deleteMileageTrip", "deleteFieldTestRecord", "loadSampleData",

@@ -20391,6 +20391,23 @@ function ClientDetail({
       onBack();
     },
   });
+  // Duplicate merge (audit Batch 2): this record is the duplicate; the
+  // picked client is the survivor. Two-step (pick, then confirm) because
+  // the merge deletes this record.
+  const allClients = useQuery({ queryKey: ["clients"], queryFn: () => api.listClients({ search: "" }) });
+  const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
+  const [mergeConfirm, setMergeConfirm] = useState(false);
+  const mergeTarget = (allClients.data?.clients ?? []).find((o) => o.id === mergeTargetId);
+  const merge = useMutation({
+    mutationFn: () => api.mergeClients({ survivorId: mergeTargetId!, duplicateId: clientId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["quotes"] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      if (mergeTargetId != null) setScreen({ name: "client", clientId: mergeTargetId });
+    },
+  });
   const c = query.data?.client;
   const clientInvoices = (invoices.data?.invoices ?? []).filter((invoice) => invoice.clientId === clientId);
   // Summary buttons (Jobs / Invoices / Estimates) jump to the matching
@@ -20495,6 +20512,30 @@ function ClientDetail({
         {(query.data?.jobs.length ?? 0) === 0 && (query.data?.quotes.length ?? 0) === 0 && clientInvoices.length === 0 && (
           <p className="privacy-note">{lang === "es" ? "Aún no hay trabajos, estimados ni facturas para este cliente." : "No jobs, estimates, or invoices for this client yet."}</p>
         )}
+      </section>
+      <section className="card merge-client-card">
+        <h3>{lang === "es" ? "¿Cliente duplicado?" : "Duplicate client?"}</h3>
+        <p className="privacy-note">{lang === "es" ? "Fusiona este registro en otro cliente: sus trabajos, estimados, facturas, citas y seguimientos se mueven al registro que se conserva, y este registro se elimina." : "Merge this record into another client: its jobs, estimates, invoices, appointments, and follow-ups move to the record you keep, and this record is deleted."}</p>
+        <label>
+          <span>{lang === "es" ? "Conservar este registro" : "Keep this record"}</span>
+          <select value={mergeTargetId ?? ""} onChange={(e) => { setMergeTargetId(e.target.value ? Number(e.target.value) : null); setMergeConfirm(false); }}>
+            <option value="">{lang === "es" ? "Selecciona un cliente…" : "Select a client…"}</option>
+            {(allClients.data?.clients ?? []).filter((o) => o.id !== clientId).map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </label>
+        {mergeTarget && !mergeConfirm && (
+          <button className="secondary-button" onClick={() => setMergeConfirm(true)}>
+            {lang === "es" ? `Fusionar en ${mergeTarget.name}` : `Merge into ${mergeTarget.name}`}
+          </button>
+        )}
+        {mergeTarget && mergeConfirm && (
+          <button className="danger-button" disabled={merge.isPending} onClick={() => merge.mutate()}>
+            {lang === "es" ? `Confirmar: fusionar en ${mergeTarget.name} y eliminar este registro` : `Confirm: merge into ${mergeTarget.name} and delete this record`}
+          </button>
+        )}
+        {merge.isError && <p className="form-error">{friendlyActionMessage(merge.error, lang)}</p>}
       </section>
       <button
         className="danger-button"
