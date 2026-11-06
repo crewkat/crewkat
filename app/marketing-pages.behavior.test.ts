@@ -1,9 +1,14 @@
 // Marketing Phase 1 feature pages (Danny 2026-10-18): Invoice Fly-style SEO
 // pages served as static HTML from app/client/marketing/ via explicit routes
-// in server.mjs (unknown paths fall back to the homepage, so the routes are
-// load-bearing). Pins: routes exist, each page has a distinct title/H1/meta/
-// canonical, real prices on /pricing, FAQPage JSON-LD matches the visible FAQ,
-// sitemap lists everything, shared chrome interlinks all pages.
+// in server.mjs (unknown paths get a real 404 since Batch 4, 2026-11-06, so
+// the routes are load-bearing). Pins: routes exist, each page has a distinct
+// title/H1/meta/canonical, real prices on /pricing, FAQPage JSON-LD matches
+// the visible FAQ, sitemap lists everything, shared chrome interlinks all
+// pages. Batch 4 (2026-11-06) pins: QuickBooks sold as "coming soon" (the
+// server throws until QB env is configured), Office presented at $49/mo with
+// $490/yr beside it and the $39 first-100 founding rate labelled as such,
+// tools recounted to the app's real 15 doors / 3 groups, compare table has
+// an Office column, the undirected estimates.html mascot placement is gone.
 // Run from app/:  bun test marketing-pages.behavior.test.ts
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
@@ -178,19 +183,17 @@ describe("brand mascot placements (2026-10-25)", () => {
     expect(CSS).toContain(".hero-mascot");
   });
 
-  test("estimates page carries the clipboard cat in the what-it-does section", () => {
+  test("estimates page carries NO mascot (Batch 4: the mid-content float was an undirected placement; directed hero placements only)", () => {
     const page = html("estimates");
-    const img = /<img class="mascot-float"[^>]*>/.exec(page)?.[0] ?? "";
-    expect(img).toContain('src="/marketing/mascot-clipboard.webp"');
-    expect(img).toContain('alt="Crewkat cat mascot holding a clipboard');
-    expect(img).toContain('loading="lazy"');
+    expect(page).not.toContain("mascot");
+    expect(CSS).not.toContain(".mascot-float");
+    // The clipboard cat asset itself stays — it is the directed hero
+    // placement on office.html.
     expect(existsSync(join(MKT, "mascot-clipboard.webp"))).toBe(true);
-    expect(CSS).toContain(".mascot-float");
   });
 
   test("no other marketing page carries a mascot image", () => {
     for (const slug of SLUGS) {
-      if (slug === "estimates") continue;
       expect(html(slug)).not.toContain("mascot");
     }
     expect(HOME).not.toContain("mascot-premium");
@@ -240,7 +243,7 @@ describe("office marketing page (2026-11-01)", () => {
     expect(OFFICE).toContain("For whoever runs the office");
     expect(OFFICE).toContain("One business, two screens");
     expect(OFFICE).toContain("Less admin. More building — now with a bigger screen.");
-    for (const h of ["Pipeline", "Production Board", "Money dashboard", "Follow-ups that don't slip", "Promotions", "Proposals that report back", "QuickBooks sync", "Get paid from the invoice", "Your crew, their logins"]) {
+    for (const h of ["Pipeline", "Production Board", "Money dashboard", "Follow-ups that don't slip", "Promotions", "Proposals that report back", "QuickBooks sync (coming soon)", "Get paid from the invoice", "Your crew, their logins"]) {
       expect(OFFICE).toContain(`<h3>${h}</h3>`);
     }
     for (const stage of ["Scheduled", "In Progress", "Punch List", "Complete", "Paid in Full"]) {
@@ -254,15 +257,17 @@ describe("office marketing page (2026-11-01)", () => {
     expect(OFFICE).not.toContain("App Store");
   });
 
-  test("founding-rate treatment is identical on the office page, home, and /pricing", () => {
+  test("Office price treatment is identical on the office page, home, and /pricing (Batch 4: $49 is the price, $490/yr beside it, $39 labelled the first-100 founding rate)", () => {
     for (const page of [OFFICE, HOME, PRICING]) {
       expect(page).toContain("Crewkat Office");
-      expect(page).toContain("<strong>$39</strong>");
-      expect(page).toContain("first 100 companies (regular $49/mo)");
+      expect(page).toContain("Office founding — first 100 companies");
+      expect(page).toContain("<strong>$49</strong>");
+      expect(page).toContain("$490/year");
+      expect(page).toContain("Office founding rate: the first 100 companies lock $39/month for life");
       expect(page).toContain("Free while the founding period lasts — no card to start.");
       expect(page).toContain("Everything in Premium");
       expect(page).toContain("Unlimited team logins included");
-      expect(page).toContain("Promotions, QuickBooks sync, and review tools");
+      expect(page).toContain("Promotions, review tools, and QuickBooks sync (coming soon)");
       expect(page).toContain("100-day money-back guarantee");
       // Office only — exactly once per page, never on the Premium card.
       expect(page.match(/100-day money-back guarantee/g)?.length).toBe(1);
@@ -398,12 +403,13 @@ describe("trade-solution pages /for/<trade> (Item 4, 2026-11-01)", () => {
       expect(page).toContain("(Pro feature, connects through Stripe.)");
       expect(page).toContain("<strong>$19</strong>");
       expect(page).toContain("Crewkat Office");
-      expect(page).toContain("<strong>$39</strong>");
-      expect(page).toContain("first 100 companies (regular $49/mo)");
+      expect(page).toContain("<strong>$49</strong>");
+      expect(page).toContain("Office founding rate: the first 100 companies lock $39/month for life");
+      expect(page).toContain("$490/year");
       expect(page).toContain("Free while the founding period lasts — no card to start.");
       expect(page).toContain("Everything in Premium");
       expect(page).toContain("Unlimited team logins included");
-      expect(page).toContain("Promotions, QuickBooks sync, and review tools");
+      expect(page).toContain("Promotions, review tools, and QuickBooks sync (coming soon)");
       expect(page.match(/100-day money-back guarantee/g)?.length).toBe(1);
     });
 
@@ -453,5 +459,73 @@ describe("trade-solution pages /for/<trade> (Item 4, 2026-11-01)", () => {
   test("homepage carries the For your trade link set to all 8 pages", () => {
     expect(HOME).toContain("For your trade");
     for (const slug of TRADE_SLUGS) expect(HOME).toContain(`href="/for/${slug}"`);
+  });
+});
+
+describe("Batch 4 — public-site truth (2026-11-06)", () => {
+  test("pricing counts the app's real tools: 15 doors / 3 groups, and the compare table has an Office column", () => {
+    const page = html("pricing");
+    expect(page).not.toContain("52 tools");
+    expect(page).not.toContain("52 built-in tools");
+    expect(page).not.toContain("10 groups");
+    expect(page).toContain("Built-in tools (15 total)");
+    expect(page).toContain("2 of 3 groups free");
+    expect(page).toContain('Office <span>$49/mo</span>');
+    expect(page).toContain("Desktop Office (pipeline, production board, money dashboard)");
+    expect(page).toContain("Monthly or $490/year, cancel anytime");
+    // The two "first 100" offers are labelled distinctly.
+    expect(page).toContain("App founding — first 100 members");
+    expect(page).toContain("Office founding — first 100 companies");
+  });
+
+  test("no public page sells QuickBooks as live", () => {
+    const files = [...SLUGS, "index", "office", "paperwork", "privacy"];
+    for (const slug of files) {
+      const page = slug === "index" ? HOME : html(slug);
+      expect(page).not.toContain("Promotions, QuickBooks sync, and review tools");
+      if (page.includes("QuickBooks")) expect(page).toContain("QuickBooks sync (coming soon)");
+    }
+    for (const trade of ["roofing", "plumbing", "electrical", "hvac", "painting", "concrete", "handyman", "remodeling"]) {
+      const page = readFileSync(join(MKT, "for", `${trade}.html`), "utf8");
+      expect(page).toContain("QuickBooks sync (coming soon)");
+    }
+  });
+
+  test("sitemap /tools entries match the public calculator set (no materials/punchlist index-dupes)", () => {
+    expect(SITEMAP).not.toContain("https://crewkat.com/tools/materials");
+    expect(SITEMAP).not.toContain("https://crewkat.com/tools/punchlist");
+    for (const slug of ["loan", "angle", "convert", "area", "yards", "board", "drywall", "roofing", "tile", "margin", "paint", "flooring", "fence", "block", "gravel", "stairs", "insulation", "gutter", "rate"]) {
+      expect(SITEMAP).toContain(`<loc>https://crewkat.com/tools/${slug}</loc>`);
+    }
+  });
+
+  test("unknown marketing paths get a real 404 page, not the homepage", () => {
+    expect(SERVER).toContain('join(MARKETING_DIST, "404.html"), undefined, 404');
+    const notFound = readFileSync(join(MKT, "404.html"), "utf8");
+    expect(notFound).toContain("<title>Page Not Found | Crewkat</title>");
+    expect(notFound).toContain('src="/marketing/script.js"');
+    expect(notFound).toContain('href="/paperwork"');
+  });
+
+  test("privacy page carries the standard header block + script.js", () => {
+    const privacy = readFileSync(join(MKT, "privacy.html"), "utf8");
+    expect(privacy).toContain('src="/marketing/script.js"');
+    expect(privacy).toContain("data-nav-toggle");
+    expect(privacy).toContain('class="button button-small"');
+    expect(privacy).not.toContain("btn btn-primary");
+    expect(privacy).toContain('href="/paperwork"');
+  });
+
+  test("paperwork eyebrow: the dot rule can no longer crush the i18n text span (live defect)", () => {
+    expect(CSS).toContain('.eyebrow > span[aria-hidden="true"]');
+    expect(CSS).not.toMatch(/\.eyebrow span \{/);
+  });
+
+  test("OG hygiene: one canonical image per surface, no backup/duplicate files served", () => {
+    expect(existsSync(join(MKT, "og-image-cat-backup.jpg"))).toBe(false);
+    expect(existsSync(join(MKT, "og-image-v2.jpg"))).toBe(false);
+    expect(SERVER).toContain("/marketing/og-image.jpg");
+    expect(SERVER).not.toContain("og-image-v2");
+    expect(SERVER).toContain("/marketing/og-portal.jpg");
   });
 });
