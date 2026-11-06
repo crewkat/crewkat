@@ -6757,7 +6757,7 @@ button.ba-tool-row > svg { flex: none; color: var(--dim); transform: rotate(180d
    sibling cards on the invoice screen, with the 3px navy left edge
    kept; flat brand marks and plain-text PRO. The rows are self-styled
    (.cp-row / .cp-fee-row) so no shared row styling can box them. */
-.card-payments-section { margin: 12px 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-left: 3px solid var(--navy-700); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); overflow: hidden; }
+.card-payments-section { margin: 12px 0; padding: 10px 14px; border: 1px solid var(--border); border-left: 3px solid var(--navy-700); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgba(23, 26, 28, .05), 0 8px 20px rgba(23, 26, 28, .05); overflow: hidden; }
 .cp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; background: transparent; cursor: pointer; }
 .cp-fee-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; font-size: 13.5px; color: var(--text); background: transparent; cursor: pointer; }
 button.card-payments-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; background: none; border: none; padding: 6px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
