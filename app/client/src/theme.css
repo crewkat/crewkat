@@ -2895,6 +2895,15 @@ html[data-theme="dark"] .tool-status.pro { color: #ffd580 !important; background
 .home-summary-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -6px; border-radius: 12px; }
 .home-summary-card > span, .home-summary-card > small { color: #aeb6c2; font-size: 12px; font-weight: 700; }
 .home-summary-card > strong { margin: 2px 0; color: var(--accent); font: 850 42px/.95 "IBM Plex Sans Condensed", "Aptos Narrow", system-ui, sans-serif; letter-spacing: -.04em; }
+/* Batch 5 #2: morning Today digest card — flat card, hairline border. */
+.today-digest { display: grid; gap: 10px; margin: 0 0 14px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.today-digest-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.today-digest-head > strong { font-size: 14px; }
+.today-digest-next { border: 0; background: none; padding: 0; font-size: 12.5px; font-weight: 700; color: var(--accent-strong, #c2510a); text-align: right; cursor: pointer; }
+.today-digest-stats { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px; }
+.today-digest-stats > button { border: 0; background: none; padding: 2px 0; display: grid; gap: 1px; justify-items: start; cursor: pointer; text-align: left; }
+.today-digest-stats > button strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+.today-digest-stats > button span { font-size: 11.5px; font-weight: 700; color: var(--dim); }
 .home-error-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--border)); border-radius: 14px; background: color-mix(in srgb, #c0392b 9%, var(--surface)); }
 .home-error-banner strong { display: block; font-size: 15px; }
 .home-error-banner p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }

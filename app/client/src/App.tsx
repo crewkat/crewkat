@@ -25706,6 +25706,49 @@ function TodayScreen({
         <strong><CountUp value={openJobs.length} format={(n) => String(Math.round(n))} /></strong>
         <small>{`${activeThisWeek} ${lang === "es" ? (activeThisWeek === 1 ? "activo esta semana" : "activos esta semana") : "active this week"}`}</small>
       </section>
+      {/* Batch 5 #2: morning "Today" digest — the small-crew slice of
+          Jobber Teammate's daily digest, minus the agent: today's jobs,
+          money to collect and follow-ups due in one compact card, plus
+          the next appointment. Everything is computed from the queries
+          Home already runs; every cell taps through to its own screen. */}
+      {(() => {
+        const digestJobsToday = openJobs.filter((job) => job.jobDate === today);
+        const digestToCollect = (invoicesQuery.data?.invoices ?? [])
+          .filter((i) => i.status === "sent" || i.status === "overdue")
+          .reduce((sum, i) => sum + money(i.balanceRemaining), 0);
+        const digestFollowUps = paymentEscalations.length + quoteChase.length;
+        const digestNext = (d.appointments ?? [])
+          .filter((a) => a.startsAt.slice(0, 10) === today && a.status !== "completed" && a.status !== "cancelled")
+          .sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
+        return (
+          <section className="today-digest" aria-label={lang === "es" ? "Resumen de hoy" : "Today's digest"}>
+            <div className="today-digest-head">
+              <strong>{lang === "es" ? "Tu día de hoy" : "Your day today"}</strong>
+              {digestNext && (
+                <button type="button" className="today-digest-next" onClick={() => { buzz(8); setScreen(digestNext.jobId ? { name: "detail", jobId: digestNext.jobId } : { name: "operations", tab: "calendar" }); }}>
+                  {lang === "es" ? "Siguiente:" : "Next up:"}{" "}
+                  {new Intl.DateTimeFormat(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(digestNext.startsAt))}
+                  {" · "}{digestNext.clientName}
+                </button>
+              )}
+            </div>
+            <div className="today-digest-stats">
+              <button type="button" onClick={() => { buzz(8); setScreen({ name: "jobs" }); }}>
+                <strong>{digestJobsToday.length}</strong>
+                <span>{lang === "es" ? (digestJobsToday.length === 1 ? "trabajo hoy" : "trabajos hoy") : (digestJobsToday.length === 1 ? "job today" : "jobs today")}</span>
+              </button>
+              <button type="button" onClick={() => { buzz(8); setScreen({ name: "invoices" }); }}>
+                <strong>{usd(digestToCollect)}</strong>
+                <span>{lang === "es" ? "por cobrar" : "to collect"}</span>
+              </button>
+              <button type="button" onClick={() => { buzz(8); setScreen({ name: "followups" }); }}>
+                <strong>{digestFollowUps}</strong>
+                <span>{lang === "es" ? (digestFollowUps === 1 ? "seguimiento pendiente" : "seguimientos pendientes") : (digestFollowUps === 1 ? "follow-up due" : "follow-ups due")}</span>
+              </button>
+            </div>
+          </section>
+        );
+      })()}
       {/* Build 3: "at a glance" — what needs attention right now, tappable. */}
       {(() => {
         const tomorrow = new Date(now);
