@@ -26203,7 +26203,7 @@ function TodayScreen({
                   : "Crew evening message"}
           </span>
           <strong>
-            {`${d.crew.length} ${lang === "es" ? "trabajos de hoy" : "jobs today"}`}
+            {`${d.crew.length} ${lang === "es" ? (d.crew.length === 1 ? "trabajo de hoy" : "trabajos de hoy") : (d.crew.length === 1 ? "job today" : "jobs today")}`}
           </strong>
         </div>
         {d.crew.length > 0 && (
