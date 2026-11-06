@@ -11930,7 +11930,9 @@ function JobDetail({
   const photoQueueBusyRef = useRef(false);
   const photoQueueKeyRef = useRef(0);
   const processPhotoQueue = useCallback(async () => {
-    if (photoQueueBusyRef.current) return;
+    if (photoQueueBusyRef.current) {
+      return;
+    }
     photoQueueBusyRef.current = true;
     try {
       for (;;) {
@@ -11991,7 +11993,9 @@ function JobDetail({
       ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type),
     );
     e.target.value = "";
-    if (!picked.length) return;
+    if (!picked.length) {
+      return;
+    }
     buzz(6);
     setPhotoQueue((q) => [
       ...q,
