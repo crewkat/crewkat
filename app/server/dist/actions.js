@@ -34312,6 +34312,7 @@ __export(exports_schema, {
   adminParameters: () => adminParameters,
   adminTeamRoles: () => adminTeamRoles,
   adminTotpSecrets: () => adminTotpSecrets,
+  aiUsage: () => aiUsage,
   appUserExitFeedback: () => appUserExitFeedback,
   appUsers: () => appUsers,
   appointments: () => appointments,
@@ -34326,7 +34327,10 @@ __export(exports_schema, {
   broadcastLog: () => broadcastLog,
   businessExpenses: () => businessExpenses,
   businessVerifications: () => businessVerifications,
+  campaignRecipients: () => campaignRecipients,
+  campaigns: () => campaigns,
   cancellationFeedback: () => cancellationFeedback,
+  clientReviews: () => clientReviews,
   clients: () => clients,
   companies: () => companies,
   completionCertificates: () => completionCertificates,
@@ -34340,6 +34344,7 @@ __export(exports_schema, {
   documentLinkEvents: () => documentLinkEvents,
   documentLinks: () => documentLinks,
   documents: () => documents,
+  emailSuppressions: () => emailSuppressions,
   equipment: () => equipment,
   featureFlags: () => featureFlags,
   financialDocumentSignatures: () => financialDocumentSignatures,
@@ -34347,9 +34352,11 @@ __export(exports_schema, {
   growthLoopEvents: () => growthLoopEvents,
   incidents: () => incidents,
   internalNotes: () => internalNotes,
+  invoicePaymentAttempts: () => invoicePaymentAttempts,
   invoices: () => invoices,
   jobEvents: () => jobEvents,
   jobFiles: () => jobFiles,
+  jobLoads: () => jobLoads,
   jobMessages: () => jobMessages,
   jobs: () => jobs,
   leadActivities: () => leadActivities,
@@ -34368,6 +34375,7 @@ __export(exports_schema, {
   marketplaceProQuota: () => marketplaceProQuota,
   marketplaceUnlocks: () => marketplaceUnlocks,
   materialCostItems: () => materialCostItems,
+  memberCredentials: () => memberCredentials,
   mileageTrips: () => mileageTrips,
   moderationKeywordRules: () => moderationKeywordRules,
   officeAutomationSettings: () => officeAutomationSettings,
@@ -34391,12 +34399,16 @@ __export(exports_schema, {
   punchSignoffs: () => punchSignoffs,
   purchaseOrders: () => purchaseOrders,
   pushSubscriptions: () => pushSubscriptions,
+  qbSyncRecords: () => qbSyncRecords,
+  quickbooksConnections: () => quickbooksConnections,
   quoteTemplates: () => quoteTemplates,
   quotes: () => quotes,
   rateLimitEvents: () => rateLimitEvents,
   receipts: () => receipts,
   recurringInvoiceSchedules: () => recurringInvoiceSchedules,
   referralEvents: () => referralEvents,
+  safetySessionAttendees: () => safetySessionAttendees,
+  safetySessions: () => safetySessions,
   safetyTalks: () => safetyTalks,
   scannedDocuments: () => scannedDocuments,
   selections: () => selections,
@@ -34417,7 +34429,8 @@ __export(exports_schema, {
   userReports: () => userReports,
   voiceNotes: () => voiceNotes,
   warranties: () => warranties,
-  weeklyGameChampions: () => weeklyGameChampions
+  weeklyGameChampions: () => weeklyGameChampions,
+  workSummaries: () => workSummaries
 });
 
 // ../node_modules/zod/v4/core/core.js
@@ -39709,6 +39722,9 @@ function inArray(column, values) {
 function isNull(value) {
   return sql`${value} is null`;
 }
+function isNotNull(value) {
+  return sql`${value} is not null`;
+}
 function like(column, value) {
   return sql`${column} like ${value}`;
 }
@@ -40638,7 +40654,7 @@ function zipSync(data, opts) {
 // src/actions.ts
 var import_google_auth_library = __toESM(require_src5(), 1);
 import { execFile } from "child_process";
-import { randomInt } from "crypto";
+import { createHash as createHash3, createHmac as createHmac3, randomInt } from "crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import { basename, join } from "path";
@@ -41357,7 +41373,7 @@ var quotes = sqliteTable("quotes", {
   lostReason: text("lost_reason", { enum: ["price", "timing", "competitor", "no_response", "other"] }),
   lostNote: text("lost_note").notNull().default(""),
   theme: text("theme", { enum: ["classic", "modern", "bold", "minimal"] }).notNull().default("classic"),
-  font: text("font", { enum: ["helvetica", "times", "courier", "palatino"] }).notNull().default("helvetica"),
+  font: text("font", { enum: ["Inter", "helvetica", "times", "courier", "palatino"] }).notNull().default("Inter"),
   accentColor: text("accent_color").notNull().default("#1f5a4a"),
   showTaxLine: integer2("show_tax_line", { mode: "boolean" }).notNull().default(true),
   showDiscountLine: integer2("show_discount_line", { mode: "boolean" }).notNull().default(true),
@@ -41412,7 +41428,7 @@ var invoices = sqliteTable("invoices", {
   recurringEndDate: text("recurring_end_date").notNull().default(""),
   recurringCancelled: integer2("recurring_cancelled", { mode: "boolean" }).notNull().default(false),
   theme: text("theme", { enum: ["classic", "modern", "bold", "minimal"] }).notNull().default("classic"),
-  font: text("font", { enum: ["helvetica", "times", "courier", "palatino"] }).notNull().default("helvetica"),
+  font: text("font", { enum: ["Inter", "helvetica", "times", "courier", "palatino"] }).notNull().default("Inter"),
   accentColor: text("accent_color").notNull().default("#1f5a4a"),
   showTaxLine: integer2("show_tax_line", { mode: "boolean" }).notNull().default(true),
   showDiscountLine: integer2("show_discount_line", { mode: "boolean" }).notNull().default(true),
@@ -41425,6 +41441,9 @@ var invoices = sqliteTable("invoices", {
   imagesPerPage: integer2("images_per_page").notNull().default(1),
   depositType: text("deposit_type", { enum: ["none", "percent", "fixed"] }).notNull().default("none"),
   depositValue: text("deposit_value").notNull().default("0"),
+  cardPaymentsEnabled: integer2("card_payments_enabled", { mode: "boolean" }).notNull().default(true),
+  cardFeeEnabled: integer2("card_fee_enabled", { mode: "boolean" }).notNull().default(false),
+  cardFeeCents: integer2("card_fee_cents").notNull().default(0),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -41507,7 +41526,7 @@ var settings = sqliteTable("settings", {
   themeMode: text("theme_mode", { enum: ["light", "dark", "system"] }).notNull().default("light"),
   uiAccent: text("ui_accent", { enum: ["orange", "blue", "green", "purple", "red"] }).notNull().default("orange"),
   defaultQuoteTheme: text("default_quote_theme", { enum: ["classic", "modern", "bold", "minimal"] }).notNull().default("classic"),
-  defaultDocumentFont: text("default_document_font", { enum: ["helvetica", "times", "courier", "palatino"] }).notNull().default("helvetica"),
+  defaultDocumentFont: text("default_document_font", { enum: ["Inter", "helvetica", "times", "courier", "palatino"] }).notNull().default("Inter"),
   defaultShowTaxLine: integer2("default_show_tax_line", { mode: "boolean" }).notNull().default(true),
   defaultShowDiscountLine: integer2("default_show_discount_line", { mode: "boolean" }).notNull().default(true),
   defaultShowPaidLine: integer2("default_show_paid_line", { mode: "boolean" }).notNull().default(true),
@@ -41546,6 +41565,11 @@ var settings = sqliteTable("settings", {
   signatureBlobKey: text("signature_blob_key"),
   listingBonus: integer2("listing_bonus").notNull().default(0),
   marketplacePhoneVerified: integer2("marketplace_phone_verified", { mode: "boolean" }).notNull().default(false),
+  stripeConnectAccountId: text("stripe_connect_account_id"),
+  stripeConnectStatus: text("stripe_connect_status", { enum: ["not_connected", "onboarding", "connected"] }).notNull().default("not_connected"),
+  stripeChargesEnabled: integer2("stripe_charges_enabled", { mode: "boolean" }).notNull().default(false),
+  stripePayoutsEnabled: integer2("stripe_payouts_enabled", { mode: "boolean" }).notNull().default(false),
+  leadFormCode: text("lead_form_code"),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
 var timeEntries = sqliteTable("time_entries", {
@@ -41604,8 +41628,174 @@ var payments = sqliteTable("payments", {
   paymentDate: text("payment_date").notNull(),
   method: text("method").notNull().default(""),
   note: text("note").notNull().default(""),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
-});
+}, (table) => [
+  uniqueIndex("payments_stripe_pi_idx").on(table.stripePaymentIntentId)
+]);
+var invoicePaymentAttempts = sqliteTable("invoice_payment_attempts", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer2("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+  stripeSessionId: text("stripe_session_id").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  amount: text("amount").notNull(),
+  method: text("method").notNull().default(""),
+  status: text("status", { enum: ["pending", "paid", "failed", "expired"] }).notNull().default("pending"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("invoice_payment_attempts_session_idx").on(table.stripeSessionId),
+  index("invoice_payment_attempts_invoice_idx").on(table.invoiceId)
+]);
+var quickbooksConnections = sqliteTable("quickbooks_connections", {
+  companyId: integer2("company_id").notNull(),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  realmId: text("realm_id").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  accessTokenExpiresAt: integer2("access_token_expires_at", { mode: "timestamp_ms" }),
+  status: text("status", { enum: ["not_connected", "connected"] }).notNull().default("not_connected"),
+  companyName: text("company_name").notNull().default(""),
+  defaultItemId: text("default_item_id").notNull().default(""),
+  stateToken: text("state_token").notNull().default(""),
+  lastSyncAt: integer2("last_sync_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("quickbooks_connections_company_idx").on(table.companyId)
+]);
+var qbSyncRecords = sqliteTable("qb_sync_records", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type", { enum: ["customer", "invoice", "payment"] }).notNull(),
+  entityId: integer2("entity_id").notNull(),
+  qbId: text("qb_id"),
+  status: text("status", { enum: ["synced", "pending", "error", "conflict"] }).notNull().default("pending"),
+  error: text("error").notNull().default(""),
+  lastSyncedAt: integer2("last_synced_at", { mode: "timestamp_ms" }),
+  crewkatUpdatedAt: integer2("crewkat_updated_at", { mode: "timestamp_ms" }).notNull(),
+  qbUpdatedAt: integer2("qb_updated_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("qb_sync_records_entity_idx").on(table.companyId, table.entityType, table.entityId)
+]);
+var clientReviews = sqliteTable("client_reviews", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  clientId: integer2("client_id").references(() => clients.id, { onDelete: "set null" }),
+  clientName: text("client_name").notNull().default(""),
+  rating: integer2("rating").notNull(),
+  text: text("text").notNull().default(""),
+  reviewDate: text("review_date").notNull().default(""),
+  source: text("source", { enum: ["manual", "google"] }).notNull().default("manual"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("client_reviews_job_idx").on(table.jobId)
+]);
+var workSummaries = sqliteTable("work_summaries", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  rangeStart: text("range_start").notNull(),
+  rangeEnd: text("range_end").notNull(),
+  preset: text("preset", { enum: ["today", "this_week", "custom"] }).notNull().default("custom"),
+  contentJson: text("content_json").notNull().default("{}"),
+  createdByUserId: integer2("created_by_user_id"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("work_summaries_job_idx").on(table.jobId),
+  index("work_summaries_company_idx").on(table.companyId)
+]);
+var aiUsage = sqliteTable("ai_usage", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(),
+  count: integer2("count").notNull().default(0),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("ai_usage_company_month_idx").on(table.companyId, table.month)
+]);
+var jobLoads = sqliteTable("job_loads", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  expenseId: integer2("expense_id").references(() => businessExpenses.id, { onDelete: "set null" }),
+  loadDate: text("load_date").notNull(),
+  kind: text("kind", { enum: ["debris_haul", "concrete", "dirt", "delivery", "other"] }).notNull().default("debris_haul"),
+  quantity: text("quantity").notNull().default("1"),
+  unit: text("unit", { enum: ["loads", "yards", "tons"] }).notNull().default("loads"),
+  cost: text("cost"),
+  vendor: text("vendor").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  photoBlobKey: text("photo_blob_key"),
+  photoFilename: text("photo_filename").notNull().default(""),
+  photoContentType: text("photo_content_type").notNull().default(""),
+  loggedByUserId: integer2("logged_by_user_id"),
+  loggedByName: text("logged_by_name").notNull().default(""),
+  attested: integer2("attested", { mode: "boolean" }).notNull().default(false),
+  attestedAt: integer2("attested_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("job_loads_job_idx").on(table.jobId),
+  index("job_loads_company_idx").on(table.companyId),
+  index("job_loads_date_idx").on(table.loadDate)
+]);
+var safetySessions = sqliteTable("safety_sessions", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  jobId: integer2("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+  sessionDate: text("session_date").notNull(),
+  talkSlug: text("talk_slug"),
+  talkTitle: text("talk_title").notNull(),
+  talkPointsJson: text("talk_points_json").notNull().default("[]"),
+  customBody: text("custom_body").notNull().default(""),
+  presenterUserId: integer2("presenter_user_id"),
+  presenterName: text("presenter_name").notNull().default(""),
+  signatureBlobKey: text("signature_blob_key"),
+  createdByUserId: integer2("created_by_user_id"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("safety_sessions_company_idx").on(table.companyId),
+  index("safety_sessions_job_idx").on(table.jobId),
+  index("safety_sessions_date_idx").on(table.sessionDate)
+]);
+var safetySessionAttendees = sqliteTable("safety_session_attendees", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer2("session_id").notNull().references(() => safetySessions.id, { onDelete: "cascade" }),
+  userId: integer2("user_id"),
+  attendeeName: text("attendee_name").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("safety_session_attendees_session_idx").on(table.sessionId),
+  index("safety_session_attendees_user_idx").on(table.userId)
+]);
+var memberCredentials = sqliteTable("member_credentials", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  userId: integer2("user_id").notNull(),
+  memberName: text("member_name").notNull().default(""),
+  type: text("type", { enum: ["contractor_license", "osha_10", "osha_30", "cpr_first_aid", "epa_rrp", "drivers_license", "custom"] }).notNull().default("custom"),
+  customLabel: text("custom_label").notNull().default(""),
+  number: text("number").notNull().default(""),
+  expiresOn: text("expires_on").notNull().default(""),
+  attachmentBlobKey: text("attachment_blob_key"),
+  attachmentFilename: text("attachment_filename").notNull().default(""),
+  attachmentContentType: text("attachment_content_type").notNull().default(""),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("member_credentials_company_idx").on(table.companyId),
+  index("member_credentials_user_idx").on(table.userId),
+  index("member_credentials_expiry_idx").on(table.expiresOn)
+]);
 var completionCertificates = sqliteTable("completion_certificates", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -41964,7 +42154,7 @@ var rateLimitEvents = sqliteTable("rate_limit_events", {
 var documentLinks = sqliteTable("document_links", {
   companyId: integer2("company_id").notNull().default(1),
   id: integer2("id").primaryKey({ autoIncrement: true }),
-  documentKind: text("document_kind", { enum: ["invoice", "quote", "contract", "change_order"] }).notNull(),
+  documentKind: text("document_kind", { enum: ["invoice", "quote", "contract", "change_order", "work_summary"] }).notNull(),
   documentId: integer2("document_id").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   tokenHint: text("token_hint").notNull(),
@@ -42177,6 +42367,11 @@ var companies = sqliteTable("companies", {
   id: integer2("id").primaryKey(),
   crewCode: text("crew_code").unique(),
   tier: text("tier", { enum: ["app", "office"] }).notNull().default("office"),
+  officePlanState: text("office_plan_state", { enum: ["none", "founding", "active", "past_due", "canceled"] }).notNull().default("none"),
+  officeFoundingGrantedAt: integer2("office_founding_granted_at", { mode: "timestamp_ms" }),
+  officeStripeCustomerId: text("office_stripe_customer_id"),
+  officeStripeSubscriptionId: text("office_stripe_subscription_id"),
+  officeCurrentPeriodEnd: integer2("office_current_period_end", { mode: "timestamp_ms" }),
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
   updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 });
@@ -42650,6 +42845,58 @@ var weeklyGameChampions = sqliteTable("weekly_game_champions", {
   createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
 }, (table) => [
   uniqueIndex("weekly_game_champions_week_unique").on(table.weekStart)
+]);
+var campaigns = sqliteTable("campaigns", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["promotion", "blog"] }).notNull().default("promotion"),
+  status: text("status", { enum: ["draft", "sending", "sent"] }).notNull().default("draft"),
+  subject: text("subject").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  headline: text("headline").notNull().default(""),
+  bodyText: text("body_text").notNull().default(""),
+  ctaLabel: text("cta_label").notNull().default(""),
+  ctaUrl: text("cta_url").notNull().default(""),
+  imageBlobKey: text("image_blob_key"),
+  customHtml: text("custom_html").notNull().default(""),
+  recipientMode: text("recipient_mode", { enum: ["individual", "never_closed", "all"] }).notNull().default("all"),
+  recipientClientIdsJson: text("recipient_client_ids_json").notNull().default("[]"),
+  recipientCount: integer2("recipient_count").notNull().default(0),
+  sentCount: integer2("sent_count").notNull().default(0),
+  failedCount: integer2("failed_count").notNull().default(0),
+  sentAt: integer2("sent_at", { mode: "timestamp_ms" }),
+  createdByUserId: integer2("created_by_user_id"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date),
+  updatedAt: integer2("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  index("campaigns_company_idx").on(table.companyId)
+]);
+var campaignRecipients = sqliteTable("campaign_recipients", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  campaignId: integer2("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  clientId: integer2("client_id").references(() => clients.id, { onDelete: "set null" }),
+  clientName: text("client_name").notNull().default(""),
+  email: text("email").notNull(),
+  status: text("status", { enum: ["sent", "failed"] }).notNull().default("sent"),
+  error: text("error").notNull().default(""),
+  unsubscribeToken: text("unsubscribe_token").notNull(),
+  sentAt: integer2("sent_at", { mode: "timestamp_ms" }),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("campaign_recipients_token_idx").on(table.unsubscribeToken),
+  index("campaign_recipients_campaign_idx").on(table.campaignId)
+]);
+var emailSuppressions = sqliteTable("email_suppressions", {
+  companyId: integer2("company_id").notNull().default(1),
+  id: integer2("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  clientId: integer2("client_id").references(() => clients.id, { onDelete: "set null" }),
+  source: text("source", { enum: ["unsubscribe"] }).notNull().default("unsubscribe"),
+  createdAt: integer2("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date)
+}, (table) => [
+  uniqueIndex("email_suppressions_company_email_idx").on(table.companyId, table.email)
 ]);
 
 // src/craneWeek.ts
@@ -55878,7 +56125,13 @@ E2.API.PDFObject = function() {
   }, e;
 }();
 
+// ../client/src/interFonts.ts
+var INTER_REGULAR_TTF_B64 = "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" + "AJv+XgH5ADAAEwAAEzUzMjY1NCYjIzczFRUWFhUUBiObdjcrKzdSHl9iW294/l5pHSUlHOYwVgRNUVhSAAIAKgYFAjgH+gAPABsAAAEiJiY1NDY2MzIWFhUU" + "BgYnMjY1NCYjIgYVFBYBMUl3R0d3SUl3R0d3STRJSDU0SUkGBURyRUZxQ0NxRkVyRH5JNDRJSTQ0SQABAAb/0gSWBgAAAwAAFycBF4iCBA6CLloF1FoAAQBS" + "/9MEdgSLAAMAABcnARe9awO6ai1aBF5aAAEAMgKcAzcDNgADAAATNSEVMgMFApyamgAAAAABAAABAgCEAAwAcAAHAAEAAAAAAAAAAAAAAAAABwABAAAAAAAl" + "ADEAPQBJAFUAYQBtAJIAzwEJARUBQwFaAWYBcgF+AYoBnwHdAfQCAgIOAhoCJgIyAk8CfAKLAtIC/wMLA0MDTwNbA2cDcwN/A4sDsQP2BCUEbwSBBKYEsgS+" + "BMoE1gT1BTUFbQWPBZsFxQYXBiMGLwY6BkYGUgZdBtMHDgdKB4MHjwfKCAYIEQgdCCkINQhaCKgIzgjZCOUI8Qj9CQgJFAksCTcJWgloCaQJygnVCgkKFAof" + "CioKNgpCCk4KigrGCuYLKAtkC4cLrAu3C+0L+QwFDBEMLwxtDJ8MzwzaDOYM/g0pDXYNxw4GDjMOdw68DvIPBg83D4EPoQ/cECgQOxCXEOQRGhE0ETwRRBFM" + "EVQRXBFkEWwRdBF9EYURkRGeEaYRrhHvEjESORJBEkoSUhJaEmISahJyEnoSghKKEpMSkxKTEvITEBMuE3ITthPYE/oUDBQeFF8UoRUkFUoVnhWuFbwV0BXf" + "FewV+RYGFiMWMRY/Fk0WWRZlFnEWfxaLFpQWqha6FsYW0xbcFvAXBBcQFxwXNBdOF2IXdheOF7wX1xgEGBUYIRg6GFYYfxjYGUMZdRm/GfEaERqJGpwayBsJ" + "GxgbKxtUG5MbsRvCG9Mb5BxHHE8cVxxfHGccbxx9HIwcmRzAHMAcwBzUHN8dBR0bHS8dWx16HaYdtB3CHc8AAAABAAAABABCQXfh118PPPUAAwgAAAAAAOJ2" + "h5AAAAAA4naHnfoX/WwUqgjdAAAAAwACAAAAAAAABUABSAWFADQFhQA0BYUANAWFADQFhQA0BYUANAWFADQH8wA0BTwAtAXYAHoF2AB6BcYAtATPALQEzwC0" + "BM8AtATPALQEzwC0BLkAtAX4AHoF8gC0AiYAtAIm/8oCJgALAiYAtAIm/9IEkQBkBWAAtASGALQHOgC0BgcAtAYHALQGHgB6Bh4AegYeAHoGHgB6Bh4AegYe" + "AHoGHgB6BRwAtAYeAHoFJgC0BSIAdAUqAGIF9AC0BfQAtAX0ALQF9AC0BfQAtAWFADQH4gA0BXUAOQVuADQFbgA0BQgAegR+AFoEfgBaBH4AWgR+AFoEfgBa" + "BH4AWgR+AFoHVwBaBOYAngTmAJ4EkgBoBJIAaATmAGgEqgBoBKoAaASqAGgEqgBoBKoAaAL2ABQE6ABoBLsAngHwAHwB8ACeAfD/sAHw//EB8ACeAfD/uAHw" + "/+YB8P/mBGQAngHwAJ4HAgCeBLoAngS6AJ4EzABoBMwAaATMAGgEzABTBMwAaATMAGgEzABoBOYAngTmAGgDAwCeBDkAbATuALQCngAUBLsAngS7AJ4EsACe" + "BLsAngS7AJ4EuwCeBH8ANgaMAEYEXgBBBH8ANgR/ADYEfwA2BGsAfgUWAKgEqQBoBSIAdASSAGgEZgAeBOMAbgVVADQFDAB6A0EAYAThAJoE8QB9BSsAeAS/" + "AIAE9gB6BIcAYgTzAHoE9gB6BTAAjgUwAOEFMAC9BTAAlgUwAHkFMACyBTAAlwUwALYFMACYBTAAlwImAGwCJgCQAiYAkAImAGwDIAD/AyAAcAMgAFIDIABw" + "AyABIgMgAHAFMAFOBTAAvwUwAL4FMADUBTAAtAUwAMMFMADDBTAAvwUwAJcFMAEGAiYAAAImAAAFJwBoAk0AoAJNAKAEFwBSBBcAZgLrANoC6wBgAusA4gLr" + "AHsDaQCQA2kAewe6AHoFEQAiBcwAeALiAC4CqQEGAikAwALiAC4DrgCQBAAAAAgAAAAEgAEAAhYAoAIWAKACZgDSA7oA0gOGAKADhgCgAcgAZgOKAGYCTgCA" + "Ak4AoAbqAKACTgCgAmoAgAJOAKADEwBkAxMAUASpAGQEqQBQBUsArgVLAO0FSwDiBUsAwwVLANIFSwDSBUsAzgVLAKYFSwDgA6YAAAPuAHIDxQBSBAIAcgVU" + "AGQHUACoA6UAggOhAEMD3ABOBNIAbgSMAHoCbwBjA4kAcAORAGcBif5wAhsASwLxAGMDDQBkAyEAWwbHAEsGawBLBw4AZAfbAOYClQCoApUAlgS6ARQD0gDU" + "AiUAmwAAAKgAAACWAAAA1AAAAOICQAAAAkAAAAcTAN4F4QAUAAABFAAAAHoAAABmAAAAKgAAAJsAAAAqBJwABgTJAFIDaQAyAAEAAAfA/hIAABV0+hf3aBSq" + "CAAAAAAAAAAAAAAAAAAAAAECAAQFKgGQAAUAAAUzBM0AAACaBTMEzQAAAs0AjAKfAAACAAUDAAAAAgAEgAAAAwAAgAIAAAAAAAAAAFJTTVMAwAAgJxMHwP4S" + "AAAI3QKUAAAAAQAAAAAEXgXSAAAAIAAMAAAAAgAAAAMAAAAUAAMAAQAAABQABAHwAAAAHgAQAAMADgAvADkAfgCsAP8gFCAZIB0gICAiICYgMyCsJxP//wAA" + "ACAAMAA6AKAAriATIBggHCAgICIgJiAyIKwnE///AAAASgAAAAAAAOCk4KLgouC24JfgnuCO383Z5AABAB4AAAA6AMIA2gAAAAAAAAAAAAAAAAAAAAAAAAAA" + "APUApQC9ALAAdQDrAKQAvACpAKoA2ADPAMIAtgDDALIAxQDGAMwAzgDNAKcArwABAAkACgAMAA0AEgATABQAFQAaABsAHAAdAB4AIAAnACgAKQAqACsALAAx" + "ADIAMwA0ADYAqwC1AKwA1wDVAO0ANwA/AEEAQwBEAEkASgBLAEwAUwBUAFUAVgBXAFkAYABhAGIAYwBlAGYAbABtAG4AbwByAK0AswCuANMA9gCmAHYAeACx" + "AHcAtADfAO4A2gDcAMoA1ADZAO8A2wDSAOEA4gDsAGgA3gDHAPAA4ADdAMsA6QDoAOoAqAAEAAUABgADAAIABwAIAAsADgAPABAAEQAXABgAGQAWAPgAHwAk" + "ACUAJgAiACEA0AAjAC0ALgAvADAANQBzAGQAOwA4ADkAPQA6ADwAPgBCAEYARwBIAEUATwBQAFEATgB0AFgAXQBeAF8AWwBaANEAXABpAGoAawBnAHEAQABw" + "uAH/hbAEjQAAAAAMAJYAAwABBAkAAACQAAAAAwABBAkAAQAKAJAAAwABBAkAAgAOAJoAAwABBAkAAwAwAKgAAwABBAkABAAaANgAAwABBAkABQA2APIAAwAB" + "BAkABgAaASgAAwABBAkBAQAMAUIAAwABBAkBOAAYAU4AAwABBAkBOQAIAWYAAwABBAkBQAAMAW4AAwABBAkBQQAKAXoAQwBvAHAAeQByAGkAZwBoAHQAIAAy" + "ADAAMQA2ACAAVABoAGUAIABJAG4AdABlAHIAIABQAHIAbwBqAGUAYwB0ACAAQQB1AHQAaABvAHIAcwAgACgAaAB0AHQAcABzADoALwAvAGcAaQB0AGgAdQBi" + "AC4AYwBvAG0ALwByAHMAbQBzAC8AaQBuAHQAZQByACkASQBuAHQAZQByAFIAZQBnAHUAbABhAHIANAAuADAAMAAxADsAUgBTAE0AUwA7AEkAbgB0AGUAcgAt" + "AFIAZQBnAHUAbABhAHIASQBuAHQAZQByACAAUgBlAGcAdQBsAGEAcgBWAGUAcgBzAGkAbwBuACAANAAuADAAMAAxADsAZwBpAHQALQA2ADYANgA0ADcAYwAw" + "AGIAYgBJAG4AdABlAHIALQBSAGUAZwB1AGwAYQByAFcAZQBpAGcAaAB0AE8AcAB0AGkAYwBhAGwAIABTAGkAegBlADEANABwAHQASQB0AGEAbABpAGMAUgBv" + "AG0AYQBuAAAAAwAAAAAAAP6kAIwAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAH//wAPAAEAAAAMAAAAAAAAAAIAEgABAD8AAQBBAEwAAQBOAFEAAQBUAGMAAQBl" + "AGcAAQBpAHIAAQB1AHYAAQB6AHoAAQB8AH0AAQCEAIQAAQCGAIcAAQCWAJcAAQCrAKwAAQDcAN0AAQDhAOIAAQDoAOgAAQDqAOoAAQD4APgAAQABAAAACgA8" + "AF4ABERGTFQAGmN5cmwAJmdyZWsAJmxhdG4AJgAEAAAAAP//AAEAAQAEAAAAAP//AAEAAAACa2VybgAOa2VybgAWAAAAAgABAAAAAAAEAAEAAAABAAAAAgAG" + "ACoACQAIAAMADAAUABwAAQACAAANggABAAIAABDgAAEAAgAAEp4AAgAIAAMADAGoAkoAAQA+AAQAAAAaAHYArACMAKwAkgCsALIA0AF6AN4A8AD2AXQBdADw" + "APYBEAEWASgBbgGAAYABdAF6AYABigABABoAaAB6AH8AgACBAIMApACmAK8AtQC6ALsAvAC9AL4AvwDHAM0A1QDWANcA2ADZANoA2wDrAAUAuv+YAL7/mADM" + "/68A1P+7ANX/uwABANn/9QAGAH//7ACD/+wApP+jALD/jADM/0YA1f67AAEA1f+jAAcAtf+AALr/RgC8/7sAvf+7AL7/RgDW/68A2f/SAAMAtf+7ALr/uwC+" + "/7sABAC6/6kAu/+MAL7/qQC//4wAAQCk/4AABgBo/6MApP91ALD/AADM/zsA0/+jANX/rwABALX/rwAEAIH/aQC1/2kAuv87AL7/OwARAHr/owB7/yMAff+j" + "AH7/jAB//6MAgP+jAIL/owCD/6MAr/+vALX/XgC6/68Avv+vANf/dQDY/3UA2v+vANv/dQDe/6MAAQCk/68AAQCk/7sAAQDV/68AAgCk/7sA1f91AAQAuv+A" + "ALv/dQC+/4AAv/91AAEAIgAEAAAADAA+AJwASABmAHQAnAB6AIQAhACEAJYAnAABAAwAeQB7AH8AgACBALMAtQDCAMMAxADVAN4AAgB6AAAAgAAAAAcAewAA" + "AML/yQDD/8kAxP/JANcAAADYAAAA2wAAAAMAwv+7AMP/uwDE/7sAAQDrAAAAAgC1/5wAzAAAAAQAf//jAIP/8gClAAAA9QAAAAEAswBFAAEA1QAAAAII0AAE" + "AAAJKAokACAAIwAAAAAAAAAAAAAAAAAAAAAAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAP/eAAAAAAAA/+kAAP+YAAAAAAAA/9IAAP+7AAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAP+MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/dQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/gAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+mAAD/jP9Y" + "AAAAAAAAAAAAAP9M/8wAAAAAAAAAAP+Y/08AAAAA/8kAAAAAAAD/0gAA/+MAAAAAAAAAAP+7/5gAAP+7AAD/ugAA/y//Xv71AAD/XgAA/2n/gAAAAAD/u/+7" + "AAD/nP+7AAD/bwAAAAD/dAAAAAAAAAAAACgAAAAAAAD/gP+MAAAAAP+M/4z/NQAAAAAAAP+AAAAAAAAAAAD/o/87/1IAAP91/+kAAAAAAAAAAAAAAAAAAP+v" + "/6//gP7eAAAAAAAAAAAAAAAAAAAAAAAA/1gAAAAAAAD/4gAAAAAAAAAAAAD/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP+mAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/9QAAAAD/uwAAAAAAAAAA/68AAAAAAAAAAAAAAAAAAAAAAAD/UgAAAAAAAP+wAAAAAAAA" + "AAAAAP+AAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP87AAAAAAAAAAAAAAAAAAAAAAAAAAD/zv/i/4AAAAAA/+n/uwAAAAAAAAAAAAAAAAAA/7sAAP/p" + "AAAAAP+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/6f7pAAAAAAAAAAAAAAAAAAAAAAAA/6MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/pAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/0gAAAAAAAAAA/+IAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP/MAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/7AAAAAAAAP/YAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAA/9gAAAAA" + "AAAAAAAAAAAAAAAA/7D/2AAA//UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+vAAAAAP+jAAD/gAAA/7sAAP+YAAD/mAAA" + "AAAAAAAAAAAAAAAAAAAAAP+7AAD/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/9QAAAAAAAAAA/8YAAAAAAAAAAAAA/5sAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAA/68AAAAAAAAAAAAAAAAAHQAA/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAA" + "/7sAAP8AAAAAAAAA/5gAAAAAAAAAAP/g/4n/gAAAAAAAAAAAAAAAAP/eAAAAAAAA/+MAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAD/rwAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAIADgBoAGgAAAB1AHYAAQB6AH4AAwCBAIMACACnAK8ACwCyALMAFAC1ALYAFgC5AL8AGADCAMcAHwDKAMsAJQDOANMAJwDWANsALQDeAN4AMwDgAOIANAAB" + "AGgAewAbAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABoADAAAAAAAAAATAAMAHgARABQAAAAAABwAEQATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASABcADgAPAA4ADwAOAA8ACgAAAAAAHQADAAAABwAAAAAAAAACAAsACAAJAAkACwAI" + "AAAAAAAGAAYABgAEAAQAAAAAAAAAFQAWAAAAAAABAAAAAgAAAAEAAAAAAAAAEAANAA0AGQAKAA0AAAAAAAMAAAAYAB8ABQABAGgAewAeAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAABwACwAAAAAAAAAQABYAIQAZABEAAAAQAB8AHQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPABQAAAANAAAADQAAAA0ABgAAAAAAIAADAAAAGwABAAAAAAAEAAoACAAJAAkACgAIAAAAAAAHAAcABwAFAAUAAQAA" + "AAAAEgATAAAAAAACAAEABAABAAIAAQABAAAADgAMAAwAGAAGAAwAAAAAABUAAAAXACIAGgABAH4ABAAAADoDYANgA2AA9gFsAQQBEgNgA2ADYANgA2ADYANg" + "ASwDYAE6AWwBbAFsAWwBbAFyAZQBngGsAawBxgHQAdYB4AL2AvYC9gHqAfQB+gH6AfoB+gH6Ag4CCAIOAg4CDgIcAmYCmAKqAsAC0gLwAvYC/ANaA1oDYAAB" + "ADoACgALAAwAEgAaABsAHAAgACEAIgAjACQAJQAmACcAKAArACwALQAuAC8AMAAxADIAMwA0ADUANgBJAE4AVABYAFoAWwBkAGUAZgBnAGkAagBrAGwAbQBv" + "AHAAcQBzAKQApgC1AMcAzQDQANQA1QDcAN0A+AADAMP/uwDE/1IA1f+7AAMAx/+jAMz/dQDU/5gABgC2/5gAx/+AANP/rwDU/vUA2P+vANv/owADAKT/uwDD" + "/7sAxP87AAwAOv+vAD3/rwBF/5gAWv+YAFv/mABo/y8AcP+7AKT/uwCy/5gAxP9SAMz/XgDV/4wAAQDV/5gACAA6/68AW/+jAKT/mACv/7sAx/+vAMz/aQDU" + "/4AA1f9eAAIApP+YAMz/aQADAMf/owDM/4wA1P+YAAYApP+AAMT/OwDH/5gAzP8vAND/owDU/5gAAgDH/7sAzP+AAAEA1f/jAAIATwBFAFEARQACAMz/UgDU" + "/3UAAgC6/3UAvv91AAEAzP/GAAMAzP+vANT/uwDV/7sAAQCk/7sAAwDE/2kAzP+7ANX/XgASAAH/rwAC/68AA/+vAAT/rwAF/68ABv+vAAf/rwAI/68AGv+v" + "ACv/jAAx/5gANv+vALX/mAC6/4wAvv+MAML/LwDD/y8AxP8vAAwAK/+MADH/gAAy/68ANP9pADX/aQBs/7sAbf+7AG//uwBw/7sAcf+7ANz/rwDd/68ABAAr" + "/3UAMf+7ADT/dQA1/3UABQAr/68AbP+YAG//mABw/5gAcf+YAAQAMf+vADP/owA0/5gANf+YAAcAK/9eADH/aQAy/2kAM/+MADT/RgA1/0YANv+AAAEAK/+M" + "AAEAK/+YABcACv+vAAv/rwAT/68AIP+vACH/rwAi/68AI/+vACT/rwAl/68AJv+vACj/rwAr/4wALP+vAC3/rwAu/68AL/+vADD/rwAx/14AUwDFAGz/XgBv" + "/14AcP9eAHH/XgABAKT/rwABANX/rwABAE4ABAAAACIAlgCWAJYAlgCWAJYAlgDYANgA2ADYANgA2ADYAJwApgCsALIAsgDYAM4AzgDOAMAAzgDYAN4A6AD6" + "AQABCgEQATIBOAABACIAAQACAAMABAAFAAYABwAUABUAFwAYAB0AHgAfACsAMgAzADQANQBDAEwATwBQAFEAUwBVAGIAdwB/ALUAxwDNANMA1QABAMwAAAAC" + "AGf/mADH/14AAQDH/7sAAQDT/7oAAwA6/5wAPf9vAFD/xgADAE4ARQB3AAAA1QAAAAIAdwAAANUAAAABANUAAAACAMz/rwDU/7sABABMAEUATwBFAFAARQBR" + "AEUAAQBlAAAAAgAx/5wAMv+MAAEAK/9eAAgAAQAAAAIAAAADAAAABAAAAAUAAAAGAAAABwAAAAgAAAABADP/ugAjAAkARQAMAEUADQBFAA4ARQAPAEUAEABF" + "ABEARQASAEUAFABFABUARQAXAEUAGABFABsARQAcAEUAHQBFAB4ARQAfAEUAJwBFACkARQA/AEUAQABFAEsARQBMAEUATwBFAFAARQBRAEUAVABFAFUARQBW" + "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" + "/6MAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAD/mAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+8AAAAA/6MAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAA" + "AAAAAAAA/17/aQAAAAAAAAAA/7oAAAAAAAAAAAAAAAD/mP/SAAAAAP+YAAAAAAAA/6MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/5gAAAAAAAAAAP+vAAD/O/+jAAAAAAAAAAD/mAAAAAAAAAAAAAAAAP91/7sAAAAA/4AAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//YAAAAAAAAAAP/sAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAABdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEUAAAAAAAAAAAAAAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+IAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/4gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4gAAAAAAAAAA//YAAAAAAAAAAP/PAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAA/94AAAAAAAAAAABdAAAAAAAAAAAAAAAAAAAAAP/iAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/94AAAAAAAAAAAAAAAAAAP+v" + "AAD/uwAAAAAAAP+7AAD/rwAAAAAAAP8jACD/u//sAAAAAAAA/7sAAAAAAAAAAAAAAAD/gAAAAK7/uwAAAAAAAAAAAAAAAAAA/68AAAAAAAAAAAAAAAAAAP+Y" + "AAAAAAAAAAD/4gAAAAAAAP/sAAD/uwAAAAAAAAAA/9IAAAAAAAAAAAAAAAAAAAAAAAAAAP+M/6MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/0gAAAAAAAAAAAAAAAP+j/5gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/xgAA/7oAAAAA/4wAAAAAAAAAAAAA/6//ugAA" + "/5j/7AAAAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAA/7oAAAAAAAAAAAAAAAAAAP/GAAAAAAAAAAAAAP+6/6//rwAAAAAAAAAA//L/2AAAAAD/7P/YAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/9QAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAARQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8YAAP/SAAAAAAAA/3UAAP+7" + "/zv/UgAAAAAAAAAAAAAAAP+7AAAAAAAA/3UAAAAAAAAAAAAA/8YAAAAAAAD/sP9G/zv/UgAA/vUAAAAA/zsAAAAAAAD/gAAAAAD/TP+j/1sAAAAA/3UAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAA/6P/uwAAAAAAAAAA/6MAAAAAAAAAAAAAAAD/rwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/0gAAAAAAAAAA" + "AAAAAP/S/8MAAAAAAAAAAP/1AAAAAAAAAAAAAAAA/9IAAAAAAAAAAABFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "/9IAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAP+vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK7/uwAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8QAAAAA/7v/uv/gAAAAAAAA/9IAFAAA/8YAAAAAAAAAAAAAAAD/0gAA" + "AAAAAAAAAAAAAAAeAAAA0QAA/4z/gP+wAAAAAAAAAAD/xAAAAAAAAAAAAAAAAP+A/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/xgAAAAD/0gAAAAAAAAAo" + "AAAAAAAAAAAAAAAA/4D/0gAA/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgAAAAAAAAAAP/SAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/bAAAAAP91AAAAAAAAAAAAAAAAAAD/mAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAP9p/4wAAAAA" + "AAAAAAAA/9sAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/5j/ugAA/4wAAP+YAAAAAAAA/7sAAAAA/5gAAP+AAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/mAAAADIAAAAA/zv/gAAAAAAAAAAAAAD/mAAAAAAAAAAAAAAAAP+7/4wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAeAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAABFAAAAAAAAAAAAAAAAAAAAAP+YAAD/u/90AAD/mAAAAAAAAP+jAAAAAP+YAAD/gAAAAAAAAAAA/68AAAAAAAAAHgAA/4AAAAAAAK7/u/87" + "/zsAAAAAAAAAAAAA/5gAAAAAAAAAAAAA/+z/u/+MAAAAAAAAAAAAAAAAAAAAHgAAAAAAAAAA/5wAAAAA//UAAAAA/2kAAAAAAAAAAAAAAAAAAAAA/6MAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6//OwAAAAAAAAAAAAD/9QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AHgAAABFAAAAAABoAAAAAAAAAAAAAAAAALoAAACCAAAAAAAAAHgAKAAAALoAAACCAK4AAAAAAAAAAAFUAAAAAAAAAFEAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAABdAAAAAAAAAK4AAAAAAAAAugAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/XgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAA/6YAAAAAAAAAAAAAAAAAAP+7/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/ugAe/9gAAAAA/9j/dQAA/2n/UgAAAAsAAAAAAAAAAAAAAAAAAAAAAAD/dAAA" + "AAD/df+MAAAAAAAAAAAAAAAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6//xAAA/0YAAP/O/7sAAP+7" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAAAAAAA/6//dQAAAAAAAAAAAAD/rwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP+7AAAAAAAAAAD/gP/V/4z+6AAd/4z/rwAAAB3/YwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/iAAAAAP9eAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAA/q8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7oAAAAA" + "AAAAAAAAAAD/u//DAAAAAAAAAAD/ugAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9pAAAAAAAA" + "AAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+wAAAAAP87AAAAAAAAAAAAAP/YAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/tIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "/7sAAAAUAAAAAP/YAAD/Uv9gAAAAAAAAAAD/xgAAAAAAAAAA/+IAAP+Y/9IAAP/b/5gAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+n/XgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP87" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/pAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAADoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP9pAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/9gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAAAAAAAAAAAAAP+7AAAAAAAAAAAAAP+6AAAAAAAAAAAAAAAA/+wAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAD/gP+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAA/7sAAP9G/vUAAAAAAAAAAP+vAAAAAAAA/7sAAAAA" + "/4D/uwAA/7v/jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/dQAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/YAAAAAAAAP9qAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/xgAA//X/bwAA/+kAAAAAAAD/6f/vAAAAAAAAAAAAAP/yAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/9gAAAAAAAAAA/+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAF0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/jP+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/mP+YAAD/IwAA/6MAAAAAAAD/rwAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC6AAAAAP87AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP/OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgARAAEATAAAAE4AUQBMAFMAcgBQAHQAdgBwAHoAewBzAH0AfgB1AIEAgwB3AKcArwB6ALIAswCDALUAtgCF" + "ALkAvwCHAMIAxwCOAMoAywCUAM4A0wCWANYA3gCcAOAA4AClAPgA+ACmAAEAAQD4AAUABQAFAAUABQAFAAUABwASABkAGQAEAAcABwAHAAcABwArAB0AAAAA" + "ABgAAAAAABgACAAVABoAAAAAAAAABAAEAAQABAAEAAQABAAlAAQAFAARAA0ACAAIAAgACAAIACQAIgAXAAwADAAeAAIAAgACAAIAAgACAAIAJwABAAEAAQAB" + "AAAAAQABAAEAAQABAB8AHAACAAkAAAAmAAkACQAJAAAACQAWAAAAAgACAAIAAQABAAEAAQABAAEAAQABABwACgAOABIABgADAAMAQAADAAMAAwALACEAIAAL" + "AAsACwATAAAAAQA/ADEAAAAAAAAAOAAjAAAANgA5AAAAAABBADYAOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAANwA8ADMANAAzADQAMwA0AC4AAAAAAEIAIwAAACoADwAAAAAAGwAwACwALQAtADAALAAAAAAAKQApACkAKAAoAA8AAAAA" + "ADoAOwAAAAAAEAAPABsADwAQAA8AAAAAADUAMgAyAD4ALgAyAC8ALwAjAAAAPQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAABAABAAEA+AAFAAUABQAFAAUABQAFAAUAAQAEAAQAAQABAAEAAQABAAEAAQAEAAEAAQAUAAEAAQAUACEAAQABAAEAAQABAAQABAAEAAQABAAEAAQAAQAE" + "AAEAEQANAAkACQAJAAkACQAZAB0AEgAMAAwAFgAHAAcABwAHAAcABwAHAAcAAQABAAIAAgACAAIAAgACAAIAAgAiAAIAAQAPAAAAHgAPAA8ADwAAABgAAQAB" + "AAMAAwADAAIAAgACAAIAAgACAAIAAwACAAMACwABAAYACAAIADoACAAIAAgACgAcABoACgAKAAoAFwABAAIAOAAnAAAAAAAAAC0AMwAAADUALgAAAC0AOwA5" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAMQApACoAKQAqACkAKgAf" + "AAAAAAA8ABMAAAA3AA4AAAAAABUAJgAjACQAJAAmACMAAAAAACAAIAAgABsAGwAOAAAAAAAvADAAAAAAABAADgAVAA4AEAAOAA4AAAArACgAKAA0AB8AKAAl" + "ACUAMgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADYAAAABAAAACgAkADIAAkRGTFQADmxhdG4ADgAEAAAAAP//" + "AAEAAAABdG51bQAIAAAAAQAAAAEABAABAAAAAQAIAAIARgAgAIQAhQCGAIcAiACJAIoAiwCMAI0AkgCTAJYAlwCUAJUAmACOAI8AkACRAJkAmgCbAJwAnQCe" + "AJ8AoAChAKIAowACAAgAegCDAAAAqQCuAAoAtgC2ABAAwgDDABEAxQDGABMAzADTABUA2ADYAB0A9QD2AB4AAQABAAgAAwAAABQAAwAAACwAAm9wc3oBOAAA" + "d2dodAEBAAFpdGFsAUAAAgAGABIAIgABAAAAAgE5AA4AAAADAAEAAgACAZAAAAK8AAAAAwACAAIBQQAAAAAAAQAAAAA=";
+var INTER_BOLD_TTF_B64 = "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" + "QEBaWUFAWgAAAQBDBPQDawYjAAgAAAEhNQEzARUhJwFI/vsBIeYBIf76jgT0BwEo/tgHqgACAGMEqgKIBq0ADwAbAAABIiYmNTQ2NjMyFhYVFAYGJzI2NTQm" + "IyIGFRQWAXZMfUpKfUxMfEpKfEwyRkYzMUZGBKpGdUdHdEZGdEdHdUaKRjIyRUUyMkYAAQDs/l4CZwAsABMAABM1MzI2NTQmIyM3MxUHNhYVFAYj7H8wKCgw" + "XCVzBV5ncn3+XncdISEb3SxYBFFQXFEAAAIAYwYJAogH8gAPABsAAAEiJiY1NDY2MzIWFhUUBgYnMjY1NCYjIgYVFBYBdlF8RkZ8UVF7RkZ7UTRCQjQ0QkIG" + "CUFvRUVvQEBvRUVvQYRAMTFAQDExQAABABj/wQTVBhAAAwAAFycBF6yUBCmUP2UF6mYAAQBS/9IElgSMAAMAABcnARe7aQPbaS5cBF5cAAEAMgKDA2ADTwAD" + "AAATNSEVMgMuAoPMzAAAAAABAAABAgCEAAwAcAAHAAEAAAAAAAAAAAAAAAAABwABAAAAAAAmADIAPgBKAFYAYgBuAJMAzwEJARUBRAFbAWcBcwF/AYsBoAHe" + "AfcCBQIRAh0CKQI1AlQCgwKSAtgDBwMTA0kDVQNhA20DeQOFA5EDtwP7BCoEdgSJBK8EuwTHBNME3wT/BUIFegWcBagF0gYlBjEGPQZIBlQGYAZrBuIHHgdb" + "B5UHoQfdCBkIJAgwCDwISAhtCLwI4wjuCPsJBwkTCR4JKglCCU0JcgmACb4J5gnxCiUKMAo7CkYKUgpeCmoKpgrjCwQLRwuDC6cLzgvZDBAMHAwoDDQMUwyV" + "DMgM+Q0EDRANKA1UDaIN9Q41DmMOqA7sDyIPNw9oD7QP1RAREF4QchDPER0RURFrEXMRexGDEYsRkxGbEaMRqxG0EbwRyBHVEd0R5RIlEmcSbxJ3EoASiBKQ" + "EpgSoBKoErASuBLAEskSyRLJEykTSBNnE6sT7xQSFDUURxRZFJoU3RVfFYUV2hXqFfgWDhYeFisWOBZFFmIWcBZ/Fo4WmhamFrIWwRbNFtYW7Bb8FwgXFRce" + "FzMXRxdTF18XeBeTF6cXuxfTGAIYHBhJGFoYZhh/GJsYwRkaGYUZtxoBGjMaUxrMGt8bCxtMG1sbbhuXG9Yb9BwFHBYcJxyKHJIcmhyiHKocshzBHNAc3R0E" + "HQQdBB0YHSMdSR1gHXYdoh3CHe4d/B4KHhcAAAABAAAABABCbcZsNV8PPPUAAwgAAAAAAOJ2h5AAAAAA4naHnfmz/VMUqgjnAAEAAwACAAAAAAAABUABSAX5" + "ADEF+QAxBfkAMQX5ADEF+QAxBfkAMQX5ADEILgAxBUsAhwXrAF4F6wBeBccAhwTcAIcE3ACHBNwAhwTcAIcE3ACHBLIAhwYBAF4F+gCHAj8AhwI//60CP//r" + "Aj8AhwI//40ErQBEBcEAhwSGAIcHdACHBhkAhwYZAIcGKgBeBioAXgYqAF4GKgBeBioAXgYqAF4GKgBeBS8AhwY3AF4FQQCHBT0AVQVXAEsF2wCHBdsAhwXb" + "AIcF2wCHBdsAhwX5ADEITQAxBegAMwXZADEF2QAxBVAAcASlAEQEpQBEBKUARASlAEQEpQBEBKUARASlAEQHSABEBQsAgAULAIAEtQBRBLUAUQULAFEExABR" + "BMQAUQTEAFEExABRBMQAUQMvABQFDgBRBPsAgAIrAHECKwCAAiv/ogIr/+ACKwCAAiv/ggIr/84CK//OBKQAgAIrAIAHTQCABPsAgAT7AIAE6ABRBOgAUQTo" + "AFEE6ABRBOgAUQToAFEE6ABRBQsAgAULAFEDQgCABHsATgVCAIcC7gAUBPsAgAT7AIAFBgCABPsAgAT7AIAE+wCABMwAHwbNAB8EpAAqBNEAHwTRAB8E0QAf" + "BJUAeAVaAIIEywBRBT0AVQS1AFEEkAAeBRwAXgV6ADoFZQBeA3MAXQUKAG4FKgBjBWkAZQT6AF0FMgBeBKcASwU1AF4FMgBeBSwAXAUsALEFLACBBSwAXwUs" + "AEEFLAByBSwAWwUsAI0FLABZBSwAWwImADkCJgBnAiYAZwImADkDIACnAyAAYQMgAB0DIABhAyAA1gMgAGEFLAFCBSwAmAUsAJgFLACjBSwAlQUsAIkFLACc" + "BSwAmAUsAHcFLAD5AiYAAAImAAAFYABRArQAqQK0AKkEegBPBHoAYQMEAKkDBABDAwQAtgMEAGYDwACMA8AAZgghAF4FMQAWBhgAhwMbABwC+QDuArYA1QMb" + "ABwDvgCMBAAAAAgAAAADywClAnwApQJ8AKUCtgDKBGoAygRSAKUEQQClAjIAdQRhAHUCrAB3AqwAqQgEAKkCrACpAr4AdwKsAKkDcwBZA3MASwVIAFkFSABL" + "BW4ApgVuAM0FbgDFBW4AtwVuAKsFbgC9BW4AuQVuAJkFbgDXA88AAASqAKAD5QBFBHkAoAVMAGEHUACoA60AcwO2ADgD6wBCBMoATwSMAF4CqgBvA64AYQPG" + "AGABr/5wAi0AUAL5AEcDGQBLAzEATAcNAFAGxABQB1wASwggALoC7ACpAuwAoQT7AQoDgwCgAuoA7AAAAKkAAAChAAAAoAAAAKcB5QAAAeUAAAcPAMcGFAAU" + "AAABCgAAAIIAAABDAAAAYwAAAOwAAABjBO0AGATnAFIDkgAyAAEAAAfA/hIAABV0+bP1+RSqCAAAAAAAAAAAAAAAAAAAAAECAAQFVQK8AAUAAAUzBM0AAACa" + "BTMEzQAAAs0AvgKfAAACAAUDAAAAAgAEgAAAAwAAgAIAAAAAAAAAAFJTTVMAoAAgJxMHwP4SAAAI3QKUAAAAAQAAAAAEXgXSAAAAIAAMAAAAAgAAAAMAAAAU" + "AAMAAQAAABQABAHwAAAAHgAQAAMADgAvADkAfgCsAP8gFCAZIB0gICAiICYgMyCsJxP//wAAACAAMAA6AKAAriATIBggHCAgICIgJiAyIKwnE///AAAASgAA" + "AAAAAOCk4KLgouC24JfgnuCO383Z5AABAB4AAAA6AMIA2gAAAAAAAAAAAAAAAAAAAAAAAAAAAPUApQC9ALAAdQDrAKQAvACpAKoA2ADPAMIAtgDDALIAxQDG" + "AMwAzgDNAKcArwABAAkACgAMAA0AEgATABQAFQAaABsAHAAdAB4AIAAnACgAKQAqACsALAAxADIAMwA0ADYAqwC1AKwA1wDVAO0ANwA/AEEAQwBEAEkASgBL" + "AEwAUwBUAFUAVgBXAFkAYABhAGIAYwBlAGYAbABtAG4AbwByAK0AswCuANMA9gCmAHYAeACxAHcAtADfAO4A2gDcAMoA1ADZAO8A2wDSAOEA4gDsAGgA3gDH" + "APAA4ADdAMsA6QDoAOoAqAAEAAUABgADAAIABwAIAAsADgAPABAAEQAXABgAGQAWAPgAHwAkACUAJgAiACEA0AAjAC0ALgAvADAANQBzAGQAOwA4ADkAPQA6" + "ADwAPgBCAEYARwBIAEUATwBQAFEATgB0AFgAXQBeAF8AWwBaANEAXABpAGoAawBnAHEAQABwuAH/hbAEjQAAAAANAKIAAwABBAkAAACQAAAAAwABBAkAAQAK" + "AJAAAwABBAkAAgAIAJoAAwABBAkAAwAqAKIAAwABBAkABAAUAMwAAwABBAkABQA2AOAAAwABBAkABgAUARYAAwABBAkBAQAMASoAAwABBAkBNQAIAJoAAwAB" + "BAkBOAAYATYAAwABBAkBOQAIAU4AAwABBAkBQAAMAVYAAwABBAkBQQAKAWIAQwBvAHAAeQByAGkAZwBoAHQAIAAyADAAMQA2ACAAVABoAGUAIABJAG4AdABl" + "AHIAIABQAHIAbwBqAGUAYwB0ACAAQQB1AHQAaABvAHIAcwAgACgAaAB0AHQAcABzADoALwAvAGcAaQB0AGgAdQBiAC4AYwBvAG0ALwByAHMAbQBzAC8AaQBu" + "AHQAZQByACkASQBuAHQAZQByAEIAbwBsAGQANAAuADAAMAAxADsAUgBTAE0AUwA7AEkAbgB0AGUAcgAtAEIAbwBsAGQASQBuAHQAZQByACAAQgBvAGwAZABW" + "AGUAcgBzAGkAbwBuACAANAAuADAAMAAxADsAZwBpAHQALQA2ADYANgA0ADcAYwAwAGIAYgBJAG4AdABlAHIALQBCAG8AbABkAFcAZQBpAGcAaAB0AE8AcAB0" + "AGkAYwBhAGwAIABTAGkAegBlADEANABwAHQASQB0AGEAbABpAGMAUgBvAG0AYQBuAAAAAwAAAAAAAP69AL4AAAAAAAAAAAAAAAAAAAAAAAAAAAABAAH//wAP" + "AAEAAAAMAAAAAAAAAAIAEgABAD8AAQBBAEwAAQBOAFEAAQBUAGMAAQBlAGcAAQBpAHIAAQB1AHYAAQB6AHoAAQB8AH0AAQCEAIQAAQCGAIcAAQCWAJcAAQCr" + "AKwAAQDcAN0AAQDhAOIAAQDoAOgAAQDqAOoAAQD4APgAAQABAAAACgA8AF4ABERGTFQAGmN5cmwAJmdyZWsAJmxhdG4AJgAEAAAAAP//AAEAAQAEAAAAAP//" + "AAEAAAACa2VybgAOa2VybgAWAAAAAgABAAAAAAAEAAEAAAABAAAAAgAGACoACQAIAAMADAAUABwAAQACAAANggABAAIAABDgAAEAAgAAEp4AAgAIAAMADAGo" + "AkoAAQA+AAQAAAAaAHYArACMAKwAkgCsALIA0AF6AN4A8AD2AXQBdADwAPYBEAEWASgBbgGAAYABdAF6AYABigABABoAaAB6AH8AgACBAIMApACmAK8AtQC6" + "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" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/EAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/zAAA" + "AAAAAP/YAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAA/7gAAAAAAAAAAAAAAAAAAAAA/6X/sgAA//UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9SAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+vAAAAAP+jAAD/gAAA/7sAAP+YAAD/mAAAAAAAAAAAAAAAAAAAAAAAAP+7AAD/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/xEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/9QAAAAAAAAAA/8YAAAAAAAAAAAAA/5sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7UAAAAAAAAAAAAAAAAAHQAA/68AAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAA/7sAAP8AAAAAAAAA/5gAAAAAAAAAAP/g/4n/gAAAAAAAAAAAAAAAAP/eAAAAAAAA" + "/+MAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAD/rwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIADgBoAGgAAAB1AHYAAQB6AH4AAwCBAIMACACnAK8ACwCyALMAFAC1ALYAFgC5" + "AL8AGADCAMcAHwDKAMsAJQDOANMAJwDWANsALQDeAN4AMwDgAOIANAABAGgAewAbAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABoADAAAAAAAAAATAAMAHgAR" + "ABQAAAAAABwAEQATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASABcADgAP" + "AA4ADwAOAA8ACgAAAAAAHQADAAAABwAAAAAAAAACAAsACAAJAAkACwAIAAAAAAAGAAYABgAEAAQAAAAAAAAAFQAWAAAAAAABAAAAAgAAAAEAAAAAAAAAEAAN" + "AA0AGQAKAA0AAAAAAAMAAAAYAB8ABQABAGgAewAeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABwACwAAAAAAAAAQABYAIQAZABEAAAAQAB8AHQAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPABQAAAANAAAADQAAAA0ABgAAAAAAIAAD" + "AAAAGwABAAAAAAAEAAoACAAJAAkACgAIAAAAAAAHAAcABwAFAAUAAQAAAAAAEgATAAAAAAACAAEABAABAAIAAQABAAAADgAMAAwAGAAGAAwAAAAAABUAAAAX" + "ACIAGgABAH4ABAAAADoDYANgA2AA9gFsAQQBEgNgA2ADYANgA2ADYANgASwDYAE6AWwBbAFsAWwBbAFyAZQBngGsAawBxgHQAdYB4AL2AvYC9gHqAfQB+gH6" + "AfoB+gH6Ag4CCAIOAg4CDgIcAmYCmAKqAsAC0gLwAvYC/ANaA1oDYAABADoACgALAAwAEgAaABsAHAAgACEAIgAjACQAJQAmACcAKAArACwALQAuAC8AMAAx" + "ADIAMwA0ADUANgBJAE4AVABYAFoAWwBkAGUAZgBnAGkAagBrAGwAbQBvAHAAcQBzAKQApgC1AMcAzQDQANQA1QDcAN0A+AADAMP/uwDE/1IA1f+7AAMAx/+j" + "AMz/dQDU/5gABgC2/5gAx/+AANP/rwDU/vUA2P+vANv/owADAKT/uwDD/7sAxP87AAwAOv+vAD3/rwBF/5gAWv+YAFv/mABo/y8AcP+7AKT/uwCy/5gAxP9S" + "AMz/XgDV/4wAAQDV/5gACAA6/68AW/+jAKT/mACv/7sAx/+vAMz/aQDU/4AA1f9eAAIApP+YAMz/aQADAMf/owDM/4wA1P+YAAYApP+AAMT/OwDH/5gAzP8v" + "AND/owDU/5gAAgDH/7sAzP+AAAEA1f/jAAIATwBFAFEARQACAMz/UgDU/3UAAgC6/3UAvv91AAEAzP/GAAMAzP+vANT/uwDV/7sAAQCk/7sAAwDE/2kAzP+7" + "ANX/XgASAAH/rwAC/68AA/+vAAT/rwAF/68ABv+vAAf/rwAI/68AGv+vACv/jAAx/5gANv+vALX/mAC6/4wAvv+MAML/LwDD/y8AxP8vAAwAK/+MADH/gAAy" + "/68ANP9pADX/aQBs/7sAbf+7AG//uwBw/7sAcf+7ANz/rwDd/68ABAAr/3UAMf+7ADT/dQA1/3UABQAr/68AbP+YAG//mABw/5gAcf+YAAQAMf+vADP/owA0" + "/5gANf+YAAcAK/9eADH/aQAy/2kAM/+MADT/RgA1/0YANv+AAAEAK/+MAAEAK/+YABcACv+vAAv/rwAT/68AIP+vACH/rwAi/68AI/+vACT/rwAl/68AJv+v" + "ACj/rwAr/4wALP+vAC3/rwAu/68AL/+vADD/rwAx/14AUwDFAGz/XgBv/14AcP9eAHH/XgABAKT/rwABANX/rwABAE4ABAAAACIAlgCWAJYAlgCWAJYAlgDY" + "ANgA2ADYANgA2ADYAJwApgCsALIAsgDYAM4AzgDOAMAAzgDYAN4A6AD6AQABCgEQATIBOAABACIAAQACAAMABAAFAAYABwAUABUAFwAYAB0AHgAfACsAMgAz" + "ADQANQBDAEwATwBQAFEAUwBVAGIAdwB/ALUAxwDNANMA1QABAMz/sgACAGf/mADH/14AAQDH/7sAAQDT/7sAAwA6/5cAPf93AFD/tgADAE4ARQB3AAAA1QAA" + "AAIAdwAAANUAAAABANUAJQACAMz/rwDU/7sABABMAEUATwBFAFAARQBRAEUAAQBlAAAAAgAx/5wAMv+KAAEAK/9eAAgAAf+yAAL/sgAD/7IABP+yAAX/sgAG" + "/7IAB/+yAAj/sgABADP/rgAjAAkARQAMAEUADQBFAA4ARQAPAEUAEABFABEARQASAEUAFABFABUARQAXAEUAGABFABsARQAcAEUAHQBFAB4ARQAfAEUAJwBF" + "ACkARQA/AEUAQABFAEsARQBMACAATwAgAFAAIABRACAAVABFAFUARQBWAEUAVwBFAFgARQBgAEUAYgBFAGQARQBzAEUAAh/+AAQAACBoIl4AQwA9AAAAAAAA" + "AAAAAAAAAB4AAAAAAAAAFQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACUAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAEUAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAUAAAAAP/bAAD/GP9gAAAAAAAAAAD/xgAAAAAAAAAA/9cAAP+D/9cAAP/k/5oAAAAA" + "AAAAAAAA/9P/1/+7/4AAAAAAAAD/5v+7AAAAAAAAAAAAAAAAAAD/u//pAAAAAP+DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/90AAP86/28AAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAA/5gAAAAAAAD/mAAAAAAAAAAAAAD/zf/VAAD/owAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+v/+8AAAAA/5gAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/4z/mP+1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAdAAAAAP+vAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAA/6oAAAAAAAAAAAAAAAD/qP+/AAAAAAAAAAD/lAAAAAAAAAAAAAAAAP+uAAAAAAAA" + "/84AAAAA/6YAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/1AAAAAP+uAAAAAAAAAAD/rwAAAAD/0QAA/6oAHv/IAAAAAP/Y/3X/6f9f" + "/0r/uwAF/5j/4QAAAAAAAP+7AAAAAAAA/14AAAAA/3X/bQAA/6oAAAAA/+7/L/9e/2n+9f/R/z4AAAAA/2n/gAAAAAD/u/+7AAD/l/+a/28AAAAA/17/4QAA" + "AAAAAAAYAAAABf/sAAAAAAAA/+oACgAAAAAALf/x//H/u//eAAAAAAAAAAAABQAA//UAAAAAAA//9wAAAAAAKf/3AAAAAAAAAAD/vgAXAAAAAP+v/+wAAAAA" + "AAAAAAAAAAD/8wAAAAAAAAAAAAAAAAAAAAD/9wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAlwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/2AAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAP+MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH0AAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAg/84ADwAA/68AKP/kAAAAAAAgAAAAAP+M/7UACQAAAAAAAAAgAAAAAP+7" + "AAAAHwAAACAAAAARAAAAIAAA/4D/jAAoACEAAAAA/6//zgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/wQAAAAX/2wAAAAD/dQAj" + "/+wAAAAAAAAAAP+7/7v/rwAA/68AAAAAAAUAAAAAAAAAAAAAAAAAAAAAAAAAAAAyAAD/sf+AAB4AAAAAAAAAAP/bAAAAAAAAAAAAAAAAAAD/rwAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+MAAAAAP8g/7D/qP9fAAD/MP+vAAAAAP91AAAAEv99/9b/OwAAAAAAAAAA/68AAAAAAAAAAAAA/4AAAAAAAAD/qP98/7sAAAAA" + "AAAAAAAA/yAAAAAAAAAAAAAAAAD/df9G/4AAAAAAAAD/7wAAAAAAAAAAAAD/rwAAAAAAAAAA/2D/jP+//0r/L/9q/2kAAP+A/2kAEgAA/5UAAP+7//UAAAAA" + "AAD/uwAA/6MAAAAA/7//u/+AAAAAuv+//7v/RgAAAAAAAAAAAAD/YAAAAAAAAAAAAAD/u/91/vX/mAAAAAAAAAAAAAAAAAAA//UAAP9p/17/XgAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP9p/2kAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6MAAAAAAAD/uwAAAAAAAAAAAAAAAP/wAAD/mAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/+8AAAAA/6MAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAA/33/YwAAAAAAAAAA/64AAAAAAAAAAAAAAAD/pP/SAAAAAP/QAAAAAAAA" + "/6MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/5gAAAAAAAAAAP+vAAD/O/+jAAAAAAAA" + "AAD/mAAAAAAAAAAAAAAAAP91/7sAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/4QAAAAAAAAAAAAAAAAAA//EAAAAAAAAAAP/nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AEUAAAAAAAAAAAAAAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9cAAAAAAAAAAAAAAAAAAAAAAAAAAP+7" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/1wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/5wAAAAAAAAAA//YAAAAAAAAAAP/EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9gAAAAAAAAAAABdAAAAAAAAAAAAAAAAAAAAAP/nAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9gAAAAAAAAAAAAAAAAAAP+vAAD/rgAAAAAAAP+7AAD/rwAAAAAAAP9iAA//u//sAAAAAAAA/7sAAAAAAAAAAAAA" + "AAD/gAAAAK7/rgAAAAAAAAAAAAAAAAAA/68AAAAAAAAAAAAAAAAAAP+YAAAAAAAAAAD/4gAAAAAAAP/sAAD/uwAAAAAAAAAA/9IAAAAAAAAAAAAAAAAAAAAQ" + "AAAAAP+M/4oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/0gAAAAAAAAAAAAAAAP+j/5gAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/xgAA/5QAAAAA/4wAAAAAAAAAAAAA/6//rgAA/5j/5wAAAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAA/5QAAAAAAAAAAAAAAAAAAP/G" + "AAAAAAAAAAAAAP+1/6//rwAAAAAAAAAA//L/0wAAAAD/5//TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAE4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8gAAAAA" + "AAAAAAAMAAAAAAAAAAAAAAAAAAD/4gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8YAAP/SAAAAAAAA/3UAAP9O/0b/eAAAAAAAAAAAAAAAAP+7AAAAAAAA/2IAAAAAAAD/tQAA/8YAAAAAAAD/RP9G" + "/zv/UgAA/vUAAAAA/zsAAAAAAAD/gAAAAAD/Yv+j/1sAAAAA/2IAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAA/6P/uwAAAAAAAAAA/6MAAAAA" + "AAAAAAAAAAD/rwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+YAAAAAAAAAAAAAAAAAAAAAAAAAAAAEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/wAAAAAAAAAAAAAAAAP/G/8EAAAAAAAAAAP/iAAAAAAAAAAAAAAAA/9IAAAAAAAAAAABFAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9IAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAP+1AAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK7/uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "/9QAAAAA/7v/r//YAAAAAAAA/9sACQAA/9YAEQAAAAAAAAAAAAD/2wAAAAAACwAAAAAAAAApAAAA0QAA/4z/gP+rAAAAAAAAAAD/1AAAAAAAAAAAAAAAAP+A" + "/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/5QAAAAD/1wAAAAAAAAAd//wAAAAAAAAAAAAA/7//0gAA/7sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAB0AAAAAAAAAAP/XAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/kAAAAAP91AAD/+wAAAAAAAAAAAAD/mAAA" + "AAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAP9p/4wAAAAAAAAAAAAA/+QAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/5r/uv/O/20AAP+KAAAAAAAA/7sAAAAA/6sAAP+A//QAAAAAAAAAAAAAAAAAAAAQAAD/mAAAAC0AAP/O/zv/gAAAAAAAAAAAAAD/mgAAAAAAAAAA" + "AAAAAP+7/4wAAP/BAAAAAAAAAAAAAAAQ//QAAAAAAAD/wAAAAAAAAAAAAAAAAAAeAAAAAAAAABUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAACDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABFAAAAAAAAAAAAAAAAAAAAAP+D//D/rv9eAAD/hwAAAAAAAP+j" + "AAAAAP+LAAD/gAAAAAAAAAAA/68AAAAAAAAAHgAA/4AAAAAAAK7/rv87/zsAAAAAAAAAAAAA/4MAAAAAAAAAAAAA/8z/u/+MAAD/wQAAAAAAAAAAAAAAHgAA" + "AAAAAAAA/5wAAAAA/+8AAAAA/1YAAP/mAAAAAAAAAAAAAAAA/9UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6//OwAAAAAAAAAAAAD/7wAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIMAAAAgAAAAAABoAAAAAAAAAAAAAAAAALoAAAB9AAAAAAAAAIMATgAAALoAAAB9" + "AK4AAAAAAAAAAAFEAAAAAAAAAFEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABdAAAAAAAAAK4AAAAAAAAAugAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/XgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6YAAAAAAAAAAAAAAAAAAP98/7sAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/RAAD/qgAe" + "/8gAAAAA/9j/df/p/1//SgAAAAUAAP/hAAAAAAAAAAAAAAAAAAD/XgAAAAD/df9tAAAAAAAAAAD/7gAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8X/2AAA/0YAAP/e/7sAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAAAAAAA/6//dQAA" + "AAAAAAAAAAD/xQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAD/gP/G/4z+6AAN/4z/rwAAAA3/cwAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/X" + "AAAAAP9eAAAAAAAAAAAAAP/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/q8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/6oAAAAAAAAAAAAAAAD/qP+/AAAAAAAAAAD/lAAAAAAAAAAAAAAAAP+uAAAAAAAA/84AAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9pAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAP+wAAAAAP87AAAAAAAAAAAAAP/dAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/tIAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAUAAAAAP/bAAD/GP9gAAAAAAAAAAD/xgAAAAAAAAAA/9cAAP+D/9cAAP/k" + "/5oAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/93/PgAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP87AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlAAAAAAAA" + "AAAAAAAAAAAAJf/1ACUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAD/aQAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9pAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9MAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAj" + "AAAAAAAAAAAAAP+7AAAAAAAAAAAAAP+1AAAAAAAAAAAAAAAA/8wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAAAAAAD/gP+YAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAD/uwAAAAAAAAAA/7sAAP9G/vUAAAAAAAAAAP+vAAAAAAAA/7sAAAAA/4D/uwAA/7v/jAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/dQAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/EQAAAAAAAP85AAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAD/xgAA//X/bwAA/+kAAAAAAAD/6f/vAAAAAAAAAAAAAP/yAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP9vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/hAAAAAAAAAAAAAAAAAAD/8QAAAAAAAAAA/+cAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AF0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/jP+Y" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/mP+YAAD/IwAA/6MAAAAAAAD/rwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAC6AAAAAP87AAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/OAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAA" + "AAAAAAAQAAAAAAAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgARAAEATAAAAE4AUQBMAFMAcgBQ" + "AHQAdgBwAHoAewBzAH0AfgB1AIEAgwB3AKcArwB6ALIAswCDALUAtgCFALkAvwCHAMIAxwCOAMoAywCUAM4A0wCWANYA3gCcAOAA4AClAPgA+ACmAAEAAQD4" + "AAUABQAFAAUABQAFAAUABwASABkAGQAEAAcABwAHAAcABwArAB0AAAAAABgAAAAAABgACAAVABoAAAAAAAAABAAEAAQABAAEAAQABAAlAAQAFAARAA0ACAAI" + "AAgACAAIACQAIgAXAAwADAAeAAIAAgACAAIAAgACAAIAJwABAAEAAQABAAAAAQABAAEAAQABAB8AHAACAAkAAAAmAAkACQAJAAAACQAWAAAAAgACAAIAAQAB" + "AAEAAQABAAEAAQABABwACgAOABIABgADAAMAQAADAAMAAwALACEAIAALAAsACwATAAAAAQA/ADEAAAAAAAAAOAAjAAAANgA5AAAAAABBADYAOAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANwA8ADMANAAzADQAMwA0AC4AAAAAAEIAIwAA" + "ACoADwAAAAAAGwAwACwALQAtADAALAAAAAAAKQApACkAKAAoAA8AAAAAADoAOwAAAAAAEAAPABsADwAQAA8AAAAAADUAMgAyAD4ALgAyAC8ALwAjAAAAPQAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAABAAEA+AAFAAUABQAFAAUABQAFAAUAAQAEAAQAAQABAAEAAQABAAEAAQAE" + "AAEAAQAUAAEAAQAUACEAAQABAAEAAQABAAQABAAEAAQABAAEAAQAAQAEAAEAEQANAAkACQAJAAkACQAZAB0AEgAMAAwAFgAHAAcABwAHAAcABwAHAAcAAQAB" + "AAIAAgACAAIAAgACAAIAAgAiAAIAAQAPAAAAHgAPAA8ADwAAABgAAQABAAMAAwADAAIAAgACAAIAAgACAAIAAwACAAMACwABAAYACAAIADoACAAIAAgACgAc" + "ABoACgAKAAoAFwABAAIAOAAnAAAAAAAAAC0AMwAAADUALgAAAC0AOwA5AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAMQApACoAKQAqACkAKgAfAAAAAAA8ABMAAAA3AA4AAAAAABUAJgAjACQAJAAmACMAAAAAACAAIAAgABsAGwAO" + "AAAAAAAvADAAAAAAABAADgAVAA4AEAAOAA4AAAArACgAKAA0AB8AKAAlACUAMgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAADYAAAABAAAACgAkADIAAkRGTFQADmxhdG4ADgAEAAAAAP//AAEAAAABdG51bQAIAAAAAQAAAAEABAABAAAAAQAIAAIARgAgAIQAhQCGAIcAiACJ" + "AIoAiwCMAI0AkgCTAJYAlwCUAJUAmACOAI8AkACRAJkAmgCbAJwAnQCeAJ8AoAChAKIAowACAAgAegCDAAAAqQCuAAoAtgC2ABAAwgDDABEAxQDGABMAzADT" + "ABUA2ADYAB0A9QD2AB4AAQABAAgAAwAAABQAAwAAACwAAm9wc3oBOAAAd2dodAEBAAFpdGFsAUAAAgAGABIAHgABAAAAAgE5AA4AAAABAAEAAAE1ArwAAAAD" + "AAIAAgFBAAAAAAABAAAAAA==";
+var INTER_SEMIBOLD_TTF_B64 = "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" + "AFAEqQJuBqcADwAbAAABIiYmNTQ2NjMyFhYVFAYGJzI2NTQmIyIGFRQWAV9KfElJfEpLekpJe0szR0czM0dHBKlFc0dHc0VFc0dHc0WFSDIzR0czMkgAAQDR" + "/l4CQgAtABMAABM1MzI2NTQmIyM3MxUHNhYVFAYj0XwyKioyWCJtBGBicHz+XnIdIiMc3y1XAVBQW1EAAAIAUAYIAm4H9QAPABsAAAEiJiY1NDY2MzIWFhUU" + "BgYnMjY1NCYjIgYVFBYBX057RkZ7Tk56R0d6TjRERDQ0RUUGCEJwRUVvQkJvRUVwQoFDMzJDQzIzQwABABL/xgTABgsAAwAAFycBF6COBCCOOmIF42IAAQBS" + "/9IEiwSMAAMAABcnARe8agPQaS5cBF5cAAEAMgKLA1IDRwADAAATNSEVMgMgAou8vAAAAQAAAQIAhAAMAHAABwABAAAAAAAAAAAAAAAAAAcAAQAAAAAAJwAz" + "AD8ASwBXAGMAbwCUANEBCwEXAUUBXAFoAXQBgAGMAaEB3wH4AgYCEgIeAioCNgJVAoMCkgLZAwgDFANKA1YDYgNuA3oDhgOSA7gD+wQqBHUEiASuBLoExgTS" + "BN4E/wVCBXsFngWqBdQGJgYyBj4GSQZVBmEGbAbiBx4HWweUB6AH3AgYCCMILwg7CEcIbAi6COEI7Aj5CQUJEQkcCSgJQAlLCXAJfgm7CeIJ7QohCiwKNwpC" + "Ck4KWgpmCqIK3wr/C0ELfQuhC8gL0wwKDBYMIgwuDE0MjgzBDPIM/Q0JDSENTQ2bDe0OLA5aDp4O4g8XDysPXA+nD8gQBBBREGQQwBEOEUIRXBFkEWwRdBF8" + "EYQRjBGUEZwRpRGtEbkRxhHOEdYSFhJXEl8SZxJwEngSgBKIEpASmBKgEqgSsBK5ErkSuRMZEzgTVhOaE94UABQiFDQURhSGFMcVSRVvFcMV0xXhFfUWBBYR" + "Fh4WKxZIFlYWZRZ0FoAWjBaYFqYWsha7FtEW4RbtFvoXAxcYFywXOBdEF10XeBeMF6AXuBfnGAIYLxhAGEwYZRiBGKgZARlsGZ4Z6BoaGjoasxrGGvIbMxtC" + "G1Ubfhu9G9sb7Bv9HA4ccRx5HIEciRyRHJkcpxy2HMMc6hzqHOoc/h0JHS8dRh1bHYcdpx3THeEd7x38AAAAAQAAAAQAQmlEKwNfDzz1AAMIAAAAAADidoeQ" + "AAAAAOJ2h5351P1bFKoI4wAAAAMAAgAAAAAAAAVAAUgF0gAyBdIAMgXSADIF0gAyBdIAMgXSADIF0gAyCBsAMgVGAJYF5QBnBeUAZwXHAJYE2ACWBNgAlgTY" + "AJYE2ACWBNgAlgS0AJYF/gBnBfcAlgI3AJYCN/+3Ajf/9gI3AJYCN/+kBKMATgWgAJYEhgCWB2EAlgYTAJYGEwCWBiYAZwYmAGcGJgBnBiYAZwYmAGcGJgBn" + "BiYAZwUpAJYGLwBnBTgAlgU0AF8FSABTBeMAlgXjAJYF4wCWBeMAlgXjAJYF0gAyCCkAMgXCADUFtQAyBbUAMgU4AHQEmABMBJgATASYAEwEmABMBJgATASY" + "AEwEmABMB00ATAT+AIoE/gCKBKkAWQSpAFkE/gBZBLsAWQS7AFkEuwBZBLsAWQS7AFkDHAAUBQEAWQTmAIoCGAB1AhgAigIY/6cCGP/mAhgAigIY/5QCGP/W" + "Ahj/1gSOAIoCGACKBzQAigTlAIoE5QCKBN8AWQTfAFkE3wBZBN8AUgTfAFkE3wBZBN8AWQT+AIoE/gBZAy0AigRlAFgFJgCWAtMAFATmAIoE5gCKBOoAigTm" + "AIoE5gCKBOYAigSyACcGtwAsBI0AMgS1ACcEtQAnBLUAJwSHAHoFQwCPBMAAWQU0AF8EqQBZBIIAHgUJAGMFbgA4BUcAZwNiAF4E/AB+BRcAawVUAGsE5gBp" + "BR4AZwScAFMFHwBnBR4AZwUtAG0FLQDBBS0AlgUtAHEFLQBUBS0AhwUtAG8FLQCbBS0AbgUtAG8CJgBKAiYAdQImAHUCJgBKAyAAxAMgAGYDIAAuAyAAZgMg" + "APADIABmBS0BRgUtAKUFLQCkBS0AtAUtAJ8FLQCcBS0AqQUtAKUFLQCCBS0A/QImAAACJgAABU0AWQKSAKYCkgCmBFkAUARZAGIC/AC6AvwATQL8AMQC/ABt" + "A6MAjQOjAG0H/gBnBSYAGgX+AIIDCAAiAt8A9gKHAM4DCAAiA7kAjQQAAAAIAAAABAcAxAJaAKQCWgCkApsAzQQvAM0EDgCkBAMApAIPAHAEGQBwAo0AegKN" + "AKYHpgCmAo0ApgKiAHoCjQCmA1MAXQNTAEwFEwBdBRMATAViAKkFYgDYBWIAzwViALsFYgC4BWIAxAViAMAFYgCdBWIA2gPBAAAEawCRA9oASQRRAJEFTwBi" + "B1AAqAOqAHgDrwA7A+YARgTNAFkEjABnApcAawOhAGYDtQBiAaP+cAInAE8C9gBQAxUAUwMsAFEG9QBPBqYATwdCAFMICQDIAs8AqQLPAJ0E5QEOA50AsQKo" + "ANEAAACpAAAAnQAAALEAAAC6AgQAAAIEAAAHEADPBgMAFAAAAQ4AAAB/AAAATwAAAFAAAADRAAAAUATSABIE3QBSA4QAMgABAAAHwP4SAAAVdPnU9nMUqggA" + "AAAAAAAAAAAAAAAAAAABAgAEBUICWAAFAAAFMwTNAAAAmgUzBM0AAALNAK0CnwAAAgAFAwAAAAIABIAAAAMAAIACAAAAAAAAAABSU01TAMAAICcTB8D+EgAA" + "CN0ClAAAAAEAAAAABF4F0gAAACAADAAAAAIAAAADAAAAFAADAAEAAAAUAAQB8AAAAB4AEAADAA4ALwA5AH4ArAD/IBQgGSAdICAgIiAmIDMgrCcT//8AAAAg" + "ADAAOgCgAK4gEyAYIBwgICAiICYgMiCsJxP//wAAAEoAAAAAAADgpOCi4KLgtuCX4J7gjt/N2eQAAQAeAAAAOgDCANoAAAAAAAAAAAAAAAAAAAAAAAAAAAD1" + "AKUAvQCwAHUA6wCkALwAqQCqANgAzwDCALYAwwCyAMUAxgDMAM4AzQCnAK8AAQAJAAoADAANABIAEwAUABUAGgAbABwAHQAeACAAJwAoACkAKgArACwAMQAy" + "ADMANAA2AKsAtQCsANcA1QDtADcAPwBBAEMARABJAEoASwBMAFMAVABVAFYAVwBZAGAAYQBiAGMAZQBmAGwAbQBuAG8AcgCtALMArgDTAPYApgB2AHgAsQB3" + "ALQA3wDuANoA3ADKANQA2QDvANsA0gDhAOIA7ABoAN4AxwDwAOAA3QDLAOkA6ADqAKgABAAFAAYAAwACAAcACAALAA4ADwAQABEAFwAYABkAFgD4AB8AJAAl" + "ACYAIgAhANAAIwAtAC4ALwAwADUAcwBkADsAOAA5AD0AOgA8AD4AQgBGAEcASABFAE8AUABRAE4AdABYAF0AXgBfAFsAWgDRAFwAaQBqAGsAZwBxAEAAcLgB" + "/4WwBI0AAAAADQCiAAMAAQQJAAAAkAAAAAMAAQQJAAEAHACQAAMAAQQJAAIADgCsAAMAAQQJAAMAMgC6AAMAAQQJAAQAHACQAAMAAQQJAAUANgDsAAMAAQQJ" + "AAYAHAEiAAMAAQQJAQEADAE+AAMAAQQJATQAEAFKAAMAAQQJATgAGAFaAAMAAQQJATkACAFyAAMAAQQJAUAADAF6AAMAAQQJAUEACgGGAEMAbwBwAHkAcgBp" + "AGcAaAB0ACAAMgAwADEANgAgAFQAaABlACAASQBuAHQAZQByACAAUAByAG8AagBlAGMAdAAgAEEAdQB0AGgAbwByAHMAIAAoAGgAdAB0AHAAcwA6AC8ALwBn" + "AGkAdABoAHUAYgAuAGMAbwBtAC8AcgBzAG0AcwAvAGkAbgB0AGUAcgApAEkAbgB0AGUAcgAgAFMAZQBtAGkAQgBvAGwAZABSAGUAZwB1AGwAYQByADQALgAw" + "ADAAMQA7AFIAUwBNAFMAOwBJAG4AdABlAHIALQBTAGUAbQBpAEIAbwBsAGQAVgBlAHIAcwBpAG8AbgAgADQALgAwADAAMQA7AGcAaQB0AC0ANgA2ADYANAA3" + "AGMAMABiAGIASQBuAHQAZQByAC0AUwBlAG0AaQBCAG8AbABkAFcAZQBpAGcAaAB0AFMAZQBtAGkAQgBvAGwAZABPAHAAdABpAGMAYQBsACAAUwBpAHoAZQAx" + "ADQAcAB0AEkAdABhAGwAaQBjAFIAbwBtAGEAbgAAAAMAAAAAAAD+tQCtAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAB//8ADwABAAAADAAAAAAAAAACABIAAQA/" + "AAEAQQBMAAEATgBRAAEAVABjAAEAZQBnAAEAaQByAAEAdQB2AAEAegB6AAEAfAB9AAEAhACEAAEAhgCHAAEAlgCXAAEAqwCsAAEA3ADdAAEA4QDiAAEA6ADo" + "AAEA6gDqAAEA+AD4AAEAAQAAAAoAPABeAARERkxUABpjeXJsACZncmVrACZsYXRuACYABAAAAAD//wABAAEABAAAAAD//wABAAAAAmtlcm4ADmtlcm4AFgAA" + "AAIAAQAAAAAABAABAAAAAQAAAAIABgAqAAkACAADAAwAFAAcAAEAAgAADYIAAQACAAAQ4AABAAIAABKeAAIACAADAAwBqAJKAAEAPgAEAAAAGgB2AKwAjACs" + "AJIArACyANABegDeAPAA9gF0AXQA8AD2ARABFgEoAW4BgAGAAXQBegGAAYoAAQAaAGgAegB/AIAAgQCDAKQApgCvALUAugC7ALwAvQC+AL8AxwDNANUA1gDX" + "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" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/xwAAAAD/owAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9YAAAAAAAD/2AAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/7sAAAAAAAAAAP/CAAAAAAAAAAAAAAAAAAAAAP+p/78AAP/1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/UgAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/rwAA" + "AAD/owAA/4AAAP+7AAD/mAAA/5gAAAAAAAAAAAAAAAAAAAAAAAD/uwAA/4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP8rAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//UAAAAA" + "AAAAAP/GAAAAAAAAAAAAAP+bAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+zAAAAAAAAAAAAAAAAAB0AAP+vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/7sAAAAAAAAAAAAAAAAAAP+7AAD/AAAAAAAAAP+YAAAAAAAAAAD/4P+J/4AAAAAAAAAAAAAAAAD/3gAAAAAAAP/jAAAAKAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAA/+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAA4AaABoAAAAdQB2AAEAegB+AAMAgQCDAAgApwCvAAsAsgCzABQAtQC2ABYAuQC/ABgAwgDHAB8AygDLACUAzgDT" + "ACcA1gDbAC0A3gDeADMA4ADiADQAAQBoAHsAGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAwAAAAAAAAAEwADAB4AEQAUAAAAAAAcABEAEwAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEgAXAA4ADwAOAA8ADgAPAAoAAAAAAB0AAwAA" + "AAcAAAAAAAAAAgALAAgACQAJAAsACAAAAAAABgAGAAYABAAEAAAAAAAAABUAFgAAAAAAAQAAAAIAAAABAAAAAAAAABAADQANABkACgANAAAAAAADAAAAGAAf" + "AAUAAQBoAHsAHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAcAAsAAAAAAAAAEAAWACEAGQARAAAAEAAfAB0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwAUAAAADQAAAA0AAAANAAYAAAAAACAAAwAAABsAAQAAAAAABAAKAAgACQAJ" + "AAoACAAAAAAABwAHAAcABQAFAAEAAAAAABIAEwAAAAAAAgABAAQAAQACAAEAAQAAAA4ADAAMABgABgAMAAAAAAAVAAAAFwAiABoAAQB+AAQAAAA6A2ADYANg" + "APYBbAEEARIDYANgA2ADYANgA2ADYAEsA2ABOgFsAWwBbAFsAWwBcgGUAZ4BrAGsAcYB0AHWAeAC9gL2AvYB6gH0AfoB+gH6AfoB+gIOAggCDgIOAg4CHAJm" + "ApgCqgLAAtIC8AL2AvwDWgNaA2AAAQA6AAoACwAMABIAGgAbABwAIAAhACIAIwAkACUAJgAnACgAKwAsAC0ALgAvADAAMQAyADMANAA1ADYASQBOAFQAWABa" + "AFsAZABlAGYAZwBpAGoAawBsAG0AbwBwAHEAcwCkAKYAtQDHAM0A0ADUANUA3ADdAPgAAwDD/7sAxP9SANX/uwADAMf/owDM/3UA1P+YAAYAtv+YAMf/gADT" + "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" + "ALr/wP+7/0YAAAAAAAAAAAAA/2AAAAAAAAAAAAAA/7v/df71/5gAAAAAAAAAAAAAAAAAAP/5AAD/af9e/14AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/af9p" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+jAAAAAAAA/7sAAAAAAAAAAAAAAAD/9QAA/5gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/vAAAAAP+jAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAP9z/2UAAAAAAAAAAP+yAAAAAAAAAAAAAAAA/6D/0gAAAAD/vQAAAAAAAP+jAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+YAAAAAAAAAAD/rwAA/zv/owAAAAAAAAAA/5gAAAAAAAAAAAAAAAD/df+7" + "AAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+sAAAAAAAAAAAAA" + "AAAAAP/yAAAAAAAAAAD/6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/4wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABFAAAAAAAAAAAAAAAAAAD/gAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/bAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/9sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+YAAAAAAAAAAP/2" + "AAAAAAAAAAD/yAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/aAAAAAAAAAAAAXQAAAAAAAAAAAAAAAAAAAAD/5gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "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" + "AAAAAP++/9EAAP9GAAD/2f+7AAD/uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAAAAAAAP+v/3UAAAAAAAAAAAAA/74AAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/uwAAAAAAAAAA/4D/y/+M/ugAE/+M/68AAAAT/20AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAD/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/2wAAAAD/XgAAAAAAAAAAAAD/9QAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP6vAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAP+vAAAAAAAAAAAAAAAA/67/wAAAAAAAAAAA/6EAAAAAAAAAAAAAAAD/sgAAAAAAAP/fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAA/2kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAD/aQAAAAAAAAAAAAD/uwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/sAAAAAD/OwAAAAAAAAAA" + "AAD/3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP7SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAFAAAAAD/2gAA/yv/YAAAAAAAAAAA/8YAAAAAAAAAAP/bAAD/iv/VAAD/4f+ZAAAAAAAAAAAAAAAAAAD/uwAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/h/0kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAD/OwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGQAAAAAAAAAAAAAAAAAAABn/8QAZAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAA/2kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/aQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/UAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIgAAAAAAAAAAAAD/uwAAAAAAAAAA" + "AAD/tgAAAAAAAAAAAAAAAP/WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP+7AAAAAAAAAAAAAAAA/4D/mAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/7sAAAAAAAAAAP+7AAD/Rv71" + "AAAAAAAAAAD/rwAAAAAAAP+7AAAAAP+A/7sAAP+7/4wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/3UAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/ysAAAAAAAD/SgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/8YAAP/1/28AAP/pAAAAAAAA" + "/+n/7wAAAAAAAAAAAAD/8gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/bwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAD/6wAAAAAAAAAAAAAAAAAA//IAAAAAAAAAAP/oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABdAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/4z/mAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/5j/mAAA/yMAAP+j" + "AAAAAAAA/68AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAugAAAAD/OwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/zgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAAAAAACgAAAAAAAP+AAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAEQABAEwAAABOAFEATABTAHIAUAB0AHYAcAB6AHsAcwB9AH4AdQCB" + "AIMAdwCnAK8AegCyALMAgwC1ALYAhQC5AL8AhwDCAMcAjgDKAMsAlADOANMAlgDWAN4AnADgAOAApQD4APgApgABAAEA+AAFAAUABQAFAAUABQAFAAcAEgAZ" + "ABkABAAHAAcABwAHAAcAKwAdAAAAAAAYAAAAAAAYAAgAFQAaAAAAAAAAAAQABAAEAAQABAAEAAQAJQAEABQAEQANAAgACAAIAAgACAAkACIAFwAMAAwAHgAC" + "AAIAAgACAAIAAgACACcAAQABAAEAAQAAAAEAAQABAAEAAQAfABwAAgAJAAAAJgAJAAkACQAAAAkAFgAAAAIAAgACAAEAAQABAAEAAQABAAEAAQAcAAoADgAS" + "AAYAAwADAEAAAwADAAMACwAhACAACwALAAsAEwAAAAEAPwAxAAAAAAAAADgAIwAAADYAOQAAAAAAQQA2ADgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADcAPAAzADQAMwA0ADMANAAuAAAAAABCACMAAAAqAA8AAAAAABsAMAAsAC0ALQAw" + "ACwAAAAAACkAKQApACgAKAAPAAAAAAA6ADsAAAAAABAADwAbAA8AEAAPAAAAAAA1ADIAMgA+AC4AMgAvAC8AIwAAAD0AAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAQABAPgABQAFAAUABQAFAAUABQAFAAEABAAEAAEAAQABAAEAAQABAAEABAABAAEAFAABAAEAFAAhAAEAAQAB" + "AAEAAQAEAAQABAAEAAQABAAEAAEABAABABEADQAJAAkACQAJAAkAGQAdABIADAAMABYABwAHAAcABwAHAAcABwAHAAEAAQACAAIAAgACAAIAAgACAAIAIgAC" + "AAEADwAAAB4ADwAPAA8AAAAYAAEAAQADAAMAAwACAAIAAgACAAIAAgACAAMAAgADAAsAAQAGAAgACAA6AAgACAAIAAoAHAAaAAoACgAKABcAAQACADgAJwAA" + "AAAAAAAtADMAAAA1AC4AAAAtADsAOQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "AAAAAAAsADEAKQAqACkAKgApACoAHwAAAAAAPAATAAAANwAOAAAAAAAVACYAIwAkACQAJgAjAAAAAAAgACAAIAAbABsADgAAAAAALwAwAAAAAAAQAA4AFQAO" + "ABAADgAOAAAAKwAoACgANAAfACgAJQAlADIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2AAAAAQAAAAoAJAAy" + "AAJERkxUAA5sYXRuAA4ABAAAAAD//wABAAAAAXRudW0ACAAAAAEAAAABAAQAAQAAAAEACAACAEYAIACEAIUAhgCHAIgAiQCKAIsAjACNAJIAkwCWAJcAlACV" + "AJgAjgCPAJAAkQCZAJoAmwCcAJ0AngCfAKAAoQCiAKMAAgAIAHoAgwAAAKkArgAKALYAtgAQAMIAwwARAMUAxgATAMwA0wAVANgA2AAdAPUA9gAeAAEAAQAI" + "AAMAAAAUAAMAAAAsAAJvcHN6ATgAAHdnaHQBAQABaXRhbAFAAAIABgASAB4AAQAAAAIBOQAOAAAAAQABAAABNAJYAAAAAwACAAIBQQAAAAAAAQAAAAA=";
+
 // ../client/src/financialPdf.ts
+var INTER_SEMI_FONT = "InterSemiBold";
 async function blobDataUrl(blob) {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader;
@@ -56070,6 +56323,23 @@ function drawRichLine(doc, line, x, y, font) {
   }
   doc.setFont(font, "normal");
 }
+var interRegisteredDocs = new WeakSet;
+function registerInterFonts(doc) {
+  if (interRegisteredDocs.has(doc))
+    return;
+  interRegisteredDocs.add(doc);
+  doc.addFileToVFS("Inter-Regular.ttf", INTER_REGULAR_TTF_B64);
+  doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_TTF_B64);
+  doc.addFileToVFS("Inter-SemiBold.ttf", INTER_SEMIBOLD_TTF_B64);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+  doc.addFont("Inter-Regular.ttf", "Inter", "italic");
+  doc.addFont("Inter-Bold.ttf", "Inter", "bolditalic");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "normal");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "bold");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "italic");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "bolditalic");
+}
 async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   const custom = parseDocumentCustomize(document2.customizeJson, kind, lang);
   const labels = custom.labels;
@@ -56081,7 +56351,10 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   const margin = theme === "minimal" ? 56 : 42;
   const docTitle = labels.headline || custom.headline;
   const docNumber = kind === "invoice" && document2.invoiceNumber ? document2.invoiceNumber : document2.id ? `${kind === "quote" ? "EST" : "INV"}${String(document2.id).padStart(4, "0")}` : "";
-  const font = document2.font || settings?.defaultDocumentFont || "helvetica";
+  const font = document2.font || settings?.defaultDocumentFont || "Inter";
+  if (font === "Inter")
+    registerInterFonts(doc);
+  const semiFont = font === "Inter" ? INTER_SEMI_FONT : font;
   const FONT_SCALE = { s: 0.92, m: 1, l: 1.08, xl: 1.16 }[custom.fontSize];
   const LINE_FACTOR = { compact: 0.92, comfortable: 1, roomy: 1.12 }[custom.lineSpacing];
   const F = (size) => size * FONT_SCALE;
@@ -56228,11 +56501,11 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   const metaDueDate = kind === "invoice" ? document2.dueDate : document2.expiryDate;
   const metaTexts = [];
   if (docNumber)
-    metaTexts.push({ text: `${labels.number}: ${docNumber}`, strong: true });
+    metaTexts.push({ label: labels.number, value: docNumber, strong: true });
   if (document2.issueDate)
-    metaTexts.push({ text: `${labels.date}: ${formatDocumentDate(document2.issueDate, custom.dateFormat, lang)}` });
+    metaTexts.push({ label: labels.date, value: formatDocumentDate(document2.issueDate, custom.dateFormat, lang) });
   if (custom.showDueDate && metaDueDate)
-    metaTexts.push({ text: `${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}` });
+    metaTexts.push({ label: labels.dueDate, value: formatDocumentDate(metaDueDate, custom.dateFormat, lang) });
   const clientBlockH = 27 + clientLines.length * 10 * FONT_SCALE;
   const rightBlockH = metaTexts.length ? (metaTexts.length - 1) * metaStep + 4 : 0;
   if (theme === "modern") {
@@ -56255,10 +56528,19 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
   }
   let ry = infoY;
   for (const row of metaTexts) {
-    doc.setFont(font, row.strong ? "bold" : "normal");
     doc.setFontSize(F(8.5));
     doc.setTextColor(...ink);
-    doc.text(row.text, rightX, ry, { align: "right" });
+    if (font === "Inter") {
+      doc.setFont(semiFont, "normal");
+      const valueW = doc.getTextWidth(row.value);
+      doc.text(row.value, rightX, ry, { align: "right" });
+      doc.setFont(font, "normal");
+      const labelW = doc.getTextWidth(`${row.label}: `);
+      doc.text(`${row.label}:`, rightX - valueW - labelW, ry);
+    } else {
+      doc.setFont(font, row.strong ? "bold" : "normal");
+      doc.text(`${row.label}: ${row.value}`, rightX, ry, { align: "right" });
+    }
     ry += metaStep;
   }
   let y = Math.max(infoY + clientBlockH + 10, ry + 6);
@@ -56348,7 +56630,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
           drawRichLine(doc, richLines[lineStart + i], margin + 8, y + i * descStep, font);
         }
         if (firstChunk && custom.showAmount) {
-          doc.setFont(font, "normal");
+          doc.setFont(semiFont, "normal");
           doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
         }
         if (isLast) {
@@ -56372,7 +56654,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       doc.setFontSize(F(9));
       richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
       if (custom.showAmount) {
-        doc.setFont(font, "normal");
+        doc.setFont(semiFont, "normal");
         doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
       }
       doc.setDrawColor(224, 227, 226);
@@ -56412,6 +56694,9 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       rows.push({ label: `${lang === "es" ? "Monto pagado" : "Amount paid"}:`, value: `-${usd(paidToDate)}` });
     if (lateFee > 0)
       rows.push({ label: `${lang === "es" ? "Cargo por atraso" : "Late fee"}:`, value: usd(lateFee) });
+    const cardFee = kind === "invoice" ? (document2.cardFeeCents ?? 0) / 100 : 0;
+    if (cardFee > 0)
+      rows.push({ label: `${lang === "es" ? "Cargo por pago con tarjeta" : "Card processing fee"}:`, value: usd(cardFee) });
     const totalRowH = custom.showAmount ? 24 : 0;
     const panelH = 12 + rows.length * rowStep + (rows.length && totalRowH ? 8 : 0) + totalRowH + (showBalance ? 19 : 0) + (depInPanel ? 35 : 0) + 8;
     ensureSpace(panelH + 6);
@@ -56425,7 +56710,11 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
     doc.setTextColor(...ink);
     for (const row of rows) {
       doc.text(row.label, panelX + 12, by);
+      if (font === "Inter")
+        doc.setFont(semiFont, "normal");
       doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
+      if (font === "Inter")
+        doc.setFont(font, "normal");
       by += rowStep;
     }
     if (rows.length && totalRowH) {
@@ -56474,7 +56763,11 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
       doc.setFontSize(F(9.5));
       doc.setTextColor(...ink);
       doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}:`, panelX + 12, by);
+      if (font === "Inter")
+        doc.setFont(semiFont, "normal");
       doc.text(usd(Math.max(0, depTotalNum - depAmount)), panelX + panelW - 12, by, { align: "right" });
+      if (font === "Inter")
+        doc.setFont(font, "normal");
       by += 6;
     }
     y += panelH;
@@ -56520,7 +56813,7 @@ async function buildFinancialPdf(document2, settings, lang, kind, strings) {
         doc.setFontSize(F(9));
         richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
         if (custom.showAmount) {
-          doc.setFont(font, "normal");
+          doc.setFont(semiFont, "normal");
           doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
         }
         doc.setDrawColor(224, 227, 226);
@@ -56794,6 +57087,9 @@ async function buildChangeOrderPdf(data, settings, lang) {
   const dim = [96, 106, 103];
   const faint = [120, 128, 125];
   const accent = hexRgb(settings?.accentColor || "#1f5a4a");
+  const font = settings?.defaultDocumentFont || "Inter";
+  if (font === "Inter")
+    registerInterFonts(doc);
   const companyName = settings?.companyName || "";
   let y = 0;
   const ensure = (need) => {
@@ -56803,7 +57099,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
     y = 54;
   };
   const wrapped = (text, size, fontStyle = "normal") => {
-    doc.setFont("helvetica", fontStyle);
+    doc.setFont(font, fontStyle);
     doc.setFontSize(size);
     return doc.splitTextToSize(text, contentW);
   };
@@ -56812,7 +57108,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
       return;
     const lines = wrapped(text, size);
     ensure(lines.length * (size + 3.5) + gap);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
     doc.text(lines, margin, y);
@@ -56820,7 +57116,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
   };
   const sectionHead = (label) => {
     ensure(30);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...accent);
     doc.text(label, margin, y);
@@ -56860,21 +57156,21 @@ async function buildChangeOrderPdf(data, settings, lang) {
     stack.push({ text: settings.email });
   let stackY = headerH / 2 - (stack.length - 1) * 11 / 2 + 3;
   for (const line of stack) {
-    doc.setFont("helvetica", line.name ? "bold" : "normal");
+    doc.setFont(font, line.name ? "bold" : "normal");
     doc.setFontSize(line.name ? 11.5 : 7.5);
     doc.setTextColor(255, 255, 255);
     doc.text(line.text, w - margin, stackY, { align: "right" });
     stackY += 11;
   }
   y = headerH + 40;
-  doc.setFont("helvetica", "bold");
+  doc.setFont(font, "bold");
   doc.setFontSize(21);
   doc.setTextColor(...ink);
   doc.text(s.title(data.coNumber), w / 2, y, { align: "center" });
   y += 19;
   const dateText = coDateLabel(data.dateIso ? `${data.dateIso}T12:00:00` : null, lang);
   if (dateText) {
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(10);
     doc.setTextColor(...dim);
     doc.text(`${s.date}: ${dateText}`, w / 2, y, { align: "center" });
@@ -56892,11 +57188,11 @@ async function buildChangeOrderPdf(data, settings, lang) {
     meta.push([s.address, data.jobAddress]);
   for (const [label, value] of meta) {
     ensure(16);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...dim);
     doc.text(`${label}:`, margin, y);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setTextColor(...ink);
     const lines = doc.splitTextToSize(value, contentW - 92);
     doc.text(lines, margin + 92, y);
@@ -56918,7 +57214,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
       doc.setFillColor(23, 26, 28);
       doc.rect(margin, y - 13, contentW, 24, "F");
     }
-    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFont(font, bold ? "bold" : "normal");
     doc.setFontSize(bold ? 11.5 : 10.5);
     if (band)
       doc.setTextColor(255, 255, 255);
@@ -56942,7 +57238,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
   y += 6;
   const colW = (contentW - 28) / 2;
   const block = (x, heading, signatureDataUrl, printedName, behalfLine, signedAtIso) => {
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(9.5);
     doc.setTextColor(...dim);
     doc.text(heading.toUpperCase(), x, y);
@@ -56956,7 +57252,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
     doc.setDrawColor(150, 158, 155);
     doc.setLineWidth(0.75);
     doc.line(x, ruleY, x + colW, ruleY);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...faint);
     doc.text(s.signature, x, ruleY + 11);
@@ -56992,7 +57288,7 @@ async function buildChangeOrderPdf(data, settings, lang) {
     doc.setDrawColor(224, 227, 226);
     doc.setLineWidth(0.5);
     doc.line(margin, 758, w - margin, 758);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...faint);
     if (footerParts.length)
@@ -72217,7 +72513,7 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
     total: payload.total,
     footnote: payload.footnote,
     theme: ["classic", "modern", "bold", "minimal"].includes(payload.theme) ? payload.theme : "classic",
-    font: ["helvetica", "times", "courier", "palatino"].includes(payload.font) ? payload.font : "helvetica",
+    font: ["Inter", "helvetica", "times", "courier", "palatino"].includes(payload.font) ? payload.font : "Inter",
     accentColor: payload.accentColor,
     showTaxLine: payload.showTaxLine,
     showDiscountLine: payload.showDiscountLine,
@@ -72235,7 +72531,8 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
     lateFeeAccrued: payload.lateFeeAccrued,
     totalWithLateFee: payload.totalWithLateFee,
     depositType: payload.depositType === "percent" || payload.depositType === "fixed" ? payload.depositType : "none",
-    depositValue: payload.depositValue || "0"
+    depositValue: payload.depositValue || "0",
+    cardFeeCents: payload.cardFeeCents ?? 0
   };
   const companySettings = {
     companyName: settings2?.companyName ?? "",
@@ -72246,7 +72543,7 @@ async function buildDocumentLinkPdf(ctx, payload, lang) {
     licenseNumber: settings2?.licenseNumber ?? "",
     logoUrl,
     accentColor: settings2?.accentColor ?? "#1f5a4a",
-    defaultDocumentFont: settings2?.defaultDocumentFont ?? "helvetica",
+    defaultDocumentFont: settings2?.defaultDocumentFont ?? "Inter",
     paymentInstructions: settings2?.paymentInstructions ?? ""
   };
   const blob = payload.kind === "invoice" ? await buildInvoicePdf(doc, companySettings, asPdfLang(lang), pdfStrings(lang)) : await buildQuotePdf(doc, companySettings, asPdfLang(lang), pdfStrings(lang));
@@ -72332,7 +72629,8 @@ async function buildChangeOrderPdfForDocument(ctx, documentId, lang) {
     address: settings2?.address ?? "",
     licenseNumber: settings2?.licenseNumber ?? "",
     logoUrl: null,
-    accentColor: settings2?.accentColor ?? "#1f5a4a"
+    accentColor: settings2?.accentColor ?? "#1f5a4a",
+    defaultDocumentFont: settings2?.defaultDocumentFont ?? "Inter"
   };
   const blob = await buildChangeOrderPdf(data, companySettings, asPdfLang(lang));
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -72410,6 +72708,11 @@ var AUTOMATION_RECIPES = [
     key: "proposal_follow_up",
     label: "Estimate follow-up",
     description: "When an estimate is sent, queue a follow-up task due in 2 days so no proposal goes unanswered."
+  },
+  {
+    key: "hot_proposal",
+    label: "Hot proposal alert",
+    description: "When a client opens the same estimate, contract, or change order a second time, queue a follow-up so the office can call while it's top of mind."
   },
   {
     key: "contract_welcome",
@@ -72780,14 +73083,6 @@ async function buildClientTimeline(db, client) {
   return sortTimeline(events);
 }
 
-// src/auth-email.ts
-function authCodeClientResult(code, delivery) {
-  return {
-    emailDelivery: delivery,
-    displayCode: delivery === "fallback" ? code : null
-  };
-}
-
 // .generated/privileged.contract.ts
 var privileged = definePrivilegedContracts({
   renderPdfPages: {
@@ -72835,7 +73130,8 @@ var privileged = definePrivilegedContracts({
     request: object({
       to: string2().email().max(200),
       subject: string2().min(1).max(200),
-      text: string2().min(1).max(20000)
+      text: string2().min(1).max(20000),
+      html: string2().max(200000).optional()
     }),
     response: object({ delivery: _enum(["sent", "failed"]) }),
     capabilities: [],
@@ -72875,11 +73171,17 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  createOfficeStripeCheckout: {
+    request: object({ companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual", "founding"]) }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   verifyStripeWebhook: {
     request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
     response: object({
       eventId: string2(),
-      eventType: _enum(["checkout.session.completed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      eventType: _enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
       userId: number2().int().positive().nullable(),
       customerId: string2().nullable(),
       subscriptionId: string2().nullable(),
@@ -72891,8 +73193,97 @@ var privileged = definePrivilegedContracts({
       listingId: number2().int().positive().nullable(),
       companyId: number2().int().positive().nullable(),
       packSize: number2().int().nullable(),
-      stripeSessionId: string2().nullable()
+      stripeSessionId: string2().nullable(),
+      invoiceId: number2().int().positive().nullable(),
+      paymentIntentId: string2().nullable(),
+      amountTotalCents: number2().int().nullable(),
+      paymentMethodType: string2().nullable(),
+      paymentStatus: string2().nullable(),
+      connectAccountId: string2().nullable(),
+      priceId: string2().nullable()
     }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  verifyConnectWebhook: {
+    request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
+    response: object({
+      eventId: string2(),
+      eventType: _enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      userId: number2().int().positive().nullable(),
+      customerId: string2().nullable(),
+      subscriptionId: string2().nullable(),
+      subscriptionStatus: string2().nullable(),
+      currentPeriodEnd: number2().int().nullable(),
+      cancelAtPeriodEnd: boolean2(),
+      checkoutType: string2().nullable(),
+      plan: string2().nullable(),
+      listingId: number2().int().positive().nullable(),
+      companyId: number2().int().positive().nullable(),
+      packSize: number2().int().nullable(),
+      stripeSessionId: string2().nullable(),
+      invoiceId: number2().int().positive().nullable(),
+      paymentIntentId: string2().nullable(),
+      amountTotalCents: number2().int().nullable(),
+      paymentMethodType: string2().nullable(),
+      paymentStatus: string2().nullable(),
+      connectAccountId: string2().nullable(),
+      priceId: string2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbPlatformStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), environment: string2() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  qbTokenExchange: {
+    request: object({ code: string2().min(1).max(2000), redirectUri: string2().url().max(500) }),
+    response: object({ configured: boolean2(), accessToken: string2().nullable(), refreshToken: string2().nullable(), expiresInSeconds: number2().int() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbRefreshToken: {
+    request: object({ refreshToken: string2().min(1).max(2000) }),
+    response: object({ configured: boolean2(), accessToken: string2().nullable(), refreshToken: string2().nullable(), expiresInSeconds: number2().int() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbApiRequest: {
+    request: object({ accessToken: string2().min(1).max(4000), realmId: string2().min(1).max(40), method: _enum(["GET", "POST"]), path: string2().min(1).max(1500), body: string2().max(60000).default("") }),
+    response: object({ configured: boolean2(), status: number2().int(), body: string2() }),
+    capabilities: [],
+    timeoutMs: 30000
+  },
+  getStripePlatformStatus: {
+    request: object({}),
+    response: object({ configured: boolean2() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  createConnectAccount: {
+    request: object({ companyId: number2().int().positive(), email: string2().email().max(200), companyName: string2().min(1).max(200) }),
+    response: object({ configured: boolean2(), accountId: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createConnectAccountLink: {
+    request: object({ accountId: string2().min(1).max(200), refreshUrl: string2().url().max(500), returnUrl: string2().url().max(500) }),
+    response: object({ configured: boolean2(), url: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getConnectAccount: {
+    request: object({ accountId: string2().min(1).max(200) }),
+    response: object({ configured: boolean2(), chargesEnabled: boolean2(), payoutsEnabled: boolean2(), detailsSubmitted: boolean2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createInvoiceCheckout: {
+    request: object({ accountId: string2().min(1).max(200), companyId: number2().int().positive(), invoiceId: number2().int().positive(), amountCents: number2().int().positive(), description: string2().min(1).max(300), customerEmail: string2().max(200), successUrl: string2().url().max(1000), cancelUrl: string2().url().max(1000), applicationFeeCents: number2().int().min(0) }),
+    response: object({ configured: boolean2(), sessionId: string2().nullable(), url: string2().nullable(), missing: array(string2()) }),
     capabilities: [],
     timeoutMs: 20000
   },
@@ -73063,8 +73454,2049 @@ var privileged = definePrivilegedContracts({
     response: object({ configured: boolean2(), sku: string2(), packageName: string2() }),
     capabilities: [],
     timeoutMs: 1e4
+  },
+  getAiStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), monthlyCap: number2().int() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  aiComplete: {
+    request: object({ system: string2().min(1).max(8000), user: string2().min(1).max(24000), maxTokens: number2().int().min(50).max(4000).default(1200) }),
+    response: object({ configured: boolean2(), text: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 45000
   }
 });
+
+// src/quickbooks.ts
+function parseMoney(value) {
+  if (typeof value === "number")
+    return value;
+  return Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
+}
+function qbErrorMessage(body, fallback) {
+  try {
+    const parsed = JSON.parse(body);
+    const first = parsed.Fault?.Error?.[0];
+    if (first?.Message)
+      return `${first.Message}${first.Detail ? ` \u2014 ${first.Detail}` : ""}`.slice(0, 280);
+  } catch {}
+  return fallback;
+}
+
+class QbClient {
+  ctx;
+  conn;
+  constructor(ctx, conn) {
+    this.ctx = ctx;
+    this.conn = conn;
+  }
+  async call(method, path, body) {
+    const result = await this.ctx.executePrivileged(privileged.qbApiRequest, {
+      accessToken: this.conn.accessToken,
+      realmId: this.conn.realmId,
+      method,
+      path,
+      body: body ? JSON.stringify(body) : ""
+    });
+    if (!result.configured)
+      throw new Error("QuickBooks is not configured on the platform yet.");
+    if (result.status === 401)
+      throw new Error("The QuickBooks connection has expired. Reconnect in Settings.");
+    if (result.status < 200 || result.status >= 300)
+      throw new Error(qbErrorMessage(result.body, `QuickBooks returned HTTP ${result.status}.`));
+    try {
+      return JSON.parse(result.body);
+    } catch {
+      return {};
+    }
+  }
+  async query(entity, where = "") {
+    const out = [];
+    let start = 1;
+    for (;; ) {
+      const q = `select * from ${entity}${where ? ` where ${where}` : ""} startposition ${start} maxresults 200`;
+      const res = await this.call("GET", `/query?query=${encodeURIComponent(q)}`);
+      const qr = res.QueryResponse ?? {};
+      const rows = qr[entity] ?? [];
+      out.push(...rows);
+      if (rows.length < 200)
+        break;
+      start += 200;
+    }
+    return out;
+  }
+}
+async function upsertRecord(db, companyId, entityType, entityId, patch) {
+  const existing = (await db.select().from(qbSyncRecords).where(and(eq(qbSyncRecords.companyId, companyId), eq(qbSyncRecords.entityType, entityType), eq(qbSyncRecords.entityId, entityId))).limit(1))[0];
+  if (existing) {
+    await db.update(qbSyncRecords).set({ ...patch, updatedAt: new Date }).where(eq(qbSyncRecords.id, existing.id));
+  } else {
+    await db.insert(qbSyncRecords).values({ companyId, entityType, entityId, crewkatUpdatedAt: patch.crewkatUpdatedAt ?? new Date(0), ...patch });
+  }
+}
+async function getQbConnection(db, companyId) {
+  return (await db.select().from(quickbooksConnections).where(eq(quickbooksConnections.companyId, companyId)).limit(1))[0];
+}
+async function ensureFreshToken(ctx, db, conn) {
+  const expiresAt = conn.accessTokenExpiresAt?.getTime() ?? 0;
+  if (conn.accessToken && expiresAt > Date.now() + 5 * 60000)
+    return conn;
+  const refreshed = await ctx.executePrivileged(privileged.qbRefreshToken, { refreshToken: conn.refreshToken });
+  if (!refreshed.configured || !refreshed.accessToken)
+    throw new Error("The QuickBooks connection has expired. Reconnect in Settings.");
+  const next = { ...conn, accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? conn.refreshToken, accessTokenExpiresAt: new Date(Date.now() + refreshed.expiresInSeconds * 1000) };
+  await db.update(quickbooksConnections).set({ accessToken: next.accessToken, refreshToken: next.refreshToken, accessTokenExpiresAt: next.accessTokenExpiresAt, updatedAt: new Date }).where(eq(quickbooksConnections.id, conn.id));
+  return next;
+}
+async function ensureDefaultItem(db, client, conn) {
+  if (conn.defaultItemId)
+    return conn.defaultItemId;
+  const items = await client.query("Item", "Name = 'Services'");
+  let itemId = items[0]?.Id ?? "";
+  if (!itemId) {
+    const accounts = await client.query("Account", "AccountType = 'Income'");
+    if (!accounts[0])
+      throw new Error("QuickBooks has no income account to post services to.");
+    const created = await client.call("POST", "/item", { Name: "Services", Type: "Service", IncomeAccountRef: { value: accounts[0].Id } });
+    itemId = String(created.Id ?? "");
+    if (!itemId)
+      throw new Error("QuickBooks did not create the default service item.");
+  }
+  await db.update(quickbooksConnections).set({ defaultItemId: itemId, updatedAt: new Date }).where(eq(quickbooksConnections.id, conn.id));
+  return itemId;
+}
+function customerPayload(clientRow) {
+  return {
+    DisplayName: clientRow.name,
+    ...clientRow.email ? { PrimaryEmailAddr: { Address: clientRow.email } } : {},
+    ...clientRow.phone ? { PrimaryPhone: { FreeFormNumber: clientRow.phone } } : {},
+    ...clientRow.address ? { BillAddr: { Line1: clientRow.address } } : {}
+  };
+}
+async function runQuickBooksSync(ctx, db, companyId) {
+  const summary = { pushed: 0, pulled: 0, conflicts: 0, errors: 0 };
+  let conn = await getQbConnection(db, companyId);
+  if (!conn || conn.status !== "connected" || !conn.realmId)
+    throw new Error("QuickBooks is not connected.");
+  conn = await ensureFreshToken(ctx, db, conn);
+  const client = new QbClient(ctx, conn);
+  const itemId = await ensureDefaultItem(db, client, conn);
+  const records = await db.select().from(qbSyncRecords).where(eq(qbSyncRecords.companyId, companyId));
+  const byKey = new Map(records.map((r) => [`${r.entityType}:${r.entityId}`, r]));
+  const byQbId = new Map(records.filter((r) => r.qbId).map((r) => [`${r.entityType}:${r.qbId}`, r]));
+  const markError = async (entityType, entityId, err) => {
+    summary.errors++;
+    await upsertRecord(db, companyId, entityType, entityId, { status: "error", error: err instanceof Error ? err.message.slice(0, 280) : "Sync failed." });
+  };
+  const qbCustomers = await client.query("Customer");
+  const qbCustomerById = new Map(qbCustomers.map((c) => [c.Id, c]));
+  const crewClients = await db.select().from(clients).where(eq(clients.companyId, companyId));
+  const qbCustomerIdForClient = new Map;
+  for (const crew of crewClients) {
+    try {
+      const record = byKey.get(`customer:${crew.id}`);
+      let qb = record?.qbId ? qbCustomerById.get(record.qbId) : undefined;
+      if (!qb) {
+        qb = qbCustomers.find((c) => crew.email && c.PrimaryEmailAddr?.Address?.toLowerCase() === crew.email.toLowerCase() || c.DisplayName === crew.name);
+      }
+      if (!qb) {
+        const created = await client.call("POST", "/customer", customerPayload(crew));
+        if (!created.Id)
+          throw new Error("QuickBooks did not return the new customer.");
+        qbCustomerIdForClient.set(crew.id, created.Id);
+        qbCustomerById.set(created.Id, created);
+        await upsertRecord(db, companyId, "customer", crew.id, { qbId: created.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: crew.updatedAt, qbUpdatedAt: created.MetaData?.LastUpdatedTime ? new Date(created.MetaData.LastUpdatedTime) : new Date });
+        summary.pushed++;
+        continue;
+      }
+      qbCustomerIdForClient.set(crew.id, qb.Id);
+      const qbTime = qb.MetaData?.LastUpdatedTime ? new Date(qb.MetaData.LastUpdatedTime) : null;
+      const crewChanged = record?.qbId ? crew.updatedAt.getTime() > record.crewkatUpdatedAt.getTime() : true;
+      const qbChanged = record?.qbId && qbTime && record.qbUpdatedAt ? qbTime.getTime() > record.qbUpdatedAt.getTime() : false;
+      if (crewChanged && qbChanged) {
+        const crewWins = !qbTime || crew.updatedAt.getTime() >= qbTime.getTime();
+        if (crewWins) {
+          const updated = await client.call("POST", "/customer", { ...customerPayload(crew), Id: qb.Id, SyncToken: qb.SyncToken ?? "0", sparse: true });
+          await upsertRecord(db, companyId, "customer", crew.id, { qbId: qb.Id, status: "conflict", error: "Both sides changed since the last sync \u2014 Crewkat was newer and won; the QuickBooks edit was overwritten.", lastSyncedAt: new Date, crewkatUpdatedAt: crew.updatedAt, qbUpdatedAt: updated.MetaData?.LastUpdatedTime ? new Date(updated.MetaData.LastUpdatedTime) : new Date });
+        } else {
+          await db.update(clients).set({ name: qb.DisplayName || crew.name, email: qb.PrimaryEmailAddr?.Address ?? crew.email, phone: qb.PrimaryPhone?.FreeFormNumber ?? crew.phone, address: qb.BillAddr?.Line1 ?? crew.address, updatedAt: new Date }).where(eq(clients.id, crew.id));
+          await upsertRecord(db, companyId, "customer", crew.id, { qbId: qb.Id, status: "conflict", error: "Both sides changed since the last sync \u2014 QuickBooks was newer and won; the Crewkat edit was overwritten.", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qbTime ?? new Date });
+        }
+        summary.conflicts++;
+      } else if (crewChanged) {
+        const updated = await client.call("POST", "/customer", { ...customerPayload(crew), Id: qb.Id, SyncToken: qb.SyncToken ?? "0", sparse: true });
+        await upsertRecord(db, companyId, "customer", crew.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: crew.updatedAt, qbUpdatedAt: updated.MetaData?.LastUpdatedTime ? new Date(updated.MetaData.LastUpdatedTime) : qbTime ?? new Date });
+        summary.pushed++;
+      } else if (qbChanged) {
+        await db.update(clients).set({ name: qb.DisplayName || crew.name, email: qb.PrimaryEmailAddr?.Address ?? crew.email, phone: qb.PrimaryPhone?.FreeFormNumber ?? crew.phone, address: qb.BillAddr?.Line1 ?? crew.address, updatedAt: new Date }).where(eq(clients.id, crew.id));
+        await upsertRecord(db, companyId, "customer", crew.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qbTime ?? new Date });
+        summary.pulled++;
+      } else if (!record?.qbId) {
+        await upsertRecord(db, companyId, "customer", crew.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: crew.updatedAt, qbUpdatedAt: qbTime ?? new Date });
+      } else {
+        await upsertRecord(db, companyId, "customer", crew.id, { status: "synced", error: "", lastSyncedAt: new Date });
+      }
+    } catch (err) {
+      await markError("customer", crew.id, err);
+    }
+  }
+  for (const qb of qbCustomers) {
+    if (byQbId.has(`customer:${qb.Id}`))
+      continue;
+    if (crewClients.some((c) => qbCustomerIdForClient.get(c.id) === qb.Id))
+      continue;
+    try {
+      const rows = await db.insert(clients).values({ companyId, name: qb.DisplayName || "QuickBooks customer", email: qb.PrimaryEmailAddr?.Address ?? "", phone: qb.PrimaryPhone?.FreeFormNumber ?? "", address: qb.BillAddr?.Line1 ?? "" }).returning({ id: clients.id });
+      const made = rows[0];
+      if (!made)
+        continue;
+      crewClients.push({ ...(await db.select().from(clients).where(eq(clients.id, made.id)).limit(1))[0] });
+      qbCustomerIdForClient.set(made.id, qb.Id);
+      await upsertRecord(db, companyId, "customer", made.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qb.MetaData?.LastUpdatedTime ? new Date(qb.MetaData.LastUpdatedTime) : new Date });
+      summary.pulled++;
+    } catch (err) {
+      summary.errors++;
+    }
+  }
+  const qbInvoices = await client.query("Invoice");
+  const qbInvoiceById = new Map(qbInvoices.map((i) => [i.Id, i]));
+  const crewInvoices = await db.select().from(invoices).where(eq(invoices.companyId, companyId));
+  const qbInvoiceIdForInvoice = new Map;
+  for (const [key, r] of byKey)
+    if (key.startsWith("invoice:") && r.qbId)
+      qbInvoiceIdForInvoice.set(r.entityId, r.qbId);
+  const clientIdForQbCustomer = new Map([...qbCustomerIdForClient.entries()].map(([k, v]) => [v, k]));
+  const invoiceLines = (inv) => {
+    let items = [];
+    try {
+      items = JSON.parse(inv.lineItemsJson);
+    } catch {
+      items = [];
+    }
+    if (!items.length)
+      items = [{ description: inv.jobType || "Services", amount: inv.total, quantity: 1 }];
+    return items.map((item) => {
+      const amount = parseMoney(item.amount ?? "0");
+      const qty = item.quantity && item.quantity > 0 ? item.quantity : 1;
+      return { DetailType: "SalesItemLineDetail", Amount: amount, Description: String(item.description ?? ""), SalesItemLineDetail: { ItemRef: { value: itemId }, Qty: qty, UnitPrice: qty > 0 ? amount / qty : amount } };
+    });
+  };
+  for (const inv of crewInvoices) {
+    const qbCustomerId = inv.clientId != null ? qbCustomerIdForClient.get(inv.clientId) : undefined;
+    try {
+      if (!qbCustomerId)
+        throw new Error("The invoice's client is not synced to QuickBooks yet.");
+      const record = byKey.get(`invoice:${inv.id}`);
+      let qb = record?.qbId ? qbInvoiceById.get(record.qbId) : undefined;
+      if (!qb && inv.invoiceNumber)
+        qb = qbInvoices.find((i) => i.DocNumber === inv.invoiceNumber);
+      if (!qb) {
+        const created = await client.call("POST", "/invoice", { CustomerRef: { value: qbCustomerId }, ...inv.invoiceNumber ? { DocNumber: inv.invoiceNumber } : {}, ...inv.issueDate ? { TxnDate: inv.issueDate } : {}, Line: invoiceLines(inv) });
+        if (!created.Id)
+          throw new Error("QuickBooks did not return the new invoice.");
+        qbInvoiceIdForInvoice.set(inv.id, created.Id);
+        await upsertRecord(db, companyId, "invoice", inv.id, { qbId: created.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: inv.updatedAt, qbUpdatedAt: created.MetaData?.LastUpdatedTime ? new Date(created.MetaData.LastUpdatedTime) : new Date });
+        summary.pushed++;
+        continue;
+      }
+      qbInvoiceIdForInvoice.set(inv.id, qb.Id);
+      const qbTime = qb.MetaData?.LastUpdatedTime ? new Date(qb.MetaData.LastUpdatedTime) : null;
+      const crewChanged = record?.qbId ? inv.updatedAt.getTime() > record.crewkatUpdatedAt.getTime() : true;
+      const qbChanged = record?.qbId && qbTime && record.qbUpdatedAt ? qbTime.getTime() > record.qbUpdatedAt.getTime() : false;
+      const pushUpdate = async () => {
+        const current = await client.call("GET", `/invoice/${qb.Id}`);
+        const updated = await client.call("POST", "/invoice", { Id: qb.Id, SyncToken: current.SyncToken ?? qb.SyncToken ?? "0", CustomerRef: { value: qbCustomerId }, ...inv.invoiceNumber ? { DocNumber: inv.invoiceNumber } : {}, Line: invoiceLines(inv) });
+        return updated;
+      };
+      if (crewChanged && qbChanged) {
+        const crewWins = !qbTime || inv.updatedAt.getTime() >= qbTime.getTime();
+        if (crewWins) {
+          const updated = await pushUpdate();
+          await upsertRecord(db, companyId, "invoice", inv.id, { qbId: qb.Id, status: "conflict", error: "Both sides changed since the last sync \u2014 Crewkat was newer and won; the QuickBooks edit was overwritten.", lastSyncedAt: new Date, crewkatUpdatedAt: inv.updatedAt, qbUpdatedAt: updated.MetaData?.LastUpdatedTime ? new Date(updated.MetaData.LastUpdatedTime) : new Date });
+        } else {
+          await db.update(invoices).set({ total: (qb.TotalAmt ?? 0).toFixed(2), status: (qb.Balance ?? 1) <= 0 ? "paid" : inv.status, updatedAt: new Date }).where(eq(invoices.id, inv.id));
+          await upsertRecord(db, companyId, "invoice", inv.id, { qbId: qb.Id, status: "conflict", error: "Both sides changed since the last sync \u2014 QuickBooks was newer and won; the Crewkat edit was overwritten.", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qbTime ?? new Date });
+        }
+        summary.conflicts++;
+      } else if (crewChanged) {
+        const updated = record?.qbId ? await pushUpdate() : qb;
+        await upsertRecord(db, companyId, "invoice", inv.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: inv.updatedAt, qbUpdatedAt: updated.MetaData?.LastUpdatedTime ? new Date(updated.MetaData.LastUpdatedTime) : qbTime ?? new Date });
+        if (record?.qbId)
+          summary.pushed++;
+      } else if (qbChanged) {
+        await db.update(invoices).set({ total: (qb.TotalAmt ?? 0).toFixed(2), status: (qb.Balance ?? 1) <= 0 ? "paid" : inv.status, updatedAt: new Date }).where(eq(invoices.id, inv.id));
+        await upsertRecord(db, companyId, "invoice", inv.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qbTime ?? new Date });
+        summary.pulled++;
+      } else if (!record?.qbId) {
+        await upsertRecord(db, companyId, "invoice", inv.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: inv.updatedAt, qbUpdatedAt: qbTime ?? new Date });
+      } else {
+        await upsertRecord(db, companyId, "invoice", inv.id, { status: "synced", error: "", lastSyncedAt: new Date });
+      }
+    } catch (err) {
+      await markError("invoice", inv.id, err);
+    }
+  }
+  for (const qb of qbInvoices) {
+    if (byQbId.has(`invoice:${qb.Id}`))
+      continue;
+    if ([...qbInvoiceIdForInvoice.values()].includes(qb.Id))
+      continue;
+    try {
+      const clientId = qb.CustomerRef?.value ? clientIdForQbCustomer.get(qb.CustomerRef.value) ?? null : null;
+      const lines = (qb.Line ?? []).filter((l) => l.DetailType === "SalesItemLineDetail").map((l) => {
+        const detail = l.SalesItemLineDetail ?? {};
+        return { description: String(l.Description ?? ""), amount: String(l.Amount ?? "0"), quantity: detail.Qty ?? 1 };
+      });
+      const rows = await db.insert(invoices).values({
+        companyId,
+        invoiceNumber: qb.DocNumber ?? "",
+        clientId,
+        clientName: qb.CustomerRef?.name ?? "",
+        lineItemsJson: JSON.stringify(lines.length ? lines : [{ description: "Services", amount: String(qb.TotalAmt ?? "0"), quantity: 1 }]),
+        subtotal: (qb.TotalAmt ?? 0).toFixed(2),
+        total: (qb.TotalAmt ?? 0).toFixed(2),
+        issueDate: qb.TxnDate ?? "",
+        dueDate: "",
+        status: (qb.Balance ?? 1) <= 0 ? "paid" : "sent"
+      }).returning({ id: invoices.id });
+      const made = rows[0];
+      if (!made)
+        continue;
+      qbInvoiceIdForInvoice.set(made.id, qb.Id);
+      await upsertRecord(db, companyId, "invoice", made.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qb.MetaData?.LastUpdatedTime ? new Date(qb.MetaData.LastUpdatedTime) : new Date });
+      summary.pulled++;
+    } catch {
+      summary.errors++;
+    }
+  }
+  const crewPayments = await db.select().from(payments).where(eq(payments.companyId, companyId));
+  for (const pay of crewPayments) {
+    const record = byKey.get(`payment:${pay.id}`);
+    if (record?.qbId)
+      continue;
+    try {
+      const qbInvoiceId = qbInvoiceIdForInvoice.get(pay.invoiceId);
+      if (!qbInvoiceId)
+        throw new Error("The payment's invoice is not synced to QuickBooks yet.");
+      const inv = crewInvoices.find((i) => i.id === pay.invoiceId);
+      const qbCustomerId = inv?.clientId != null ? qbCustomerIdForClient.get(inv.clientId) : undefined;
+      if (!qbCustomerId)
+        throw new Error("The payment's client is not synced to QuickBooks yet.");
+      const created = await client.call("POST", "/payment", { CustomerRef: { value: qbCustomerId }, TotalAmt: parseMoney(pay.amount), ...pay.paymentDate ? { TxnDate: pay.paymentDate } : {}, Line: [{ Amount: parseMoney(pay.amount), LinkedTxn: [{ TxnId: qbInvoiceId, TxnType: "Invoice" }] }] });
+      if (!created.Id)
+        throw new Error("QuickBooks did not return the new payment.");
+      await upsertRecord(db, companyId, "payment", pay.id, { qbId: created.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: pay.createdAt, qbUpdatedAt: created.MetaData?.LastUpdatedTime ? new Date(created.MetaData.LastUpdatedTime) : new Date });
+      summary.pushed++;
+    } catch (err) {
+      await markError("payment", pay.id, err);
+    }
+  }
+  const qbPayments = await client.query("Payment");
+  const invoiceIdForQbInvoice = new Map([...qbInvoiceIdForInvoice.entries()].map(([k, v]) => [v, k]));
+  for (const qb of qbPayments) {
+    if (byQbId.has(`payment:${qb.Id}`))
+      continue;
+    const linkedInvoiceQbId = qb.Line?.flatMap((l) => l.LinkedTxn ?? []).find((t) => t.TxnType === "Invoice")?.TxnId;
+    const invoiceId = linkedInvoiceQbId ? invoiceIdForQbInvoice.get(linkedInvoiceQbId) : undefined;
+    if (!invoiceId)
+      continue;
+    try {
+      const rows = await db.insert(payments).values({ companyId, invoiceId, amount: (qb.TotalAmt ?? 0).toFixed(2), paymentDate: qb.TxnDate ?? "", method: "QuickBooks", note: "Synced from QuickBooks" }).returning({ id: payments.id });
+      const made = rows[0];
+      if (!made)
+        continue;
+      await upsertRecord(db, companyId, "payment", made.id, { qbId: qb.Id, status: "synced", error: "", lastSyncedAt: new Date, crewkatUpdatedAt: new Date, qbUpdatedAt: qb.MetaData?.LastUpdatedTime ? new Date(qb.MetaData.LastUpdatedTime) : new Date });
+      summary.pulled++;
+    } catch {
+      summary.errors++;
+    }
+  }
+  await db.update(quickbooksConnections).set({ lastSyncAt: new Date, updatedAt: new Date }).where(eq(quickbooksConnections.id, conn.id));
+  return summary;
+}
+
+// src/workSummaries.ts
+function buildWorkSummaryNarrative(content) {
+  const paragraphs = [];
+  for (const log of content.logs) {
+    const text = (log.clientSummary || log.notes || "").trim();
+    if (text)
+      paragraphs.push(text);
+  }
+  for (const note of content.notes) {
+    const text = note.note.trim();
+    if (text)
+      paragraphs.push(text);
+  }
+  return paragraphs.join(`
+
+`);
+}
+async function getJobLoadsInRange(db, args) {
+  const rows = await db.select().from(jobLoads).where(and(eq(jobLoads.companyId, args.companyId), eq(jobLoads.jobId, args.jobId), gte(jobLoads.loadDate, args.rangeStart), lte(jobLoads.loadDate, args.rangeEnd))).orderBy(asc(jobLoads.loadDate), asc(jobLoads.id));
+  return rows.map((row) => ({
+    date: row.loadDate,
+    kind: row.kind,
+    quantity: row.quantity,
+    unit: row.unit,
+    cost: row.cost ?? "",
+    vendor: row.vendor,
+    notes: row.notes
+  }));
+}
+function resolveWorkSummaryRange(preset, start, end, now = new Date) {
+  if (preset === "today") {
+    const today = todayKey(now);
+    return { rangeStart: today, rangeEnd: today };
+  }
+  if (preset === "this_week") {
+    const today = todayKey(now);
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+    const sinceMonday = (dow + 6) % 7;
+    const rangeStart = shiftDateKey(today, -sinceMonday);
+    return { rangeStart, rangeEnd: shiftDateKey(rangeStart, 6) };
+  }
+  return { rangeStart: start, rangeEnd: end };
+}
+function moneyTotal(values) {
+  const sum = values.reduce((acc, v) => acc + (Number(String(v).replace(/[^0-9.-]/g, "")) || 0), 0);
+  return sum.toFixed(2);
+}
+async function buildWorkSummaryContent(db, getUrl, job, rangeStart, rangeEnd) {
+  const [logRows, noteRows, photoRows, loads] = await Promise.all([
+    db.select().from(dailyLogs).where(and(eq(dailyLogs.jobId, job.id), gte(dailyLogs.logDate, rangeStart), lte(dailyLogs.logDate, rangeEnd))).orderBy(asc(dailyLogs.logDate), asc(dailyLogs.id)),
+    db.select().from(internalNotes).where(eq(internalNotes.jobId, job.id)).orderBy(asc(internalNotes.createdAt), asc(internalNotes.id)),
+    db.select().from(photos).where(eq(photos.jobId, job.id)).orderBy(asc(photos.createdAt), asc(photos.id)),
+    getJobLoadsInRange(db, { companyId: job.companyId, jobId: job.id, rangeStart, rangeEnd })
+  ]);
+  const notes = noteRows.filter((n) => {
+    const key = n.createdAt.toISOString().slice(0, 10);
+    return key >= rangeStart && key <= rangeEnd;
+  }).map((n) => ({ note: n.note, at: n.createdAt.toISOString() }));
+  const photos2 = [];
+  for (const p of photoRows) {
+    const at = p.capturedAt ?? p.createdAt;
+    const key = at.toISOString().slice(0, 10);
+    if (key < rangeStart || key > rangeEnd)
+      continue;
+    photos2.push({ id: p.id, stage: p.stage, caption: p.caption, url: await getUrl(p.blobKey), capturedAt: at.toISOString() });
+  }
+  return {
+    version: 1,
+    job: { id: job.id, jobType: job.jobType, clientName: job.clientName, jobAddress: job.jobAddress },
+    rangeStart,
+    rangeEnd,
+    generatedAt: new Date().toISOString(),
+    logs: logRows.map((l) => ({
+      logDate: l.logDate,
+      crew: l.crew,
+      hours: l.hours,
+      notes: l.notes,
+      blockers: l.blockers,
+      clientSummary: l.clientSummary
+    })),
+    notes,
+    photos: photos2,
+    loads: {
+      items: loads,
+      count: loads.length,
+      totalCost: moneyTotal(loads.map((l) => l.cost))
+    },
+    narrative: "",
+    polishedWithAi: false
+  };
+}
+function parseWorkSummaryContent(json) {
+  const empty = {
+    version: 1,
+    job: { id: 0, jobType: "", clientName: "", jobAddress: "" },
+    rangeStart: "",
+    rangeEnd: "",
+    generatedAt: "",
+    logs: [],
+    notes: [],
+    photos: [],
+    loads: { items: [], count: 0, totalCost: "0.00" },
+    narrative: "",
+    polishedWithAi: false
+  };
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object")
+      return empty;
+    return {
+      ...empty,
+      ...parsed,
+      job: { ...empty.job, ...parsed.job ?? {} },
+      logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+      photos: Array.isArray(parsed.photos) ? parsed.photos : [],
+      loads: {
+        items: Array.isArray(parsed.loads?.items) ? parsed.loads.items : [],
+        count: typeof parsed.loads?.count === "number" ? parsed.loads.count : Array.isArray(parsed.loads?.items) ? parsed.loads.items.length : 0,
+        totalCost: typeof parsed.loads?.totalCost === "string" ? parsed.loads.totalCost : "0.00"
+      },
+      narrative: typeof parsed.narrative === "string" ? parsed.narrative : "",
+      polishedWithAi: parsed.polishedWithAi === true
+    };
+  } catch {
+    return empty;
+  }
+}
+
+// src/aiPrompts.ts
+var AUDIENCE_TEXT = {
+  en: {
+    individual: "a hand-picked list of the company's past clients",
+    never_closed: "past clients who received an estimate from this company but never booked the work \u2014 this is a friendly win-back message",
+    all: "the company's past clients"
+  },
+  es: {
+    individual: "una lista de clientes anteriores de la empresa, elegidos a mano",
+    never_closed: "clientes anteriores que recibieron un estimado de esta empresa pero nunca contrataron el trabajo \u2014 es un mensaje amable para recuperarlos",
+    all: "los clientes anteriores de la empresa"
+  }
+};
+var PROMO_SYSTEM = {
+  en: [
+    "You write marketing emails for a small local contractor (home remodeling and construction services).",
+    "Rules you must follow:",
+    "- Use ONLY the facts in the contractor's brief and the company details provided. Never invent discounts, prices, dates, deadlines, ratings, review counts, guarantees, licenses, or services that are not stated.",
+    "- If the brief states an offer (for example a percentage off, or financing), feature it exactly as stated \u2014 do not change the numbers and do not add conditions.",
+    "- Write in a professional, plain, friendly tone. No hype, no pressure tactics, no exclamation spam.",
+    "- Write in English.",
+    '- Return ONLY a JSON object with exactly these keys: "subject", "headline", "body". No markdown fences, no extra text.',
+    "- The body is plain text, 120 to 220 words, paragraphs separated by blank lines."
+  ].join(`
+`),
+  es: [
+    "Redactas correos de marketing para un contratista local peque\xF1o (remodelaci\xF3n y construcci\xF3n de viviendas).",
+    "Reglas que debes seguir:",
+    "- Usa SOLO los datos del texto del contratista y los datos de la empresa indicados. Nunca inventes descuentos, precios, fechas, plazos, calificaciones, cantidades de rese\xF1as, garant\xEDas, licencias ni servicios que no est\xE9n indicados.",
+    "- Si el texto indica una oferta (por ejemplo un porcentaje de descuento o financiamiento), pres\xE9ntala exactamente como est\xE1 escrita \u2014 no cambies los n\xFAmeros ni agregues condiciones.",
+    "- Escribe con un tono profesional, sencillo y amable. Sin exageraciones, sin t\xE1cticas de presi\xF3n, sin exceso de signos de exclamaci\xF3n.",
+    "- Escribe en espa\xF1ol, con un espa\xF1ol comercial natural y correcto.",
+    '- Devuelve SOLO un objeto JSON con exactamente estas claves: "subject", "headline", "body". Sin bloques de c\xF3digo markdown, sin texto adicional.',
+    "- El cuerpo es texto plano, de 120 a 220 palabras, con p\xE1rrafos separados por l\xEDneas en blanco."
+  ].join(`
+`)
+};
+function buildPromoAiPrompt(args) {
+  const company = args.companyName.trim() || (args.lang === "es" ? "la empresa" : "the company");
+  const details = [
+    `${args.lang === "es" ? "Empresa" : "Company"}: ${company}`,
+    args.serviceArea.trim() ? `${args.lang === "es" ? "\xC1rea de servicio" : "Service area"}: ${args.serviceArea.trim()}` : "",
+    args.phone.trim() ? `${args.lang === "es" ? "Tel\xE9fono" : "Phone"}: ${args.phone.trim()}` : "",
+    args.website.trim() ? `${args.lang === "es" ? "Sitio web" : "Website"}: ${args.website.trim()}` : ""
+  ].filter(Boolean).join(`
+`);
+  const user = args.lang === "es" ? [
+    `Tipo de campa\xF1a: ${args.type === "blog" ? "art\xEDculo informativo (blog)" : "promoci\xF3n"}`,
+    `Audiencia: ${AUDIENCE_TEXT.es[args.audience]}`,
+    details,
+    "",
+    "Texto del contratista (la \xFAnica fuente de ofertas y datos):",
+    `"""${args.brief.trim()}"""`,
+    "",
+    "Escribe el correo ahora."
+  ].join(`
+`) : [
+    `Campaign type: ${args.type === "blog" ? "blog-style update" : "promotion"}`,
+    `Audience: ${AUDIENCE_TEXT.en[args.audience]}`,
+    details,
+    "",
+    "The contractor's brief (the only source of offers and facts):",
+    `"""${args.brief.trim()}"""`,
+    "",
+    "Write the email now."
+  ].join(`
+`);
+  return { system: PROMO_SYSTEM[args.lang], user };
+}
+function parseAiPromoContent(text) {
+  const trimmed = text.trim();
+  const jsonStart = trimmed.indexOf("{");
+  const jsonEnd = trimmed.lastIndexOf("}");
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1));
+      const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+      const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+      const bodyText = typeof parsed.body === "string" ? parsed.body.trim() : "";
+      if (subject || bodyText)
+        return { subject, headline, bodyText };
+    } catch {}
+  }
+  const lines = trimmed.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const subject = lines[0] ?? "";
+  return { subject, headline: subject, bodyText: lines.slice(1).join(`
+
+`) || trimmed };
+}
+var SUMMARY_SYSTEM = {
+  en: [
+    "You polish work summaries that a contractor sends to their client about a job in progress.",
+    "Rules you must follow:",
+    "- Rewrite the draft into clean, client-friendly prose with the SAME facts and the SAME work items, in the same order. Never add work, materials, dates, people, or results that are not in the draft, and never drop any work item.",
+    "- Fix spelling, grammar and rambling run-ons. Keep it factual and concise \u2014 plain professional tone, no marketing hype.",
+    "- Keep the paragraph structure of the draft (one paragraph per day or note), paragraphs separated by blank lines.",
+    "- Write in English.",
+    "- Return ONLY the polished text \u2014 no preamble, no quotes, no notes about the edit."
+  ].join(`
+`),
+  es: [
+    "Pules res\xFAmenes de trabajo que un contratista env\xEDa a su cliente sobre una obra en curso.",
+    "Reglas que debes seguir:",
+    "- Reescribe el borrador en una prosa limpia y clara para el cliente, con los MISMOS datos y las MISMAS partidas de trabajo, en el mismo orden. Nunca agregues trabajos, materiales, fechas, personas ni resultados que no est\xE9n en el borrador, y nunca omitas ninguna partida.",
+    "- Corrige la ortograf\xEDa, la gram\xE1tica y las frases largas o confusas. Mant\xE9n un tono factual y conciso \u2014 profesional y sencillo, sin exageraciones de marketing.",
+    "- Conserva la estructura de p\xE1rrafos del borrador (un p\xE1rrafo por d\xEDa o nota), con p\xE1rrafos separados por l\xEDneas en blanco.",
+    "- Escribe en espa\xF1ol, con un espa\xF1ol comercial natural y correcto.",
+    "- Devuelve SOLO el texto pulido \u2014 sin introducci\xF3n, sin comillas, sin notas sobre la edici\xF3n."
+  ].join(`
+`)
+};
+function buildSummaryPolishAiPrompt(args) {
+  const range = args.rangeStart && args.rangeEnd ? args.lang === "es" ? ` (${args.rangeStart} a ${args.rangeEnd})` : ` (${args.rangeStart} to ${args.rangeEnd})` : "";
+  const user = args.lang === "es" ? [
+    `Trabajo: ${args.jobType || "Proyecto"}${args.clientName ? ` para ${args.clientName}` : ""}${range}`,
+    "",
+    "Borrador:",
+    `"""${args.text.trim()}"""`,
+    "",
+    "Devuelve el texto pulido ahora."
+  ].join(`
+`) : [
+    `Job: ${args.jobType || "Project"}${args.clientName ? ` for ${args.clientName}` : ""}${range}`,
+    "",
+    "Draft:",
+    `"""${args.text.trim()}"""`,
+    "",
+    "Return the polished text now."
+  ].join(`
+`);
+  return { system: SUMMARY_SYSTEM[args.lang], user };
+}
+
+// src/safety.ts
+var SAFETY_TALKS = [
+  {
+    slug: "ladder-safety",
+    titleEn: "Ladder safety",
+    titleEs: "Seguridad en escaleras",
+    bulletsEn: [
+      "Pick the right ladder for the job and check its duty rating covers you plus your tools and materials.",
+      "Inspect before every use: rails, rungs, feet, spreaders and locks. Tag out and remove any damaged ladder.",
+      "Set up on firm, level ground at a 4-to-1 angle \u2014 one foot out for every four feet up \u2014 and tie off or have someone foot the base when needed.",
+      "Extend an extension ladder at least 3 feet above the landing and never stand on the top two rungs.",
+      "Keep three points of contact while climbing; face the ladder and keep your belt buckle between the rails.",
+      "Never carry tools in your hands while climbing \u2014 use a tool belt or hoist materials with a rope.",
+      "Keep ladders away from doors, traffic and overhead power lines; never use a metal ladder near live electrical work.",
+      "One person per ladder, and never move or 'walk' a ladder with someone on it."
+    ],
+    bulletsEs: [
+      "Elija la escalera correcta para el trabajo y verifique que su capacidad cubra su peso m\xE1s herramientas y materiales.",
+      "Inspeccione antes de cada uso: rieles, pelda\xF1os, patas, tirantes y seguros. Retire y marque cualquier escalera da\xF1ada.",
+      "Col\xF3quela sobre suelo firme y nivelado con un \xE1ngulo de 4 a 1 \u2014 un pie hacia afuera por cada cuatro de altura \u2014 y am\xE1rrela o pida que alguien sujete la base.",
+      "Extienda la escalera de extensi\xF3n al menos 3 pies por encima del punto de apoyo y nunca se pare en los dos pelda\xF1os superiores.",
+      "Mantenga tres puntos de contacto al subir; mire hacia la escalera y mantenga la hebilla del cintur\xF3n entre los rieles.",
+      "Nunca lleve herramientas en las manos al subir \u2014 use un cintur\xF3n de herramientas o suba los materiales con una cuerda.",
+      "Mantenga las escaleras alejadas de puertas, tr\xE1fico y cables el\xE9ctricos a\xE9reos; nunca use una escalera de metal cerca de trabajo el\xE9ctrico activo.",
+      "Una sola persona por escalera, y nunca mueva ni 'camine' una escalera con alguien encima."
+    ]
+  },
+  {
+    slug: "fall-protection",
+    titleEn: "Fall protection",
+    titleEs: "Protecci\xF3n contra ca\xEDdas",
+    bulletsEn: [
+      "Fall protection is required when working 6 feet or more above a lower level \u2014 guardrails, safety nets, or a personal fall arrest system.",
+      "Inspect your harness and lanyard before every use: webbing, stitching, buckles and connectors. Remove damaged gear from service.",
+      "Anchor to a point that can support 5,000 pounds per attached worker, and keep the anchor above your dorsal D-ring when possible.",
+      "Plan your fall clearance before you tie off \u2014 your lanyard, deceleration distance and height must fit above the level below.",
+      "Keep 100% tie-off when moving between anchor points; use twin-leg lanyards where anchors are spaced out.",
+      "Cover or guard every floor hole and skylight, and mark openings so nobody steps through by mistake.",
+      "Never use a ladder, bucket or scaffold rail as an anchor unless it is rated for fall arrest.",
+      "If someone falls and is hanging in a harness, call 911 and start the rescue plan immediately \u2014 suspension trauma can begin in minutes."
+    ],
+    bulletsEs: [
+      "Se requiere protecci\xF3n contra ca\xEDdas al trabajar a 6 pies o m\xE1s sobre un nivel inferior \u2014 barandas, redes de seguridad o un sistema personal de detenci\xF3n de ca\xEDdas.",
+      "Inspeccione su arn\xE9s y l\xEDnea de vida antes de cada uso: cintas, costuras, hebillas y conectores. Retire del servicio el equipo da\xF1ado.",
+      "Anclese a un punto capaz de soportar 5,000 libras por trabajador conectado, y mantenga el anclaje por encima del anillo dorsal cuando sea posible.",
+      "Planifique su distancia libre de ca\xEDda antes de amarrarse \u2014 la l\xEDnea, la distancia de desaceleraci\xF3n y su altura deben caber sobre el nivel inferior.",
+      "Mantenga el amarre al 100% al moverse entre puntos de anclaje; use l\xEDneas dobles donde los anclajes est\xE9n separados.",
+      "Cubra o proteja cada hueco en el piso y tragaluz, y marque las aberturas para que nadie pase por error.",
+      "Nunca use una escalera, un balde o una baranda de andamio como anclaje a menos que est\xE9 clasificado para detenci\xF3n de ca\xEDdas.",
+      "Si alguien cae y queda colgando del arn\xE9s, llame al 911 e inicie el plan de rescate de inmediato \u2014 el trauma por suspensi\xF3n puede comenzar en minutos."
+    ]
+  },
+  {
+    slug: "ppe",
+    titleEn: "PPE \u2014 personal protective equipment",
+    titleEs: "EPP \u2014 equipo de protecci\xF3n personal",
+    bulletsEn: [
+      "Wear the PPE the task calls for: eye and face protection, gloves, hearing protection, respirators, hard hats and hi-vis as assigned.",
+      "Safety glasses are the default on site; add goggles or a face shield for grinding, cutting, chipping and chemical splash risks.",
+      "Match gloves to the hazard \u2014 cut-resistant for sharp stock, chemical-resistant for solvents, leather for rough material handling.",
+      "Use hearing protection whenever you must shout to be heard at arm's length, and around saws, breakers and compressors.",
+      "A respirator only works with the right cartridge, a clean seal and a fit test \u2014 facial hair that breaks the seal breaks the protection.",
+      "Inspect PPE before each use, clean it after, and store it out of sun and dust. Replace anything cracked, torn or worn out.",
+      "PPE is the last line of defense, not the first: fix the hazard with guards, ventilation and distance whenever you can."
+    ],
+    bulletsEs: [
+      "Use el EPP que la tarea requiera: protecci\xF3n para ojos y cara, guantes, protecci\xF3n auditiva, respiradores, casco y ropa de alta visibilidad seg\xFAn se asigne.",
+      "Las gafas de seguridad son la norma en la obra; agregue gafas herm\xE9ticas o careta para esmerilar, cortar, picar y riesgos de salpicaduras qu\xEDmicas.",
+      "Elija los guantes seg\xFAn el riesgo \u2014 resistentes a cortes para material filoso, resistentes a qu\xEDmicos para solventes, cuero para manejo de material \xE1spero.",
+      "Use protecci\xF3n auditiva siempre que deba gritar para que le escuchen a un brazo de distancia, y cerca de sierras, martillos demoledores y compresores.",
+      "Un respirador solo funciona con el cartucho correcto, un sello limpio y una prueba de ajuste \u2014 la barba que rompe el sello rompe la protecci\xF3n.",
+      "Inspeccione el EPP antes de cada uso, l\xEDmpielo despu\xE9s y gu\xE1rdelo lejos del sol y el polvo. Reemplace todo lo que est\xE9 roto, rajado o desgastado.",
+      "El EPP es la \xFAltima l\xEDnea de defensa, no la primera: elimine el riesgo con guardas, ventilaci\xF3n y distancia siempre que pueda."
+    ]
+  },
+  {
+    slug: "heat-illness",
+    titleEn: "Heat illness",
+    titleEs: "Enfermedades por calor",
+    bulletsEn: [
+      "Know the signs: heat cramps, then exhaustion (heavy sweating, nausea, dizziness, headache), then heat stroke \u2014 hot dry skin, confusion, collapse. Heat stroke is a 911 emergency.",
+      "Drink water before you feel thirsty \u2014 about a cup every 15\u201320 minutes in heavy heat, up to a quart an hour.",
+      "Build up to full work in heat over several days; new and returning workers are at the highest risk in their first days.",
+      "Use shade and scheduled rest breaks, and rotate heavy tasks to cooler parts of the day when the schedule allows.",
+      "Watch your buddy: confusion, slurred speech or stumbling in the heat means stop work, move to shade, cool them and get help.",
+      "Cool a heat-stroke victim fast \u2014 wet the whole body and fan, or use ice on the neck, armpits and groin \u2014 while waiting for EMS.",
+      "Limit alcohol the night before and speak up about medicines or conditions that raise heat risk; nobody gets disciplined for reporting symptoms.",
+      "Light-colored, loose clothing and a hat help; skip energy drinks and extra caffeine on the hottest days."
+    ],
+    bulletsEs: [
+      "Conozca las se\xF1ales: calambres por calor, luego agotamiento (sudor abundante, n\xE1useas, mareos, dolor de cabeza) y despu\xE9s golpe de calor \u2014 piel caliente y seca, confusi\xF3n, desmayo. El golpe de calor es una emergencia: llame al 911.",
+      "Beba agua antes de sentir sed \u2014 aproximadamente una taza cada 15\u201320 minutos con calor intenso, hasta un cuarto de gal\xF3n por hora.",
+      "Ad\xE1ptese al trabajo con calor de forma gradual durante varios d\xEDas; los trabajadores nuevos o que regresan tienen el mayor riesgo en sus primeros d\xEDas.",
+      "Use la sombra y descansos programados, y pase las tareas pesadas a las horas m\xE1s frescas del d\xEDa cuando el horario lo permita.",
+      "Vigile a su compa\xF1ero: confusi\xF3n, dificultad para hablar o tropiezos con calor significan detener el trabajo, llevarlo a la sombra, refrescarlo y buscar ayuda.",
+      "Enfr\xEDe r\xE1pido a una v\xEDctima de golpe de calor \u2014 moje todo el cuerpo y abanique, o ponga hielo en cuello, axilas e ingle \u2014 mientras llega la ayuda m\xE9dica.",
+      "Limite el alcohol la noche anterior y avise sobre medicamentos o condiciones que aumenten el riesgo por calor; nadie ser\xE1 sancionado por reportar s\xEDntomas.",
+      "La ropa clara y holgada y un sombrero ayudan; evite las bebidas energ\xE9ticas y el exceso de cafe\xEDna en los d\xEDas m\xE1s calurosos."
+    ]
+  },
+  {
+    slug: "electrical-safety",
+    titleEn: "Electrical safety",
+    titleEs: "Seguridad el\xE9ctrica",
+    bulletsEn: [
+      "Treat every circuit as live until it is tested dead. Only qualified electricians open panels and work on energized equipment.",
+      "Lock out and tag out before servicing tools, equipment or circuits \u2014 and verify with a tester before touching conductors.",
+      "Use GFCI protection for all temporary power on site; test GFCIs daily and replace cords with damaged insulation or missing ground pins.",
+      "Keep at least 10 feet from overhead power lines \u2014 more for higher voltages \u2014 and treat downed lines as energized.",
+      "Never use electrical tape as a repair; damaged cords come out of service until properly fixed or replaced.",
+      "Keep panels, disconnects and breaker boxes accessible with 3 feet of clear working space.",
+      "Water and electricity don't mix: keep cords, tools and connections out of standing water, and dry hands before handling plugs.",
+      "If someone receives a shock, don't touch them until the power is off; call 911 and report every shock, even a 'small' one."
+    ],
+    bulletsEs: [
+      "Trate todo circuito como activo hasta comprobar que no tiene energ\xEDa. Solo electricistas calificados abren paneles y trabajan en equipos energizados.",
+      "Bloquee y etiquete antes de dar servicio a herramientas, equipos o circuitos \u2014 y verifique con un probador antes de tocar conductores.",
+      "Use protecci\xF3n GFCI en toda la energ\xEDa temporal de la obra; pruebe los GFCI a diario y reemplace cables con aislamiento da\xF1ado o sin clavija de tierra.",
+      "Mant\xE9ngase al menos a 10 pies de los cables el\xE9ctricos a\xE9reos \u2014 m\xE1s para voltajes mayores \u2014 y trate los cables ca\xEDdos como energizados.",
+      "Nunca use cinta aislante como reparaci\xF3n; los cables da\xF1ados salen de servicio hasta repararlos o reemplazarlos correctamente.",
+      "Mantenga paneles, interruptores y cajas de breakers accesibles con 3 pies de espacio libre de trabajo.",
+      "El agua y la electricidad no se mezclan: mantenga cables, herramientas y conexiones fuera del agua estancada y s\xE9quese las manos antes de tocar enchufes.",
+      "Si alguien recibe una descarga, no lo toque hasta cortar la energ\xEDa; llame al 911 y reporte toda descarga, aunque parezca peque\xF1a."
+    ]
+  },
+  {
+    slug: "silica-dust",
+    titleEn: "Silica dust",
+    titleEs: "Polvo de s\xEDlice",
+    bulletsEn: [
+      "Cutting, grinding, mixing or demolishing concrete, block, tile and stone creates respirable silica dust that permanently damages lungs.",
+      "Water is the first control: wet-cut, wet-sweep and use mist so dust never becomes airborne.",
+      "Use vacuum attachments with HEPA filters and shrouds fitted to the tool for grinding, mixing and drilling.",
+      "Never dry-sweep or use compressed air to clean dusty surfaces or clothing where silica dust is present.",
+      "Work upwind outdoors when you can, and keep bystanders and other trades out of the dust area.",
+      "Wear the assigned respirator for high-dust tasks \u2014 at minimum a properly fitted respirator rated for silica work.",
+      "Wash hands and face before eating, drinking or smoking, and change out of dusty clothes before heading home to family.",
+      "Tell your supervisor if a dust control stops working \u2014 a dry blade or clogged vacuum means stop and fix it, not push through."
+    ],
+    bulletsEs: [
+      "Cortar, esmerilar, mezclar o demoler concreto, bloque, loseta y piedra crea polvo de s\xEDlice respirable que da\xF1a los pulmones de forma permanente.",
+      "El agua es el primer control: corte en h\xFAmedo, barra en h\xFAmedo y use neblina para que el polvo nunca se levante.",
+      "Use aspiradoras con filtros HEPA y cubiertas ajustadas a la herramienta para esmerilar, mezclar y perforar.",
+      "Nunca barra en seco ni use aire comprimido para limpiar superficies o ropa con polvo de s\xEDlice.",
+      "Trabaje a favor del viento al aire libre cuando pueda, y mantenga a otras personas fuera de la zona de polvo.",
+      "Use el respirador asignado para tareas con mucho polvo \u2014 como m\xEDnimo un respirador bien ajustado y clasificado para trabajo con s\xEDlice.",
+      "L\xE1vese las manos y la cara antes de comer, beber o fumar, y c\xE1mbiese la ropa con polvo antes de volver a casa con su familia.",
+      "Avise a su supervisor si un control de polvo deja de funcionar \u2014 una hoja seca o una aspiradora tapada significa detenerse y corregir, no seguir adelante."
+    ]
+  },
+  {
+    slug: "housekeeping-trip-hazards",
+    titleEn: "Housekeeping & trip hazards",
+    titleEs: "Orden, limpieza y riesgos de tropiezo",
+    bulletsEn: [
+      "A clean site is a safe site: stack materials neatly, keep walkways and stairs clear, and never leave debris 'for later'.",
+      "Run cords and hoses overhead or along walls; cover unavoidable crossings and never stretch a cord across a walkway unprotected.",
+      "Pick up offcuts, strap scraps and nail-studded boards as you go \u2014 bend nails over or pull them from scrap lumber.",
+      "Keep exits, panels, extinguishers and first-aid points clear at all times.",
+      "Store flammables, solvents and oily rags in their proper closed containers, away from heat and ignition sources.",
+      "Clean spills immediately and flag wet or uneven floors until they are fixed or dry.",
+      "End each day with a 10-minute reset: tools put away, trash in the dumpster, materials staged for tomorrow."
+    ],
+    bulletsEs: [
+      "Una obra limpia es una obra segura: apile los materiales con orden, mantenga pasillos y escaleras libres y nunca deje escombros 'para despu\xE9s'.",
+      "Pase los cables y mangueras por arriba o pegados a las paredes; proteja los cruces inevitables y nunca deje un cable atravesando un pasillo sin protecci\xF3n.",
+      "Recoja recortes, sobrantes y tablas con clavos sobre la marcha \u2014 doble los clavos o s\xE1quelos de la madera de desecho.",
+      "Mantenga libres en todo momento las salidas, paneles, extintores y puntos de primeros auxilios.",
+      "Guarde inflamables, solventes y trapos con aceite en sus recipientes cerrados adecuados, lejos del calor y de fuentes de ignici\xF3n.",
+      "Limpie los derrames de inmediato y se\xF1ale los pisos mojados o desnivelados hasta que se corrijan o sequen.",
+      "Termine cada d\xEDa con 10 minutos de orden: herramientas guardadas, basura en el contenedor y materiales listos para ma\xF1ana."
+    ]
+  },
+  {
+    slug: "power-tools",
+    titleEn: "Power tools",
+    titleEs: "Herramientas el\xE9ctricas",
+    bulletsEn: [
+      "Use the right tool for the task and never defeat or remove a guard \u2014 guards go back on before the tool is used again.",
+      "Inspect cords, plugs, blades and bits before use; a tool that sparks, smokes or has a damaged cord comes out of service.",
+      "Disconnect power before changing blades or bits, making adjustments, or clearing a jam.",
+      "Let blades reach full speed before cutting and stop completely before you set the tool down.",
+      "Clamp small work \u2014 never hold a piece by hand near a spinning blade, and keep both hands on the tool where it is designed for two.",
+      "Keep cords behind you and out of the cutting path; use battery tools where cords create a trip or cut risk.",
+      "No loose clothing, jewelry or gloves near rotating parts; tie back long hair.",
+      "Report any tool that 'feels wrong' \u2014 vibration, noise or smell changes are early warnings, not quirks."
+    ],
+    bulletsEs: [
+      "Use la herramienta correcta para la tarea y nunca elimine ni anule una guarda \u2014 las guardas se reinstalan antes de volver a usar la herramienta.",
+      "Inspeccione cables, enchufes, hojas y brocas antes de usar; una herramienta que echa chispas, humo o tiene el cable da\xF1ado sale de servicio.",
+      "Desconecte la energ\xEDa antes de cambiar hojas o brocas, hacer ajustes o desatascar la herramienta.",
+      "Deje que la hoja alcance su velocidad completa antes de cortar y espere a que se detenga por completo antes de soltar la herramienta.",
+      "Sujete las piezas peque\xF1as con prensa \u2014 nunca sostenga una pieza con la mano cerca de una hoja girando, y use ambas manos donde la herramienta est\xE1 dise\xF1ada para dos.",
+      "Mantenga los cables detr\xE1s de usted y fuera de la trayectoria de corte; use herramientas de bater\xEDa donde los cables creen riesgo de tropiezo o corte.",
+      "Nada de ropa suelta, joyas o guantes cerca de partes giratorias; recoja el cabello largo.",
+      "Reporte cualquier herramienta que 'se sienta mal' \u2014 cambios en vibraci\xF3n, ruido u olor son advertencias tempranas, no detalles sin importancia."
+    ]
+  },
+  {
+    slug: "hand-tools",
+    titleEn: "Hand tools",
+    titleEs: "Herramientas manuales",
+    bulletsEn: [
+      "Choose the correct size and type: a wrench that slips and a screwdriver used as a chisel both cause injuries.",
+      "Keep cutting edges sharp \u2014 a dull blade needs more force and slips more easily \u2014 and carry sharp tools in sheaths or pouches, never pockets.",
+      "Cut away from your body and keep your free hand out of the cutting path.",
+      "Inspect handles before use: split, cracked or mushroomed striking faces get repaired or replaced, not taped.",
+      "Pull a wrench toward you when possible instead of pushing, and keep your footing in case it slips.",
+      "Never use cheater bars or extensions the tool wasn't made for, and never use a tool as a hammer unless it is one.",
+      "Put tools back in the box or belt when done \u2014 a tool left on a ladder top or floor edge becomes someone else's accident."
+    ],
+    bulletsEs: [
+      "Elija el tama\xF1o y tipo correctos: una llave que resbala y un destornillador usado como cincel causan lesiones.",
+      "Mantenga los filos afilados \u2014 una hoja sin filo requiere m\xE1s fuerza y resbala m\xE1s f\xE1cil \u2014 y lleve las herramientas filosas en fundas o bolsas, nunca en los bolsillos.",
+      "Corte alejando la herramienta de su cuerpo y mantenga la mano libre fuera de la trayectoria de corte.",
+      "Inspeccione los mangos antes de usar: las caras de golpe rajadas, rotas o deformadas se reparan o reemplazan, no se encintan.",
+      "Jale la llave hacia usted cuando sea posible en vez de empujarla, y mantenga buen apoyo por si resbala.",
+      "Nunca use extensiones o palancas para las que la herramienta no fue hecha, y nunca use una herramienta como martillo a menos que lo sea.",
+      "Guarde las herramientas en la caja o el cintur\xF3n al terminar \u2014 una herramienta olvidada sobre una escalera o el borde del piso ser\xE1 el accidente de otro."
+    ]
+  },
+  {
+    slug: "trenching-excavation",
+    titleEn: "Trenching & excavation awareness",
+    titleEs: "Zanjas y excavaciones \u2014 concientizaci\xF3n",
+    bulletsEn: [
+      "A trench collapse can bury a worker in seconds \u2014 never enter an unprotected trench 5 feet deep or more.",
+      "Protective systems (sloping, shoring or shielding) are designed and checked by the competent person \u2014 do not improvise them.",
+      "The competent person inspects the excavation daily and after rain or any change in conditions before anyone enters.",
+      "Keep spoil piles, materials and equipment at least 2 feet back from the edge, and barricade open excavations.",
+      "Use a ladder, ramp or stairway for access at least every 25 feet of travel inside the trench.",
+      "Stay out of trenches where water is accumulating, and never work under loads being lifted over the excavation.",
+      "Call 811 and confirm locates before digging; hand-dig carefully near marked utilities.",
+      "If soil looks cracked, slumped or layered differently than expected, get out and tell the competent person."
+    ],
+    bulletsEs: [
+      "El derrumbe de una zanja puede enterrar a un trabajador en segundos \u2014 nunca entre a una zanja sin protecci\xF3n de 5 pies de profundidad o m\xE1s.",
+      "Los sistemas de protecci\xF3n (taludes, apuntalamiento o blindaje) son dise\xF1ados y revisados por la persona competente \u2014 no los improvise.",
+      "La persona competente inspecciona la excavaci\xF3n a diario y despu\xE9s de lluvia o cualquier cambio en las condiciones antes de que alguien entre.",
+      "Mantenga la tierra excavada, los materiales y el equipo al menos a 2 pies del borde, y ponga barricadas en las excavaciones abiertas.",
+      "Use una escalera, rampa o escalinata de acceso al menos cada 25 pies de recorrido dentro de la zanja.",
+      "No permanezca en zanjas donde se acumula agua, y nunca trabaje bajo cargas que se est\xE9n levantando sobre la excavaci\xF3n.",
+      "Llame al 811 y confirme las localizaciones antes de excavar; excave a mano con cuidado cerca de los servicios marcados.",
+      "Si la tierra se ve agrietada, hundida o con capas diferentes a lo esperado, salga y avise a la persona competente."
+    ]
+  },
+  {
+    slug: "driving-jobsite-vehicles",
+    titleEn: "Driving & jobsite vehicles",
+    titleEs: "Manejo y veh\xEDculos en la obra",
+    bulletsEn: [
+      "Seat belts every trip, every seat \u2014 and no phone in hand while driving. Pull over to read a text or an address.",
+      "Walk around the vehicle before backing; use a spotter whenever your view is blocked, and agree on hand signals first.",
+      "Back-in parking where possible so the first move of the day is forward, with a clear view.",
+      "Slow down on site: watch for workers on foot, uneven ground, overhead obstructions and stacked materials.",
+      "Secure every load \u2014 tools, ladders and material \u2014 so nothing shifts or falls in traffic or on site.",
+      "Never ride in the bed, on running boards, or on forks or buckets; riders sit in seats with belts.",
+      "Report every vehicle incident, scrape or near-miss the same day, however small it looks.",
+      "Fatigue and rushing cause most driving incidents: plan the route, leave margin, and never let a schedule talk you into speeding."
+    ],
+    bulletsEs: [
+      "Cintur\xF3n de seguridad en cada viaje y cada asiento \u2014 y nada de tel\xE9fono en la mano al manejar. Det\xE9ngase para leer un mensaje o una direcci\xF3n.",
+      "Rodee el veh\xEDculo caminando antes de retroceder; use un gu\xEDa siempre que su vista est\xE9 bloqueada y acuerden las se\xF1ales con las manos primero.",
+      "Estaci\xF3nese de reversa cuando sea posible para que el primer movimiento del d\xEDa sea hacia adelante, con vista despejada.",
+      "Reduzca la velocidad en la obra: vigile a los trabajadores a pie, el terreno irregular, obstrucciones elevadas y materiales apilados.",
+      "Asegure toda la carga \u2014 herramientas, escaleras y material \u2014 para que nada se mueva o caiga en el tr\xE1fico o en la obra.",
+      "Nunca viaje en la caja, en los estribos, ni en horquillas o baldes; los pasajeros van en asientos con cintur\xF3n.",
+      "Reporte el mismo d\xEDa todo incidente vehicular, roce o casi-accidente, por peque\xF1o que parezca.",
+      "El cansancio y la prisa causan la mayor\xEDa de los incidentes al manejar: planifique la ruta, deje margen y nunca deje que un horario lo empuje a exceder la velocidad."
+    ]
+  },
+  {
+    slug: "lifting-back-safety",
+    titleEn: "Lifting & back safety",
+    titleEs: "Levantamiento y cuidado de la espalda",
+    bulletsEn: [
+      "Plan the lift before you start: check the weight, the path and where the load will land.",
+      "Use carts, dollies, hoists and team lifts for heavy or awkward items \u2014 ask for help instead of testing your back.",
+      "Lift with your legs: feet shoulder-width, back straight, load close to your body, and a firm grip.",
+      "Never twist while carrying \u2014 turn with your feet. Set the load down with the same leg-driven motion.",
+      "Team lifts need one caller: agree on the lift, the path and the set-down before anyone picks up.",
+      "Break heavy loads into smaller ones when you can, and stage materials close to where they will be installed.",
+      "Report back pain or strain early \u2014 small strains treated early rarely become lost-time injuries."
+    ],
+    bulletsEs: [
+      "Planifique el levantamiento antes de empezar: revise el peso, el camino y d\xF3nde se colocar\xE1 la carga.",
+      "Use carritos, plataformas con ruedas, polipastos y levantamientos en equipo para objetos pesados o inc\xF3modos \u2014 pida ayuda en vez de probar su espalda.",
+      "Levante con las piernas: pies al ancho de los hombros, espalda recta, carga pegada al cuerpo y agarre firme.",
+      "Nunca gire el cuerpo mientras carga \u2014 gire con los pies. Baje la carga con el mismo movimiento de piernas.",
+      "Los levantamientos en equipo necesitan una sola persona que dirija: acuerden el levantamiento, el camino y la bajada antes de cargar.",
+      "Divida las cargas pesadas en partes m\xE1s peque\xF1as cuando pueda, y coloque los materiales cerca de donde se instalar\xE1n.",
+      "Reporte temprano el dolor o la tensi\xF3n en la espalda \u2014 las lesiones peque\xF1as tratadas a tiempo rara vez se vuelven incapacidades."
+    ]
+  },
+  {
+    slug: "scaffolding-awareness",
+    titleEn: "Scaffolding awareness",
+    titleEs: "Andamios \u2014 concientizaci\xF3n",
+    bulletsEn: [
+      "Only trained, authorized workers erect, alter or dismantle scaffolds \u2014 and a competent person inspects them before each shift.",
+      "Check the inspection tag before climbing; a scaffold without a current tag is off limits.",
+      "Scaffold must be fully planked with guardrails, midrails and toe boards when working 10 feet or more above a lower level.",
+      "Keep platforms clear: no material stockpiles, no leaning ladders against rails, no standing on buckets or boxes for extra height.",
+      "Climb the built-in access ladder or stairs \u2014 never cross-braces \u2014 and keep three points of contact.",
+      "Never move a rolling scaffold with anyone on it, and lock casters before working.",
+      "Stay at least 10 feet from power lines, and never overload a platform beyond its rated capacity.",
+      "Report loose planks, missing pins or bent frames immediately \u2014 do not 'make do' with a damaged scaffold."
+    ],
+    bulletsEs: [
+      "Solo trabajadores capacitados y autorizados arman, modifican o desarman andamios \u2014 y una persona competente los inspecciona antes de cada turno.",
+      "Revise la etiqueta de inspecci\xF3n antes de subir; un andamio sin etiqueta vigente est\xE1 prohibido.",
+      "El andamio debe estar totalmente entablado, con barandas, barandas intermedias y rodapi\xE9s al trabajar a 10 pies o m\xE1s sobre un nivel inferior.",
+      "Mantenga las plataformas libres: nada de acopios de material, escaleras apoyadas en las barandas, ni pararse sobre baldes o cajas para ganar altura.",
+      "Suba por la escalera o escalinata incorporada \u2014 nunca por los travesa\xF1os \u2014 y mantenga tres puntos de contacto.",
+      "Nunca mueva un andamio rodante con alguien encima, y bloquee las ruedas antes de trabajar.",
+      "Mant\xE9ngase al menos a 10 pies de los cables el\xE9ctricos y nunca sobrecargue una plataforma m\xE1s all\xE1 de su capacidad nominal.",
+      "Reporte de inmediato tablas sueltas, pasadores faltantes o marcos doblados \u2014 no se conforme con un andamio da\xF1ado."
+    ]
+  },
+  {
+    slug: "roofing-safety",
+    titleEn: "Roofing safety",
+    titleEs: "Seguridad en techos",
+    bulletsEn: [
+      "Fall protection on roofs: guardrails, nets or a personal fall arrest system \u2014 on steep roofs, tie off before stepping out of the access point.",
+      "Check the deck before loading it: rotted or spongy areas get marked and avoided until repaired.",
+      "Use the roof bracket, ladder or lift to move material \u2014 never carry bundles up a ladder by hand.",
+      "Watch the weather: wet, icy or windy roofs are stop-work conditions, not challenges.",
+      "Keep a clean roof: tear-off debris goes down the chute or designated drop zone \u2014 never toss material without a spotter and a barricaded area below.",
+      "Guard skylights and openings \u2014 they do not hold a person's weight, even when they look solid.",
+      "Plan heat into the day: roofing amplifies sun exposure, so water, shade breaks and an early start matter.",
+      "Set ladders on firm ground, extended 3 feet above the eave, and tie them off so they cannot slip."
+    ],
+    bulletsEs: [
+      "Protecci\xF3n contra ca\xEDdas en techos: barandas, redes o sistema personal de detenci\xF3n de ca\xEDdas \u2014 en techos inclinados, am\xE1rrese antes de salir del punto de acceso.",
+      "Revise la superficie del techo antes de cargarla: las zonas podridas o blandas se marcan y se evitan hasta repararlas.",
+      "Use el soporte de techo, la escalera o el elevador para mover material \u2014 nunca suba paquetes a mano por la escalera.",
+      "Vigile el clima: techos mojados, con hielo o con viento son condici\xF3n de detener el trabajo, no un reto.",
+      "Mantenga el techo limpio: los escombros van por el conducto o la zona de ca\xEDda designada \u2014 nunca lance material sin un vig\xEDa y un \xE1rea con barricadas abajo.",
+      "Proteja los tragaluces y aberturas \u2014 no soportan el peso de una persona, aunque parezcan s\xF3lidos.",
+      "Incluya el calor en la planificaci\xF3n del d\xEDa: el techo amplifica la exposici\xF3n al sol, as\xED que el agua, los descansos a la sombra y empezar temprano importan.",
+      "Coloque las escaleras sobre suelo firme, extendidas 3 pies por encima del alero, y am\xE1rrelas para que no resbalen."
+    ]
+  },
+  {
+    slug: "concrete-masonry",
+    titleEn: "Concrete & masonry",
+    titleEs: "Concreto y mamposter\xEDa",
+    bulletsEn: [
+      "Wet concrete is caustic: gloves, long sleeves and eye protection are mandatory, and wash skin contact off right away \u2014 cement burns get worse the longer they sit.",
+      "Use wet-cutting and vacuum controls for silica dust when sawing, mixing or demoing concrete and block.",
+      "Guard rebar: cap exposed vertical and horizontal bar ends that anyone could fall or step onto.",
+      "Shoring and formwork are engineered \u2014 never remove forms or shores early or alter them without the go-ahead.",
+      "Chute and pump work: stay clear of the pump hopper and hose whip zones, and never stand where a swinging chute can reach you.",
+      "Lift block and bags with your legs and team help; masonry units are heavier than they look and most strains happen at the end of the day.",
+      "Keep mixer and saw guards in place, and lock out equipment before clearing a jam or cleaning the drum."
+    ],
+    bulletsEs: [
+      "El concreto fresco es c\xE1ustico: guantes, mangas largas y protecci\xF3n para los ojos son obligatorios, y lave el contacto con la piel de inmediato \u2014 las quemaduras de cemento empeoran cuanto m\xE1s tiempo pasan.",
+      "Use corte en h\xFAmedo y controles de aspirado para el polvo de s\xEDlice al cortar, mezclar o demoler concreto y bloque.",
+      "Proteja la varilla: tape los extremos expuestos verticales y horizontales sobre los que alguien pueda caer o pisar.",
+      "El apuntalamiento y la cimbra son trabajo de ingenier\xEDa \u2014 nunca retire cimbras o puntales antes de tiempo ni los modifique sin autorizaci\xF3n.",
+      "Trabajo con canalones y bombas: mant\xE9ngase fuera de la tolva de la bomba y de las zonas de latigazo de la manguera, y nunca se pare donde un canal\xF3n en movimiento pueda alcanzarlo.",
+      "Levante bloques y sacos con las piernas y ayuda del equipo; las piezas de mamposter\xEDa pesan m\xE1s de lo que parecen y la mayor\xEDa de las lesiones ocurren al final del d\xEDa.",
+      "Mantenga las guardas de mezcladoras y sierras en su lugar, y bloquee el equipo antes de desatascarlo o limpiar el tambor."
+    ]
+  },
+  {
+    slug: "painting-chemicals",
+    titleEn: "Painting & chemicals",
+    titleEs: "Pintura y productos qu\xEDmicos",
+    bulletsEn: [
+      "Read the label and the safety data sheet before opening a new product \u2014 they state the PPE, ventilation and first aid for that exact chemical.",
+      "Ventilate enclosed spaces when spraying or using solvents; keep ignition sources away from flammable vapors.",
+      "Wear chemical-resistant gloves and eye protection for mixing, spraying and cleanup; add a respirator for spraying and strong solvents.",
+      "Never mix products \u2014 especially bleach with ammonia or acids \u2014 and never pour chemicals into unlabeled or food containers.",
+      "Label every secondary container with the product name and hazard, the day it is filled.",
+      "Store paints and solvents closed, upright and away from heat; oily rags go in a closed metal container to prevent spontaneous fires.",
+      "Know where the eyewash and first-aid kit are before you start; skin and eye exposures get flushed with water for at least 15 minutes.",
+      "Dispose of leftover paint, solvents and wash water by the project rules \u2014 never into soil, storm drains or site trash unless approved."
+    ],
+    bulletsEs: [
+      "Lea la etiqueta y la hoja de datos de seguridad antes de abrir un producto nuevo \u2014 indican el EPP, la ventilaci\xF3n y los primeros auxilios para ese qu\xEDmico exacto.",
+      "Ventile los espacios cerrados al rociar o usar solventes; mantenga las fuentes de ignici\xF3n lejos de los vapores inflamables.",
+      "Use guantes resistentes a qu\xEDmicos y protecci\xF3n para los ojos al mezclar, rociar y limpiar; agregue respirador para rociado y solventes fuertes.",
+      "Nunca mezcle productos \u2014 en especial cloro con amon\xEDaco o \xE1cidos \u2014 y nunca vierta qu\xEDmicos en recipientes sin etiqueta o de alimentos.",
+      "Etiquete cada recipiente secundario con el nombre del producto y el riesgo, el mismo d\xEDa en que lo llena.",
+      "Guarde pinturas y solventes cerrados, en posici\xF3n vertical y lejos del calor; los trapos con aceite van en un recipiente met\xE1lico cerrado para evitar incendios espont\xE1neos.",
+      "Sepa d\xF3nde est\xE1n el lavaojos y el botiqu\xEDn antes de empezar; las exposiciones en piel y ojos se enjuagan con agua por al menos 15 minutos.",
+      "Deseche la pintura, los solventes y el agua de lavado sobrantes seg\xFAn las reglas del proyecto \u2014 nunca en el suelo, drenajes pluviales o basura de la obra sin aprobaci\xF3n."
+    ]
+  },
+  {
+    slug: "fire-safety-extinguishers",
+    titleEn: "Fire safety & extinguishers",
+    titleEs: "Seguridad contra incendios y extintores",
+    bulletsEn: [
+      "Know the fire extinguisher locations on site before hot work starts \u2014 and keep them unblocked at all times.",
+      "PASS: Pull the pin, Aim at the base of the fire, Squeeze the handle, Sweep side to side. Only fight a small, contained fire, with your exit behind you.",
+      "If the fire grows, spreads or fills the area with smoke: get out, close doors behind you, and call 911. No tool or material is worth going back for.",
+      "Hot work (grinding, cutting, soldering, roofing torches) needs a clear area, combustibles moved or covered, and a fire watch during and after the work.",
+      "Keep fuel, solvents and propane stored upright, capped and away from ignition sources and building exits.",
+      "Oily and solvent-soaked rags go into closed metal cans \u2014 they can self-ignite in a pile or trash bin.",
+      "Never block exits, stairways or electrical panels with material, and keep the site address posted for responders.",
+      "Report any extinguisher you use or find discharged or expired so it is recharged or replaced the same day."
+    ],
+    bulletsEs: [
+      "Conozca la ubicaci\xF3n de los extintores en la obra antes de empezar trabajo en caliente \u2014 y mant\xE9ngalos despejados en todo momento.",
+      "M\xE9todo PASS: jale el pasador (Pull), apunte a la base del fuego (Aim), apriete la manija (Squeeze) y barra de lado a lado (Sweep). Combata solo un fuego peque\xF1o y contenido, con su salida detr\xE1s de usted.",
+      "Si el fuego crece, se extiende o llena el \xE1rea de humo: salga, cierre las puertas tras de usted y llame al 911. Ninguna herramienta o material vale regresar por \xE9l.",
+      "El trabajo en caliente (esmerilar, cortar, soldar, sopletes de techo) requiere un \xE1rea despejada, combustibles alejados o cubiertos, y un vig\xEDa de incendios durante y despu\xE9s del trabajo.",
+      "Guarde combustible, solventes y propano en posici\xF3n vertical, tapados y lejos de fuentes de ignici\xF3n y salidas del edificio.",
+      "Los trapos con aceite o solvente van en latas met\xE1licas cerradas \u2014 pueden encenderse solos en un mont\xF3n o en la basura.",
+      "Nunca bloquee salidas, escaleras o paneles el\xE9ctricos con material, y mantenga visible la direcci\xF3n de la obra para los servicios de emergencia.",
+      "Reporte todo extintor que use o encuentre descargado o vencido para recargarlo o reemplazarlo el mismo d\xEDa."
+    ]
+  },
+  {
+    slug: "first-aid-readiness",
+    titleEn: "First aid readiness",
+    titleEs: "Preparaci\xF3n en primeros auxilios",
+    bulletsEn: [
+      "Know where the first-aid kit, eyewash and AED are on your site \u2014 before you need them, not after.",
+      "Know who on the crew is first-aid / CPR trained and how to reach them fast.",
+      "For serious bleeding: apply firm direct pressure with a clean dressing and keep pressure on; call 911 for bleeding that won't stop.",
+      "Post the site address and the nearest hospital location where the whole crew can find them; send one person to guide responders in.",
+      "Report every injury, however minor, the same shift \u2014 small cuts and strains documented early protect the worker and the crew.",
+      "Restock what you use: an empty kit is a finding on the next inspection, and a problem in the next emergency.",
+      "If you feel dizzy, ill or impaired in any way, tell your lead before starting work \u2014 readiness includes saying something."
+    ],
+    bulletsEs: [
+      "Sepa d\xF3nde est\xE1n el botiqu\xEDn, el lavaojos y el desfibrilador (AED) en su obra \u2014 antes de necesitarlos, no despu\xE9s.",
+      "Sepa qui\xE9n del equipo est\xE1 capacitado en primeros auxilios y RCP y c\xF3mo localizarlo r\xE1pido.",
+      "Para sangrado serio: aplique presi\xF3n directa y firme con un vendaje limpio y mant\xE9ngala; llame al 911 si el sangrado no se detiene.",
+      "Coloque la direcci\xF3n de la obra y el hospital m\xE1s cercano donde todo el equipo pueda verlos; env\xEDe a una persona a guiar a los servicios de emergencia.",
+      "Reporte toda lesi\xF3n, por menor que sea, en el mismo turno \u2014 los cortes y torceduras documentados temprano protegen al trabajador y al equipo.",
+      "Reponga lo que utilice: un botiqu\xEDn vac\xEDo es una observaci\xF3n en la pr\xF3xima inspecci\xF3n y un problema en la pr\xF3xima emergencia.",
+      "Si se siente mareado, enfermo o afectado de cualquier forma, avise a su l\xEDder antes de empezar a trabajar \u2014 estar preparado incluye decirlo."
+    ]
+  },
+  {
+    slug: "weather-lightning-cold",
+    titleEn: "Weather \u2014 lightning & cold",
+    titleEs: "Clima \u2014 rayos y fr\xEDo",
+    bulletsEn: [
+      "Lightning rule: when thunder roars, go indoors. Stop outdoor work at the first thunder or visible lightning and wait 30 minutes after the last thunder before resuming.",
+      "Safe shelter is a substantial building or a hard-topped vehicle \u2014 not a shed, tarp, tree or open equipment.",
+      "Secure loose materials ahead of storms; unsecured plywood and metal become projectiles in high wind.",
+      "Cold stress is real too, even in the South: wet clothing plus wind pulls heat fast. Layer up, keep a dry change of clothes, and take warm-up breaks.",
+      "Know cold-illness signs: shivering that stops, numb pale skin, confusion and slurred speech all mean get the person warm and get help.",
+      "Rain changes everything: slippery roofs and ladders, unstable soil, and electrical hazards all get worse when wet.",
+      "Nobody argues with a weather stop \u2014 if your lead calls it, secure the work and come down."
+    ],
+    bulletsEs: [
+      "Regla de los rayos: cuando truene, entre a un lugar seguro. Detenga el trabajo al aire libre al primer trueno o rayo visible y espere 30 minutos despu\xE9s del \xFAltimo trueno antes de continuar.",
+      "Un refugio seguro es un edificio s\xF3lido o un veh\xEDculo con techo r\xEDgido \u2014 no un cobertizo, una lona, un \xE1rbol o equipo abierto.",
+      "Asegure los materiales sueltos antes de las tormentas; el contrachapado y el metal sin asegurar se vuelven proyectiles con viento fuerte.",
+      "El estr\xE9s por fr\xEDo tambi\xE9n es real, incluso en el sur: la ropa mojada m\xE1s el viento quitan calor r\xE1pido. V\xEDstase en capas, tenga un cambio de ropa seca y tome descansos para calentarse.",
+      "Conozca las se\xF1ales de enfermedad por fr\xEDo: temblores que se detienen, piel p\xE1lida y entumecida, confusi\xF3n y dificultad para hablar significan calentar a la persona y buscar ayuda.",
+      "La lluvia lo cambia todo: techos y escaleras resbalosos, suelo inestable y riesgos el\xE9ctricos empeoran con la humedad.",
+      "Nadie discute una parada por clima \u2014 si su l\xEDder la ordena, asegure el trabajo y baje."
+    ]
+  },
+  {
+    slug: "utility-locates-811",
+    titleEn: "Utility locates (811)",
+    titleEs: "Localizaci\xF3n de servicios (811)",
+    bulletsEn: [
+      "Call 811 (or submit online) at least two full business days before any digging \u2014 including posts, footings, trenches and grading.",
+      "Mark your dig area in white paint or flags first, so locators know exactly where you plan to excavate.",
+      "Wait for every utility to respond and confirm marks before the shovel or machine touches the ground.",
+      "Respect the marks: the tolerance zone is about 24 inches on either side of a marked line \u2014 hand-dig or vacuum-excavate inside it.",
+      "If you expose a utility, stop and verify it matches the marks; if you damage one, move to safety, call 911 if anyone is at risk, then notify the utility and your supervisor.",
+      "Marks fade and get disturbed: if locates expire, are unclear or the scope changes, request a re-mark before digging.",
+      "Private lines (irrigation, site lighting, homeowner runs past the meter) are NOT located by 811 \u2014 plan separately for those."
+    ],
+    bulletsEs: [
+      "Llame al 811 (o haga la solicitud en l\xEDnea) al menos dos d\xEDas laborables completos antes de cualquier excavaci\xF3n \u2014 incluyendo postes, zapatas, zanjas y nivelaci\xF3n.",
+      "Marque primero su \xE1rea de excavaci\xF3n con pintura blanca o banderas, para que los localizadores sepan exactamente d\xF3nde planea excavar.",
+      "Espere a que cada compa\xF1\xEDa de servicios responda y confirme las marcas antes de que la pala o la m\xE1quina toquen el suelo.",
+      "Respete las marcas: la zona de tolerancia es de unas 24 pulgadas a cada lado de la l\xEDnea marcada \u2014 excave a mano o con aspiradora dentro de ella.",
+      "Si expone un servicio, det\xE9ngase y verifique que coincida con las marcas; si da\xF1a uno, al\xE9jese a un lugar seguro, llame al 911 si alguien est\xE1 en riesgo y luego avise a la compa\xF1\xEDa y a su supervisor.",
+      "Las marcas se borran y se alteran: si las localizaciones vencen, no son claras o el trabajo cambia, solicite una nueva marcaci\xF3n antes de excavar.",
+      "Las l\xEDneas privadas (riego, alumbrado del sitio, l\xEDneas del propietario despu\xE9s del medidor) NO las localiza el 811 \u2014 planifique aparte para ellas."
+    ]
+  },
+  {
+    slug: "demolition-awareness",
+    titleEn: "Demolition awareness",
+    titleEs: "Demolici\xF3n \u2014 concientizaci\xF3n",
+    bulletsEn: [
+      "Survey before demo: confirm power, water, gas and HVAC are shut off and verified dead in the work area \u2014 never trust a switch position alone.",
+      "Check for hazards in older buildings before disturbing them: asbestos-containing materials and lead paint require licensed handling \u2014 stop and ask if you suspect either.",
+      "Demo works top-down and in a planned sequence; never remove structural members outside the plan, and shore anything questionable.",
+      "Control the dust: wet methods and ventilation protect you, the crew and the homeowner's home.",
+      "Keep the drop zone barricaded and a spotter posted; nobody works below active tear-out.",
+      "Watch for hidden hazards in walls and ceilings: live wires, pressurized lines, pests, mold and stored chemicals all show up in demo.",
+      "Load debris out steadily \u2014 piles of demo waste block exits, hide hazards and overload floors."
+    ],
+    bulletsEs: [
+      "Inspeccione antes de demoler: confirme que electricidad, agua, gas y climatizaci\xF3n est\xE9n cortados y verificados sin energ\xEDa en el \xE1rea \u2014 nunca conf\xEDe solo en la posici\xF3n de un interruptor.",
+      "Busque riesgos en edificios antiguos antes de alterarlos: los materiales con asbesto y la pintura con plomo requieren manejo con licencia \u2014 det\xE9ngase y pregunte si sospecha de cualquiera de ellos.",
+      "La demolici\xF3n trabaja de arriba hacia abajo y en una secuencia planeada; nunca retire elementos estructurales fuera del plan y apuntale todo lo dudoso.",
+      "Controle el polvo: los m\xE9todos h\xFAmedos y la ventilaci\xF3n lo protegen a usted, al equipo y a la casa del cliente.",
+      "Mantenga la zona de ca\xEDda con barricadas y un vig\xEDa asignado; nadie trabaja debajo de una demolici\xF3n activa.",
+      "Vigile los riesgos ocultos en paredes y techos: cables activos, tuber\xEDas con presi\xF3n, plagas, moho y qu\xEDmicos almacenados aparecen en la demolici\xF3n.",
+      "Retire los escombros de forma continua \u2014 los montones de desechos bloquean salidas, esconden riesgos y sobrecargan los pisos."
+    ]
+  },
+  {
+    slug: "working-around-public",
+    titleEn: "Working around the public",
+    titleEs: "Trabajar cerca del p\xFAblico",
+    bulletsEn: [
+      "Homeowners, kids, neighbors and pets don't know site hazards \u2014 barricade work zones, drop zones and open excavations every time, even 'just for an hour'.",
+      "Keep a clean, marked path for residents to reach their door, and never leave tools, cords or materials in it.",
+      "Watch backing and swinging equipment extra carefully where the public can approach; use a spotter near streets, sidewalks and driveways.",
+      "Secure the site at the end of the day: ladders down or locked, materials stacked, hazards fenced \u2014 an unattended site attracts curious visitors.",
+      "Be the professional face of the company: explain noise, dust and timing politely, and route complaints to the lead instead of debating them.",
+      "If a member of the public enters the work zone, stop the risky work first, then escort them out courteously.",
+      "Protect parked cars, landscaping and neighboring property with covers and distance \u2014 damage prevention is cheaper than repair."
+    ],
+    bulletsEs: [
+      "Los propietarios, ni\xF1os, vecinos y mascotas no conocen los riesgos de la obra \u2014 ponga barricadas en las zonas de trabajo, de ca\xEDda y en excavaciones abiertas siempre, aunque sea 'solo por una hora'.",
+      "Mantenga un camino limpio y marcado para que los residentes lleguen a su puerta, y nunca deje herramientas, cables o materiales en \xE9l.",
+      "Vigile con cuidado extra el equipo en reversa o en giro donde el p\xFAblico puede acercarse; use un vig\xEDa cerca de calles, aceras y entradas de veh\xEDculos.",
+      "Asegure la obra al final del d\xEDa: escaleras bajadas o aseguradas, materiales apilados, riesgos cercados \u2014 una obra sin supervisi\xF3n atrae visitantes curiosos.",
+      "Sea la cara profesional de la empresa: explique el ruido, el polvo y los horarios con cortes\xEDa, y pase las quejas al l\xEDder en vez de discutirlas.",
+      "Si una persona del p\xFAblico entra a la zona de trabajo, detenga primero el trabajo riesgoso y luego acomp\xE1\xF1ela fuera con cortes\xEDa.",
+      "Proteja los autos estacionados, la jardiner\xEDa y la propiedad vecina con cubiertas y distancia \u2014 prevenir el da\xF1o es m\xE1s barato que repararlo."
+    ]
+  },
+  {
+    slug: "fatigue",
+    titleEn: "Fatigue",
+    titleEs: "Fatiga",
+    bulletsEn: [
+      "Fatigue slows reaction time like alcohol does \u2014 a tired worker on a roof, ladder or saw is a serious hazard.",
+      "Watch for the signs in yourself and your crew: yawning, drifting attention, missed steps, irritability and 'zoning out'.",
+      "Speak up before an incident, not after: telling your lead you're wiped is professionalism, not weakness.",
+      "Sleep is the only real fix \u2014 caffeine and energy drinks mask fatigue for a short while and then make the crash worse.",
+      "Rotate the heaviest and most repetitive tasks, and use scheduled breaks to actually rest, eat and hydrate.",
+      "Long drives after long shifts are high-risk: if you're too tired to drive safely, say so and arrange another way home.",
+      "If a teammate looks dangerously fatigued, flag it to the lead \u2014 looking out for each other is part of the job."
+    ],
+    bulletsEs: [
+      "La fatiga reduce el tiempo de reacci\xF3n igual que el alcohol \u2014 un trabajador cansado en un techo, una escalera o una sierra es un riesgo serio.",
+      "Vigile las se\xF1ales en usted y en su equipo: bostezos, atenci\xF3n dispersa, pasos omitidos, irritabilidad y 'quedarse en blanco'.",
+      "Hable antes de un incidente, no despu\xE9s: decirle a su l\xEDder que est\xE1 agotado es profesionalismo, no debilidad.",
+      "Dormir es la \xFAnica soluci\xF3n real \u2014 la cafe\xEDna y las bebidas energ\xE9ticas disimulan la fatiga por un rato y luego empeoran la ca\xEDda.",
+      "Rote las tareas m\xE1s pesadas y repetitivas, y use los descansos programados para descansar, comer e hidratarse de verdad.",
+      "Manejar trayectos largos despu\xE9s de turnos largos es de alto riesgo: si est\xE1 demasiado cansado para manejar con seguridad, d\xEDgalo y busque otra forma de llegar a casa.",
+      "Si un compa\xF1ero se ve peligrosamente fatigado, avise al l\xEDder \u2014 cuidarse unos a otros es parte del trabajo."
+    ]
+  },
+  {
+    slug: "incident-reporting",
+    titleEn: "Incident reporting",
+    titleEs: "Reporte de incidentes",
+    bulletsEn: [
+      "Report every injury, near miss, property damage and utility strike the same shift \u2014 to your lead, in person, not 'when you get a chance'.",
+      "Near misses are free lessons: reporting them lets the crew fix the cause before the same situation hurts someone.",
+      "Care first, paperwork second: get the injured person help, secure the scene, then document what happened.",
+      "Write down facts while they're fresh: who, what, when, where, conditions and photos if it is safe to take them.",
+      "Never hide or minimize an incident \u2014 reporting honestly is protected and expected; hiding one puts the whole crew and company at risk.",
+      "Preserve evidence where it matters: damaged equipment and failed parts stay tagged and untouched until reviewed.",
+      "Expect a follow-up conversation, not blame: the goal of every report is a fix \u2014 training, equipment, planning or process."
+    ],
+    bulletsEs: [
+      "Reporte toda lesi\xF3n, casi-accidente, da\xF1o a la propiedad y golpe a un servicio p\xFAblico en el mismo turno \u2014 a su l\xEDder, en persona, no 'cuando tenga un chance'.",
+      "Los casi-accidentes son lecciones gratuitas: reportarlos permite al equipo corregir la causa antes de que la misma situaci\xF3n lastime a alguien.",
+      "Primero la atenci\xF3n, despu\xE9s el papeleo: consiga ayuda para la persona lesionada, asegure la escena y luego documente lo ocurrido.",
+      "Anote los hechos mientras est\xE1n frescos: qui\xE9n, qu\xE9, cu\xE1ndo, d\xF3nde, las condiciones y fotos si es seguro tomarlas.",
+      "Nunca oculte ni minimice un incidente \u2014 reportar con honestidad est\xE1 protegido y es lo esperado; ocultarlo pone en riesgo a todo el equipo y a la empresa.",
+      "Conserve la evidencia donde importa: el equipo da\xF1ado y las piezas que fallaron quedan marcados y sin tocar hasta su revisi\xF3n.",
+      "Espere una conversaci\xF3n de seguimiento, no de culpa: la meta de cada reporte es una correcci\xF3n \u2014 capacitaci\xF3n, equipo, planificaci\xF3n o proceso."
+    ]
+  }
+];
+function getSafetyTalk(slug) {
+  return SAFETY_TALKS.find((t) => t.slug === slug) ?? null;
+}
+function daysUntilExpiry(expiresOn, today) {
+  if (!expiresOn)
+    return null;
+  const a = new Date(`${expiresOn}T12:00:00Z`).getTime();
+  const b = new Date(`${today}T12:00:00Z`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b))
+    return null;
+  return Math.round((a - b) / 86400000);
+}
+function credentialBucket(expiresOn, today) {
+  const days = daysUntilExpiry(expiresOn, today);
+  if (days === null)
+    return "no_expiry";
+  if (days < 0)
+    return "expired";
+  if (days <= 30)
+    return "due30";
+  if (days <= 90)
+    return "due90";
+  return "ok";
+}
+var MEMBER_CREDENTIAL_TYPES = [
+  "contractor_license",
+  "osha_10",
+  "osha_30",
+  "cpr_first_aid",
+  "epa_rrp",
+  "drivers_license",
+  "custom"
+];
+var MEMBER_CREDENTIAL_TYPE_LABELS = {
+  contractor_license: "Contractor license",
+  osha_10: "OSHA 10",
+  osha_30: "OSHA 30",
+  cpr_first_aid: "CPR / First Aid",
+  epa_rrp: "EPA RRP",
+  drivers_license: "Driver's license",
+  custom: "Custom"
+};
+function buildSafetySessionPdf(data) {
+  const doc = new E2({ unit: "pt", format: "letter" });
+  const w = 612;
+  const h = 792;
+  const margin = 54;
+  const contentW = w - margin * 2;
+  const ink = [24, 32, 30];
+  const dim = [96, 106, 103];
+  const hex = (data.accentColor || "#1f5a4a").replace("#", "");
+  const accent = [
+    Number.parseInt(hex.slice(0, 2), 16) || 31,
+    Number.parseInt(hex.slice(2, 4), 16) || 90,
+    Number.parseInt(hex.slice(4, 6), 16) || 74
+  ];
+  let y = 0;
+  const ensure = (need) => {
+    if (y + need <= h - 64)
+      return;
+    doc.addPage();
+    y = 54;
+  };
+  const paragraph = (text, size = 10.5, gap = 12, color = ink) => {
+    if (!text.trim())
+      return;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(size);
+    const lines = doc.splitTextToSize(text, contentW);
+    ensure(lines.length * (size + 3.5) + gap);
+    doc.setTextColor(...color);
+    doc.text(lines, margin, y);
+    y += lines.length * (size + 3.5) + gap;
+  };
+  const sectionHead = (label) => {
+    ensure(30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...accent);
+    doc.text(label, margin, y);
+    y += 5;
+    doc.setDrawColor(...accent);
+    doc.setLineWidth(1);
+    doc.line(margin, y, margin + 34, y);
+    y += 16;
+  };
+  const headerH = 66;
+  doc.setFillColor(23, 26, 28);
+  doc.rect(0, 0, w, headerH, "F");
+  const stack = [];
+  if (data.companyName)
+    stack.push({ text: data.companyName, name: true });
+  const bits = [data.companyPhone, data.licenseNumber].filter(Boolean);
+  if (bits.length)
+    stack.push({ text: bits.join("  \xB7  ") });
+  if (data.companyAddress)
+    stack.push({ text: data.companyAddress });
+  if (data.companyEmail)
+    stack.push({ text: data.companyEmail });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(255, 255, 255);
+  doc.text("CREWKAT SAFETY", margin, headerH / 2 + 4);
+  let stackY = headerH / 2 - (stack.length - 1) * 11 / 2 + 3;
+  for (const line of stack) {
+    doc.setFont("helvetica", line.name ? "bold" : "normal");
+    doc.setFontSize(line.name ? 11.5 : 7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(line.text, w - margin, stackY, { align: "right" });
+    stackY += 11;
+  }
+  y = headerH + 40;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(...ink);
+  doc.text("Toolbox Talk \u2014 Attendance Record", w / 2, y, { align: "center" });
+  y += 26;
+  const meta = [
+    ["Topic", data.title],
+    ["Date", data.date],
+    ["Presenter", data.presenterName]
+  ];
+  if (data.jobLabel)
+    meta.push(["Job", data.jobLabel]);
+  meta.push(["Attendees", String(data.attendees.length)]);
+  for (const [label, value] of meta) {
+    ensure(16);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...dim);
+    doc.text(`${label}:`, margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...ink);
+    const lines = doc.splitTextToSize(value, contentW - 92);
+    doc.text(lines, margin + 92, y);
+    y += Math.max(1, lines.length) * 13 + 3;
+  }
+  y += 8;
+  if (data.bullets.length > 0) {
+    sectionHead("TALK POINTS");
+    for (const bullet of data.bullets) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+      const lines = doc.splitTextToSize(bullet, contentW - 16);
+      ensure(lines.length * 14 + 4);
+      doc.setTextColor(...accent);
+      doc.text("\u2022", margin, y);
+      doc.setTextColor(...ink);
+      doc.text(lines, margin + 16, y);
+      y += lines.length * 14 + 4;
+    }
+    y += 6;
+  }
+  if (data.customBody.trim()) {
+    sectionHead("SESSION NOTES");
+    paragraph(data.customBody, 10.5, 14);
+  }
+  sectionHead("ATTENDEES");
+  if (data.attendees.length === 0)
+    paragraph("No attendees recorded.", 10.5, 10, dim);
+  data.attendees.forEach((name, i) => {
+    ensure(15);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10.5);
+    doc.setTextColor(...ink);
+    doc.text(`${i + 1}.  ${name}`, margin, y);
+    y += 15;
+  });
+  y += 10;
+  sectionHead("PRESENTER SIGNATURE");
+  if (data.signatureDataUrl) {
+    ensure(70);
+    try {
+      doc.addImage(data.signatureDataUrl, data.signatureDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG", margin, y - 8, 180, 54, undefined, "FAST");
+    } catch {}
+    y += 52;
+  }
+  ensure(30);
+  doc.setDrawColor(...dim);
+  doc.setLineWidth(0.7);
+  doc.line(margin, y, margin + 240, y);
+  doc.line(margin + 280, y, margin + 360, y);
+  y += 13;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...dim);
+  doc.text(data.presenterName || "Presenter", margin, y);
+  doc.text(data.date, margin + 280, y);
+  y += 22;
+  paragraph("The presenter confirms this talk was delivered as recorded above and that the listed attendees were present.", 8.5, 8, dim);
+  const out = doc.output("arraybuffer");
+  const bytes = new Uint8Array(out);
+  const safe = data.title.replace(/[^A-Za-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "session";
+  return { bytes, filename: `toolbox-talk-${safe}-${data.date}.pdf` };
+}
+
+// src/auth-email.ts
+function authCodeClientResult(code, delivery) {
+  return {
+    emailDelivery: delivery,
+    displayCode: delivery === "fallback" ? code : null
+  };
+}
+
+// src/permissions.ts
+function productRoleOf(stored) {
+  if (stored === "office")
+    return "office";
+  if (stored === "field")
+    return "field";
+  return "admin";
+}
+var ADMIN_ACTIONS = new Set([
+  "listTeamMembers",
+  "createStaffAccount",
+  "updateStaffMember",
+  "createCrewLogin",
+  "resetCrewPin",
+  "setMemberAccess",
+  "addAppUser",
+  "updateAppUser",
+  "deleteAppUser",
+  "getAdminConsole",
+  "updateAdminParameters",
+  "updateSupportReport",
+  "saveCrewPayRate",
+  "updateSettings",
+  "updateAutomationSettings",
+  "uploadLogo",
+  "uploadCompanyCover",
+  "getBillingOverview",
+  "getSubscription",
+  "createBillingPortalSession",
+  "startPremiumCheckout",
+  "createCreditPackCheckout",
+  "startListingBumpCheckout",
+  "verifyPlaySubscription",
+  "refreshPlaySubscription",
+  "exportBackup",
+  "restoreBackup",
+  "verifyBackupRoundTrip",
+  "getBackupStatus",
+  "runAutomatedBackup",
+  "deleteClient",
+  "deleteLead",
+  "deleteBusinessExpense",
+  "deleteMaterialCost",
+  "deletePriceBookItem",
+  "deleteQuoteTemplate",
+  "deleteSubcontractor",
+  "deleteMileageTrip",
+  "deleteFieldTestRecord",
+  "loadSampleData",
+  "deleteAppointment",
+  "deleteBidBoardItem",
+  "deleteCrewTask",
+  "deleteDocument",
+  "deleteDocumentAttachment",
+  "deleteInvoice",
+  "deleteJob",
+  "getJobDeletePreview",
+  "deleteJobFile",
+  "deleteMarketplaceAlert",
+  "deleteMarketplaceListing",
+  "deletePayment",
+  "deletePhoto",
+  "deletePhotoPair",
+  "deleteProgressUpdate",
+  "deletePunchItem",
+  "deleteQuote",
+  "deleteReceipt",
+  "deleteShareImage",
+  "deleteTimeEntry",
+  "deleteVoiceNote",
+  "sendCampaign",
+  "deleteCampaign",
+  "deletePostedReview",
+  "getQuickBooksConnectUrl",
+  "disconnectQuickBooks",
+  "deleteWorkSummary",
+  "deleteJobLoad",
+  "createSafetySession",
+  "deleteSafetySession",
+  "saveMemberCredential",
+  "deleteMemberCredential",
+  "startConnectOnboarding",
+  "getOfficeBilling",
+  "startOfficeCheckout",
+  "createOfficeBillingPortalSession"
+]);
+var OFFICE_ACTIONS = new Set([
+  "acceptQuoteVersion",
+  "addLeadActivity",
+  "addPayment",
+  "cancelRecurringInvoice",
+  "cancelRecurringSchedule",
+  "completeMaintenancePlan",
+  "convertLeadToJob",
+  "createMarketplaceListing",
+  "createPortalLink",
+  "createPurchaseOrder",
+  "createQuoteVersion",
+  "createRecurringSchedule",
+  "generateRecurringInvoice",
+  "getCrewClockStatus",
+  "getCrewDayView",
+  "getDashboard",
+  "getDocumentParameters",
+  "getExpansionSuite",
+  "getFieldIntelligence",
+  "getGrowthToolkit",
+  "getJobOperations",
+  "getLeadActivities",
+  "getListingBumpStatus",
+  "getMarketplaceProProfile",
+  "getOfficeDashboard",
+  "getOfficeSearch",
+  "getProductionBoard",
+  "setJobProductionStage",
+  "getFollowUpQueue",
+  "saveFollowUp",
+  "completeFollowUp",
+  "snoozeFollowUp",
+  "getAutomationSettings",
+  "getJobBudget",
+  "getQuoteVersions",
+  "getTaxExport",
+  "invoiceMilestone",
+  "exportExpensesCsv",
+  "exportInvoicesCsv",
+  "exportInvoicesPdfZip",
+  "exportPaymentsCsv",
+  "previewInvoiceFlyImport",
+  "runInvoiceFlyImport",
+  "listBidBoard",
+  "listLeads",
+  "listMaterialCosts",
+  "listRecurringSchedules",
+  "listShareImages",
+  "listSubcontractors",
+  "markMarketplaceConversationRead",
+  "marketplaceConversation",
+  "marketplaceConversations",
+  "moveBidBoardItem",
+  "prepareLeadQuote",
+  "processRecurringInvoices",
+  "receivePurchaseOrder",
+  "renewCredential",
+  "renewQuote",
+  "reopenJob",
+  "revokePortalLink",
+  "rotatePortalLink",
+  "saveBidBoardItem",
+  "saveBusinessExpense",
+  "saveCredential",
+  "saveDocumentDesignDefault",
+  "saveInternalNote",
+  "saveLead",
+  "saveMaintenancePlan",
+  "saveMaterialCost",
+  "saveMileageTrip",
+  "saveMilestone",
+  "savePriceBookItem",
+  "saveQuoteTemplate",
+  "saveSelection",
+  "saveShareImage",
+  "saveSlideshowVideo",
+  "saveSubcontractor",
+  "saveSupplier",
+  "saveSupplierQuote",
+  "saveWarranty",
+  "sendMarketplaceMessage",
+  "sendQuoteVersion",
+  "sendReviewRequest",
+  "setJobContractSum",
+  "setJobPhotoRequirements",
+  "startMarketplaceConversation",
+  "toggleInternalNote",
+  "toggleInvoicePaid",
+  "unacceptQuote",
+  "unlockMarketplaceContact",
+  "updateAppearance",
+  "updateInvoiceRecurrence",
+  "updateInvoiceStatus",
+  "updateLead",
+  "updateLeadStage",
+  "updateMarketplaceListing",
+  "updateMilestoneStatus",
+  "updatePurchaseOrderStatus",
+  "updateQuoteAutomationStatus",
+  "updateQuoteVersion",
+  "updateSelectionLeadTime",
+  "updateSelectionStatus",
+  "verifyMarketplacePhone",
+  "listCampaigns",
+  "getCampaign",
+  "saveCampaign",
+  "duplicateCampaign",
+  "generateCampaignContent",
+  "previewCampaignRecipients",
+  "uploadCampaignImage",
+  "getPaymentsSetup",
+  "refreshConnectStatus",
+  "listInvoicePaymentAttempts",
+  "getProposalAnalytics",
+  "getReputationInbox",
+  "recordPostedReview",
+  "getLeadCaptureInfo",
+  "getLeadSourceReport",
+  "getQuickBooksStatus",
+  "runQuickBooksSync",
+  "listQbSyncRecords",
+  "listSafetyTalks",
+  "listSafetySessions",
+  "getSafetySession",
+  "getSafetySessionPdf",
+  "listMemberCredentials",
+  "getSafetyDashboard"
+]);
+var PLATFORM_ACTIONS = new Set([
+  "adminAbuseCapSet",
+  "adminAbuseDefaultsSet",
+  "adminAbuseOverview",
+  "adminAnalyticsCharts",
+  "adminAnalyticsOverview",
+  "adminAuditLog",
+  "adminAuditLogSearch",
+  "adminAutomodCapSet",
+  "adminBlockUser",
+  "adminBrandLogoUpload",
+  "adminBrandingColorSet",
+  "adminBroadcastHistory",
+  "adminBroadcastSend",
+  "adminCancellationStats",
+  "adminContentHide",
+  "adminContentUnhide",
+  "adminFailedPayments",
+  "adminFeatureFlagSet",
+  "adminFeatureFlags",
+  "adminGrowthMetrics",
+  "adminImpersonateEnd",
+  "adminImpersonateStart",
+  "adminKeywordRuleAdd",
+  "adminKeywordRuleDelete",
+  "adminKeywordRulesList",
+  "adminListingDecision",
+  "adminLoopStats",
+  "adminMaintenanceSet",
+  "adminMarketplaceOverview",
+  "adminModerationQueue",
+  "adminMyTeamRole",
+  "adminPaymentsList",
+  "adminPlansGet",
+  "adminPlansUpdate",
+  "adminPolicyVersionPublish",
+  "adminPolicyVersionsList",
+  "adminPromoCodeCreate",
+  "adminPromoCodeDelete",
+  "adminPromoCodesList",
+  "adminRecentActivity",
+  "adminRefund",
+  "adminRefundPreview",
+  "adminRevenueDashboard",
+  "adminSettingsGet",
+  "adminSettingsSet",
+  "adminSubscriptionsList",
+  "adminSupportNoteAdd",
+  "adminSupportNotesList",
+  "adminSupportTicketAssign",
+  "adminSupportTicketPriority",
+  "adminSupportView",
+  "adminTeamList",
+  "adminTeamRemoveRole",
+  "adminTeamSetRole",
+  "adminTotpDisable",
+  "adminTotpRequiredSet",
+  "adminTotpSetupStart",
+  "adminTotpSetupVerify",
+  "adminTotpStatus",
+  "adminUnblockUser",
+  "adminUserDelete",
+  "adminUserDetail",
+  "adminUserGrantFounder",
+  "adminUserReportDecide",
+  "adminUserReports",
+  "adminUserRevokeFounder",
+  "adminUserRevokeSessions",
+  "adminUserSetTier",
+  "adminUserSuspend",
+  "adminUserUnsuspend",
+  "adminUsersList",
+  "adminVerificationList",
+  "adminVerificationSet",
+  "platformSupportInbox",
+  "platformSupportThread",
+  "updatePlatformSupportReport",
+  "replyToSupportReport"
+]);
+var ALL_ROLE_ACTIONS = new Set([
+  "acceptMarketplaceTerms",
+  "addPhoto",
+  "addPunchItem",
+  "addReceipt",
+  "addVoiceNote",
+  "appendClientAddress",
+  "checkSmsCap",
+  "clockInCrew",
+  "clockOutCrew",
+  "completeEquipmentMaintenance",
+  "completeJob",
+  "convertQuoteToInvoice",
+  "convertQuoteToJob",
+  "craneRunGetChampion",
+  "craneRunGetLeaderboard",
+  "craneRunSetOptIn",
+  "craneRunSubmitScore",
+  "createDocumentLink",
+  "createJob",
+  "createMarketplaceBooking",
+  "createPhotoPair",
+  "deleteMyAccount",
+  "dismissOnboardingChecklist",
+  "duplicateInvoice",
+  "duplicateQuote",
+  "getAutomationCenter",
+  "getClient",
+  "getClientTimeline",
+  "getDocumentLinkInfo",
+  "getDocumentPdf",
+  "getDocumentTimeline",
+  "getFinancialSignature",
+  "getFoundingMemberAvailability",
+  "getJob",
+  "getJobTimeline",
+  "getMarketplaceListing",
+  "getMarketplaceUnlockStatus",
+  "getOnMyWayStatus",
+  "getOnboardingChecklist",
+  "getPlayBillingConfig",
+  "getPortalLinkInfo",
+  "getReferralStats",
+  "getSettings",
+  "getUsageLimits",
+  "getVapidPublicKey",
+  "getWeatherOutlook",
+  "globalSearch",
+  "linkDocumentToJob",
+  "linkInvoiceToJob",
+  "linkQuoteToJob",
+  "listAppointments",
+  "listClients",
+  "listDocumentAttachments",
+  "listDocuments",
+  "listInvoices",
+  "listJobMessages",
+  "listJobs",
+  "listMarketplaceAlerts",
+  "listMarketplaceBookings",
+  "listMarketplaceListings",
+  "listNotifications",
+  "listPhotoPairs",
+  "listPinnedTools",
+  "listPunchItems",
+  "listQuotes",
+  "logAutomationSend",
+  "markJobMessagesRead",
+  "markNotificationsRead",
+  "marketplaceGate",
+  "marketplaceListingFlag",
+  "pendingCancellationFeedback",
+  "pinTool",
+  "removePushSubscription",
+  "renameClient",
+  "renderPdfPreview",
+  "replyToOwnSupportReport",
+  "requestAccountDeletion",
+  "revokeDocumentLink",
+  "revokeOnMyWay",
+  "saveAppointment",
+  "saveCertificate",
+  "saveClient",
+  "saveCrewTask",
+  "saveDailyLog",
+  "saveDocument",
+  "saveDocumentFillFields",
+  "saveDocumentSignatureFields",
+  "saveEquipment",
+  "saveFinancialSignature",
+  "saveIncident",
+  "saveInvoice",
+  "saveMarketplaceAlert",
+  "saveProgressUpdate",
+  "savePunchSignoff",
+  "savePushSubscription",
+  "saveQuote",
+  "saveQuoteMaterials",
+  "saveSafetyTalk",
+  "saveScannedDocument",
+  "sendJobMessage",
+  "setDocumentImagesPerPage",
+  "setEquipmentCheckout",
+  "setInvoiceCardOptions",
+  "setJobClient",
+  "setJobFileShared",
+  "shareOnMyWay",
+  "signDocumentWithDrawnSignature",
+  "startTimer",
+  "stopTimer",
+  "submitCancellationFeedback",
+  "submitPlatformSupportReport",
+  "submitSupportReport",
+  "suggestJobsByLocation",
+  "togglePhotoSocial",
+  "togglePunchItem",
+  "unpinTool",
+  "updateDocument",
+  "updateInvoiceDesign",
+  "updateInvoiceDocument",
+  "updateJob",
+  "updateJobClientInfo",
+  "updateJobInfo",
+  "updateJobSiteLocation",
+  "updateOnMyWay",
+  "updatePhoto",
+  "updatePhotoPair",
+  "updateProfileName",
+  "updateQuoteDesign",
+  "updateQuoteDocument",
+  "createWorkSummary",
+  "listWorkSummaries",
+  "getWorkSummary",
+  "getAiAvailability",
+  "previewWorkSummary",
+  "polishWorkSummary",
+  "createJobLoad",
+  "listJobLoads",
+  "updateJobLoad",
+  "uploadDocumentAttachment",
+  "uploadJobFile",
+  "uploadSupportScreenshot",
+  "userSupportThread",
+  "userSupportThreads"
+]);
+var ROLE_RANK = { field: 0, office: 1, admin: 2 };
+function minRoleForAction(actionName) {
+  if (ADMIN_ACTIONS.has(actionName))
+    return "admin";
+  if (OFFICE_ACTIONS.has(actionName))
+    return "office";
+  return "field";
+}
+function roleCan(role, actionName) {
+  return ROLE_RANK[role] >= ROLE_RANK[minRoleForAction(actionName)];
+}
+function assertRoleCan(role, actionName) {
+  if (!roleCan(role, actionName)) {
+    throw new Error(role === "field" ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through." : "Your Office role doesn't include that \u2014 it's an admin action. Ask your company's admin.");
+  }
+}
+var ACCESS_SWITCHES = [
+  "seeMoney",
+  "seeClientContact",
+  "sendDocuments",
+  "seeAllJobs",
+  "recordPayments"
+];
+var ROLE_ACCESS_PRESETS = {
+  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
+  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false }
+};
+function parseAccessOverrides(json) {
+  if (!json)
+    return {};
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
+    const out = {};
+    for (const key of ACCESS_SWITCHES) {
+      const value = parsed[key];
+      if (typeof value === "boolean")
+        out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function serializeAccessOverrides(overrides) {
+  const clean = {};
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      clean[key] = overrides[key];
+  }
+  return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+function effectiveAccess(role, overrides) {
+  const preset = ROLE_ACCESS_PRESETS[role];
+  if (role === "admin")
+    return { ...preset };
+  const out = { ...preset };
+  for (const key of ACCESS_SWITCHES) {
+    if (typeof overrides[key] === "boolean")
+      out[key] = overrides[key];
+  }
+  return out;
+}
+var SEND_DOCUMENT_ACTIONS = new Set([
+  "createDocumentLink",
+  "createPortalLink",
+  "rotatePortalLink",
+  "sendQuoteVersion"
+]);
+var RECORD_PAYMENT_ACTIONS = new Set([
+  "addPayment",
+  "toggleInvoicePaid"
+]);
+var MONEY_EXPORT_ACTIONS = new Set([
+  "exportExpensesCsv",
+  "exportInvoicesCsv",
+  "exportInvoicesPdfZip",
+  "exportPaymentsCsv",
+  "previewInvoiceFlyImport",
+  "runInvoiceFlyImport"
+]);
+var OFFICE_BILLING_EXEMPT_ACTIONS = new Set([
+  "getOfficeBilling",
+  "startOfficeCheckout",
+  "createOfficeBillingPortalSession",
+  "getSubscription",
+  "getBillingOverview",
+  "createBillingPortalSession",
+  "startPremiumCheckout",
+  "submitSupportReport",
+  "replyToOwnSupportReport",
+  "userSupportThread",
+  "userSupportThreads",
+  "deleteMyAccount"
+]);
+var OFFICE_READ_NAME_EXCEPTIONS = new Set([
+  "marketplaceConversation",
+  "marketplaceConversations",
+  "globalSearch",
+  "renderPdfPreview",
+  "checkSmsCap",
+  "craneRunGetChampion",
+  "craneRunGetLeaderboard"
+]);
+function isOfficeReadAction(actionName) {
+  if (OFFICE_READ_NAME_EXCEPTIONS.has(actionName))
+    return true;
+  return actionName.startsWith("get") || actionName.startsWith("list") || actionName.startsWith("export") || actionName.startsWith("preview");
+}
+var SWITCH_LABELS = {
+  seeMoney: "seeing money totals",
+  seeClientContact: "seeing client contact details",
+  sendDocuments: "sending documents to clients",
+  seeAllJobs: "seeing every company job",
+  recordPayments: "recording payments"
+};
+function assertAccessAllowed(access, actionName) {
+  if (SEND_DOCUMENT_ACTIONS.has(actionName) && !access.sendDocuments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.sendDocuments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
+  }
+  if (MONEY_EXPORT_ACTIONS.has(actionName) && !access.seeMoney) {
+    throw new Error(`Your access doesn't include ${SWITCH_LABELS.seeMoney}. Ask your company's admin to turn it on for you.`);
+  }
+}
+
+// src/officeBilling.ts
+var OFFICE_FOUNDING_TOTAL = 100;
+function officePriceIds() {
+  const read = (name) => process.env[name]?.trim() || null;
+  return {
+    monthly: read("STRIPE_OFFICE_PRICE_MONTHLY"),
+    annual: read("STRIPE_OFFICE_PRICE_ANNUAL"),
+    founding: read("STRIPE_OFFICE_PRICE_FOUNDING")
+  };
+}
+function officeBillingConfigured() {
+  const ids = officePriceIds();
+  return !!ids.monthly && !!ids.annual && !!ids.founding;
+}
+function officeBillingEnabled() {
+  const raw = process.env.OFFICE_BILLING_ENABLED?.trim().toLowerCase();
+  return raw === "1" || raw === "true";
+}
+async function countOfficeFoundingGrants(db) {
+  const rows = await db.select({ id: companies.id }).from(companies).where(isNotNull(companies.officeFoundingGrantedAt));
+  return rows.length;
+}
+async function companyHasOfficeUsage(db, companyId) {
+  const probes = [
+    db.select({ id: leads.id }).from(leads).where(eq(leads.companyId, companyId)).limit(1),
+    db.select({ id: followUps.id }).from(followUps).where(eq(followUps.companyId, companyId)).limit(1),
+    db.select({ id: safetySessions.id }).from(safetySessions).where(eq(safetySessions.companyId, companyId)).limit(1),
+    db.select({ id: memberCredentials.id }).from(memberCredentials).where(eq(memberCredentials.companyId, companyId)).limit(1),
+    db.select({ id: officeAutomationSettings.companyId }).from(officeAutomationSettings).where(eq(officeAutomationSettings.companyId, companyId)).limit(1),
+    db.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.companyId, companyId)).limit(1)
+  ];
+  for (const probe of probes) {
+    if ((await probe).length > 0)
+      return true;
+  }
+  return false;
+}
+async function officeFoundingQualification(db, company) {
+  const grantsUsed = await countOfficeFoundingGrants(db);
+  if (company.officeFoundingGrantedAt) {
+    return { qualifies: true, grandfathered: true, grantsUsed };
+  }
+  const grandfathered = await companyHasOfficeUsage(db, company.id);
+  return { qualifies: grandfathered || grantsUsed < OFFICE_FOUNDING_TOTAL, grandfathered, grantsUsed };
+}
+function officeSubscriptionLapsed(company, now = new Date) {
+  if (company.officePlanState === "canceled")
+    return true;
+  if (company.officePlanState === "past_due" && company.officeCurrentPeriodEnd && company.officeCurrentPeriodEnd.getTime() < now.getTime())
+    return true;
+  return false;
+}
+async function assertOfficeBillingAllows(db, companyId, actionName) {
+  if (!officeBillingEnabled())
+    return;
+  if (PLATFORM_ACTIONS.has(actionName))
+    return;
+  if (OFFICE_BILLING_EXEMPT_ACTIONS.has(actionName) || isOfficeReadAction(actionName))
+    return;
+  const company = (await db.select().from(companies).where(eq(companies.id, companyId)).limit(1))[0];
+  if (!company)
+    return;
+  if (officeSubscriptionLapsed(company)) {
+    throw new Error("Crewkat Office is read-only for your company \u2014 the Office subscription has lapsed. An admin can restart it in Office \u2192 Settings \u2192 Billing.");
+  }
+}
 
 // src/play-billing.ts
 async function grantPlayPremium(db, userId, verification, purchaseToken, sku) {
@@ -73790,495 +76222,6 @@ var platformAdminActions = {
 };
 var revenueCache = null;
 
-// src/permissions.ts
-function productRoleOf(stored) {
-  if (stored === "office")
-    return "office";
-  if (stored === "field")
-    return "field";
-  return "admin";
-}
-var ADMIN_ACTIONS = new Set([
-  "listTeamMembers",
-  "createStaffAccount",
-  "updateStaffMember",
-  "createCrewLogin",
-  "resetCrewPin",
-  "setMemberAccess",
-  "addAppUser",
-  "updateAppUser",
-  "deleteAppUser",
-  "getAdminConsole",
-  "updateAdminParameters",
-  "updateSupportReport",
-  "saveCrewPayRate",
-  "updateSettings",
-  "updateAutomationSettings",
-  "uploadLogo",
-  "uploadCompanyCover",
-  "getBillingOverview",
-  "getSubscription",
-  "createBillingPortalSession",
-  "startPremiumCheckout",
-  "createCreditPackCheckout",
-  "startListingBumpCheckout",
-  "verifyPlaySubscription",
-  "refreshPlaySubscription",
-  "exportBackup",
-  "restoreBackup",
-  "verifyBackupRoundTrip",
-  "getBackupStatus",
-  "runAutomatedBackup",
-  "deleteClient",
-  "deleteLead",
-  "deleteBusinessExpense",
-  "deleteMaterialCost",
-  "deletePriceBookItem",
-  "deleteQuoteTemplate",
-  "deleteSubcontractor",
-  "deleteMileageTrip",
-  "deleteFieldTestRecord",
-  "loadSampleData",
-  "deleteAppointment",
-  "deleteBidBoardItem",
-  "deleteCrewTask",
-  "deleteDocument",
-  "deleteDocumentAttachment",
-  "deleteInvoice",
-  "deleteJob",
-  "getJobDeletePreview",
-  "deleteJobFile",
-  "deleteMarketplaceAlert",
-  "deleteMarketplaceListing",
-  "deletePayment",
-  "deletePhoto",
-  "deletePhotoPair",
-  "deleteProgressUpdate",
-  "deletePunchItem",
-  "deleteQuote",
-  "deleteReceipt",
-  "deleteShareImage",
-  "deleteTimeEntry",
-  "deleteVoiceNote"
-]);
-var OFFICE_ACTIONS = new Set([
-  "acceptQuoteVersion",
-  "addLeadActivity",
-  "addPayment",
-  "cancelRecurringInvoice",
-  "cancelRecurringSchedule",
-  "completeMaintenancePlan",
-  "convertLeadToJob",
-  "createMarketplaceListing",
-  "createPortalLink",
-  "createPurchaseOrder",
-  "createQuoteVersion",
-  "createRecurringSchedule",
-  "generateRecurringInvoice",
-  "getCrewClockStatus",
-  "getCrewDayView",
-  "getDashboard",
-  "getDocumentParameters",
-  "getExpansionSuite",
-  "getFieldIntelligence",
-  "getGrowthToolkit",
-  "getJobOperations",
-  "getLeadActivities",
-  "getListingBumpStatus",
-  "getMarketplaceProProfile",
-  "getOfficeDashboard",
-  "getOfficeSearch",
-  "getProductionBoard",
-  "setJobProductionStage",
-  "getFollowUpQueue",
-  "saveFollowUp",
-  "completeFollowUp",
-  "snoozeFollowUp",
-  "getAutomationSettings",
-  "getJobBudget",
-  "getQuoteVersions",
-  "getTaxExport",
-  "invoiceMilestone",
-  "exportExpensesCsv",
-  "exportInvoicesCsv",
-  "exportInvoicesPdfZip",
-  "exportPaymentsCsv",
-  "previewInvoiceFlyImport",
-  "runInvoiceFlyImport",
-  "listBidBoard",
-  "listLeads",
-  "listMaterialCosts",
-  "listRecurringSchedules",
-  "listShareImages",
-  "listSubcontractors",
-  "markMarketplaceConversationRead",
-  "marketplaceConversation",
-  "marketplaceConversations",
-  "moveBidBoardItem",
-  "prepareLeadQuote",
-  "processRecurringInvoices",
-  "receivePurchaseOrder",
-  "renewCredential",
-  "renewQuote",
-  "reopenJob",
-  "revokePortalLink",
-  "rotatePortalLink",
-  "saveBidBoardItem",
-  "saveBusinessExpense",
-  "saveCredential",
-  "saveDocumentDesignDefault",
-  "saveInternalNote",
-  "saveLead",
-  "saveMaintenancePlan",
-  "saveMaterialCost",
-  "saveMileageTrip",
-  "saveMilestone",
-  "savePriceBookItem",
-  "saveQuoteTemplate",
-  "saveSelection",
-  "saveShareImage",
-  "saveSlideshowVideo",
-  "saveSubcontractor",
-  "saveSupplier",
-  "saveSupplierQuote",
-  "saveWarranty",
-  "sendMarketplaceMessage",
-  "sendQuoteVersion",
-  "sendReviewRequest",
-  "setJobContractSum",
-  "setJobPhotoRequirements",
-  "startMarketplaceConversation",
-  "toggleInternalNote",
-  "toggleInvoicePaid",
-  "unacceptQuote",
-  "unlockMarketplaceContact",
-  "updateAppearance",
-  "updateInvoiceRecurrence",
-  "updateInvoiceStatus",
-  "updateLead",
-  "updateLeadStage",
-  "updateMarketplaceListing",
-  "updateMilestoneStatus",
-  "updatePurchaseOrderStatus",
-  "updateQuoteAutomationStatus",
-  "updateQuoteVersion",
-  "updateSelectionLeadTime",
-  "updateSelectionStatus",
-  "verifyMarketplacePhone"
-]);
-var PLATFORM_ACTIONS = new Set([
-  "adminAbuseCapSet",
-  "adminAbuseDefaultsSet",
-  "adminAbuseOverview",
-  "adminAnalyticsCharts",
-  "adminAnalyticsOverview",
-  "adminAuditLog",
-  "adminAuditLogSearch",
-  "adminAutomodCapSet",
-  "adminBlockUser",
-  "adminBrandLogoUpload",
-  "adminBrandingColorSet",
-  "adminBroadcastHistory",
-  "adminBroadcastSend",
-  "adminCancellationStats",
-  "adminContentHide",
-  "adminContentUnhide",
-  "adminFailedPayments",
-  "adminFeatureFlagSet",
-  "adminFeatureFlags",
-  "adminGrowthMetrics",
-  "adminImpersonateEnd",
-  "adminImpersonateStart",
-  "adminKeywordRuleAdd",
-  "adminKeywordRuleDelete",
-  "adminKeywordRulesList",
-  "adminListingDecision",
-  "adminLoopStats",
-  "adminMaintenanceSet",
-  "adminMarketplaceOverview",
-  "adminModerationQueue",
-  "adminMyTeamRole",
-  "adminPaymentsList",
-  "adminPlansGet",
-  "adminPlansUpdate",
-  "adminPolicyVersionPublish",
-  "adminPolicyVersionsList",
-  "adminPromoCodeCreate",
-  "adminPromoCodeDelete",
-  "adminPromoCodesList",
-  "adminRecentActivity",
-  "adminRefund",
-  "adminRefundPreview",
-  "adminRevenueDashboard",
-  "adminSettingsGet",
-  "adminSettingsSet",
-  "adminSubscriptionsList",
-  "adminSupportNoteAdd",
-  "adminSupportNotesList",
-  "adminSupportTicketAssign",
-  "adminSupportTicketPriority",
-  "adminSupportView",
-  "adminTeamList",
-  "adminTeamRemoveRole",
-  "adminTeamSetRole",
-  "adminTotpDisable",
-  "adminTotpRequiredSet",
-  "adminTotpSetupStart",
-  "adminTotpSetupVerify",
-  "adminTotpStatus",
-  "adminUnblockUser",
-  "adminUserDelete",
-  "adminUserDetail",
-  "adminUserGrantFounder",
-  "adminUserReportDecide",
-  "adminUserReports",
-  "adminUserRevokeFounder",
-  "adminUserRevokeSessions",
-  "adminUserSetTier",
-  "adminUserSuspend",
-  "adminUserUnsuspend",
-  "adminUsersList",
-  "adminVerificationList",
-  "adminVerificationSet",
-  "platformSupportInbox",
-  "platformSupportThread",
-  "updatePlatformSupportReport",
-  "replyToSupportReport"
-]);
-var ALL_ROLE_ACTIONS = new Set([
-  "acceptMarketplaceTerms",
-  "addPhoto",
-  "addPunchItem",
-  "addReceipt",
-  "addVoiceNote",
-  "appendClientAddress",
-  "checkSmsCap",
-  "clockInCrew",
-  "clockOutCrew",
-  "completeEquipmentMaintenance",
-  "completeJob",
-  "convertQuoteToInvoice",
-  "convertQuoteToJob",
-  "craneRunGetChampion",
-  "craneRunGetLeaderboard",
-  "craneRunSetOptIn",
-  "craneRunSubmitScore",
-  "createDocumentLink",
-  "createJob",
-  "createMarketplaceBooking",
-  "createPhotoPair",
-  "deleteMyAccount",
-  "dismissOnboardingChecklist",
-  "duplicateInvoice",
-  "duplicateQuote",
-  "getAutomationCenter",
-  "getClient",
-  "getClientTimeline",
-  "getDocumentLinkInfo",
-  "getDocumentPdf",
-  "getDocumentTimeline",
-  "getFinancialSignature",
-  "getFoundingMemberAvailability",
-  "getJob",
-  "getJobTimeline",
-  "getMarketplaceListing",
-  "getMarketplaceUnlockStatus",
-  "getOnMyWayStatus",
-  "getOnboardingChecklist",
-  "getPlayBillingConfig",
-  "getPortalLinkInfo",
-  "getReferralStats",
-  "getSettings",
-  "getUsageLimits",
-  "getVapidPublicKey",
-  "getWeatherOutlook",
-  "globalSearch",
-  "linkDocumentToJob",
-  "linkInvoiceToJob",
-  "listAppointments",
-  "listClients",
-  "listDocumentAttachments",
-  "listDocuments",
-  "listInvoices",
-  "listJobMessages",
-  "listJobs",
-  "listMarketplaceAlerts",
-  "listMarketplaceBookings",
-  "listMarketplaceListings",
-  "listNotifications",
-  "listPhotoPairs",
-  "listPinnedTools",
-  "listPunchItems",
-  "listQuotes",
-  "logAutomationSend",
-  "markJobMessagesRead",
-  "markNotificationsRead",
-  "marketplaceGate",
-  "marketplaceListingFlag",
-  "pendingCancellationFeedback",
-  "pinTool",
-  "removePushSubscription",
-  "renderPdfPreview",
-  "replyToOwnSupportReport",
-  "requestAccountDeletion",
-  "revokeDocumentLink",
-  "revokeOnMyWay",
-  "saveAppointment",
-  "saveCertificate",
-  "saveClient",
-  "saveCrewTask",
-  "saveDailyLog",
-  "saveDocument",
-  "saveDocumentFillFields",
-  "saveDocumentSignatureFields",
-  "saveEquipment",
-  "saveFinancialSignature",
-  "saveIncident",
-  "saveInvoice",
-  "saveMarketplaceAlert",
-  "saveProgressUpdate",
-  "savePunchSignoff",
-  "savePushSubscription",
-  "saveQuote",
-  "saveQuoteMaterials",
-  "saveSafetyTalk",
-  "saveScannedDocument",
-  "sendJobMessage",
-  "setDocumentImagesPerPage",
-  "setEquipmentCheckout",
-  "setJobClient",
-  "setJobFileShared",
-  "shareOnMyWay",
-  "signDocumentWithDrawnSignature",
-  "startTimer",
-  "stopTimer",
-  "submitCancellationFeedback",
-  "submitPlatformSupportReport",
-  "submitSupportReport",
-  "suggestJobsByLocation",
-  "togglePhotoSocial",
-  "togglePunchItem",
-  "unpinTool",
-  "updateDocument",
-  "updateInvoiceDesign",
-  "updateInvoiceDocument",
-  "updateJob",
-  "updateJobInfo",
-  "updateJobSiteLocation",
-  "updateOnMyWay",
-  "updatePhoto",
-  "updatePhotoPair",
-  "updateProfileName",
-  "updateQuoteDesign",
-  "updateQuoteDocument",
-  "uploadDocumentAttachment",
-  "uploadJobFile",
-  "uploadSupportScreenshot",
-  "userSupportThread",
-  "userSupportThreads"
-]);
-var ROLE_RANK = { field: 0, office: 1, admin: 2 };
-function minRoleForAction(actionName) {
-  if (ADMIN_ACTIONS.has(actionName))
-    return "admin";
-  if (OFFICE_ACTIONS.has(actionName))
-    return "office";
-  return "field";
-}
-function roleCan(role, actionName) {
-  return ROLE_RANK[role] >= ROLE_RANK[minRoleForAction(actionName)];
-}
-function assertRoleCan(role, actionName) {
-  if (!roleCan(role, actionName)) {
-    throw new Error(role === "field" ? "Your Field role doesn't include that. Ask an admin or office teammate if it should have gone through." : "Your Office role doesn't include that \u2014 it's an admin action. Ask your company's admin.");
-  }
-}
-var ACCESS_SWITCHES = [
-  "seeMoney",
-  "seeClientContact",
-  "sendDocuments",
-  "seeAllJobs",
-  "recordPayments"
-];
-var ROLE_ACCESS_PRESETS = {
-  admin: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
-  office: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: true },
-  field: { seeMoney: true, seeClientContact: true, sendDocuments: true, seeAllJobs: true, recordPayments: false }
-};
-function parseAccessOverrides(json) {
-  if (!json)
-    return {};
-  try {
-    const parsed = JSON.parse(json);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      return {};
-    const out = {};
-    for (const key of ACCESS_SWITCHES) {
-      const value = parsed[key];
-      if (typeof value === "boolean")
-        out[key] = value;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-function serializeAccessOverrides(overrides) {
-  const clean = {};
-  for (const key of ACCESS_SWITCHES) {
-    if (typeof overrides[key] === "boolean")
-      clean[key] = overrides[key];
-  }
-  return Object.keys(clean).length ? JSON.stringify(clean) : null;
-}
-function effectiveAccess(role, overrides) {
-  const preset = ROLE_ACCESS_PRESETS[role];
-  if (role === "admin")
-    return { ...preset };
-  const out = { ...preset };
-  for (const key of ACCESS_SWITCHES) {
-    if (typeof overrides[key] === "boolean")
-      out[key] = overrides[key];
-  }
-  return out;
-}
-var SEND_DOCUMENT_ACTIONS = new Set([
-  "createDocumentLink",
-  "createPortalLink",
-  "rotatePortalLink",
-  "sendQuoteVersion"
-]);
-var RECORD_PAYMENT_ACTIONS = new Set([
-  "addPayment",
-  "toggleInvoicePaid"
-]);
-var MONEY_EXPORT_ACTIONS = new Set([
-  "exportExpensesCsv",
-  "exportInvoicesCsv",
-  "exportInvoicesPdfZip",
-  "exportPaymentsCsv",
-  "previewInvoiceFlyImport",
-  "runInvoiceFlyImport"
-]);
-var SWITCH_LABELS = {
-  seeMoney: "seeing money totals",
-  seeClientContact: "seeing client contact details",
-  sendDocuments: "sending documents to clients",
-  seeAllJobs: "seeing every company job",
-  recordPayments: "recording payments"
-};
-function assertAccessAllowed(access, actionName) {
-  if (SEND_DOCUMENT_ACTIONS.has(actionName) && !access.sendDocuments) {
-    throw new Error(`Your access doesn't include ${SWITCH_LABELS.sendDocuments}. Ask your company's admin to turn it on for you.`);
-  }
-  if (RECORD_PAYMENT_ACTIONS.has(actionName) && !access.recordPayments) {
-    throw new Error(`Your access doesn't include ${SWITCH_LABELS.recordPayments}. Ask your company's admin to turn it on for you.`);
-  }
-  if (MONEY_EXPORT_ACTIONS.has(actionName) && !access.seeMoney) {
-    throw new Error(`Your access doesn't include ${SWITCH_LABELS.seeMoney}. Ask your company's admin to turn it on for you.`);
-  }
-}
-
 // src/platform-admin-phase1.ts
 import { createHash, randomBytes as randomBytes2 } from "crypto";
 function sha256Hex(value) {
@@ -74554,7 +76497,7 @@ var platformAdminPhase1Actions = {
   }),
   adminPlansGet: defineAction({
     request: object({}),
-    response: object({ name: string2(), priceCents: number2(), interval: string2(), stripePriceId: string2() }),
+    response: object({ name: string2(), priceCents: number2(), interval: string2(), stripePriceId: string2(), officeFoundingGrants: number2(), officeFoundingTotal: number2() }),
     async handler(ctx) {
       await requireTeamRole(ctx, "admin");
       const db = platformDb(ctx);
@@ -74563,7 +76506,8 @@ var platformAdminPhase1Actions = {
         getPlatformSetting(db, "plan_pro_price_cents", "1900"),
         getPlatformSetting(db, "plan_pro_interval", "month")
       ]);
-      return { name, priceCents: Number.parseInt(priceCents, 10) || 1900, interval, stripePriceId: "price_1UK81ZAZoTlhRfFcUEqPjzxa" };
+      const officeFoundingGrants = (await db.select({ id: companies.id }).from(companies).where(isNotNull(companies.officeFoundingGrantedAt))).length;
+      return { name, priceCents: Number.parseInt(priceCents, 10) || 1900, interval, stripePriceId: "price_1UK81ZAZoTlhRfFcUEqPjzxa", officeFoundingGrants, officeFoundingTotal: OFFICE_FOUNDING_TOTAL };
     }
   }),
   adminPlansUpdate: defineAction({
@@ -76712,11 +78656,75 @@ var stageSchema = _enum(["before", "during", "after"]);
 var languageSchema = _enum(["en", "es"]);
 var loopSurfaceSchema = _enum(["estimate", "invoice", "contract", "changeorder", "portal", "receipt", "photo"]);
 var quoteThemeSchema = _enum(["classic", "modern", "bold", "minimal"]);
-var documentFontSchema = _enum(["helvetica", "times", "courier", "palatino"]);
+var documentFontSchema = _enum(["Inter", "helvetica", "times", "courier", "palatino"]);
 var adjustmentTypeSchema = _enum(["percent", "fixed"]);
 var depositTypeSchema = _enum(["none", "percent", "fixed"]);
 var invoiceStatusSchema = _enum(["draft", "sent", "paid", "overdue"]);
-var documentKindSchema = _enum(["invoice", "quote", "contract", "change_order"]);
+var documentKindSchema = _enum(["invoice", "quote", "contract", "change_order", "work_summary"]);
+var workSummaryLoadSchema = object({ date: string2(), kind: string2(), quantity: string2(), unit: string2(), cost: string2(), vendor: string2(), notes: string2() });
+var workSummaryContentSchema = object({
+  version: literal(1),
+  job: object({ id: number2(), jobType: string2(), clientName: string2(), jobAddress: string2() }),
+  rangeStart: string2(),
+  rangeEnd: string2(),
+  generatedAt: string2(),
+  logs: array(object({ logDate: string2(), crew: string2(), hours: string2(), notes: string2(), blockers: string2(), clientSummary: string2() })),
+  notes: array(object({ note: string2(), at: string2() })),
+  photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2(), capturedAt: string2() })),
+  loads: object({ items: array(workSummaryLoadSchema), count: number2(), totalCost: string2() }),
+  narrative: string2().default(""),
+  polishedWithAi: boolean2().default(false)
+});
+var jobLoadKindSchema = _enum(["debris_haul", "concrete", "dirt", "delivery", "other"]);
+var jobLoadUnitSchema = _enum(["loads", "yards", "tons"]);
+var jobLoadSchema = object({
+  id: number2(),
+  jobId: number2(),
+  expenseId: number2().nullable(),
+  date: string2(),
+  kind: jobLoadKindSchema,
+  quantity: string2(),
+  unit: jobLoadUnitSchema,
+  cost: string2().nullable(),
+  vendor: string2(),
+  notes: string2(),
+  photoUrl: string2().nullable(),
+  photoFilename: string2(),
+  loggedByUserId: number2().nullable(),
+  loggedByName: string2(),
+  attested: boolean2(),
+  attestedAt: string2().nullable(),
+  createdAt: string2(),
+  updatedAt: string2()
+});
+var jobLoadPhotoFields = {
+  photoFilename: string2().max(240).default(""),
+  photoContentType: _enum(["", "image/jpeg", "image/png", "image/webp"]).default(""),
+  photoDataBase64: string2().max(20000000).default("")
+};
+var jobLoadInputSchema = object({
+  date: string2().regex(/^\d{4}-\d{2}-\d{2}$/),
+  kind: jobLoadKindSchema,
+  quantity: string2().trim().min(1).max(80),
+  unit: jobLoadUnitSchema,
+  cost: string2().trim().max(80).default(""),
+  vendor: string2().trim().max(160).default(""),
+  notes: string2().trim().max(1000).default(""),
+  attested: boolean2().default(false),
+  ...jobLoadPhotoFields
+});
+var workSummarySummarySchema = object({
+  id: number2(),
+  jobId: number2(),
+  rangeStart: string2(),
+  rangeEnd: string2(),
+  preset: _enum(["today", "this_week", "custom"]),
+  createdAt: string2(),
+  logCount: number2(),
+  photoCount: number2(),
+  loadCount: number2(),
+  link: object({ hint: string2(), shortCode: string2().nullable(), expiresAt: string2(), expired: boolean2(), viewCount: number2(), firstViewedAt: string2().nullable(), lastViewedAt: string2().nullable(), createdAt: string2() }).nullable()
+});
 var clientAddressSchema = object({ label: string2(), address: string2(), primary: boolean2() });
 var clientSchema = object({ id: number2(), name: string2(), phone: string2(), email: string2(), address: string2(), addresses: array(clientAddressSchema), notes: string2(), tags: array(string2()), referredByClientId: number2().nullable(), referredByName: string2().nullable(), referralCount: number2(), jobCount: number2(), quoteCount: number2(), totalInvoiced: number2(), totalPaid: number2(), balanceDue: number2(), invoiceCount: number2(), paymentPercent: number2(), createdAt: string2(), updatedAt: string2() });
 var jobSchema = object({
@@ -76833,7 +78841,8 @@ var boardJobSchema = object({
   hasCosts: boolean2(),
   lastActivityAt: string2(),
   idleDays: number2(),
-  stuck: boolean2()
+  stuck: boolean2(),
+  reviewRequestedAt: string2().nullable()
 });
 var followUpItemSchema = object({
   id: number2(),
@@ -76893,10 +78902,10 @@ var customizeJsonSchema = string2().max(5000000).refine((value) => {
 }, "Invalid document customization.");
 var acceptedOptionsSchema = object({ items: array(object({ key: string2(), name: string2(), description: string2(), amount: string2(), quantity: number2(), discount: string2(), unit: string2() })), optionsTotal: string2(), totalWithOptions: string2(), acceptedAt: string2() });
 var quoteOptionRowSchema = object({ key: string2(), name: string2(), description: string2(), amount: string2(), quantity: number2(), lineTotal: string2() });
-var financialFieldsSchema = object({ subtotal: string2(), discountType: adjustmentTypeSchema, discountValue: string2(), taxType: adjustmentTypeSchema, taxValue: string2(), total: string2(), footnote: string2(), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape);
+var financialFieldsSchema = object({ subtotal: string2(), discountType: adjustmentTypeSchema, discountValue: string2(), taxType: adjustmentTypeSchema, taxValue: string2(), total: string2(), depositType: depositTypeSchema, depositValue: string2(), footnote: string2(), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape);
 var quoteSchema = object({ id: number2(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(quoteItemSchema), optionSelection: object({ selectedKeys: array(string2()), accepted: acceptedOptionsSchema.nullable() }), materials: array(materialItemSchema), expiryDate: string2(), sentAt: string2(), automationStatus: _enum(["awaiting", "won", "lost"]), lostReason: _enum(["price", "timing", "competitor", "no_response", "other"]).nullable(), lostNote: string2(), jobId: number2().nullable(), seriesId: number2(), parentQuoteId: number2().nullable(), versionNumber: number2(), superseded: boolean2(), accepted: boolean2(), convertedToInvoiceId: number2().nullable(), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var paymentSchema = object({ id: number2(), invoiceId: number2(), amount: string2(), paymentDate: string2(), method: string2(), note: string2(), createdAt: string2() });
-var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
+var invoiceSchema = object({ id: number2(), invoiceNumber: string2(), quoteId: number2().nullable(), jobId: number2().nullable(), clientId: number2().nullable(), clientName: string2(), clientPhone: string2(), clientEmail: string2(), jobAddress: string2(), shippingAddress: string2(), jobType: string2(), lineItems: array(invoiceItemSchema), issueDate: string2(), dueDate: string2(), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]), nextDueDate: string2(), seriesId: number2(), parentInvoiceId: number2().nullable(), recurringEndDate: string2(), recurringCancelled: boolean2(), paidToDate: string2(), balanceRemaining: string2(), lateFeeAccrued: string2(), totalWithLateFee: string2(), cardPaymentsEnabled: boolean2(), cardFeeEnabled: boolean2(), cardFeeCents: number2(), payments: array(paymentSchema), createdAt: string2(), updatedAt: string2() }).extend(financialFieldsSchema.shape);
 var timeEntrySchema = object({ id: number2(), jobId: number2(), crewMember: string2(), startedAt: string2(), endedAt: string2().nullable(), note: string2(), durationSeconds: number2() });
 var receiptSchema = object({ id: number2(), jobId: number2(), vendor: string2(), amount: string2(), purchaseDate: string2(), note: string2(), filename: string2(), url: string2(), createdAt: string2() });
 var jobFileSchema = object({ id: number2(), jobId: number2(), title: string2(), filename: string2(), contentType: string2(), sizeBytes: number2(), sharedWithClient: boolean2(), url: string2(), createdAt: string2() });
@@ -76938,6 +78947,19 @@ function parseClientTags(raw) {
   } catch {
     return [];
   }
+}
+function searchMatches(values, rawQuery) {
+  const tokens = rawQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0)
+    return true;
+  const text = values.filter(Boolean).join(" ").toLowerCase();
+  const digits = text.replace(/\D/g, "");
+  return tokens.every((token) => {
+    if (text.includes(token))
+      return true;
+    const tokenDigits = token.replace(/\D/g, "");
+    return tokenDigits.length >= 3 && digits.includes(tokenDigits);
+  });
 }
 function clientAddressKey(address) {
   return address.trim().replace(/\s+/g, " ").toLowerCase();
@@ -77098,6 +79120,8 @@ async function documentLinkTargetExists(ctx, kind, id) {
     return !!(await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.id, id)).limit(1))[0];
   if (kind === "quote")
     return !!(await db.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, id)).limit(1))[0];
+  if (kind === "work_summary")
+    return !!(await db.select({ id: workSummaries.id }).from(workSummaries).where(eq(workSummaries.id, id)).limit(1))[0];
   const doc = (await db.select({ kind: documents.kind }).from(documents).where(eq(documents.id, id)).limit(1))[0];
   return !!doc && doc.kind === kind;
 }
@@ -77192,6 +79216,18 @@ async function checkLoginIpRateLimit(ctx) {
     throw new Error("Too many sign-in attempts from this network. Try again in 15 minutes.");
   }
   await db.insert(rateLimitEvents).values({ scope: "login:ip", key: ip, occurredAt: new Date });
+}
+var LEAD_FORM_IP_LIMIT_PER_15MIN = 10;
+async function checkLeadFormRateLimit(ctx) {
+  const db = ctx.db();
+  const now = Date.now();
+  const ip = (ctx.clientIp ?? "").trim() || "unknown";
+  const windowStart = new Date(now - 15 * 60000);
+  const hits = await db.select({ id: rateLimitEvents.id }).from(rateLimitEvents).where(and(eq(rateLimitEvents.scope, "leadform:ip"), eq(rateLimitEvents.key, ip), gte(rateLimitEvents.occurredAt, windowStart)));
+  if (hits.length >= LEAD_FORM_IP_LIMIT_PER_15MIN) {
+    throw new Error("Too many submissions from this network. Please call the office instead.");
+  }
+  await db.insert(rateLimitEvents).values({ scope: "leadform:ip", key: ip, occurredAt: new Date });
 }
 var GOOGLE_SIGNIN_IP_LIMIT_PER_15MIN = 30;
 async function checkGoogleSignInRateLimit(ctx) {
@@ -77369,7 +79405,7 @@ function quoteShape(q) {
   return { id: q.id, clientId: q.clientId, clientName: q.clientName, clientPhone: q.clientPhone, clientEmail: q.clientEmail, jobAddress: q.jobAddress, shippingAddress: q.shippingAddress, jobType: q.jobType, lineItems: JSON.parse(q.lineItemsJson), optionSelection: (() => {
     const s = parseOptionSelection(q.optionSelectionJson);
     return { selectedKeys: s.selected, accepted: s.accepted };
-  })(), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
+  })(), materials: parseMaterials(q.materialsJson), subtotal: q.subtotal, discountType: q.discountType, discountValue: q.discountValue, taxType: q.taxType, taxValue: q.taxValue, total: q.total, footnote: q.footnote, depositType: q.depositType, depositValue: q.depositValue, expiryDate: q.expiryDate, sentAt: q.sentAt, automationStatus: q.automationStatus, lostReason: q.lostReason, lostNote: q.lostNote, theme: q.theme, font: q.font, accentColor: q.accentColor, showTaxLine: q.showTaxLine, showDiscountLine: q.showDiscountLine, showPaidLine: q.showPaidLine, showPaymentTerms: q.showPaymentTerms, showFooterNotes: q.showFooterNotes, showLogo: q.showLogo, showCompanyInfo: q.showCompanyInfo, customizeJson: q.customizeJson, jobId: q.jobId, seriesId: q.seriesId ?? q.id, parentQuoteId: q.parentQuoteId, versionNumber: q.versionNumber, superseded: q.superseded, accepted: q.accepted, convertedToInvoiceId: q.convertedToInvoiceId, createdAt: q.createdAt.toISOString(), updatedAt: q.updatedAt.toISOString() };
 }
 var exportPeriodSchema = _enum(["all", "lastMonth", "month", "quarter", "year"]);
 var exportRequestSchema = object({
@@ -77463,7 +79499,7 @@ function invoiceShape(row, paymentRows = [], fee = { type: "flat", value: 0, gra
   const daysLate = due ? Math.floor((Date.now() - due) / 86400000) - fee.graceDays : 0;
   const monthsLate = Math.max(0, Math.ceil(daysLate / 30));
   const lateFee = row.status !== "paid" && monthsLate > 0 ? fee.type === "percent" ? total * fee.value / 100 * monthsLate : fee.value : 0;
-  return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson)), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee: (total + lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { id: row.id, invoiceNumber: row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`, quoteId: row.quoteId, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, shippingAddress: row.shippingAddress, jobType: row.jobType, lineItems: normalizeLineItems(JSON.parse(row.lineItemsJson)), subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, depositType: row.depositType, depositValue: row.depositValue, cardPaymentsEnabled: row.cardPaymentsEnabled, cardFeeEnabled: row.cardFeeEnabled, cardFeeCents: row.cardFeeCents, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, recurringFrequency: row.recurringFrequency, nextDueDate: row.nextDueDate, seriesId: row.seriesId ?? row.id, parentInvoiceId: row.parentInvoiceId, recurringEndDate: row.recurringEndDate, recurringCancelled: row.recurringCancelled, paidToDate: paid.toFixed(2), balanceRemaining: Math.max(0, total + lateFee - paid).toFixed(2), lateFeeAccrued: lateFee.toFixed(2), totalWithLateFee: (total + lateFee).toFixed(2), payments: paymentRows.map((p) => ({ id: p.id, invoiceId: p.invoiceId, amount: p.amount, paymentDate: p.paymentDate, method: p.method, note: p.note, createdAt: p.createdAt.toISOString() })), theme: row.theme, font: row.font, accentColor: row.accentColor, showTaxLine: row.showTaxLine, showDiscountLine: row.showDiscountLine, showPaidLine: row.showPaidLine, showPaymentTerms: row.showPaymentTerms, showFooterNotes: row.showFooterNotes, showLogo: row.showLogo, showCompanyInfo: row.showCompanyInfo, customizeJson: row.customizeJson, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 var MARKETPLACE_FREE_UNLOCKS_TOTAL = 3;
 var MARKETPLACE_PRO_UNLOCKS_PER_MONTH = 10;
@@ -77596,7 +79632,12 @@ var BACKUP_TABLES = [
   "marketplace_messages",
   "marketplace_booking_requests",
   "document_links",
-  "document_link_events"
+  "document_link_events",
+  "work_summaries",
+  "job_loads",
+  "safety_sessions",
+  "safety_session_attendees",
+  "member_credentials"
 ];
 function sqlValue(value) {
   if (value === null)
@@ -77691,7 +79732,7 @@ var AUTH_REFRESH_DAYS = 30;
 var AUTH_REFRESH_ROTATE_MINUTES = 60;
 var AUTH_REFRESH_REUSE_GRACE_MS = 120000;
 var AUTH_REFRESH_RATE_LIMIT = 10;
-var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300) });
+var authEnvelopeSchema = object({ _sessionToken: string2().min(32).max(300), _surface: _enum(["office", "app"]).optional() });
 var accessOverridesSchema = object({
   seeMoney: boolean2().optional(),
   seeClientContact: boolean2().optional(),
@@ -78458,11 +80499,37 @@ function backupConfig() {
     const parsed = Number.parseInt(value ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
+  const s3Endpoint = (process.env.BACKUP_S3_ENDPOINT || "").trim().replace(/\/+$/, "");
+  const s3Bucket = (process.env.BACKUP_S3_BUCKET || "").trim();
+  const s3AccessKeyId = (process.env.BACKUP_S3_ACCESS_KEY_ID || "").trim();
+  const s3SecretAccessKey = (process.env.BACKUP_S3_SECRET_ACCESS_KEY || "").trim();
+  const s3Required = [
+    ["BACKUP_S3_ENDPOINT", s3Endpoint],
+    ["BACKUP_S3_BUCKET", s3Bucket],
+    ["BACKUP_S3_ACCESS_KEY_ID", s3AccessKeyId],
+    ["BACKUP_S3_SECRET_ACCESS_KEY", s3SecretAccessKey]
+  ];
+  const s3Missing = s3Required.filter(([, value]) => !value).map(([name]) => name);
+  let s3Prefix = (process.env.BACKUP_S3_PREFIX || "backups/").trim();
+  if (s3Prefix && !s3Prefix.endsWith("/"))
+    s3Prefix += "/";
+  const s3 = {
+    endpoint: s3Endpoint,
+    bucket: s3Bucket,
+    accessKeyId: s3AccessKeyId,
+    secretAccessKey: s3SecretAccessKey,
+    region: (process.env.BACKUP_S3_REGION || "auto").trim() || "auto",
+    prefix: s3Prefix,
+    configured: s3Missing.length === 0,
+    partial: s3Missing.length > 0 && s3Missing.length < s3Required.length,
+    missing: s3Missing
+  };
   return {
     alertEmail: (process.env.BACKUP_ALERT_EMAIL || "").trim(),
     hour: Math.min(23, Math.max(0, int(process.env.BACKUP_HOUR, 3))),
     diskCapMB: Math.max(128, int(process.env.BACKUP_DISK_CAP_MB, 1024)),
-    fullSizeAlertMB: Math.max(5, int(process.env.BACKUP_FULL_SIZE_ALERT_MB, 30))
+    fullSizeAlertMB: Math.max(5, int(process.env.BACKUP_FULL_SIZE_ALERT_MB, 30)),
+    s3
   };
 }
 function utcStamp(date = new Date) {
@@ -78487,6 +80554,65 @@ ${text}`);
   } catch (error) {
     console.error("[crewkat][backup] alert email failed:", error);
   }
+}
+function sha256Hex3(data) {
+  return createHash3("sha256").update(data).digest("hex");
+}
+function hmacSha256(key, data) {
+  return createHmac3("sha256", key).update(data, "utf8").digest();
+}
+function signS3Request(s3, method, key, payloadHash) {
+  const amzDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const dateStamp = amzDate.slice(0, 8);
+  const canonicalUri = "/" + [s3.bucket, ...key.split("/")].map((segment) => encodeURIComponent(segment)).join("/");
+  const host = new URL(s3.endpoint).host;
+  const signedHeaders = {
+    host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate
+  };
+  const headerNames = Object.keys(signedHeaders).sort();
+  const canonicalHeaders = headerNames.map((name) => `${name}:${signedHeaders[name]}
+`).join("");
+  const canonicalRequest = [method, canonicalUri, "", canonicalHeaders, headerNames.join(";"), payloadHash].join(`
+`);
+  const scope = `${dateStamp}/${s3.region}/s3/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256Hex3(canonicalRequest)].join(`
+`);
+  const kDate = hmacSha256(`AWS4${s3.secretAccessKey}`, dateStamp);
+  const kRegion = hmacSha256(kDate, s3.region);
+  const kService = hmacSha256(kRegion, "s3");
+  const kSigning = hmacSha256(kService, "aws4_request");
+  const signature = createHmac3("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
+  return {
+    url: `${s3.endpoint}${canonicalUri}`,
+    headers: {
+      ...signedHeaders,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${s3.accessKeyId}/${scope}, SignedHeaders=${headerNames.join(";")}, Signature=${signature}`
+    }
+  };
+}
+async function uploadBackupToS3(s3, filePath, key, contentType) {
+  const body = await readFile(filePath);
+  const put = signS3Request(s3, "PUT", key, sha256Hex3(body));
+  const putRes = await fetch(put.url, {
+    method: "PUT",
+    headers: { ...put.headers, "content-type": contentType },
+    body
+  });
+  if (!putRes.ok) {
+    const detail = (await putRes.text().catch(() => "")).slice(0, 300).trim();
+    throw new Error(`S3 PUT ${key} failed with HTTP ${putRes.status}${detail ? `: ${detail}` : ""}`);
+  }
+  const head = signS3Request(s3, "HEAD", key, sha256Hex3(""));
+  const headRes = await fetch(head.url, { method: "HEAD", headers: head.headers });
+  if (!headRes.ok)
+    throw new Error(`S3 HEAD ${key} failed with HTTP ${headRes.status}`);
+  const remoteSize = Number(headRes.headers.get("content-length"));
+  if (!Number.isFinite(remoteSize) || remoteSize !== body.length) {
+    throw new Error(`S3 size mismatch for ${key}: uploaded ${body.length} bytes but the bucket reports ${headRes.headers.get("content-length") ?? "no size"}.`);
+  }
+  return { key, bytes: body.length };
 }
 async function pruneBackups(dir, cfg, notes) {
   let entries = [];
@@ -78544,7 +80670,7 @@ Error: ${error}
 Backup run row: ${runId ?? "n/a"}
 
 Open Crewkat \u2192 Settings \u2192 Backups to retry manually.`);
-    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error };
+    return { ok: false, runId, kind, filePath: null, totalBytes: null, offsiteSent: false, integrityOk: false, error, s3Uploaded: false, s3Key: null, s3Error: null };
   };
   try {
     await mkdir(dir, { recursive: true });
@@ -78589,6 +80715,23 @@ Open Crewkat \u2192 Settings \u2192 Backups to retry manually.`);
     }
     const pruneNotes = [];
     await pruneBackups(dir, cfg, pruneNotes);
+    let s3Key = null;
+    let s3Bytes = 0;
+    let s3Error = null;
+    if (cfg.s3.partial) {
+      pruneNotes.push(`S3 offsite partially configured (missing env: ${cfg.s3.missing.join(", ")}); upload skipped.`);
+    } else if (cfg.s3.configured) {
+      const target = tarPath ? { path: tarPath, key: `${cfg.s3.prefix}${basename(tarPath)}`, contentType: "application/gzip" } : { path: snapshotPath, key: `${cfg.s3.prefix}${snapshotName}`, contentType: "application/x-sqlite3" };
+      try {
+        const uploaded = await uploadBackupToS3(cfg.s3, target.path, target.key, target.contentType);
+        s3Key = uploaded.key;
+        s3Bytes = uploaded.bytes;
+        pruneNotes.push(`S3 offsite upload ok: ${uploaded.key} (${formatBytes(uploaded.bytes)}).`);
+      } catch (error) {
+        s3Error = error instanceof Error ? error.message : String(error);
+        pruneNotes.push(`S3 offsite upload FAILED: ${s3Error}`);
+      }
+    }
     let offsiteSent = false;
     const dateLabel = startedAt.toISOString().slice(0, 10);
     if (cfg.alertEmail) {
@@ -78619,10 +80762,32 @@ Full snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) \u2014 database
         text += `
 Full snapshot: ${basename(tarPath)} (${formatBytes(totalBytes)}) was NOT emailed (over the ${formatBytes(BACKUP_RESEND_LIMIT_BYTES)} email limit) \u2014 it is retained on the server disk.`;
       }
+      if (s3Key) {
+        text += tarPath ? `
+Full snapshot also uploaded to S3 offsite: ${s3Key} (${formatBytes(s3Bytes)}).` : `
+Database snapshot also uploaded to S3 offsite: ${s3Key} (${formatBytes(s3Bytes)}).`;
+      }
       const delivery = await ctx.executePrivileged(privileged.sendBackupEmail, { to: cfg.alertEmail, subject, text, attachments });
       offsiteSent = delivery.delivery === "sent";
       if (!offsiteSent)
         pruneNotes.push("Offsite email failed to send.");
+    }
+    if (cfg.s3.partial && Date.now() - lastS3ConfigAlertAt > 24 * 3600 * 1000) {
+      lastS3ConfigAlertAt = Date.now();
+      await sendBackupAlert(ctx, cfg, "[Crewkat backup] S3 offsite is partially configured", `Backup Phase 2 (S3 offsite) is partially configured, so no S3 upload was attempted.
+
+Missing env vars: ${cfg.s3.missing.join(", ")}
+
+Set BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY in the Render env to enable S3 offsite, or clear all BACKUP_S3_* vars to disable it.`);
+    }
+    if (s3Error) {
+      await sendBackupAlert(ctx, cfg, "[Crewkat backup] S3 offsite upload FAILED", `The backup itself completed \u2014 the on-disk copy and the email offsite are intact \u2014 but the S3 offsite upload failed.
+
+Kind: ${kind}
+Time: ${new Date().toISOString()}
+Error: ${s3Error}
+
+Check the BACKUP_S3_* env vars and the bucket's availability.`);
     }
     if (tarPath && totalBytes >= cfg.fullSizeAlertMB * 1024 * 1024) {
       await sendBackupAlert(ctx, cfg, `[Crewkat backup] weekly full is ${formatBytes(totalBytes)}`, `The weekly full snapshot has reached ${formatBytes(totalBytes)} (alert threshold ${cfg.fullSizeAlertMB} MB).
@@ -78641,7 +80806,7 @@ Set up the S3 offsite option (see dev-briefs/automated-backups.md section 2.5) b
       integrityOk: true,
       notes: pruneNotes.join(" ") || null
     }).where(eq(backupRuns.id, runId));
-    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null };
+    return { ok: true, runId, kind, filePath, totalBytes, offsiteSent, integrityOk: true, error: null, s3Uploaded: Boolean(s3Key), s3Key, s3Error };
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
@@ -78715,6 +80880,7 @@ Investigate before the next weekly run.`);
 }
 var backupInProgress = false;
 var lastMissedRunAlertAt = 0;
+var lastS3ConfigAlertAt = 0;
 async function checkMissedRuns(ctx, cfg) {
   const db = ctx.db();
   const cutoff = new Date(Date.now() - 48 * 3600 * 1000);
@@ -78891,7 +81057,23 @@ async function notifyNudgeFallback(db, quote) {
   }
 }
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-async function sendJobReviewEmail(ctx, db, job, stage) {
+var REVIEW_STAGE_TITLES = {
+  auto: "Automatic",
+  manual: "Manual",
+  next_day: "Next day"
+};
+function reviewStageTitle(stage) {
+  const known = REVIEW_STAGE_TITLES[stage];
+  if (known)
+    return known;
+  const words = stage.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "\u2014";
+}
+async function reviewRequestedAtForJob(db, jobId) {
+  const row = (await db.select({ sentAt: automationLogs.sentAt }).from(automationLogs).where(and(eq(automationLogs.kind, "review"), eq(automationLogs.channel, "email"), eq(automationLogs.entityId, jobId))).orderBy(desc(automationLogs.sentAt)).limit(1))[0];
+  return row?.sentAt ?? null;
+}
+async function sendJobReviewEmail(ctx, db, job, stage, force = false) {
   const setting = (await db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1))[0];
   const reviewUrl = (setting?.reviewUrl || "").trim();
   if (!reviewUrl)
@@ -78899,7 +81081,7 @@ async function sendJobReviewEmail(ctx, db, job, stage) {
   if (!job.clientEmail || !EMAIL_RE.test(job.clientEmail))
     throw new Error("No client email on file for this job.");
   const already = (await db.select({ id: automationLogs.id }).from(automationLogs).where(and(eq(automationLogs.kind, "review"), eq(automationLogs.channel, "email"), eq(automationLogs.entityId, job.id))).limit(1))[0];
-  if (already)
+  if (already && !force)
     return false;
   const companyName = await companyNameForNudge(db, job.companyId);
   const clientName = job.clientName || "there";
@@ -78950,6 +81132,292 @@ async function runReviewRequestTick(ctx) {
   }
   return { ran: emailed.length > 0, emailed };
 }
+async function neverClosedClientIds(db, companyId) {
+  const [quoteRows, jobRows, invoiceRows] = await Promise.all([
+    db.select({ clientId: quotes.clientId, sentAt: quotes.sentAt, accepted: quotes.accepted, automationStatus: quotes.automationStatus, convertedToInvoiceId: quotes.convertedToInvoiceId, superseded: quotes.superseded }).from(quotes).where(eq(quotes.companyId, companyId)),
+    db.select({ clientId: jobs.clientId }).from(jobs).where(eq(jobs.companyId, companyId)),
+    db.select({ clientId: invoices.clientId }).from(invoices).where(eq(invoices.companyId, companyId))
+  ]);
+  const withJob = new Set(jobRows.map((r) => r.clientId).filter((x) => x != null));
+  const withInvoice = new Set(invoiceRows.map((r) => r.clientId).filter((x) => x != null));
+  const closed = new Set;
+  for (const q of quoteRows) {
+    if (q.clientId != null && (q.accepted || q.automationStatus === "won" || q.convertedToInvoiceId != null))
+      closed.add(q.clientId);
+  }
+  const out = new Set;
+  for (const q of quoteRows) {
+    if (q.clientId == null || !q.sentAt || q.superseded)
+      continue;
+    if (closed.has(q.clientId) || withJob.has(q.clientId) || withInvoice.has(q.clientId))
+      continue;
+    out.add(q.clientId);
+  }
+  return out;
+}
+async function resolveCampaignRecipients(db, companyId, mode, clientIds) {
+  const [clientRows, suppressionRows] = await Promise.all([
+    db.select().from(clients).where(eq(clients.companyId, companyId)),
+    db.select({ email: emailSuppressions.email }).from(emailSuppressions).where(eq(emailSuppressions.companyId, companyId))
+  ]);
+  const suppressed = new Set(suppressionRows.map((s) => s.email.toLowerCase()));
+  let pool = clientRows;
+  if (mode === "individual") {
+    const wanted = new Set(clientIds);
+    pool = clientRows.filter((c) => wanted.has(c.id));
+  } else if (mode === "never_closed") {
+    const ids = await neverClosedClientIds(db, companyId);
+    pool = clientRows.filter((c) => ids.has(c.id));
+  }
+  let suppressedCount = 0;
+  let noEmailCount = 0;
+  const seen = new Set;
+  const recipients = [];
+  for (const client of pool) {
+    const email = (client.email || "").trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      noEmailCount++;
+      continue;
+    }
+    const key = email.toLowerCase();
+    if (suppressed.has(key)) {
+      suppressedCount++;
+      continue;
+    }
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    recipients.push({ clientId: client.id, clientName: client.name, email });
+  }
+  return { recipients, suppressedCount, noEmailCount };
+}
+var BLOG_POINT_SETS = [
+  { match: /bath|shower|tub|vanity/i, points: [
+    "Water stains, soft spots, or a musty smell around the tub or shower \u2014 moisture is getting where it shouldn't.",
+    "Grout that keeps cracking and caulking that won't stay sealed, no matter how often you redo it.",
+    "Water pressure that has dropped, or drains that have slowed to a crawl.",
+    "Fixtures that waste water and date the whole room every time you look at them.",
+    "A layout that fights you every morning \u2014 too little storage, bad lighting, no counter space.",
+    "Tile or flooring that feels spongy underfoot, a classic sign of subfloor damage underneath."
+  ] },
+  { match: /kitchen|cabinet|counter/i, points: [
+    "Cabinet doors that won't close right and drawers that stick or sag.",
+    "Counter space that disappears the moment you start cooking for more than two.",
+    "Water damage under the sink or around the dishwasher that keeps coming back.",
+    "Lighting that leaves your work areas in shadow.",
+    "Appliances older than the layout \u2014 the kitchen was designed around a different life.",
+    "Flooring that is lifting, stained, or impossible to keep clean."
+  ] },
+  { match: /paint|exterior|siding/i, points: [
+    "Paint that is peeling, bubbling, or chalking when you run a hand over it.",
+    "Bare wood or caulk gaps showing at joints and trim \u2014 water's invitation in.",
+    "Fading that has gone uneven, especially on the sun side of the house.",
+    "Stains bleeding through from inside the wall or the substrate.",
+    "It has simply been 7\u201310 years \u2014 Florida sun and storms shorten every paint clock."
+  ] }
+];
+var BLOG_POINTS_GENERAL = [
+  "Small problems you have started working around instead of fixing \u2014 they only get more expensive.",
+  "Water where it doesn't belong: stains, bubbling paint, soft spots, or a musty smell.",
+  "Doors, drawers, or windows that no longer open, close, or seal the way they should.",
+  "Surfaces that date the room and drag down how the whole home feels.",
+  "A layout that no longer fits how your family actually lives."
+];
+function composeCampaignContent(args) {
+  const company = args.companyName.trim() || "Our team";
+  const area = args.serviceArea.trim();
+  const clean = args.prompt.trim().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  const capitalized = clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : "";
+  const estimateUrl = args.website.trim();
+  const ctaUrl = estimateUrl || (args.phone.trim() ? `tel:${args.phone.replace(/[^0-9+]/g, "")}` : "");
+  if (args.type === "blog") {
+    const topic = capitalized || "Home improvement tips from our crew";
+    const countMatch = /^(\d{1,2})\s+/.exec(topic);
+    const wanted = countMatch ? Math.min(8, Math.max(3, Number(countMatch[1]))) : 5;
+    const set = BLOG_POINT_SETS.find((s) => s.match.test(topic))?.points ?? BLOG_POINTS_GENERAL;
+    const points = set.slice(0, wanted).map((p, i) => `${i + 1}. ${p}`).join(`
+`);
+    return {
+      subject: topic,
+      headline: topic,
+      bodyText: `Thinking about your home lately? Our latest post \u2014 ${topic.charAt(0).toLowerCase() + topic.slice(1)} \u2014 pulls together what our crews see every week${area ? ` around ${area}` : ""}: the small signs that tell you it's time to act before a repair turns into a project.
+
+${points}
+
+If any of these sound familiar, ${company} is happy to take a look and give you a straight, no-pressure assessment. Most estimates are free, and you'll know exactly what we'd do and what it would cost before you decide anything.`,
+      ctaLabel: "Get my free estimate",
+      ctaUrl
+    };
+  }
+  const discount = /(\d{1,3})\s*%\s*off/i.exec(clean);
+  const financing = /financ/i.test(clean);
+  const headline = discount ? `Save ${discount[1]}% \u2014 ${capitalized.replace(/^\d{1,3}\s*%\s*off\s*/i, "").trim() || "on your next project"}` : capitalized || `News from ${company}`;
+  const subject = discount ? `${discount[1]}% off \u2014 ${capitalized.replace(/^\d{1,3}\s*%\s*off\s*/i, "").trim() || "your next project"} | ${company}` : headline;
+  const offerLine = discount ? `Book now and take ${discount[1]}% off. ${capitalized}.` : capitalized ? `${capitalized}.` : `Here's what's new at ${company}.`;
+  const financingLine = financing ? `
+
+And if budget timing is the only thing holding you back: we now offer financing options, so you can spread the cost out instead of putting the project off. Ask us how it works when we talk \u2014 no obligation.` : "";
+  return {
+    subject,
+    headline,
+    bodyText: `${offerLine}${financingLine}
+
+${company} is a local, licensed crew${area ? ` serving ${area}` : ""}. We give free, written estimates, show up when we say we will, and leave your home cleaner than we found it. Spots on the schedule fill quickly \u2014 reach out today and we'll find a time that works for you.${args.reviewUrl.trim() ? `
+
+See what your neighbors say about working with us: ${args.reviewUrl.trim()}` : ""}`,
+    ctaLabel: discount ? "Claim this offer" : financing ? "Ask about financing" : "Get my free estimate",
+    ctaUrl
+  };
+}
+function aiMonthKey(now = new Date) {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+async function aiUsageCount(db, companyId) {
+  const row = (await db.select({ count: aiUsage.count }).from(aiUsage).where(and(eq(aiUsage.companyId, companyId), eq(aiUsage.month, aiMonthKey()))).limit(1))[0];
+  return row?.count ?? 0;
+}
+async function recordAiUsage(db, companyId) {
+  const now = new Date;
+  await db.insert(aiUsage).values({ companyId, month: aiMonthKey(now), count: 1, createdAt: now, updatedAt: now }).onConflictDoUpdate({
+    target: [aiUsage.companyId, aiUsage.month],
+    set: { count: sql`count + 1`, updatedAt: now }
+  });
+}
+async function companyAiEntitled(db, companyId) {
+  if (await companyProActive(db, companyId))
+    return true;
+  const company = (await db.select({ officePlanState: companies.officePlanState }).from(companies).where(eq(companies.id, companyId)).limit(1))[0];
+  return company?.officePlanState === "active" || company?.officePlanState === "founding";
+}
+var AI_NOT_CONFIGURED_ERROR = "AI writing isn't set up on this Crewkat server yet \u2014 the built-in templates still work.";
+var AI_UPGRADE_ERROR = "AI writing is a Crewkat Premium / Office feature. Upgrade to write with AI \u2014 the built-in templates still work.";
+function aiCapError(cap) {
+  return `This company has reached its monthly AI limit (${cap} generations). It resets on the 1st \u2014 the built-in templates still work.`;
+}
+async function requireAiReady(ctx, db, companyId) {
+  const status = await ctx.executePrivileged(privileged.getAiStatus, {});
+  if (!status.configured)
+    throw new Error(AI_NOT_CONFIGURED_ERROR);
+  if (!await companyAiEntitled(db, companyId))
+    throw new Error(AI_UPGRADE_ERROR);
+  if (await aiUsageCount(db, companyId) >= status.monthlyCap)
+    throw new Error(aiCapError(status.monthlyCap));
+}
+function escapeHtmlText(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderCampaignEmail(args) {
+  const footerText = `
+
+\u2014
+${args.companyName}${args.phone ? ` \xB7 ${args.phone}` : ""}${args.serviceArea ? ` \xB7 Serving ${args.serviceArea}` : ""}
+Don't want these emails? Unsubscribe: ${args.unsubscribeUrl}`;
+  const footerHtml = `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.5">${escapeHtmlText(args.companyName)}${args.phone ? ` \xB7 ${escapeHtmlText(args.phone)}` : ""}${args.serviceArea ? ` \xB7 Serving ${escapeHtmlText(args.serviceArea)}` : ""}<br><a href="${escapeHtmlText(args.unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline">Unsubscribe</a> from these emails.</div>`;
+  if (args.customHtml.trim()) {
+    return { html: `${args.customHtml}
+${footerHtml}`, text: `${args.headline}
+
+${args.bodyText}${footerText}` };
+  }
+  const accent = /^#[0-9a-fA-F]{6}$/.test(args.accentColor) ? args.accentColor : "#1f5a4a";
+  const paragraphs = args.bodyText.split(/\n{2,}/).map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#1f2937">${escapeHtmlText(p.trim()).replace(/\n/g, "<br>")}</p>`).join("");
+  const html = `<div style="margin:0;padding:24px 12px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">` + `<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">` + `<div style="background:${accent};padding:18px 24px;color:#ffffff;font-size:18px;font-weight:bold">${escapeHtmlText(args.companyName)}</div>` + (args.imageUrl ? `<img src="${escapeHtmlText(args.imageUrl)}" alt="" style="display:block;width:100%;max-height:340px;object-fit:cover">` : "") + `<div style="padding:24px">` + (args.headline ? `<h1 style="margin:0 0 14px;font-size:23px;line-height:1.3;color:#111827">${escapeHtmlText(args.headline)}</h1>` : "") + paragraphs + (args.ctaLabel && args.ctaUrl ? `<div style="margin:22px 0 6px"><a href="${escapeHtmlText(args.ctaUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:8px">${escapeHtmlText(args.ctaLabel)}</a></div>` : "") + footerHtml + `</div></div></div>`;
+  const text = `${args.headline}
+
+${args.bodyText}${args.ctaLabel && args.ctaUrl ? `
+
+${args.ctaLabel}: ${args.ctaUrl}` : ""}${footerText}`;
+  return { html, text };
+}
+function cardProcessingFeeCents(baseCents, feeOn) {
+  if (!feeOn || baseCents <= 0)
+    return 0;
+  return Math.max(0, Math.round((baseCents + 30) / 0.971) - baseCents);
+}
+function moneyStringToCents(value) {
+  return Math.round((Number(String(value).replace(/[^0-9.-]/g, "")) || 0) * 100);
+}
+function centsToMoneyString(cents) {
+  return (cents / 100).toFixed(2);
+}
+function stripeApplicationFeeCents(amountCents) {
+  const pct = Number(process.env.STRIPE_APPLICATION_FEE_PERCENT ?? "");
+  if (!Number.isFinite(pct) || pct <= 0)
+    return 0;
+  return Math.max(0, Math.round(amountCents * Math.min(100, pct) / 100));
+}
+async function invoiceBalanceRemaining(db, invoice) {
+  const setting = (await db.select().from(settings).where(eq(settings.companyId, invoice.companyId)).limit(1))[0];
+  const paymentRows = await db.select().from(payments).where(eq(payments.invoiceId, invoice.id));
+  const fee = { type: setting?.lateFeeType ?? "flat", value: Number(setting?.lateFeeValue ?? 0), graceDays: setting?.lateFeeGraceDays ?? 0 };
+  return Number(invoiceShape(invoice, paymentRows, fee).balanceRemaining);
+}
+async function startInvoiceCheckout(ctx, db, invoice, returnUrl) {
+  const setting = (await db.select().from(settings).where(eq(settings.companyId, invoice.companyId)).limit(1))[0];
+  if (!setting?.stripeConnectAccountId || !setting.stripeChargesEnabled)
+    throw new Error("Online payments are not set up for this company yet.");
+  if (!await companyProActive(db, invoice.companyId))
+    throw new Error("Online payments are not available for this company.");
+  if (!invoice.cardPaymentsEnabled)
+    throw new Error("Card payments are turned off for this invoice.");
+  const balance = await invoiceBalanceRemaining(db, invoice);
+  if (balance <= 0)
+    throw new Error("This invoice is already paid.");
+  const amountCents = Math.round(balance * 100);
+  const result = await ctx.executePrivileged(privileged.createInvoiceCheckout, {
+    accountId: setting.stripeConnectAccountId,
+    companyId: invoice.companyId,
+    invoiceId: invoice.id,
+    amountCents,
+    description: `Invoice ${invoice.invoiceNumber || invoice.id} \u2014 ${setting.companyName}`,
+    customerEmail: invoice.clientEmail ?? "",
+    successUrl: returnUrl,
+    cancelUrl: returnUrl,
+    applicationFeeCents: stripeApplicationFeeCents(amountCents)
+  });
+  if (!result.configured || !result.url || !result.sessionId)
+    throw new Error("Online payments are not configured on the server yet.");
+  const now = new Date;
+  await db.update(invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(and(eq(invoicePaymentAttempts.invoiceId, invoice.id), eq(invoicePaymentAttempts.status, "pending")));
+  await db.insert(invoicePaymentAttempts).values({ companyId: invoice.companyId, invoiceId: invoice.id, stripeSessionId: result.sessionId, amount: balance.toFixed(2), status: "pending", createdAt: now, updatedAt: now });
+  return { url: result.url };
+}
+async function recordOnlineInvoicePayment(db, attempt, event) {
+  const invoice = (await db.select().from(invoices).where(eq(invoices.id, attempt.invoiceId)).limit(1))[0];
+  if (!invoice)
+    return false;
+  const now = new Date;
+  const method = event.paymentMethodType === "us_bank_account" ? "ACH (online payment)" : "Card (online payment)";
+  const existing = event.paymentIntentId ? (await db.select({ id: payments.id }).from(payments).where(eq(payments.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0] : undefined;
+  if (!existing) {
+    await db.insert(payments).values({ companyId: invoice.companyId, invoiceId: invoice.id, amount: attempt.amount, paymentDate: now.toISOString().slice(0, 10), method, note: "Paid online via the invoice link", stripePaymentIntentId: event.paymentIntentId, createdAt: now });
+  }
+  const balanceAfter = await invoiceBalanceRemaining(db, invoice);
+  const nowPaid = balanceAfter <= 0;
+  await db.update(invoices).set({ status: nowPaid ? "paid" : invoice.status, updatedAt: now }).where(eq(invoices.id, invoice.id));
+  await db.update(invoicePaymentAttempts).set({ status: "paid", method, stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(invoicePaymentAttempts.id, attempt.id));
+  if (invoice.jobId) {
+    await recordJobEvent(db, { companyId: invoice.companyId, jobId: invoice.jobId, kind: "note", title: nowPaid ? "Invoice paid online \u2014 paid in full" : "Online payment received", body: `${invoice.clientName} paid $${attempt.amount} by ${event.paymentMethodType === "us_bank_account" ? "ACH" : "card"} on invoice ${invoice.invoiceNumber || invoice.id}.` });
+  }
+  return true;
+}
+async function companyProActive(db, companyId) {
+  const users = await db.select({ tier: authUsers.tier, role: authUsers.role }).from(authUsers).where(eq(authUsers.companyId, companyId)).orderBy(asc(authUsers.id));
+  const owner = users.find((u) => u.role === "owner") ?? users[0];
+  return owner?.tier === "premium";
+}
+async function connectSetupShape(ctx, db, companyId) {
+  const setting = (await db.select().from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+  const platform = await ctx.executePrivileged(privileged.getStripePlatformStatus, {});
+  return {
+    platformConfigured: platform.configured,
+    status: setting?.stripeConnectStatus ?? "not_connected",
+    accountHint: setting?.stripeConnectAccountId ? setting.stripeConnectAccountId.slice(-4) : null,
+    chargesEnabled: setting?.stripeChargesEnabled ?? false,
+    payoutsEnabled: setting?.stripePayoutsEnabled ?? false,
+    proActive: await companyProActive(db, companyId)
+  };
+}
 var listingModerationResultSchema = object({ flagged: boolean2(), status: moderationStatusSchema, reasons: array(string2()) });
 async function scanListingForModeration(db, input) {
   if (!await isAutoModerationEnabled(db))
@@ -78998,8 +81466,9 @@ async function checkNewUserListingCap(db, userCreatedAt, companyId) {
   }
 }
 var TOOL_REGISTRY = {
+  toolbox: { screen: "toolbox", tab: null, titleEn: "Calculators", titleEs: "Calculadoras", iconPath: "M5 3h14v18H5zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01" },
   "toolbox:loan": { screen: "toolbox", tab: "loan", titleEn: "Loan payment", titleEs: "Pago de pr\xE9stamo", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
-  "toolbox:materials": { screen: "toolbox", tab: "materials", titleEn: "Material guide", titleEs: "Gu\xEDa de materiales", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
+  "toolbox:materials": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M4 18h16M6 18V7h12v11M9 7V4h6v3" },
   "toolbox:angle": { screen: "toolbox", tab: "angle", titleEn: "Angles", titleEs: "\xC1ngulos", iconPath: "M4 19h16L4 5zM8 15h5" },
   "toolbox:convert": { screen: "toolbox", tab: "convert", titleEn: "Unit converter", titleEs: "Convertidor de unidades", iconPath: "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3" },
   "toolbox:area": { screen: "toolbox", tab: "area", titleEn: "Measurements", titleEs: "Medidas", iconPath: "M4 4h16v16H4zM8 4v16M4 10h16" },
@@ -79018,23 +81487,23 @@ var TOOL_REGISTRY = {
   "toolbox:insulation": { screen: "toolbox", tab: "insulation", titleEn: "Insulation batts", titleEs: "Aislante en rollos", iconPath: "M5 20c3-2 3-6 0-8 3-2 3-6 0-8M12 20c3-2 3-6 0-8 3-2 3-6 0-8M19 20c3-2 3-6 0-8 3-2 3-6 0-8" },
   "toolbox:gutter": { screen: "toolbox", tab: "gutter", titleEn: "Gutter & downspouts", titleEs: "Canalones y bajantes", iconPath: "M4 6h16v4H4zM17 10v8h-4M17 18H6" },
   "toolbox:rate": { screen: "toolbox", tab: "rate", titleEn: "Billable rate", titleEs: "Tarifa facturable", iconPath: "M12 3v18M7 7h7a2 2 0 0 1 0 4H9a2 2 0 0 0 0 4h8" },
-  "toolbox:punchlist": { screen: "toolbox", tab: "punchlist", titleEn: "Punch list", titleEs: "Lista de pendientes", iconPath: "M4 5h16M4 12h16M4 19h16M18 3l3 3-3 3" },
   "businessTools:price": { screen: "businessTools", tab: "price", titleEn: "Saved prices", titleEs: "Precios guardados", iconPath: "M5 5h14v14H5zM8 9h8M8 13h5" },
-  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Quote templates", titleEs: "Plantillas de presupuestos", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
+  "businessTools:templates": { screen: "businessTools", tab: "templates", titleEn: "Estimate templates", titleEs: "Plantillas de estimados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
   "businessTools:mileage": { screen: "businessTools", tab: "mileage", titleEn: "Mileage", titleEs: "Millaje", iconPath: "M5 18c4-8 10-8 14-12M5 18h5M19 6h-5" },
   "businessTools:expenses": { screen: "businessTools", tab: "expenses", titleEn: "Expenses & receipts", titleEs: "Gastos y recibos", iconPath: "M4 6h16v14H4zM8 3v6M16 3v6" },
   "expansion:warranties": { screen: "expansion", tab: "warranties", titleEn: "Warranties", titleEs: "Garant\xEDas", iconPath: "M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6zM9 12l2 2 4-5" },
-  "expansion:scanner": { screen: "expansion", tab: "scanner", titleEn: "Document scanner", titleEs: "Esc\xE1ner de documentos", iconPath: "M6 3h12v18H6zM9 7h6M4 16h16" },
   reports: { screen: "reports", tab: null, titleEn: "Reports", titleEs: "Informes", iconPath: "M4 20V10M10 20V4M16 20v-7M22 20V7" },
   "operations:calendar": { screen: "operations", tab: "calendar", titleEn: "Schedule", titleEs: "Calendario", iconPath: "M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" },
+  "operations:leads": { screen: "operations", tab: "leads", titleEn: "Lead scoring", titleEs: "Puntaje de prospectos", iconPath: "M4 5h16l-6 7v6l-4 2v-8z" },
+  crewDay: { screen: "crewDay", tab: null, titleEn: "Crew day", titleEs: "D\xEDa del equipo", iconPath: "M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" },
   followups: { screen: "followups", tab: null, titleEn: "Collections & follow-ups", titleEs: "Cobros y seguimientos", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
-  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders waiting on suppliers", titleEs: "Pedidos esperando proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+  "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders & suppliers", titleEs: "Pedidos y proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   "fieldIntelligence:equipment": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M7 7h10v10H7zM4 10h3M17 10h3M10 4v3M10 17v3" },
-  "expansion:plans": { screen: "expansion", tab: "plans", titleEn: "Equipment upkeep", titleEs: "Cuidado del equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
+  "expansion:plans": { screen: "fieldIntelligence", tab: "equipment", titleEn: "Equipment", titleEs: "Equipo", iconPath: "M4 18h16M7 18v-5l5-4 5 4v5M9 8V4h6v4" },
   "fieldIntelligence:safety": { screen: "fieldIntelligence", tab: "safety", titleEn: "Safety & incidents", titleEs: "Seguridad e incidentes", iconPath: "M12 3l8 4v5c0 5-3 8-8 10-5-2-8-5-8-10V7zM9 12l2 2 4-5" },
   "fieldIntelligence:credentials": { screen: "fieldIntelligence", tab: "credentials", titleEn: "Licenses & certificates", titleEs: "Licencias y certificados", iconPath: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" },
-  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Payroll", titleEs: "N\xF3mina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
-  "expansion:crew": { screen: "expansion", tab: "crew", titleEn: "Crew hours", titleEs: "Horas del equipo", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" }
+  "fieldIntelligence:payroll": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Time & payroll", titleEs: "Tiempo y n\xF3mina", iconPath: "M4 7h16v12H4zM8 11h8M8 15h5" },
+  "expansion:crew": { screen: "fieldIntelligence", tab: "payroll", titleEn: "Time & payroll", titleEs: "Tiempo y n\xF3mina", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" }
 };
 async function nextInvoiceNumber(db) {
   const existing = await db.select({ id: invoices.id }).from(invoices);
@@ -79347,6 +81816,11 @@ async function getDocumentLinkPayload(ctx, token) {
     linkExpiresAt: link.expiresAt.toISOString(),
     shortCode: link.shortCode ?? null,
     attachedImages: [],
+    payNowAvailable: false,
+    cardFeeCents: 0,
+    paidToDate: "",
+    lateFeeAccrued: "",
+    totalWithLateFee: "",
     hasOriginalPdf: false,
     originalFilename: "",
     signatureFields: {},
@@ -79390,14 +81864,16 @@ async function getDocumentLinkPayload(ctx, token) {
     const paymentRows = await db.select().from(payments).where(eq(payments.invoiceId, row.id));
     const fee = { type: settings2?.lateFeeType ?? "flat", value: Number(settings2?.lateFeeValue ?? 0), graceDays: settings2?.lateFeeGraceDays ?? 0 };
     const shaped = invoiceShape(row, paymentRows, fee);
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    const companySettings = (await db.select().from(settings).where(eq(settings.companyId, link.companyId)).limit(1))[0];
+    const payNowAvailable = !!companySettings?.stripeConnectAccountId && !!companySettings.stripeChargesEnabled && Number(shaped.balanceRemaining) > 0 && row.cardPaymentsEnabled && await companyProActive(db, link.companyId);
+    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none", depositValue: row.depositValue, cardFeeCents: row.cardFeeCents, attachedImages, payNowAvailable } };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(quotes).where(eq(quotes.id, link.documentId)).limit(1))[0];
     if (!row)
       throw new Error("This document is no longer available.");
     const attachedImages = await publicAttachmentImages(ctx, db, "quote", link.documentId, link.companyId);
-    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: row.depositType, depositValue: row.depositValue, attachedImages } };
+    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none", depositValue: row.depositValue, attachedImages } };
   }
   const doc = (await db.select().from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind)
@@ -79709,6 +82185,235 @@ async function craneLastWeekChampion(db) {
   return { businessName: champ.businessName, score: champ.score, weekStart: champ.weekStart, companyId };
 }
 var craneChampionSchema = object({ businessName: string2(), score: number2(), weekStart: string2(), companyId: number2().nullable() }).nullable();
+function summaryRangeOrThrow(args) {
+  if (args.preset === "custom" && (!args.rangeStart || !args.rangeEnd))
+    throw new Error("Pick a start and end date for a custom range.");
+  const { rangeStart, rangeEnd } = resolveWorkSummaryRange(args.preset, args.rangeStart, args.rangeEnd);
+  if (rangeStart > rangeEnd)
+    throw new Error("The range start must be on or before the range end.");
+  return { rangeStart, rangeEnd };
+}
+async function workSummaryShape(ctx, row) {
+  const content = parseWorkSummaryContent(row.contentJson);
+  const link = await getActiveDocumentLinkRow(ctx, "work_summary", row.id);
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    rangeStart: row.rangeStart,
+    rangeEnd: row.rangeEnd,
+    preset: row.preset,
+    createdAt: row.createdAt.toISOString(),
+    logCount: content.logs.length,
+    photoCount: content.photos.length,
+    loadCount: content.loads.count,
+    link: link ? {
+      hint: link.tokenHint,
+      shortCode: link.shortCode,
+      expiresAt: link.expiresAt.toISOString(),
+      expired: link.expiresAt.getTime() < Date.now(),
+      viewCount: link.viewCount,
+      firstViewedAt: link.firstViewedAt?.toISOString() ?? null,
+      lastViewedAt: link.lastViewedAt?.toISOString() ?? null,
+      createdAt: link.createdAt.toISOString()
+    } : null
+  };
+}
+var JOB_LOAD_KIND_LABELS = {
+  debris_haul: "Debris haul",
+  concrete: "Concrete",
+  dirt: "Dirt",
+  delivery: "Material delivery",
+  other: "Other"
+};
+function jobLoadExpenseNote(load) {
+  const label = JOB_LOAD_KIND_LABELS[load.kind] ?? "Load";
+  return `Load #${load.id}: ${label} \xB7 ${load.quantity} ${load.unit}${load.notes ? ` \u2014 ${load.notes}` : ""}`.slice(0, 1000);
+}
+function normalizeJobLoadCost(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed)
+    return null;
+  const normalized = normalizeMoney(trimmed, "0.00");
+  return Number(normalized) > 0 ? normalized : null;
+}
+async function jobLoadShape(ctx, row) {
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    expenseId: row.expenseId,
+    date: row.loadDate,
+    kind: row.kind,
+    quantity: row.quantity,
+    unit: row.unit,
+    cost: row.cost,
+    vendor: row.vendor,
+    notes: row.notes,
+    photoUrl: row.photoBlobKey ? await ctx.blobs.getUrl(row.photoBlobKey) : null,
+    photoFilename: row.photoFilename,
+    loggedByUserId: row.loggedByUserId,
+    loggedByName: row.loggedByName,
+    attested: row.attested,
+    attestedAt: row.attestedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+async function syncJobLoadExpense(db, load) {
+  if (!load.cost || Number(load.cost) <= 0) {
+    if (load.expenseId) {
+      await db.delete(businessExpenses).where(eq(businessExpenses.id, load.expenseId));
+      await db.update(jobLoads).set({ expenseId: null, updatedAt: new Date }).where(eq(jobLoads.id, load.id));
+    }
+    return null;
+  }
+  const values = {
+    expenseDate: load.loadDate,
+    vendor: load.vendor,
+    amount: load.cost,
+    category: "hauling",
+    jobId: load.jobId,
+    note: jobLoadExpenseNote(load)
+  };
+  if (load.expenseId) {
+    const existing = (await db.select({ id: businessExpenses.id }).from(businessExpenses).where(eq(businessExpenses.id, load.expenseId)).limit(1))[0];
+    if (existing) {
+      await db.update(businessExpenses).set(values).where(eq(businessExpenses.id, load.expenseId));
+      return load.expenseId;
+    }
+  }
+  const rows = await db.insert(businessExpenses).values({ companyId: load.companyId, supplierId: null, createdAt: new Date, ...values }).returning({ id: businessExpenses.id });
+  const made = rows[0];
+  if (!made)
+    throw new Error("Could not post the load cost to job expenses.");
+  await db.update(jobLoads).set({ expenseId: made.id, updatedAt: new Date }).where(eq(jobLoads.id, load.id));
+  return made.id;
+}
+async function requireJobLoad(ctx, db, loadId) {
+  const row = (await db.select().from(jobLoads).where(eq(jobLoads.id, loadId)).limit(1))[0];
+  if (!row)
+    throw new Error("Load not found.");
+  const { identity, job } = await requireJobCompany(ctx, db, row.jobId);
+  if (row.companyId !== job.companyId)
+    throw new Error("Load not found.");
+  return { identity, job, load: row };
+}
+var safetyTalkSchema = object({
+  slug: string2(),
+  titleEn: string2(),
+  titleEs: string2(),
+  bulletsEn: array(string2()),
+  bulletsEs: array(string2())
+});
+var safetySessionSchema = object({
+  id: number2(),
+  jobId: number2().nullable(),
+  jobLabel: string2().nullable(),
+  date: string2(),
+  talkSlug: string2().nullable(),
+  title: string2(),
+  titleEs: string2(),
+  bullets: array(string2()),
+  bulletsEs: array(string2()),
+  customBody: string2(),
+  presenterUserId: number2().nullable(),
+  presenterName: string2(),
+  signatureUrl: string2().nullable(),
+  attendees: array(object({ userId: number2().nullable(), name: string2() })),
+  createdAt: string2()
+});
+var memberCredentialTypeSchema = _enum(MEMBER_CREDENTIAL_TYPES);
+var memberCredentialSchema = object({
+  id: number2(),
+  userId: number2(),
+  memberName: string2(),
+  type: memberCredentialTypeSchema,
+  typeLabel: string2(),
+  customLabel: string2(),
+  number: string2(),
+  expiresOn: string2(),
+  daysRemaining: number2().nullable(),
+  bucket: _enum(["expired", "due30", "due90", "ok", "no_expiry"]),
+  attachmentUrl: string2().nullable(),
+  attachmentFilename: string2(),
+  createdAt: string2(),
+  updatedAt: string2()
+});
+function safetyTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+function parseTalkPoints(json) {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((b) => typeof b === "string") : [];
+  } catch {
+    return [];
+  }
+}
+async function safetySessionShape(ctx, db, row) {
+  const attendeeRows = await db.select().from(safetySessionAttendees).where(eq(safetySessionAttendees.sessionId, row.id)).orderBy(safetySessionAttendees.id);
+  let jobLabel = null;
+  if (row.jobId) {
+    const job = (await db.select({ clientName: jobs.clientName, jobType: jobs.jobType }).from(jobs).where(eq(jobs.id, row.jobId)).limit(1))[0];
+    if (job)
+      jobLabel = `${job.clientName} \xB7 ${job.jobType}`;
+  }
+  const library = row.talkSlug ? getSafetyTalk(row.talkSlug) : null;
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    jobLabel,
+    date: row.sessionDate,
+    talkSlug: row.talkSlug,
+    title: row.talkTitle,
+    titleEs: library?.titleEs ?? "",
+    bullets: parseTalkPoints(row.talkPointsJson),
+    bulletsEs: library?.bulletsEs ?? [],
+    customBody: row.customBody,
+    presenterUserId: row.presenterUserId,
+    presenterName: row.presenterName,
+    signatureUrl: row.signatureBlobKey ? await ctx.blobs.getUrl(row.signatureBlobKey) : null,
+    attendees: attendeeRows.map((a) => ({ userId: a.userId, name: a.attendeeName })),
+    createdAt: row.createdAt.toISOString()
+  };
+}
+async function requireSafetySession(ctx, db, sessionId) {
+  const identity = workspaceIdentity(ctx);
+  const row = (await db.select().from(safetySessions).where(eq(safetySessions.id, sessionId)).limit(1))[0];
+  if (!row || row.companyId !== identity.workspaceCompanyId)
+    throw new Error("Safety session not found.");
+  return { identity, session: row };
+}
+async function requireCompanyMember(db, companyId, userId) {
+  const member = (await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers).where(and(eq(authUsers.id, userId), eq(authUsers.companyId, companyId))).limit(1))[0];
+  if (!member)
+    throw new Error("Team member not found.");
+  return member;
+}
+async function memberCredentialShape(ctx, row, today = safetyTodayKey()) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    memberName: row.memberName,
+    type: row.type,
+    typeLabel: row.type === "custom" && row.customLabel ? row.customLabel : MEMBER_CREDENTIAL_TYPE_LABELS[row.type],
+    customLabel: row.customLabel,
+    number: row.number,
+    expiresOn: row.expiresOn,
+    daysRemaining: daysUntilExpiry(row.expiresOn, today),
+    bucket: credentialBucket(row.expiresOn, today),
+    attachmentUrl: row.attachmentBlobKey ? await ctx.blobs.getUrl(row.attachmentBlobKey) : null,
+    attachmentFilename: row.attachmentFilename,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+async function requireMemberCredential(ctx, db, credentialId) {
+  const identity = workspaceIdentity(ctx);
+  const row = (await db.select().from(memberCredentials).where(eq(memberCredentials.id, credentialId)).limit(1))[0];
+  if (!row || row.companyId !== identity.workspaceCompanyId)
+    throw new Error("Credential not found.");
+  return { identity, credential: row };
+}
 var BaseActions = {
   ...playBillingActions,
   ...platformAdminActions,
@@ -80351,6 +83056,79 @@ If that was you, just sign in again. If not, we recommend changing your password
       return await ctx.executePrivileged(privileged.createStripeCheckout, { userId: user.id, companyId: user.companyId, email: user.email, plan: args.plan });
     }
   }),
+  getOfficeBilling: defineAction({
+    request: object({}),
+    response: object({
+      configured: boolean2(),
+      billingEnabled: boolean2(),
+      state: _enum(["none", "founding", "active", "past_due", "canceled"]),
+      foundingGranted: boolean2(),
+      grandfathered: boolean2(),
+      qualifiesForFounding: boolean2(),
+      foundingGrantsUsed: number2().int(),
+      foundingGrantsTotal: number2().int(),
+      currentPeriodEnd: string2().nullable(),
+      hasSubscription: boolean2()
+    }),
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const qualification = await officeFoundingQualification(db, company);
+      return {
+        configured: officeBillingConfigured(),
+        billingEnabled: officeBillingEnabled(),
+        state: company.officePlanState,
+        foundingGranted: !!company.officeFoundingGrantedAt,
+        grandfathered: qualification.grandfathered,
+        qualifiesForFounding: qualification.qualifies,
+        foundingGrantsUsed: qualification.grantsUsed,
+        foundingGrantsTotal: OFFICE_FOUNDING_TOTAL,
+        currentPeriodEnd: company.officeCurrentPeriodEnd?.toISOString() ?? null,
+        hasSubscription: !!company.officeStripeSubscriptionId
+      };
+    }
+  }),
+  startOfficeCheckout: defineAction({
+    request: object({ cadence: _enum(["monthly", "annual"]).default("monthly") }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()), plan: _enum(["monthly", "annual", "founding"]) }),
+    privileged: [privileged.createOfficeStripeCheckout],
+    async handler(ctx, args) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const user = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+      if (!user)
+        throw new Error("Sign in to continue.");
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      const qualification = await officeFoundingQualification(db, company);
+      const plan = qualification.qualifies ? "founding" : args.cadence;
+      const result = await ctx.executePrivileged(privileged.createOfficeStripeCheckout, { companyId: company.id, email: user.email, plan });
+      return { ...result, plan };
+    }
+  }),
+  createOfficeBillingPortalSession: defineAction({
+    request: object({}),
+    response: object({ url: string2().nullable(), error: _enum(["no_stripe_customer", "portal_not_configured", "billing_unavailable"]).nullable() }),
+    privileged: [privileged.createBillingPortalSession],
+    async handler(ctx) {
+      const identity = workspaceIdentity(ctx);
+      const db = ctx.db();
+      const company = await ensureCompanyRow(db, identity.workspaceCompanyId);
+      if (!company.officeStripeCustomerId)
+        return { url: null, error: "no_stripe_customer" };
+      const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+      if (!publicUrl)
+        return { url: null, error: "billing_unavailable" };
+      try {
+        const result = await ctx.executePrivileged(privileged.createBillingPortalSession, { customerId: company.officeStripeCustomerId, returnUrl: `${publicUrl}/office?billing=return` });
+        if (result.url)
+          return { url: result.url, error: null };
+        return { url: null, error: result.errorCode === "portal_not_configured" ? "portal_not_configured" : "billing_unavailable" };
+      } catch {
+        return { url: null, error: "billing_unavailable" };
+      }
+    }
+  }),
   handleStripeWebhook: defineAction({
     request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
     response: object({ ok: literal(true), duplicate: boolean2(), processed: boolean2() }),
@@ -80393,6 +83171,56 @@ If that was you, just sign in again. If not, we recommend changing your password
         } else {
           await db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
         }
+        ctx.invalidateQueries();
+        return { ok: true, duplicate: false, processed: true };
+      }
+      let officeCompany;
+      if ((event.plan === "office" || event.plan === "office_founding") && event.companyId) {
+        officeCompany = (await db.select().from(companies).where(eq(companies.id, event.companyId)).limit(1))[0];
+      }
+      if (!officeCompany && event.subscriptionId) {
+        officeCompany = (await db.select().from(companies).where(eq(companies.officeStripeSubscriptionId, event.subscriptionId)).limit(1))[0];
+      }
+      if (!officeCompany && event.customerId) {
+        officeCompany = (await db.select().from(companies).where(eq(companies.officeStripeCustomerId, event.customerId)).limit(1))[0];
+      }
+      if (!officeCompany && event.priceId && event.companyId) {
+        const ids = officePriceIds();
+        if (event.priceId === ids.monthly || event.priceId === ids.annual || event.priceId === ids.founding) {
+          officeCompany = (await db.select().from(companies).where(eq(companies.id, event.companyId)).limit(1))[0];
+        }
+      }
+      if (officeCompany) {
+        const now = new Date;
+        const end = event.currentPeriodEnd ? new Date(event.currentPeriodEnd * 1000) : null;
+        const patch = { updatedAt: now };
+        if (event.customerId)
+          patch.officeStripeCustomerId = event.customerId;
+        if (event.subscriptionId)
+          patch.officeStripeSubscriptionId = event.subscriptionId;
+        if (end)
+          patch.officeCurrentPeriodEnd = end;
+        if (event.eventType === "checkout.session.completed") {
+          const founding = event.plan === "office_founding";
+          patch.officePlanState = founding ? "founding" : "active";
+          if (founding && !officeCompany.officeFoundingGrantedAt)
+            patch.officeFoundingGrantedAt = now;
+        } else if (event.eventType === "customer.subscription.deleted") {
+          patch.officePlanState = "canceled";
+        } else if (event.eventType === "customer.subscription.updated") {
+          const status = event.subscriptionStatus ?? "";
+          if (status === "active" || status === "trialing") {
+            if (event.plan === "office_founding" && !officeCompany.officeFoundingGrantedAt)
+              patch.officeFoundingGrantedAt = now;
+            patch.officePlanState = officeCompany.officeFoundingGrantedAt || patch.officeFoundingGrantedAt ? "founding" : "active";
+          } else if (status === "past_due") {
+            patch.officePlanState = "past_due";
+          } else if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
+            patch.officePlanState = "canceled";
+          }
+        }
+        await db.update(companies).set(patch).where(eq(companies.id, officeCompany.id));
+        await db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
         ctx.invalidateQueries();
         return { ok: true, duplicate: false, processed: true };
       }
@@ -80440,6 +83268,42 @@ If that was you, just sign in again. If not, we recommend changing your password
       return { ok: true, duplicate: false, processed: true };
     }
   }),
+  handleConnectWebhook: defineAction({
+    request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
+    response: object({ ok: literal(true), duplicate: boolean2(), processed: boolean2() }),
+    privileged: [privileged.verifyConnectWebhook],
+    async handler(ctx, args) {
+      const event = await ctx.executePrivileged(privileged.verifyConnectWebhook, args);
+      const db = ctx.db();
+      if ((await db.select({ id: stripeWebhookEvents.id }).from(stripeWebhookEvents).where(eq(stripeWebhookEvents.id, event.eventId)).limit(1))[0])
+        return { ok: true, duplicate: true, processed: false };
+      const now = new Date;
+      if (event.eventType === "ignored" || event.checkoutType !== "invoice_payment" || !event.companyId) {
+        await db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+        return { ok: true, duplicate: false, processed: false };
+      }
+      let attempt = event.stripeSessionId ? (await db.select().from(invoicePaymentAttempts).where(eq(invoicePaymentAttempts.stripeSessionId, event.stripeSessionId)).limit(1))[0] : undefined;
+      if (!attempt && event.paymentIntentId)
+        attempt = (await db.select().from(invoicePaymentAttempts).where(eq(invoicePaymentAttempts.stripePaymentIntentId, event.paymentIntentId)).limit(1))[0];
+      if (!attempt && event.invoiceId)
+        attempt = (await db.select().from(invoicePaymentAttempts).where(and(eq(invoicePaymentAttempts.invoiceId, event.invoiceId), eq(invoicePaymentAttempts.status, "pending"))).orderBy(desc(invoicePaymentAttempts.createdAt)).limit(1))[0];
+      if (attempt) {
+        const paidEvent = event.eventType === "checkout.session.completed" && event.paymentStatus !== "unpaid" || event.eventType === "checkout.session.async_payment_succeeded";
+        if (paidEvent) {
+          await recordOnlineInvoicePayment(db, attempt, event);
+        } else if (event.eventType === "checkout.session.expired") {
+          await db.update(invoicePaymentAttempts).set({ status: "expired", updatedAt: now }).where(eq(invoicePaymentAttempts.id, attempt.id));
+        } else if (event.eventType === "payment_intent.payment_failed" || event.eventType === "checkout.session.async_payment_failed") {
+          await db.update(invoicePaymentAttempts).set({ status: "failed", stripePaymentIntentId: event.paymentIntentId ?? attempt.stripePaymentIntentId, updatedAt: now }).where(eq(invoicePaymentAttempts.id, attempt.id));
+        } else if (event.eventType === "checkout.session.completed" && event.paymentStatus === "unpaid") {
+          await db.update(invoicePaymentAttempts).set({ method: "us_bank_account", stripePaymentIntentId: event.paymentIntentId, updatedAt: now }).where(eq(invoicePaymentAttempts.id, attempt.id));
+        }
+      }
+      await db.insert(stripeWebhookEvents).values({ id: event.eventId, type: event.eventType, processedAt: now });
+      ctx.invalidateQueries();
+      return { ok: true, duplicate: false, processed: !!attempt };
+    }
+  }),
   requestPasswordReset: defineAction({
     request: object({ email: string2().trim().email().max(200) }),
     response: object({ ok: literal(true), resetCode: string2().length(6).nullable(), emailDelivery: authCodeDeliverySchema }),
@@ -80479,8 +83343,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const quotes2 = await db.select({ clientId: quotes.clientId }).from(quotes);
     const invoices2 = await db.select({ id: invoices.id, clientId: invoices.clientId, total: invoices.total }).from(invoices);
     const payments2 = await db.select({ invoiceId: payments.invoiceId, amount: payments.amount }).from(payments);
-    const term = args.search.trim().toLowerCase();
-    return { clients: rows.filter((c) => !term || [c.name, c.phone, c.email, c.address, ...clientAddressesOf(c).flatMap((entry) => [entry.label, entry.address]), parseClientTags(c.tags).join(" ")].some((v) => v.toLowerCase().includes(term))).map((c) => {
+    return { clients: rows.filter((c) => searchMatches([c.name, c.phone, c.email, c.address, ...clientAddressesOf(c).flatMap((entry) => [entry.label, entry.address]), parseClientTags(c.tags).join(" ")], args.search)).map((c) => {
       const clientInvoices = invoices2.filter((invoice) => invoice.clientId === c.id);
       const invoiceIds = new Set(clientInvoices.map((invoice) => invoice.id));
       const totalInvoiced = clientInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
@@ -80541,6 +83404,20 @@ If that was you, just sign in again. If not, we recommend changing your password
     await db.update(clients).set({ addressesJson: JSON.stringify(next), address: primaryAddress, updatedAt: new Date }).where(eq(clients.id, client.id));
     ctx.invalidateQueries();
     return { ok: true, addresses: next };
+  } }),
+  renameClient: defineAction({ request: object({ clientId: number2().int().positive(), name: string2().trim().min(1).max(160) }), response: object({ ok: literal(true), name: string2(), jobs: number2(), quotes: number2(), invoices: number2(), appointments: number2(), maintenancePlans: number2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const client = (await db.select().from(clients).where(eq(clients.id, args.clientId)).limit(1))[0];
+    if (!client)
+      throw new Error("Client not found.");
+    const name = args.name;
+    const now = new Date;
+    const linked = (table) => and(eq(table.clientId, client.id), ne(table.clientName, name));
+    const countLinked = async (table) => (await db.select({ id: table.id }).from(table).where(linked(table))).length;
+    const [jobs2, quotes2, invoices2, appointments2, maintenancePlans2] = await Promise.all([countLinked(jobs), countLinked(quotes), countLinked(invoices), countLinked(appointments), countLinked(maintenancePlans)]);
+    await db.batch([db.update(clients).set({ name, updatedAt: now }).where(eq(clients.id, client.id)), db.update(jobs).set({ clientName: name, updatedAt: now }).where(linked(jobs)), db.update(quotes).set({ clientName: name, updatedAt: now }).where(linked(quotes)), db.update(invoices).set({ clientName: name, updatedAt: now }).where(linked(invoices)), db.update(appointments).set({ clientName: name, updatedAt: now }).where(linked(appointments)), db.update(maintenancePlans).set({ clientName: name, updatedAt: now }).where(linked(maintenancePlans))]);
+    ctx.invalidateQueries();
+    return { ok: true, name, jobs: jobs2, quotes: quotes2, invoices: invoices2, appointments: appointments2, maintenancePlans: maintenancePlans2 };
   } }),
   deleteClient: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     await ctx.db().delete(clients).where(eq(clients.id, args.id));
@@ -80610,11 +83487,24 @@ If that was you, just sign in again. If not, we recommend changing your password
     const linkFilter = docIds.length ? and(inArray(documentLinks.documentId, docIds), inArray(documentLinks.documentKind, ["contract", "change_order"])) : undefined;
     const linkRows = linkFilter ? await db.select({ id: documentLinks.id }).from(documentLinks).where(linkFilter) : [];
     const tokenIdRows = await db.select({ id: portalTokens.id }).from(portalTokens).where(eq(portalTokens.jobId, jobId));
+    const loadRows = await db.select({ id: jobLoads.id, expenseId: jobLoads.expenseId, photoBlobKey: jobLoads.photoBlobKey }).from(jobLoads).where(eq(jobLoads.jobId, jobId));
+    for (const row of loadRows)
+      if (row.photoBlobKey)
+        blobKeys.add(row.photoBlobKey);
+    const loadExpenseIds = loadRows.map((row) => row.expenseId).filter((id) => id != null);
+    const safetySessionRows = await db.select({ id: safetySessions.id, signatureBlobKey: safetySessions.signatureBlobKey }).from(safetySessions).where(eq(safetySessions.jobId, jobId));
+    for (const row of safetySessionRows)
+      if (row.signatureBlobKey)
+        blobKeys.add(row.signatureBlobKey);
+    const summaryIdRows = await db.select({ id: workSummaries.id }).from(workSummaries).where(eq(workSummaries.jobId, jobId));
+    const summaryLinkRows = summaryIdRows.length ? await db.select({ id: documentLinks.id }).from(documentLinks).where(and(eq(documentLinks.documentKind, "work_summary"), inArray(documentLinks.documentId, summaryIdRows.map((row) => row.id)))) : [];
     const notificationLinks = [`job:${jobId}:messages`, ...docIds.flatMap((id) => [`doc-signed:${id}`, `doc-opened:${id}`])];
     const cascade = [
       ...linkRows.length ? [db.delete(documentLinkEvents).where(inArray(documentLinkEvents.linkId, linkRows.map((link) => link.id)))] : [],
       ...linkFilter ? [db.delete(documentLinks).where(linkFilter)] : [],
       ...tokenIdRows.length ? [db.delete(portalLinkEvents).where(inArray(portalLinkEvents.linkId, tokenIdRows.map((row) => row.id)))] : [],
+      ...summaryLinkRows.length ? [db.delete(documentLinkEvents).where(inArray(documentLinkEvents.linkId, summaryLinkRows.map((link) => link.id))), db.delete(documentLinks).where(inArray(documentLinks.id, summaryLinkRows.map((link) => link.id)))] : [],
+      ...loadExpenseIds.length ? [db.delete(businessExpenses).where(inArray(businessExpenses.id, loadExpenseIds))] : [],
       db.delete(userNotifications).where(inArray(userNotifications.link, notificationLinks)),
       db.update(quotes).set({ jobId: null, updatedAt: new Date }).where(eq(quotes.jobId, jobId)),
       db.update(invoices).set({ jobId: null, updatedAt: new Date }).where(eq(invoices.jobId, jobId)),
@@ -80650,6 +83540,10 @@ If that was you, just sign in again. If not, we recommend changing your password
       db.delete(safetyTalks).where(eq(safetyTalks.jobId, jobId)),
       db.delete(incidents).where(eq(incidents.jobId, jobId)),
       db.delete(completionOverrides).where(eq(completionOverrides.jobId, jobId)),
+      db.delete(workSummaries).where(eq(workSummaries.jobId, jobId)),
+      db.delete(jobLoads).where(eq(jobLoads.jobId, jobId)),
+      ...safetySessionRows.length ? [db.delete(safetySessionAttendees).where(inArray(safetySessionAttendees.sessionId, safetySessionRows.map((row) => row.id)))] : [],
+      db.delete(safetySessions).where(eq(safetySessions.jobId, jobId)),
       db.delete(jobs).where(eq(jobs.id, jobId))
     ];
     await db.batch(cascade);
@@ -80664,7 +83558,8 @@ If that was you, just sign in again. If not, we recommend changing your password
   listJobs: defineAction({ request: object({ search: string2().max(120).default("") }), response: object({ jobs: array(jobSchema) }), async handler(ctx, args) {
     const db = ctx.db();
     const term = args.search.trim();
-    const rows = await db.select().from(jobs).where(term ? or(like(jobs.clientName, `%${term}%`), like(jobs.jobAddress, `%${term}%`), like(jobs.jobType, `%${term}%`)) : undefined).orderBy(desc(jobs.jobDate), desc(jobs.id));
+    const allRows = await db.select().from(jobs).orderBy(desc(jobs.jobDate), desc(jobs.id));
+    const rows = allRows.filter((row) => searchMatches([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType], term));
     const counts = await db.select({ jobId: photos.jobId, id: photos.id, stage: photos.stage }).from(photos);
     const map = new Map;
     const stages = new Map;
@@ -80674,12 +83569,12 @@ If that was you, just sign in again. If not, we recommend changing your password
     }
     return { jobs: rows.map((row) => jobShape(row, map.get(row.id) ?? 0, stages.get(row.id) ?? [])) };
   } }),
-  getJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ job: jobSchema.nullable(), photos: array(photoSchema), documents: array(documentSchema), punchItems: array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: array(progressSchema), timeEntries: array(timeEntrySchema), receipts: array(receiptSchema), crewTasks: array(crewTaskSchema), voiceNotes: array(voiceNoteSchema), certificate: certificateSchema.nullable(), jobFiles: array(jobFileSchema), contractSummary: object({ baseAmount: string2(), contractSum: string2(), signedChangeOrdersTotal: string2(), revisedTotal: string2(), pendingChangeOrdersTotal: string2() }).nullable().default(null) }), async handler(ctx, args) {
+  getJob: defineAction({ request: object({ id: number2().int().positive() }), response: object({ job: jobSchema.nullable(), photos: array(photoSchema), documents: array(documentSchema), punchItems: array(punchItemSchema), punchSignoff: punchSignoffSchema.nullable(), progressUpdates: array(progressSchema), timeEntries: array(timeEntrySchema), receipts: array(receiptSchema), crewTasks: array(crewTaskSchema), voiceNotes: array(voiceNoteSchema), certificate: certificateSchema.nullable(), jobFiles: array(jobFileSchema), contractSummary: object({ baseAmount: string2(), contractSum: string2(), signedChangeOrdersTotal: string2(), revisedTotal: string2(), pendingChangeOrdersTotal: string2() }).nullable().default(null), reviewRequestedAt: string2().nullable() }), async handler(ctx, args) {
     const db = ctx.db();
     const rows = await db.select().from(jobs).where(eq(jobs.id, args.id)).limit(1);
     const row = rows[0];
     if (!row)
-      return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null, jobFiles: [], contractSummary: null };
+      return { job: null, photos: [], documents: [], punchItems: [], punchSignoff: null, progressUpdates: [], timeEntries: [], receipts: [], crewTasks: [], voiceNotes: [], certificate: null, jobFiles: [], contractSummary: null, reviewRequestedAt: null };
     const [photoRows, documentRows, punchRows, signoffRows, progressRows, timeRows, receiptRows, crewRows, voiceRows, certificateRows, jobFileRows] = await Promise.all([
       db.select().from(photos).where(eq(photos.jobId, args.id)).orderBy(photos.createdAt, photos.id),
       db.select().from(documents).where(eq(documents.jobId, args.id)).orderBy(desc(documents.signedAt)),
@@ -80702,7 +83597,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const voiceData = await Promise.all(voiceRows.map(async (p) => ({ id: p.id, jobId: p.jobId, title: p.title, url: await ctx.blobs.getUrl(p.blobKey), durationSeconds: p.durationSeconds, createdAt: p.createdAt.toISOString() })));
     const jobFileData = await Promise.all(jobFileRows.map(async (f) => ({ id: f.id, jobId: f.jobId, title: f.title, filename: f.filename, contentType: f.contentType, sizeBytes: f.sizeBytes, sharedWithClient: f.sharedWithClient, url: await ctx.blobs.getUrl(f.blobKey), createdAt: f.createdAt.toISOString() })));
     const cert = certificateRows[0];
-    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson), status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null, jobFiles: jobFileData, contractSummary: contractSummaryForJob(row, await jobDocumentsOrdered(ctx.db(), row.id)) };
+    return { job: jobShape(row, hydratedPhotos.length, photoRows.map((photo) => photo.stage)), photos: hydratedPhotos, documents: hydratedDocs, punchItems: punchRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed })), punchSignoff: signoff ? { id: signoff.id, jobId: signoff.jobId, customerName: signoff.customerName, customerSignatureUrl: await ctx.blobs.getUrl(signoff.customerSignatureBlobKey), contractorName: signoff.contractorName, contractorSignatureUrl: await ctx.blobs.getUrl(signoff.contractorSignatureBlobKey), signedAt: signoff.signedAt.toISOString() } : null, progressUpdates: progressRows.map((p) => ({ id: p.id, jobId: p.jobId, dayNumber: p.dayNumber, note: p.note, photoIds: JSON.parse(p.photoIdsJson), status: p.status, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.getTime() > 0 ? p.updatedAt.toISOString() : p.createdAt.toISOString() })), timeEntries: timeRows.map((p) => ({ id: p.id, jobId: p.jobId, crewMember: p.crewMember, startedAt: p.startedAt.toISOString(), endedAt: p.endedAt?.toISOString() ?? null, note: p.note, durationSeconds: Math.max(0, Math.floor(((p.endedAt ?? new Date).getTime() - p.startedAt.getTime()) / 1000)) })), receipts: receiptData, crewTasks: crewRows.map((p) => ({ id: p.id, jobId: p.jobId, text: p.text, completed: p.completed, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })), voiceNotes: voiceData, certificate: cert ? { id: cert.id, jobId: cert.jobId, completionDate: cert.completionDate, warrantyTerms: cert.warrantyTerms, createdAt: cert.createdAt.toISOString(), updatedAt: cert.updatedAt.toISOString() } : null, jobFiles: jobFileData, contractSummary: contractSummaryForJob(row, await jobDocumentsOrdered(ctx.db(), row.id)), reviewRequestedAt: (await reviewRequestedAtForJob(db, row.id))?.toISOString() ?? null };
   } }),
   createJob: defineAction({ request: object({ clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80).default(""), clientEmail: string2().trim().email().max(200).or(literal("")).default(""), jobAddress: string2().trim().min(1).max(240), jobType: string2().trim().min(1).max(120), notes: string2().trim().max(3000).default(""), jobDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/), appointmentAt: string2().max(40).default(""), amountDue: string2().trim().max(80).default(""), dueDate: string2().max(10).default(""), depositAmount: string2().trim().max(80).default(""), paymentNotes: string2().trim().max(1000).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -80756,6 +83651,32 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  updateJobClientInfo: defineAction({ request: object({ jobId: number2().int().positive(), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240) }), response: object({ ok: literal(true), clientSynced: boolean2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const now = new Date;
+    await db.update(jobs).set({ clientPhone: args.clientPhone, clientEmail: args.clientEmail, jobAddress: args.jobAddress, updatedAt: now }).where(eq(jobs.id, job.id));
+    let clientSynced = false;
+    if (job.clientId) {
+      const client = (await db.select().from(clients).where(eq(clients.id, job.clientId)).limit(1))[0];
+      if (client) {
+        const patch = { phone: args.clientPhone, email: args.clientEmail, updatedAt: now };
+        if (args.jobAddress) {
+          const current = clientAddressesOf(client);
+          const key = clientAddressKey(args.jobAddress);
+          if (!current.some((entry) => clientAddressKey(entry.address) === key)) {
+            const next = normalizeClientAddresses([...current, { label: "", address: args.jobAddress, primary: current.length === 0 }]);
+            patch.addressesJson = JSON.stringify(next);
+            patch.address = next.find((entry) => entry.primary)?.address ?? client.address;
+          }
+        }
+        await db.update(clients).set(patch).where(eq(clients.id, client.id));
+        clientSynced = true;
+      }
+    }
+    ctx.invalidateQueries();
+    return { ok: true, clientSynced };
+  } }),
   linkInvoiceToJob: defineAction({ request: object({ invoiceId: number2().int().positive(), jobId: number2().int().positive().nullable() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const invoice = (await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1))[0];
@@ -80769,6 +83690,16 @@ If that was you, just sign in again. If not, we recommend changing your password
         throw new Error("Job not found.");
       await db.update(invoices).set({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, updatedAt: new Date }).where(eq(invoices.id, args.invoiceId));
     }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  linkQuoteToJob: defineAction({ request: object({ quoteId: number2().int().positive(), jobId: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const quote = (await db.select().from(quotes).where(eq(quotes.id, args.quoteId)).limit(1))[0];
+    if (!quote || quote.companyId !== job.companyId)
+      throw new Error("Estimate not found.");
+    await db.update(quotes).set({ jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, updatedAt: new Date }).where(eq(quotes.id, args.quoteId));
     ctx.invalidateQueries();
     return { ok: true };
   } }),
@@ -81145,13 +84076,15 @@ If that was you, just sign in again. If not, we recommend changing your password
       invoices: invoiceRows.map((i) => ({ id: i.id, title: `${i.clientName} \xB7 ${i.total}`, detail: `INV-${i.id}` }))
     };
   } }),
-  saveInvoice: defineAction({ request: object({ invoiceNumber: string2().trim().max(40).default(""), quoteId: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240), shippingAddress: string2().trim().max(240).default(""), jobType: string2().trim().max(120), lineItems: array(invoiceItemSchema).min(1).max(50), subtotal: string2().max(80), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), total: string2().max(80), footnote: string2().max(3000), issueDate: string2().max(10), dueDate: string2().max(10), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]).default("none"), nextDueDate: string2().max(10).default(""), recurringEndDate: string2().max(10).default(""), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape), response: object({ id: number2() }), async handler(ctx, args) {
+  saveInvoice: defineAction({ request: object({ invoiceNumber: string2().trim().max(40).default(""), quoteId: number2().int().positive().nullable().default(null), jobId: number2().int().positive().nullable().default(null), clientId: number2().int().positive().nullable().default(null), clientName: string2().trim().min(1).max(160), clientPhone: string2().trim().max(80), clientEmail: string2().trim().email().max(200).or(literal("")), jobAddress: string2().trim().max(240), shippingAddress: string2().trim().max(240).default(""), jobType: string2().trim().max(120), lineItems: array(invoiceItemSchema).min(1).max(50), subtotal: string2().max(80), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), total: string2().max(80), footnote: string2().max(3000), issueDate: string2().max(10), dueDate: string2().max(10), status: invoiceStatusSchema, recurringFrequency: _enum(["none", "daily", "weekly", "monthly", "quarterly"]).default("none"), nextDueDate: string2().max(10).default(""), recurringEndDate: string2().max(10).default(""), cardPaymentsEnabled: boolean2().default(true), cardFeeEnabled: boolean2().default(false), theme: quoteThemeSchema, font: documentFontSchema, accentColor: string2().regex(/^#[0-9a-fA-F]{6}$/), customizeJson: customizeJsonSchema }).extend(documentVisibilitySchema.shape), response: object({ id: number2() }), async handler(ctx, args) {
     const now = new Date;
     const db = ctx.db();
     await assertInvoiceLimit(ctx, db);
+    const baseCents = moneyStringToCents(args.total);
+    const cardFeeCents = cardProcessingFeeCents(baseCents, args.cardFeeEnabled && args.cardPaymentsEnabled);
     const clientId = args.clientId;
     const nextNumber = await nextInvoiceNumber(db);
-    const rows = await db.insert(invoices).values({ ...args, companyId: workspaceIdentity(ctx).workspaceCompanyId, invoiceNumber: args.invoiceNumber || nextNumber, clientId, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const rows = await db.insert(invoices).values({ ...args, companyId: workspaceIdentity(ctx).workspaceCompanyId, invoiceNumber: args.invoiceNumber || nextNumber, clientId, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: centsToMoneyString(baseCents + cardFeeCents), cardFeeCents, createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not save invoice.");
@@ -81352,12 +84285,32 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { id: next.id };
   } }),
-  updateInvoiceDocument: defineAction({ request: object({ id: number2().int().positive(), invoiceNumber: string2().trim().min(1).max(40).optional(), issueDate: string2().max(10).optional(), dueDate: string2().max(10).optional(), lineItems: array(invoiceItemSchema).min(1).max(50), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), subtotal: string2().max(80), total: string2().max(80), footnote: string2().max(3000), depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
-    const { id, depositType, depositValue: rawDeposit, ...values } = args;
+  updateInvoiceDocument: defineAction({ request: object({ id: number2().int().positive(), invoiceNumber: string2().trim().min(1).max(40).optional(), issueDate: string2().max(10).optional(), dueDate: string2().max(10).optional(), lineItems: array(invoiceItemSchema).min(1).max(50), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), subtotal: string2().max(80), total: string2().max(80), footnote: string2().max(3000), depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0"), cardPaymentsEnabled: boolean2().optional(), cardFeeEnabled: boolean2().optional() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const { id, depositType, depositValue: rawDeposit, cardPaymentsEnabled: cardPayArg, cardFeeEnabled: cardFeeArg, ...values } = args;
     const depositValue = normalizeMoney(rawDeposit, "0.00");
-    await ctx.db().update(invoices).set({ ...values, depositType, depositValue, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: normalizeMoney(args.total, "0.00"), updatedAt: new Date }).where(eq(invoices.id, id));
+    const db = ctx.db();
+    const existing = (await db.select().from(invoices).where(eq(invoices.id, id)).limit(1))[0];
+    const cardPaymentsEnabled = cardPayArg ?? existing?.cardPaymentsEnabled ?? true;
+    const cardFeeEnabled = cardFeeArg ?? existing?.cardFeeEnabled ?? false;
+    const baseCents = moneyStringToCents(normalizeMoney(args.total, "0.00")) - (existing?.cardFeeCents ?? 0);
+    const cardFeeCents = cardProcessingFeeCents(baseCents, cardFeeEnabled && cardPaymentsEnabled);
+    await db.update(invoices).set({ ...values, depositType, depositValue, cardPaymentsEnabled, cardFeeEnabled, cardFeeCents, lineItemsJson: JSON.stringify(normalizeLineItems(args.lineItems)), subtotal: normalizeMoney(args.subtotal, "0.00"), discountValue: normalizeMoney(args.discountValue, "0.00"), taxValue: normalizeMoney(args.taxValue, "0.00"), total: centsToMoneyString(baseCents + cardFeeCents), updatedAt: new Date }).where(eq(invoices.id, id));
     ctx.invalidateQueries();
     return { ok: true };
+  } }),
+  setInvoiceCardOptions: defineAction({ request: object({ id: number2().int().positive(), cardPaymentsEnabled: boolean2().optional(), cardFeeEnabled: boolean2().optional() }), response: object({ ok: literal(true), cardPaymentsEnabled: boolean2(), cardFeeEnabled: boolean2(), cardFeeCents: number2(), total: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const row = (await db.select().from(invoices).where(eq(invoices.id, args.id)).limit(1))[0];
+    if (!row)
+      throw new Error("Invoice not found.");
+    const cardPaymentsEnabled = args.cardPaymentsEnabled ?? row.cardPaymentsEnabled;
+    const cardFeeEnabled = args.cardFeeEnabled ?? row.cardFeeEnabled;
+    const baseCents = moneyStringToCents(row.total) - row.cardFeeCents;
+    const cardFeeCents = cardProcessingFeeCents(baseCents, cardFeeEnabled && cardPaymentsEnabled);
+    const total = centsToMoneyString(baseCents + cardFeeCents);
+    await db.update(invoices).set({ cardPaymentsEnabled, cardFeeEnabled, cardFeeCents, total, updatedAt: new Date }).where(eq(invoices.id, args.id));
+    ctx.invalidateQueries();
+    return { ok: true, cardPaymentsEnabled, cardFeeEnabled, cardFeeCents, total };
   } }),
   updateQuoteDocument: defineAction({ request: object({ id: number2().int().positive(), lineItems: array(quoteItemSchema).min(1).max(50), discountType: adjustmentTypeSchema, discountValue: string2().max(80), taxType: adjustmentTypeSchema, taxValue: string2().max(80), subtotal: string2().max(80), total: string2().max(80), footnote: string2().max(3000), depositType: depositTypeSchema.default("none"), depositValue: string2().max(80).default("0") }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const { id, depositType, depositValue: rawDeposit, ...values } = args;
@@ -81653,7 +84606,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     if (existing)
       return { invoiceId: existing.id };
     const next = advanceRecurringDate(issue, row.recurringFrequency);
-    const madeRows = await db.insert(invoices).values({ companyId: row.companyId, quoteId: null, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, lineItemsJson: row.lineItemsJson, subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: issue, dueDate: issue, status: "draft", recurringFrequency: "none", nextDueDate: "", seriesId, parentInvoiceId: row.id, theme: row.theme, font: row.font, accentColor: row.accentColor, customizeJson: row.customizeJson, createdAt: new Date, updatedAt: new Date }).returning({ id: invoices.id });
+    const madeRows = await db.insert(invoices).values({ companyId: row.companyId, quoteId: null, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, lineItemsJson: row.lineItemsJson, subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, cardPaymentsEnabled: row.cardPaymentsEnabled, cardFeeEnabled: row.cardFeeEnabled, cardFeeCents: row.cardFeeCents, footnote: row.footnote, issueDate: issue, dueDate: issue, status: "draft", recurringFrequency: "none", nextDueDate: "", seriesId, parentInvoiceId: row.id, theme: row.theme, font: row.font, accentColor: row.accentColor, customizeJson: row.customizeJson, createdAt: new Date, updatedAt: new Date }).returning({ id: invoices.id });
     const made = madeRows[0];
     if (!made)
       throw new Error("Could not generate invoice.");
@@ -81676,7 +84629,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const seriesId = row.seriesId ?? row.id;
       const existing = rows.find((i) => i.seriesId === seriesId && i.issueDate === issue && i.parentInvoiceId === row.id);
       if (!existing) {
-        await db.insert(invoices).values({ companyId: row.companyId, quoteId: null, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, lineItemsJson: row.lineItemsJson, subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, footnote: row.footnote, issueDate: issue, dueDate: issue, status: "draft", recurringFrequency: "none", nextDueDate: "", seriesId, parentInvoiceId: row.id, theme: row.theme, font: row.font, accentColor: row.accentColor, customizeJson: row.customizeJson, createdAt: new Date, updatedAt: new Date });
+        await db.insert(invoices).values({ companyId: row.companyId, quoteId: null, jobId: row.jobId, clientId: row.clientId, clientName: row.clientName, clientPhone: row.clientPhone, clientEmail: row.clientEmail, jobAddress: row.jobAddress, jobType: row.jobType, lineItemsJson: row.lineItemsJson, subtotal: row.subtotal, discountType: row.discountType, discountValue: row.discountValue, taxType: row.taxType, taxValue: row.taxValue, total: row.total, cardPaymentsEnabled: row.cardPaymentsEnabled, cardFeeEnabled: row.cardFeeEnabled, cardFeeCents: row.cardFeeCents, footnote: row.footnote, issueDate: issue, dueDate: issue, status: "draft", recurringFrequency: "none", nextDueDate: "", seriesId, parentInvoiceId: row.id, theme: row.theme, font: row.font, accentColor: row.accentColor, customizeJson: row.customizeJson, createdAt: new Date, updatedAt: new Date });
         generated++;
       }
       const next = advanceRecurringDate(issue, row.recurringFrequency === "none" ? "monthly" : row.recurringFrequency);
@@ -81901,6 +84854,13 @@ If that was you, just sign in again. If not, we recommend changing your password
       const companyId = identity.workspaceCompanyId;
       const jobRows = await db.select().from(jobs).where(eq(jobs.companyId, companyId)).orderBy(desc(jobs.updatedAt));
       const activity = await jobLastActivity(db, companyId, jobRows.map((j) => j.id));
+      const reviewByJob = new Map;
+      if (jobRows.length) {
+        const reviewLogs = await db.select({ entityId: automationLogs.entityId, sentAt: automationLogs.sentAt }).from(automationLogs).where(and(eq(automationLogs.kind, "review"), eq(automationLogs.channel, "email"), inArray(automationLogs.entityId, jobRows.map((j) => j.id)))).orderBy(desc(automationLogs.sentAt));
+        for (const log of reviewLogs)
+          if (!reviewByJob.has(log.entityId))
+            reviewByJob.set(log.entityId, log.sentAt.toISOString());
+      }
       const nowMs = Date.now();
       const jobs2 = [];
       for (const job of jobRows) {
@@ -81923,7 +84883,8 @@ If that was you, just sign in again. If not, we recommend changing your password
           hasCosts: budget.hasCosts,
           lastActivityAt: last.toISOString(),
           idleDays,
-          stuck: idleDays >= 7 && job.productionStage !== "complete" && job.productionStage !== "paid_in_full"
+          stuck: idleDays >= 7 && job.productionStage !== "complete" && job.productionStage !== "paid_in_full",
+          reviewRequestedAt: reviewByJob.get(job.id) ?? null
         });
       }
       return { stages: PRODUCTION_STAGES.map((key) => ({ key, label: PRODUCTION_STAGE_LABELS[key] })), jobs: jobs2 };
@@ -82229,8 +85190,8 @@ If that was you, just sign in again. If not, we recommend changing your password
     if (!term)
       return { leads: [], clients: [], jobs: [] };
     const [leadRows, clientRows, jobRows] = await Promise.all([db.select().from(leads), db.select().from(clients), db.select().from(jobs)]);
-    const hit = (values) => values.some((value) => value.toLowerCase().includes(term));
-    return { leads: leadRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, stage: row.stage })), clients: clientRows.filter((row) => hit([row.name, row.phone, row.email, row.address])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email })), jobs: jobRows.filter((row) => hit([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType])).slice(0, 8).map((row) => ({ id: row.id, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType })) };
+    const hit = (values) => searchMatches(values, args.query);
+    return { leads: leadRows.filter((row) => hit([row.name, row.phone, row.email, row.address, row.serviceType])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, stage: row.stage })), clients: clientRows.filter((row) => hit([row.name, row.phone, row.email, row.address, ...clientAddressesOf(row).map((entry) => entry.address)])).slice(0, 8).map((row) => ({ id: row.id, name: row.name, phone: row.phone, email: row.email })), jobs: jobRows.filter((row) => hit([row.clientName, row.clientPhone, row.clientEmail, row.jobAddress, row.jobType])).slice(0, 8).map((row) => ({ id: row.id, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType })) };
   } }),
   prepareLeadQuote: defineAction({ request: object({ id: number2().int().positive() }), response: object({ clientId: number2() }), async handler(ctx, args) {
     const db = ctx.db();
@@ -82350,7 +85311,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     const amount = milestone.amount || "0";
     const now = new Date;
     const invoiceNumber = await nextInvoiceNumber(db);
-    const rows = await db.insert(invoices).values({ companyId: job.companyId, invoiceNumber, jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: clientToday(args), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "helvetica", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
+    const rows = await db.insert(invoices).values({ companyId: job.companyId, invoiceNumber, jobId: job.id, clientId: job.clientId, clientName: job.clientName, clientPhone: job.clientPhone, clientEmail: job.clientEmail, jobAddress: job.jobAddress, jobType: job.jobType, lineItemsJson: JSON.stringify([{ description: milestone.label, amount }]), subtotal: amount, total: amount, issueDate: clientToday(args), dueDate: milestone.dueDate, status: "draft", theme: setting?.defaultQuoteTheme ?? "classic", font: setting?.defaultDocumentFont ?? "Inter", accentColor: setting?.accentColor ?? "#1f5a4a", createdAt: now, updatedAt: now }).returning({ id: invoices.id });
     const made = rows[0];
     if (!made)
       throw new Error("Could not create invoice.");
@@ -83507,7 +86468,7 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { token, shortCode, route: `p/${encodeURIComponent(shortCode)}`, expiresAt: expiresAt?.toISOString() ?? null };
   } }),
-  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), address: string2(), licenseNumber: string2(), accentColor: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), photoPairs: array(object({ id: number2(), label: string2(), before: object({ url: string2(), caption: string2() }), after: object({ url: string2(), caption: string2() }) })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), bodyText: string2().default(""), amount: string2(), originalUrl: string2().nullable(), contractorSignerName: string2().default(""), contractorSignatureUrl: string2().nullable().default(null), contractorSignedAt: string2().nullable().default(null), clientSignerName: string2(), clientSignatureUrl: string2().nullable().default(null), clientSignedAt: string2().nullable(), coNumber: number2().nullable().default(null), displayTitle: string2().default(""), contractSumBefore: string2().default(""), newContractSum: string2().default(""), referenceContract: string2().default(""), dateIso: string2().default(""), href: string2().nullable().default(null) })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })), options: array(quoteOptionRowSchema), selectedOptionKeys: array(string2()), acceptedOptions: acceptedOptionsSchema.nullable(), optionsTotal: string2(), totalWithOptions: string2(), href: string2().nullable() })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2(), href: string2().nullable(), payments: array(object({ id: number2(), amount: string2(), paymentDate: string2(), method: string2() })) })), jobDocuments: array(object({ id: number2(), kind: _enum(["contract", "change_order"]), title: string2(), displayTitle: string2().default(""), amount: string2().default(""), coNumber: number2().nullable().default(null), clientSignedAt: string2().nullable(), href: string2().nullable() })), files: array(object({ id: number2(), title: string2(), filename: string2(), url: string2(), createdAt: string2() })) }), async handler(ctx, args) {
+  getPortalData: defineAction({ request: object({ token: string2().min(8).max(200) }), response: object({ job: object({ id: number2(), clientName: string2(), jobType: string2(), jobAddress: string2() }), company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), address: string2(), licenseNumber: string2(), accentColor: string2(), logoUrl: string2().nullable() }), photos: array(object({ id: number2(), stage: stageSchema, caption: string2(), url: string2() })), photoPairs: array(object({ id: number2(), label: string2(), before: object({ url: string2(), caption: string2() }), after: object({ url: string2(), caption: string2() }) })), appointments: array(object({ id: number2(), startsAt: string2(), notes: string2() })), selections: array(selectionSchema), changeOrders: array(object({ id: number2(), title: string2(), description: string2(), bodyText: string2().default(""), amount: string2(), originalUrl: string2().nullable(), contractorSignerName: string2().default(""), contractorSignatureUrl: string2().nullable().default(null), contractorSignedAt: string2().nullable().default(null), clientSignerName: string2(), clientSignatureUrl: string2().nullable().default(null), clientSignedAt: string2().nullable(), coNumber: number2().nullable().default(null), displayTitle: string2().default(""), contractSumBefore: string2().default(""), newContractSum: string2().default(""), referenceContract: string2().default(""), dateIso: string2().default(""), href: string2().nullable().default(null) })), estimates: array(object({ id: number2(), total: string2(), sentAt: string2(), accepted: boolean2(), lineItems: array(object({ description: string2(), amount: string2() })), options: array(quoteOptionRowSchema), selectedOptionKeys: array(string2()), acceptedOptions: acceptedOptionsSchema.nullable(), optionsTotal: string2(), totalWithOptions: string2(), href: string2().nullable() })), invoices: array(object({ id: number2(), invoiceNumber: string2(), total: string2(), status: string2(), dueDate: string2(), balanceDue: string2(), cardPaymentsEnabled: boolean2(), cardFeeCents: number2(), href: string2().nullable(), payments: array(object({ id: number2(), amount: string2(), paymentDate: string2(), method: string2() })) })), jobDocuments: array(object({ id: number2(), kind: _enum(["contract", "change_order"]), title: string2(), displayTitle: string2().default(""), amount: string2().default(""), coNumber: number2().nullable().default(null), clientSignedAt: string2().nullable(), href: string2().nullable() })), files: array(object({ id: number2(), title: string2(), filename: string2(), url: string2(), createdAt: string2() })), payNowAvailable: boolean2() }), async handler(ctx, args) {
     const db = ctx.db();
     const access = await requirePortalAccess(ctx, args.token, { logView: true });
     const job = (await db.select().from(jobs).where(eq(jobs.id, access.jobId)).limit(1))[0];
@@ -83539,7 +86500,9 @@ If that was you, just sign in again. If not, we recommend changing your password
       return d.kind === "change_order" && m ? changeOrderDisplayTitle(d, m.number) : d.title;
     };
     const today = new Date().toISOString();
-    return { job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), photoPairs: await (async () => {
+    const paySettings = (await db.select().from(settings).where(eq(settings.companyId, job.companyId)).limit(1))[0];
+    const payNowAvailable = !!paySettings?.stripeConnectAccountId && !!paySettings.stripeChargesEnabled && await companyProActive(db, job.companyId);
+    return { payNowAvailable, job: { id: job.id, clientName: job.clientName, jobType: job.jobType, jobAddress: job.jobAddress }, company: portalCompany, photos: await Promise.all(photos2.filter((p) => !p.excludeFromSocial).map(async (p) => ({ id: p.id, stage: p.stage, caption: p.caption, url: await ctx.blobs.getUrl(p.blobKey) }))), photoPairs: await (async () => {
       const byId = new Map(photos2.map((p) => [p.id, p]));
       const out = [];
       for (const row of photoPairRows) {
@@ -83560,7 +86523,7 @@ If that was you, just sign in again. If not, we recommend changing your password
       const invPayments = payments2.filter((p) => p.invoiceId === inv.id).sort((a, b) => a.paymentDate < b.paymentDate ? -1 : a.paymentDate > b.paymentDate ? 1 : a.id - b.id);
       const paid = invPayments.reduce((s, p) => s + Number(String(p.amount).replace(/[^0-9.-]/g, "") || 0), 0);
       const total = Number(String(inv.total).replace(/[^0-9.-]/g, "") || 0);
-      return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2), href: docHref("invoice", inv.id), payments: invPayments.map((p) => ({ id: p.id, amount: p.amount, paymentDate: p.paymentDate, method: p.method })) };
+      return { id: inv.id, invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status, dueDate: inv.dueDate, balanceDue: Math.max(0, total - paid).toFixed(2), cardPaymentsEnabled: inv.cardPaymentsEnabled, cardFeeCents: inv.cardFeeCents, href: docHref("invoice", inv.id), payments: invPayments.map((p) => ({ id: p.id, amount: p.amount, paymentDate: p.paymentDate, method: p.method })) };
     }), jobDocuments: documents2.map((d) => ({ id: d.id, kind: d.kind, title: d.title, displayTitle: coDisplay(d), amount: d.amount, coNumber: coChain.get(d.id)?.number ?? null, clientSignedAt: d.clientSignedAt?.toISOString() ?? null, href: docHref(d.kind, d.id) })), files: await Promise.all(jobFileRows.filter((f) => f.sharedWithClient).map(async (f) => ({ id: f.id, title: f.title, filename: f.filename, url: await ctx.blobs.getUrl(f.blobKey), createdAt: f.createdAt.toISOString() }))) };
   } }),
   getPortalPhotoDownload: defineAction({ request: object({ token: string2().min(8).max(200), photoId: number2().int().positive() }), response: object({ filename: string2(), contentType: string2(), dataBase64: string2() }), async handler(ctx, args) {
@@ -83688,6 +86651,338 @@ If that was you, just sign in again. If not, we recommend changing your password
     ctx.invalidateQueries();
     return { ok: true };
   } }),
+  createWorkSummary: defineAction({ request: object({ jobId: number2().int().positive(), preset: _enum(["today", "this_week", "custom"]).default("custom"), rangeStart: string2().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), rangeEnd: string2().regex(/^\d{4}-\d{2}-\d{2}$/).default(""), narrative: string2().max(20000).default(""), polishedWithAi: boolean2().default(false) }), response: object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { identity, job } = await requireJobCompany(ctx, db, args.jobId);
+    const { rangeStart, rangeEnd } = summaryRangeOrThrow(args);
+    const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd);
+    const finalNarrative = (args.narrative ?? "").trim();
+    if (finalNarrative) {
+      content.narrative = finalNarrative;
+      content.polishedWithAi = args.polishedWithAi === true;
+    }
+    const rows = await db.insert(workSummaries).values({ companyId: job.companyId, jobId: job.id, rangeStart, rangeEnd, preset: args.preset, contentJson: JSON.stringify(content), createdByUserId: identity.workspaceUserId, createdAt: new Date }).returning({ id: workSummaries.id });
+    const made = rows[0];
+    if (!made)
+      throw new Error("Could not create the work summary.");
+    const row = (await db.select().from(workSummaries).where(eq(workSummaries.id, made.id)).limit(1))[0];
+    await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "note", title: "Work summary created", body: `${rangeStart} \u2192 ${rangeEnd} \xB7 ${content.logs.length} log${content.logs.length === 1 ? "" : "s"} \xB7 ${content.photos.length} photo${content.photos.length === 1 ? "" : "s"}`, userId: identity.workspaceUserId });
+    ctx.invalidateQueries();
+    return { summary: await workSummaryShape(ctx, row), content };
+  } }),
+  previewWorkSummary: defineAction({ request: object({ jobId: number2().int().positive(), preset: _enum(["today", "this_week", "custom"]).default("custom"), rangeStart: string2().max(10).default(""), rangeEnd: string2().max(10).default("") }), response: object({ content: workSummaryContentSchema, narrative: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const { rangeStart, rangeEnd } = summaryRangeOrThrow(args);
+    const content = await buildWorkSummaryContent(db, (key) => ctx.blobs.getUrl(key), job, rangeStart, rangeEnd);
+    return { content, narrative: buildWorkSummaryNarrative(content) };
+  } }),
+  polishWorkSummary: defineAction({ request: object({ jobId: number2().int().positive(), text: string2().trim().min(1).max(20000), lang: _enum(["en", "es"]).default("en"), rangeStart: string2().max(10).default(""), rangeEnd: string2().max(10).default("") }), response: object({ text: string2() }), privileged: [privileged.getAiStatus, privileged.aiComplete], async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    await requireAiReady(ctx, db, job.companyId);
+    const prompts = buildSummaryPolishAiPrompt({ lang: args.lang === "es" ? "es" : "en", jobType: job.jobType, clientName: job.clientName, rangeStart: args.rangeStart ?? "", rangeEnd: args.rangeEnd ?? "", text: args.text });
+    const result = await ctx.executePrivileged(privileged.aiComplete, { system: prompts.system, user: prompts.user, maxTokens: 2000 });
+    if (!result.configured || !result.text)
+      throw new Error("AI is unavailable right now.");
+    await recordAiUsage(db, job.companyId);
+    return { text: result.text.trim() };
+  } }),
+  listWorkSummaries: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ summaries: array(workSummarySummarySchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const rows = await db.select().from(workSummaries).where(eq(workSummaries.jobId, job.id)).orderBy(desc(workSummaries.createdAt), desc(workSummaries.id));
+    return { summaries: await Promise.all(rows.map((row) => workSummaryShape(ctx, row))) };
+  } }),
+  getWorkSummary: defineAction({ request: object({ id: number2().int().positive() }), response: object({ summary: workSummarySummarySchema, content: workSummaryContentSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const row = (await db.select().from(workSummaries).where(eq(workSummaries.id, args.id)).limit(1))[0];
+    if (!row)
+      throw new Error("Work summary not found.");
+    await requireJobCompany(ctx, db, row.jobId);
+    return { summary: await workSummaryShape(ctx, row), content: parseWorkSummaryContent(row.contentJson) };
+  } }),
+  deleteWorkSummary: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const row = (await db.select().from(workSummaries).where(eq(workSummaries.id, args.id)).limit(1))[0];
+    if (!row)
+      throw new Error("Work summary not found.");
+    await requireJobCompany(ctx, db, row.jobId);
+    const links = await db.select({ id: documentLinks.id }).from(documentLinks).where(and(eq(documentLinks.documentKind, "work_summary"), eq(documentLinks.documentId, row.id)));
+    if (links.length) {
+      await db.delete(documentLinkEvents).where(inArray(documentLinkEvents.linkId, links.map((l) => l.id)));
+      await db.delete(documentLinks).where(and(eq(documentLinks.documentKind, "work_summary"), eq(documentLinks.documentId, row.id)));
+    }
+    await db.delete(workSummaries).where(eq(workSummaries.id, row.id));
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  createJobLoad: defineAction({ request: jobLoadInputSchema.extend({ jobId: number2().int().positive() }), response: object({ load: jobLoadSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { identity, job } = await requireJobCompany(ctx, db, args.jobId);
+    let photoBlobKey = null;
+    if (args.photoDataBase64 && args.photoContentType) {
+      photoBlobKey = `job-loads/${job.id}/${crypto.randomUUID()}`;
+      await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType });
+    }
+    const logger = (await db.select({ name: authUsers.name }).from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+    const now = new Date;
+    const rows = await db.insert(jobLoads).values({ companyId: job.companyId, jobId: job.id, expenseId: null, loadDate: args.date, kind: args.kind, quantity: args.quantity, unit: args.unit, cost: normalizeJobLoadCost(args.cost), vendor: args.vendor, notes: args.notes, photoBlobKey, photoFilename: args.photoFilename, photoContentType: args.photoContentType, loggedByUserId: identity.workspaceUserId, loggedByName: logger?.name ?? "", attested: args.attested, attestedAt: args.attested ? now : null, createdAt: now, updatedAt: now }).returning({ id: jobLoads.id });
+    const made = rows[0];
+    if (!made) {
+      if (photoBlobKey) {
+        try {
+          await ctx.blobs.delete(photoBlobKey);
+        } catch {}
+      }
+      throw new Error("Could not save the load.");
+    }
+    const row = (await db.select().from(jobLoads).where(eq(jobLoads.id, made.id)).limit(1))[0];
+    await syncJobLoadExpense(db, row);
+    const synced = (await db.select().from(jobLoads).where(eq(jobLoads.id, made.id)).limit(1))[0];
+    ctx.invalidateQueries();
+    return { load: await jobLoadShape(ctx, synced) };
+  } }),
+  listJobLoads: defineAction({ request: object({ jobId: number2().int().positive() }), response: object({ loads: array(jobLoadSchema), count: number2(), totalCost: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { job } = await requireJobCompany(ctx, db, args.jobId);
+    const rows = await db.select().from(jobLoads).where(eq(jobLoads.jobId, job.id)).orderBy(desc(jobLoads.loadDate), desc(jobLoads.id));
+    const total = rows.reduce((sum, row) => sum + (row.cost ? Number(row.cost) || 0 : 0), 0);
+    return { loads: await Promise.all(rows.map((row) => jobLoadShape(ctx, row))), count: rows.length, totalCost: total.toFixed(2) };
+  } }),
+  updateJobLoad: defineAction({ request: jobLoadInputSchema.extend({ id: number2().int().positive(), removePhoto: boolean2().default(false) }), response: object({ load: jobLoadSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { load } = await requireJobLoad(ctx, db, args.id);
+    let photoBlobKey = load.photoBlobKey;
+    let photoFilename = load.photoFilename;
+    let photoContentType = load.photoContentType;
+    let staleBlobKey = null;
+    if (args.photoDataBase64 && args.photoContentType) {
+      photoBlobKey = `job-loads/${load.jobId}/${crypto.randomUUID()}`;
+      await ctx.blobs.put(photoBlobKey, Buffer.from(args.photoDataBase64, "base64"), { contentType: args.photoContentType });
+      photoFilename = args.photoFilename;
+      photoContentType = args.photoContentType;
+      staleBlobKey = load.photoBlobKey;
+    } else if (args.removePhoto) {
+      staleBlobKey = load.photoBlobKey;
+      photoBlobKey = null;
+      photoFilename = "";
+      photoContentType = "";
+    }
+    const now = new Date;
+    await db.update(jobLoads).set({ loadDate: args.date, kind: args.kind, quantity: args.quantity, unit: args.unit, cost: normalizeJobLoadCost(args.cost), vendor: args.vendor, notes: args.notes, photoBlobKey, photoFilename, photoContentType, attested: args.attested, attestedAt: args.attested ? load.attested && load.attestedAt ? load.attestedAt : now : null, updatedAt: now }).where(eq(jobLoads.id, load.id));
+    if (staleBlobKey && staleBlobKey !== photoBlobKey) {
+      try {
+        await ctx.blobs.delete(staleBlobKey);
+      } catch {}
+    }
+    const row = (await db.select().from(jobLoads).where(eq(jobLoads.id, load.id)).limit(1))[0];
+    await syncJobLoadExpense(db, row);
+    const synced = (await db.select().from(jobLoads).where(eq(jobLoads.id, load.id)).limit(1))[0];
+    ctx.invalidateQueries();
+    return { load: await jobLoadShape(ctx, synced) };
+  } }),
+  deleteJobLoad: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { load } = await requireJobLoad(ctx, db, args.id);
+    if (load.expenseId) {
+      await db.delete(businessExpenses).where(eq(businessExpenses.id, load.expenseId));
+    }
+    await db.delete(jobLoads).where(eq(jobLoads.id, load.id));
+    if (load.photoBlobKey) {
+      try {
+        await ctx.blobs.delete(load.photoBlobKey);
+      } catch {}
+    }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  listSafetyTalks: defineAction({ request: object({}), response: object({ talks: array(safetyTalkSchema) }), async handler() {
+    return { talks: SAFETY_TALKS.map((t) => ({ slug: t.slug, titleEn: t.titleEn, titleEs: t.titleEs, bulletsEn: t.bulletsEn, bulletsEs: t.bulletsEs })) };
+  } }),
+  listSafetySessions: defineAction({ request: object({ jobId: number2().int().positive().nullable().default(null), memberUserId: number2().int().positive().nullable().default(null) }), response: object({ sessions: array(safetySessionSchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const identity = workspaceIdentity(ctx);
+    let rows = await db.select().from(safetySessions).where(eq(safetySessions.companyId, identity.workspaceCompanyId)).orderBy(desc(safetySessions.sessionDate), desc(safetySessions.id));
+    if (args.jobId)
+      rows = rows.filter((r) => r.jobId === args.jobId);
+    if (args.memberUserId) {
+      const attended = new Set((await db.select({ sessionId: safetySessionAttendees.sessionId }).from(safetySessionAttendees).where(eq(safetySessionAttendees.userId, args.memberUserId))).map((a) => a.sessionId));
+      rows = rows.filter((r) => r.presenterUserId === args.memberUserId || attended.has(r.id));
+    }
+    return { sessions: await Promise.all(rows.map((row) => safetySessionShape(ctx, db, row))) };
+  } }),
+  getSafetySession: defineAction({ request: object({ id: number2().int().positive() }), response: object({ session: safetySessionSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { session } = await requireSafetySession(ctx, db, args.id);
+    return { session: await safetySessionShape(ctx, db, session) };
+  } }),
+  createSafetySession: defineAction({ request: object({ date: string2().regex(/^\d{4}-\d{2}-\d{2}$/), talkSlug: string2().max(80).default(""), lang: _enum(["en", "es"]).default("en"), customTitle: string2().trim().max(200).default(""), customBody: string2().trim().max(5000).default(""), presenterUserId: number2().int().positive(), attendeeUserIds: array(number2().int().positive()).max(100).default([]), jobId: number2().int().positive().nullable().default(null), signatureDataBase64: string2().max(5000000).default("") }), response: object({ session: safetySessionSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const identity = workspaceIdentity(ctx);
+    const companyId = identity.workspaceCompanyId;
+    const presenter = await requireCompanyMember(db, companyId, args.presenterUserId);
+    const attendeeIds = [...new Set(args.attendeeUserIds)];
+    const attendees = [];
+    for (const uid of attendeeIds)
+      attendees.push(await requireCompanyMember(db, companyId, uid));
+    let job = null;
+    if (args.jobId) {
+      const found = await requireJobCompany(ctx, db, args.jobId);
+      job = found.job;
+    }
+    const library = args.talkSlug ? getSafetyTalk(args.talkSlug) : null;
+    if (args.talkSlug && !library)
+      throw new Error("That talk is not in the library.");
+    if (!library && !args.customTitle)
+      throw new Error("Pick a library talk or enter a custom talk title.");
+    const title = library ? args.lang === "es" ? library.titleEs : library.titleEn : args.customTitle;
+    const bullets = library ? args.lang === "es" ? library.bulletsEs : library.bulletsEn : [];
+    const now = new Date;
+    const rows = await db.insert(safetySessions).values({ companyId, jobId: job?.id ?? null, sessionDate: args.date, talkSlug: library?.slug ?? null, talkTitle: title, talkPointsJson: JSON.stringify(bullets), customBody: args.customBody, presenterUserId: presenter.id, presenterName: presenter.name, signatureBlobKey: null, createdByUserId: identity.workspaceUserId, createdAt: now, updatedAt: now }).returning({ id: safetySessions.id });
+    const made = rows[0];
+    if (!made)
+      throw new Error("Could not save the session.");
+    let signatureBlobKey = null;
+    if (args.signatureDataBase64) {
+      signatureBlobKey = `safety-sessions/${made.id}/presenter-signature.png`;
+      await ctx.blobs.put(signatureBlobKey, Buffer.from(args.signatureDataBase64, "base64"), { contentType: "image/png" });
+      await db.update(safetySessions).set({ signatureBlobKey, updatedAt: new Date }).where(eq(safetySessions.id, made.id));
+    }
+    if (attendees.length) {
+      await db.insert(safetySessionAttendees).values(attendees.map((a) => ({ companyId, sessionId: made.id, userId: a.id, attendeeName: a.name, createdAt: now })));
+    }
+    const row = (await db.select().from(safetySessions).where(eq(safetySessions.id, made.id)).limit(1))[0];
+    ctx.invalidateQueries();
+    return { session: await safetySessionShape(ctx, db, row) };
+  } }),
+  deleteSafetySession: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { session } = await requireSafetySession(ctx, db, args.id);
+    await db.delete(safetySessionAttendees).where(eq(safetySessionAttendees.sessionId, session.id));
+    await db.delete(safetySessions).where(eq(safetySessions.id, session.id));
+    if (session.signatureBlobKey) {
+      try {
+        await ctx.blobs.delete(session.signatureBlobKey);
+      } catch {}
+    }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  getSafetySessionPdf: defineAction({ request: object({ id: number2().int().positive() }), response: object({ pdfBase64: string2(), filename: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { session } = await requireSafetySession(ctx, db, args.id);
+    const shape = await safetySessionShape(ctx, db, session);
+    const settingsRow = (await db.select().from(settings).where(eq(settings.companyId, session.companyId)).limit(1))[0] ?? (await db.select().from(settings).where(eq(settings.id, 1)).limit(1))[0];
+    let signatureDataUrl = null;
+    if (session.signatureBlobKey) {
+      try {
+        const bytes = await ctx.blobs.get(session.signatureBlobKey);
+        if (bytes && bytes.length > 0)
+          signatureDataUrl = `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+      } catch {}
+    }
+    const built = buildSafetySessionPdf({ companyName: settingsRow?.companyName ?? "", companyPhone: settingsRow?.phone ?? "", companyEmail: settingsRow?.email ?? "", companyAddress: settingsRow?.address ?? "", licenseNumber: settingsRow?.licenseNumber ?? "", accentColor: settingsRow?.accentColor ?? "#1f5a4a", title: shape.title, date: shape.date, jobLabel: shape.jobLabel, presenterName: shape.presenterName, bullets: shape.bullets, customBody: shape.customBody, attendees: shape.attendees.map((a) => a.name), signatureDataUrl });
+    if (built.bytes.length < 100 || String.fromCharCode(...built.bytes.slice(0, 5)) !== "%PDF-")
+      throw new Error("The session PDF could not be generated.");
+    return { pdfBase64: Buffer.from(built.bytes).toString("base64"), filename: built.filename };
+  } }),
+  listMemberCredentials: defineAction({ request: object({ userId: number2().int().positive().nullable().default(null) }), response: object({ credentials: array(memberCredentialSchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const identity = workspaceIdentity(ctx);
+    let rows = await db.select().from(memberCredentials).where(eq(memberCredentials.companyId, identity.workspaceCompanyId)).orderBy(memberCredentials.expiresOn, memberCredentials.id);
+    if (args.userId)
+      rows = rows.filter((r) => r.userId === args.userId);
+    return { credentials: await Promise.all(rows.map((row) => memberCredentialShape(ctx, row))) };
+  } }),
+  saveMemberCredential: defineAction({ request: object({ id: number2().int().positive().nullable().default(null), userId: number2().int().positive(), type: memberCredentialTypeSchema, customLabel: string2().trim().max(120).default(""), number: string2().trim().max(120).default(""), expiresOn: string2().regex(/^\d{4}-\d{2}-\d{2}$/).or(literal("")).default(""), attachmentFilename: string2().trim().max(240).default(""), attachmentContentType: string2().max(120).default(""), attachmentDataBase64: string2().max(8000000).default(""), removeAttachment: boolean2().default(false) }), response: object({ credential: memberCredentialSchema }), async handler(ctx, args) {
+    const db = ctx.db();
+    const identity = workspaceIdentity(ctx);
+    const companyId = identity.workspaceCompanyId;
+    const member = await requireCompanyMember(db, companyId, args.userId);
+    if (args.type === "custom" && !args.customLabel)
+      throw new Error("Name the custom credential type.");
+    const now = new Date;
+    if (args.id) {
+      const { credential } = await requireMemberCredential(ctx, db, args.id);
+      let attachmentBlobKey = credential.attachmentBlobKey;
+      let attachmentFilename = credential.attachmentFilename;
+      let attachmentContentType = credential.attachmentContentType;
+      let staleBlobKey = null;
+      if (args.attachmentDataBase64) {
+        attachmentBlobKey = `member-credentials/${credential.id}/${crypto.randomUUID()}`;
+        await ctx.blobs.put(attachmentBlobKey, Buffer.from(args.attachmentDataBase64, "base64"), { contentType: args.attachmentContentType || "application/octet-stream" });
+        attachmentFilename = args.attachmentFilename;
+        attachmentContentType = args.attachmentContentType;
+        staleBlobKey = credential.attachmentBlobKey;
+      } else if (args.removeAttachment) {
+        staleBlobKey = credential.attachmentBlobKey;
+        attachmentBlobKey = null;
+        attachmentFilename = "";
+        attachmentContentType = "";
+      }
+      await db.update(memberCredentials).set({ userId: member.id, memberName: member.name, type: args.type, customLabel: args.customLabel, number: args.number, expiresOn: args.expiresOn, attachmentBlobKey, attachmentFilename, attachmentContentType, updatedAt: now }).where(eq(memberCredentials.id, credential.id));
+      if (staleBlobKey && staleBlobKey !== attachmentBlobKey) {
+        try {
+          await ctx.blobs.delete(staleBlobKey);
+        } catch {}
+      }
+      const row = (await db.select().from(memberCredentials).where(eq(memberCredentials.id, credential.id)).limit(1))[0];
+      ctx.invalidateQueries();
+      return { credential: await memberCredentialShape(ctx, row) };
+    }
+    const rows = await db.insert(memberCredentials).values({ companyId, userId: member.id, memberName: member.name, type: args.type, customLabel: args.customLabel, number: args.number, expiresOn: args.expiresOn, attachmentBlobKey: null, attachmentFilename: "", attachmentContentType: "", createdAt: now, updatedAt: now }).returning({ id: memberCredentials.id });
+    const made = rows[0];
+    if (!made)
+      throw new Error("Could not save the credential.");
+    if (args.attachmentDataBase64) {
+      const key = `member-credentials/${made.id}/${crypto.randomUUID()}`;
+      await ctx.blobs.put(key, Buffer.from(args.attachmentDataBase64, "base64"), { contentType: args.attachmentContentType || "application/octet-stream" });
+      await db.update(memberCredentials).set({ attachmentBlobKey: key, attachmentFilename: args.attachmentFilename, attachmentContentType: args.attachmentContentType, updatedAt: new Date }).where(eq(memberCredentials.id, made.id));
+    }
+    const row = (await db.select().from(memberCredentials).where(eq(memberCredentials.id, made.id)).limit(1))[0];
+    ctx.invalidateQueries();
+    return { credential: await memberCredentialShape(ctx, row) };
+  } }),
+  deleteMemberCredential: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const { credential } = await requireMemberCredential(ctx, db, args.id);
+    await db.delete(memberCredentials).where(eq(memberCredentials.id, credential.id));
+    if (credential.attachmentBlobKey) {
+      try {
+        await ctx.blobs.delete(credential.attachmentBlobKey);
+      } catch {}
+    }
+    ctx.invalidateQueries();
+    return { ok: true };
+  } }),
+  getSafetyDashboard: defineAction({ request: object({ today: string2().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }), response: object({ today: string2(), sessionCount: number2(), sessionsThisMonth: number2(), credentialCount: number2(), buckets: object({ expired: array(memberCredentialSchema), due30: array(memberCredentialSchema), due90: array(memberCredentialSchema), ok: array(memberCredentialSchema), noExpiry: array(memberCredentialSchema) }), counts: object({ expired: number2(), due30: number2(), due90: number2(), ok: number2(), noExpiry: number2() }), recentSessions: array(safetySessionSchema) }), async handler(ctx, args) {
+    const db = ctx.db();
+    const identity = workspaceIdentity(ctx);
+    const companyId = identity.workspaceCompanyId;
+    const today = args.today ?? safetyTodayKey();
+    const credRows = await db.select().from(memberCredentials).where(eq(memberCredentials.companyId, companyId)).orderBy(memberCredentials.expiresOn, memberCredentials.id);
+    const shaped = await Promise.all(credRows.map((row) => memberCredentialShape(ctx, row, today)));
+    const buckets = { expired: shaped.filter((c) => c.bucket === "expired"), due30: shaped.filter((c) => c.bucket === "due30"), due90: shaped.filter((c) => c.bucket === "due90"), ok: shaped.filter((c) => c.bucket === "ok"), noExpiry: shaped.filter((c) => c.bucket === "no_expiry") };
+    const sessionRows = await db.select().from(safetySessions).where(eq(safetySessions.companyId, companyId)).orderBy(desc(safetySessions.sessionDate), desc(safetySessions.id));
+    const monthPrefix = today.slice(0, 7);
+    return { today, sessionCount: sessionRows.length, sessionsThisMonth: sessionRows.filter((r) => r.sessionDate.startsWith(monthPrefix)).length, credentialCount: shaped.length, buckets, counts: { expired: buckets.expired.length, due30: buckets.due30.length, due90: buckets.due90.length, ok: buckets.ok.length, noExpiry: buckets.noExpiry.length }, recentSessions: await Promise.all(sessionRows.slice(0, 10).map((row) => safetySessionShape(ctx, db, row))) };
+  } }),
+  resolveWorkSummaryLink: defineAction({ request: object({ token: string2().min(8).max(200), userAgent: string2().max(500).default("") }), response: object({ summaryId: number2(), company: object({ name: string2(), phone: string2(), email: string2(), website: string2(), address: string2(), licenseNumber: string2(), accentColor: string2(), logoUrl: string2().nullable() }), content: workSummaryContentSchema, linkExpiresAt: string2() }), async handler(ctx, args) {
+    const db = ctx.db();
+    const link = await resolveDocumentLinkToken(ctx, args.token);
+    if (link.documentKind !== "work_summary")
+      throw new Error("This link is no longer active.");
+    const row = (await db.select().from(workSummaries).where(eq(workSummaries.id, link.documentId)).limit(1))[0];
+    if (!row || row.companyId !== link.companyId)
+      throw new Error("This link is no longer active.");
+    const now = new Date;
+    await db.update(documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(documentLinks.id, link.id));
+    await db.insert(documentLinkEvents).values({ companyId: link.companyId, linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    const settingsRow = (await db.select().from(settings).where(eq(settings.companyId, row.companyId)).limit(1))[0];
+    const company = { name: settingsRow?.companyName ?? "", phone: settingsRow?.phone ?? "", email: settingsRow?.email ?? "", website: settingsRow?.website ?? "", address: settingsRow?.address ?? "", licenseNumber: settingsRow?.licenseNumber ?? "", accentColor: settingsRow?.accentColor ?? "#1f5a4a", logoUrl: settingsRow?.logoBlobKey ? await ctx.blobs.getUrl(settingsRow.logoBlobKey) : null };
+    return { summaryId: row.id, company, content: parseWorkSummaryContent(row.contentJson), linkExpiresAt: link.expiresAt.toISOString() };
+  } }),
   deleteDocument: defineAction({ request: object({ id: number2().int().positive() }), response: object({ ok: literal(true) }), async handler(ctx, args) {
     const db = ctx.db();
     const doc = (await db.select().from(documents).where(eq(documents.id, args.id)).limit(1))[0];
@@ -83801,7 +87096,14 @@ If that was you, just sign in again. If not, we recommend changing your password
     showLogo: boolean2(),
     showCompanyInfo: boolean2(),
     customizeJson: string2(),
-    attachedImages: array(object({ fileName: string2(), url: string2() })).default([])
+    attachedImages: array(object({ fileName: string2(), url: string2() })).default([]),
+    payNowAvailable: boolean2().default(false),
+    cardFeeCents: number2().default(0),
+    paidToDate: string2().default(""),
+    lateFeeAccrued: string2().default(""),
+    totalWithLateFee: string2().default(""),
+    depositType: depositTypeSchema.default("none"),
+    depositValue: string2().default("0")
   }), async handler(ctx, args) {
     const { link, payload } = await getDocumentLinkPayload(ctx, args.token);
     const db = ctx.db();
@@ -83819,6 +87121,29 @@ If that was you, just sign in again. If not, we recommend changing your password
       await db.update(documentLinks).set({ viewCount: link.viewCount + 1, firstViewedAt: link.firstViewedAt ?? now, lastViewedAt: now }).where(eq(documentLinks.id, link.id));
     }
     await db.insert(documentLinkEvents).values({ linkId: link.id, eventType: "view", userAgent: args.userAgent.slice(0, 300), occurredAt: now });
+    if (link.documentKind === "quote" || link.documentKind === "contract" || link.documentKind === "change_order") {
+      try {
+        const siblings = await db.select({ id: documentLinks.id }).from(documentLinks).where(and(eq(documentLinks.companyId, link.companyId), eq(documentLinks.documentKind, link.documentKind), eq(documentLinks.documentId, link.documentId)));
+        const views = (await db.select({ id: documentLinkEvents.id }).from(documentLinkEvents).where(and(eq(documentLinkEvents.eventType, "view"), inArray(documentLinkEvents.linkId, siblings.map((l) => l.id))))).length;
+        if (views === 2 && await automationEnabled(db, link.companyId, "hot_proposal")) {
+          let hotJobId = null;
+          let hotClientId = null;
+          if (link.documentKind === "quote") {
+            const q = (await db.select({ jobId: quotes.jobId, clientId: quotes.clientId }).from(quotes).where(eq(quotes.id, link.documentId)).limit(1))[0];
+            hotJobId = q?.jobId ?? null;
+            hotClientId = q?.clientId ?? null;
+          } else {
+            const d = (await db.select({ jobId: documents.jobId }).from(documents).where(eq(documents.id, link.documentId)).limit(1))[0];
+            hotJobId = d?.jobId ?? null;
+          }
+          const kindLabel = link.documentKind === "quote" ? "estimate" : link.documentKind === "contract" ? "contract" : "change order";
+          const who = payload.clientName.trim() || "The client";
+          await createFollowUp(db, { companyId: link.companyId, title: `Hot proposal: ${who} opened the ${kindLabel} again`, body: `${who} has now opened this ${kindLabel} twice \u2014 a good moment to call while it's top of mind.`, dueDate: todayKey(now), source: "automation", sourceKey: `hot-proposal:${link.documentKind}:${link.documentId}`, recipe: "hot_proposal", jobId: hotJobId, clientId: hotClientId });
+          if (hotJobId)
+            await recordJobEvent(db, { companyId: link.companyId, jobId: hotJobId, kind: "automation", title: "Hot proposal alert queued", body: `${who} opened the ${kindLabel} a second time.`, userId: null });
+        }
+      } catch {}
+    }
     if (notifyView && link.documentKind === "invoice")
       await notifyCompanyEvent(ctx, link.companyId, "notifyInvoiceViewed", "document-viewed", `Client viewed invoice #${payload.documentId}`, "Un cliente vio tu factura", `invoice:${payload.documentId}`);
     if (notifyView && link.documentKind === "quote")
@@ -84146,16 +87471,777 @@ Thanks for signing "${doc.title}". Your signed copy is attached \u2014 keep it f
     }
   }),
   sendReviewRequest: defineAction({
-    request: object({ jobId: number2().int().positive() }),
-    response: object({ ok: literal(true), emailed: boolean2() }),
+    request: object({ jobId: number2().int().positive(), resend: boolean2().default(false) }),
+    response: object({ ok: literal(true), emailed: boolean2(), reviewRequestedAt: string2().nullable() }),
     async handler(ctx, args) {
       const db = ctx.db();
       const job = (await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
       if (!job)
         throw new Error("Job not found.");
-      const emailed = await sendJobReviewEmail(ctx, db, job, "manual");
+      const emailed = await sendJobReviewEmail(ctx, db, job, "manual", args.resend);
+      if (emailed) {
+        await recordJobEvent(db, { companyId: job.companyId, jobId: job.id, kind: "automation", title: args.resend ? "Review request re-sent" : "Review request sent", body: args.resend ? "The review-request email was re-sent manually." : "The review-request email was sent manually.", userId: workspaceIdentity(ctx).workspaceUserId });
+      }
+      const requestedAt = await reviewRequestedAtForJob(db, job.id);
       ctx.invalidateQueries();
-      return { ok: true, emailed };
+      return { ok: true, emailed, reviewRequestedAt: requestedAt?.toISOString() ?? null };
+    }
+  }),
+  listCampaigns: defineAction({
+    request: object({}),
+    response: object({ campaigns: array(object({ id: number2(), name: string2(), type: _enum(["promotion", "blog"]), status: _enum(["draft", "sending", "sent"]), subject: string2(), recipientMode: _enum(["individual", "never_closed", "all"]), recipientCount: number2(), sentCount: number2(), failedCount: number2(), sentAt: string2().nullable(), createdAt: string2(), updatedAt: string2() })) }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const rows = await db.select().from(campaigns).where(eq(campaigns.companyId, workspaceIdentity(ctx).workspaceCompanyId)).orderBy(desc(campaigns.updatedAt));
+      return { campaigns: rows.map((c) => ({ id: c.id, name: c.name, type: c.type, status: c.status, subject: c.subject, recipientMode: c.recipientMode, recipientCount: c.recipientCount, sentCount: c.sentCount, failedCount: c.failedCount, sentAt: c.sentAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) };
+    }
+  }),
+  getCampaign: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ campaign: object({ id: number2(), name: string2(), type: _enum(["promotion", "blog"]), status: _enum(["draft", "sending", "sent"]), subject: string2(), prompt: string2(), headline: string2(), bodyText: string2(), ctaLabel: string2(), ctaUrl: string2(), imageBlobKey: string2().nullable(), imageUrl: string2().nullable(), customHtml: string2(), recipientMode: _enum(["individual", "never_closed", "all"]), recipientClientIds: array(number2()), recipientCount: number2(), sentCount: number2(), failedCount: number2(), sentAt: string2().nullable(), createdAt: string2(), updatedAt: string2(), recipients: array(object({ id: number2(), clientId: number2().nullable(), clientName: string2(), email: string2(), status: _enum(["sent", "failed"]), error: string2(), sentAt: string2().nullable() })) }).nullable() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const c = (await db.select().from(campaigns).where(eq(campaigns.id, args.id)).limit(1))[0];
+      if (!c)
+        return { campaign: null };
+      const recipientRows = await db.select().from(campaignRecipients).where(eq(campaignRecipients.campaignId, c.id)).orderBy(campaignRecipients.id);
+      let ids = [];
+      try {
+        ids = JSON.parse(c.recipientClientIdsJson).filter((x) => typeof x === "number");
+      } catch {
+        ids = [];
+      }
+      return { campaign: { id: c.id, name: c.name, type: c.type, status: c.status, subject: c.subject, prompt: c.prompt, headline: c.headline, bodyText: c.bodyText, ctaLabel: c.ctaLabel, ctaUrl: c.ctaUrl, imageBlobKey: c.imageBlobKey, imageUrl: c.imageBlobKey ? await ctx.blobs.getUrl(c.imageBlobKey) : null, customHtml: c.customHtml, recipientMode: c.recipientMode, recipientClientIds: ids, recipientCount: c.recipientCount, sentCount: c.sentCount, failedCount: c.failedCount, sentAt: c.sentAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(), recipients: recipientRows.map((r) => ({ id: r.id, clientId: r.clientId, clientName: r.clientName, email: r.email, status: r.status, error: r.error, sentAt: r.sentAt?.toISOString() ?? null })) } };
+    }
+  }),
+  saveCampaign: defineAction({
+    request: object({ id: number2().int().positive().nullable().default(null), name: string2().trim().min(1).max(160), type: _enum(["promotion", "blog"]), subject: string2().trim().max(200).default(""), prompt: string2().max(1000).default(""), headline: string2().trim().max(300).default(""), bodyText: string2().max(50000).default(""), ctaLabel: string2().trim().max(80).default(""), ctaUrl: string2().trim().max(500).default(""), imageBlobKey: string2().max(300).nullable().default(null), customHtml: string2().max(1e5).default(""), recipientMode: _enum(["individual", "never_closed", "all"]), recipientClientIds: array(number2().int().positive()).max(2000).default([]) }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const now = new Date;
+      const values = { name: args.name, type: args.type, subject: args.subject, prompt: args.prompt, headline: args.headline, bodyText: args.bodyText, ctaLabel: args.ctaLabel, ctaUrl: args.ctaUrl, imageBlobKey: args.imageBlobKey, customHtml: args.customHtml, recipientMode: args.recipientMode, recipientClientIdsJson: JSON.stringify(args.recipientClientIds), updatedAt: now };
+      if (args.id) {
+        const existing = (await db.select().from(campaigns).where(eq(campaigns.id, args.id)).limit(1))[0];
+        if (!existing)
+          throw new Error("Campaign not found.");
+        if (existing.status !== "draft")
+          throw new Error("Sent campaigns are locked \u2014 duplicate this campaign to send a new version.");
+        await db.update(campaigns).set(values).where(eq(campaigns.id, args.id));
+        ctx.invalidateQueries();
+        return { id: args.id };
+      }
+      const rows = await db.insert(campaigns).values({ ...values, companyId: identity.workspaceCompanyId, createdByUserId: identity.workspaceUserId, createdAt: now }).returning({ id: campaigns.id });
+      const made = rows[0];
+      if (!made)
+        throw new Error("The campaign could not be saved.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  deleteCampaign: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      await db.delete(campaigns).where(eq(campaigns.id, args.id));
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  duplicateCampaign: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const source = (await db.select().from(campaigns).where(eq(campaigns.id, args.id)).limit(1))[0];
+      if (!source)
+        throw new Error("Campaign not found.");
+      const now = new Date;
+      const rows = await db.insert(campaigns).values({ companyId: source.companyId, name: `${source.name} (copy)`.slice(0, 160), type: source.type, status: "draft", subject: source.subject, prompt: source.prompt, headline: source.headline, bodyText: source.bodyText, ctaLabel: source.ctaLabel, ctaUrl: source.ctaUrl, imageBlobKey: source.imageBlobKey, customHtml: source.customHtml, recipientMode: source.recipientMode, recipientClientIdsJson: source.recipientClientIdsJson, createdByUserId: identity.workspaceUserId, createdAt: now, updatedAt: now }).returning({ id: campaigns.id });
+      const made = rows[0];
+      if (!made)
+        throw new Error("The campaign could not be duplicated.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  getAiAvailability: defineAction({
+    request: object({}),
+    response: object({ configured: boolean2(), entitled: boolean2(), usedThisMonth: number2(), monthlyCap: number2() }),
+    privileged: [privileged.getAiStatus],
+    async handler(ctx) {
+      const db = ctx.db();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const status = await ctx.executePrivileged(privileged.getAiStatus, {});
+      return {
+        configured: status.configured,
+        entitled: await companyAiEntitled(db, companyId),
+        usedThisMonth: await aiUsageCount(db, companyId),
+        monthlyCap: status.monthlyCap
+      };
+    }
+  }),
+  generateCampaignContent: defineAction({
+    request: object({ type: _enum(["promotion", "blog"]), prompt: string2().trim().min(3).max(1000), mode: _enum(["template", "ai"]).default("template"), lang: _enum(["en", "es"]).default("en"), audience: _enum(["individual", "never_closed", "all"]).default("all") }),
+    response: object({ subject: string2(), headline: string2(), bodyText: string2(), ctaLabel: string2(), ctaUrl: string2() }),
+    privileged: [privileged.getAiStatus, privileged.aiComplete],
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const setting = (await db.select().from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+      const base = { type: args.type, prompt: args.prompt, companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", website: setting?.website ?? "", reviewUrl: setting?.reviewUrl ?? "", serviceArea: setting?.serviceArea ?? "" };
+      if (args.mode !== "ai")
+        return composeCampaignContent(base);
+      await requireAiReady(ctx, db, companyId);
+      const lang = args.lang === "es" ? "es" : "en";
+      const audience = args.audience === "individual" || args.audience === "never_closed" ? args.audience : "all";
+      const prompts = buildPromoAiPrompt({ lang, type: args.type, brief: args.prompt, audience, companyName: base.companyName, phone: base.phone, website: base.website, serviceArea: base.serviceArea });
+      const result = await ctx.executePrivileged(privileged.aiComplete, { system: prompts.system, user: prompts.user, maxTokens: 1200 });
+      if (!result.configured || !result.text)
+        throw new Error("AI is unavailable right now.");
+      const parsed = parseAiPromoContent(result.text);
+      const template = composeCampaignContent(base);
+      const esCta = { "Claim this offer": "Reclamar esta oferta", "Ask about financing": "Preguntar por financiamiento", "Get my free estimate": "Pedir mi estimado gratis" };
+      const content = {
+        subject: parsed.subject || template.subject,
+        headline: parsed.headline || parsed.subject || template.headline,
+        bodyText: parsed.bodyText || result.text.trim(),
+        ctaLabel: args.lang === "es" ? esCta[template.ctaLabel] ?? template.ctaLabel : template.ctaLabel,
+        ctaUrl: template.ctaUrl
+      };
+      await recordAiUsage(db, companyId);
+      return content;
+    }
+  }),
+  previewCampaignRecipients: defineAction({
+    request: object({ mode: _enum(["individual", "never_closed", "all"]), clientIds: array(number2().int().positive()).max(2000).default([]) }),
+    response: object({ count: number2(), suppressedCount: number2(), noEmailCount: number2(), recipients: array(object({ clientId: number2(), name: string2(), email: string2() })) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const resolved = await resolveCampaignRecipients(db, workspaceIdentity(ctx).workspaceCompanyId, args.mode, args.clientIds);
+      return { count: resolved.recipients.length, suppressedCount: resolved.suppressedCount, noEmailCount: resolved.noEmailCount, recipients: resolved.recipients.slice(0, 500).map((r) => ({ clientId: r.clientId, name: r.clientName, email: r.email })) };
+    }
+  }),
+  uploadCampaignImage: defineAction({
+    request: object({ filename: string2().min(1).max(240), contentType: _enum(["image/jpeg", "image/png", "image/webp", "image/gif"]), dataBase64: string2().min(1).max(30000000) }),
+    response: object({ blobKey: string2(), url: string2() }),
+    async handler(ctx, args) {
+      const key = `campaigns/${crypto.randomUUID()}`;
+      await ctx.blobs.put(key, Buffer.from(args.dataBase64, "base64"), { contentType: args.contentType });
+      return { blobKey: key, url: await ctx.blobs.getUrl(key) };
+    }
+  }),
+  sendCampaign: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true), sent: number2(), failed: number2(), total: number2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const campaign = (await db.select().from(campaigns).where(eq(campaigns.id, args.id)).limit(1))[0];
+      if (!campaign)
+        throw new Error("Campaign not found.");
+      if (campaign.status === "sent")
+        throw new Error("This campaign was already sent \u2014 duplicate it to send a new version.");
+      if (!campaign.subject.trim() && !campaign.headline.trim())
+        throw new Error("Add a subject line before sending.");
+      let clientIds = [];
+      try {
+        clientIds = JSON.parse(campaign.recipientClientIdsJson).filter((x) => typeof x === "number");
+      } catch {
+        clientIds = [];
+      }
+      const resolved = await resolveCampaignRecipients(db, campaign.companyId, campaign.recipientMode, clientIds);
+      if (resolved.recipients.length === 0)
+        throw new Error("No recipients resolved for this campaign \u2014 check the audience (everyone may be unsubscribed or missing an email).");
+      if (resolved.recipients.length > 1000)
+        throw new Error("This campaign resolves to more than 1,000 recipients \u2014 narrow the audience before sending.");
+      const setting = (await db.select().from(settings).where(eq(settings.companyId, campaign.companyId)).limit(1))[0];
+      const imageUrl = campaign.imageBlobKey ? await ctx.blobs.getUrl(campaign.imageBlobKey) : null;
+      const subject = campaign.subject.trim() || campaign.headline.trim();
+      const now = new Date;
+      await db.update(campaigns).set({ status: "sending", updatedAt: now }).where(eq(campaigns.id, campaign.id));
+      let sent = 0;
+      let failed = 0;
+      for (const recipient of resolved.recipients) {
+        const token = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "");
+        const unsubscribeUrl = `${appPublicUrl()}/u/${token}`;
+        const rendered = renderCampaignEmail({ companyName: setting?.companyName ?? "", phone: setting?.phone ?? "", serviceArea: setting?.serviceArea ?? "", accentColor: setting?.accentColor ?? "#1f5a4a", headline: campaign.headline, bodyText: campaign.bodyText, ctaLabel: campaign.ctaLabel, ctaUrl: campaign.ctaUrl, imageUrl, customHtml: campaign.customHtml, unsubscribeUrl });
+        let status = "sent";
+        let error = "";
+        try {
+          const result = await ctx.executePrivileged(privileged.sendNudgeEmail, { to: recipient.email, subject, text: rendered.text, html: rendered.html });
+          if (result.delivery !== "sent") {
+            status = "failed";
+            error = "The email provider did not accept this message.";
+          }
+        } catch (err) {
+          status = "failed";
+          error = err instanceof Error ? err.message.slice(0, 300) : "Send failed.";
+        }
+        if (status === "sent")
+          sent++;
+        else
+          failed++;
+        await db.insert(campaignRecipients).values({ companyId: campaign.companyId, campaignId: campaign.id, clientId: recipient.clientId, clientName: recipient.clientName, email: recipient.email, status, error, unsubscribeToken: token, sentAt: status === "sent" ? new Date : null, createdAt: new Date });
+      }
+      await db.update(campaigns).set({ status: "sent", recipientCount: resolved.recipients.length, sentCount: sent, failedCount: failed, sentAt: new Date, updatedAt: new Date }).where(eq(campaigns.id, campaign.id));
+      ctx.invalidateQueries();
+      return { ok: true, sent, failed, total: resolved.recipients.length };
+    }
+  }),
+  getProposalAnalytics: defineAction({
+    request: object({}),
+    response: object({
+      items: array(object({
+        kind: _enum(["quote", "contract", "change_order"]),
+        documentId: number2(),
+        title: string2(),
+        clientName: string2(),
+        jobId: number2().nullable(),
+        sentAt: string2().nullable(),
+        firstViewedAt: string2().nullable(),
+        viewCount: number2(),
+        lastViewedAt: string2().nullable(),
+        views: array(string2()),
+        signed: boolean2(),
+        signedAt: string2().nullable()
+      }))
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const quoteRows = await db.select().from(quotes).where(eq(quotes.companyId, companyId)).orderBy(desc(quotes.updatedAt)).limit(150);
+      const docRows = await db.select().from(documents).where(and(eq(documents.companyId, companyId), inArray(documents.kind, ["contract", "change_order"]))).orderBy(desc(documents.createdAt)).limit(150);
+      const docJobIds = [...new Set(docRows.map((d) => d.jobId))];
+      const docJobs = docJobIds.length ? await db.select({ id: jobs.id, clientName: jobs.clientName }).from(jobs).where(inArray(jobs.id, docJobIds)) : [];
+      const docClientName = new Map(docJobs.map((j) => [j.id, j.clientName]));
+      const targets = [
+        ...quoteRows.map((q) => ({ kind: "quote", id: q.id })),
+        ...docRows.map((d) => ({ kind: d.kind, id: d.id }))
+      ];
+      const targetKeys = new Set(targets.map((t) => `${t.kind}:${t.id}`));
+      const links = targets.length ? await db.select().from(documentLinks).where(and(eq(documentLinks.companyId, companyId), inArray(documentLinks.documentId, targets.map((t) => t.id)))).orderBy(asc(documentLinks.createdAt)) : [];
+      const linkByKey = new Map;
+      for (const link of links) {
+        const key = `${link.documentKind}:${link.documentId}`;
+        if (!targetKeys.has(key))
+          continue;
+        const arr = linkByKey.get(key) ?? [];
+        arr.push(link);
+        linkByKey.set(key, arr);
+      }
+      const allLinkIds = [...linkByKey.values()].flat().map((l) => l.id);
+      const events = allLinkIds.length ? await db.select().from(documentLinkEvents).where(and(eq(documentLinkEvents.eventType, "view"), inArray(documentLinkEvents.linkId, allLinkIds))).orderBy(asc(documentLinkEvents.occurredAt)) : [];
+      const viewsByLink = new Map;
+      for (const e of events) {
+        const arr = viewsByLink.get(e.linkId) ?? [];
+        arr.push(e.occurredAt.toISOString());
+        viewsByLink.set(e.linkId, arr);
+      }
+      const statsFor = (kind, id) => {
+        const docLinks = linkByKey.get(`${kind}:${id}`) ?? [];
+        const views = docLinks.flatMap((l) => viewsByLink.get(l.id) ?? []).sort();
+        const linkFirsts = docLinks.map((l) => l.firstViewedAt?.toISOString() ?? null).filter((v) => !!v).sort();
+        return {
+          firstLinkAt: docLinks[0]?.createdAt.toISOString() ?? null,
+          firstViewedAt: views[0] ?? linkFirsts[0] ?? null,
+          viewCount: views.length,
+          lastViewedAt: views[views.length - 1] ?? null,
+          views: views.slice(-50)
+        };
+      };
+      const items = [
+        ...quoteRows.map((q) => {
+          const s = statsFor("quote", q.id);
+          return {
+            kind: "quote",
+            documentId: q.id,
+            title: `Estimate #${q.id}`,
+            clientName: q.clientName,
+            jobId: q.jobId,
+            sentAt: q.sentAt || s.firstLinkAt,
+            firstViewedAt: s.firstViewedAt,
+            viewCount: s.viewCount,
+            lastViewedAt: s.lastViewedAt,
+            views: s.views,
+            signed: q.accepted === true || q.automationStatus === "won",
+            signedAt: null
+          };
+        }),
+        ...docRows.map((d) => {
+          const s = statsFor(d.kind, d.id);
+          return {
+            kind: d.kind,
+            documentId: d.id,
+            title: d.title || (d.kind === "contract" ? "Contract" : "Change order"),
+            clientName: docClientName.get(d.jobId) ?? "",
+            jobId: d.jobId,
+            sentAt: s.firstLinkAt,
+            firstViewedAt: s.firstViewedAt,
+            viewCount: s.viewCount,
+            lastViewedAt: s.lastViewedAt,
+            views: s.views,
+            signed: !!(d.clientSignedAt || d.signedAt),
+            signedAt: d.clientSignedAt ? d.clientSignedAt.toISOString() : d.signedAt ? d.signedAt.toISOString() : null
+          };
+        })
+      ].filter((i) => i.sentAt || i.viewCount > 0);
+      items.sort((a, b) => (b.lastViewedAt ?? b.sentAt ?? "").localeCompare(a.lastViewedAt ?? a.sentAt ?? ""));
+      return { items };
+    }
+  }),
+  getReputationInbox: defineAction({
+    request: object({}),
+    response: object({
+      googleConnected: boolean2(),
+      requests: array(object({
+        logId: number2(),
+        jobId: number2(),
+        jobTitle: string2(),
+        clientId: number2().nullable(),
+        clientName: string2(),
+        stageTitle: string2(),
+        sentAt: string2(),
+        posted: boolean2(),
+        reviewId: number2().nullable()
+      })),
+      reviews: array(object({
+        id: number2(),
+        jobId: number2().nullable(),
+        clientId: number2().nullable(),
+        clientName: string2(),
+        rating: number2(),
+        text: string2(),
+        reviewDate: string2(),
+        source: string2()
+      }))
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const logs = await db.select().from(automationLogs).where(and(eq(automationLogs.companyId, companyId), eq(automationLogs.kind, "review"))).orderBy(desc(automationLogs.sentAt)).limit(200);
+      const reviewRows = await db.select().from(clientReviews).where(eq(clientReviews.companyId, companyId)).orderBy(desc(clientReviews.reviewDate));
+      const reviewByJob = new Map;
+      for (const r of reviewRows)
+        if (r.jobId != null && !reviewByJob.has(r.jobId))
+          reviewByJob.set(r.jobId, r);
+      const jobIds = [...new Set(logs.map((l) => l.entityId))];
+      const jobRows = jobIds.length ? await db.select({ id: jobs.id, jobType: jobs.jobType, clientName: jobs.clientName, clientId: jobs.clientId }).from(jobs).where(inArray(jobs.id, jobIds)) : [];
+      const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      const missingClientIds = [...new Set(jobRows.filter((j) => !j.clientName && j.clientId != null).map((j) => j.clientId))];
+      const clientRows = missingClientIds.length ? await db.select({ id: clients.id, name: clients.name }).from(clients).where(inArray(clients.id, missingClientIds)) : [];
+      const clientNameById = new Map(clientRows.map((c) => [c.id, c.name]));
+      const seenJobs = new Set;
+      const requests = [];
+      for (const log of logs) {
+        if (seenJobs.has(log.entityId))
+          continue;
+        seenJobs.add(log.entityId);
+        const job = jobById.get(log.entityId);
+        const posted = reviewByJob.get(log.entityId);
+        requests.push({
+          logId: log.id,
+          jobId: log.entityId,
+          jobTitle: job?.jobType || `Job #${log.entityId}`,
+          clientId: job?.clientId ?? null,
+          clientName: job?.clientName || (job?.clientId != null ? clientNameById.get(job.clientId) ?? "" : ""),
+          stageTitle: reviewStageTitle(log.stage),
+          sentAt: log.sentAt.toISOString(),
+          posted: !!posted,
+          reviewId: posted?.id ?? null
+        });
+      }
+      return {
+        googleConnected: false,
+        requests,
+        reviews: reviewRows.map((r) => ({ id: r.id, jobId: r.jobId, clientId: r.clientId, clientName: r.clientName, rating: r.rating, text: r.text, reviewDate: r.reviewDate, source: r.source }))
+      };
+    }
+  }),
+  recordPostedReview: defineAction({
+    request: object({
+      jobId: number2().int().positive().nullable().default(null),
+      clientId: number2().int().positive().nullable().default(null),
+      clientName: string2().trim().max(160).default(""),
+      rating: number2().int().min(1).max(5),
+      text: string2().trim().max(4000).default(""),
+      reviewDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/),
+      source: _enum(["manual", "google"]).default("manual")
+    }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      let clientName = args.clientName;
+      let clientId = args.clientId;
+      if (args.jobId) {
+        const job = (await db.select({ clientName: jobs.clientName, clientId: jobs.clientId, companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, args.jobId)).limit(1))[0];
+        if (!job || job.companyId !== companyId)
+          throw new Error("Job not found.");
+        if (!clientName)
+          clientName = job.clientName;
+        if (clientId == null)
+          clientId = job.clientId;
+      }
+      if (!clientName)
+        throw new Error("A client name is required.");
+      const rows = await db.insert(clientReviews).values({ companyId, jobId: args.jobId, clientId, clientName, rating: args.rating, text: args.text, reviewDate: args.reviewDate, source: args.source }).returning({ id: clientReviews.id });
+      const made = rows[0];
+      if (!made)
+        throw new Error("Could not save the review.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  deletePostedReview: defineAction({
+    request: object({ id: number2().int().positive() }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      await db.delete(clientReviews).where(and(eq(clientReviews.id, args.id), eq(clientReviews.companyId, companyId)));
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  getLeadCaptureInfo: defineAction({
+    request: object({}),
+    response: object({ code: string2(), url: string2(), embedSnippet: string2() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const setting = (await db.select().from(settings).where(eq(settings.companyId, companyId)).limit(1))[0];
+      if (!setting)
+        throw new Error("Company settings not found.");
+      let code = setting.leadFormCode;
+      if (!code) {
+        code = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "").slice(0, 16);
+        await db.update(settings).set({ leadFormCode: code }).where(eq(settings.companyId, companyId));
+      }
+      const url = `${appPublicUrl()}/lead/${code}`;
+      return { code, url, embedSnippet: `<iframe src="${url}" width="100%" height="720" style="border:0;border-radius:12px" title="Request an estimate"></iframe>` };
+    }
+  }),
+  getLeadSourceReport: defineAction({
+    request: object({}),
+    response: object({
+      rows: array(object({
+        source: string2(),
+        count: number2(),
+        wonCount: number2(),
+        lostCount: number2(),
+        closeRate: number2(),
+        wonValue: string2()
+      }))
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const leadRows = await db.select({ source: leads.source, stage: leads.stage, estimatedValue: leads.estimatedValue }).from(leads).where(eq(leads.companyId, companyId));
+      const bySource = new Map;
+      for (const lead of leadRows) {
+        const key = lead.source.trim() || "(no source)";
+        const agg = bySource.get(key) ?? { count: 0, won: 0, lost: 0, wonValue: 0 };
+        agg.count++;
+        if (lead.stage === "won") {
+          agg.won++;
+          agg.wonValue += Number(lead.estimatedValue) || 0;
+        }
+        if (lead.stage === "lost")
+          agg.lost++;
+        bySource.set(key, agg);
+      }
+      const rows = [...bySource.entries()].map(([source, agg]) => ({
+        source,
+        count: agg.count,
+        wonCount: agg.won,
+        lostCount: agg.lost,
+        closeRate: agg.won + agg.lost > 0 ? Math.round(agg.won / (agg.won + agg.lost) * 100) : 0,
+        wonValue: agg.wonValue.toFixed(2)
+      })).sort((a, b) => b.count - a.count);
+      return { rows };
+    }
+  }),
+  submitLeadForm: defineAction({
+    request: object({
+      code: string2().trim().min(8).max(40),
+      variant: string2().trim().regex(/^[a-z0-9-]{1,24}$/).default("website"),
+      name: string2().trim().min(2).max(160),
+      phone: string2().trim().min(7).max(40),
+      email: string2().trim().email().max(200).or(literal("")).default(""),
+      address: string2().trim().max(240).default(""),
+      serviceType: string2().trim().min(2).max(120),
+      message: string2().trim().max(3000).default(""),
+      company: string2().max(0).default("")
+    }),
+    response: object({ id: number2() }),
+    async handler(ctx, args) {
+      if (args.company)
+        throw new Error("Request rejected.");
+      const db = ctx.db();
+      await checkLeadFormRateLimit(ctx);
+      const setting = (await db.select({ companyId: settings.companyId }).from(settings).where(eq(settings.leadFormCode, args.code)).limit(1))[0];
+      if (!setting)
+        throw new Error("This form is no longer active.");
+      const digits = normalizedPhone(args.phone);
+      if (digits.length < 10)
+        throw new Error("Enter a valid phone number.");
+      const cutoff = Date.now() - 86400000;
+      const recent = await db.select().from(leads).where(eq(leads.companyId, setting.companyId)).orderBy(desc(leads.createdAt)).limit(200);
+      const duplicates = recent.filter((l) => l.source.startsWith("form:") && l.createdAt.getTime() >= cutoff && (normalizedPhone(l.phone) === digits || args.email && l.email.toLowerCase() === args.email.toLowerCase()));
+      if (duplicates.length >= 3)
+        throw new Error("Too many recent requests. Please call the office.");
+      const rows = await db.insert(leads).values({
+        companyId: setting.companyId,
+        name: args.name,
+        phone: args.phone,
+        email: args.email,
+        address: args.address,
+        serviceType: args.serviceType,
+        notes: args.message,
+        source: `form:${args.variant}`,
+        stage: "new",
+        createdAt: new Date,
+        updatedAt: new Date
+      }).returning({ id: leads.id });
+      const made = rows[0];
+      if (!made)
+        throw new Error("Could not submit the request.");
+      ctx.invalidateQueries();
+      return { id: made.id };
+    }
+  }),
+  getQuickBooksStatus: defineAction({
+    request: object({}),
+    response: object({ configured: boolean2(), environment: string2(), status: _enum(["not_connected", "connected"]), companyName: string2(), realmHint: string2().nullable(), hasDefaultItem: boolean2(), lastSyncAt: string2().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const platform = await ctx.executePrivileged(privileged.qbPlatformStatus, {});
+      const conn = await getQbConnection(db, companyId);
+      return {
+        configured: platform.configured,
+        environment: platform.environment,
+        status: conn?.status ?? "not_connected",
+        companyName: conn?.companyName ?? "",
+        realmHint: conn?.realmId ? `\u2026${conn.realmId.slice(-4)}` : null,
+        hasDefaultItem: !!conn?.defaultItemId,
+        lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null
+      };
+    }
+  }),
+  getQuickBooksConnectUrl: defineAction({
+    request: object({}),
+    response: object({ configured: boolean2(), url: string2().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const platform = await ctx.executePrivileged(privileged.qbPlatformStatus, {});
+      if (!platform.configured)
+        return { configured: false, url: null };
+      const clientId = process.env.QB_CLIENT_ID?.trim();
+      if (!clientId)
+        return { configured: false, url: null };
+      const state = [crypto.randomUUID(), crypto.randomUUID()].join("").replace(/-/g, "");
+      const existing = await getQbConnection(db, companyId);
+      if (existing) {
+        await db.update(quickbooksConnections).set({ stateToken: state, updatedAt: new Date }).where(eq(quickbooksConnections.id, existing.id));
+      } else {
+        await db.insert(quickbooksConnections).values({ companyId, stateToken: state });
+      }
+      const redirectUri = `${appPublicUrl()}/quickbooks/callback`;
+      const url = `https://appcenter.intuit.com/connect/oauth2?client_id=${encodeURIComponent(clientId)}&response_type=code&scope=${encodeURIComponent("com.intuit.quickbooks.accounting")}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+      return { configured: true, url };
+    }
+  }),
+  handleQuickBooksCallback: defineAction({
+    request: object({ code: string2().min(1).max(2000), realmId: string2().min(1).max(40), state: string2().min(8).max(80) }),
+    response: object({ ok: literal(true) }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const conn = (await db.select().from(quickbooksConnections).where(eq(quickbooksConnections.stateToken, args.state)).limit(1))[0];
+      if (!conn)
+        throw new Error("This connection link has expired. Start again from Settings.");
+      const redirectUri = `${appPublicUrl()}/quickbooks/callback`;
+      const tokens = await ctx.executePrivileged(privileged.qbTokenExchange, { code: args.code, redirectUri });
+      if (!tokens.configured || !tokens.accessToken || !tokens.refreshToken)
+        throw new Error("Intuit did not complete the connection.");
+      await db.update(quickbooksConnections).set({
+        realmId: args.realmId,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        accessTokenExpiresAt: new Date(Date.now() + tokens.expiresInSeconds * 1000),
+        status: "connected",
+        stateToken: "",
+        updatedAt: new Date
+      }).where(eq(quickbooksConnections.id, conn.id));
+      try {
+        const info = await ctx.executePrivileged(privileged.qbApiRequest, { accessToken: tokens.accessToken, realmId: args.realmId, method: "GET", path: `/companyinfo/${encodeURIComponent(args.realmId)}`, body: "" });
+        if (info.status >= 200 && info.status < 300) {
+          const parsed = JSON.parse(info.body);
+          if (parsed.CompanyInfo?.CompanyName) {
+            await db.update(quickbooksConnections).set({ companyName: parsed.CompanyInfo.CompanyName }).where(eq(quickbooksConnections.id, conn.id));
+          }
+        }
+      } catch {}
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  disconnectQuickBooks: defineAction({
+    request: object({}),
+    response: object({ ok: literal(true) }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      await db.update(quickbooksConnections).set({ status: "not_connected", realmId: "", accessToken: "", refreshToken: "", accessTokenExpiresAt: null, companyName: "", stateToken: "", updatedAt: new Date }).where(eq(quickbooksConnections.companyId, companyId));
+      ctx.invalidateQueries();
+      return { ok: true };
+    }
+  }),
+  runQuickBooksSync: defineAction({
+    request: object({}),
+    response: object({ pushed: number2(), pulled: number2(), conflicts: number2(), errors: number2(), lastSyncAt: string2().nullable() }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const summary = await runQuickBooksSync(ctx, db, companyId);
+      const conn = await getQbConnection(db, companyId);
+      ctx.invalidateQueries();
+      return { ...summary, lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null };
+    }
+  }),
+  listQbSyncRecords: defineAction({
+    request: object({}),
+    response: object({
+      lastSyncAt: string2().nullable(),
+      records: array(object({ id: number2(), entityType: string2(), entityId: number2(), label: string2(), qbId: string2().nullable(), status: string2(), error: string2(), lastSyncedAt: string2().nullable() }))
+    }),
+    async handler(ctx) {
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const db = ctx.db();
+      const conn = await getQbConnection(db, companyId);
+      const rows = await db.select().from(qbSyncRecords).where(eq(qbSyncRecords.companyId, companyId)).orderBy(desc(qbSyncRecords.updatedAt)).limit(200);
+      const clientRows = await db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.companyId, companyId));
+      const invoiceRows = await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientName: invoices.clientName }).from(invoices).where(eq(invoices.companyId, companyId));
+      const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
+      const invoiceLabel = new Map(invoiceRows.map((i) => [i.id, `${i.invoiceNumber || `Invoice #${i.id}`} \xB7 ${i.clientName}`]));
+      const paymentRows = rows.filter((r) => r.entityType === "payment");
+      const paymentInvoice = new Map;
+      if (paymentRows.length) {
+        const pays = await db.select({ id: payments.id, invoiceId: payments.invoiceId, amount: payments.amount }).from(payments).where(inArray(payments.id, paymentRows.map((r) => r.entityId)));
+        for (const p of pays)
+          paymentInvoice.set(p.id, `${p.amount} on ${invoiceLabel.get(p.invoiceId) ?? `invoice #${p.invoiceId}`}`);
+      }
+      return {
+        lastSyncAt: conn?.lastSyncAt?.toISOString() ?? null,
+        records: rows.map((r) => ({
+          id: r.id,
+          entityType: r.entityType,
+          entityId: r.entityId,
+          label: r.entityType === "customer" ? clientName.get(r.entityId) ?? `Client #${r.entityId}` : r.entityType === "invoice" ? invoiceLabel.get(r.entityId) ?? `Invoice #${r.entityId}` : paymentInvoice.get(r.entityId) ?? `Payment #${r.entityId}`,
+          qbId: r.qbId,
+          status: r.status,
+          error: r.error,
+          lastSyncedAt: r.lastSyncedAt?.toISOString() ?? null
+        }))
+      };
+    }
+  }),
+  getPaymentsSetup: defineAction({
+    request: object({}),
+    response: object({ platformConfigured: boolean2(), status: _enum(["not_connected", "onboarding", "connected"]), accountHint: string2().nullable(), chargesEnabled: boolean2(), payoutsEnabled: boolean2(), proActive: boolean2() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      return connectSetupShape(ctx, db, workspaceIdentity(ctx).workspaceCompanyId);
+    }
+  }),
+  startConnectOnboarding: defineAction({
+    request: object({ surface: _enum(["office", "app"]).optional() }),
+    response: object({ url: string2().nullable(), platformConfigured: boolean2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const setting = (await db.select().from(settings).where(eq(settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (!setting)
+        throw new Error("Company settings not found.");
+      if (!await companyProActive(db, identity.workspaceCompanyId)) {
+        throw new Error("Online payments are a Pro feature. Upgrade to Crewkat Premium to take card and ACH payments from your invoice links.");
+      }
+      let accountId = setting.stripeConnectAccountId;
+      if (!accountId) {
+        const owner = (await db.select().from(authUsers).where(eq(authUsers.id, identity.workspaceUserId)).limit(1))[0];
+        const created = await ctx.executePrivileged(privileged.createConnectAccount, { companyId: identity.workspaceCompanyId, email: setting.email || owner?.email || "", companyName: setting.companyName || "Crewkat company" });
+        if (!created.configured || !created.accountId)
+          return { url: null, platformConfigured: false };
+        accountId = created.accountId;
+        await db.update(settings).set({ stripeConnectAccountId: accountId, stripeConnectStatus: "onboarding", updatedAt: new Date }).where(eq(settings.companyId, identity.workspaceCompanyId));
+      }
+      const home = args.surface === "app" ? `${appPublicUrl()}/app` : `${appPublicUrl()}/office`;
+      const link = await ctx.executePrivileged(privileged.createConnectAccountLink, { accountId, refreshUrl: home, returnUrl: home });
+      if (!link.configured || !link.url)
+        return { url: null, platformConfigured: false };
+      return { url: link.url, platformConfigured: true };
+    }
+  }),
+  refreshConnectStatus: defineAction({
+    request: object({}),
+    response: object({ platformConfigured: boolean2(), status: _enum(["not_connected", "onboarding", "connected"]), accountHint: string2().nullable(), chargesEnabled: boolean2(), payoutsEnabled: boolean2(), proActive: boolean2() }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const identity = workspaceIdentity(ctx);
+      const setting = (await db.select().from(settings).where(eq(settings.companyId, identity.workspaceCompanyId)).limit(1))[0];
+      if (setting?.stripeConnectAccountId) {
+        try {
+          const account = await ctx.executePrivileged(privileged.getConnectAccount, { accountId: setting.stripeConnectAccountId });
+          if (account.configured) {
+            const status = account.chargesEnabled ? "connected" : "onboarding";
+            await db.update(settings).set({ stripeChargesEnabled: account.chargesEnabled, stripePayoutsEnabled: account.payoutsEnabled, stripeConnectStatus: status, updatedAt: new Date }).where(eq(settings.companyId, identity.workspaceCompanyId));
+          }
+        } catch {}
+      }
+      return connectSetupShape(ctx, db, identity.workspaceCompanyId);
+    }
+  }),
+  listInvoicePaymentAttempts: defineAction({
+    request: object({}),
+    response: object({ attempts: array(object({ id: number2(), invoiceId: number2(), invoiceNumber: string2(), clientName: string2(), amount: string2(), method: string2(), status: _enum(["pending", "paid", "failed", "expired"]), createdAt: string2() })) }),
+    async handler(ctx) {
+      const db = ctx.db();
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const rows = await db.select().from(invoicePaymentAttempts).where(eq(invoicePaymentAttempts.companyId, companyId)).orderBy(desc(invoicePaymentAttempts.createdAt)).limit(50);
+      const invoiceIds = [...new Set(rows.map((r) => r.invoiceId))];
+      const invoices2 = invoiceIds.length ? await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientName: invoices.clientName }).from(invoices).where(inArray(invoices.id, invoiceIds)) : [];
+      const byId = new Map(invoices2.map((i) => [i.id, i]));
+      return { attempts: rows.map((r) => ({ id: r.id, invoiceId: r.invoiceId, invoiceNumber: byId.get(r.invoiceId)?.invoiceNumber ?? "", clientName: byId.get(r.invoiceId)?.clientName ?? "", amount: r.amount, method: r.method, status: r.status, createdAt: r.createdAt.toISOString() })) };
+    }
+  }),
+  createPortalInvoicePayment: defineAction({
+    request: object({ token: string2().min(8).max(200), invoiceId: number2().int().positive() }),
+    response: object({ url: string2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const access = await requirePortalAccess(ctx, args.token, { logView: false });
+      const invoice = (await db.select().from(invoices).where(eq(invoices.id, args.invoiceId)).limit(1))[0];
+      if (!invoice || invoice.jobId !== access.jobId)
+        throw new Error("That invoice is not part of this portal.");
+      return startInvoiceCheckout(ctx, db, invoice, `${appPublicUrl()}/app/#portal=${encodeURIComponent(args.token)}`);
+    }
+  }),
+  createDocumentInvoicePayment: defineAction({
+    request: object({ token: string2().min(8).max(200) }),
+    response: object({ url: string2() }),
+    async handler(ctx, args) {
+      const db = ctx.db();
+      const link = await resolveDocumentLinkToken(ctx, args.token);
+      if (link.documentKind !== "invoice")
+        throw new Error("This link is not an invoice.");
+      const invoice = (await db.select().from(invoices).where(eq(invoices.id, link.documentId)).limit(1))[0];
+      if (!invoice)
+        throw new Error("This invoice is no longer available.");
+      return startInvoiceCheckout(ctx, db, invoice, `${appPublicUrl()}/app/#doc=${encodeURIComponent(args.token)}`);
     }
   }),
   submitEstimateRequest: defineAction({ request: object({ name: string2().trim().min(2).max(160), phone: string2().trim().min(7).max(40), email: string2().trim().email().max(200), address: string2().trim().min(5).max(240), serviceType: string2().trim().min(2).max(120), projectDetails: string2().trim().min(10).max(3000), preferredContactTime: string2().trim().max(120), preferredDate: string2().regex(/^\d{4}-\d{2}-\d{2}$/).or(literal("")).default(""), preferredTime: string2().regex(/^\d{2}:\d{2}$/).or(literal("")).default(""), company: string2().max(0).default("") }), response: object({ id: number2() }), async handler(ctx, args) {
@@ -86275,7 +90361,7 @@ Thanks for signing "${doc.title}". Your signed copy is attached \u2014 keep it f
     const rows = await ctx.db().select().from(settings).where(eq(settings.companyId, workspaceIdentity(ctx).workspaceCompanyId)).limit(1);
     const row = rows[0];
     if (!row)
-      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "helvetica", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, notifyContractViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
+      return { companyName: "", licenseNumber: "", phone: "", email: "", website: "", address: "", profileDescription: "", serviceArea: "", facebookUrl: "", instagramUrl: "", youtubeUrl: "", reviewUrl: "", paymentInstructions: "", quoteFollowUpDays: 3, offersFreeEstimates: true, socialWatermark: true, language: "en", accentColor: "#1f5a4a", themeMode: "light", uiAccent: "orange", defaultQuoteTheme: "classic", defaultDocumentFont: "Inter", defaultShowTaxLine: true, defaultShowDiscountLine: true, defaultShowPaidLine: true, defaultShowPaymentTerms: true, defaultShowFooterNotes: true, defaultShowLogo: true, defaultShowCompanyInfo: true, defaultCustomizeJson: "{}", defaultFootnote: "", warrantyTerms: "", hourlyCostRate: "0", lateFeeType: "percent", lateFeeValue: "0", lateFeeGraceDays: 0, costAlertPercent: 80, paymentRemindersEnabled: true, onlineSignatureEnabled: true, overdueInvoiceRemindersEnabled: true, overdueReminderDays: 3, invoiceGroupBy: "creation_date", addShippingAddress: false, addJobSiteAddress: true, convertToQuote: false, notificationsEnabled: true, notifyNewMessage: true, notifyDocSigned: true, notifyInvoiceViewed: true, notifyEstimateViewed: true, notifyContractViewed: true, reviewRequestsEnabled: true, reviewRequestDelayDays: 3, weeklyProgressEnabled: true, simpleMode: true, logoUrl: null, coverUrl: null };
     return { companyName: row.companyName, licenseNumber: row.licenseNumber, phone: row.phone, email: row.email, website: row.website, address: row.address, profileDescription: row.profileDescription, serviceArea: row.serviceArea, facebookUrl: row.facebookUrl, instagramUrl: row.instagramUrl, youtubeUrl: row.youtubeUrl, reviewUrl: row.reviewUrl, paymentInstructions: row.paymentInstructions, quoteFollowUpDays: row.quoteFollowUpDays, offersFreeEstimates: row.offersFreeEstimates, socialWatermark: row.socialWatermark, language: row.language, accentColor: row.accentColor, themeMode: row.themeMode, uiAccent: row.uiAccent, defaultQuoteTheme: row.defaultQuoteTheme, defaultDocumentFont: row.defaultDocumentFont, defaultShowTaxLine: row.defaultShowTaxLine, defaultShowDiscountLine: row.defaultShowDiscountLine, defaultShowPaidLine: row.defaultShowPaidLine, defaultShowPaymentTerms: row.defaultShowPaymentTerms, defaultShowFooterNotes: row.defaultShowFooterNotes, defaultShowLogo: row.defaultShowLogo, defaultShowCompanyInfo: row.defaultShowCompanyInfo, defaultCustomizeJson: row.defaultCustomizeJson, defaultFootnote: row.defaultFootnote, warrantyTerms: row.warrantyTerms, hourlyCostRate: row.hourlyCostRate, lateFeeType: row.lateFeeType, lateFeeValue: row.lateFeeValue, lateFeeGraceDays: row.lateFeeGraceDays, costAlertPercent: row.costAlertPercent, paymentRemindersEnabled: row.paymentRemindersEnabled, onlineSignatureEnabled: row.onlineSignatureEnabled, overdueInvoiceRemindersEnabled: row.overdueInvoiceRemindersEnabled, overdueReminderDays: row.overdueReminderDays, invoiceGroupBy: row.invoiceGroupBy, addShippingAddress: row.addShippingAddress, addJobSiteAddress: row.addJobSiteAddress, convertToQuote: row.convertToQuote, notificationsEnabled: row.notificationsEnabled, notifyNewMessage: row.notifyNewMessage, notifyDocSigned: row.notifyDocSigned, notifyInvoiceViewed: row.notifyInvoiceViewed, notifyEstimateViewed: row.notifyEstimateViewed, notifyContractViewed: row.notifyContractViewed, reviewRequestsEnabled: row.reviewRequestsEnabled, reviewRequestDelayDays: row.reviewRequestDelayDays, weeklyProgressEnabled: row.weeklyProgressEnabled, simpleMode: row.simpleMode, logoUrl: row.logoBlobKey ? await ctx.blobs.getUrl(row.logoBlobKey) : null, coverUrl: row.coverBlobKey ? await ctx.blobs.getUrl(row.coverBlobKey) : null };
   } }),
   updateSettings: defineAction({ request: settingsInputSchema, response: object({ ok: literal(true) }), async handler(ctx, args) {
@@ -86583,6 +90669,7 @@ var PUBLIC_ACTIONS = new Set([
   "requestPasswordReset",
   "resetPassword",
   "handleStripeWebhook",
+  "handleConnectWebhook",
   "crewLogin",
   "getGoogleClientId",
   "googleSignIn",
@@ -86601,8 +90688,13 @@ var PUBLIC_ACTIONS = new Set([
   "getDocumentLinkSignedPdf",
   "emailDocumentLinkSignedCopy",
   "submitEstimateRequest",
+  "submitLeadForm",
+  "handleQuickBooksCallback",
   "portalListJobMessages",
   "portalSendJobMessage",
+  "createPortalInvoicePayment",
+  "createDocumentInvoicePayment",
+  "resolveWorkSummaryLink",
   "getFeatureFlags",
   "getMaintenanceStatus",
   "getPlatformBranding",
@@ -86688,6 +90780,9 @@ function protectActions(actions) {
         assertAccessAllowed(access, name);
         if (PREMIUM_ACTIONS.has(name) && user.tier !== "premium")
           throw new Error("Premium required. Upgrade to unlock this Pro tool.");
+        if (envelope._surface === "office") {
+          await assertOfficeBillingAllows(ctx.db(), user.companyId, name);
+        }
         const result = await original(withWorkspace(ctx, user), args);
         return applyAccessShaping(ctx.db(), user, access, name, result);
       }
@@ -86698,15 +90793,24 @@ function protectActions(actions) {
 }
 var Actions = protectActions(BaseActions);
 export {
+  AI_NOT_CONFIGURED_ERROR,
+  AI_UPGRADE_ERROR,
   Actions,
   BaseActions,
+  JOB_LOAD_KIND_LABELS,
   PUBLIC_ACTIONS,
+  aiCapError,
+  aiMonthKey,
   alertMatchesListing,
   applyAccessShaping,
   assertOfficeTier,
   assignedJobIds,
   authEnvelopeSchema,
   authUserShape,
+  cardProcessingFeeCents,
+  companyAiEntitled,
+  companyProActive,
+  composeCampaignContent,
   consumeMarketplaceUnlock,
   deleteUserAccount,
   ensureCompanyRow,
@@ -86717,6 +90821,7 @@ export {
   issueSession,
   logAdminAction,
   marketplaceZipCodeSchema,
+  neverClosedClientIds,
   normalizeCrewCode,
   normalizeZipCode,
   notifyAlertMatches,
@@ -86724,10 +90829,15 @@ export {
   performBackup,
   performMonthlyVerify,
   platformDb,
+  recordOnlineInvoicePayment,
   recoverStaleBackupRuns,
+  renderCampaignEmail,
   requireCompanyAdmin,
   requirePlatformAdmin,
   requireSession,
+  resolveCampaignRecipients,
+  reviewRequestedAtForJob,
+  reviewStageTitle,
   runEstimateNudgeTick,
   runOfficeAutomationTick,
   runRecurringInvoiceTick,
@@ -86735,6 +90845,7 @@ export {
   runScheduledBackup,
   runWeeklyProgressTick,
   sendJobReviewEmail,
+  stripeApplicationFeeCents,
   verifiedCompanyIdSet,
   workspaceIdentity
 };

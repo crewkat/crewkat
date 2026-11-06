@@ -69,6 +69,11 @@ const [inv] = await db.insert(schema.invoices).values({
   issueDate: "2026-10-04",
   dueDate: "2026-10-04",
   footnote: "",
+  // Pin: this suite reads PDF text from raw Tj operands, which only works
+  // with a core font. Its fixture rode the old "helvetica" column default;
+  // the default is now "Inter" (embedded CID — not raw-readable), so the
+  // fixture names its font explicitly. Content/parity assertions unchanged.
+  font: "helvetica",
   customizeJson: "{}",
 }).returning({ id: schema.invoices.id });
 check("setup: invoice created", Boolean(inv?.id));

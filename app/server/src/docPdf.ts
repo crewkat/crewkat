@@ -167,7 +167,7 @@ export async function buildDocumentLinkPdf(
     total: payload.total,
     footnote: payload.footnote,
     theme: (["classic", "modern", "bold", "minimal"] as const).includes(payload.theme as never) ? (payload.theme as FinancialDocument["theme"]) : "classic",
-    font: (["helvetica", "times", "courier", "palatino"] as const).includes(payload.font as never) ? (payload.font as FinancialDocument["font"]) : "helvetica",
+    font: (["Inter", "helvetica", "times", "courier", "palatino"] as const).includes(payload.font as never) ? (payload.font as FinancialDocument["font"]) : "Inter",
     accentColor: payload.accentColor,
     showTaxLine: payload.showTaxLine,
     showDiscountLine: payload.showDiscountLine,
@@ -198,7 +198,7 @@ export async function buildDocumentLinkPdf(
     licenseNumber: settings?.licenseNumber ?? "",
     logoUrl,
     accentColor: settings?.accentColor ?? "#1f5a4a",
-    defaultDocumentFont: (settings?.defaultDocumentFont ?? "helvetica") as FinancialDocument["font"],
+    defaultDocumentFont: (settings?.defaultDocumentFont ?? "Inter") as FinancialDocument["font"],
     paymentInstructions: settings?.paymentInstructions ?? "",
   };
 
@@ -311,6 +311,11 @@ export async function buildChangeOrderPdfForDocument(
     licenseNumber: settings?.licenseNumber ?? "",
     logoUrl: null,
     accentColor: settings?.accentColor ?? "#1f5a4a",
+    // Typography pass: carry the company's document font so server-rendered
+    // change orders match the in-app render (this hand-built settings
+    // object previously dropped it, which the hardcoded-helvetica CO
+    // generator masked).
+    defaultDocumentFont: (settings?.defaultDocumentFont ?? "Inter") as FinancialDocument["font"],
   };
   const blob = await buildChangeOrderPdf(data, companySettings as never, asPdfLang(lang));
   const bytes = new Uint8Array(await blob.arrayBuffer());

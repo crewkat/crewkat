@@ -77,7 +77,7 @@ type MarketplaceListing = ApiResponse<typeof api, "listMarketplaceListings">["li
 type MarketplaceIntent = "need" | "offer";
 type MarketplaceCategory = MarketplaceListing["category"];
 type QuoteTheme = "classic" | "modern" | "bold" | "minimal";
-type DocumentFont = "helvetica" | "times" | "courier" | "palatino";
+type DocumentFont = "Inter" | "helvetica" | "times" | "courier" | "palatino";
 type AdjustmentType = "percent" | "fixed";
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 type ThemeMode = "light" | "dark" | "system";
@@ -587,6 +587,7 @@ const copy = {
     documentFont: "Document font",
     defaultFont: "Default document font",
     fontHelvetica: "Clean sans",
+    fontInter: "Inter (sharp)",
     fontTimes: "Traditional serif",
     fontCourier: "Technical mono",
     fontPalatino: "Elegant serif",
@@ -936,6 +937,7 @@ const copy = {
     documentFont: "Fuente del documento",
     defaultFont: "Fuente predeterminada",
     fontHelvetica: "Sans limpia",
+    fontInter: "Inter (nítida)",
     fontTimes: "Serif tradicional",
     fontCourier: "Mono técnica",
     fontPalatino: "Serif elegante",
@@ -12741,7 +12743,7 @@ function SettingsScreen({
     themeMode: "light" as const,
     uiAccent: "orange" as const,
     defaultQuoteTheme: "classic",
-    defaultDocumentFont: "helvetica",
+    defaultDocumentFont: "Inter",
     defaultShowTaxLine: true,
     defaultShowDiscountLine: true,
     defaultShowPaidLine: true,
@@ -16505,6 +16507,7 @@ function FontPicker({
       onChange={(e) => onChange(e.target.value as DocumentFont)}
       aria-label={t.documentFont}
     >
+      <option value="Inter">{t.fontInter}</option>
       <option value="helvetica">{t.fontHelvetica}</option>
       <option value="times">{t.fontTimes}</option>
       <option value="courier">{t.fontCourier}</option>
@@ -16739,7 +16742,7 @@ function QuoteBuilder({
     // estimate read "Opened" before it was ever sent (2026-10-14).
     sentAt: "",
     theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme,
-    font: (settings?.defaultDocumentFont ?? "helvetica") as DocumentFont,
+    font: (settings?.defaultDocumentFont ?? "Inter") as DocumentFont,
     accentColor: settings?.accentColor ?? "#1f5a4a",
     showTaxLine: settings?.defaultShowTaxLine ?? true,
     showDiscountLine: settings?.defaultShowDiscountLine ?? true,
@@ -19070,7 +19073,7 @@ function InvoiceBuilder({
     clientName: "", clientPhone: "", clientEmail: "", jobAddress: "", shippingAddress: "", jobType: "",
     issueDate: new Date().toLocaleDateString("en-CA"), dueDate: "", status: "draft" as InvoiceStatus,
     recurringFrequency: "none" as "none" | "daily" | "weekly" | "monthly" | "quarterly", nextDueDate: "", recurringEndDate: "",
-    theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme, font: (settings?.defaultDocumentFont ?? "helvetica") as DocumentFont,
+    theme: (settings?.defaultQuoteTheme ?? "classic") as QuoteTheme, font: (settings?.defaultDocumentFont ?? "Inter") as DocumentFont,
     accentColor: settings?.accentColor ?? "#1f5a4a", showTaxLine: settings?.defaultShowTaxLine ?? true,
     showDiscountLine: settings?.defaultShowDiscountLine ?? true, showPaidLine: settings?.defaultShowPaidLine ?? true,
     showPaymentTerms: settings?.defaultShowPaymentTerms ?? true, showFooterNotes: settings?.defaultShowFooterNotes ?? true,
@@ -31278,7 +31281,7 @@ function ClientDocumentScreen({ token }: { token: string }) {
         total: doc.total,
         footnote: doc.footnote,
         theme: (["classic", "modern", "bold", "minimal"].includes(doc.theme) ? doc.theme : "classic") as QuoteTheme,
-        font: (["helvetica", "times", "courier", "palatino"].includes(doc.font) ? doc.font : "helvetica") as DocumentFont,
+        font: (["Inter", "helvetica", "times", "courier", "palatino"].includes(doc.font) ? doc.font : "Inter") as DocumentFont,
         accentColor: doc.accentColor || "#1f5a4a",
         showTaxLine: doc.showTaxLine,
         showDiscountLine: doc.showDiscountLine,

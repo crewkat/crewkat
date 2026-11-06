@@ -4470,7 +4470,8 @@ var privileged = definePrivilegedContracts({
     request: object({
       to: string2().email().max(200),
       subject: string2().min(1).max(200),
-      text: string2().min(1).max(20000)
+      text: string2().min(1).max(20000),
+      html: string2().max(200000).optional()
     }),
     response: object({ delivery: _enum(["sent", "failed"]) }),
     capabilities: [],
@@ -4510,11 +4511,17 @@ var privileged = definePrivilegedContracts({
     capabilities: [],
     timeoutMs: 20000
   },
+  createOfficeStripeCheckout: {
+    request: object({ companyId: number2().int().positive(), email: string2().email().max(200), plan: _enum(["monthly", "annual", "founding"]) }),
+    response: object({ configured: boolean2(), checkoutUrl: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
   verifyStripeWebhook: {
     request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
     response: object({
       eventId: string2(),
-      eventType: _enum(["checkout.session.completed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      eventType: _enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
       userId: number2().int().positive().nullable(),
       customerId: string2().nullable(),
       subscriptionId: string2().nullable(),
@@ -4526,10 +4533,99 @@ var privileged = definePrivilegedContracts({
       listingId: number2().int().positive().nullable(),
       companyId: number2().int().positive().nullable(),
       packSize: number2().int().nullable(),
-      stripeSessionId: string2().nullable()
+      stripeSessionId: string2().nullable(),
+      invoiceId: number2().int().positive().nullable(),
+      paymentIntentId: string2().nullable(),
+      amountTotalCents: number2().int().nullable(),
+      paymentMethodType: string2().nullable(),
+      paymentStatus: string2().nullable(),
+      connectAccountId: string2().nullable(),
+      priceId: string2().nullable()
     }),
     capabilities: [],
     timeoutMs: 20000
+  },
+  verifyConnectWebhook: {
+    request: object({ payload: string2().min(1).max(1e6), signature: string2().min(1).max(2000) }),
+    response: object({
+      eventId: string2(),
+      eventType: _enum(["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "ignored"]),
+      userId: number2().int().positive().nullable(),
+      customerId: string2().nullable(),
+      subscriptionId: string2().nullable(),
+      subscriptionStatus: string2().nullable(),
+      currentPeriodEnd: number2().int().nullable(),
+      cancelAtPeriodEnd: boolean2(),
+      checkoutType: string2().nullable(),
+      plan: string2().nullable(),
+      listingId: number2().int().positive().nullable(),
+      companyId: number2().int().positive().nullable(),
+      packSize: number2().int().nullable(),
+      stripeSessionId: string2().nullable(),
+      invoiceId: number2().int().positive().nullable(),
+      paymentIntentId: string2().nullable(),
+      amountTotalCents: number2().int().nullable(),
+      paymentMethodType: string2().nullable(),
+      paymentStatus: string2().nullable(),
+      connectAccountId: string2().nullable(),
+      priceId: string2().nullable()
+    }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getStripePlatformStatus: {
+    request: object({}),
+    response: object({ configured: boolean2() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  createConnectAccount: {
+    request: object({ companyId: number2().int().positive(), email: string2().email().max(200), companyName: string2().min(1).max(200) }),
+    response: object({ configured: boolean2(), accountId: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createConnectAccountLink: {
+    request: object({ accountId: string2().min(1).max(200), refreshUrl: string2().url().max(500), returnUrl: string2().url().max(500) }),
+    response: object({ configured: boolean2(), url: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  getConnectAccount: {
+    request: object({ accountId: string2().min(1).max(200) }),
+    response: object({ configured: boolean2(), chargesEnabled: boolean2(), payoutsEnabled: boolean2(), detailsSubmitted: boolean2() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  createInvoiceCheckout: {
+    request: object({ accountId: string2().min(1).max(200), companyId: number2().int().positive(), invoiceId: number2().int().positive(), amountCents: number2().int().positive(), description: string2().min(1).max(300), customerEmail: string2().max(200), successUrl: string2().url().max(1000), cancelUrl: string2().url().max(1000), applicationFeeCents: number2().int().min(0) }),
+    response: object({ configured: boolean2(), sessionId: string2().nullable(), url: string2().nullable(), missing: array(string2()) }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbPlatformStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), environment: string2() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  qbTokenExchange: {
+    request: object({ code: string2().min(1).max(2000), redirectUri: string2().url().max(500) }),
+    response: object({ configured: boolean2(), accessToken: string2().nullable(), refreshToken: string2().nullable(), expiresInSeconds: number2().int() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbRefreshToken: {
+    request: object({ refreshToken: string2().min(1).max(2000) }),
+    response: object({ configured: boolean2(), accessToken: string2().nullable(), refreshToken: string2().nullable(), expiresInSeconds: number2().int() }),
+    capabilities: [],
+    timeoutMs: 20000
+  },
+  qbApiRequest: {
+    request: object({ accessToken: string2().min(1).max(4000), realmId: string2().min(1).max(40), method: _enum(["GET", "POST"]), path: string2().min(1).max(1500), body: string2().max(60000).default("") }),
+    response: object({ configured: boolean2(), status: number2().int(), body: string2() }),
+    capabilities: [],
+    timeoutMs: 30000
   },
   listStripeCharges: {
     request: object({ customerId: string2().min(1).max(200), limit: number2().int().min(1).max(25).default(10) }),
@@ -4698,8 +4794,24 @@ var privileged = definePrivilegedContracts({
     response: object({ configured: boolean2(), sku: string2(), packageName: string2() }),
     capabilities: [],
     timeoutMs: 1e4
+  },
+  getAiStatus: {
+    request: object({}),
+    response: object({ configured: boolean2(), monthlyCap: number2().int() }),
+    capabilities: [],
+    timeoutMs: 1e4
+  },
+  aiComplete: {
+    request: object({ system: string2().min(1).max(8000), user: string2().min(1).max(24000), maxTokens: number2().int().min(50).max(4000).default(1200) }),
+    response: object({ configured: boolean2(), text: string2().nullable() }),
+    capabilities: [],
+    timeoutMs: 45000
   }
 });
+function aiMonthlyCap() {
+  const parsed = Number.parseInt(process.env.AI_MONTHLY_CAP?.trim() ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 200;
+}
 function stripeAdminAuthHeader(required) {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) {
@@ -4710,6 +4822,86 @@ function stripeAdminAuthHeader(required) {
   return { Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}` };
 }
 var bumpPriceCache = null;
+function verifyAndParseStripeWebhook(secret, payload, signature) {
+  const parts = signature.split(",").map((part) => part.trim());
+  const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) ?? "";
+  const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300)
+    throw new Error("Stripe webhook timestamp is invalid.");
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
+  const expectedBytes = Buffer.from(expected, "hex");
+  const valid = signatures.some((candidate) => {
+    if (!/^[0-9a-f]{64}$/i.test(candidate))
+      return false;
+    const candidateBytes = Buffer.from(candidate, "hex");
+    return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+  });
+  if (!valid)
+    throw new Error("Stripe webhook signature is invalid.");
+  const event = JSON.parse(payload);
+  if (typeof event.id !== "string" || typeof event.type !== "string")
+    throw new Error("Stripe webhook payload is invalid.");
+  const object2 = event.data?.object ?? {};
+  const metadata = object2.metadata && typeof object2.metadata === "object" ? object2.metadata : {};
+  const userIdValue = metadata.user_id ?? object2.client_reference_id;
+  const parsedUserId = typeof userIdValue === "string" ? Number(userIdValue) : null;
+  const customerId = typeof object2.customer === "string" ? object2.customer : null;
+  const subscriptionId = typeof object2.subscription === "string" ? object2.subscription : typeof object2.id === "string" && event.type.startsWith("customer.subscription.") ? object2.id : null;
+  const subscriptionStatus = typeof object2.status === "string" ? object2.status : null;
+  const currentPeriodEnd = typeof object2.current_period_end === "number" ? object2.current_period_end : null;
+  const KNOWN_EVENT_TYPES = ["checkout.session.completed", "checkout.session.expired", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "payment_intent.payment_failed", "customer.subscription.updated", "customer.subscription.deleted"];
+  const eventType = KNOWN_EVENT_TYPES.includes(event.type) ? event.type : "ignored";
+  const listingIdValue = metadata.listing_id;
+  const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
+  const companyIdValue = metadata.company_id;
+  const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
+  const packSizeValue = metadata.pack_size;
+  const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
+  const invoiceIdValue = metadata.invoice_id;
+  const parsedInvoiceId = typeof invoiceIdValue === "string" ? Number(invoiceIdValue) : null;
+  const paymentIntentId = typeof object2.payment_intent === "string" ? object2.payment_intent : event.type.startsWith("payment_intent.") && typeof object2.id === "string" ? object2.id : null;
+  const itemsData = object2.items?.data;
+  const firstItem = Array.isArray(itemsData) ? itemsData[0] : undefined;
+  const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
+  const amountTotalCents = typeof object2.amount_total === "number" ? Math.round(object2.amount_total) : typeof object2.amount_received === "number" ? Math.round(object2.amount_received) : typeof object2.amount === "number" ? Math.round(object2.amount) : null;
+  const pmTypes = Array.isArray(object2.payment_method_types) ? object2.payment_method_types.filter((t) => typeof t === "string") : [];
+  return {
+    eventId: event.id,
+    eventType,
+    userId: parsedUserId && Number.isInteger(parsedUserId) && parsedUserId > 0 ? parsedUserId : null,
+    customerId,
+    subscriptionId,
+    subscriptionStatus,
+    currentPeriodEnd,
+    cancelAtPeriodEnd: object2.cancel_at_period_end === true,
+    checkoutType: typeof metadata.type === "string" ? metadata.type : null,
+    plan: typeof metadata.plan === "string" ? metadata.plan : null,
+    listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
+    companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
+    packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
+    stripeSessionId: event.type.startsWith("checkout.session.") && typeof object2.id === "string" ? object2.id : null,
+    invoiceId: parsedInvoiceId && Number.isInteger(parsedInvoiceId) && parsedInvoiceId > 0 ? parsedInvoiceId : null,
+    paymentIntentId,
+    amountTotalCents,
+    paymentMethodType: pmTypes[0] ?? null,
+    paymentStatus: typeof object2.payment_status === "string" ? object2.payment_status : null,
+    connectAccountId: typeof event.account === "string" ? event.account : null,
+    priceId
+  };
+}
+async function stripeConnectError(response, fallback) {
+  let detail = "";
+  try {
+    const err = await response.json();
+    const message = typeof err.error?.message === "string" ? err.error.message : "";
+    const code = typeof err.error?.code === "string" ? err.error.code : "";
+    if (message)
+      detail = code ? `${message} (${code})` : message;
+  } catch {}
+  return new Error(detail ? `${fallback.replace(/\.+$/, "")}: ${detail}` : fallback);
+}
+var STRIPE_CONNECT_V2_VERSION = "2026-10-28.preview";
 var privilegedHandlers = definePrivilegedHandlers(privileged, {
   async renderPdfPages(args) {
     const directory = await mkdtemp(join(tmpdir(), "crewkat-pdf-"));
@@ -4823,7 +5015,8 @@ var privilegedHandlers = definePrivilegedHandlers(privileged, {
           from,
           to: [args.to],
           subject: safeSubject,
-          text: args.text
+          text: args.text,
+          ...args.html ? { html: args.html } : {}
         }),
         redirect: "error",
         signal: AbortSignal.timeout(15000)
@@ -5027,60 +5220,239 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
       throw new Error("Stripe did not return a valid checkout page.");
     return { configured: true, checkoutUrl: result.url, missing: [] };
   },
+  async createOfficeStripeCheckout(args) {
+    const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim();
+    const founding = args.plan === "founding";
+    const priceId = founding ? process.env.STRIPE_OFFICE_PRICE_FOUNDING?.trim() : args.plan === "annual" ? process.env.STRIPE_OFFICE_PRICE_ANNUAL?.trim() : process.env.STRIPE_OFFICE_PRICE_MONTHLY?.trim();
+    const priceEnvVar = founding ? "STRIPE_OFFICE_PRICE_FOUNDING" : args.plan === "annual" ? "STRIPE_OFFICE_PRICE_ANNUAL" : "STRIPE_OFFICE_PRICE_MONTHLY";
+    const publicUrl = process.env.CREWKAT_PUBLIC_URL?.trim().replace(/\/$/, "");
+    const missing = [
+      !publishableKey ? "STRIPE_PUBLISHABLE_KEY" : "",
+      !secretKey ? "STRIPE_SECRET_KEY" : "",
+      !priceId ? priceEnvVar : "",
+      !publicUrl ? "CREWKAT_PUBLIC_URL" : ""
+    ].filter(Boolean);
+    if (missing.length || !secretKey || !priceId || !publicUrl)
+      return { configured: false, checkoutUrl: null, missing };
+    if (!/^https:\/\//i.test(publicUrl))
+      return { configured: false, checkoutUrl: null, missing: ["CREWKAT_PUBLIC_URL (must be HTTPS)"] };
+    const planTag = founding ? "office_founding" : "office";
+    const body = new URLSearchParams({
+      mode: "subscription",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      customer_email: args.email,
+      "metadata[type]": "office_subscription",
+      "metadata[plan]": planTag,
+      "metadata[company_id]": String(args.companyId),
+      "subscription_data[metadata][plan]": planTag,
+      "subscription_data[metadata][company_id]": String(args.companyId),
+      success_url: `${publicUrl}/office?officeBilling=success`,
+      cancel_url: `${publicUrl}/office?officeBilling=cancelled`,
+      allow_promotion_codes: "true"
+    });
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Stripe Checkout could not be started. Check the server billing configuration.");
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url))
+      throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, checkoutUrl: result.url, missing: [] };
+  },
   async verifyStripeWebhook(args) {
     const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
     if (!secret)
       throw new Error("Stripe webhook verification is not configured.");
-    const parts = args.signature.split(",").map((part) => part.trim());
-    const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2) ?? "";
-    const signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3));
-    const timestampSeconds = Number(timestamp);
-    if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300)
-      throw new Error("Stripe webhook timestamp is invalid.");
-    const expected = createHmac("sha256", secret).update(`${timestamp}.${args.payload}`).digest("hex");
-    const expectedBytes = Buffer.from(expected, "hex");
-    const valid = signatures.some((candidate) => {
-      if (!/^[0-9a-f]{64}$/i.test(candidate))
-        return false;
-      const candidateBytes = Buffer.from(candidate, "hex");
-      return candidateBytes.length === expectedBytes.length && timingSafeEqual(candidateBytes, expectedBytes);
+    return verifyAndParseStripeWebhook(secret, args.payload, args.signature);
+  },
+  async verifyConnectWebhook(args) {
+    const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+    if (!secret)
+      throw new Error("Stripe Connect webhook verification is not configured.");
+    return verifyAndParseStripeWebhook(secret, args.payload, args.signature);
+  },
+  async getStripePlatformStatus() {
+    return { configured: !!process.env.STRIPE_CONNECT_SECRET_KEY?.trim() };
+  },
+  async createConnectAccount(args) {
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { configured: false, accountId: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
+    const response = await fetch("https://api.stripe.com/v2/core/accounts", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json", "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
+      body: JSON.stringify({
+        contact_email: args.email,
+        display_name: args.companyName,
+        dashboard: "express",
+        identity: { country: "US" },
+        defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } },
+        configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+        metadata: { company_id: String(args.companyId), type: "crewkat_connect" }
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
     });
-    if (!valid)
-      throw new Error("Stripe webhook signature is invalid.");
-    const event = JSON.parse(args.payload);
-    if (typeof event.id !== "string" || typeof event.type !== "string")
-      throw new Error("Stripe webhook payload is invalid.");
-    const object2 = event.data?.object ?? {};
-    const metadata = object2.metadata && typeof object2.metadata === "object" ? object2.metadata : {};
-    const userIdValue = metadata.user_id ?? object2.client_reference_id;
-    const parsedUserId = typeof userIdValue === "string" ? Number(userIdValue) : null;
-    const customerId = typeof object2.customer === "string" ? object2.customer : null;
-    const subscriptionId = typeof object2.subscription === "string" ? object2.subscription : typeof object2.id === "string" && event.type.startsWith("customer.subscription.") ? object2.id : null;
-    const subscriptionStatus = typeof object2.status === "string" ? object2.status : null;
-    const currentPeriodEnd = typeof object2.current_period_end === "number" ? object2.current_period_end : null;
-    const eventType = event.type === "checkout.session.completed" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted" ? event.type : "ignored";
-    const listingIdValue = metadata.listing_id;
-    const parsedListingId = typeof listingIdValue === "string" ? Number(listingIdValue) : null;
-    const companyIdValue = metadata.company_id;
-    const parsedCompanyId = typeof companyIdValue === "string" ? Number(companyIdValue) : null;
-    const packSizeValue = metadata.pack_size;
-    const parsedPackSize = typeof packSizeValue === "string" ? Number(packSizeValue) : null;
+    if (!response.ok)
+      throw await stripeConnectError(response, "Stripe could not create the connected account.");
+    const result = await response.json();
+    if (typeof result.id !== "string" || !result.id)
+      throw new Error("Stripe did not return an account id.");
+    return { configured: true, accountId: result.id, missing: [] };
+  },
+  async createConnectAccountLink(args) {
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { configured: false, url: null };
+    const response = await fetch("https://api.stripe.com/v2/core/account_links", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json", "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
+      body: JSON.stringify({
+        account: args.accountId,
+        use_case: {
+          type: "account_onboarding",
+          account_onboarding: {
+            refresh_url: args.refreshUrl,
+            return_url: args.returnUrl
+          }
+        }
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw await stripeConnectError(response, "Stripe could not start onboarding.");
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\//.test(result.url))
+      throw new Error("Stripe did not return an onboarding link.");
+    return { configured: true, url: result.url };
+  },
+  async getConnectAccount(args) {
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { configured: false, chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false };
+    const url = new URL(`https://api.stripe.com/v2/core/accounts/${encodeURIComponent(args.accountId)}`);
+    url.searchParams.append("include[0]", "configuration.merchant");
+    url.searchParams.append("include[1]", "requirements");
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secretKey}`, "Stripe-Version": STRIPE_CONNECT_V2_VERSION },
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw await stripeConnectError(response, "Could not read the connected account from Stripe.");
+    const result = await response.json();
+    const capabilities = result.configuration?.merchant?.capabilities;
+    const entries = Array.isArray(result.requirements?.entries) ? result.requirements.entries : [];
+    const holderOwes = entries.some((e) => e?.awaiting_action_from === "user" && (e?.minimum_deadline?.status === "currently_due" || e?.minimum_deadline?.status === "past_due"));
     return {
-      eventId: event.id,
-      eventType,
-      userId: parsedUserId && Number.isInteger(parsedUserId) && parsedUserId > 0 ? parsedUserId : null,
-      customerId,
-      subscriptionId,
-      subscriptionStatus,
-      currentPeriodEnd,
-      cancelAtPeriodEnd: object2.cancel_at_period_end === true,
-      checkoutType: typeof metadata.type === "string" ? metadata.type : null,
-      plan: typeof metadata.plan === "string" ? metadata.plan : null,
-      listingId: parsedListingId && Number.isInteger(parsedListingId) && parsedListingId > 0 ? parsedListingId : null,
-      companyId: parsedCompanyId && Number.isInteger(parsedCompanyId) && parsedCompanyId > 0 ? parsedCompanyId : null,
-      packSize: parsedPackSize === 5 || parsedPackSize === 15 ? parsedPackSize : null,
-      stripeSessionId: event.type === "checkout.session.completed" && typeof object2.id === "string" ? object2.id : null
+      configured: true,
+      chargesEnabled: capabilities?.card_payments?.status === "active",
+      payoutsEnabled: capabilities?.stripe_balance?.payouts?.status === "active",
+      detailsSubmitted: !holderOwes
     };
+  },
+  async createInvoiceCheckout(args) {
+    const secretKey = process.env.STRIPE_CONNECT_SECRET_KEY?.trim();
+    if (!secretKey)
+      return { configured: false, sessionId: null, url: null, missing: ["STRIPE_CONNECT_SECRET_KEY"] };
+    const body = new URLSearchParams({
+      mode: "payment",
+      "line_items[0][quantity]": "1",
+      "line_items[0][price_data][currency]": "usd",
+      "line_items[0][price_data][unit_amount]": String(args.amountCents),
+      "line_items[0][price_data][product_data][name]": args.description,
+      "metadata[type]": "invoice_payment",
+      "metadata[invoice_id]": String(args.invoiceId),
+      "metadata[company_id]": String(args.companyId),
+      "payment_intent_data[metadata][type]": "invoice_payment",
+      "payment_intent_data[metadata][invoice_id]": String(args.invoiceId),
+      "payment_intent_data[metadata][company_id]": String(args.companyId),
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl
+    });
+    if (args.customerEmail)
+      body.set("customer_email", args.customerEmail);
+    if (args.applicationFeeCents > 0)
+      body.set("payment_intent_data[application_fee_amount]", String(args.applicationFeeCents));
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/x-www-form-urlencoded", "Stripe-Account": args.accountId },
+      body,
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw await stripeConnectError(response, "Stripe Checkout could not be started for this invoice.");
+    const result = await response.json();
+    if (typeof result.url !== "string" || !/^https:\/\/checkout\.stripe\.com\//.test(result.url) || typeof result.id !== "string")
+      throw new Error("Stripe did not return a valid checkout page.");
+    return { configured: true, sessionId: result.id, url: result.url, missing: [] };
+  },
+  async qbPlatformStatus() {
+    const configured = !!(process.env.QB_CLIENT_ID?.trim() && process.env.QB_CLIENT_SECRET?.trim());
+    return { configured, environment: process.env.QB_ENVIRONMENT?.trim() === "production" ? "production" : "sandbox" };
+  },
+  async qbTokenExchange(args) {
+    const clientId = process.env.QB_CLIENT_ID?.trim();
+    const clientSecret = process.env.QB_CLIENT_SECRET?.trim();
+    if (!clientId || !clientSecret)
+      return { configured: false, accessToken: null, refreshToken: null, expiresInSeconds: 0 };
+    const response = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST",
+      headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: args.code, redirect_uri: args.redirectUri }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("Intuit did not accept the connection code. Try connecting again.");
+    const result = await response.json();
+    if (typeof result.access_token !== "string" || typeof result.refresh_token !== "string")
+      throw new Error("Intuit did not return connection tokens.");
+    return { configured: true, accessToken: result.access_token, refreshToken: result.refresh_token, expiresInSeconds: typeof result.expires_in === "number" ? result.expires_in : 3600 };
+  },
+  async qbRefreshToken(args) {
+    const clientId = process.env.QB_CLIENT_ID?.trim();
+    const clientSecret = process.env.QB_CLIENT_SECRET?.trim();
+    if (!clientId || !clientSecret)
+      return { configured: false, accessToken: null, refreshToken: null, expiresInSeconds: 0 };
+    const response = await fetch("https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", {
+      method: "POST",
+      headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: args.refreshToken }),
+      redirect: "error",
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok)
+      throw new Error("The QuickBooks connection has expired. Reconnect in Settings.");
+    const result = await response.json();
+    if (typeof result.access_token !== "string")
+      throw new Error("Intuit did not return a refreshed token.");
+    return { configured: true, accessToken: result.access_token, refreshToken: typeof result.refresh_token === "string" ? result.refresh_token : args.refreshToken, expiresInSeconds: typeof result.expires_in === "number" ? result.expires_in : 3600 };
+  },
+  async qbApiRequest(args) {
+    const configured = !!(process.env.QB_CLIENT_ID?.trim() && process.env.QB_CLIENT_SECRET?.trim());
+    if (!configured)
+      return { configured: false, status: 0, body: "" };
+    const base = process.env.QB_ENVIRONMENT?.trim() === "production" ? "https://quickbooks.api.intuit.com" : "https://sandbox-quickbooks.api.intuit.com";
+    const response = await fetch(`${base}/v3/company/${encodeURIComponent(args.realmId)}${args.path}`, {
+      method: args.method,
+      headers: { Authorization: `Bearer ${args.accessToken}`, Accept: "application/json", ...args.method === "POST" ? { "Content-Type": "application/json" } : {} },
+      body: args.method === "POST" && args.body ? args.body : undefined,
+      redirect: "error",
+      signal: AbortSignal.timeout(25000)
+    });
+    const text = await response.text();
+    return { configured: true, status: response.status, body: text.slice(0, 60000) };
   },
   async listStripeCharges(args) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
@@ -5458,6 +5830,42 @@ This code expires in 30 minutes. If you did not request this, you can ignore thi
     const packageName = process.env.PLAY_PACKAGE_NAME?.trim() || "com.crewkat.app";
     const configured = Boolean(process.env.PLAY_SERVICE_ACCOUNT_JSON?.trim() || process.env.PLAY_SERVICE_ACCOUNT_JSON_PATH?.trim());
     return { configured, sku, packageName };
+  },
+  async getAiStatus() {
+    return { configured: !!process.env.AI_API_KEY?.trim(), monthlyCap: aiMonthlyCap() };
+  },
+  async aiComplete(args) {
+    const apiKey = process.env.AI_API_KEY?.trim();
+    if (!apiKey)
+      return { configured: false, text: null };
+    const baseUrl = (process.env.AI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const model = process.env.AI_MODEL?.trim() || "gpt-4o-mini";
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: args.system },
+            { role: "user", content: args.user }
+          ],
+          max_tokens: args.maxTokens,
+          temperature: 0.6
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!response.ok)
+        throw new Error("provider refused");
+      const result = await response.json();
+      const text = result.choices?.[0]?.message?.content;
+      if (typeof text !== "string" || !text.trim())
+        throw new Error("provider returned no text");
+      return { configured: true, text };
+    } catch {
+      throw new Error("AI is unavailable right now.");
+    }
   },
   async verifyPlayPurchase(args) {
     const failed = (error) => ({

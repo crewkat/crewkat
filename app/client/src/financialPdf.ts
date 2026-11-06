@@ -2,13 +2,20 @@
 // Extracted from App.tsx so the document layout is unit-testable in bun.
 // Pure layout/drawing code: no React, no browser APIs at module load.
 import { jsPDF, GState } from "jspdf";
+import { INTER_BOLD_TTF_B64, INTER_REGULAR_TTF_B64, INTER_SEMIBOLD_TTF_B64 } from "./interFonts";
 import type { api, ApiResponse } from "./api";
 
 export type PdfLang = "en" | "es";
 export type PdfStrings = { discount: string; tax: string; paymentInstructions: string };
 type PdfAdjustmentType = "percent" | "fixed";
 type QuoteTheme = "classic" | "modern" | "bold" | "minimal";
-type DocumentFont = "helvetica" | "times" | "courier" | "palatino";
+type DocumentFont = "Inter" | "helvetica" | "times" | "courier" | "palatino";
+// Inter's semibold ships as its own jsPDF family: jsPDF styles are per
+// family, so the redesign's 600-weight spots (meta values, line amounts,
+// totals values) set this family rather than a style on "Inter". Internal
+// only — never a user-selectable document font.
+const INTER_SEMI_FONT = "InterSemiBold";
+type AnyDocumentFont = DocumentFont | typeof INTER_SEMI_FONT;
 type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 type Settings = ApiResponse<typeof api, "getSettings">;
 type Quote = ApiResponse<typeof api, "listQuotes">["quotes"][number];
@@ -229,7 +236,7 @@ export function parseRichRuns(text: string): RichRun[] {
   return runs.length ? runs : [{ text, bold: false }];
 }
 
-function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: DocumentFont): RichRun[][] {
+function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: AnyDocumentFont): RichRun[][] {
   type Word = { text: string; bold: boolean; width: number };
   // Hard line breaks: a "\n" in the source text is a paragraph break, never
   // a wrappable space. jsPDF's doc.text() splits any string containing "\n"
@@ -296,7 +303,7 @@ function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: Docu
   return lines.length ? lines : [[]];
 }
 
-function drawRichLine(doc: jsPDF, line: RichRun[], x: number, y: number, font: DocumentFont) {
+function drawRichLine(doc: jsPDF, line: RichRun[], x: number, y: number, font: AnyDocumentFont) {
   let cursor = x;
   for (const run of line) {
     doc.setFont(font, run.bold ? "bold" : "normal");
@@ -304,6 +311,32 @@ function drawRichLine(doc: jsPDF, line: RichRun[], x: number, y: number, font: D
     cursor += doc.getTextWidth(run.text);
   }
   doc.setFont(font, "normal");
+}
+
+// Inter registration (typography pass, Danny 2026-11-05): jsPDF keeps its
+// font store per document instance, so each builder registers the vendored
+// faces on its own jsPDF object (WeakSet guard = once per instance). The
+// "italic" / "bolditalic" styles alias the upright faces on purpose: the
+// only italic call site is the thank-you footer, which the redesign sets in
+// the regular sans — and an UNREGISTERED (family, style) pair makes jsPDF
+// silently fall back to Times, smuggling a serif back into an Inter
+// document. The semibold family aliases the same way, so any style request
+// against it stays at 600 weight.
+const interRegisteredDocs = new WeakSet<object>();
+function registerInterFonts(doc: jsPDF) {
+  if (interRegisteredDocs.has(doc)) return;
+  interRegisteredDocs.add(doc);
+  doc.addFileToVFS("Inter-Regular.ttf", INTER_REGULAR_TTF_B64);
+  doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_TTF_B64);
+  doc.addFileToVFS("Inter-SemiBold.ttf", INTER_SEMIBOLD_TTF_B64);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+  doc.addFont("Inter-Regular.ttf", "Inter", "italic");
+  doc.addFont("Inter-Bold.ttf", "Inter", "bolditalic");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "normal");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "bold");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "italic");
+  doc.addFont("Inter-SemiBold.ttf", INTER_SEMI_FONT, "bolditalic");
 }
 
 export async function buildFinancialPdf(
@@ -329,7 +362,15 @@ export async function buildFinancialPdf(
     : document.id
       ? `${kind === "quote" ? "EST" : "INV"}${String(document.id).padStart(4, "0")}`
       : "";
-  const font = document.font || settings?.defaultDocumentFont || "helvetica";
+  const font: DocumentFont = document.font || settings?.defaultDocumentFont || "Inter";
+  // Registration is Inter-only: jsPDF embeds the full VFS faces, so legacy
+  // core-font documents must not carry ~37 KB of unused font data.
+  if (font === "Inter") registerInterFonts(doc);
+  // Semibold companion for the redesign's 600-weight values (meta values,
+  // line amounts, totals values). Only Inter ships one; the legacy core
+  // fonts resolve to the document font itself, so their historical styles
+  // render exactly as before.
+  const semiFont: AnyDocumentFont = font === "Inter" ? INTER_SEMI_FONT : font;
   // Customize wiring (Danny 2026-10-12): fontSize, lineSpacing, highContrast,
   // colorMode, and showPaidStamp were saved by the Customize UI and parsed
   // into `custom`, but the generator never read them — the PDF always came
@@ -511,10 +552,10 @@ export async function buildFinancialPdf(
   // The due date lives in the header meta block (it used to print alone
   // under the totals). Estimates show their expiry date here.
   const metaDueDate = kind === "invoice" ? document.dueDate : document.expiryDate;
-  const metaTexts: Array<{ text: string; strong?: boolean }> = [];
-  if (docNumber) metaTexts.push({ text: `${labels.number}: ${docNumber}`, strong: true });
-  if (document.issueDate) metaTexts.push({ text: `${labels.date}: ${formatDocumentDate(document.issueDate, custom.dateFormat, lang)}` });
-  if (custom.showDueDate && metaDueDate) metaTexts.push({ text: `${labels.dueDate}: ${formatDocumentDate(metaDueDate, custom.dateFormat, lang)}` });
+  const metaTexts: Array<{ label: string; value: string; strong?: boolean }> = [];
+  if (docNumber) metaTexts.push({ label: labels.number, value: docNumber, strong: true });
+  if (document.issueDate) metaTexts.push({ label: labels.date, value: formatDocumentDate(document.issueDate, custom.dateFormat, lang) });
+  if (custom.showDueDate && metaDueDate) metaTexts.push({ label: labels.dueDate, value: formatDocumentDate(metaDueDate, custom.dateFormat, lang) });
   const clientBlockH = 27 + clientLines.length * 10 * FONT_SCALE;
   const rightBlockH = metaTexts.length ? (metaTexts.length - 1) * metaStep + 4 : 0;
   if (theme === "modern") {
@@ -538,10 +579,23 @@ export async function buildFinancialPdf(
   }
   let ry = infoY;
   for (const row of metaTexts) {
-    doc.setFont(font, row.strong ? "bold" : "normal");
     doc.setFontSize(F(8.5));
     doc.setTextColor(...ink);
-    doc.text(row.text, rightX, ry, { align: "right" });
+    if (font === "Inter") {
+      // Redesign type split: the label keeps the row's size and color in
+      // the regular face; the value carries the semibold companion face.
+      // Drawn as two segments whose combined width equals the legacy
+      // single-string row, so the right-aligned block does not move.
+      doc.setFont(semiFont, "normal");
+      const valueW = doc.getTextWidth(row.value);
+      doc.text(row.value, rightX, ry, { align: "right" });
+      doc.setFont(font, "normal");
+      const labelW = doc.getTextWidth(`${row.label}: `);
+      doc.text(`${row.label}:`, rightX - valueW - labelW, ry);
+    } else {
+      doc.setFont(font, row.strong ? "bold" : "normal");
+      doc.text(`${row.label}: ${row.value}`, rightX, ry, { align: "right" });
+    }
     ry += metaStep;
   }
   let y = Math.max(infoY + clientBlockH + 10, ry + 6);
@@ -655,7 +709,7 @@ export async function buildFinancialPdf(
           drawRichLine(doc, richLines[lineStart + i]!, margin + 8, y + i * descStep, font);
         }
         if (firstChunk && custom.showAmount) {
-          doc.setFont(font, "normal");
+          doc.setFont(semiFont, "normal");
           doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
         }
         if (isLast) {
@@ -679,7 +733,7 @@ export async function buildFinancialPdf(
       doc.setFontSize(F(9));
       richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
       if (custom.showAmount) {
-        doc.setFont(font, "normal");
+        doc.setFont(semiFont, "normal");
         doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
       }
       doc.setDrawColor(224, 227, 226);
@@ -752,7 +806,9 @@ export async function buildFinancialPdf(
     doc.setTextColor(...ink);
     for (const row of rows) {
       doc.text(row.label, panelX + 12, by);
+      if (font === "Inter") doc.setFont(semiFont, "normal");
       doc.text(row.value, panelX + panelW - 12, by, { align: "right" });
+      if (font === "Inter") doc.setFont(font, "normal");
       by += rowStep;
     }
     if (rows.length && totalRowH) {
@@ -799,7 +855,9 @@ export async function buildFinancialPdf(
       doc.setFontSize(F(9.5));
       doc.setTextColor(...ink);
       doc.text(`${lang === "es" ? "Saldo restante" : "Remaining balance"}:`, panelX + 12, by);
+      if (font === "Inter") doc.setFont(semiFont, "normal");
       doc.text(usd(Math.max(0, depTotalNum - depAmount)), panelX + panelW - 12, by, { align: "right" });
+      if (font === "Inter") doc.setFont(font, "normal");
       by += 6;
     }
     y += panelH;
@@ -854,7 +912,7 @@ export async function buildFinancialPdf(
         doc.setFontSize(F(9));
         richLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
         if (custom.showAmount) {
-          doc.setFont(font, "normal");
+          doc.setFont(semiFont, "normal");
           doc.text(usd(itemTotal), w - margin - 8, y, { align: "right" });
         }
         doc.setDrawColor(224, 227, 226);
@@ -1198,6 +1256,11 @@ export async function buildChangeOrderPdf(
   const dim: [number, number, number] = [96, 106, 103];
   const faint: [number, number, number] = [120, 128, 125];
   const accent = hexRgb(settings?.accentColor || "#1f5a4a");
+  // Typography pass: change orders resolve the document font the same way
+  // quotes/invoices do (settings default, else Inter) instead of the old
+  // hardcoded helvetica.
+  const font: DocumentFont = settings?.defaultDocumentFont || "Inter";
+  if (font === "Inter") registerInterFonts(doc);
   const companyName = settings?.companyName || "";
   let y = 0;
   const ensure = (need: number) => {
@@ -1206,7 +1269,7 @@ export async function buildChangeOrderPdf(
     y = 54;
   };
   const wrapped = (text: string, size: number, fontStyle = "normal") => {
-    doc.setFont("helvetica", fontStyle);
+    doc.setFont(font, fontStyle);
     doc.setFontSize(size);
     return doc.splitTextToSize(text, contentW) as string[];
   };
@@ -1214,7 +1277,7 @@ export async function buildChangeOrderPdf(
     if (!text.trim()) return;
     const lines = wrapped(text, size);
     ensure(lines.length * (size + 3.5) + gap);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
     doc.text(lines, margin, y);
@@ -1222,7 +1285,7 @@ export async function buildChangeOrderPdf(
   };
   const sectionHead = (label: string) => {
     ensure(30);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...accent);
     doc.text(label, margin, y);
@@ -1272,7 +1335,7 @@ export async function buildChangeOrderPdf(
   if (settings?.email) stack.push({ text: settings.email });
   let stackY = headerH / 2 - ((stack.length - 1) * 11) / 2 + 3;
   for (const line of stack) {
-    doc.setFont("helvetica", line.name ? "bold" : "normal");
+    doc.setFont(font, line.name ? "bold" : "normal");
     doc.setFontSize(line.name ? 11.5 : 7.5);
     doc.setTextColor(255, 255, 255);
     doc.text(line.text, w - margin, stackY, { align: "right" });
@@ -1281,14 +1344,14 @@ export async function buildChangeOrderPdf(
   y = headerH + 40;
 
   // Title + date.
-  doc.setFont("helvetica", "bold");
+  doc.setFont(font, "bold");
   doc.setFontSize(21);
   doc.setTextColor(...ink);
   doc.text(s.title(data.coNumber), w / 2, y, { align: "center" });
   y += 19;
   const dateText = coDateLabel(data.dateIso ? `${data.dateIso}T12:00:00` : null, lang);
   if (dateText) {
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(10);
     doc.setTextColor(...dim);
     doc.text(`${s.date}: ${dateText}`, w / 2, y, { align: "center" });
@@ -1304,11 +1367,11 @@ export async function buildChangeOrderPdf(
   if (data.jobAddress.trim()) meta.push([s.address, data.jobAddress]);
   for (const [label, value] of meta) {
     ensure(16);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(10);
     doc.setTextColor(...dim);
     doc.text(`${label}:`, margin, y);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setTextColor(...ink);
     const lines = doc.splitTextToSize(value, contentW - 92) as string[];
     doc.text(lines, margin + 92, y);
@@ -1337,7 +1400,7 @@ export async function buildChangeOrderPdf(
       doc.setFillColor(23, 26, 28);
       doc.rect(margin, y - 13, contentW, 24, "F");
     }
-    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFont(font, bold ? "bold" : "normal");
     doc.setFontSize(bold ? 11.5 : 10.5);
     if (band) doc.setTextColor(255, 255, 255);
     else doc.setTextColor(...ink);
@@ -1371,7 +1434,7 @@ export async function buildChangeOrderPdf(
     behalfLine: string,
     signedAtIso: string | null,
   ) => {
-    doc.setFont("helvetica", "bold");
+    doc.setFont(font, "bold");
     doc.setFontSize(9.5);
     doc.setTextColor(...dim);
     doc.text(heading.toUpperCase(), x, y);
@@ -1387,7 +1450,7 @@ export async function buildChangeOrderPdf(
     doc.setDrawColor(150, 158, 155);
     doc.setLineWidth(0.75);
     doc.line(x, ruleY, x + colW, ruleY);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(9);
     doc.setTextColor(...faint);
     doc.text(s.signature, x, ruleY + 11);
@@ -1437,7 +1500,7 @@ export async function buildChangeOrderPdf(
     doc.setDrawColor(224, 227, 226);
     doc.setLineWidth(0.5);
     doc.line(margin, 758, w - margin, 758);
-    doc.setFont("helvetica", "normal");
+    doc.setFont(font, "normal");
     doc.setFontSize(7);
     doc.setTextColor(...faint);
     if (footerParts.length) doc.text(footerParts.join(" · "), margin, 770);

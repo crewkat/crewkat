@@ -607,6 +607,7 @@ fieldset { padding: 0; border: 0; }
 .quote-paper.font-times { font-family: "Times New Roman", Times, serif; }
 .quote-paper.font-courier { font-family: "Courier New", Courier, monospace; }
 .quote-paper.font-palatino { font-family: Palatino, "Book Antiqua", serif; }
+.quote-paper.font-Inter { font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif; }
 .pdf-viewer { width: 100%; margin: 16px auto 0; }
 .pdf-pages { display: none; width: 100%; gap: 14px; }
 .pdf-pages.ready { display: grid; }

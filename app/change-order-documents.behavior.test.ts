@@ -105,6 +105,11 @@ await db.insert(schema.settings).values({
   id: 1, companyId: 1, companyName: "Stallions Construction Company LLC",
   phone: "(813) 516-5720", email: "stallionsconstructioncompany@gmail.com",
   website: "stallionsconstruction.com", licenseNumber: "FL License #CRC1335847",
+  // Pin: pdfText() below reads raw Tj operands, which only works with a
+  // core font. This fixture rode the old "helvetica" settings default; the
+  // default is now "Inter" (embedded CID — not raw-readable), so the
+  // fixture names its document font explicitly. Assertions unchanged.
+  defaultDocumentFont: "helvetica",
   updatedAt: now,
 });
 const mkJob = async (clientName: string, jobAddress: string, companyId = 1, amountDue = "") =>
@@ -191,6 +196,9 @@ const portalCo4 = dataA.changeOrders.find((o: any) => o.id === co4);
 check("portal negative CO carries its chain", portalCo4?.contractSumBefore === "18180.00" && portalCo4?.newContractSum === "17980.00", JSON.stringify(portalCo4));
 
 // --- 5. Signing through the document path ----------------------------------------------
+// Pin (same as the settings fixture above): the formal signed copy is built
+// with an explicit core font so pdfText() can read it; unset would now
+// resolve to the embedded Inter default.
 const formalBlob = await buildChangeOrderPdf({
   coNumber: 2, dateIso: "2026-10-21", clientName: "Anthony Porreca", jobType: "Garage conversion",
   jobAddress: "2337 Eastwood Dr, Clearwater, FL 33765", referenceContract: "Garage conversion contract",
@@ -198,7 +206,7 @@ const formalBlob = await buildChangeOrderPdf({
   newContractSum: "18320.00", contractorSignerName: "Dennys Hernandez", contractorSignatureDataUrl: null,
   contractorSignedAtIso: now.toISOString(), clientSignerName: "Anthony Porreca",
   clientSignatureDataUrl: `data:image/png;base64,${pngBase64}`, clientSignedAtIso: now.toISOString(), logoDataUrl: null,
-}, { companyName: "Stallions Construction Company LLC" } as never, "en");
+}, { companyName: "Stallions Construction Company LLC", defaultDocumentFont: "helvetica" } as never, "en");
 const formalB64 = Buffer.from(new Uint8Array(await formalBlob.arrayBuffer())).toString("base64");
 await A.submitDocumentSignature.handler(ctx, {
   token: linkCo2.token, signerName: "Anthony Porreca", signatureDataBase64: pngBase64,
