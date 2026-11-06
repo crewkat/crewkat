@@ -71,6 +71,7 @@ export function JobsView({
     queryFn: () => api.listJobs({ search: debounced }),
   });
   const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const boardQuery = useQuery({ queryKey: ["production-board"], queryFn: () => api.getProductionBoard({}) });
   // The list's money columns resolve the way every other surface does.
   // The raw job-row fields read "—"/$0 for any job whose contract lives
@@ -92,7 +93,35 @@ export function JobsView({
     }
     return map;
   }, [invoicesQuery.data]);
-  const contractFor = (j: Job) => contractByJob.get(j.id) ?? parseMoney(j.contractSum);
+  // Round 2 fallback: a job whose board contract resolves to nothing
+  // (no contract documents, nothing typed into the stored field) can
+  // still carry its contract value in its own linked documents — the
+  // newest accepted quote wins (its accepted-options total when the
+  // client accepted options), else the sum of its linked invoices.
+  // Every field used here rides the production listQuotes/listInvoices
+  // response schemas (accepted, superseded, total, optionSelection.
+  // accepted.totalWithOptions, jobId all survive the zod shaping).
+  const docContractByJob = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const inv of invoicesQuery.data?.invoices ?? []) {
+      if (inv.jobId != null) map.set(inv.jobId, (map.get(inv.jobId) ?? 0) + parseMoney(inv.total));
+    }
+    const accepted = (quotesQuery.data?.quotes ?? [])
+      .filter((q) => q.jobId != null && q.accepted && !q.superseded)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+    for (const q of accepted) {
+      const total = q.optionSelection.accepted ? parseMoney(q.optionSelection.accepted.totalWithOptions) : parseMoney(q.total);
+      if (total > 0) map.set(q.jobId!, total);
+    }
+    return map;
+  }, [invoicesQuery.data, quotesQuery.data]);
+  const contractFor = (j: Job) => {
+    const board = contractByJob.get(j.id);
+    if (board != null && board > 0) return board;
+    const stored = parseMoney(j.contractSum);
+    if (stored > 0) return stored;
+    return docContractByJob.get(j.id) ?? stored;
+  };
   const balanceFor = (j: Job) => (balanceByJob.has(j.id) ? balanceByJob.get(j.id)! : parseMoney(j.amountDue));
   const jobs = useMemo(() => jobsQuery.data?.jobs ?? [], [jobsQuery.data]);
   const filtered = useMemo(
@@ -275,6 +304,21 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
   const job: Job | null = data?.job ?? null;
   const jobQuotes = (quotesQuery.data?.quotes ?? []).filter((q) => q.jobId === jobId);
   const jobInvoices = (invoicesQuery.data?.invoices ?? []).filter((i) => i.jobId === jobId);
+  // Same fallback chain as the Jobs list (round 2): when neither the
+  // contract summary nor the stored field carries a value, the job's
+  // own linked documents do — newest accepted quote, else its invoices.
+  const jobDocContract = (() => {
+    const accepted = jobQuotes
+      .filter((q) => q.accepted && !q.superseded)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+    const latest = accepted[accepted.length - 1];
+    if (latest) return latest.optionSelection.accepted ? latest.optionSelection.accepted.totalWithOptions : latest.total;
+    if (jobInvoices.length > 0) return String(jobInvoices.reduce((s, inv) => s + parseMoney(inv.total), 0));
+    return "";
+  })();
+  const contractSumDisplay = data?.contractSummary && parseMoney(data.contractSummary.revisedTotal) > 0
+    ? data.contractSummary.revisedTotal
+    : parseMoney(job?.contractSum ?? "") > 0 ? (job?.contractSum ?? "") : jobDocContract;
 
   return (
     <aside className="panel detail-panel job-detail-panel">
@@ -367,7 +411,7 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
           <section className="drawer-section">
             <h3>Amounts</h3>
             <div className="mini-stats">
-              <div><span>Contract sum</span><strong>{formatMoney(data?.contractSummary ? data.contractSummary.revisedTotal : job.contractSum)}</strong></div>
+              <div><span>Contract sum</span><strong>{formatMoney(contractSumDisplay)}</strong></div>
               <div><span>Balance</span><strong>{formatMoney(jobInvoices.length > 0 ? jobInvoices.reduce((s, inv) => s + parseMoney(inv.balanceRemaining), 0) : job.amountDue)}</strong></div>
               <div><span>Deposit</span><strong>{formatMoney(job.depositAmount)}</strong></div>
               <div><span>Photos</span><strong>{job.photoCount}</strong></div>
