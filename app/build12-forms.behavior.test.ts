@@ -304,9 +304,9 @@ describe("Build 2.0: Danny's UI fix list", () => {
     expect(CSS).toContain(".market-zip-save-row");
   });
 
-  test("messages inbox spacing tightened; beige background test hook present", () => {
+  test("messages inbox spacing tightened; beige background block removed (theme item 3)", () => {
     expect(CSS).toContain(".market-inbox-subheading { margin: 8px 0 4px; }");
-    expect(CSS).toContain("--beige: #f5f0e6");
+    expect(CSS).not.toContain("--beige:");
     expect(CSS).toContain(".page.marketplace-thread");
   });
 

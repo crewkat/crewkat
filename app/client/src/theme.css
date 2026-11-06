@@ -5261,14 +5261,6 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 .market-inbox-subheading { margin: 8px 0 4px; }
 .market-inbox-list { margin-bottom: 8px; }
 
-/* --- 5b. Beige background test: messages + tool pages --- */
-:root[data-theme="light"] { --beige: #f5f0e6; }
-:root[data-theme="dark"] { --beige: #201c15; }
-@media (prefers-color-scheme: light) { :root:not([data-theme]) { --beige: #f5f0e6; } }
-@media (prefers-color-scheme: dark) { :root:not([data-theme]) { --beige: #201c15; } }
-.page.tools-home,
-.page.toolkit-page,
-.page.expansion-page { background: var(--beige); }
 /* build 3.0 item 5 painted marketplace surfaces pure white in light
    theme — but that opaque page background also buried the app shell's
    animated haze layers: on Marketplace the haze only peeked out as a
