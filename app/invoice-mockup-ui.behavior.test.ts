@@ -30,7 +30,7 @@ describe("reusable compact language", () => {
 describe("invoice list compact rows", () => {
   test("invoice card still taps through to the preview (TapArticle preserved)", () => {
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
+      '<TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}${glowInvoiceId === invoice.id ? " invoice-row-glow" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>',
     );
   });
 
