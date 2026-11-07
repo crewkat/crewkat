@@ -378,7 +378,7 @@ type Screen =
   | { name: "quoteNew"; clientId?: number; jobId?: number }
   | { name: "quotePreview"; quoteId: number }
   | { name: "quoteAttachments"; quoteId: number }
-  | { name: "invoices" }
+  | { name: "invoices"; highlightInvoiceId?: number }
   | { name: "invoiceNew"; jobId?: number }
   | { name: "invoicePreview"; invoiceId: number }
   | { name: "invoiceAttachments"; invoiceId: number }
@@ -3649,6 +3649,37 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
     if (below && (below.name === "quotes" || below.name === "invoices")) popScreenStack();
     else replaceScreen({ name: "quotes" });
   };
+  // New Invoice save (Danny 2026-11-07): land on the Invoices & Estimates
+  // hub, Invoices tab, with the just-created invoice's row glowing orange
+  // briefly — never back on whatever screen the + was tapped from. Same
+  // deterministic-landing shape as closeQuoteBuilder: when the builder was
+  // opened from the hub itself, rewrite the hub entry under the form with
+  // the highlight and pop to it; from anywhere else (Home quick-create,
+  // job detail), swap the form for the hub.
+  const closeInvoiceBuilder = (invoiceId: number) => {
+    const stack = screenStackRef.current;
+    const below = stack[stack.length - 2];
+    if (below && below.name === "invoices") {
+      scrollSnapshotsRef.current[stack.length - 2] = undefined;
+      const nextStack: Screen[] = [...stack.slice(0, -2), { name: "invoices", highlightInvoiceId: invoiceId }];
+      setScreenStack(nextStack);
+      screenStackRef.current = nextStack;
+      requestNavigationScroll({ mode: "top" });
+    } else {
+      replaceScreen({ name: "invoices", highlightInvoiceId: invoiceId });
+    }
+  };
+  // The hub consumes the highlight the moment it takes it (strips the id
+  // from its own stack entry, no scroll side effects), so leaving for a
+  // preview and coming back can never replay the glow.
+  const consumeInvoiceHighlight = () => {
+    const stack = screenStackRef.current;
+    const top = stack[stack.length - 1];
+    if (!top || top.name !== "invoices" || top.highlightInvoiceId == null) return;
+    const nextStack: Screen[] = [...stack.slice(0, -1), { name: "invoices" }];
+    setScreenStack(nextStack);
+    screenStackRef.current = nextStack;
+  };
   const openRoot = (tab: RootTab) => {
     scrollSnapshotsRef.current = [];
     // Build 0.3: returning to the Invoices tab restores the last-viewed
@@ -4092,6 +4123,8 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
           settings={appSettings}
           onBack={goBack}
           setScreen={setScreen}
+          highlightInvoiceId={screen.highlightInvoiceId}
+          onConsumeHighlight={consumeInvoiceHighlight}
         />
       )}
       {screen.name === "invoiceNew" && (
@@ -4100,6 +4133,7 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
           settings={appSettings}
           jobId={screen.jobId}
           onBack={goBack}
+          onCreated={closeInvoiceBuilder}
         />
       )}
       {screen.name === "invoicePreview" && (
@@ -19454,15 +19488,38 @@ function InvoicesScreen({
   settings,
   onBack,
   setScreen,
+  highlightInvoiceId,
+  onConsumeHighlight,
 }: {
   lang: Lang;
   settings: Settings | null;
   onBack: () => void;
   setScreen: (s: Screen) => void;
+  highlightInvoiceId?: number;
+  onConsumeHighlight?: () => void;
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
   const [tab, setTab] = useState<"invoices" | "estimates">("invoices");
+  // Just-created invoice glow (Danny 2026-11-07): the shell lands here
+  // carrying the new invoice's id after a create-save; the matching row
+  // glows orange for ~1.5s. The id is consumed from the screen entry the
+  // moment it is taken (via the ref, so the callback's identity never
+  // re-runs this effect), and the glow state clears itself on a timer —
+  // later visits to this list never replay it.
+  const [glowInvoiceId, setGlowInvoiceId] = useState<number | null>(null);
+  const consumeHighlightRef = useRef(onConsumeHighlight);
+  consumeHighlightRef.current = onConsumeHighlight;
+  useEffect(() => {
+    if (highlightInvoiceId == null) return;
+    setGlowInvoiceId(highlightInvoiceId);
+    consumeHighlightRef.current?.();
+  }, [highlightInvoiceId]);
+  useEffect(() => {
+    if (glowInvoiceId == null) return;
+    const timer = window.setTimeout(() => setGlowInvoiceId(null), 1700);
+    return () => window.clearTimeout(timer);
+  }, [glowInvoiceId]);
   const [confirmConvertQuoteId, setConfirmConvertQuoteId] = useState<number | null>(null);
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<"all" | InvoiceStatus>("all");
@@ -19717,7 +19774,7 @@ function InvoicesScreen({
           const expanded = isExpanded(rowKey, invoice === visibleInvoices[0]);
           return (
           <SwipeRow key={invoice.id} actions={[{ label: invoice.status === "paid" ? (lang === "es" ? "Marcar impaga" : "Mark unpaid") : (lang === "es" ? "Marcar pagada" : "Mark paid"), kind: "primary", onTap: () => { buzz(12); status.mutate({ id: invoice.id, status: invoice.status === "paid" ? "sent" : "paid" }); } }]}>
-          <TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
+          <TapArticle baseClass="document-tap" className={`ck-invoice-row${expanded ? " expanded" : ""}${glowInvoiceId === invoice.id ? " invoice-row-glow" : ""}`} onTap={() => setScreen({ name: "invoicePreview", invoiceId: invoice.id })}>
             {/* Doc redesign (2026-10-24): the status glyph IS the old ring
                 toggle — one tap marks paid / back to pending — drawn small:
                 green check when paid, amber clock while money is owed. */}
@@ -19818,11 +19875,13 @@ function InvoiceBuilder({
   settings,
   jobId,
   onBack,
+  onCreated,
 }: {
   lang: Lang;
   settings: Settings | null;
   jobId?: number;
   onBack: () => void;
+  onCreated?: (invoiceId: number) => void;
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
@@ -19948,7 +20007,7 @@ function InvoiceBuilder({
   }, [form, missing]);
   const save = useMutation({
     mutationFn: () => api.saveInvoice({ ...form, lineItems: validItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) }),
-    onSuccess: async () => { /* 0081: sheet opt-in append — its own explicit call after the (doc-only) save; best-effort + deduped server-side. */ if (saveAddrToClient && form.clientId && form.jobAddress.trim()) { await api.appendClientAddress({ clientId: form.clientId, address: form.jobAddress.trim(), label: "" }).catch(() => {}); setSaveAddrToClient(false); } try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => onBack()); },
+    onSuccess: async (saved) => { /* 0081: sheet opt-in append — its own explicit call after the (doc-only) save; best-effort + deduped server-side. */ if (saveAddrToClient && form.clientId && form.jobAddress.trim()) { await api.appendClientAddress({ clientId: form.clientId, address: form.jobAddress.trim(), label: "" }).catch(() => {}); setSaveAddrToClient(false); } try { window.localStorage.removeItem(INVOICE_DRAFT_KEY); } catch { /* noop */ } /* Create landing (Danny 2026-11-07): await the invoices invalidation so the refetch settles before the hub mounts — the shared query client holds data for 30s, so an un-awaited invalidation could let the landing list paint the pre-create cache (crawl round 2's jobs lesson). Then land on the hub with the new invoice glowing, via the shell's onCreated, instead of popping back to wherever the builder was opened from. */ await qc.invalidateQueries({ queryKey: ["invoices"] }); qc.invalidateQueries({ queryKey: ["clients"] }); closeAfterSave(() => (onCreated ? onCreated(saved.id) : onBack())); },
     onError: (e) => handleLimitError(e, () => setError(t.error)),
   });
   // Build 2.0: X closes AND saves. Complete content saves normally (the
