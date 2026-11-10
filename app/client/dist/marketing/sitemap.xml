@@ -46,6 +46,46 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://crewkat.com/for/roofing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/plumbing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/electrical</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/hvac</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/painting</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/concrete</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/handyman</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://crewkat.com/for/remodeling</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://crewkat.com/paperwork</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -62,11 +102,6 @@
   </url>
   <url>
     <loc>https://crewkat.com/tools/loan</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://crewkat.com/tools/materials</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -157,11 +192,6 @@
   </url>
   <url>
     <loc>https://crewkat.com/tools/rate</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://crewkat.com/tools/punchlist</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

@@ -416,9 +416,20 @@ export async function buildFinancialPdf(
     Math.round(base[2] + (target[2] - base[2]) * t),
   ];
   // A flat fill in solid mode (identical calls to the old code, so default
-  // PDFs are unchanged); in gradient mode a 48-strip gradient from the base
-  // color to a darker shade of it — the PDF echo of the preview's
+  // PDFs are unchanged); in gradient mode a gradient from the base color
+  // to a darker shade of it — the PDF echo of the preview's
   // linear-gradient(accent, accent mixed 46% with #111827).
+  // Smoothness (Danny 2026-11-09, "I see differences in color" on a 255%
+  // zoom of the estimate header): the gradient used to be painted as 48
+  // flat strips, and the eye catches every strip edge as a color step.
+  // It is now a TRUE axial shading (native PDF gradient): the viewer
+  // interpolates the color function continuously, so there are no strip
+  // edges at any zoom. Painted inside advancedAPI (the mode jsPDF
+  // requires for pattern fills); the block switches back to compat mode
+  // afterwards, and graphics state is balanced by construction. If a
+  // future jsPDF ever drops the shading API, the fallback below paints
+  // sub-point strips (<= 0.75pt pitch) instead of failing the document.
+  let gradSeq = 0;
   const fillBand = (x: number, y: number, bw: number, bh: number, base: Rgb, vertical = false) => {
     if (custom.colorMode !== "gradient") {
       doc.setFillColor(base[0], base[1], base[2]);
@@ -426,12 +437,33 @@ export async function buildFinancialPdf(
       return;
     }
     const end = mixTo(base, DARK_SHADE, 0.54);
-    const steps = 48;
+    if (typeof doc.addShadingPattern === "function" && typeof doc.ShadingPattern === "function") {
+      const key = `bandGrad${++gradSeq}`;
+      doc.advancedAPI(() => {
+        const pattern = doc.ShadingPattern("axial", vertical ? [x, y, x, y + bh] : [x, y, x + bw, y], [
+          { offset: 0, color: [base[0], base[1], base[2]] },
+          { offset: 1, color: [end[0], end[1], end[2]] },
+        ]);
+        doc.addShadingPattern(key, pattern);
+        doc.path([
+          { op: "m", c: [x, y] },
+          { op: "l", c: [x + bw, y] },
+          { op: "l", c: [x + bw, y + bh] },
+          { op: "l", c: [x, y + bh] },
+          { op: "h", c: [] },
+        ]);
+        doc.fill({ key, matrix: doc.unitMatrix });
+      });
+      return;
+    }
+    const len = vertical ? bh : bw;
+    const steps = Math.min(900, Math.max(48, Math.ceil(len / 0.75)));
+    const pitch = len / steps;
     for (let i = 0; i < steps; i++) {
       const c = mixTo(base, end, i / (steps - 1));
       doc.setFillColor(c[0], c[1], c[2]);
-      if (vertical) doc.rect(x, y + (bh * i) / steps, bw, bh / steps + 0.75, "F");
-      else doc.rect(x + (bw * i) / steps, y, bw / steps + 0.75, bh, "F");
+      if (vertical) doc.rect(x, y + pitch * i, bw, pitch + 0.3, "F");
+      else doc.rect(x + pitch * i, y, pitch + 0.3, bh, "F");
     }
   };
   // Document template rebuild (Danny 2026-10-15 — Invoice Fly reference,

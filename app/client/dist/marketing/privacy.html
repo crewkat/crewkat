@@ -9,6 +9,7 @@
   <link rel="canonical" href="https://crewkat.com/privacy">
   <link rel="icon" type="image/png" href="/marketing/favicon.png">
   <link rel="stylesheet" href="/marketing/styles.css">
+  <script src="/marketing/script.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -19,7 +20,27 @@
         <span class="brand-mark" aria-hidden="true">C</span>
         <span>Crewkat</span>
       </a>
-      <a class="btn btn-primary" href="/app">Open the app</a>
+
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-menu" aria-label="Open menu" data-nav-toggle>
+        <span></span><span></span><span></span>
+      </button>
+
+      <div class="nav-menu" id="nav-menu" data-nav-menu>
+        <div class="nav-links">
+          <a href="/invoicing">Invoicing</a>
+          <a href="/estimates">Estimates</a>
+          <a href="/contracts">Contracts</a>
+          <a href="/jobs">Jobs</a>
+          <a href="/clients">Clients</a>
+          <a href="/marketplace">Marketplace</a>
+          <a href="/office-tour">Office</a>
+          <a href="/pricing">Pricing</a>
+        </div>
+        <div class="nav-actions">
+          <a class="text-link" href="/app">Log in</a>
+          <a class="button button-small" href="/app">Start free</a>
+        </div>
+      </div>
     </nav>
   </header>
 
@@ -82,6 +103,7 @@
         <a href="/office-tour">Office</a>
         <a href="/pricing">Pricing</a>
         <a href="/tools">Tools</a>
+        <a href="/paperwork">Paperwork</a>
         <a href="/privacy">Privacy</a>
         <a href="/app">Log in</a>
       </nav>

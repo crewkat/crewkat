@@ -82,7 +82,7 @@ button { font: inherit; }
 .hero-grid { display: grid; gap: 58px; align-items: center; }
 .hero-copy { max-width: 690px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 20px; padding: 7px 11px; color: #f6b38c; background: rgba(255,106,26,.10); border: 1px solid rgba(255,106,26,.24); border-radius: 999px; font-size: 13px; font-weight: 750; letter-spacing: .04em; }
-.eyebrow span { width: 7px; height: 7px; background: var(--orange); border-radius: 50%; box-shadow: 0 0 0 4px rgba(255,106,26,.12); }
+.eyebrow > span[aria-hidden="true"] { width: 7px; height: 7px; flex: none; background: var(--orange); border-radius: 50%; box-shadow: 0 0 0 4px rgba(255,106,26,.12); }
 h1, h2, h3, p { overflow-wrap: break-word; }
 h1 { max-width: 760px; margin: 0; font-size: clamp(42px, 11vw, 78px); line-height: .98; letter-spacing: -.058em; font-weight: 820; }
 .hero-subhead { max-width: 650px; margin: 25px 0 0; color: #c5c3be; font-size: clamp(18px, 4.5vw, 22px); line-height: 1.5; }
@@ -92,7 +92,6 @@ h1 { max-width: 760px; margin: 0; font-size: clamp(42px, 11vw, 78px); line-heigh
 .trust-line span { margin: 0 4px; color: #5e6167; }
 .phone-stage { position: relative; min-height: 570px; display: grid; place-items: center; }
 .hero-mascot { position: absolute; z-index: 2; left: calc(50% - 178px); bottom: -10px; width: 132px; height: auto; transform: rotate(-2deg); filter: drop-shadow(0 18px 26px rgba(0,0,0,.45)); pointer-events: none; }
-.mascot-float { float: right; width: min(228px, 42vw); height: auto; margin: 2px 0 10px 22px; }
 .phone-glow { position: absolute; width: 330px; height: 330px; border-radius: 50%; background: rgba(255,106,26,.18); filter: blur(75px); }
 .phone { position: relative; z-index: 1; width: min(292px, 84vw); height: 585px; padding: 9px; background: #060708; border: 1px solid #41434a; border-radius: 42px; box-shadow: 0 38px 90px rgba(0,0,0,.64), inset 0 0 0 2px #1f2125; transform: rotate(2.4deg); }
 .phone-speaker { position: absolute; z-index: 3; top: 16px; left: 50%; width: 74px; height: 22px; transform: translateX(-50%); border-radius: 20px; background: #08090a; }
