@@ -5,7 +5,7 @@ import { DocumentLinkPanel, PortalLinkPanel } from "../components/LinkPanel";
 import { SignaturePad } from "../components/SignaturePad";
 import type { DocKind, Invoice, Job, Quote, SignableDocument } from "../types";
 import { DOC_KIND_LABELS } from "../types";
-import { cleanError, downloadBase64, financialTotals, formatDate, formatDateTime, formatMoney, lineTotal, matchesSearch, parseMoney, todayIso } from "../utils";
+import { base64ToObjectUrl, cleanError, downloadBase64, financialTotals, formatDate, formatDateTime, formatMoney, lineTotal, matchesSearch, parseMoney, todayIso } from "../utils";
 import { ContractEditor, type ContractEditorTarget } from "./ContractEditor";
 import { FinancialEditor, type FinancialEditorTarget } from "./FinancialEditor";
 import { PlacementEditor } from "./PlacementEditor";
@@ -354,6 +354,25 @@ function DocDetail({
   const [signing, setSigning] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Document preview + download (Danny 2026-11-09): one fetch path serves
+  // estimates/invoices (getFinancialDocumentPdf) and contracts/change
+  // orders (getDocumentPdf); the preview modal keeps the bytes so its
+  // Download button never refetches.
+  const [preview, setPreview] = useState<{ url: string; b64: string; filename: string; title: string } | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<"" | "preview" | "download">("");
+  const closePreview = () => { setPreview((p) => { if (p) URL.revokeObjectURL(p.url); return null; }); };
+  const openPreview = async (fetchPdf: () => Promise<{ pdfBase64: string; filename: string }>, title: string) => {
+    setPdfBusy("preview"); setActionError("");
+    try {
+      const res = await fetchPdf();
+      setPreview((old) => { if (old) URL.revokeObjectURL(old.url); return { url: base64ToObjectUrl(res.pdfBase64), b64: res.pdfBase64, filename: res.filename, title }; });
+    } catch (e) { setActionError(cleanError(e)); } finally { setPdfBusy(""); }
+  };
+  const downloadPdf = async (fetchPdf: () => Promise<{ pdfBase64: string; filename: string }>) => {
+    setPdfBusy("download"); setActionError("");
+    try { const res = await fetchPdf(); downloadBase64(res.pdfBase64, res.filename); }
+    catch (e) { setActionError(cleanError(e)); } finally { setPdfBusy(""); }
+  };
 
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["quotes"] });
@@ -438,6 +457,14 @@ function DocDetail({
               </ul>
             </section>
           ) : null}
+          <div className="link-actions doc-actions">
+            <button type="button" className="btn btn-primary btn-small" disabled={pdfBusy !== ""} onClick={() => void openPreview(() => api.getFinancialDocumentPdf({ kind: "quote", documentId: quote.id }), heading)}>
+              {pdfBusy === "preview" ? "Preparing…" : "Preview"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" disabled={pdfBusy !== ""} onClick={() => void downloadPdf(() => api.getFinancialDocumentPdf({ kind: "quote", documentId: quote.id }))}>
+              {pdfBusy === "download" ? "Preparing…" : "Download PDF"}
+            </button>
+          </div>
           <DocumentLinkPanel kind="quote" id={quote.id} />
         </>
       ) : null}
@@ -448,6 +475,14 @@ function DocDetail({
           <LineItemsTable doc={invoice} />
           <TotalsBlock doc={invoice} extra={{ paid: invoice.paidApplied ?? invoice.paidToDate, credit: invoice.credit ?? "0", balance: invoice.balanceRemaining, lateFee: invoice.lateFeeAccrued }} />
           <PaymentsSection invoice={invoice} onError={setActionError} canDelete={canDelete} />
+          <div className="link-actions doc-actions">
+            <button type="button" className="btn btn-primary btn-small" disabled={pdfBusy !== ""} onClick={() => void openPreview(() => api.getFinancialDocumentPdf({ kind: "invoice", documentId: invoice.id }), heading)}>
+              {pdfBusy === "preview" ? "Preparing…" : "Preview"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" disabled={pdfBusy !== ""} onClick={() => void downloadPdf(() => api.getFinancialDocumentPdf({ kind: "invoice", documentId: invoice.id }))}>
+              {pdfBusy === "download" ? "Preparing…" : "Download PDF"}
+            </button>
+          </div>
           <DocumentLinkPanel kind="invoice" id={invoice.id} />
           {invoice.jobId ? <PortalLinkPanel jobId={invoice.jobId} /> : <InvoiceJobLinker invoice={invoice} jobs={jobs} onError={setActionError} />}
         </>
@@ -478,6 +513,9 @@ function DocDetail({
             </section>
           ) : null}
           <div className="link-actions doc-actions">
+            <button type="button" className="btn btn-primary btn-small" disabled={pdfBusy !== ""} onClick={() => void openPreview(() => api.getDocumentPdf({ documentId: signable.id }), heading)}>
+              {pdfBusy === "preview" ? "Preparing…" : "Preview"}
+            </button>
             <button type="button" className="btn btn-primary btn-small" disabled={downloading} onClick={async () => {
               setDownloading(true);
               setActionError("");
@@ -548,6 +586,21 @@ function DocDetail({
         </section>
       ) : null}
 
+      {preview ? (
+        <div className="modal-backdrop" onClick={closePreview}>
+          <div className="modal modal-preview" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{preview.title}</h2>
+              <button type="button" className="icon-btn" onClick={closePreview} aria-label="Close preview">✕</button>
+            </div>
+            <iframe className="pdf-preview-frame" src={preview.url} title={preview.title} />
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={closePreview}>Close</button>
+              <button type="button" className="btn btn-primary" onClick={() => downloadBase64(preview.b64, preview.filename)}>Download PDF</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {signing && signable ? (
         <SignModal
           doc={signable}

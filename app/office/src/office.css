@@ -506,6 +506,10 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
    pop up edit window in office") — the estimate/invoice editor opens as a
    near-fullscreen popup so long scope text and many line items have room. */
 .modal-editor { max-width: min(1480px, 98vw); max-height: 96vh; padding: 26px 30px; }
+/* Document PDF preview (2026-11-09): near-fullscreen modal, the PDF
+   fills the body in an iframe (desktop browsers render it natively). */
+.modal-preview { max-width: min(1020px, 96vw); height: min(92vh, 100%); display: flex; flex-direction: column; overflow: hidden; }
+.pdf-preview-frame { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 .line-table textarea {
   width: 100%; border: 1px solid transparent; border-radius: 7px; padding: 6px 7px;
   background: #fafbfc; font: inherit; resize: vertical; min-height: 54px;

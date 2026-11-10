@@ -222,7 +222,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "deleteMyAccount", "dismissOnboardingChecklist", "duplicateInvoice",
   "duplicateQuote", "getAutomationCenter", "getClient", "getClientTimeline",
   "getDocumentLinkInfo", "getDocumentPdf", "getDocumentTimeline",
-  "getFinancialSignature", "getFoundingMemberAvailability", "getJob", "getJobTimeline",
+  "getFinancialDocumentPdf", "getFinancialSignature", "getFoundingMemberAvailability", "getJob", "getJobTimeline",
   "getMarketplaceListing", "getMarketplaceUnlockStatus", "getOnMyWayStatus",
   "getOnboardingChecklist", "getPlayBillingConfig", "getPortalLinkInfo",
   "getReferralStats", "getSettings", "getUsageLimits",

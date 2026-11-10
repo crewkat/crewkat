@@ -201,6 +201,12 @@ export function downloadBase64(base64: string, filename: string, contentType = "
   window.setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+/** Object URL for base64 bytes (document preview iframes). Caller revokes. */
+export function base64ToObjectUrl(base64: string, contentType = "application/pdf") {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return URL.createObjectURL(new Blob([bytes], { type: contentType }));
+}
+
 /** Defensive field pickers for the loosely-typed office dashboard rows. */
 export function pickString(row: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {

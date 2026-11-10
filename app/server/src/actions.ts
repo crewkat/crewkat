@@ -3717,9 +3717,19 @@ async function publicAttachmentImages(ctx: Ctx, db: ReturnType<Ctx["db"]>, docTy
   }
 }
 
+type DocumentLinkLike = { documentKind: "quote" | "invoice" | "contract" | "change_order" | "work_summary"; documentId: number; companyId: number; expiresAt: Date; shortCode: string | null };
+
 async function getDocumentLinkPayload(ctx: Ctx, token: string) {
-  const db = ctx.db<typeof schema>();
   const link = await resolveDocumentLinkToken(ctx, token);
+  return { link, payload: await buildDocumentPayload(ctx, link) };
+}
+
+// The payload builder behind getDocumentLinkPayload, factored out
+// 2026-11-09 so the owner-side getFinancialDocumentPdf action can render
+// the exact client PDF for a quote/invoice by id — no public link token
+// needed and no link row created.
+async function buildDocumentPayload(ctx: Ctx, link: DocumentLinkLike) {
+  const db = ctx.db<typeof schema>();
   const settings = (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
   const company = { name: settings?.companyName ?? "", phone: settings?.phone ?? "", email: settings?.email ?? "", website: settings?.website ?? "", address: settings?.address ?? "", licenseNumber: settings?.licenseNumber ?? "", accentColor: settings?.accentColor ?? "#1f5a4a", logoUrl: settings?.logoBlobKey ? await ctx.blobs.getUrl(settings.logoBlobKey) : null };
   const base = { kind: link.documentKind, documentId: link.documentId, signable: false, alreadySigned: false, company, title: "", clientName: "", jobAddress: "", jobType: "", lineItems: [] as Array<{ description: string; amount: string }>, subtotal: "", total: "", dateLabel: "", dateValue: "", footnote: "", bodyText: "", description: "", amount: "", contractorSignerName: "", linkExpiresAt: link.expiresAt.toISOString(), shortCode: link.shortCode ?? null, attachedImages: [] as Array<{ fileName: string; url: string }>,
@@ -3790,13 +3800,13 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
     const shaped = invoiceShape(row, paymentRows, fee);
     const companySettings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, link.companyId)).limit(1))[0];
     const payNowAvailable = !!companySettings?.stripeConnectAccountId && !!companySettings.stripeChargesEnabled && Number(shaped.balanceRemaining) > 0 && row.cardPaymentsEnabled && (await companyProActive(db, link.companyId));
-    return { link, payload: { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice ${shaped.invoiceNumber}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, credit: shaped.credit, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, cardFeeCents: row.cardFeeCents, attachedImages, payNowAvailable } };
+    return { ...base, ...designOf(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Invoice ${shaped.invoiceNumber}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Due date", dateValue: row.dueDate, footnote: row.footnote, invoiceNumber: row.invoiceNumber, issueDate: row.issueDate, dueDate: row.dueDate, status: row.status, paidToDate: shaped.paidToDate, credit: shaped.credit, lateFeeAccrued: shaped.lateFeeAccrued, totalWithLateFee: shaped.totalWithLateFee, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, cardFeeCents: row.cardFeeCents, attachedImages, payNowAvailable };
   }
   if (link.documentKind === "quote") {
     const row = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, link.documentId)).limit(1))[0];
     if (!row) throw new Error("This document is no longer available.");
     const attachedImages = await publicAttachmentImages(ctx, db, "quote", link.documentId, link.companyId);
-    return { link, payload: { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, attachedImages } };
+    return { ...base, ...designOf(row), ...quoteOptionsPayload(row), updatedAtMs: row.updatedAt instanceof Date ? row.updatedAt.getTime() : Number(row.updatedAt) || 0, title: `Estimate #${row.id}`, clientName: row.clientName, jobAddress: row.jobAddress, jobType: row.jobType, lineItems: JSON.parse(row.lineItemsJson), subtotal: row.subtotal, total: row.total, dateLabel: "Valid until", dateValue: row.expiryDate, footnote: row.footnote, expiryDate: row.expiryDate, depositType: (row.depositType === "percent" || row.depositType === "fixed" ? row.depositType : "none") as "none" | "percent" | "fixed", depositValue: row.depositValue, attachedImages };
   }
   const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, link.documentId)).limit(1))[0];
   if (!doc || doc.kind !== link.documentKind) throw new Error("This document is no longer available.");
@@ -3838,7 +3848,7 @@ async function getDocumentLinkPayload(ctx: Ctx, token: string) {
       }
     }
   }
-  return { link, payload: { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none" as const, depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null } };
+  return { ...base, signable: true, alreadySigned: !!doc.clientSignedAt, title: doc.title, clientName: job?.clientName ?? "", jobAddress: job?.jobAddress ?? "", jobType: job?.jobType ?? "", bodyText: doc.bodyText, description: doc.description, amount: doc.amount, contractorSignerName: doc.signerName, dateLabel: "Signed", dateValue: doc.signedAt.toISOString().slice(0, 10), depositType: "none" as const, depositValue: "0", hasOriginalPdf: !!doc.originalBlobKey, originalFilename: doc.originalFilename, updatedAtMs: (doc.clientSignedAt ?? doc.createdAt).getTime(), pdfVersion: payloadPdfVersion, changeOrder, signatureFields: (() => { const all = parseSignatureFields(doc.signatureFieldsJson); const pub: SignatureFields = {}; if (all.clientSignature) pub.clientSignature = all.clientSignature; if (all.clientDate) pub.clientDate = all.clientDate; return pub; })(), fillFields: parseFillFields(doc.fillFieldsJson).filter((f) => f.role === "client"), fillValues: parseFillValues(doc.fillValuesJson), clientSignerName: doc.clientSignerName, clientSignedAt: doc.clientSignedAt?.toISOString() ?? null };
 }
 
 // Build 0.6: bound the memory cost of server-side PDF rendering. jsPDF is
@@ -5767,6 +5777,34 @@ setJobClient: defineAction({ request: z.object({ jobId: z.number().int().positiv
   // backfilled, so their next read is the same stored file; if no
   // canonical can be composed, the raw original is served rather than
   // failing the view.
+  // Office preview/download (Danny 2026-11-09): the owner-side sibling of
+  // getDocumentPdf for ESTIMATES and INVOICES — renders the exact client
+  // PDF (buildDocumentLinkPdf over the link payload) for a document id,
+  // without minting a public link. Shares docPdfCache with the link path
+  // (same key shape), so an edit invalidates both.
+  getFinancialDocumentPdf: defineAction({
+    request: z.object({ kind: z.enum(["quote", "invoice"]), documentId: z.number().int().positive(), lang: z.enum(["en", "es"]).optional() }),
+    response: z.object({ pdfBase64: z.string(), filename: z.string() }),
+    async handler(ctx, args): Promise<{ pdfBase64: string; filename: string }> {
+      const lang = args.lang ?? "en";
+      const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+      const payload = await buildDocumentPayload(ctx, { documentKind: args.kind, documentId: args.documentId, companyId, expiresAt: new Date(), shortCode: null });
+      const cacheKey = `${args.kind}:${args.documentId}:${lang}`;
+      const hit = docPdfCache.get(cacheKey);
+      if (hit && hit.updatedAtMs === (payload as { updatedAtMs?: number }).updatedAtMs) {
+        return { pdfBase64: hit.pdfBase64, filename: hit.filename };
+      }
+      const { bytes, filename } = await buildDocumentLinkPdf(ctx, { ...payload, kind: args.kind }, lang);
+      const pdfBase64 = Buffer.from(bytes).toString("base64");
+      if (docPdfCache.size >= DOC_PDF_CACHE_MAX) {
+        const oldest = docPdfCache.keys().next().value;
+        if (oldest) docPdfCache.delete(oldest);
+      }
+      docPdfCache.set(cacheKey, { pdfBase64, filename, updatedAtMs: (payload as { updatedAtMs?: number }).updatedAtMs ?? 0 });
+      return { pdfBase64, filename };
+    },
+  }),
+
   getDocumentPdf: defineAction({ request: z.object({ documentId: z.number().int().positive() }), response: z.object({ pdfBase64: z.string(), filename: z.string() }), async handler(ctx, args): Promise<{ pdfBase64: string; filename: string }> { const db = ctx.db<typeof schema>(); const doc = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.documentId)).limit(1))[0]; if (!doc) throw new Error("Document not found."); if (!doc.originalBlobKey) { // Generated change order (Danny 2026-10-21): no uploaded PDF — the owner's copy is the same canonical file the client gets: the stored signed formal document once signed, otherwise the formal document rendered from the row's current state. Other text-only documents keep the old refusal.
       if (doc.kind !== "change_order") throw new Error("This document has no uploaded PDF.");
       if (doc.clientSignedAt && doc.clientSignedPdfBlobKey) { const stored = await ctx.blobs.get(doc.clientSignedPdfBlobKey); if (stored && stored.length > 0) return { pdfBase64: Buffer.from(stored).toString("base64"), filename: signedPdfFilename(doc.title) }; }
