@@ -241,6 +241,18 @@ export function parseRichRuns(text: string): RichRun[] {
   return runs.length ? runs : [{ text, bold: false }];
 }
 
+/** Item label runs for the document tables: the title (name) in bold,
+ *  the description in regular weight (Danny 2026-11-09 — titles in
+ *  estimates/documents are bold). ** markers inside either field still
+ *  parse; in the name they simply stay bold. */
+export function itemLabelRuns(item: { name?: string; description?: string }): RichRun[] {
+  return [
+    ...(item.name ? parseRichRuns(item.name).map((run) => ({ ...run, bold: true })) : []),
+    ...(item.name && item.description ? [{ text: " — ", bold: false }] : []),
+    ...parseRichRuns(item.description ?? ""),
+  ];
+}
+
 function wrapRichLines(doc: jsPDF, runs: RichRun[], maxWidth: number, font: AnyDocumentFont): RichRun[][] {
   type Word = { text: string; bold: boolean; width: number };
   // Hard line breaks: a "\n" in the source text is a paragraph break, never
@@ -665,7 +677,6 @@ export async function buildFinancialPdf(
   const baseLineItems = document.lineItems.filter((item) => !item.optional);
   let rowIndex = 0;
   for (const item of baseLineItems) {
-    const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
     const suffix = !custom.showQuantityUnitPrice || (qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0)
@@ -673,7 +684,8 @@ export async function buildFinancialPdf(
       : ` (${qty} ${item.unit === "days" ? "days" : item.unit === "hours" ? "hours" : "qty"}${money(item.discount ?? "0") > 0 ? `, -${usd(money(item.discount ?? "0"))}` : ""})`;
     // Phase 2: **bold** lead-ins render as real bold (parseRichRuns), and
     // alternating rows get a whisper zebra fill on the banded themes.
-    const runs = parseRichRuns(itemLabel);
+    // Item titles (names) render bold outright (Danny 2026-11-09).
+    const runs = itemLabelRuns(item);
     if (suffix) runs.push({ text: suffix, bold: false });
     // wrapRichLines measures with the ambient font size — pin it to the
     // scaled body size first so fontSize/lineSpacing flow into the wrap.
@@ -913,10 +925,9 @@ export async function buildFinancialPdf(
     };
     const drawOptionRows = (items: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string }>) => {
       for (const item of items) {
-        const itemLabel = [item.name, item.description].filter(Boolean).join(" — ");
         const itemTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
         doc.setFontSize(F(9));
-        const richLines = wrapRichLines(doc, parseRichRuns(itemLabel), w - margin * 2 - 130, font);
+        const richLines = wrapRichLines(doc, itemLabelRuns(item), w - margin * 2 - 130, font);
         const rowH = Math.max(20, richLines.length * descStep + 6);
         ensureSpace(rowH);
         doc.setTextColor(...ink);
