@@ -475,6 +475,18 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 
 /* ---------- editors ---------- */
 .modal-wide { max-width: 1060px; }
+/* Document editor workspace (Danny 2026-11-09: "a bigger editing screen /
+   pop up edit window in office") — the estimate/invoice editor opens as a
+   near-fullscreen popup so long scope text and many line items have room. */
+.modal-editor { max-width: min(1480px, 98vw); max-height: 96vh; padding: 26px 30px; }
+.line-table textarea {
+  width: 100%; border: 1px solid transparent; border-radius: 7px; padding: 6px 7px;
+  background: #fafbfc; font: inherit; resize: vertical; min-height: 54px;
+}
+.line-table textarea:focus { border-color: var(--navy-700); background: var(--surface); outline: none; }
+.line-table .lt-title-row td { background: #eef3f8; border-bottom: 1px solid var(--line); }
+.line-table .lt-title-input { font-weight: 700; font-size: 14px; background: transparent; }
+.line-table .lt-title-input:focus { background: var(--surface); }
 .doc-head-grid { margin-top: 12px; }
 .editor-section-title {
   font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;

@@ -595,6 +595,7 @@ export interface LineItem {
   unit?: "none" | "days" | "hours";
   id?: string;
   optional?: boolean;
+  isTitle?: boolean;
 }
 
 export interface MaterialItem {

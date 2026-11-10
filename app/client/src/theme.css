@@ -569,6 +569,7 @@ fieldset { padding: 0; border: 0; }
 .quote-paper-nums em { font-style: normal; color: #5d6866; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
 .quote-paper-lines { display: grid; }
 .quote-line { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; padding: 8px; border-bottom: 1px solid #dfe4e2; font-size: 11px; }
+.quote-line.paper-title-line { display: block; margin-top: 6px; padding: 6px 8px; background: color-mix(in srgb, var(--accent) 13%, #fff); border-bottom: 0; font-size: 12px; }
 .quote-line.heading { background: #171a1c; color: #fff; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .quote-payment { display: grid; gap: 3px; margin: 16px 0 0; padding: 10px 0; border-top: 1px solid #dfe4e2; color: #5d6866; font-size: 10px; white-space: pre-wrap; }
 .quote-payment strong { color: #18201e; }
@@ -5964,6 +5965,8 @@ button.profit-strip-link:hover{border-color:var(--green)}
 /* Estimate options (0076): optional line items across editor, paper,
    contractor detail, and the client pages. Compact per the BULK rule. */
 .doc-line-optional-chip { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 1px 7px; white-space: nowrap; }
+.doc-line-title-chip { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+.doc-line-card.is-title .doc-line-summary-text strong { font-size: 15px; }
 .line-item-optional-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-top: 1px solid var(--hairline); }
 .line-item-optional-row strong { display: block; font-size: .95rem; }
 .line-item-optional-row small { display: block; color: var(--dim); font-size: .8rem; line-height: 1.35; margin-top: 2px; }

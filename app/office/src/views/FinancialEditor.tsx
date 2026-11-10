@@ -125,7 +125,9 @@ export function FinancialEditor({
 
   const saveMutation = useMutation({
     mutationFn: async (): Promise<number> => {
-      const cleanItems = items.filter((i) => i.description.trim() || moneyOf(i.amount) > 0);
+      // Headline lines (2026-11-09) carry no description or amount by
+      // design — never filter them out on save.
+      const cleanItems = items.filter((i) => i.description.trim() || moneyOf(i.amount) > 0 || (i.isTitle && (i.name ?? "").trim()));
       if (!clientName.trim()) throw new Error("Client name is required — the first missing field is the client name.");
       if (cleanItems.length === 0) throw new Error("Add at least one line item with a description.");
       const lineItems = cleanItems.map((i) => ({
@@ -137,6 +139,7 @@ export function FinancialEditor({
         unit: i.unit,
         ...(i.id ? { id: i.id } : {}),
         ...(kind === "quote" && i.optional ? { optional: true } : {}),
+        ...(i.isTitle ? { isTitle: true } : {}),
       }));
       const financials = {
         lineItems,
@@ -210,7 +213,7 @@ export function FinancialEditor({
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal modal-wide" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-editor" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
@@ -311,10 +314,19 @@ export function FinancialEditor({
             </tr>
           </thead>
           <tbody>
-            {items.map((item, i) => (
+            {items.map((item, i) => item.isTitle ? (
+              <tr key={i} className="lt-title-row">
+                <td colSpan={kind === "quote" ? 8 : 7}>
+                  <input className="lt-title-input" value={item.name ?? ""} onChange={(e) => setItem(i, { name: e.target.value })} placeholder="Headline — e.g. Phase 2: floor prep" aria-label="Headline" />
+                </td>
+                <td>
+                  <button type="button" className="icon-btn" disabled={items.length <= 1} onClick={() => setItems((prev) => prev.filter((_, x) => x !== i))} aria-label="Remove line">✕</button>
+                </td>
+              </tr>
+            ) : (
               <tr key={i}>
                 <td><input value={item.name} onChange={(e) => setItem(i, { name: e.target.value })} placeholder="Item name" /></td>
-                <td><input value={item.description} onChange={(e) => setItem(i, { description: e.target.value })} placeholder="Description *" /></td>
+                <td><textarea rows={2} value={item.description} onChange={(e) => setItem(i, { description: e.target.value })} placeholder="Description *" /></td>
                 <td><input type="number" min={0} step="any" value={item.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) || 0 })} /></td>
                 <td>
                   <select value={item.unit} onChange={(e) => setItem(i, { unit: e.target.value as ItemRow["unit"] })}>
@@ -337,6 +349,7 @@ export function FinancialEditor({
           </tbody>
         </table>
         <button type="button" className="btn btn-ghost btn-small" onClick={() => setItems((prev) => [...prev, blankItem()])}>+ Add line item</button>
+        <button type="button" className="btn btn-ghost btn-small" onClick={() => setItems((prev) => [...prev, { ...blankItem(), amount: "0", isTitle: true }])}>+ Add headline</button>
         {kind === "quote" && optionsTotal > 0 ? (
           <p className="feed-meta">Optional add-ons total {formatMoney(optionsTotal)} — priced separately; they join the total only when the client selects them.</p>
         ) : null}

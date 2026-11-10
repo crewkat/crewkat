@@ -82,11 +82,16 @@ describe("whole card is the tap target", () => {
     // 2026-10-18: the className became a template string and the first card
     // carries the missing-field scroll ref (builder missing-field marks);
     // the tap-to-open wiring itself is unchanged.
-    expect(INVOICE).toContain('className={`invoice-line-card doc-line-card collapsed${missing === "items" && index === 0 ? " field-missing" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}');
+    // 2026-11-09 (headline lines): the template also carries the is-title
+    // marker and the drag state, and the card carries data-b06-line for
+    // the new grip reorder; the tap-to-open wiring is unchanged.
+    expect(INVOICE).toContain('className={`invoice-line-card doc-line-card collapsed${item.isTitle ? " is-title" : ""}${missing === "items" && index === 0 ? " field-missing" : ""}${draggingIdx === index ? " b06-dragging" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}');
   });
 
   test("document editor card opens on tap, but never while reordering", () => {
-    expect(EDITOR).toContain('className="doc-line-card collapsed" key={index} onClick={(e) => { if (!reorder && lineCardTapOpens(e.target)) setEditingItem(index); }}');
+    // 2026-11-09 (headline lines): className carries the is-title marker;
+    // the tap-to-open wiring is unchanged.
+    expect(EDITOR).toContain('className={`doc-line-card collapsed${item.isTitle ? " is-title" : ""}`} key={index} onClick={(e) => { if (!reorder && lineCardTapOpens(e.target)) setEditingItem(index); }}');
   });
 
   test("chevron affordance retained on the summary row at all three sites", () => {

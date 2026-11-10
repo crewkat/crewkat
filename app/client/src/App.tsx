@@ -17559,7 +17559,7 @@ function QuoteBuilder({
     // Quantity row matches the invoice builder / edit sheet.
     // Estimate options (0076): items may be flagged optional (outside the
     // base total) via the edit sheet.
-    lineItems: [{ name: "", description: "", amount: "", quantity: 1 }] as Array<{ name: string; description: string; amount: string; quantity: number; optional?: boolean }>,
+    lineItems: [{ name: "", description: "", amount: "", quantity: 1 }] as Array<{ name: string; description: string; amount: string; quantity: number; optional?: boolean; isTitle?: boolean }>,
   });
   useEffect(() => {
     if (settings && !defaultApplied.current) {
@@ -17690,7 +17690,9 @@ function QuoteBuilder({
   const validLineItems = () =>
     form.lineItems
       .filter((i) => i.description.trim() || (i.name ?? "").trim())
-      .map((i) => ({ ...i, description: i.description.trim() || (i.name ?? "").trim() }));
+      // Headline lines keep an empty description (their text is the name)
+      // — the name-fallback below must never duplicate it into one.
+      .map((i) => (i.isTitle ? { ...i, description: "", amount: i.amount || "0" } : { ...i, description: i.description.trim() || (i.name ?? "").trim() }));
   // Danny 2026-10-18: a failed Save names AND marks the exact missing field
   // (red ring + scroll to it), mirroring the contract signer's flagMissing
   // (d6610a8) — no more lone "Complete the required fields." with no pointer
@@ -17715,7 +17717,7 @@ function QuoteBuilder({
     else if (missing === "email" && clientEmailValid) { setMissing(""); setError(""); }
     else if (missing === "items" && validLineItems().length > 0) { setMissing(""); setError(""); }
   }, [form, missing]);
-  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number; optional: boolean }>) =>
+  const updateLine = (index: number, patch: Partial<{ name: string; description: string; amount: string; quantity: number; optional: boolean; isTitle: boolean }>) =>
     setForm((current) => ({
       ...current,
       lineItems: current.lineItems.map((x, j) => (j === index ? { ...x, ...patch } : x)),
@@ -17984,7 +17986,7 @@ function QuoteBuilder({
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1));
             const summary = lineItemSummary(item, `${t.item} ${i + 1}`);
             return (
-            <div className={`doc-line-card collapsed${missing === "items" && i === 0 ? " field-missing" : ""}${draggingIdx === i ? " b06-dragging" : ""}`} key={i} ref={i === 0 ? firstLineRef : undefined} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(i); }}>
+            <div className={`doc-line-card collapsed${item.isTitle ? " is-title" : ""}${missing === "items" && i === 0 ? " field-missing" : ""}${draggingIdx === i ? " b06-dragging" : ""}`} key={i} ref={i === 0 ? firstLineRef : undefined} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(i); }}>
               <div className="doc-line-top">
                 <span
                   className="b06-grip"
@@ -17999,9 +18001,9 @@ function QuoteBuilder({
                 >
                   <Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon>
                 </span>
-                <span className="doc-line-index">{t.item} {i + 1}</span>
+                {item.isTitle ? <span className="doc-line-title-chip">{lang === "es" ? "Título" : "Headline"}</span> : <span className="doc-line-index">{t.item} {i + 1}</span>}
                 {item.optional && <span className="doc-line-optional-chip">{lang === "es" ? "Opcional" : "Optional"}</span>}
-                <span className="doc-line-total">{usd(lineTotal)}</span>
+                {!item.isTitle && <span className="doc-line-total">{usd(lineTotal)}</span>}
                 {form.lineItems.length > 1 && (
                   <button
                     type="button"
@@ -18035,15 +18037,28 @@ function QuoteBuilder({
             <PlusIcon />
             {t.addLine}
           </button>
+          <button
+            className="secondary-button add-item-wide"
+            type="button"
+            onClick={() => {
+              setEditingItem(form.lineItems.length);
+              setForm({
+                ...form,
+                lineItems: [...form.lineItems, { name: "", description: "", amount: "0", quantity: 1, isTitle: true }],
+              });
+            }}
+          >
+            {lang === "es" ? "Agregar título" : "Add headline"}
+          </button>
           {editingItem !== null && form.lineItems[editingItem] && (
             <LineItemEditSheet
               lang={lang}
-              item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: "0", unit: "none", optional: form.lineItems[editingItem].optional === true }}
+              item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: "0", unit: "none", optional: form.lineItems[editingItem].optional === true, isTitle: form.lineItems[editingItem].isTitle === true }}
               showUnit={false}
               showDiscount={false}
               showOptional
               canRemove={form.lineItems.length > 1}
-              onCommit={(next) => updateLine(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true })}
+              onCommit={(next) => updateLine(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true, isTitle: next.isTitle === true })}
               onRemove={() => removeLineItem(editingItem)}
               onClose={() => setEditingItem(null)}
             />
@@ -18379,6 +18394,9 @@ function QuotePaper({
           const qty = item.quantity ?? 1;
           const amount = money(item.amount);
           const lineTotal = Math.max(0, amount * qty - money(item.discount ?? "0"));
+          // Headline line (Danny 2026-11-09): a section header row — the
+          // bold name on a tint band, no qty/amount columns.
+          if (item.isTitle) return <div className="quote-line paper-title-line" key={i}><strong>{(item.name ?? "").trim() || item.description}</strong></div>;
           return <div className="quote-line" key={i}><PaperItemLabel item={item} />{c.showQuantityUnitPrice && <span className="line-quantity">{qty} × {usd(amount)}</span>}{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
         })}
       </div>
@@ -18688,7 +18706,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
   // line — the Name + Description fields from the new-invoice form were
   // missing. Keep an item when it has either, and fall back to the name when
   // the description is blank (same rule as the new-invoice form).
-  const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.description.trim()||(item.name??"").trim(),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const,...(item.id?{id:item.id}:{}),...(item.optional?{optional:true}:{})}));
+  const editableItems = () => form.lineItems.filter((item)=>item.description.trim()||(item.name??"").trim()).map((item)=>({description:item.isTitle?"":(item.description.trim()||(item.name??"").trim()),amount:item.amount,name:item.name??"",quantity:item.quantity??1,discount:item.discount??"0",unit:item.unit??"none" as const,...(item.id?{id:item.id}:{}),...(item.optional?{optional:true}:{}),...(item.isTitle?{isTitle:true}:{})}));
   const save = async () => { const items=editableItems(); if(!items.length)return;setSaving(true);try{const payload={id:document.id,lineItems:items,discountType:form.discountType,discountValue:showDiscount?form.discountValue:"0",taxType:form.taxType,taxValue:showTax?form.taxValue:"0",subtotal:usd(totals.subtotal),total:usd(kind==="invoice"?totals.total+(document.cardFeeCents??0)/100:totals.total),footnote:form.footnote,depositType:document.depositType??"none",depositValue:document.depositValue??"0"};if(kind==="invoice")await api.updateInvoiceDocument({...payload,issueDate:form.issueDate,dueDate:form.dueDate});else await api.updateQuoteDocument(payload);onSaved();}finally{setSaving(false);}};
   // Build 0.3 (item 3): small Preview PDF in the edit header, built live from
   // the current (unsaved) form values.
@@ -18753,18 +18771,20 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
         const qty = item.quantity ?? 1;
         const lineTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
         const summary = lineItemSummary(item, `${t.item} ${index + 1}`);
-        return <article className="doc-line-card collapsed" key={index} onClick={(e) => { if (!reorder && lineCardTapOpens(e.target)) setEditingItem(index); }}>
+        return <article className={`doc-line-card collapsed${item.isTitle ? " is-title" : ""}`} key={index} onClick={(e) => { if (!reorder && lineCardTapOpens(e.target)) setEditingItem(index); }}>
           <div className="doc-line-top">
             {reorder ? (
               <div className="reorder-buttons">
                 <button type="button" aria-label={`${lang === "es" ? "Subir" : "Move up"} ${index+1}`} onClick={()=>move(index,-1)}>↑</button>
                 <button type="button" aria-label={`${lang === "es" ? "Bajar" : "Move down"} ${index+1}`} onClick={()=>move(index,1)}>↓</button>
               </div>
+            ) : item.isTitle ? (
+              <span className="doc-line-title-chip">{lang === "es" ? "Título" : "Headline"}</span>
             ) : (
               <span className="doc-line-index">{t.item} {index+1}</span>
             )}
             {item.optional && <span className="doc-line-optional-chip">{lang === "es" ? "Opcional" : "Optional"}</span>}
-            <span className="doc-line-total">{usd(lineTotal)}</span>
+            {!item.isTitle && <span className="doc-line-total">{usd(lineTotal)}</span>}
             {/* Build 3.0 (item 7): every line item gets an X to close/delete it. */}
             <button type="button" className="doc-line-remove" aria-label={`${lang === "es" ? "Eliminar partida" : "Remove item"} ${index+1}`} onClick={() => setForm({...form,lineItems:form.lineItems.filter((_,i)=>i!==index)})}>×</button>
           </div>
@@ -18773,16 +18793,16 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
             <span className="doc-line-open" aria-hidden="true">›</span>
           </button>
         </article>;
-      })}<button className="add-item-row" type="button" onClick={()=>{setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:"",quantity:1}]});setEditingItem(form.lineItems.length);}}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button></section>
+      })}<button className="add-item-row" type="button" onClick={()=>{setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"",name:"",quantity:1}]});setEditingItem(form.lineItems.length);}}><PlusIcon />{lang === "es" ? "Agregar artículo" : "Add item"}</button><button className="add-item-row" type="button" onClick={()=>{setForm({...form,lineItems:[...form.lineItems,{description:"",amount:"0",name:"",quantity:1,isTitle:true}]});setEditingItem(form.lineItems.length);}}>{lang === "es" ? "Agregar título" : "Add headline"}</button></section>
       {editingItem !== null && form.lineItems[editingItem] && (
         <LineItemEditSheet
           lang={lang}
-          item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: form.lineItems[editingItem].discount ?? "0", unit: "none", optional: form.lineItems[editingItem].optional === true }}
+          item={{ name: form.lineItems[editingItem].name ?? "", description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity ?? 1, discount: form.lineItems[editingItem].discount ?? "0", unit: "none", optional: form.lineItems[editingItem].optional === true, isTitle: form.lineItems[editingItem].isTitle === true }}
           showUnit={false}
           showDiscount={false}
           showOptional={kind === "quote"}
           canRemove
-          onCommit={(next) => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.map((x, i) => (i === idx ? { ...x, name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true } : x)) }); }}
+          onCommit={(next) => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.map((x, i) => (i === idx ? { ...x, name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, optional: next.optional === true, isTitle: next.isTitle === true } : x)) }); }}
           onRemove={() => { const idx = editingItem; setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== idx) }); }}
           onClose={() => setEditingItem(null)}
         />
@@ -18919,7 +18939,7 @@ function SignatureDialog({lang,kind,id,onClose,onSaved}:{lang:Lang;kind:"invoice
 // a draft copy: Save commits into the parent form, X / backdrop / back
 // discards. Fields shown match what each editor's item supports.
 // ---------------------------------------------------------------------------
-type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours"; id?: string; optional?: boolean };
+type LineItemDraft = { name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours"; id?: string; optional?: boolean; isTitle?: boolean };
 
 // Danny 2026-10-15: a collapsed line card reads as one tappable card — a tap
 // anywhere on it opens the LineItemEditSheet — except on the card's own
@@ -18965,24 +18985,35 @@ function LineItemEditSheet({ lang, item, showUnit, showDiscount, showOptional, c
         <div className="line-item-sheet-head">
           <div className="sheet-handle" />
           <div className="section-title-row">
-            <h2>{lang === "es" ? "Editar artículo" : "Edit item"}</h2>
+            <h2>{draft.isTitle ? (lang === "es" ? "Editar título" : "Edit headline") : (lang === "es" ? "Editar artículo" : "Edit item")}</h2>
             <button type="button" onClick={close} aria-label={lang === "es" ? "Cerrar" : "Close"}>×</button>
           </div>
         </div>
         <div className="line-item-sheet-body">
-          <label><span>{lang === "es" ? "Nombre" : "Name"}</span><input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={lang === "es" ? "Trabajo / Material" : "Work / Material"} /></label>
-          <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={6} value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What's included"} /></label>
-          <div className="doc-price-qty">
+          {/* Headline lines (Danny 2026-11-09): a section header that groups
+              the items under it — text only, no price, never in the total.
+              Turning it on clears the priced fields so a headline can never
+              carry a hidden amount into the document. */}
+          <div className="line-item-optional-row">
+            <div>
+              <strong>{lang === "es" ? "Título" : "Headline"}</strong>
+              <small>{lang === "es" ? "Encabezado de sección — sin precio, no suma al total." : "Section header — no price, never adds to the total."}</small>
+            </div>
+            <Switch checked={draft.isTitle === true} onChange={(next) => set(next ? { isTitle: true, optional: false, description: "", amount: "0", quantity: 1, discount: "0", unit: "none" } : { isTitle: false })} ariaLabel={lang === "es" ? "Título" : "Headline"} />
+          </div>
+          <label><span>{draft.isTitle ? (lang === "es" ? "Título" : "Headline") : (lang === "es" ? "Nombre" : "Name")}</span><input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={draft.isTitle ? (lang === "es" ? "Materiales / Alcance…" : "Materials / Scope of work…") : (lang === "es" ? "Trabajo / Material" : "Work / Material")} /></label>
+          {!draft.isTitle && <label><span>{lang === "es" ? "Descripción" : "Description"}</span><textarea rows={6} value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder={lang === "es" ? "Qué incluye" : "What's included"} /></label>}
+          {!draft.isTitle && <div className="doc-price-qty">
             <label><span>{lang === "es" ? "Precio" : "Price"}</span><input inputMode="decimal" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} placeholder="$0.00" /></label>
             <label><span>{qtyLabel}</span><input inputMode="decimal" type="number" min="0" step="any" value={draft.quantity} onChange={(e) => set({ quantity: Number(e.target.value) })} /></label>
-          </div>
-          {(showUnit || showDiscount) && (
+          </div>}
+          {!draft.isTitle && (showUnit || showDiscount) && (
             <div className="doc-price-qty">
               {showUnit && <label><span>{lang === "es" ? "Unidad" : "Unit"}</span><select value={draft.unit} onChange={(e) => set({ unit: e.target.value as LineItemDraft["unit"] })}><option value="none">{lang === "es" ? "Ninguna" : "None"}</option><option value="days">{lang === "es" ? "Días" : "Days"}</option><option value="hours">{lang === "es" ? "Horas" : "Hours"}</option></select></label>}
               {showDiscount && <label><span>{lang === "es" ? "Descuento de partida" : "Item discount"}</span><input inputMode="decimal" value={draft.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="$0.00" /></label>}
             </div>
           )}
-          {showOptional && (
+          {showOptional && !draft.isTitle && (
             <div className="line-item-optional-row">
               <div>
                 <strong>{lang === "es" ? "Opcional" : "Optional"}</strong>
@@ -20023,7 +20054,7 @@ type InvoiceFormState = {
   // Card payment controls (0100): carried at their defaults here — the
   // switches themselves live on the invoice detail screen.
   cardPaymentsEnabled: boolean; cardFeeEnabled: boolean;
-  lineItems: Array<{ name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours" }>;
+  lineItems: Array<{ name: string; description: string; amount: string; quantity: number; discount: string; unit: "none" | "days" | "hours"; isTitle?: boolean }>;
 };
 function invoiceDraftHasContent(form: any): boolean {
   if (!form || typeof form !== "object") return false;
@@ -20156,7 +20187,7 @@ function InvoiceBuilder({
   const docDismiss = useAnimatedDismiss(docOpen);
   const formRef = useRef<HTMLFormElement | null>(null);
   const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
-  const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => ({ ...item, description: item.description.trim() || item.name.trim() }));
+  const validItems = form.lineItems.filter((item) => item.name.trim() || item.description.trim()).map((item) => (item.isTitle ? { ...item, description: "", amount: item.amount || "0" } : { ...item, description: item.description.trim() || item.name.trim() }));
   // Danny 2026-10-18: a failed Save names AND marks the exact missing field
   // (red ring + scroll to it), mirroring the contract signer's flagMissing
   // (d6610a8) and the estimate builder above — no more lone "Complete the
@@ -20201,6 +20232,53 @@ function InvoiceBuilder({
   useEscapeToClose(docOpen && !activeSheet && !previewOpen && editingItem === null && !clientSheetOpen, exitAndSave);
   const preview: FinancialDocument = { ...form, lineItems: validItems.length ? validItems : form.lineItems, discountValue: discountEnabled ? form.discountValue : "0", taxValue: taxEnabled ? form.taxValue : "0", subtotal: usd(totals.subtotal), total: usd(totals.total) };
   const updateItem = (index: number, patch: Partial<(typeof form.lineItems)[number]>) => setForm((current) => ({ ...current, lineItems: current.lineItems.map((item, i) => i === index ? { ...item, ...patch } : item) }));
+  // Drag-to-reorder via the grip handle — the estimate builder's Build 0.6
+  // pattern, mirrored so invoice lines move the same way (Danny
+  // 2026-11-09: headlines + line order in the editors). Pointer events
+  // cover touch and mouse; rows swap live as the pointer crosses
+  // midpoints; arrow keys on a focused grip move the row.
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const lineListRef = useRef<HTMLDivElement>(null);
+  const dragFromRef = useRef<number | null>(null);
+  const moveLineItem = (from: number, to: number) => {
+    setForm((current) => {
+      if (from === to || to < 0 || to >= current.lineItems.length) return current;
+      const next = [...current.lineItems];
+      const [moved] = next.splice(from, 1);
+      if (moved) next.splice(to, 0, moved);
+      return { ...current, lineItems: next };
+    });
+  };
+  const onGripPointerDown = (e: PointerEvent<HTMLSpanElement>, index: number) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    dragFromRef.current = index;
+    setDraggingIdx(index);
+    buzz(8);
+  };
+  const onGripPointerMove = (e: PointerEvent<HTMLSpanElement>) => {
+    const from = dragFromRef.current;
+    if (from === null) return;
+    const rows = lineListRef.current?.querySelectorAll<HTMLElement>("[data-b06-line]");
+    if (!rows || rows.length === 0) return;
+    let target = rows.length - 1;
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i]!.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) { target = i; break; }
+    }
+    if (target !== from) {
+      dragFromRef.current = target;
+      setDraggingIdx(target);
+      moveLineItem(from, target);
+    }
+  };
+  const endGripDrag = () => { dragFromRef.current = null; setDraggingIdx(null); };
+  const onGripKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>, index: number) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    moveLineItem(index, index + (e.key === "ArrowUp" ? -1 : 1));
+    buzz(8);
+  };
   const dateSummary = `${form.issueDate ? formatDate(form.issueDate, lang) : (lang === "es" ? "Fecha" : "Issue date")}  →  ${form.dueDate ? formatDate(form.dueDate, lang) : (lang === "es" ? "Sin vencimiento" : "No due date")}  ·  ${form.invoiceNumber || "INV-…"}`;
   return <div className={`sheet-backdrop floating-doc-backdrop doc-fullscreen${docDismiss.closing ? " closing" : ""}`} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) exitAndSave(); }}>
     <section className="floating-doc-sheet invoice-builder-page" role="dialog" aria-modal="true" aria-label={t.newInvoice}>
@@ -20213,25 +20291,28 @@ function InvoiceBuilder({
       {/* Build 2.0: line items stand alone — no card-within-a-card; the
           rows extend side to side for more usable space. */}
       <div className="form-section invoice-items-section doc-items-flat"><p className="doc-items-legend">{t.lineItems}</p>
-        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className={`invoice-line-card doc-line-card collapsed${missing === "items" && index === 0 ? " field-missing" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}>
+        <div className="b06-line-list" ref={lineListRef}>
+        {form.lineItems.map((item, index) => { const lineTotal = Math.max(0, money(item.amount) * item.quantity - money(item.discount)); const summary = lineItemSummary(item, `${lang === "es" ? "Partida" : "Item"} ${index + 1}`); return <article className={`invoice-line-card doc-line-card collapsed${item.isTitle ? " is-title" : ""}${missing === "items" && index === 0 ? " field-missing" : ""}${draggingIdx === index ? " b06-dragging" : ""}`} key={index} ref={index === 0 ? firstLineRef : undefined} data-b06-line onClick={(e) => { if (lineCardTapOpens(e.target)) setEditingItem(index); }}>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, Price | Quantity side-by-side. */}
-          <div className="doc-line-top"><span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span><span className="doc-line-total">{usd(lineTotal)}</span>{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
+          <div className="doc-line-top"><span className="b06-grip" role="button" tabIndex={0} aria-label={lang === "es" ? `Arrastrar para reordenar la partida ${index + 1}` : `Drag to reorder item ${index + 1}`} onPointerDown={(e) => onGripPointerDown(e, index)} onPointerMove={onGripPointerMove} onPointerUp={endGripDrag} onPointerCancel={endGripDrag} onKeyDown={(e) => onGripKeyDown(e, index)}><Icon size={20}><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" /></Icon></span>{item.isTitle ? <span className="doc-line-title-chip">{lang === "es" ? "Título" : "Headline"}</span> : <span className="doc-line-index">{lang === "es" ? `Partida ${index + 1}` : `Item ${index + 1}`}</span>}{!item.isTitle && <span className="doc-line-total">{usd(lineTotal)}</span>}{form.lineItems.length > 1 && <button type="button" className="doc-line-remove" aria-label={lang === "es" ? "Eliminar partida" : "Remove item"} onClick={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== index) })}>×</button>}</div>
           <button type="button" className="doc-line-summary" onClick={() => setEditingItem(index)}>
             <span className="doc-line-summary-text"><strong>{summary.title}</strong>{summary.preview && <small>{summary.preview}</small>}</span>
             <span className="doc-line-open" aria-hidden="true">›</span>
           </button>
         </article>})}
+        </div>
         <button className="secondary-button" type="button" onClick={() => { setEditingItem(form.lineItems.length); setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "", quantity: 1, discount: "0", unit: "none" }] }); }}><PlusIcon />{t.addLine}</button>
+        <button className="secondary-button" type="button" onClick={() => { setEditingItem(form.lineItems.length); setForm({ ...form, lineItems: [...form.lineItems, { name: "", description: "", amount: "0", quantity: 1, discount: "0", unit: "none", isTitle: true }] }); }}>{lang === "es" ? "Agregar título" : "Add headline"}</button>
       </div>
       {editingItem !== null && form.lineItems[editingItem] && (
         <LineItemEditSheet
           lang={lang}
-          item={{ name: form.lineItems[editingItem].name, description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity, discount: form.lineItems[editingItem].discount, unit: form.lineItems[editingItem].unit }}
+          item={{ name: form.lineItems[editingItem].name, description: form.lineItems[editingItem].description, amount: form.lineItems[editingItem].amount, quantity: form.lineItems[editingItem].quantity, discount: form.lineItems[editingItem].discount, unit: form.lineItems[editingItem].unit, isTitle: form.lineItems[editingItem].isTitle === true }}
           showUnit
           showDiscount
           canRemove={form.lineItems.length > 1}
-          onCommit={(next) => updateItem(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, discount: next.discount, unit: next.unit })}
+          onCommit={(next) => updateItem(editingItem, { name: next.name, description: next.description, amount: next.amount, quantity: next.quantity, discount: next.discount, unit: next.unit, isTitle: next.isTitle === true })}
           onRemove={() => setForm({ ...form, lineItems: form.lineItems.filter((_, i) => i !== editingItem) })}
           onClose={() => setEditingItem(null)}
         />
@@ -31909,7 +31990,13 @@ function ClientDocPageViewer({ pages, urls, kind = "page", index, title, lang, o
     }
   };
 
-  return (
+  // Portaled to the body (2026-11-09): inside the app's animated sheets
+  // (the document editors, the customize overlay) a position:fixed
+  // backdrop anchors to the transformed sheet instead of the viewport —
+  // the zoom opened as a floating window over the editor (Danny's EST0023
+  // recording) instead of taking the full screen. Same fix the line-item
+  // sheet already carries; globalThis for the DOM document, as there.
+  const viewer = (
     <div className="lightbox-backdrop client-doc-zoom" role="dialog" aria-modal="true" aria-label={title}>
       <div
         ref={stageRef}
@@ -31942,6 +32029,7 @@ function ClientDocPageViewer({ pages, urls, kind = "page", index, title, lang, o
       </div>
     </div>
   );
+  return typeof globalThis.document === "undefined" ? viewer : createPortal(viewer, globalThis.document.body);
 }
 
 function PdfPageView({ token, lang, title, variant }: { token: string; lang: Lang; title: string; variant?: string }) {

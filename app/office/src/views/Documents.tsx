@@ -593,10 +593,12 @@ function LineItemsTable({ doc }: { doc: Quote | Invoice }) {
       <ul className="link-list static">
         {doc.lineItems.map((item, i) => (
           <li key={i}>
-            <span>{[item.name, item.description].filter(Boolean).join(" — ") || "Line item"}{item.optional ? <span className="chip">Optional</span> : null}</span>
-            <span className="feed-meta">
-              {(item.quantity ?? 1) !== 1 ? `${item.quantity} × ${formatMoney(item.amount)} · ` : ""}{formatMoney(lineTotal(item))}
-            </span>
+            <span>{item.isTitle ? <strong>{(item.name ?? "").trim() || "Headline"}</strong> : <>{[item.name, item.description].filter(Boolean).join(" — ") || "Line item"}{item.optional ? <span className="chip">Optional</span> : null}</>}</span>
+            {!item.isTitle && (
+              <span className="feed-meta">
+                {(item.quantity ?? 1) !== 1 ? `${item.quantity} × ${formatMoney(item.amount)} · ` : ""}{formatMoney(lineTotal(item))}
+              </span>
+            )}
           </li>
         ))}
       </ul>

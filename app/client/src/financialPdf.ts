@@ -174,7 +174,7 @@ export type FinancialDocument = {
   jobAddress: string;
   shippingAddress?: string;
   jobType: string;
-  lineItems: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours"; id?: string; optional?: boolean }>;
+  lineItems: Array<{ name?: string; description: string; amount: string; quantity?: number; discount?: string; unit?: "none" | "days" | "hours"; id?: string; optional?: boolean; isTitle?: boolean }>;
   invoiceNumber?: string;
   subtotal: string;
   discountType: PdfAdjustmentType;
@@ -677,6 +677,31 @@ export async function buildFinancialPdf(
   const baseLineItems = document.lineItems.filter((item) => !item.optional);
   let rowIndex = 0;
   for (const item of baseLineItems) {
+    if (item.isTitle) {
+      // Headline line (Danny 2026-11-09): a section header inside the
+      // items table — the bold name on a light accent band, full width,
+      // no qty/amount columns. Minimal keeps its band-free language.
+      const titleText = (item.name ?? "").trim() || item.description.trim();
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10));
+      const titleLines = wrapRichLines(doc, [{ text: titleText, bold: true }], w - margin * 2 - 16, font);
+      const titleH = Math.max(20, titleLines.length * descStep + 8);
+      ensureSpace(titleH);
+      if (theme !== "minimal") {
+        doc.setFillColor(Math.round(255 - (255 - r) * 0.13), Math.round(255 - (255 - g) * 0.13), Math.round(255 - (255 - b) * 0.13));
+        doc.rect(margin, y - rowTopPad, w - margin * 2, titleH, "F");
+      }
+      // A page break inside ensureSpace resets the ambient font — re-pin.
+      doc.setFont(font, "bold");
+      doc.setFontSize(F(10));
+      doc.setTextColor(...ink);
+      titleLines.forEach((lineRuns, lineIndex) => drawRichLine(doc, lineRuns, margin + 8, y + lineIndex * descStep, font));
+      doc.setFont(font, "normal");
+      doc.setFontSize(F(9));
+      y += titleH;
+      rowIndex++;
+      continue;
+    }
     const qty = item.quantity ?? 1;
     const itemTotal = Math.max(0, money(item.amount) * qty - money(item.discount ?? "0"));
     const suffix = !custom.showQuantityUnitPrice || (qty === 1 && item.unit === "none" && money(item.discount ?? "0") <= 0)

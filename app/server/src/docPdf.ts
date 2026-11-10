@@ -66,6 +66,7 @@ export interface DocumentLinkPdfPayload {
     discount?: string;
     unit?: string;
     optional?: boolean;
+    isTitle?: boolean;
     id?: string;
   }>;
   // Estimate options (0076): the link payload already carries the accepted
@@ -154,6 +155,7 @@ export async function buildDocumentLinkPdf(
       discount: li.discount ?? "0",
       unit: (li.unit === "days" || li.unit === "hours" ? li.unit : "none") as "none" | "days" | "hours",
       optional: li.optional === true,
+      isTitle: li.isTitle === true,
       id: li.id,
     })),
     optionSelection: payload.acceptedOptions
