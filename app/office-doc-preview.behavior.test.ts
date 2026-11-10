@@ -44,6 +44,7 @@ check("Office: signables get a Preview button too", DOCS.includes("void openPrev
 check("Office: preview modal renders the PDF in an iframe", DOCS.includes('className="modal modal-preview"') && DOCS.includes('className="pdf-preview-frame"'));
 check("Office: object-url helper exists", UTILS.includes("export function base64ToObjectUrl"));
 check("preview modal CSS exists", CSS.includes(".modal-preview") && CSS.includes(".pdf-preview-frame"));
+check("drawer outranks the shared detail-panel height cap", CSS.includes(".detail-panel.doc-detail-drawer") && CSS.includes("max-height: none"));
 
 // ---------------- functional: real PDF bytes through the registry ----------------
 const dir = await mkdtemp(join(tmpdir(), "crewkat-docpdf-"));

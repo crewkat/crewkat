@@ -459,8 +459,11 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
    "edit window still small" at the old 430px split column) — the list
    stays full-width behind it, and the editor modal (z 80) opens above. */
 .doc-drawer-backdrop { position: fixed; inset: 0; background: rgba(10, 34, 57, 0.45); z-index: 60; }
-.doc-detail-drawer {
-  position: fixed; top: 0; right: 0; height: 100dvh; width: min(880px, 96vw);
+/* Compound selector on purpose: the shared .detail-panel rule caps
+   max-height at calc(100vh - 100px), which left the first live drawer
+   floating ~100px short of the bottom (Danny 2026-11-09: "Looks off"). */
+.detail-panel.doc-detail-drawer {
+  position: fixed; top: 0; right: 0; height: 100dvh; max-height: none; width: min(880px, 96vw);
   z-index: 70; overflow: auto; border-radius: 0; padding: 22px 24px;
   animation: drawer-in 0.18s ease-out;
 }
