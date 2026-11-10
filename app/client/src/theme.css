@@ -1070,7 +1070,7 @@ fieldset { padding: 0; border: 0; }
 .toolkit-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}.toolkit-summary article{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}.toolkit-summary span{font-size:.76rem;color:var(--dim)}.toolkit-summary strong{font-size:1.18rem}
 .toolkit-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.toolkit-tabs button{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:8px;padding:9px 11px;font-weight:700}.toolkit-tabs button.active{background:var(--text);color:var(--bg);border-color:var(--text)}
 .toolkit-section{display:grid;gap:16px}.tool-records{display:grid;gap:8px}.tool-records>article{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px}.tool-records article>div:first-child{min-width:0;display:flex;flex-direction:column;gap:3px}.tool-records small,.tool-records span{color:var(--dim)}
-.quick-add{display:grid;gap:7px}.quick-add>span{font-size:.82rem;font-weight:700}.quick-add>div{display:flex;flex-wrap:wrap;gap:6px}.quick-add button{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:8px 11px;font-size:.78rem}
+.b06-template-row b.b06-pb-added{font-size:12.5px;font-weight:700}.b06-pb-done{margin-top:10px}
 .check-row{display:flex!important;align-items:center;gap:10px}.check-row input{width:22px!important;height:22px!important;flex:none}
 .weather-badge{display:flex;flex-wrap:wrap;gap:5px;align-items:center;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-top:7px;font-size:.72rem}.weather-badge.rain{border-color:#bd4e2c;background:color-mix(in srgb,#f26430 10%,var(--surface))}.weather-badge em{font-style:normal;color:var(--dim);width:100%}
 .analysis-list{display:grid;gap:9px}.analysis-list>h2{font-size:1rem;margin:8px 0 0}.analysis-list>article{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;display:grid;gap:10px}.analysis-list article>div{display:flex;flex-direction:column}.analysis-list dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0}.analysis-list dl div{display:grid;gap:2px}.analysis-list dt{font-size:11px;color:var(--dim)}.analysis-list dd{margin:0;font-weight:700;font-size:.82rem}.report-analysis{margin:18px 0}.report-summary{margin-top:20px}
@@ -5234,7 +5234,7 @@ body > .document-overlay.customize-overlay { z-index: 200; }
 /* --- 1c. Line items stand alone: no card-within-a-card, rows run side to side --- */
 .floating-doc-form .form-section.doc-items-flat { border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0 -14px; display: grid; gap: 10px; }
 .doc-items-flat > .doc-items-legend { margin: 0 14px; padding: 0; font-size: 12px; font-weight: 800; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; }
-.doc-items-flat > .b06-btn-row, .doc-items-flat > .quick-add { margin: 0 14px; }
+.doc-items-flat > .b06-btn-row { margin: 0 14px; }
 .doc-items-flat > .secondary-button, .doc-items-flat > .primary-button.add-item-wide { margin: 0 14px; }
 /* Full-bleed section, remaining direct children (Danny 2026-10-15: New
    estimate overflowed sideways — Add line bled off the right edge,

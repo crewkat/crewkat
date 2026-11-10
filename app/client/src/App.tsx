@@ -17562,6 +17562,34 @@ function QuoteBuilder({
   const [assemblyOpen, setAssemblyOpen] = useState(false);
   useEscapeToClose(templateOpen, () => setTemplateOpen(false));
   useEscapeToClose(assemblyOpen, () => setAssemblyOpen(false));
+  // Price book picker: a popup window too (Danny 2026-11-09) — the inline
+  // chip wall ate half the builder screen once the book grew past a few
+  // items. The popup stays open while items are tapped so several can be
+  // added in one pass; pbAdded tracks what was added this pass.
+  const [priceBookOpen, setPriceBookOpen] = useState(false);
+  const [priceBookQuery, setPriceBookQuery] = useState("");
+  const [pbAdded, setPbAdded] = useState<Record<string, number>>({});
+  useEscapeToClose(priceBookOpen, () => setPriceBookOpen(false));
+  const addPriceBookItem = (item: { id: string | number; name: string; description?: string | null; unitPrice: string }) => {
+    setForm({
+      ...form,
+      lineItems: [
+        ...form.lineItems.filter(
+          (line) => line.name || line.description || line.amount,
+        ),
+        {
+          name: item.name,
+          description: item.description ?? "",
+          amount: item.unitPrice,
+          quantity: 1,
+        },
+      ],
+    });
+    setPbAdded((current) => ({
+      ...current,
+      [String(item.id)]: (current[String(item.id)] ?? 0) + 1,
+    }));
+  };
   // Build 0.6 (item 7): create mode mirrors the edit sheet — discount/tax
   // start as collapsed "+ …" rows (FinancialEditor's showDiscount/showTax).
   const [showDiscount, setShowDiscount] = useState(false);
@@ -17782,7 +17810,7 @@ function QuoteBuilder({
     flushQuoteDraft();
     navigateAfterClose();
   };
-  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !previewOpen && !clientSheetOpen, exitAndSave);
+  useEscapeToClose(docOpen && !templateOpen && !assemblyOpen && !priceBookOpen && !previewOpen && !clientSheetOpen, exitAndSave);
   const preview: FinancialDocument = {
     ...form,
     lineItems: validLineItems(),
@@ -17870,42 +17898,18 @@ function QuoteBuilder({
           >
             {lang === "es" ? "Guardar como ensamblaje" : "Save as assembly"}
           </button>
-          </div>
+          {/* Price book: trigger button only — the items live in the popup
+              below, not as an inline chip wall (Danny 2026-11-09). */}
           {(growth.data?.priceBook.length ?? 0) > 0 && (
-            <div className="quick-add">
-              <span>
-                {lang === "es"
-                  ? "Agregar de lista de precios"
-                  : "Add from price book"}
-              </span>
-              <div>
-                {growth.data?.priceBook.map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        lineItems: [
-                          ...form.lineItems.filter(
-                            (line) => line.name || line.description || line.amount,
-                          ),
-                          {
-                            name: item.name,
-                            description: item.description ?? "",
-                            amount: item.unitPrice,
-                            quantity: 1,
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    {item.name} · {usd(money(item.unitPrice))}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <button
+              type="button"
+              className="secondary-button b06-small-btn"
+              onClick={() => { setPbAdded({}); setPriceBookQuery(""); setPriceBookOpen(true); }}
+            >
+              {lang === "es" ? "Agregar de lista de precios" : "Add from price book"}
+            </button>
           )}
+          </div>
           {/* Build 1.2 (part A): big line-item fields — full-width name on its
               own row, a large description area, and Price | Quantity
               side-by-side. Grip (drag reorder) and remove stay on the card. */}
@@ -18167,6 +18171,56 @@ function QuoteBuilder({
             </div>
           </section>
         </div>
+      )}
+      {/* Price book picker as a floating popup (Danny 2026-11-09): search +
+          a scrollable list replace the inline chip wall. Tapping a row adds
+          the item and keeps the popup open for the next one; the row shows
+          how many times it was added this pass. */}
+      {priceBookOpen && (
+        <FloatPopup lang={lang} title={lang === "es" ? "Agregar de lista de precios" : "Add from price book"} onClose={() => setPriceBookOpen(false)}>
+          {(close) => {
+            const query = priceBookQuery.trim().toLowerCase();
+            const items = (growth.data?.priceBook ?? []).filter(
+              (item) => !query || item.name.toLowerCase().includes(query),
+            );
+            return (
+              <>
+                <input
+                  className="b06-popup-input"
+                  value={priceBookQuery}
+                  onChange={(e) => setPriceBookQuery(e.target.value)}
+                  placeholder={lang === "es" ? "Buscar en la lista…" : "Search the price book…"}
+                  aria-label={lang === "es" ? "Buscar en la lista de precios" : "Search the price book"}
+                  autoFocus
+                />
+                {items.map((item) => {
+                  const added = pbAdded[String(item.id)] ?? 0;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="b06-template-row"
+                      onClick={() => addPriceBookItem(item)}
+                    >
+                      <span>{item.name} · {usd(money(item.unitPrice))}</span>
+                      {added > 0
+                        ? <b className="b06-pb-added">✓ {lang === "es" ? "Agregado" : "Added"}{added > 1 ? ` ×${added}` : ""}</b>
+                        : <b aria-hidden="true">+</b>}
+                    </button>
+                  );
+                })}
+                {items.length === 0 && (
+                  <small className="status" role="status">
+                    {lang === "es" ? "Nada coincide con esa búsqueda." : "Nothing matches that search."}
+                  </small>
+                )}
+                <button type="button" className="primary-button b06-pb-done" onClick={close}>
+                  {lang === "es" ? "Listo" : "Done"}
+                </button>
+              </>
+            );
+          }}
+        </FloatPopup>
       )}
       </section>
     </div>
