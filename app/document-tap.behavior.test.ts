@@ -38,8 +38,10 @@ describe("invoice/estimate cards are tappable", () => {
   });
 
   test("estimate card opens the quote preview", () => {
+    // The class template also carries the 2026-11-09 create-landing glow
+    // conditional, mirroring the invoice card pin above.
     expect(APP).toContain(
-      '<TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>',
+      '<TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}${glowQuoteId === quote.id ? " invoice-row-glow" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>',
     );
   });
 

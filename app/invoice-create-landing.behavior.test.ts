@@ -19,7 +19,9 @@
 //     glow on a ~1.7s timer.
 //   - Scope: invoice CREATION only. Editing an existing invoice (the
 //     preview's FinancialEditor / updateInvoiceDocument) is untouched, as
-//     are estimates, jobs, and clients.
+//     are jobs and clients. (Estimates were excluded here on Nov 7; Danny
+//     extended the same landing + glow to them on 2026-11-09 — see
+//     estimate-create-landing.behavior.test.ts.)
 // Run from app/:  bun invoice-create-landing.behavior.test.ts
 import { readFile } from "node:fs/promises";
 
@@ -39,7 +41,7 @@ function sliceFrom(src: string, marker: string, length: number): string {
 
 // --- The screen entry can carry the highlight --------------------------------
 check("invoices screen entry carries an optional highlightInvoiceId",
-  APP.includes('{ name: "invoices"; highlightInvoiceId?: number }'));
+  APP.includes('{ name: "invoices"; highlightInvoiceId?: number; highlightQuoteId?: number }'));
 
 // --- The shell landing helper --------------------------------------------------
 const landBlock = sliceFrom(APP, "const closeInvoiceBuilder = (invoiceId: number)", 1300);
@@ -74,7 +76,11 @@ check("invoice builder receives onCreated wired to the landing helper",
 // --- The builder's save path ------------------------------------------------------
 check("InvoiceBuilder declares onCreated with the created id",
   APP.includes("onCreated?: (invoiceId: number) => void"));
-const saveBlock = sliceFrom(APP, "onSuccess: async (saved) =>", 1600);
+// Anchor inside InvoiceBuilder specifically: QuoteBuilder's save also
+// uses "onSuccess: async (saved)" since the 2026-11-09 parity build and
+// sits earlier in the file — slicing from the invoice save's own
+// Create-landing comment keeps this block pointed at the invoice save.
+const saveBlock = sliceFrom(APP, "/* Create landing (Danny 2026-11-07)", 900);
 check("builder save onSuccess receives the save result", saveBlock.length > 0);
 check("save awaits the invoices invalidation before navigating",
   saveBlock.includes('await qc.invalidateQueries({ queryKey: ["invoices"] })'));
@@ -109,10 +115,14 @@ check("glow animation runs 1.5s on the invoice row",
   CSS.includes(".document-tap.ck-invoice-row.invoice-row-glow { animation: invoice-row-glow 1.5s ease-out; }"));
 
 // --- Scope guards ---------------------------------------------------------------------
-check("estimate landing is untouched (closeQuoteBuilder carries no highlight)",
-  !sliceFrom(APP, "const closeQuoteBuilder = () => {", 400).includes("highlightInvoiceId"));
-check("estimate rows never get the invoice glow class",
-  !APP.includes("ck-est-row${") || !sliceFrom(APP, "ck-est-row", 200).includes("invoice-row-glow"));
+// Danny 2026-11-09 reversed the Nov 7 scope call: estimates now land and
+// glow with full parity (estimate-create-landing.behavior.test.ts). The
+// guards below pin that the INVOICE path itself is unchanged by it and
+// that the estimate glow runs on its own highlight channel.
+check("invoice landing still uses closeInvoiceBuilder with its own id channel",
+  APP.includes("const closeInvoiceBuilder = (invoiceId: number)") && APP.includes("highlightInvoiceId: invoiceId"));
+check("estimate glow uses the separate highlightQuoteId channel",
+  APP.includes("highlightQuoteId: quoteId") && APP.includes("glowQuoteId === quote.id"));
 const editBlock = sliceFrom(APP, "await api.updateInvoiceDocument", 500);
 check("existing-invoice editing still saves via updateInvoiceDocument", editBlock.length > 0);
 check("the edit-save path does not land or glow",

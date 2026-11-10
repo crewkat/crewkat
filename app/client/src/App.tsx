@@ -374,11 +374,11 @@ type Screen =
   | { name: "takePayments" }
   | { name: "legal"; document: LegalDocumentKind }
   | { name: "companyProfile" }
-  | { name: "quotes" }
+  | { name: "quotes"; highlightQuoteId?: number }
   | { name: "quoteNew"; clientId?: number; jobId?: number }
   | { name: "quotePreview"; quoteId: number }
   | { name: "quoteAttachments"; quoteId: number }
-  | { name: "invoices"; highlightInvoiceId?: number }
+  | { name: "invoices"; highlightInvoiceId?: number; highlightQuoteId?: number }
   | { name: "invoiceNew"; jobId?: number }
   | { name: "invoicePreview"; invoiceId: number }
   | { name: "invoiceAttachments"; invoiceId: number }
@@ -3639,15 +3639,51 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
     requestNavigationScroll({ mode: "top" });
   };
   // New Estimate close/save: land on the Estimates list deterministically.
-  // When the builder was opened from a document list (Estimates or the
-  // combined Invoices & Estimates screen), pop back to that very list so
-  // ITS back button keeps going to its own parent; from anywhere else
-  // (job/client detail, quick-create), swap the form for the list.
-  const closeQuoteBuilder = () => {
+  // A plain close (no save) keeps the original shape: when the builder was
+  // opened from a document list (Estimates or the combined Invoices &
+  // Estimates screen), pop back to that very list so ITS back button keeps
+  // going to its own parent; from anywhere else (job/client detail,
+  // quick-create), swap the form for the list.
+  // A create-save (Danny 2026-11-09) gets full parity with the invoice
+  // create landing: the list entry under the form is rewritten carrying
+  // the new estimate's id and popped to, so the list opens on the saved
+  // estimate with its row glowing orange briefly. From anywhere else the
+  // form swaps for the hub, which opens on its Estimates tab. (The Nov 7
+  // invoice build deliberately left estimates out; Danny reversed that
+  // after saving an estimate and landing on the Invoices tab.)
+  const closeQuoteBuilder = (quoteId?: number) => {
     const stack = screenStackRef.current;
     const below = stack[stack.length - 2];
-    if (below && (below.name === "quotes" || below.name === "invoices")) popScreenStack();
-    else replaceScreen({ name: "quotes" });
+    if (quoteId == null) {
+      if (below && (below.name === "quotes" || below.name === "invoices")) popScreenStack();
+      else replaceScreen({ name: "quotes" });
+      return;
+    }
+    if (below && (below.name === "invoices" || below.name === "quotes")) {
+      scrollSnapshotsRef.current[stack.length - 2] = undefined;
+      const target: Screen = below.name === "invoices"
+        ? { name: "invoices", highlightQuoteId: quoteId }
+        : { name: "quotes", highlightQuoteId: quoteId };
+      const nextStack: Screen[] = [...stack.slice(0, -2), target];
+      setScreenStack(nextStack);
+      screenStackRef.current = nextStack;
+      requestNavigationScroll({ mode: "top" });
+    } else {
+      replaceScreen({ name: "invoices", highlightQuoteId: quoteId });
+    }
+  };
+  // The estimate lists consume the highlight the moment they take it
+  // (same never-replay rule as the invoice highlight below).
+  const consumeQuoteHighlight = () => {
+    const stack = screenStackRef.current;
+    const top = stack[stack.length - 1];
+    if (!top || (top.name !== "invoices" && top.name !== "quotes") || top.highlightQuoteId == null) return;
+    const clean: Screen = top.name === "invoices"
+      ? { name: "invoices", ...(top.highlightInvoiceId != null ? { highlightInvoiceId: top.highlightInvoiceId } : {}) }
+      : { name: "quotes" };
+    const nextStack: Screen[] = [...stack.slice(0, -1), clean];
+    setScreenStack(nextStack);
+    screenStackRef.current = nextStack;
   };
   // New Invoice save (Danny 2026-11-07): land on the Invoices & Estimates
   // hub, Invoices tab, with the just-created invoice's row glowing orange
@@ -4084,6 +4120,8 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
           settings={appSettings}
           onBack={goBack}
           setScreen={setScreen}
+          highlightQuoteId={screen.highlightQuoteId}
+          onConsumeQuoteHighlight={consumeQuoteHighlight}
         />
       )}
       {screen.name === "quoteNew" && (
@@ -4125,6 +4163,8 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
           setScreen={setScreen}
           highlightInvoiceId={screen.highlightInvoiceId}
           onConsumeHighlight={consumeInvoiceHighlight}
+          highlightQuoteId={screen.highlightQuoteId}
+          onConsumeQuoteHighlight={consumeQuoteHighlight}
         />
       )}
       {screen.name === "invoiceNew" && (
@@ -17283,11 +17323,15 @@ function QuotesScreen({
   settings,
   onBack,
   setScreen,
+  highlightQuoteId,
+  onConsumeQuoteHighlight,
 }: {
   lang: Lang;
   settings: Settings | null;
   onBack: () => void;
   setScreen: (s: Screen) => void;
+  highlightQuoteId?: number;
+  onConsumeQuoteHighlight?: () => void;
 }) {
   const t = copy[lang];
   const client = useQueryClient();
@@ -17296,6 +17340,23 @@ function QuotesScreen({
     queryKey: ["quotes"],
     queryFn: () => api.listQuotes({}),
   });
+  // Just-created estimate glow (Danny 2026-11-09): when the builder was
+  // opened from this list, the save lands back here carrying the new
+  // estimate's id; its card glows orange for ~1.5s and the id is consumed
+  // at once so the glow never replays (same rule as the hub).
+  const [glowQuoteId, setGlowQuoteId] = useState<number | null>(null);
+  const consumeQuoteHighlightRef = useRef(onConsumeQuoteHighlight);
+  consumeQuoteHighlightRef.current = onConsumeQuoteHighlight;
+  useEffect(() => {
+    if (highlightQuoteId == null) return;
+    setGlowQuoteId(highlightQuoteId);
+    consumeQuoteHighlightRef.current?.();
+  }, [highlightQuoteId]);
+  useEffect(() => {
+    if (glowQuoteId == null) return;
+    const timer = window.setTimeout(() => setGlowQuoteId(null), 1700);
+    return () => window.clearTimeout(timer);
+  }, [glowQuoteId]);
   const convert = useMutation({
     mutationFn: (id: number) => api.convertQuoteToJob({ id, today: localToday() }),
     onSuccess: () => {
@@ -17340,7 +17401,7 @@ function QuotesScreen({
       <section className="quote-list">
         {query.isLoading && <SkeletonList rows={5} />}
         {visibleQuotes.map((q) => (
-          <article key={q.id} className="quote-card-compact" onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: q.id }); }}>
+          <article key={q.id} className={`quote-card-compact${glowQuoteId === q.id ? " invoice-row-glow" : ""}`} onClick={() => { buzz(8); setScreen({ name: "quotePreview", quoteId: q.id }); }}>
             <div>
               <h2>{q.clientName}</h2>
               <p>
@@ -17432,7 +17493,9 @@ function QuoteBuilder({
   jobId?: number;
   onBack: () => void;
   // Build 0.6 (item 6): when provided, saving navigates here instead of goBack().
-  onSaved?: () => void;
+  // Create-save passes the new estimate's id (2026-11-09 glow landing);
+  // a close without a save calls it with no id.
+  onSaved?: (quoteId?: number) => void;
 }) {
   const t = copy[lang];
   const estTerms = estimateTerms(lang, settings);
@@ -17747,7 +17810,7 @@ function QuoteBuilder({
   const docDismiss = useAnimatedDismiss(docOpen);
   const formRef = useRef<HTMLFormElement | null>(null);
   const closeAfterSave = (fn: () => void) => { setDocOpen(false); window.setTimeout(fn, 180); };
-  const navigateAfterClose = () => closeAfterSave(() => { if (onSaved) onSaved(); else onBack(); });
+  const navigateAfterClose = (quoteId?: number) => closeAfterSave(() => { if (onSaved) onSaved(quoteId); else onBack(); });
   // Build 2.0: an interrupted draft is offered via a Resume/Discard banner.
   const [draftOffered, setDraftOffered] = useState(() => Boolean(readQuoteDraft()));
   const flushQuoteDraft = () => {
@@ -17778,7 +17841,7 @@ function QuoteBuilder({
         subtotal: usd(totals.subtotal),
         total: usd(totals.total),
       }),
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       // 0081: the sheet's explicit opt-in — append this document's job-site
       // address to the client's saved list as its own call. Best-effort:
       // the document is already saved either way, and the append dedupes
@@ -17789,12 +17852,15 @@ function QuoteBuilder({
       }
       clearQuoteDraft();
       setDraftOffered(false);
-      client.invalidateQueries({ queryKey: ["quotes"] });
+      // Create landing (Danny 2026-11-09, mirroring the Nov 7 invoice
+      // rule): await the quotes invalidation so the refetch settles before
+      // the list mounts — otherwise the landing list can paint the
+      // pre-create cache and the glow has no row to land on. Then play the
+      // floating window's exit animation and land on the Estimates list
+      // with the new estimate glowing (Build 0.6 item 6 + 2026-11-09).
+      await client.invalidateQueries({ queryKey: ["quotes"] });
       client.invalidateQueries({ queryKey: ["clients"] });
-      // Build 1.2 (part A): play the floating window's exit animation, then
-      // navigate. Build 0.6 (item 6): saving an estimate lands on the
-      // Estimates tab.
-      navigateAfterClose();
+      navigateAfterClose(saved.id);
     },
     onError: () => setError(t.error),
   });
@@ -18227,6 +18293,19 @@ function QuoteBuilder({
   );
 }
 
+/** Document paper item label: the title (name) in bold, the description
+ *  in regular weight (Danny 2026-11-09 — titles in estimates are bold;
+ *  mirrors itemLabelRuns in the PDF generator). */
+function PaperItemLabel({ item }: { item: { name?: string; description: string } }) {
+  return (
+    <span>
+      {item.name ? <strong>{item.name}</strong> : null}
+      {item.name && item.description ? " — " : ""}
+      {item.description}
+    </span>
+  );
+}
+
 function QuotePaper({
   quote,
   settings,
@@ -18300,7 +18379,7 @@ function QuotePaper({
           const qty = item.quantity ?? 1;
           const amount = money(item.amount);
           const lineTotal = Math.max(0, amount * qty - money(item.discount ?? "0"));
-          return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showQuantityUnitPrice && <span className="line-quantity">{qty} × {usd(amount)}</span>}{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+          return <div className="quote-line" key={i}><PaperItemLabel item={item} />{c.showQuantityUnitPrice && <span className="line-quantity">{qty} × {usd(amount)}</span>}{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
         })}
       </div>
       {c.showSummaryInfo && <div className="document-totals">
@@ -18318,7 +18397,7 @@ function QuotePaper({
           <h3>{lang === "es" ? "Opciones aceptadas" : "Accepted options"}</h3>
           {quote.optionSelection.accepted.items.map((item, i) => {
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
-            return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+            return <div className="quote-line" key={i}><PaperItemLabel item={item} />{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
           })}
           <div className="quote-line options-sum"><span>{lang === "es" ? "Total de opciones" : "Options total"}</span><strong>{usd(money(quote.optionSelection.accepted.optionsTotal))}</strong></div>
           <div className="quote-line options-grand"><span>{lang === "es" ? "Total con opciones aceptadas" : "Total with accepted options"}</span><strong>{usd(money(quote.optionSelection.accepted.totalWithOptions))}</strong></div>
@@ -18330,7 +18409,7 @@ function QuotePaper({
           <p>{lang === "es" ? "Complementos opcionales — no están incluidos en el total del estimado a menos que se seleccionen." : "Optional add-ons — not included in the estimate total unless selected."}</p>
           {quote.lineItems.filter((i) => i.optional && (i.description || i.name) && !(quote.optionSelection?.accepted?.items.some((a) => a.key === i.id))).map((item, i) => {
             const lineTotal = Math.max(0, money(item.amount) * (item.quantity ?? 1) - money(item.discount ?? "0"));
-            return <div className="quote-line" key={i}><span>{[item.name, item.description].filter(Boolean).join(item.name && item.description ? " — " : "")}</span>{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
+            return <div className="quote-line" key={i}><PaperItemLabel item={item} />{c.showAmount && <strong>{usd(lineTotal)}</strong>}</div>;
           })}
           <div className="quote-line options-sum"><span>{quote.optionSelection?.accepted ? (lang === "es" ? "Total de opciones disponibles" : "Available options total") : (lang === "es" ? "Total de opciones" : "Options total")}</span><strong>{usd(lineItemsTotal(quote.lineItems.filter((i) => i.optional && !(quote.optionSelection?.accepted?.items.some((a) => a.key === i.id)))))}</strong></div>
         </div>
@@ -19544,6 +19623,8 @@ function InvoicesScreen({
   setScreen,
   highlightInvoiceId,
   onConsumeHighlight,
+  highlightQuoteId,
+  onConsumeQuoteHighlight,
 }: {
   lang: Lang;
   settings: Settings | null;
@@ -19551,6 +19632,8 @@ function InvoicesScreen({
   setScreen: (s: Screen) => void;
   highlightInvoiceId?: number;
   onConsumeHighlight?: () => void;
+  highlightQuoteId?: number;
+  onConsumeQuoteHighlight?: () => void;
 }) {
   const t = copy[lang];
   const qc = useQueryClient();
@@ -19574,6 +19657,23 @@ function InvoicesScreen({
     const timer = window.setTimeout(() => setGlowInvoiceId(null), 1700);
     return () => window.clearTimeout(timer);
   }, [glowInvoiceId]);
+  // Just-created estimate glow (Danny 2026-11-09): same rule as the
+  // invoice glow, plus the tab flips to Estimates — landing here from an
+  // estimate save must never leave the user staring at the Invoices tab.
+  const [glowQuoteId, setGlowQuoteId] = useState<number | null>(null);
+  const consumeQuoteHighlightRef = useRef(onConsumeQuoteHighlight);
+  consumeQuoteHighlightRef.current = onConsumeQuoteHighlight;
+  useEffect(() => {
+    if (highlightQuoteId == null) return;
+    setTab("estimates");
+    setGlowQuoteId(highlightQuoteId);
+    consumeQuoteHighlightRef.current?.();
+  }, [highlightQuoteId]);
+  useEffect(() => {
+    if (glowQuoteId == null) return;
+    const timer = window.setTimeout(() => setGlowQuoteId(null), 1700);
+    return () => window.clearTimeout(timer);
+  }, [glowQuoteId]);
   const [confirmConvertQuoteId, setConfirmConvertQuoteId] = useState<number | null>(null);
   const [invSearch, setInvSearch] = useState("");
   const [invStatus, setInvStatus] = useState<"all" | InvoiceStatus>("all");
@@ -19860,7 +19960,7 @@ function InvoicesScreen({
           const expanded = isExpanded(rowKey, quote === visibleQuotes[0]);
           return (
           <SwipeRow key={quote.id} actions={quote.convertedToInvoiceId ? [] : [{ label: lang === "es" ? "Convertir" : "Convert", kind: "primary", onTap: () => setConfirmConvertQuoteId(quote.id) }]}>
-          <TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
+          <TapArticle baseClass="document-tap" className={`ck-est-row${expanded ? " expanded" : ""}${glowQuoteId === quote.id ? " invoice-row-glow" : ""}`} onTap={() => setScreen({ name: "quotePreview", quoteId: quote.id })}>
             <span className="ck-est-row-main">
               <span className="ck-est-row-l1">{quote.clientName}</span>
               <span className="ck-est-row-l2">{quote.jobType || capFirst(estTerms.plural)} · {usd(money(quote.total))}</span>
