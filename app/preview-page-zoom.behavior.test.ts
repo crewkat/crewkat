@@ -44,9 +44,18 @@ describe("preview page zoom (Danny 2026-11-09)", () => {
     expect(plain[0]).toContain("document-preview-card");
   });
 
-  test("Send action glyph matches the other action-bar glyphs at 16px (Danny 2026-11-09)", () => {
+  test("Send matches the rest of the action bar: same ghost cell + 30px chip, solid-accent chip fill (Danny 2026-11-09)", () => {
+    // Both detail bars (estimate + invoice) wrap the share glyph in the
+    // shared chip, exactly like Edit/Accept/More.
+    const sends = APP.split("\n").filter((line) => line.includes('className="doc-action-send"'));
+    expect(sends.length).toBe(2);
+    for (const line of sends) {
+      expect(line).toContain('<span className="doc-action-chip" aria-hidden="true"><ShareIcon/></span>');
+    }
+    // One chip spec for every action: 30px footprint, 16px glyph.
     expect(CSS).toContain(".document-action-bar .doc-action-chip svg { width: 16px; height: 16px;");
-    expect(CSS).toContain(".document-action-bar button.doc-action-send svg { width: 16px; height: 16px;");
-    expect(CSS).not.toContain(".document-action-bar button.doc-action-send svg { width: 18px;");
+    // The filled cell-wide pill is gone; only Send's chip carries the fill.
+    expect(CSS).not.toContain("button.doc-action-send { margin: 0;");
+    expect(CSS).toContain(".document-action-bar button.doc-action-send .doc-action-chip { background: var(--accent); color: #fff; }");
   });
 });

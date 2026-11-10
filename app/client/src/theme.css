@@ -4314,15 +4314,19 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
    lives inside the same footprint: no cell wash, the chip turns
    paid-green (the same green family as the summary's PAID pill) and the
    label goes bold green. The cell wash survives ONLY as press feedback —
-   uniform across buttons and gone on release. Send's pill fills its grid
-   cell exactly (the old 2px margin shrank its tap area below the ghost
-   buttons' full-height cells); its glyph sits directly on the orange. */
+   uniform across buttons and gone on release. (Send's filled pill from
+   this round was retired 2026-11-09: Send now carries the same chip as
+   the rest — see the Send-matches-the-rest rules below.) */
 .document-action-bar.four button.active { background: transparent; color: color-mix(in srgb, #22c55e 68%, var(--text)); font-weight: 900; }
 .document-action-bar.four button:active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .document-action-bar button.active .doc-action-chip { background: color-mix(in srgb, #22c55e 30%, var(--surface)); color: color-mix(in srgb, #22c55e 72%, var(--text)); }
-.document-action-bar button.doc-action-send { margin: 0; border-radius: 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
-.document-action-bar button.doc-action-send svg { width: 16px; height: 16px; color: #fff; }
-.document-action-bar button.doc-action-send:active { background: color-mix(in srgb, var(--accent) 84%, #000); color: #fff; }
+/* Send matches the rest (Danny 2026-11-09): the filled orange pill made
+   Send read bigger than Edit/Accept/More no matter the glyph size (his
+   EST0023/EST0003 shots), so Send now uses the identical ghost cell and
+   30px chip as the other three; the chip alone carries the solid accent
+   fill with a white glyph, which keeps Send primary at the same size. */
+.document-action-bar button.doc-action-send .doc-action-chip { background: var(--accent); color: #fff; }
+.document-action-bar button.doc-action-send:active .doc-action-chip { background: color-mix(in srgb, var(--accent) 84%, #000); }
 .document-detail-summary.ck-quote-summary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
 .financial-detail-page .ck-invoice-detail { background: var(--surface); }
 .ck-quote-total .ck-inv-label { justify-self: start; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: color-mix(in srgb, var(--accent) 80%, var(--text)); font-size: 11px; }
