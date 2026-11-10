@@ -77,7 +77,7 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
   );
 }
 
-export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoPipeline: () => void; onGoJobs: () => void; onGoFollowUps?: () => void }) {
+export function DashboardView({ onGoPipeline, onGoFollowUps, onGoMoney }: { onGoPipeline: () => void; onGoFollowUps?: () => void; onGoMoney: () => void }) {
   const queryClient = useQueryClient();
   const [followUpError, setFollowUpError] = useState("");
   const dashQuery = useQuery({
@@ -94,6 +94,11 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
   // leadsByStage arrives as counts only, so stage dollar values for the
   // pipeline chart are summed from the lead list itself.
   const leadsQuery = useQuery({ queryKey: ["leads"], queryFn: () => api.listLeads({}) });
+  // Money overview (Danny 2026-11-09): the Money page's own numbers,
+  // summarized here — the full page opens on click. Definitions mirror
+  // Money.tsx exactly (Batch 2 numbers integrity) so the two never disagree.
+  const invoicesQuery = useQuery({ queryKey: ["invoices"], queryFn: () => api.listInvoices({}) });
+  const quotesQuery = useQuery({ queryKey: ["quotes"], queryFn: () => api.listQuotes({}) });
   const toggleMutation = useMutation({
     mutationFn: (args: { id: number; completed: boolean }) => api.toggleInternalNote(args),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["office-dashboard"] }); },
@@ -128,6 +133,12 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
   });
   const pipelineChart = stageBuckets.map((b) => ({ stage: STAGE_LABELS[b.stage], value: b.value, count: b.count, fill: STAGE_COLORS[b.stage] }));
   const cashChart = [{ name: "This month", Invoiced: d.invoicedMonth, Collected: d.collectedMonth }];
+  const moneyInvoices = invoicesQuery.data?.invoices ?? [];
+  const moneyToReceive = moneyInvoices.filter((i) => i.status !== "paid" && parseMoney(i.balanceRemaining) > 0).reduce((sum, i) => sum + parseMoney(i.balanceRemaining), 0);
+  const moneyYear = String(new Date().getFullYear());
+  const moneyCollectedYtd = moneyInvoices.filter((i) => i.issueDate.slice(0, 4) === moneyYear).reduce((sum, i) => sum + parseMoney(i.paidApplied ?? i.paidToDate), 0);
+  const moneyOpenQuotes = (quotesQuery.data?.quotes ?? []).filter((q) => q.sentAt !== "" && !q.accepted && q.automationStatus === "awaiting" && q.convertedToInvoiceId == null && !q.superseded);
+  const moneyOpenQuotesTotal = moneyOpenQuotes.reduce((sum, q) => sum + parseMoney(q.total), 0);
 
   return (
     <div className="view">
@@ -176,7 +187,7 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
         <section className="panel">
           <div className="panel-head">
             <h2>Invoiced vs collected</h2>
-            <button type="button" className="link-btn" onClick={onGoJobs}>Open jobs →</button>
+            <button type="button" className="link-btn" onClick={onGoMoney}>Open money →</button>
           </div>
           {d.invoicedMonth === 0 && d.collectedMonth === 0 ? (
             <div className="empty-state small">
@@ -197,6 +208,30 @@ export function DashboardView({ onGoPipeline, onGoJobs, onGoFollowUps }: { onGoP
           )}
         </section>
       </div>
+
+      <section className="panel money-overview">
+        <div className="panel-head">
+          <h2>Money</h2>
+          <button type="button" className="link-btn" onClick={onGoMoney}>Open money →</button>
+        </div>
+        <div className="money-stats">
+          <div className="money-stat">
+            <span>To receive</span>
+            <strong>{formatMoney(moneyToReceive)}</strong>
+            <small>Open invoice balance</small>
+          </div>
+          <div className="money-stat">
+            <span>Collected this year</span>
+            <strong>{formatMoney(moneyCollectedYtd)}</strong>
+            <small>Applied to invoices</small>
+          </div>
+          <div className="money-stat">
+            <span>Open estimates</span>
+            <strong>{formatMoney(moneyOpenQuotesTotal)}</strong>
+            <small>{moneyOpenQuotes.length} awaiting a decision</small>
+          </div>
+        </div>
+      </section>
 
       <div className="panel-grid">
         <section className="panel">

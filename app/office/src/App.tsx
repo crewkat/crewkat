@@ -16,20 +16,20 @@ import {
   setActiveSessionToken,
   trySilentRefresh,
 } from "./api";
-import type { AuthUser, ViewKey } from "./types";
+import type { AuthUser, DocKind, ViewKey } from "./types";
 import { STAGE_LABELS } from "./types";
 import { cleanError, initials } from "./utils";
 import { AdminView, type PlatformRole } from "./views/Admin";
 import { ClientsView } from "./views/Clients";
 import { DashboardView } from "./views/Dashboard";
-import { FollowUpsView } from "./views/FollowUps";
 import { DocumentsView, type DocSelection } from "./views/Documents";
+import { FollowUpsView } from "./views/FollowUps";
 import { JobsView } from "./views/Jobs";
 import { MarketplaceView } from "./views/Marketplace";
 import { MoneyView } from "./views/Money";
 import { PromotionsView } from "./views/Promotions";
-import { SafetyView } from "./views/Safety";
 import { ReputationView } from "./views/Reputation";
+import { SafetyView } from "./views/Safety";
 import { PipelineView } from "./views/Pipeline";
 import { ScheduleView } from "./views/Schedule";
 import { SettingsView } from "./views/Settings";
@@ -37,33 +37,65 @@ import { TeamView } from "./views/Team";
 import crewkatC from "./assets/crewkat-c.png";
 import mascotIpad from "./assets/mascot-ipad.webp";
 
-const NAV: { key: ViewKey; label: string; icon: string }[] = [
-  { key: "dashboard", label: "Dashboard", icon: "▦" },
-  { key: "pipeline", label: "Pipeline", icon: "▤" },
-  { key: "followups", label: "Follow-ups", icon: "✓" },
-  { key: "clients", label: "Clients", icon: "👥" },
-  { key: "jobs", label: "Jobs", icon: "🛠" },
-  { key: "documents", label: "Documents", icon: "📄" },
-  { key: "schedule", label: "Schedule", icon: "📅" },
-  { key: "marketplace", label: "Marketplace", icon: "🏪" },
-  { key: "promotions", label: "Promotions", icon: "✉" },
-  { key: "safety", label: "Safety", icon: "⛑" },
-  { key: "reputation", label: "Reputation", icon: "★" },
-  { key: "money", label: "Money", icon: "$" },
-  { key: "settings", label: "Settings", icon: "⚙" },
+// Sidebar (grouped 2026-11-09, Danny): sections that belong together
+// live under a group header — tapping Dashboard opens its sub-menu
+// (Overview, Pipeline, Follow-ups, Promotions, Reputation, Money)
+// instead of Pipeline & co. standing as their own top-level items, and
+// Documents groups Estimates / Invoices / All documents the same way.
+// Money also keeps its overview panel on the dashboard itself.
+type NavChild = { id: string; key: ViewKey; label: string; docKind?: "" | DocKind };
+type NavNode =
+  | { id: string; key: ViewKey; label: string; icon: string }
+  | { id: string; label: string; icon: string; home: ViewKey; children: NavChild[] };
+
+const NAV: NavNode[] = [
+  {
+    id: "dashboard-group", label: "Dashboard", icon: "▦", home: "dashboard",
+    children: [
+      { id: "dashboard", key: "dashboard", label: "Overview" },
+      { id: "pipeline", key: "pipeline", label: "Pipeline" },
+      { id: "followups", key: "followups", label: "Follow-ups" },
+      { id: "promotions", key: "promotions", label: "Promotions" },
+      { id: "reputation", key: "reputation", label: "Reputation" },
+      { id: "money", key: "money", label: "Money" },
+    ],
+  },
+  { id: "clients", key: "clients", label: "Clients", icon: "👥" },
+  { id: "jobs", key: "jobs", label: "Jobs", icon: "🛠" },
+  {
+    id: "documents-group", label: "Documents", icon: "📄", home: "documents",
+    children: [
+      { id: "estimates", key: "documents", label: "Estimates", docKind: "quote" },
+      { id: "invoices", key: "documents", label: "Invoices", docKind: "invoice" },
+      { id: "documents", key: "documents", label: "All documents", docKind: "" },
+    ],
+  },
+  { id: "schedule", key: "schedule", label: "Schedule", icon: "📅" },
+  { id: "marketplace", key: "marketplace", label: "Marketplace", icon: "🏪" },
+  { id: "safety", key: "safety", label: "Safety", icon: "⛑" },
+  { id: "settings", key: "settings", label: "Settings", icon: "⚙" },
   // Track 1c: Team is Admin-only — filtered out of the nav for other
   // roles below (cosmetic; the server gates the team actions regardless).
-  { key: "team", label: "Team", icon: "👤" },
+  { id: "team", key: "team", label: "Team", icon: "👤" },
   // Platform admin console — filtered to platform admins / team-role
   // holders below (cosmetic; every admin action re-gates server-side).
-  { key: "admin", label: "Admin", icon: "🛡" },
+  { id: "admin", key: "admin", label: "Admin", icon: "🛡" },
 ];
+
+const isGroup = (node: NavNode): node is Extract<NavNode, { children: NavChild[] }> => "children" in node;
+const childActive = (child: NavChild, view: ViewKey, docKind: "" | DocKind) =>
+  view === child.key && (child.docKind === undefined || docKind === child.docKind);
 
 export function App() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [view, setView] = useState<ViewKey>("dashboard");
+  const [docKind, setDocKind] = useState<"" | DocKind>("");
+  // Sidebar group expansion: undefined = auto (the group holding the
+  // current view stays open), a group id = that group forced open,
+  // null = all groups closed (the user tapped the open group shut).
+  const [openGroup, setOpenGroup] = useState<string | null | undefined>(undefined);
   const [focusLeadId, setFocusLeadId] = useState<number | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -213,7 +245,7 @@ export function App() {
 
   const openJob = useCallback((jobId: number) => { setSelectedJobId(jobId); setView("jobs"); }, []);
   const openClient = useCallback((clientId: number) => { setSelectedClientId(clientId); setView("clients"); }, []);
-  const openDocument = useCallback((sel: DocSelection) => { setSelectedDoc(sel); setView("documents"); }, []);
+  const openDocument = useCallback((sel: DocSelection) => { setSelectedDoc(sel); setDocKind(""); setView("documents"); }, []);
   const openLead = useCallback((leadId: number) => { setFocusLeadId(leadId); setView("pipeline"); }, []);
   const consumeFocus = useCallback(() => setFocusLeadId(null), []);
 
@@ -241,18 +273,57 @@ export function App() {
           </div>
         </div>
         <nav className="nav" aria-label="Office">
-          {NAV.filter((item) => (item.key !== "team" || user.teamRole === "admin") && (item.key !== "admin" || canAdmin) && (item.key !== "safety" || user.teamRole !== "field")).map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`nav-item${view === item.key ? " active" : ""}`}
-              onClick={() => setView(item.key)}
-            >
-              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-              {item.label}
-              {item.key === "followups" && followUpBadge > 0 ? <span className="nav-badge">{followUpBadge}</span> : null}
-            </button>
-          ))}
+          {NAV.filter((node) => isGroup(node) || ((node.key !== "team" || user.teamRole === "admin") && (node.key !== "admin" || canAdmin) && (node.key !== "safety" || user.teamRole !== "field"))).map((node) => {
+            if (!isGroup(node)) {
+              return (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={`nav-item${view === node.key ? " active" : ""}`}
+                  onClick={() => setView(node.key)}
+                >
+                  <span className="nav-icon" aria-hidden="true">{node.icon}</span>
+                  {node.label}
+                </button>
+              );
+            }
+            const containsActive = node.children.some((c) => childActive(c, view, docKind));
+            const expanded = openGroup !== undefined ? openGroup === node.id : containsActive;
+            return (
+              <div key={node.id} className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-item nav-group-head${containsActive ? " active" : ""}`}
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    if (expanded && containsActive) { setOpenGroup(null); return; }
+                    setOpenGroup(node.id);
+                    setView(node.home);
+                    if (node.home === "documents") setDocKind("");
+                  }}
+                >
+                  <span className="nav-icon" aria-hidden="true">{node.icon}</span>
+                  {node.label}
+                  <span className={`nav-chevron${expanded ? " open" : ""}`} aria-hidden="true">›</span>
+                </button>
+                {expanded ? (
+                  <div className="nav-sub">
+                    {node.children.map((child) => (
+                      <button
+                        key={child.id}
+                        type="button"
+                        className={`nav-item nav-sub-item${childActive(child, view, docKind) ? " active" : ""}`}
+                        onClick={() => { if (child.docKind !== undefined) setDocKind(child.docKind); setView(child.key); setOpenGroup(node.id); }}
+                      >
+                        {child.label}
+                        {child.key === "followups" && followUpBadge > 0 ? <span className="nav-badge">{followUpBadge}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </nav>
         <div className="sidebar-foot">
           <span className="muted small">Crewkat Office</span>
@@ -272,7 +343,7 @@ export function App() {
         </header>
         <main className="content">
           {view === "dashboard" ? (
-            <DashboardView onGoPipeline={() => setView("pipeline")} onGoJobs={() => setView("jobs")} onGoFollowUps={() => setView("followups")} />
+            <DashboardView onGoPipeline={() => setView("pipeline")} onGoFollowUps={() => setView("followups")} onGoMoney={() => setView("money")} />
           ) : null}
           {view === "pipeline" ? (
             <PipelineView focusLeadId={focusLeadId} onOpenJob={openJob} onConsumeFocus={consumeFocus} canDelete={user.teamRole === "admin"} />
@@ -288,6 +359,8 @@ export function App() {
           ) : null}
           {view === "documents" ? (
             <DocumentsView
+              key={docKind}
+              initialKind={docKind}
               selected={selectedDoc}
               onSelect={setSelectedDoc}
               onOpenJob={openJob}

@@ -73,6 +73,7 @@ function signableStatus(d: SignableDocument): { label: string; cls: string; grou
 }
 
 export function DocumentsView({
+  initialKind,
   selected,
   onSelect,
   onOpenJob,
@@ -80,6 +81,10 @@ export function DocumentsView({
   userName,
   canDelete,
 }: {
+  /** Sidebar Estimates / Invoices entries land here pre-filtered
+   *  (2026-11-09); the plain Documents entry passes "". App remounts the
+   *  view per kind (key), so the initializer is the whole mechanism. */
+  initialKind?: "" | DocKind;
   selected: DocSelection | null;
   onSelect: (sel: DocSelection | null) => void;
   onOpenJob: (jobId: number) => void;
@@ -88,7 +93,7 @@ export function DocumentsView({
   /** Deletes are Admin-only (Danny 2026-10-24); the server enforces, this only hides the buttons. */
   canDelete: boolean;
 }) {
-  const [kindFilter, setKindFilter] = useState<"" | DocKind>("");
+  const [kindFilter, setKindFilter] = useState<"" | DocKind>(initialKind ?? "");
   const [statusFilter, setStatusFilter] = useState<"" | StatusGroup>("");
   const [search, setSearch] = useState("");
   const [financialTarget, setFinancialTarget] = useState<FinancialEditorTarget | null>(null);

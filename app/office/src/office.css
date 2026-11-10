@@ -473,6 +473,18 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 }
 .link-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 
+/* ---------- grouped sidebar + dashboard money overview (2026-11-09) ---------- */
+.nav-group-head .nav-chevron { margin-left: auto; font-size: 15px; line-height: 1; transition: transform 0.15s; }
+.nav-group-head .nav-chevron.open { transform: rotate(90deg); }
+.nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
+.nav-sub-item { padding: 7px 10px 7px 41px; font-size: 13px; font-weight: 500; min-height: 31px; }
+.money-overview { margin-bottom: 18px; }
+.money-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.money-stat { display: flex; flex-direction: column; gap: 1px; }
+.money-stat span { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.money-stat strong { font-size: 22px; color: var(--navy-900); }
+.money-stat small { color: var(--muted); font-size: 12px; }
+
 /* ---------- editors ---------- */
 .modal-wide { max-width: 1060px; }
 /* Document editor workspace (Danny 2026-11-09: "a bigger editing screen /
