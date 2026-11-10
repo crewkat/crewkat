@@ -9723,7 +9723,7 @@ function WorkspaceDocumentsPanel({ lang, jobId, documents, setScreen, contractSu
             <strong>{pdfPreview.title}</strong>
             <button type="button" onClick={() => setPdfPreview(null)}>{lang === "es" ? "Cerrar" : "Close"}</button>
           </div>
-          <PdfFrame blob={pdfPreview.blob} title={pdfPreview.title} />
+          <PdfFrame blob={pdfPreview.blob} title={pdfPreview.title} lang={lang} zoomable />
         </div>
       )}
     </section>
@@ -18425,9 +18425,16 @@ function QuotePaper({
   );
 }
 
-function PdfFrame({ blob, title }: { blob: Blob | null; title: string }) {
+function PdfFrame({ blob, title, lang = "en", zoomable = false }: { blob: Blob | null; title: string; lang?: Lang; zoomable?: boolean }) {
   const [pages, setPages] = useState<string[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  // Preview zoom (Danny 2026-11-09): in zoomable previews a page tap opens
+  // the app's pinch-zoom viewer (the same engine the client page and the
+  // marketplace photos use) — pinch 1×–4×, drag to pan, double-tap, +/−.
+  // Call sites inside a <button> (the detail pages' preview card) leave
+  // zoomable off: their own tap opens the fullscreen preview, whose
+  // PdfFrame IS zoomable.
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   useEffect(() => {
     if (!blob) {
       setPages([]);
@@ -18471,11 +18478,26 @@ function PdfFrame({ blob, title }: { blob: Blob | null; title: string }) {
           {pages.map((page, index) => (
             <img
               key={index}
+              className={zoomable ? "pdf-page-zoomable" : undefined}
+              onClick={zoomable ? () => setViewerIndex(index) : undefined}
               src={`data:image/jpeg;base64,${page}`}
               alt={`${title}, page ${index + 1} of ${pages.length}`}
             />
           ))}
         </div>
+      )}
+      {state === "ready" && zoomable && pages.length > 0 && (
+        <p className="pdf-zoom-hint">{lang === "es" ? "Toca una página para ampliarla" : "Tap a page to enlarge it"}</p>
+      )}
+      {viewerIndex !== null && pages[viewerIndex] && (
+        <ClientDocPageViewer
+          pages={pages}
+          index={viewerIndex}
+          title={title}
+          lang={lang}
+          onClose={() => setViewerIndex(null)}
+          onNavigate={setViewerIndex}
+        />
       )}
     </section>
   );
@@ -18582,7 +18604,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
   const overlay = (<div className="document-overlay customize-overlay" role="dialog" aria-modal="true" aria-label={text.title}>
     <header className="document-overlay-head customize-head"><button type="button" onClick={onClose} aria-label={text.back}><BackIcon /></button><strong>{text.title}</strong><span /></header>
     <div className="customize-workspace">
-      <section className="customize-preview-wrap"><div className="customize-preview-card">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></section>
+      <section className="customize-preview-wrap"><div className="customize-preview-card">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} lang={lang} zoomable /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div><button type="button" className="preview-expand" aria-label={text.expand} onClick={() => setFullScreen(true)}><Icon><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></Icon></button></section>
       <aside className="design-panel custom-design-panel" aria-live="polite">
         <div key={tab} className="custom-tab-content">
           {tab === "template" && <><div className="template-carousel" aria-label={text.template}>{(["classic", "modern", "bold", "minimal"] as QuoteTheme[]).map((theme) => <button type="button" key={theme} className={design.theme === theme ? "active" : ""} onClick={() => setDesign({ ...design, theme })}><span className="template-paper"><QuotePaper quote={{ ...preview, theme }} settings={previewSettings} lang={lang} kind={kind}/></span><strong>{copy[lang][theme]}</strong></button>)}</div><div className="custom-card"><label className="design-font"><span className="custom-row-label"><span className="doc-chip" aria-hidden="true"><Icon><path d="M5 6V4h14v2M12 4v16M9.5 20h5" /></Icon></span>{text.typography}</span><FontPicker lang={lang} value={design.font} onChange={(font) => setDesign({ ...design, font })}/></label></div></>}
@@ -18601,7 +18623,7 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
     </div>
     <div className="customize-apply-bar"><button type="button" className="primary-button apply-design" disabled={saving} onClick={async()=>{setSaving(true);try{await onConfirm({...design,customizeJson:JSON.stringify(custom)},saveDefault);}finally{setSaving(false);}}}>{saving?text.saving:text.save}</button></div>
     <nav className="customize-tabs" aria-label={text.title}>{tabs.map((item)=><button type="button" key={item.id} className={tab===item.id?"active":""} aria-current={tab===item.id?"page":undefined} onClick={()=>setTab(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>
-    {fullScreen&&<div className="document-overlay fullscreen-preview customize-fullscreen" role="dialog" aria-modal="true"><header className="document-overlay-head"><button type="button" onClick={()=>setFullScreen(false)}><BackIcon/><span>{text.back}</span></button><strong>{text.title}</strong><span/></header><div className="fullscreen-paper">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div></div>}
+    {fullScreen&&<div className="document-overlay fullscreen-preview customize-fullscreen" role="dialog" aria-modal="true"><header className="document-overlay-head"><button type="button" onClick={()=>setFullScreen(false)}><BackIcon/><span>{text.back}</span></button><strong>{text.title}</strong><span/></header><div className="fullscreen-paper">{pdfBlob ? <PdfFrame blob={pdfBlob} title={text.title} lang={lang} zoomable /> : <div className="b06-pdf-embed-loading" aria-hidden="true" />}</div></div>}
     {renderedSheet}
   </div>);
   // NOTE: the `document` prop shadows the DOM document here — globalThis it is.
@@ -18771,7 +18793,7 @@ function FinancialEditor({ lang, kind, document, onCancel, onSaved, onDelete, se
       {!confirmDelete?<button className="editor-delete-quiet" type="button" onClick={()=>setConfirmDelete(true)}><TrashIcon />{kind === "invoice" ? (lang === "es" ? "Eliminar factura" : "Delete invoice") : (lang === "es" ? "Eliminar estimado" : "Delete estimate")}</button>:<div className="delete-confirm"><strong>{lang === "es" ? "¿Eliminar permanentemente?" : "Delete permanently?"}</strong><button className="danger-button" onClick={onDelete}>{lang === "es" ? "Sí, eliminar" : "Yes, delete"}</button><button onClick={()=>setConfirmDelete(false)}>{lang === "es" ? "Cancelar" : "Cancel"}</button></div>}
     </div>
     {kind === "invoice" && datesSheetOpen && <div className={`client-sheet-backdrop${datesSheetClosing ? " closing" : ""}`} role="presentation" onClick={(e) => { if (e.target === e.currentTarget) closeDatesSheet(); }}><section className="client-sheet invoice-option-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Detalles de la factura" : "Invoice Details"}><div className="sheet-handle"/><header><h2>{lang === "es" ? "Detalles de la factura" : "Invoice Details"}</h2><button type="button" className="sheet-save-btn" onClick={closeDatesSheet}>{t.done}</button></header><div className="compact-form"><label><span>{t.issueDate}</span><input type="date" value={form.issueDate} onChange={(e) => setForm({ ...form, issueDate: e.target.value })}/></label><label><span>{t.dueDate}</span><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}/></label></div></section></div>}
-    {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewSheet.value ? <div className="editor-preview-paper"><PdfFrame blob={editorPreviewSheet.value} title={lang === "es" ? "Vista previa del documento" : "Document preview"} /></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
+    {editorPreviewSheet.render && editorPreviewSheet.value && <div className={`sheet-backdrop editor-preview-overlay${editorPreviewSheet.closing ? " closing" : ""}`} role="presentation" onClick={(e)=>{if(e.target===e.currentTarget)closeEditorPreview();}}><section className="more-sheet editor-preview-sheet" role="dialog" aria-modal="true" aria-label={lang === "es" ? "Vista previa del documento" : "Document preview"}><div className="sheet-handle"/><header className="sheet-header-row"><button type="button" className="text-button" onClick={()=>closeEditorPreview()}>{t.close}</button><h2>{lang === "es" ? "Vista previa" : "Preview"}</h2><span className="editor-header-actions"><button type="button" className="sheet-save-btn" onClick={() => setSendSheetOpen(true)}>{lang === "es" ? "Enviar" : "Send"}</button></span></header>{editorPreviewSheet.value ? <div className="editor-preview-paper"><PdfFrame blob={editorPreviewSheet.value} title={lang === "es" ? "Vista previa del documento" : "Document preview"} lang={lang} zoomable /></div> : <div className="loading-block"/>}</section>{sendSheetOpen && editorPreview && <PreviewSendSheet lang={lang} kind={kind} document={document} pdfBlob={editorPreview} onClose={() => setSendSheetOpen(false)} onSent={() => { setSendSheetOpen(false); closeEditorPreview(); }} />}</div>}
     </section>
   </div>;
 }
@@ -19607,7 +19629,7 @@ function QuotePreview({
     {/* Phase 1: per-document activity timeline. */}
     <DocumentTimeline lang={lang} kind="quote" id={quote.id} />
     <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de estimado":"Estimate actions"}><button onClick={()=>setEditing(true)}><span className="doc-action-chip" aria-hidden="true"><GlyphPencil /></span><span>{lang==="es"?"Editar":"Edit"}</span></button><button className="doc-action-send" onClick={()=>{buzz(8);setSendSheetOpen(true);}}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={toggleAccepted}><span className="doc-action-chip" aria-hidden="true"><CheckIcon/></span><span>{acceptedNow?(lang==="es"?"Reabrir":"Reopen"):(lang==="es"?"Aceptar":"Accept")}</span></button><button onClick={()=>setMoreOpen(true)}><span className="doc-action-chip" aria-hidden="true"><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon></span><span>{lang==="es"?"Más":"More"}</span></button></div>
-    {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`} /></div></div>}
+    {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {lang==="es"?"Vista previa":"Preview"}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${lang==="es"?"Vista previa":"Preview"}`} lang={lang} zoomable /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="quote" document={quote} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="quote" document={quote} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateQuoteDesign({id:quote.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="quote" id={quote.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","quote",quoteId]});setSignatureOpen(false);}}/>}
@@ -20574,7 +20596,7 @@ function InvoicePreview({
     <DocumentTimeline lang={lang} kind="invoice" id={invoice.id} />
     <InvoiceCardPaymentsSection lang={lang} invoice={invoice} setScreen={setScreen} onChanged={() => void refresh()} />
     <div className="document-action-bar four" role="toolbar" aria-label={lang==="es"?"Acciones de factura":"Invoice actions"}><button onClick={()=>setEditing(true)}><span className="doc-action-chip" aria-hidden="true"><GlyphPencil /></span><span>{lang==="es"?"Editar":"Edit"}</span></button><button className={invoice.status==="paid"?"active":""} onClick={openPaymentSheet}><span className="doc-action-chip" aria-hidden="true"><CheckIcon/></span><span>{invoice.status==="paid"?(lang==="es"?"Pagada":"Paid"):(lang==="es"?"Marcar pagada":"Mark paid")}</span></button><button className="doc-action-send" onClick={sendInvoice}><ShareIcon/><span>{lang==="es"?"Enviar":"Send"}</span></button><button onClick={()=>setMoreOpen(true)}><span className="doc-action-chip" aria-hidden="true"><Icon><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></Icon></span><span>{lang==="es"?"Más":"More"}</span></button></div>
-    {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${t.pdfPreview}`} /></div></div>}
+    {fullScreen&&<div className="document-overlay fullscreen-preview" role="dialog" aria-modal="true"><header className="document-overlay-head"><button onClick={()=>setFullScreen(false)}><BackIcon/>{t.close}</button><strong>{APP_INFO.name} · {t.pdfPreview}</strong><span/></header><div className="fullscreen-paper"><PdfFrame blob={blob} title={`${APP_INFO.name} · ${t.pdfPreview}`} lang={lang} zoomable /></div></div>}
     {editing&&<FinancialEditor lang={lang} kind="invoice" document={invoice} settings={settings} onCancel={()=>setEditing(false)} onSaved={async()=>{await refresh();setEditing(false);}} onDelete={()=>remove.mutate()}/>} 
     {designOpen&&<DocumentDesignOverlay lang={lang} kind="invoice" document={invoice} settings={settings} onClose={()=>setDesignOpen(false)} onConfirm={async(design,saveDefault)=>{await api.updateInvoiceDesign({id:invoice.id,...design});if(saveDefault)await api.saveDocumentDesignDefault(design);await refresh();await qc.invalidateQueries({queryKey:["settings"]});setDesignOpen(false);}}/>}
     {signatureOpen&&<SignatureDialog lang={lang} kind="invoice" id={invoice.id} onClose={()=>setSignatureOpen(false)} onSaved={async()=>{await qc.invalidateQueries({queryKey:["financial-signature","invoice",invoiceId]});setSignatureOpen(false);}}/>}
@@ -23426,7 +23448,7 @@ function DocumentDetailScreen({
               {t.downloadPdf}
             </button>
           </div>
-          <PdfFrame blob={preview.blob} title={preview.title} />
+          <PdfFrame blob={preview.blob} title={preview.title} lang={lang} zoomable />
         </div>
       )}
       {placing && (
@@ -24593,7 +24615,7 @@ function ProofPacket({
           {t.downloadPdf}
         </button>
       </div>
-      <PdfFrame blob={previewBlob} title={t.pdfPreview} />
+      <PdfFrame blob={previewBlob} title={t.pdfPreview} lang={lang} zoomable />
     </main>
   );
 }
@@ -25642,7 +25664,7 @@ function CompletionCertificate({
               {t.downloadPdf}
             </button>
           </div>
-          <PdfFrame blob={blob} title={t.completionCertificate} />
+          <PdfFrame blob={blob} title={t.completionCertificate} lang={lang} zoomable />
         </>
       )}
     </section>

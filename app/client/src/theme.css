@@ -4321,7 +4321,7 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .document-action-bar.four button:active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .document-action-bar button.active .doc-action-chip { background: color-mix(in srgb, #22c55e 30%, var(--surface)); color: color-mix(in srgb, #22c55e 72%, var(--text)); }
 .document-action-bar button.doc-action-send { margin: 0; border-radius: 14px; background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
-.document-action-bar button.doc-action-send svg { width: 18px; height: 18px; color: #fff; }
+.document-action-bar button.doc-action-send svg { width: 16px; height: 16px; color: #fff; }
 .document-action-bar button.doc-action-send:active { background: color-mix(in srgb, var(--accent) 84%, #000); color: #fff; }
 .document-detail-summary.ck-quote-summary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 55%), var(--surface); }
 .financial-detail-page .ck-invoice-detail { background: var(--surface); }
@@ -4411,6 +4411,8 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 .client-doc-card .pdf-pages { margin: 0; gap: 10px; }
 .client-doc-card .pdf-pages img { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 5px; cursor: zoom-in; }
 .client-doc-zoom-hint { margin: 8px 2px 0; text-align: center; color: var(--dim); font-size: 12px; }
+.pdf-pages img.pdf-page-zoomable { cursor: zoom-in; }
+.pdf-zoom-hint { margin: 8px 2px 0; text-align: center; color: var(--dim); font-size: 12px; }
 /* Client document zoom viewer: fullscreen stage over the shared lightbox
    backdrop. touch-action: none on the stage hands every gesture to the
    viewer's pointer handlers (pinch / pan / swipe) instead of the browser. */
