@@ -455,7 +455,15 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .status-pill.signed { background: #e2f2e8; color: #20714a; }
 .status-pill.overdue { background: #f9e3e0; color: var(--danger); }
 .status-pill.draft { background: var(--line-soft); color: var(--ink-2); }
-.doc-split { grid-template-columns: minmax(0, 1fr) 430px; }
+/* Document detail opens as a large popup drawer (Danny 2026-11-09:
+   "edit window still small" at the old 430px split column) — the list
+   stays full-width behind it, and the editor modal (z 80) opens above. */
+.doc-drawer-backdrop { position: fixed; inset: 0; background: rgba(10, 34, 57, 0.45); z-index: 60; }
+.doc-detail-drawer {
+  position: fixed; top: 0; right: 0; height: 100dvh; width: min(880px, 96vw);
+  z-index: 70; overflow: auto; border-radius: 0; padding: 22px 24px;
+  animation: drawer-in 0.18s ease-out;
+}
 .doc-body-text {
   white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 var(--font);
   background: #fafbfc; border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
@@ -477,7 +485,14 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .nav-group-head .nav-chevron { margin-left: auto; font-size: 15px; line-height: 1; transition: transform 0.15s; }
 .nav-group-head .nav-chevron.open { transform: rotate(90deg); }
 .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
-.nav-sub-item { padding: 7px 10px 7px 41px; font-size: 13px; font-weight: 500; min-height: 31px; }
+/* Danny 2026-11-09 (later): the selected highlight must be the SAME size
+   on every entry — group heads were shrink-wrapping to their content
+   and sub-items were shorter. Every nav button now spans the full
+   sidebar width, and sub-items share the top-level box exactly (same
+   padding, font, weight); only the left indent differs. */
+.nav-item { width: 100%; box-sizing: border-box; }
+.nav-group, .nav-sub { width: 100%; }
+.nav-sub-item { padding: 9px 10px 9px 41px; font-size: 13.5px; font-weight: 600; }
 .money-overview { margin-bottom: 18px; }
 .money-stats { display: flex; gap: 28px; flex-wrap: wrap; }
 .money-stat { display: flex; flex-direction: column; gap: 1px; }

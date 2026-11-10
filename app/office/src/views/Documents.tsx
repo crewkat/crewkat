@@ -226,7 +226,7 @@ export function DocumentsView({
         </div>
       </div>
 
-      <div className={selected ? "split-layout doc-split" : ""}>
+      <div>
         <section className="panel table-panel">
           {loading ? <div className="view-loading">Loading documents…</div> : null}
           {loadError ? (
@@ -276,6 +276,8 @@ export function DocumentsView({
         </section>
 
         {selected ? (
+          <>
+          <div className="doc-drawer-backdrop" onClick={() => onSelect(null)} />
           <DocDetail
             key={`${selected.kind}-${selected.id}`}
             selection={selected}
@@ -292,6 +294,7 @@ export function DocumentsView({
             onSelect={onSelect}
             canDelete={canDelete}
           />
+          </>
         ) : null}
       </div>
 
@@ -403,7 +406,7 @@ function DocDetail({
         : "Document";
 
   return (
-    <aside className="panel detail-panel">
+    <aside className="panel detail-panel doc-detail-drawer">
       <div className="drawer-head">
         <div>
           <h2>{heading}</h2>

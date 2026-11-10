@@ -51,6 +51,19 @@ describe("Office grouped sidebar (Danny 2026-11-09)", () => {
     expect(APP).toContain('onGoMoney={() => setView("money")}');
   });
 
+  test("every nav highlight is the same size: full width, one shared box", () => {
+    expect(CSS).toContain(".nav-item { width: 100%; box-sizing: border-box; }");
+    expect(CSS).toContain(".nav-sub-item { padding: 9px 10px 9px 41px; font-size: 13.5px; font-weight: 600; }");
+  });
+
+  test("the document detail opens as a large popup drawer over the full-width list", () => {
+    const docs = readFileSync("office/src/views/Documents.tsx", "utf8");
+    expect(docs).toContain('className="doc-drawer-backdrop"');
+    expect(docs).toContain("doc-detail-drawer");
+    expect(CSS).toContain(".doc-detail-drawer");
+    expect(CSS).toContain("width: min(880px, 96vw)");
+  });
+
   test("the dashboard carries the Money overview with the Money page's own definitions", () => {
     expect(DASH).toContain('className="panel money-overview"');
     expect(DASH).toContain("moneyToReceive");
