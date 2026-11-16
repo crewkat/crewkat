@@ -76,6 +76,18 @@ await cp(
   join(ocrDir, "lang", "eng.traineddata.gz"),
 );
 console.log("[build] receipt OCR assets copied to dist/ocr");
+
+// PDF preview worker (pdf.js): copied verbatim to dist/ and loaded ONLY
+// when a document preview renders locally (the offline fallback in
+// client/src/pdfPreviewLocal.ts) — the bundler never sees it, so the
+// worker (~1.2MB) never taxes the app bundle. The service worker
+// precaches it (client/pwa/sw.js) so it is on the device before an
+// offline preview ever needs it.
+await cp(
+  join(nodeModules, "pdfjs-dist", "build", "pdf.worker.min.mjs"),
+  join(distDir, "pdf.worker.min.mjs"),
+);
+console.log("[build] pdf.js preview worker copied to dist/pdf.worker.min.mjs");
 // Build 3: stamp the service worker with a per-build ID so EVERY deploy
 // produces a byte-different sw.js. Browsers only auto-install a new worker
 // when its bytes change — without this, the old cache-first shell could

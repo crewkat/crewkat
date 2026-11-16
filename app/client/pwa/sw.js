@@ -22,6 +22,10 @@ const PRECACHE = [
   "/app/icon-180.png",
   "/app/icon-192.png",
   "/app/icon-512.png",
+  // pdf.js worker for the local (offline) document-preview rasterizer —
+  // precached so an offline preview works even if no preview was opened
+  // while online on this build.
+  "/app/pdf.worker.min.mjs",
 ];
 
 self.addEventListener("install", (event) => {
