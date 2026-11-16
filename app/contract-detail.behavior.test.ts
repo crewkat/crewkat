@@ -125,8 +125,13 @@ check("detail renders the document text and the uploaded PDF pages",
   DETAIL.includes("doc.bodyText") && DETAIL.includes("<DocumentPdfPages"));
 const pagesStart = appSrc.indexOf("function DocumentPdfPages");
 const PAGES = appSrc.slice(pagesStart, appSrc.indexOf("function DocumentEditForm", pagesStart));
+// 2026-11-15: pages render through the shared renderPreviewPages helper
+// (server renderPdfPreview first while online, local pdf.js fallback
+// offline) instead of calling the action inline — same pipeline, same
+// viewer, same source URL.
 check("PDF pages render through renderPdfPreview and open the zoom viewer",
-  PAGES.includes("api.renderPdfPreview") && PAGES.includes("<ClientDocPageViewer") && PAGES.includes("sameOriginBlobPath(originalUrl)"));
+  PAGES.includes("renderPreviewPages(blob)") && PAGES.includes("<ClientDocPageViewer") && PAGES.includes("sameOriginBlobPath(originalUrl)")
+  && appSrc.includes("api.renderPdfPreview({ dataBase64 })"));
 check("detail keeps View document (canonical PDF builder + preview modal)",
   DETAIL.includes("buildCanonicalDocumentPdf") && DETAIL.includes("<PdfFrame"));
 check("canonical builder serves the stored canonical via getDocumentPdf (no fabricated record page)",

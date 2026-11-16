@@ -12,8 +12,11 @@
 //    <img> mounts only when the slot nears the viewport
 //    (IntersectionObserver, generous rootMargin; immediate mount where IO
 //    is unavailable).
-//  - The source PDF's base64 data URL reference is dropped as soon as the
-//    page payload string is extracted — the document is never held twice.
+//  - The document is never held twice: originally the source PDF's
+//    base64 data URL reference was dropped as soon as the page payload
+//    string was extracted; since 2026-11-15 the component builds no
+//    data URL at all (the shared render helper holds the base64 only
+//    transiently inside its server attempt).
 //  - Everything else is unchanged: same layout/classes, same page order,
 //    same loading block, same failure copy in both languages, and the zoom
 //    viewer (ClientDocPageViewer) still opens from a page tap with the
@@ -59,12 +62,18 @@ check("pages no longer mount as direct data-URL <img> elements in the map",
   !/pages\.map\(\(page, index\) => \(\s*<img/.test(PAGES));
 check("page order, srcs and alt text are unchanged",
   PAGES.includes("src={`data:image/jpeg;base64,${page}`}") && PAGES.includes("alt={`${doc.title} — page ${index + 1}`}") && PAGES.includes("key={`${doc.id}-${index}`}"));
+// 2026-11-15: DocumentPdfPages renders through the shared
+// renderPreviewPages helper (offline preview fix). The component no
+// longer materializes a full-PDF data URL at all — the base64 exists
+// only transiently inside the helper's server attempt — so the
+// never-held-twice invariant is stronger than the old drop-the-ref
+// pattern. The helper's server leg is still renderPdfPreview.
 check("the full-PDF data URL is released once the payload is extracted",
-  PAGES.includes('const dataBase64 = dataUrl.split(",")[1] ?? "";')
-  && PAGES.includes("dataUrl = null;")
-  && PAGES.indexOf("dataUrl = null;") < PAGES.indexOf("api.renderPdfPreview"));
+  !PAGES.includes("blobDataUrl") && !PAGES.includes("dataUrl")
+  && PAGES.includes("renderPreviewPages(blob)"));
 check("the preview still comes from renderPdfPreview on the original blob URL",
-  PAGES.includes("api.renderPdfPreview({ dataBase64 })") && PAGES.includes("sameOriginBlobPath(originalUrl)"));
+  PAGES.includes("renderPreviewPages(blob)") && PAGES.includes("sameOriginBlobPath(originalUrl)")
+  && appSrc.includes("api.renderPdfPreview({ dataBase64 })"));
 check("the loading state is unchanged",
   PAGES.includes('<div className="loading-block" />'));
 check("the failure copy is unchanged in both languages",
