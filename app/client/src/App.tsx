@@ -41,7 +41,9 @@ type ReactNode,
 type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getStoredSessionToken, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreAdminSessionAfterImpersonation, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getLastRefreshFailure, getStoredSessionToken, hasCookieSessionMarker, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreAdminSessionAfterImpersonation, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
+import { flushOutbox, getOfflineSnapshot, isOfflineSession, outbox, persistCachedUser, readCachedUser, setOfflineSession, subscribeConnectivity, useOfflineState } from "./offline";
+import { classifyActionError } from "./offlineCore";
 import { blobDataUrl, buildChangeOrderPdf, buildInvoicePdf, buildQuotePdf, changeOrderStrings, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type ChangeOrderPdfData, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, type FillFieldKind, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
@@ -1107,31 +1109,58 @@ const copy = {
 // Chunk D: offline mode v1 — banner + cached-list "last updated" note.
 // ---------------------------------------------------------------------------
 
-/** Returns true when the browser thinks the network is down. */
+/** True while the shared connectivity store (offline.ts) reports no usable
+ * network: the browser's own offline signal OR a real fetch that just
+ * failed — the second catches "online but the server is unreachable". */
 function useIsOffline(): boolean {
-  const [offline, setOffline] = useState(typeof navigator !== "undefined" && navigator.onLine === false);
-  useEffect(() => {
-    const on = () => setOffline(false);
-    const off = () => setOffline(true);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-  return offline;
+  return useSyncExternalStore(subscribeConnectivity, getOfflineSnapshot, () => false);
 }
 
-/** Slim banner shown at the top of the app while offline. */
+/** Slim banner shown at the top of every owner-facing screen while offline,
+ * while queued changes wait to sync, or when a queued change was rejected
+ * by the server and needs a decision. Driven by the shared offline store,
+ * so it appears/disappears on its own as connectivity changes. */
 function OfflineBanner({ lang }: { lang: Lang }) {
-  const offline = useIsOffline();
-  if (!offline) return null;
+  const { offline, pendingCount, rejected } = useOfflineState();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  if (!offline && pendingCount === 0 && rejected.length === 0) return null;
+  const es = lang === "es";
   return (
-    <div className="offline-banner" role="status">
-      {lang === "es"
-        ? "Sin conexión — estás viendo la información guardada en este teléfono."
-        : "You're offline — showing what's saved on this phone."}
+    <div className={`offline-banner${rejected.length > 0 ? " has-sync-issue" : ""}`} role="status">
+      {offline ? (
+        <span>
+          {es
+            ? "Sin conexión — estás viendo tus datos de la última sincronización. Los cambios se sincronizarán cuando vuelva la conexión."
+            : "You're offline — you're seeing your last synced data. Changes will sync when you reconnect."}
+        </span>
+      ) : pendingCount > 0 ? (
+        <span>{es ? `Sincronizando ${pendingCount} cambio${pendingCount === 1 ? "" : "s"}…` : `Syncing ${pendingCount} change${pendingCount === 1 ? "" : "s"}…`}</span>
+      ) : null}
+      {offline && pendingCount > 0 && (
+        <span className="offline-banner-detail">
+          {es
+            ? ` ${pendingCount} cambio${pendingCount === 1 ? "" : "s"} guardado${pendingCount === 1 ? "" : "s"} en este teléfono.`
+            : ` ${pendingCount} change${pendingCount === 1 ? "" : "s"} saved on this phone.`}
+        </span>
+      )}
+      {rejected.length > 0 && (
+        <button type="button" className="offline-banner-action" onClick={() => setReviewOpen((open) => !open)}>
+          {es
+            ? `${rejected.length} cambio${rejected.length === 1 ? "" : "s"} no se pudo sincronizar — tocar para revisar`
+            : `${rejected.length} change${rejected.length === 1 ? "" : "s"} couldn't sync — tap to review`}
+        </button>
+      )}
+      {reviewOpen && rejected.length > 0 && (
+        <div className="offline-sync-review">
+          {rejected.map((entry) => (
+            <div key={entry.key} className="offline-sync-row">
+              <span className="offline-sync-row-text">{entry.action}{entry.error ? ` — ${entry.error}` : ""}</span>
+              <button type="button" onClick={() => { outbox.retryRejected(entry.key); void flushOutbox(); }}>{es ? "Reintentar" : "Retry"}</button>
+              <button type="button" onClick={() => outbox.discard(entry.key)}>{es ? "Descartar" : "Discard"}</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2739,6 +2768,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
       // "user": signed in. "none": the server answered and there is no
       // user for the current proof (a verdict). "error": transport
       // failure (NOT a verdict — stored credentials must be retained).
+      let sawTransportError = false;
       const loadUser = async (): Promise<"user" | "none" | "error"> => {
         try {
           const result = await api.getAuthSession({ _sessionToken: "active" });
@@ -2748,7 +2778,10 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
             return "user";
           }
           return "none";
-        } catch { return "error"; }
+        } catch (caught) {
+          if (classifyActionError(caught) === "network") sawTransportError = true;
+          return "error";
+        }
       };
       if (isImpersonating()) {
         if ((await loadUser()) === "user") return;
@@ -2779,6 +2812,26 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
         // Only a definitive "no user" verdict retires the stored token;
         // a transport failure keeps it for the next launch.
         if (outcome === "none") clearActiveSessionToken();
+      }
+      // Offline cold start: every restore path above failed, but the
+      // failures were transport failures — the server never got to judge
+      // the session. When this device still holds session evidence (the
+      // cookie marker or a legacy token) plus the last server-confirmed
+      // profile, restore the signed-in UI from cache instead of bouncing
+      // to sign-in. The shell revalidates against the server the moment
+      // connectivity returns; only a real verdict ends the session.
+      if (
+        !isImpersonating() &&
+        (sawTransportError || getLastRefreshFailure() === "network" || (typeof navigator !== "undefined" && navigator.onLine === false)) &&
+        (hasCookieSessionMarker() || legacy)
+      ) {
+        const cachedUser = readCachedUser<AuthUser>();
+        if (cachedUser) {
+          setOfflineSession(true);
+          onAuthenticated(cachedUser);
+          onRestoreSettled?.();
+          return;
+        }
       }
       if (googleFailedLanding) setError(authStrings(authLang).googleFailed);
       // Boot splash: session restore has settled signed-out — the sign-in
@@ -2925,6 +2978,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
   );
   if (restoring) return <main className="auth-page">
     <SafeAreaTopScrim backgroundColor="var(--bg)" />
+    <OfflineBanner lang={authLang} />
     <section className="auth-panel">
       <div className="auth-brand" aria-label="Crewkat">
         <img src={crewkatLogo} alt="Crewkat charcoal cat mascot holding a wrench" />
@@ -2935,6 +2989,7 @@ function AuthScreen({ onAuthenticated, onRestoreSettled }: { onAuthenticated: (u
   </main>;
   return <main className="auth-page">
     <SafeAreaTopScrim backgroundColor="var(--bg)" />
+    <OfflineBanner lang={authLang} />
     <section className="auth-panel">
       {langToggle}
       <div className="auth-brand" aria-label="Crewkat">
@@ -3062,6 +3117,43 @@ export function App() {
     window.addEventListener(AUTH_SESSION_INVALID_EVENT, handleInvalidSession);
     return () => window.removeEventListener(AUTH_SESSION_INVALID_EVENT, handleInvalidSession);
   }, [queryClient]);
+  // Offline mode: keep the last server-confirmed profile cached on this
+  // device so an offline cold start can restore the signed-in UI (see the
+  // AuthScreen restore). Cleared by clearActiveSessionToken whenever the
+  // session genuinely ends.
+  useEffect(() => {
+    // Never cache an impersonated user's profile as this device's profile.
+    if (user && !isImpersonating()) persistCachedUser(user);
+  }, [user]);
+  // Offline session revalidation: when sign-in was restored from cache
+  // without the server, revalidate as soon as connectivity returns. A
+  // successful refresh swaps in the live profile; a server verdict that
+  // the session is over ends it (sign back in) — never a silent logout
+  // caused by the network itself.
+  useEffect(() => {
+    if (!user || !isOfflineSession()) return;
+    let cancelled = false;
+    const revalidate = async () => {
+      if (getOfflineSnapshot()) return;
+      const refreshed = await trySilentRefresh(true).catch(() => false);
+      if (cancelled) return;
+      if (refreshed) {
+        try {
+          const result = await api.getAuthSession({ _sessionToken: "active" });
+          if (!cancelled && result.user) {
+            setOfflineSession(false);
+            setUser(result.user);
+          }
+        } catch { /* a dead session surfaces via the invalid-session event */ }
+      } else if (getLastRefreshFailure() === "verdict") {
+        clearActiveSessionToken();
+        setUser(null);
+      }
+    };
+    const unsubscribe = subscribeConnectivity(() => { void revalidate(); });
+    void revalidate();
+    return () => { cancelled = true; unsubscribe(); };
+  }, [user]);
   // Chunk D: register the app service worker (offline mode + web push).
   // Proactive checks: the installed app can linger on a stale build for days,
   // so re-check for a newer worker whenever the app returns to the foreground.
@@ -3139,19 +3231,19 @@ export function App() {
     // The gate must live inside .app-shell: html/body/#root are overflow:hidden
     // and the shell is the only scroll container. Without it the terms text
     // overflows with no way to scroll.
-    return <div className="app-shell"><MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} /></div>;
+    return <div className="app-shell"><OfflineBanner lang={browserLang} /><MarketplaceTermsGate onAccepted={(acceptedAt, version) => setUser({ ...user, marketplaceTermsAcceptedAt: acceptedAt, marketplaceTermsVersion: version })} /></div>;
   }
   // Admin panel Phase 2: maintenance gate. Team membership is isPlatformAdmin
   // or any admin_team_roles row (same signal the admin console uses).
   const isTeam = user.isPlatformAdmin || (teamRoleQuery.data?.role ?? null) !== null;
   const teamResolved = user.isPlatformAdmin || teamRoleQuery.data !== undefined;
   if (maintenanceQuery.data?.enabled && teamResolved && !isTeam) {
-    return <MaintenanceScreen
+    return <><OfflineBanner lang={browserLang} /><MaintenanceScreen
       lang={browserLang}
       message={maintenanceQuery.data.message}
       onRetry={() => { void maintenanceQuery.refetch(); }}
       onSignOut={async () => { try { await api.logout({ _sessionToken: "active" }); } catch { /* already out */ } finally { clearActiveSessionToken(); queryClient.clear(); setUser(null); } }}
-    />;
+    /></>;
   }
   const signOut = async () => {
     try { await api.logout({ _sessionToken: "active" }); } finally { clearActiveSessionToken(); queryClient.clear(); try { window.sessionStorage.removeItem("crewkat-last-financial"); } catch { /* storage unavailable */ } setUser(null); }
@@ -3163,7 +3255,7 @@ export function App() {
   // this is purely which shell renders. Email logins, including email
   // Field staff from Track 1c, keep the full app below.
   if (user.credentialType === "crew_pin") {
-    return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewHome user={user} onSignOut={signOut} /></AuthContext.Provider>;
+    return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><><OfflineBanner lang={browserLang} /><CrewHome user={user} onSignOut={signOut} /></></AuthContext.Provider>;
   }
   return <AuthContext.Provider value={{ user, signOut, setUserName: (name: string) => setUser({ ...user, name }) }}><CrewkatApplication onBootSettled={signalBootReady} /></AuthContext.Provider>;
 }
