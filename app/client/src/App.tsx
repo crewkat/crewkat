@@ -44,6 +44,8 @@ import { createPortal } from "react-dom";
 import { api, AUTH_SESSION_INVALID_EVENT, clearActiveSessionToken, endImpersonationLocal, getLastRefreshFailure, getStoredSessionToken, hasCookieSessionMarker, IMPERSONATION_EVENT, impersonationTargetName, isCookieLoginResult, isImpersonating, offlineCacheTimestamp, persistLegacySessionToken, restoreAdminSessionAfterImpersonation, restoreLegacySessionToken, setActiveSessionToken, startImpersonation, trySilentRefresh, type ApiResponse, type PortalExpiryDays } from "./api";
 import { flushOutbox, getOfflineSnapshot, isOfflineSession, outbox, persistCachedUser, readCachedUser, setOfflineSession, subscribeConnectivity, useOfflineState } from "./offline";
 import { classifyActionError } from "./offlineCore";
+import { renderPdfPreviewPages } from "./pdfPreviewCore";
+import { renderPdfPagesLocally } from "./pdfPreviewLocal";
 import { blobDataUrl, buildChangeOrderPdf, buildInvoicePdf, buildQuotePdf, changeOrderStrings, companyContact, defaultDocumentCustomize, financialTotals, formatDocumentDate, hexRgb, lineItemsTotal, loadImageDataUrl, money, parseDocumentCustomize, sameOriginBlobPath, usd, type ChangeOrderPdfData, type DocumentCustomize, type DocumentLabels, type FinancialDocument } from "./financialPdf";
 import { activateWaitingServiceWorker, disablePushSubscription, ensurePushSubscription, getPushReadiness, registerAppServiceWorker, requestPushPermissionAndSubscribe, startProactiveSwUpdateChecks, SW_UPDATE_AVAILABLE_EVENT, type PushStatus } from "./push";
 import { compositeSignatureStamps, SIGNATURE_FIELD_DEFAULTS, type FillField, type FillFieldKind, type SignatureFieldPlacement, type SignatureFields } from "./signatureComposite";
@@ -18535,6 +18537,19 @@ function QuotePaper({
   );
 }
 
+// Preview pages for a PDF blob held on the device. Server rasterizer
+// first while online (unchanged behavior), local pdf.js rasterizer as
+// the offline backup — see pdfPreviewCore.ts for the policy. Resolves
+// with per-page JPEG base64 strings.
+async function renderPreviewPages(blob: Blob): Promise<string[]> {
+  return renderPdfPreviewPages({
+    serverRender: async (dataBase64) => (await api.renderPdfPreview({ dataBase64 })).pagesBase64,
+    localRender: () => renderPdfPagesLocally(blob),
+    isOffline: () => getOfflineSnapshot(),
+    toBase64: async () => (await blobDataUrl(blob)).split(",")[1] ?? "",
+  });
+}
+
 function PdfFrame({ blob, title, lang = "en", zoomable = false }: { blob: Blob | null; title: string; lang?: Lang; zoomable?: boolean }) {
   const [pages, setPages] = useState<string[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -18556,11 +18571,9 @@ function PdfFrame({ blob, title, lang = "en", zoomable = false }: { blob: Blob |
     setState("loading");
     void (async () => {
       try {
-        const dataUrl = await blobDataUrl(blob);
-        const dataBase64 = dataUrl.split(",")[1] ?? "";
-        const result = await api.renderPdfPreview({ dataBase64 });
+        const pages = await renderPreviewPages(blob);
         if (!cancelled) {
-          setPages(result.pagesBase64);
+          setPages(pages);
           setState("ready");
         }
       } catch {
@@ -18741,9 +18754,8 @@ function DocumentDesignOverlay({ lang, kind, document, settings, onClose, onConf
 }
 
 async function downloadPdfAsImage(blob: Blob, filename: string) {
-  const dataUrl = await blobDataUrl(blob);
-  const result = await api.renderPdfPreview({ dataBase64: dataUrl.split(",")[1] ?? "" });
-  const first = result.pagesBase64[0];
+  const pages = await renderPreviewPages(blob);
+  const first = pages[0];
   if (!first) return;
   const bytes = Uint8Array.from(atob(first), (char) => char.charCodeAt(0));
   downloadBlob(new Blob([bytes], { type: "image/jpeg" }), filename.replace(/\.pdf$/i, ".jpg"));
@@ -22865,14 +22877,11 @@ function DocumentPdfPages({ doc, lang }: { doc: SignedDocument; lang: Lang }) {
         const res = await fetch(sameOriginBlobPath(originalUrl));
         if (!res.ok) throw new Error("original fetch failed");
         const blob = await res.blob();
-        // The whole PDF rides along as a base64 data URL only until the
-        // preview pages exist; then the reference is dropped so a large
-        // contract is never held in memory twice (source payload + pages).
-        let dataUrl: string | null = await blobDataUrl(blob);
-        const dataBase64 = dataUrl.split(",")[1] ?? "";
-        dataUrl = null;
-        const result = await api.renderPdfPreview({ dataBase64 });
-        if (!cancelled) setPages(result.pagesBase64);
+        // renderPreviewPages holds the base64 only transiently inside
+        // the server attempt, so a large contract is never kept in
+        // memory twice (source payload + pages).
+        const pages = await renderPreviewPages(blob);
+        if (!cancelled) setPages(pages);
       } catch {
         if (!cancelled) setFailed(true);
       }
