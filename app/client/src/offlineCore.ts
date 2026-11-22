@@ -110,10 +110,29 @@ export class ReadCache {
   constructor(
     private storage: KeyValueStorage,
     private maxEntryBytes: number = READ_CACHE_MAX_ENTRY_BYTES,
+    /** Account scoping (audit A3): keys carry the signed-in user's id so
+     * one account's cached lists are never served to another account that
+     * signs in on the same device. Null provider / null id = "anon". */
+    private scopeProvider: (() => string | number | null) | null = null,
   ) {}
 
+  private scope(): string {
+    const value = this.scopeProvider?.();
+    return value == null || value === "" ? "anon" : String(value);
+  }
+
   key(action: string, args?: Record<string, unknown>): string {
-    return `${READ_CACHE_PREFIX}${action}:${argsKey(args)}`;
+    return `${READ_CACHE_PREFIX}${this.scope()}:${action}:${argsKey(args)}`;
+  }
+
+  /** Drop every cached read, across all account scopes (sign-out). */
+  clearAll(): void {
+    for (const key of this.storage.keys()) {
+      if (!key.startsWith(READ_CACHE_PREFIX)) continue;
+      try {
+        this.storage.remove(key);
+      } catch { /* ignore */ }
+    }
   }
 
   get<T = unknown>(action: string, args?: Record<string, unknown>): CachedRead<T> | null {
@@ -197,9 +216,18 @@ export interface FlushReport {
 }
 
 const DEFAULT_MAX_ENTRY_BYTES = 1_500_000;
+/** Identical writes queued within this window are one double-tapped write,
+ * not two deliberate ones (see Outbox.enqueue). */
+const DOUBLE_TAP_MERGE_MS = 2_000;
 /** A server record counts as "the queued create landed" when it was created
  * no earlier than this long before the user's attempt (clock skew slack). */
 const PREFLIGHT_SKEW_MS = 5 * 60_000;
+/** …and no later than this long AFTER the attempt (audit A2). The original
+ * attempt reached the server within moments of being queued — its response
+ * is what got lost — so a matching record created hours or days later is a
+ * different create (possibly a teammate's) and must never absorb the queued
+ * one. The bound is generous for device/server clock skew. */
+const PREFLIGHT_UPPER_MS = 15 * 60_000;
 
 function moneyKey(value: unknown): string {
   const n = Number(String(value ?? "").replace(/[^0-9.-]/g, "") || 0);
@@ -210,7 +238,31 @@ function createdInWindow(createdAt: unknown, queuedAt: number): boolean {
   if (typeof createdAt !== "string" || !createdAt) return false;
   const t = Date.parse(createdAt);
   if (!Number.isFinite(t)) return false;
-  return t >= queuedAt - PREFLIGHT_SKEW_MS;
+  return t >= queuedAt - PREFLIGHT_SKEW_MS && t <= queuedAt + PREFLIGHT_UPPER_MS;
+}
+
+/**
+ * Content hash of a document's line items (audit A1): client name + total
+ * alone cannot tell two documents apart — same client, same total,
+ * different work is routine (allowance pricing, repeat jobs, a revision at
+ * the same price). The normalized shape mirrors the fields both the save
+ * args and the list responses carry, so a queued create and its landed
+ * server copy hash identically.
+ */
+function lineItemsHash(lineItems: unknown): string {
+  const items = Array.isArray(lineItems) ? lineItems : [];
+  const normalized = items.map((item) => {
+    const it = (item ?? {}) as Row;
+    return [
+      String(it.name ?? ""),
+      String(it.description ?? ""),
+      moneyKey(it.amount),
+      it.quantity ?? null,
+      it.optional === true,
+      it.isTitle === true,
+    ];
+  });
+  return fnv1a(stableStringify(normalized));
 }
 
 type Row = Record<string, unknown>;
@@ -232,7 +284,11 @@ async function countServerMatches(entry: OutboxEntry, run: ActionRunner): Promis
     case "saveQuote": {
       const list = (await run("listQuotes", {})) as { quotes?: unknown };
       return asRows(list.quotes).filter(
-        (q) => q.clientName === args.clientName && moneyKey(q.total) === moneyKey(args.total) && createdInWindow(q.createdAt, queuedAt),
+        (q) =>
+          q.clientName === args.clientName &&
+          moneyKey(q.total) === moneyKey(args.total) &&
+          lineItemsHash(q.lineItems) === lineItemsHash(args.lineItems) &&
+          createdInWindow(q.createdAt, queuedAt),
       ).length;
     }
     case "saveInvoice": {
@@ -242,6 +298,7 @@ async function countServerMatches(entry: OutboxEntry, run: ActionRunner): Promis
           inv.clientName === args.clientName &&
           moneyKey(inv.subtotal) === moneyKey(args.subtotal) &&
           inv.issueDate === args.issueDate &&
+          lineItemsHash(inv.lineItems) === lineItemsHash(args.lineItems) &&
           createdInWindow(inv.createdAt, queuedAt),
       ).length;
     }
@@ -274,8 +331,95 @@ async function countServerMatches(entry: OutboxEntry, run: ActionRunner): Promis
       const source = rows.find((r) => r.id === args.id);
       if (!source) return 0;
       return rows.filter(
-        (r) => r.id !== args.id && r.clientName === source.clientName && moneyKey(r.total) === moneyKey(source.total) && createdInWindow(r.createdAt, queuedAt),
+        (r) =>
+          r.id !== args.id &&
+          r.clientName === source.clientName &&
+          moneyKey(r.total) === moneyKey(source.total) &&
+          lineItemsHash(r.lineItems) === lineItemsHash(source.lineItems) &&
+          createdInWindow(r.createdAt, queuedAt),
       ).length;
+    }
+    // Money-record creates (audit B2): receipts, expenses, and mileage are
+    // job costs — a replayed duplicate double-counts them. Each reads back
+    // through the same aggregate the screens use.
+    case "addReceipt": {
+      const job = (await run("getJob", { id: args.jobId })) as { receipts?: unknown };
+      return asRows(job.receipts).filter(
+        (r) =>
+          r.vendor === args.vendor &&
+          moneyKey(r.amount) === moneyKey(args.amount) &&
+          r.purchaseDate === args.purchaseDate &&
+          r.filename === args.filename &&
+          createdInWindow(r.createdAt, queuedAt),
+      ).length;
+    }
+    case "saveBusinessExpense": {
+      if (args.id != null) return null; // update by id — replay directly
+      const toolkit = (await run("getGrowthToolkit", {})) as { expenses?: unknown };
+      return asRows(toolkit.expenses).filter(
+        (e) =>
+          e.expenseDate === args.expenseDate &&
+          e.vendor === args.vendor &&
+          moneyKey(e.amount) === moneyKey(args.amount) &&
+          e.category === args.category &&
+          (e.jobId ?? null) === (args.jobId ?? null) &&
+          createdInWindow(e.createdAt, queuedAt),
+      ).length;
+    }
+    case "saveMileageTrip": {
+      if (args.id != null) return null; // update by id — replay directly
+      const toolkit = (await run("getGrowthToolkit", {})) as { mileage?: unknown };
+      return asRows(toolkit.mileage).filter(
+        (m) =>
+          m.tripDate === args.tripDate &&
+          m.fromLocation === args.fromLocation &&
+          m.toLocation === args.toLocation &&
+          String(m.miles) === String(args.miles) &&
+          (m.jobId ?? null) === (args.jobId ?? null) &&
+          createdInWindow(m.createdAt, queuedAt),
+      ).length;
+    }
+    case "saveLead": {
+      const list = (await run("listLeads", {})) as { leads?: unknown };
+      return asRows(list.leads).filter(
+        (l) => l.name === args.name && l.phone === args.phone && createdInWindow(l.createdAt, queuedAt),
+      ).length;
+    }
+    case "savePriceBookItem": {
+      if (args.id != null) return null; // update by id — replay directly
+      const toolkit = (await run("getGrowthToolkit", {})) as { priceBook?: unknown };
+      return asRows(toolkit.priceBook).filter(
+        (p) => p.name === args.name && moneyKey(p.unitPrice) === moneyKey(args.unitPrice) && createdInWindow(p.createdAt, queuedAt),
+      ).length;
+    }
+    case "saveQuoteTemplate": {
+      if (args.id != null) return null; // update by id — replay directly
+      const toolkit = (await run("getGrowthToolkit", {})) as { templates?: unknown };
+      return asRows(toolkit.templates).filter(
+        (t) => t.name === args.name && lineItemsHash(t.lineItems) === lineItemsHash(args.lineItems) && createdInWindow(t.createdAt, queuedAt),
+      ).length;
+    }
+    case "saveSubcontractor": {
+      if (args.id != null) return null; // update by id — replay directly
+      const list = (await run("listSubcontractors", { jobId: args.jobId })) as { subcontractors?: unknown };
+      return asRows(list.subcontractors).filter(
+        (s) => s.name === args.name && s.phone === args.phone && createdInWindow(s.createdAt, queuedAt),
+      ).length;
+    }
+    case "createPurchaseOrder": {
+      const today = new Date().toISOString().slice(0, 10);
+      const data = (await run("getFieldIntelligence", { today, periodStart: "2000-01-01", periodEnd: today })) as { purchaseOrders?: unknown };
+      return asRows(data.purchaseOrders).filter(
+        (po) => po.supplierQuoteId === args.supplierQuoteId && createdInWindow(po.createdAt, queuedAt),
+      ).length;
+    }
+    case "convertLeadToJob": {
+      // A converted lead sits at stage "won" with its client linked — the
+      // conversion landed, whatever happened to the response (audit B3).
+      const list = (await run("listLeads", {})) as { leads?: unknown };
+      const lead = asRows(list.leads).find((l) => l.id === args.id);
+      if (!lead) return 0;
+      return lead.stage === "won" ? 1 : 0;
     }
     case "convertQuoteToInvoice": {
       const list = (await run("listInvoices", {})) as { invoices?: unknown };
@@ -308,9 +452,27 @@ function createFingerprintKey(entry: OutboxEntry): string | null {
   const { action, args } = entry;
   switch (action) {
     case "saveQuote":
-      return `q|${args.clientName}|${moneyKey(args.total)}`;
+      return `q|${args.clientName}|${moneyKey(args.total)}|${lineItemsHash(args.lineItems)}`;
     case "saveInvoice":
-      return `i|${args.clientName}|${moneyKey(args.subtotal)}|${args.issueDate}`;
+      return `i|${args.clientName}|${moneyKey(args.subtotal)}|${args.issueDate}|${lineItemsHash(args.lineItems)}`;
+    case "addReceipt":
+      return `r|${args.jobId}|${args.vendor}|${moneyKey(args.amount)}|${args.purchaseDate}|${args.filename}`;
+    case "saveBusinessExpense":
+      return args.id != null ? null : `e|${args.expenseDate}|${args.vendor}|${moneyKey(args.amount)}|${args.category}|${args.jobId ?? ""}`;
+    case "saveMileageTrip":
+      return args.id != null ? null : `m|${args.tripDate}|${args.fromLocation}|${args.toLocation}|${args.miles}|${args.jobId ?? ""}`;
+    case "saveLead":
+      return `l|${args.name}|${args.phone}`;
+    case "savePriceBookItem":
+      return args.id != null ? null : `pb|${args.name}|${moneyKey(args.unitPrice)}`;
+    case "saveQuoteTemplate":
+      return args.id != null ? null : `qt|${args.name}|${lineItemsHash(args.lineItems)}`;
+    case "saveSubcontractor":
+      return args.id != null ? null : `s|${args.jobId}|${args.name}|${args.phone}`;
+    case "createPurchaseOrder":
+      return `po|${args.supplierQuoteId}`;
+    case "convertLeadToJob":
+      return `cl|${args.id}`;
     case "createJob":
       return `j|${args.clientName}|${args.jobAddress}|${args.jobDate}`;
     case "saveClient":
@@ -340,7 +502,28 @@ const PREFLIGHT_ACTIONS: ReadonlySet<string> = new Set([
   "duplicateInvoice",
   "convertQuoteToInvoice",
   "convertQuoteToJob",
+  "addReceipt",
+  "saveBusinessExpense",
+  "saveMileageTrip",
+  "saveLead",
+  "savePriceBookItem",
+  "saveQuoteTemplate",
+  "saveSubcontractor",
+  "createPurchaseOrder",
+  "convertLeadToJob",
 ]);
+
+/**
+ * Server rejections that actually mean "the write already landed" (audit
+ * B3): a replayed convertLeadToJob whose first attempt succeeded but whose
+ * response was lost comes back as this error. Classifying it as a
+ * rejection would show the user a failed sync for work that succeeded.
+ * (The preflight above normally catches it first; this is the backstop
+ * for when the preflight read itself couldn't run.)
+ */
+const ALREADY_APPLIED_ERRORS: Record<string, RegExp> = {
+  convertLeadToJob: /already been converted/i,
+};
 
 export class Outbox {
   private entries: OutboxEntry[] = [];
@@ -381,20 +564,40 @@ export class Outbox {
     return [...this.entries];
   }
 
-  pendingCount(): number {
-    return this.entries.filter((e) => e.state === "pending").length;
+  /**
+   * Counts/lists, optionally scoped to one account (audit A3): entries a
+   * different account queued on this device are not the signed-in user's
+   * to see, retry, or discard. Entries with no recorded owner (queued
+   * before account scoping existed) count as the device's own.
+   */
+  pendingCount(userId?: number | null): number {
+    return this.entries.filter(
+      (e) => e.state === "pending" && (userId == null || e.userId == null || e.userId === userId),
+    ).length;
   }
 
-  rejectedEntries(): OutboxEntry[] {
-    return this.entries.filter((e) => e.state === "rejected");
+  rejectedEntries(userId?: number | null): OutboxEntry[] {
+    return this.entries.filter(
+      (e) => e.state === "rejected" && (userId == null || e.userId == null || e.userId === userId),
+    );
+  }
+
+  /** Drop every queued entry without sending any of them (sign-out). */
+  clear(): void {
+    if (this.entries.length === 0) return;
+    this.entries = [];
+    this.persist();
   }
 
   /**
    * Queue a mutation that just failed with a network error. Returns the
    * entry, or null when the payload is too large to persist safely (the
    * caller then surfaces the original network error instead — the write is
-   * never silently swallowed). An identical pending entry (same action +
-   * args, e.g. a double-tapped save) is returned instead of duplicated.
+   * never silently swallowed). An identical pending entry queued within
+   * the double-tap window (same action + args, moments apart) is returned
+   * instead of duplicated — that is one write fired twice. The same write
+   * queued again LATER is a distinct entry (audit B1): two identical cash
+   * payments recorded minutes apart are two payments, and both replay.
    */
   enqueue(action: string, args: Record<string, unknown>, opts: { userId?: number | null; queuedAt?: number } = {}): OutboxEntry | null {
     const cleanArgs = { ...args };
@@ -406,15 +609,20 @@ export class Outbox {
       return null;
     }
     if (serialized.length > this.maxEntryBytes) return null;
+    const queuedAt = opts.queuedAt ?? Date.now();
     const existing = this.entries.find(
-      (e) => e.state === "pending" && e.action === action && stableStringify(e.args) === serialized,
+      (e) =>
+        e.state === "pending" &&
+        e.action === action &&
+        stableStringify(e.args) === serialized &&
+        Math.abs(queuedAt - e.queuedAt) <= DOUBLE_TAP_MERGE_MS,
     );
     if (existing) return existing;
     const entry: OutboxEntry = {
       key: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `ob-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       action,
       args: cleanArgs,
-      queuedAt: opts.queuedAt ?? Date.now(),
+      queuedAt,
       userId: opts.userId ?? null,
       attempts: 0,
       state: "pending",
@@ -513,6 +721,14 @@ export class Outbox {
         this.persist();
       } catch (error) {
         const kind = classifyActionError(error);
+        if (kind === "rejected" && ALREADY_APPLIED_ERRORS[live.action]?.test(errorMessage(error))) {
+          // The server's "rejection" is proof the first attempt landed
+          // (audit B3) — retire the entry as applied, never as failed.
+          this.entries = this.entries.filter((e) => e.key !== live.key);
+          report.alreadyApplied.push(live.key);
+          this.persist();
+          continue;
+        }
         if (kind === "rejected") {
           live.state = "rejected";
           live.error = errorMessage(error);

@@ -350,6 +350,200 @@ describe("create replay dedupe (fingerprint preflight)", () => {
   });
 });
 
+describe("audit fixes 2026-11-21: fingerprints, windows, scoping, payments", () => {
+  const QUOTE_LI = {
+    clientName: "Ada Lovelace",
+    lineItems: [{ description: "Deck repair", amount: 1250 }],
+    subtotal: 1250,
+    total: 1250,
+    status: "draft",
+  };
+
+  test("A1: same client + total but different line items is NOT a duplicate", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const entry = outbox.enqueue("saveQuote", QUOTE_LI)!;
+    const serverQuote = {
+      clientName: "Ada Lovelace",
+      total: 1250,
+      lineItems: [{ description: "Fence repair", amount: 1250 }],
+      createdAt: new Date(entry.queuedAt + 1000).toISOString(),
+    };
+    let saved = 0;
+    const { runner } = scriptedRunner({
+      listQuotes: () => ({ quotes: [serverQuote] }),
+      saveQuote: () => { saved += 1; return { id: 1 }; },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(0);
+    expect(report.applied).toHaveLength(1);
+    expect(saved).toBe(1);
+  });
+
+  test("A1: identical line items still dedupe", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const entry = outbox.enqueue("saveQuote", QUOTE_LI)!;
+    const serverQuote = {
+      clientName: "Ada Lovelace",
+      total: 1250,
+      lineItems: [{ description: "Deck repair", amount: 1250 }],
+      createdAt: new Date(entry.queuedAt + 1000).toISOString(),
+    };
+    const { runner, calls } = scriptedRunner({
+      listQuotes: () => ({ quotes: [serverQuote] }),
+      saveQuote: () => { throw new Error("must not be called"); },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(1);
+    expect(calls.filter((c) => c.action === "saveQuote")).toHaveLength(0);
+  });
+
+  test("A2: a server record created days after the queue time does not absorb the create", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const entry = outbox.enqueue("saveQuote", QUOTE_LI)!;
+    const serverQuote = {
+      clientName: "Ada Lovelace",
+      total: 1250,
+      lineItems: [{ description: "Deck repair", amount: 1250 }],
+      createdAt: new Date(entry.queuedAt + 7 * 24 * 3600_000).toISOString(),
+    };
+    const { runner } = scriptedRunner({
+      listQuotes: () => ({ quotes: [serverQuote] }),
+      saveQuote: () => ({ id: 2 }),
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(0);
+    expect(report.applied).toHaveLength(1);
+  });
+
+  test("B(a): two identical payments queued minutes apart both replay", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const t0 = Date.now();
+    const payment = { invoiceId: 77, amount: 250, method: "Cash", paymentDate: "2026-11-15" };
+    outbox.enqueue("addPayment", payment, { queuedAt: t0 });
+    outbox.enqueue("addPayment", { ...payment }, { queuedAt: t0 + 5 * 60_000 });
+    expect(outbox.pendingCount()).toBe(2);
+    const { runner, calls } = scriptedRunner({
+      listInvoices: () => ({ invoices: [{ id: 77, payments: [] }] }),
+      addPayment: () => ({ ok: true }),
+    });
+    const report = await outbox.flush(runner);
+    expect(report.applied).toHaveLength(2);
+    expect(calls.filter((c) => c.action === "addPayment")).toHaveLength(2);
+  });
+
+  test("B(a): a true double-tap (same write within seconds) still merges", () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const t0 = Date.now();
+    const payment = { invoiceId: 77, amount: 250, method: "Cash", paymentDate: "2026-11-15" };
+    outbox.enqueue("addPayment", payment, { queuedAt: t0 });
+    outbox.enqueue("addPayment", { ...payment }, { queuedAt: t0 + 500 });
+    expect(outbox.pendingCount()).toBe(1);
+  });
+
+  test("B(b): a queued expense whose create already landed is retired, not duplicated", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const entry = outbox.enqueue("saveBusinessExpense", {
+      expenseDate: "2026-11-15",
+      vendor: "Lowe's",
+      amount: 84.2,
+      category: "Materials",
+      jobId: null,
+    })!;
+    const { runner, calls } = scriptedRunner({
+      getGrowthToolkit: () => ({
+        expenses: [{
+          expenseDate: "2026-11-15",
+          vendor: "Lowe's",
+          amount: 84.2,
+          category: "Materials",
+          jobId: null,
+          createdAt: new Date(entry.queuedAt + 60_000).toISOString(),
+        }],
+      }),
+      saveBusinessExpense: () => { throw new Error("must not be called"); },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(1);
+    expect(calls.filter((c) => c.action === "saveBusinessExpense")).toHaveLength(0);
+  });
+
+  test("B(b): a queued receipt already recorded on the job is retired", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    const entry = outbox.enqueue("addReceipt", {
+      jobId: 5,
+      vendor: "Home Depot",
+      amount: 51.32,
+      purchaseDate: "2026-11-15",
+      filename: "receipt.jpg",
+      note: "",
+    })!;
+    const { runner, calls } = scriptedRunner({
+      getJob: () => ({
+        receipts: [{
+          vendor: "Home Depot",
+          amount: 51.32,
+          purchaseDate: "2026-11-15",
+          filename: "receipt.jpg",
+          createdAt: new Date(entry.queuedAt + 30_000).toISOString(),
+        }],
+      }),
+      addReceipt: () => { throw new Error("must not be called"); },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(1);
+    expect(calls.filter((c) => c.action === "addReceipt")).toHaveLength(0);
+  });
+
+  test("B(c): convertLeadToJob retires when the lead already shows as converted", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    outbox.enqueue("convertLeadToJob", { id: 9 });
+    const { runner, calls } = scriptedRunner({
+      listLeads: () => ({ leads: [{ id: 9, name: "Won Lead", stage: "won" }] }),
+      convertLeadToJob: () => { throw new Error("must not be called"); },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(1);
+    expect(calls.filter((c) => c.action === "convertLeadToJob")).toHaveLength(0);
+  });
+
+  test("B(c): an 'already converted' server answer retires the entry instead of rejecting it", async () => {
+    const outbox = new Outbox(new MemoryStorage());
+    outbox.enqueue("convertLeadToJob", { id: 10 });
+    const { runner } = scriptedRunner({
+      listLeads: () => ({ leads: [{ id: 10, name: "Race Lead", stage: "new" }] }),
+      convertLeadToJob: () => { throw new Error("action convertLeadToJob error: This lead has already been converted to a job."); },
+    });
+    const report = await outbox.flush(runner);
+    expect(report.alreadyApplied).toHaveLength(1);
+    expect(report.rejected).toHaveLength(0);
+    expect(outbox.pendingCount()).toBe(0);
+    expect(outbox.rejectedEntries()).toHaveLength(0);
+  });
+
+  test("A3: read cache entries are scoped per account and purgeable", () => {
+    let scope: number | null = 7;
+    const cache = new ReadCache(new MemoryStorage(), undefined, () => scope);
+    cache.put("listJobs", {}, [{ id: 1 }]);
+    scope = 8;
+    expect(cache.get("listJobs", {})).toBeNull();
+    scope = 7;
+    expect(cache.get("listJobs", {})?.data).toEqual([{ id: 1 }]);
+    cache.clearAll();
+    expect(cache.get("listJobs", {})).toBeNull();
+  });
+
+  test("A3: outbox counts only cover the signed-in account; clear empties all", () => {
+    const outbox = new Outbox(new MemoryStorage());
+    outbox.enqueue("saveClient", { name: "Ada" }, { userId: 1 });
+    outbox.enqueue("saveClient", { name: "Grace" }, { userId: 2 });
+    expect(outbox.pendingCount(1)).toBe(1);
+    expect(outbox.pendingCount(2)).toBe(1);
+    expect(outbox.pendingCount()).toBe(2);
+    outbox.clear();
+    expect(outbox.pendingCount()).toBe(0);
+  });
+});
+
 describe("source wiring", () => {
   const apiSource = readFileSync(new URL("./client/src/api.ts", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("./client/src/App.tsx", import.meta.url), "utf8");
