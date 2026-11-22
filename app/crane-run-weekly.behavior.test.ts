@@ -95,7 +95,18 @@ const ctxFor = (userId: number, companyId: number) => ({
 }) as any;
 const actions = BaseActions as any;
 const insertScore = async (userId: number, displayName: string, score: number, scoreDate: string, createdAt: Date) => {
-  await db.insert(schema.dailyGameScores).values({ userId, displayName, score, scoreDate, createdAt });
+  // UPSERT, not a plain insert: section 5 submits a real score for TODAY's
+  // ET date through the API first, and when the suite runs on a Monday or
+  // Sunday the week's boundary dates below ARE today — a plain insert then
+  // hit the (userId, scoreDate) unique index and the whole suite failed
+  // with SQLITE_CONSTRAINT_UNIQUE (seen Mon Nov 9, 2026; passed Sat Nov 21
+  // when today fell mid-week). Fixture seeds may overwrite the submitted
+  // row — every assertion about the submitted score runs before them.
+  await db.insert(schema.dailyGameScores).values({ userId, displayName, score, scoreDate, createdAt })
+    .onConflictDoUpdate({
+      target: [schema.dailyGameScores.userId, schema.dailyGameScores.scoreDate],
+      set: { displayName, score, createdAt },
+    });
 };
 
 const weekStart = currentWeekStart();
