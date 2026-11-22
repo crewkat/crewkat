@@ -14,6 +14,7 @@ import {
   flushOutbox,
   noteNetworkResult,
   outbox,
+  purgeOfflineAccountData,
   readCache,
   readCachedUser,
   registerOfflineActionRunner,
@@ -85,6 +86,10 @@ export function clearActiveSessionToken() {
   // retires the cached profile used for offline restore — it must never
   // resurrect a session the server or the user has ended.
   clearCachedUser();
+  // …and the account's offline data goes with it (audit A3): cached reads
+  // and queued writes belong to the account that made them, so the next
+  // account on this device never sees, retries, or discards them.
+  purgeOfflineAccountData();
   setOfflineSession(false);
 }
 

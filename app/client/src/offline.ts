@@ -43,7 +43,11 @@ const localStorageAdapter: KeyValueStorage = {
   },
 };
 
-export const readCache = new ReadCache(localStorageAdapter);
+// Account-scoped (audit A3): cache keys carry the signed-in user's id, so
+// a different account on the same device is never served the previous
+// account's lists. readCachedUser is declared below; the provider runs at
+// call time, after the profile exists.
+export const readCache = new ReadCache(localStorageAdapter, undefined, () => readCachedUser()?.id ?? null);
 export const outbox = new Outbox(localStorageAdapter);
 
 // ---------------------------------------------------------------------------
@@ -101,10 +105,14 @@ export interface OfflineState {
 export function useOfflineState(): OfflineState {
   const snap = useSyncExternalStore(subscribeConnectivity, () => version, () => version);
   void snap;
+  // Banner counts/lists are scoped to the signed-in account (audit A3):
+  // another account's queued or rejected entries on this device are not
+  // this user's to see, retry, or discard.
+  const userId = readCachedUser()?.id ?? null;
   return {
     offline: getOfflineSnapshot(),
-    pendingCount: outbox.pendingCount(),
-    rejected: outbox.rejectedEntries(),
+    pendingCount: outbox.pendingCount(userId),
+    rejected: outbox.rejectedEntries(userId),
   };
 }
 
@@ -139,6 +147,20 @@ export function clearCachedUser(): void {
   try {
     window.localStorage.removeItem(CACHED_USER_KEY);
   } catch { /* ignore */ }
+}
+
+/**
+ * Sign-out hygiene (audit A3): the read cache and the outbox belong to the
+ * account that made them. When a session genuinely ends, both are purged
+ * so the next account on this device starts clean — its banner never
+ * counts, lists, retries, or discards the previous account's entries, and
+ * its offline lists never serve the previous account's clients/invoices.
+ * Called from clearActiveSessionToken (api.ts), the one choke point every
+ * sign-out and server auth verdict passes through.
+ */
+export function purgeOfflineAccountData(): void {
+  readCache.clearAll();
+  outbox.clear();
 }
 
 // ---------------------------------------------------------------------------
