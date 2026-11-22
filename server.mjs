@@ -694,6 +694,9 @@ async function serveStatic(res, urlPath) {
   if (urlPath === "/privacy" || urlPath === "/privacy/") {
     return sendFile(res, join(MARKETING_DIST, "privacy.html"));
   }
+  if (urlPath === "/terms" || urlPath === "/terms/") {
+    return sendFile(res, join(MARKETING_DIST, "terms.html"));
+  }
   if (urlPath === "/paperwork" || urlPath === "/paperwork/") {
     return sendFile(res, join(MARKETING_DIST, "paperwork.html"));
   }
