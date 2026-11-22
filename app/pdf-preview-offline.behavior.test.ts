@@ -168,4 +168,17 @@ describe("source wiring", () => {
     expect(buildSource).toContain('"pdf.worker.min.mjs"');
     expect(swSource).toContain('"/app/pdf.worker.min.mjs"');
   });
+
+  test("B(d): the local rasterizer isolates failures per page", () => {
+    // A single bad page must not fail the whole preview: the render call
+    // sits in its own try/catch (the white sheet is kept), and a page that
+    // cannot even be opened falls back to the blank placeholder so the
+    // page count/order survive.
+    expect(localSource).toContain("BLANK_PAGE_JPEG");
+    expect(localSource).toContain("renderPage(pageNumber)");
+    const renderAt = localSource.indexOf("await page.render(");
+    const catchAt = localSource.indexOf("catch {", renderAt);
+    expect(renderAt).toBeGreaterThan(-1);
+    expect(catchAt).toBeGreaterThan(renderAt);
+  });
 });
