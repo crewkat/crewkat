@@ -276,15 +276,22 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
 
 const ROLE_RANK: Record<ProductRole, number> = { field: 0, office: 1, admin: 2 };
 
-// Minimum product role an action requires at the company layer. Actions
-// in no set default to "field" (any signed-in role) — the behavior suite
-// asserts every registered action is classified in exactly one set, so
-// this default only ever covers actions added after the suite's list is
-// refreshed, and the suite fails until they are classified.
+// Minimum product role an action requires at the company layer.
+// FAIL-CLOSED (audit C4, 2026-11-21): an action in NO set defaults to
+// "admin" — the most restrictive company role — never to "field". Every
+// registered action is classified in exactly one set (the office-track1c
+// suite asserts it, PUBLIC_ACTIONS included — public actions bypass this
+// map in protectActions before the role check ever runs), so the default
+// only ever covers an action added without classifying it, and it now
+// ships admin-only instead of silently field-accessible until someone
+// notices. Platform actions stay "field" at this layer on purpose: their
+// handlers enforce platform membership themselves (see PLATFORM_ACTIONS
+// above), and a company role must not gate Danny's team out of the panel.
 export function minRoleForAction(actionName: string): ProductRole {
   if (ADMIN_ACTIONS.has(actionName)) return "admin";
   if (OFFICE_ACTIONS.has(actionName)) return "office";
-  return "field";
+  if (ALL_ROLE_ACTIONS.has(actionName) || PLATFORM_ACTIONS.has(actionName)) return "field";
+  return "admin";
 }
 
 export function roleCan(role: ProductRole, actionName: string): boolean {
