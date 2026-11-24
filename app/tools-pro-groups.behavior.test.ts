@@ -134,8 +134,9 @@ describe("proWorkspace screen is gone", () => {
 // Danny 2026-11-03 (evening): the cleanup made Tools organized but flat —
 // every door wore the same peach chip, so finding one meant reading every
 // title. Each door now carries its own accent/tint in the catalog data,
-// and a search bar live-filters all 15 doors by name/description/keywords
-// in both languages, accent-insensitively.
+// and a search bar live-filters all doors by name/description/keywords
+// in both languages, accent-insensitively. (16 doors since 2026-11-24:
+// the Document scanner became its own door again.)
 describe("Tools distinction + search (Danny 2026-11-03)", () => {
   test("search input exists at the top with EN/ES placeholder and a clear button", () => {
     expect(APP).toContain('className="tool-search"');
@@ -171,16 +172,16 @@ describe("Tools distinction + search (Danny 2026-11-03)", () => {
     expect(APP).toContain("Ninguna herramienta coincide con");
   });
 
-  test("all 15 doors carry distinct accent + tint colors in the catalog data", () => {
+  test("all 16 doors carry distinct accent + tint colors in the catalog data", () => {
     const accents = [...APP.matchAll(/accent: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
-    expect(accents.length).toBe(30); // 15 doors × EN + ES literals
-    expect(new Set(accents).size).toBe(15);
-    for (const hex of ["#4a5fd0", "#22713f", "#7a4fc9", "#8c620a", "#1c77c3", "#0f9d63", "#ae5104", "#cf4436", "#b05c2a", "#527a8a", "#e01f26", "#8e44ad", "#8f6100", "#3d5a99", "#c13a7d"]) {
+    expect(accents.length).toBe(32); // 16 doors × EN + ES literals
+    expect(new Set(accents).size).toBe(16);
+    for (const hex of ["#4a5fd0", "#22713f", "#7a4fc9", "#8c620a", "#1c77c3", "#0f9d63", "#ae5104", "#cf4436", "#b05c2a", "#527a8a", "#e01f26", "#8e44ad", "#8f6100", "#3d5a99", "#c13a7d", "#0f766e"]) {
       expect(accents).toContain(hex);
     }
     const tints = [...APP.matchAll(/tint: "(#[0-9a-f]{6})"/g)].map((m) => m[1]);
-    expect(tints.length).toBe(30);
-    expect(new Set(tints).size).toBe(15);
+    expect(tints.length).toBe(32);
+    expect(new Set(tints).size).toBe(16);
   });
 
   test("door colors reach the chip via --tile-accent / --tile-tint with the old peach as fallback", () => {
