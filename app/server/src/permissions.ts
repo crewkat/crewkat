@@ -243,7 +243,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "saveFinancialSignature", "saveIncident", "saveInvoice",
   "saveMarketplaceAlert", "saveProgressUpdate", "savePunchSignoff",
   "savePushSubscription", "saveQuote", "saveQuoteMaterials",
-  "saveSafetyTalk", "saveScannedDocument", "sendJobMessage",
+  "saveSafetyTalk", "saveScannedDocument", "sendJobMessage", "setScannedDocumentJob",
   "setDocumentImagesPerPage", "setEquipmentCheckout", "setInvoiceCardOptions", "setJobClient",
   "setJobFileShared", "shareOnMyWay", "signDocumentWithDrawnSignature",
   "startTimer", "stopTimer", "submitCancellationFeedback",

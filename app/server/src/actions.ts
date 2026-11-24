@@ -3300,10 +3300,12 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   "reports": { screen: "reports", tab: null, titleEn: "Reports", titleEs: "Informes", iconPath: "M4 20V10M10 20V4M16 20v-7M22 20V7" },
   "operations:calendar": { screen: "operations", tab: "calendar", titleEn: "Schedule", titleEs: "Calendario", iconPath: "M5 5h14v15H5zM8 3v4M16 3v4M8 11h3M13 11h3" },
   // Tools cleanup (2026-11-03): Lead scoring and Crew day get registry
-  // entries (both were unpinnable before). The document-scanner entry is
-  // gone — pins to it drop silently in listPinnedTools; scanning lives on
-  // as an action inside Expenses & receipts.
+  // entries (both were unpinnable before).
   "operations:leads": { screen: "operations", tab: "leads", titleEn: "Lead scoring", titleEs: "Puntaje de prospectos", iconPath: "M4 5h16l-6 7v6l-4 2v-8z" },
+  // Document scanner standalone (2026-11-24): the scanner is its own
+  // door again (it lived only inside Expenses & receipts after the
+  // 2026-11-03 cleanup), so its pin target is back in the registry.
+  "documentScanner": { screen: "documentScanner", tab: null, titleEn: "Document scanner", titleEs: "Escáner de documentos", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   "crewDay": { screen: "crewDay", tab: null, titleEn: "Crew day", titleEs: "Día del equipo", iconPath: "M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" },
   "followups": { screen: "followups", tab: null, titleEn: "Collections & follow-ups", titleEs: "Cobros y seguimientos", iconPath: "M12 7v5l3 2M4 12a8 8 0 1 0 2-5" },
   "fieldIntelligence:purchasing": { screen: "fieldIntelligence", tab: "purchasing", titleEn: "Orders & suppliers", titleEs: "Pedidos y proveedores", iconPath: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
@@ -6841,6 +6843,32 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
         throw error;
       }
     }
+  }),
+  // Document scanner standalone (2026-11-24): link / re-link / unlink a
+  // saved scan. Mirrors linkQuoteToJob's company scoping: the scan must
+  // belong to the caller's company and the target job is resolved through
+  // requireJobCompany. jobId: null unlinks to General — linking is always
+  // an option, never forced. A receipt scan's linked business expense
+  // follows the scan (the expense was created with the scan's jobId, so
+  // job costing stays attached to the same job as its receipt PDF).
+  setScannedDocumentJob: defineAction({
+    request: z.object({ scanId: z.number().int().positive(), jobId: z.number().int().positive().nullable() }),
+    response: z.object({ ok: z.literal(true) }),
+    async handler(ctx, args): Promise<{ ok: true }> {
+      const db = ctx.db<typeof schema>();
+      const scan = (await db.select().from(schema.scannedDocuments).where(eq(schema.scannedDocuments.id, args.scanId)).limit(1))[0];
+      if (!scan || scan.companyId !== workspaceIdentity(ctx).workspaceCompanyId) throw new Error("Scan not found.");
+      if (args.jobId !== null) {
+        const { job } = await requireJobCompany(ctx, db, args.jobId);
+        if (job.companyId !== scan.companyId) throw new Error("Scan not found.");
+      }
+      await db.update(schema.scannedDocuments).set({ jobId: args.jobId }).where(eq(schema.scannedDocuments.id, args.scanId));
+      if (scan.expenseId) {
+        await db.update(schema.businessExpenses).set({ jobId: args.jobId }).where(eq(schema.businessExpenses.id, scan.expenseId));
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
   }),
   saveSlideshowVideo: defineAction({request:z.object({jobId:z.number().int().positive(),caption:z.string().trim().max(2000),branded:z.boolean(),filename:z.string().min(1).max(240),contentType:z.string().max(100),dataBase64:z.string().min(1).max(80_000_000),photoIds:z.array(z.number().int().positive()).min(1).max(100)}),response:z.object({id:z.number()}),async handler(ctx,args){const db=ctx.db<typeof schema>();const {job}=await requireJobCompany(ctx,db,args.jobId);const photoRows=await db.select().from(schema.photos);const requested=photoRows.filter(p=>args.photoIds.includes(p.id)&&p.jobId===job.id);if(requested.length!==args.photoIds.length||requested.some(p=>p.excludeFromSocial))throw new Error("A photo marked Not for social cannot be exported.");const key=`slideshows/${job.id}/${crypto.randomUUID()}`;await ctx.blobs.put(key,Buffer.from(args.dataBase64,"base64"),{contentType:args.contentType});const rows=await ctx.db<typeof schema>().insert(schema.slideshowVideos).values({jobId:job.id,caption:args.caption,branded:args.branded,blobKey:key,filename:args.filename,contentType:args.contentType,createdAt:new Date()}).returning({id:schema.slideshowVideos.id});const made=rows[0];if(!made)throw new Error("Could not save video.");ctx.invalidateQueries();return{id:made.id};}}),
   getTaxExport: defineAction({request:z.object({year:z.number().int().min(2000).max(2100)}),response:z.object({rows:z.array(z.object({month:z.string(),type:z.enum(["revenue","expense","materials"]),category:z.string(),date:z.string(),description:z.string(),amount:z.number()}))}),async handler(ctx,args){const db=ctx.db<typeof schema>();const [payments,invoices,expenses,receipts,jobs]=await Promise.all([db.select().from(schema.payments),db.select().from(schema.invoices),db.select().from(schema.businessExpenses),db.select().from(schema.receipts),db.select().from(schema.jobs)]);const prefix=String(args.year);const rows=[...payments.filter(p=>p.paymentDate.startsWith(prefix)).map(p=>{const inv=invoices.find(i=>i.id===p.invoiceId);return{month:p.paymentDate.slice(0,7),type:"revenue" as const,category:p.method||"payment",date:p.paymentDate,description:inv?`${inv.clientName} · ${inv.jobType}`:`Invoice #${p.invoiceId}`,amount:Number(p.amount.replace(/[^0-9.-]/g,"")||0)}}),...expenses.filter(e=>e.expenseDate.startsWith(prefix)).map(e=>({month:e.expenseDate.slice(0,7),type:"expense" as const,category:e.category,date:e.expenseDate,description:[e.vendor,e.note].filter(Boolean).join(" · "),amount:Number(e.amount.replace(/[^0-9.-]/g,"")||0)})),...receipts.filter(r=>r.purchaseDate.startsWith(prefix)).map(r=>({month:r.purchaseDate.slice(0,7),type:"materials" as const,category:"job materials",date:r.purchaseDate,description:`${r.vendor}${jobs.find(j=>j.id===r.jobId)?` · ${jobs.find(j=>j.id===r.jobId)?.clientName}`:""}`,amount:Number(r.amount.replace(/[^0-9.-]/g,"")||0)}))];return{rows:rows.sort((a,b)=>a.date.localeCompare(b.date))};}}),

@@ -374,7 +374,7 @@ const OUTBOX_ACTIONS: ReadonlySet<string> = new Set([
   "setInvoiceCardOptions", "updateInvoiceRecurrence", "cancelRecurringInvoice", "generateRecurringInvoice",
   "attachJobMediaToDocument", "deleteDocumentAttachment", "saveDocumentSignatureFields",
   "saveDocumentFillFields", "signDocumentWithDrawnSignature", "saveFinancialSignature",
-  "linkDocumentToJob", "linkInvoiceToJob", "linkQuoteToJob", "updateQuoteAutomationStatus",
+  "linkDocumentToJob", "linkInvoiceToJob", "linkQuoteToJob", "setScannedDocumentJob", "updateQuoteAutomationStatus",
   // Clients
   "saveClient", "deleteClient", "mergeClients", "appendClientAddress", "renameClient",
   // Jobs and job sub-records
