@@ -4389,6 +4389,15 @@ select.ck-btn-sm { appearance: auto; width: auto; flex: 0 0 auto; }
 /* scanner capture thumbnail */
 .scan-capture-preview { width: 100%; max-height: 220px; object-fit: contain; background: #222; border-radius: 8px; margin-bottom: 4px; }
 .scan-hint { font-size: 13px; color: var(--dim); margin: 0 0 8px; }
+.scan-pages { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-bottom: 8px; }
+.scan-page-thumb { position: relative; width: 56px; margin: 0; }
+.scan-page-thumb img { display: block; width: 56px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #222; }
+.scan-page-thumb figcaption { position: absolute; left: 4px; bottom: 4px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0,0,0,.55); border-radius: 999px; padding: 0 6px; line-height: 16px; }
+.scan-page-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; line-height: 1; padding: 0; cursor: pointer; }
+.scan-page-add { min-height: 72px; padding: 0 12px; border: 1px dashed var(--border); border-radius: 6px; background: transparent; color: var(--text); font-weight: 700; cursor: pointer; }
+.scan-relink { display: grid; gap: 4px; margin-top: 6px; }
+.scan-relink > span { font-size: .75rem; font-weight: 700; color: var(--dim); }
+.scan-relink select { min-height: 36px; border: 1px solid var(--border); border-radius: .6rem; background: var(--surface); color: var(--text); padding: .35rem .5rem; max-width: 240px; }
 
 /* Build 0.3 QA batch */
 /* 1. Visible resize grip for description textareas (native resize affordance) */

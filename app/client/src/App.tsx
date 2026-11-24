@@ -396,6 +396,7 @@ type Screen =
   | { name: "operations"; tab?: "calendar" | "leads" }
   | { name: "reports" }
   | { name: "businessTools"; tab?: "price" | "templates" | "mileage" | "expenses" }
+  | { name: "documentScanner" }
   | { name: "admin" }
   | { name: "platformAdmin"; tab?: PlatformAdminTab; refundEmail?: string }
   | { name: "platformAdminUser"; userId: number }
@@ -3661,7 +3662,7 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
     // Build 0.6 (item 20): the Pro tools page itself opens for everyone —
     // free users see it in preview mode (watermarked, tools locked). The
     // individual Pro tool screens below still redirect free users to upgrade.
-    const premiumScreen = next.name === "businessTools" || next.name === "admin" || next.name === "expansion" || next.name === "fieldIntelligence" || next.name === "reports" || next.name === "followups";
+    const premiumScreen = next.name === "businessTools" || next.name === "documentScanner" || next.name === "admin" || next.name === "expansion" || next.name === "fieldIntelligence" || next.name === "reports" || next.name === "followups";
     const destination: Screen = auth.user.tier === "free" && premiumScreen ? { name: "upgrade" } : next;
     const currentIndex = Math.max(0, screenStack.length - 1);
     scrollSnapshotsRef.current[currentIndex] = captureNavigationScroll();
@@ -4365,6 +4366,9 @@ function CrewkatApplication({ onBootSettled }: { onBootSettled?: () => void }) {
       )}
       {screen.name === "businessTools" && (
         <BusinessToolsScreen lang={lang} onBack={goBackOrTools} initialTab={screen.tab} />
+      )}
+      {screen.name === "documentScanner" && (
+        <DocumentScannerScreen lang={lang} onBack={goBackOrTools} />
       )}
       {screen.name === "admin" && <AdminScreen lang={lang} onBack={goBackOrTools} />}
       {screen.name === "platformAdmin" && <PlatformAdminScreen lang={lang} onBack={goBack} setScreen={setScreen} initialTab={screen.tab} initialRefundEmail={screen.refundEmail} />}
@@ -6498,7 +6502,7 @@ function foldToolSearchText(value: string): string {
 
 function isProToolScreen(screen?: Screen) {
   if (!screen) return false;
-  return screen.name === "businessTools" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
+  return screen.name === "businessTools" || screen.name === "documentScanner" || screen.name === "admin" || screen.name === "expansion" || screen.name === "fieldIntelligence" || screen.name === "reports" || screen.name === "followups";
 }
 
 // Tool ids for Home-screen pinning: `<screenName>` or `<screenName>:<tab>`,
@@ -6650,12 +6654,14 @@ function officeToolTiles(lang: Lang): ToolTile[] {
     { title: "Precios guardados", description: "Guarda precios que usas con frecuencia", screen: { name: "businessTools", tab: "price" }, accent: "#22713f", tint: "#e2f3e7", keywords: "price book precios lista guardados", icon: doorTileIcon(<><path className="dg-f" d="M3 5.2A2.2 2.2 0 0 1 5.2 3h7.2a2 2 0 0 1 1.4.6l7.6 7.6a2 2 0 0 1 0 2.8l-7.4 7.4a2 2 0 0 1-2.8 0L3.6 13.8A2 2 0 0 1 3 12.4Z" /><circle className="dg-w" cx="8" cy="8" r="2" /><circle className="dg-o" cx="8" cy="8" r="1" /></>) },
     { title: "Plantillas de estimados", description: "Reutiliza partidas frecuentes", screen: { name: "businessTools", tab: "templates" }, accent: "#7a4fc9", tint: "#efe7fb", keywords: "reuse line items plantillas reutilizar", icon: doorTileIcon(<><path className="dg-f" d="M6.3 2.8h6.9L18 7.6v11.9a1.7 1.7 0 0 1-1.7 1.7H6.3A1.7 1.7 0 0 1 4.6 19.5V4.5a1.7 1.7 0 0 1 1.7-1.7Z" /><path className="dg-w" d="M13.2 2.8v3.4a1.4 1.4 0 0 0 1.4 1.4H18Z" /><rect className="dg-w" x="7.6" y="10.6" width="8.8" height="1.8" rx="0.9" /><rect className="dg-w" x="7.6" y="14" width="8.8" height="1.8" rx="0.9" /><rect className="dg-o" x="7.6" y="17.4" width="5.2" height="1.8" rx="0.9" /></>) },
     { title: "Gastos y recibos", description: "Registra costos y fotos de recibos", screen: { name: "businessTools", tab: "expenses" }, accent: "#cf4436", tint: "#fdeceb", keywords: "expenses receipts costs bills scanner scan trips mileage pay bills gastos recibos escanear viajes millaje pagar cuentas", icon: doorTileIcon(<><path className="dg-f" d="M5.6 2.8h12.8v18.4l-2.1-1.4-2.2 1.4-2.1-1.4-2.2 1.4-2.1-1.4-2.1 1.4Z" /><rect className="dg-w" x="8" y="6.2" width="8" height="1.7" rx="0.85" /><text className="dg-o" x="12" y="17" textAnchor="middle" fontSize="10" fontWeight={800}>$</text></>) },
+    { title: "Escáner de documentos", description: "Escanea contratos y papeles a PDF limpios", screen: { name: "documentScanner" }, accent: "#0f766e", tint: "#e0f2f1", keywords: "document scanner scan documents contracts pdf escaner documentos contratos paginas", icon: doorTileIcon(<><rect className="dg-f" x="5" y="3.4" width="14" height="17.2" rx="1.8" /><rect className="dg-w" x="8" y="7.4" width="8" height="1.7" rx="0.85" /><rect className="dg-w" x="8" y="10.7" width="8" height="1.7" rx="0.85" /><rect className="dg-o" x="8" y="15" width="8" height="2.1" rx="1.05" /></>) },
     { title: "Garantías", description: "Guarda coberturas y vencimientos", screen: { name: "expansion", tab: "warranties" }, accent: "#8f6100", tint: "#fdf3d3", keywords: "warranties coverage expiry garantias cobertura", icon: doorTileIcon(<><path className="dg-f" d="M12 2.7 19.6 5.5v6.2c0 4.7-3.2 7.9-7.6 9.6-4.4-1.7-7.6-4.9-7.6-9.6V5.5Z" /><path className="dg-ws" strokeWidth={2.4} d="m8.5 11.7 2.5 2.5 4.6-5.3" /></>) },
     { title: "Informes", description: "Ingresos, gastos y estimado frente a real", screen: { name: "reports" }, accent: "#3d5a99", tint: "#e8ecf5", keywords: "reports revenue taxes budget alerts analysis informes ingresos impuestos presupuesto alertas", icon: doorTileIcon(<><rect className="dg-f" x="6.6" y="13.4" width="3.4" height="6.4" rx="0.8" /><rect className="dg-f" x="11" y="9.6" width="3.4" height="10.2" rx="0.8" /><rect className="dg-o" x="15.4" y="5.8" width="3.4" height="14" rx="0.8" /><rect className="dg-f" x="4" y="19.8" width="16.4" height="1.9" rx="0.95" /></>) },
   ] : [
     { title: "Saved prices", description: "Save prices you use often", screen: { name: "businessTools", tab: "price" }, accent: "#22713f", tint: "#e2f3e7", keywords: "price book precios lista guardados", icon: doorTileIcon(<><path className="dg-f" d="M3 5.2A2.2 2.2 0 0 1 5.2 3h7.2a2 2 0 0 1 1.4.6l7.6 7.6a2 2 0 0 1 0 2.8l-7.4 7.4a2 2 0 0 1-2.8 0L3.6 13.8A2 2 0 0 1 3 12.4Z" /><circle className="dg-w" cx="8" cy="8" r="2" /><circle className="dg-o" cx="8" cy="8" r="1" /></>) },
     { title: "Estimate templates", description: "Reuse common line items", screen: { name: "businessTools", tab: "templates" }, accent: "#7a4fc9", tint: "#efe7fb", keywords: "reuse line items plantillas reutilizar", icon: doorTileIcon(<><path className="dg-f" d="M6.3 2.8h6.9L18 7.6v11.9a1.7 1.7 0 0 1-1.7 1.7H6.3A1.7 1.7 0 0 1 4.6 19.5V4.5a1.7 1.7 0 0 1 1.7-1.7Z" /><path className="dg-w" d="M13.2 2.8v3.4a1.4 1.4 0 0 0 1.4 1.4H18Z" /><rect className="dg-w" x="7.6" y="10.6" width="8.8" height="1.8" rx="0.9" /><rect className="dg-w" x="7.6" y="14" width="8.8" height="1.8" rx="0.9" /><rect className="dg-o" x="7.6" y="17.4" width="5.2" height="1.8" rx="0.9" /></>) },
     { title: "Expenses & receipts", description: "Record costs and receipt photos", screen: { name: "businessTools", tab: "expenses" }, accent: "#cf4436", tint: "#fdeceb", keywords: "expenses receipts costs bills scanner scan trips mileage pay bills gastos recibos escanear viajes millaje pagar cuentas", icon: doorTileIcon(<><path className="dg-f" d="M5.6 2.8h12.8v18.4l-2.1-1.4-2.2 1.4-2.1-1.4-2.2 1.4-2.1-1.4-2.1 1.4Z" /><rect className="dg-w" x="8" y="6.2" width="8" height="1.7" rx="0.85" /><text className="dg-o" x="12" y="17" textAnchor="middle" fontSize="10" fontWeight={800}>$</text></>) },
+    { title: "Document scanner", description: "Scan contracts & papers to clean PDFs", screen: { name: "documentScanner" }, accent: "#0f766e", tint: "#e0f2f1", keywords: "document scanner scan documents contracts pdf escaner documentos contratos paginas", icon: doorTileIcon(<><rect className="dg-f" x="5" y="3.4" width="14" height="17.2" rx="1.8" /><rect className="dg-w" x="8" y="7.4" width="8" height="1.7" rx="0.85" /><rect className="dg-w" x="8" y="10.7" width="8" height="1.7" rx="0.85" /><rect className="dg-o" x="8" y="15" width="8" height="2.1" rx="1.05" /></>) },
     { title: "Warranties", description: "Save coverage and expiry dates", screen: { name: "expansion", tab: "warranties" }, accent: "#8f6100", tint: "#fdf3d3", keywords: "warranties coverage expiry garantias cobertura", icon: doorTileIcon(<><path className="dg-f" d="M12 2.7 19.6 5.5v6.2c0 4.7-3.2 7.9-7.6 9.6-4.4-1.7-7.6-4.9-7.6-9.6V5.5Z" /><path className="dg-ws" strokeWidth={2.4} d="m8.5 11.7 2.5 2.5 4.6-5.3" /></>) },
     { title: "Reports", description: "Revenue, expenses, and estimate vs. actual", screen: { name: "reports" }, accent: "#3d5a99", tint: "#e8ecf5", keywords: "reports revenue taxes budget alerts analysis informes ingresos impuestos presupuesto alertas", icon: doorTileIcon(<><rect className="dg-f" x="6.6" y="13.4" width="3.4" height="6.4" rx="0.8" /><rect className="dg-f" x="11" y="9.6" width="3.4" height="10.2" rx="0.8" /><rect className="dg-o" x="15.4" y="5.8" width="3.4" height="14" rx="0.8" /><rect className="dg-f" x="4" y="19.8" width="16.4" height="1.9" rx="0.95" /></>) },
   ];
@@ -7314,7 +7320,7 @@ function ToolsScreen({ lang, setScreen, onBack }: { lang: Lang; setScreen: (scre
   const groups: Array<{ title: string; tiles: ToolTile[]; pro?: boolean; icon: ReactNode }> = [
     { title: lang === "es" ? "Estimación" : "Estimate", icon: <Icon size={19}><path d="M4 19h16L4 5zM8 15h5" /></Icon>, tiles: pick(["toolbox", "businessTools:price", "businessTools:templates", "operations:leads"]) },
     { title: lang === "es" ? "El día a día" : "Run the day", icon: <Icon size={19}><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5" /></Icon>, tiles: pick(["operations:calendar", "crewDay", "fieldIntelligence:payroll"]) },
-    { title: lang === "es" ? "Dinero y registros" : "Money & records", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:expenses", "fieldIntelligence:purchasing", "fieldIntelligence:equipment", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties", "reports", "followups"]), pro: true },
+    { title: lang === "es" ? "Dinero y registros" : "Money & records", icon: <Icon size={19}><path d="M4 20V10M10 20V4M16 20v-7M22 20V7" /></Icon>, tiles: pick(["businessTools:expenses", "documentScanner", "fieldIntelligence:purchasing", "fieldIntelligence:equipment", "fieldIntelligence:safety", "fieldIntelligence:credentials", "expansion:warranties", "reports", "followups"]), pro: true },
   ];
   // Search matches each door's name + description in BOTH languages plus
   // its hidden keywords, folded case- and accent-insensitively, so a door
@@ -30754,6 +30760,40 @@ function TaxExport({ lang }: { lang: Lang }) {
   );
 }
 
+// Document scanner standalone (2026-11-24): the scanner is its own door
+// in Tools — it used to live only at the bottom of Expenses & receipts.
+// Same ScannerTool with document-first defaults (kind starts on Contract);
+// the Expenses copy keeps its receipt-first defaults and flow untouched.
+function DocumentScannerScreen({ lang, onBack }: { lang: Lang; onBack: () => void }) {
+  const qc = useQueryClient();
+  const expansionQuery = useQuery({
+    queryKey: ["expansion-suite", new Date().toLocaleDateString("en-CA")],
+    queryFn: () =>
+      api.getExpansionSuite({
+        today: new Date().toLocaleDateString("en-CA"),
+      }),
+  });
+  const refreshExpansion = () =>
+    qc.invalidateQueries({ queryKey: ["expansion-suite"] });
+  return (
+    <main className="page toolkit-page">
+      <PageHeader
+        lang={lang}
+        title={lang === "es" ? "Escáner de documentos" : "Document scanner"}
+        onBack={onBack}
+      />
+      {expansionQuery.data && (
+        <ScannerTool
+          lang={lang}
+          data={expansionQuery.data}
+          refresh={refreshExpansion}
+          variant="standalone"
+        />
+      )}
+    </main>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Build 0.3 (item 14): scanner draft. Returning from the camera intent can
 // recreate the activity and wipe component state — the captured photo and
@@ -30765,6 +30805,10 @@ type ScanDraft = {
   title: string; kind: "receipt" | "contract" | "other"; vendor: string;
   amount: string; expenseDate: string; category: string; note: string;
   jobId: number | null; captureDataUrl: string | null;
+  // Multi-page scans (2026-11-24): pages 2..n as data URLs (page 1 is
+  // captureDataUrl). Capped on restore — a draft is a recovery net, not
+  // an archive.
+  pagesDataUrls: string[];
 };
 function readScanDraft(): ScanDraft | null {
   try {
@@ -30779,30 +30823,76 @@ function readScanDraft(): ScanDraft | null {
       expenseDate: String(parsed.expenseDate ?? ""), category: String(parsed.category ?? "materials"),
       note: String(parsed.note ?? ""), jobId: typeof parsed.jobId === "number" ? parsed.jobId : null,
       captureDataUrl: typeof parsed.captureDataUrl === "string" ? parsed.captureDataUrl : null,
+      pagesDataUrls: Array.isArray(parsed.pagesDataUrls)
+        ? parsed.pagesDataUrls.filter((p: unknown): p is string => typeof p === "string").slice(0, 19)
+        : [],
     };
   } catch {
     return null;
   }
 }
+// One page of a scan, cleaned up for the PDF: downscaled, grayscaled,
+// contrast-boosted (the same pass the single-page scanner always ran).
+async function cleanScanPage(source: Blob): Promise<{ jpeg: string; width: number; height: number } | null> {
+  const bitmap = await createImageBitmap(source);
+  const max = 1800;
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const c = canvas.getContext("2d");
+  if (!c) { bitmap.close(); return null; }
+  c.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const img = c.getImageData(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const r = img.data[i] ?? 0,
+      g = img.data[i + 1] ?? 0,
+      b = img.data[i + 2] ?? 0;
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    const clean =
+      gray > 225
+        ? 255
+        : gray < 45
+          ? 18
+          : Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
+    img.data[i] = clean;
+    img.data[i + 1] = clean;
+    img.data[i + 2] = clean;
+  }
+  c.putImageData(img, 0, 0);
+  return { jpeg: canvas.toDataURL("image/jpeg", 0.92), width: canvas.width, height: canvas.height };
+}
 function ScannerTool({
   lang,
   data,
   refresh,
+  variant = "expenses",
 }: {
   lang: Lang;
   data: ApiResponse<typeof api, "getExpansionSuite">;
   refresh: () => void;
+  // "expenses" = the original receipt-first copy inside Expenses &
+  // receipts; "standalone" = the Document scanner door (contract-first).
+  variant?: "expenses" | "standalone";
 }) {
   const today = new Date().toLocaleDateString("en-CA");
   // Build 0.3 (item 14): restore an interrupted scan draft, if any.
   const scanDraft = useMemo(readScanDraft, []);
   const [jobId, setJobId] = useState<number | null>(scanDraft?.jobId ?? data.jobs[0]?.id ?? null);
   const [title, setTitle] = useState(scanDraft?.title ?? "");
-  const [kind, setKind] = useState<"receipt" | "contract" | "other">(scanDraft?.kind ?? "receipt");
+  const [kind, setKind] = useState<"receipt" | "contract" | "other">(
+    scanDraft?.kind ?? (variant === "standalone" ? "contract" : "receipt"),
+  );
   const [file, setFile] = useState<File | null>(null);
   // capture: downscaled JPEG data URL of the photo — survives activity
   // recreation, unlike the File object, and doubles as the processing source.
   const [capture, setCapture] = useState<string | null>(scanDraft?.captureDataUrl ?? null);
+  // Multi-page scans (2026-11-24): pages 2..n as data URLs, in capture
+  // order. Page 1 stays in `capture`/`file` so the single-page flow (and
+  // the receipt OCR path) is untouched.
+  const [extraPages, setExtraPages] = useState<string[]>(scanDraft?.pagesDataUrls ?? []);
+  const pageCount = (capture || file ? 1 : 0) + extraPages.length;
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [vendor, setVendor] = useState(scanDraft?.vendor ?? "");
@@ -30813,10 +30903,13 @@ function ScannerTool({
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState(false);
   const scanInput = useRef<HTMLInputElement>(null);
+  const addPageInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
-  const onCapture = async (f: File | null) => {
-    setFile(f);
-    if (!f) { setCapture(null); return; }
+  const [relinkingId, setRelinkingId] = useState<number | null>(null);
+  const [relinkError, setRelinkError] = useState("");
+  // Downscale a captured photo to the data URL the form keeps (the File
+  // object itself does not survive an Android activity recreation).
+  const captureToDataUrl = async (f: File): Promise<string | null> => {
     try {
       const bitmap = await createImageBitmap(f);
       const max = 1200;
@@ -30825,16 +30918,67 @@ function ScannerTool({
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const c = canvas.getContext("2d");
-      if (c) {
-        c.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        setCapture(canvas.toDataURL("image/jpeg", 0.85));
-        // A photo with no title kept "Create" disabled with no explanation —
-        // default the title so the tap does something immediately.
-        setTitle((t) => (t.trim() ? t : `Scan ${today}`));
-      }
+      if (!c) { bitmap.close(); return null; }
+      c.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL("image/jpeg", 0.85);
       bitmap.close();
+      return url;
     } catch {
-      /* keep the file; no thumbnail this time */
+      return null;
+    }
+  };
+  const defaultTitle = () =>
+    setTitle((t) => (t.trim() ? t : `Scan ${today}`));
+  const onCapture = async (f: File | null) => {
+    setFile(f);
+    // A fresh first page replaces the whole page set.
+    setExtraPages([]);
+    if (!f) { setCapture(null); return; }
+    const url = await captureToDataUrl(f);
+    if (url) {
+      setCapture(url);
+      // A photo with no title kept "Create" disabled with no explanation —
+      // default the title so the tap does something immediately.
+      defaultTitle();
+    }
+    /* on failure keep the file; no thumbnail this time */
+  };
+  // Multi-page: append one more page to the set (order = capture order).
+  const onAddPage = async (f: File | null) => {
+    if (!f) return;
+    const url = await captureToDataUrl(f);
+    if (url) {
+      setExtraPages((pages) => [...pages, url]);
+      defaultTitle();
+    }
+  };
+  const removePage = (index: number) => {
+    if (index === 0) {
+      // Removing page 1 promotes the next page into its place; the File
+      // belonged to the removed page, so processing falls back to the
+      // promoted page's data URL.
+      setFile(null);
+      setCapture(extraPages[0] ?? null);
+      setExtraPages((pages) => pages.slice(1));
+    } else {
+      setExtraPages((pages) => pages.filter((_, i) => i !== index - 1));
+    }
+  };
+  // Link / re-link / unlink a saved scan from the list below the form.
+  const relinkScan = async (scanId: number, nextJobId: number | null) => {
+    setRelinkingId(scanId);
+    setRelinkError("");
+    try {
+      await api.setScannedDocumentJob({ scanId, jobId: nextJobId });
+      refresh();
+    } catch {
+      setRelinkError(
+        lang === "es"
+          ? "No se pudo cambiar el trabajo del escaneo."
+          : "Could not change the scan's job.",
+      );
+    } finally {
+      setRelinkingId(null);
     }
   };
   // Scan receipt: same capture pipeline as the photo button, then OCR
@@ -30868,69 +31012,62 @@ function ScannerTool({
   useEffect(() => {
     flushScanDraftRef.current = () => {
       try {
-        const hasContent = title.trim() || vendor.trim() || amount.trim() || note.trim() || capture;
-        if (hasContent) window.sessionStorage.setItem(SCAN_DRAFT_KEY, JSON.stringify({ title, kind, vendor, amount, expenseDate, category, note, jobId, captureDataUrl: capture }));
-        else window.sessionStorage.removeItem(SCAN_DRAFT_KEY);
+        const hasContent = title.trim() || vendor.trim() || amount.trim() || note.trim() || capture || extraPages.length > 0;
+        if (!hasContent) { window.sessionStorage.removeItem(SCAN_DRAFT_KEY); return; }
+        const base = { title, kind, vendor, amount, expenseDate, category, note, jobId, captureDataUrl: capture };
+        try {
+          window.sessionStorage.setItem(SCAN_DRAFT_KEY, JSON.stringify({ ...base, pagesDataUrls: extraPages }));
+        } catch {
+          // A multi-page draft can exceed the sessionStorage quota; keep
+          // page 1 + the form rather than losing the whole draft.
+          window.sessionStorage.setItem(SCAN_DRAFT_KEY, JSON.stringify(base));
+        }
       } catch { /* storage full/unavailable */ }
     };
   });
-  useEffect(() => { flushScanDraftRef.current(); }, [title, kind, vendor, amount, expenseDate, category, note, jobId, capture]);
+  useEffect(() => { flushScanDraftRef.current(); }, [title, kind, vendor, amount, expenseDate, category, note, jobId, capture, extraPages]);
   useEffect(() => pushHardwareBackInterceptor(() => { flushScanDraftRef.current(); return false; }), []);
   const process = async () => {
-    // Prefer the original file; fall back to the persisted capture (e.g.
-    // after the camera intent recreated the activity and dropped the File).
-    const source: Blob | null = file ?? (capture ? await (await fetch(capture)).blob() : null);
-    if (!source || !title || (kind === "receipt" && (!expenseDate || !amount)))
+    // Prefer the original file for page 1; fall back to the persisted
+    // capture (e.g. after the camera intent recreated the activity and
+    // dropped the File). Pages 2..n only ever exist as data URLs.
+    const firstSource: Blob | null = file ?? (capture ? await (await fetch(capture)).blob() : null);
+    if (!firstSource || !title || (kind === "receipt" && (!expenseDate || !amount)))
       return;
     setBusy(true);
     setError("");
     try {
-      const bitmap = await createImageBitmap(source);
-      const max = 1800;
-      const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(bitmap.width * scale);
-      canvas.height = Math.round(bitmap.height * scale);
-      const c = canvas.getContext("2d");
-      if (!c) return;
-      c.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const img = c.getImageData(0, 0, canvas.width, canvas.height);
-      for (let i = 0; i < img.data.length; i += 4) {
-        const r = img.data[i] ?? 0,
-          g = img.data[i + 1] ?? 0,
-          b = img.data[i + 2] ?? 0;
-        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        const clean =
-          gray > 225
-            ? 255
-            : gray < 45
-              ? 18
-              : Math.max(0, Math.min(255, (gray - 128) * 1.35 + 128));
-        img.data[i] = clean;
-        img.data[i + 1] = clean;
-        img.data[i + 2] = clean;
+      const sources: Blob[] = [firstSource];
+      for (const page of extraPages) sources.push(await (await fetch(page)).blob());
+      const cleaned: Array<{ jpeg: string; width: number; height: number }> = [];
+      for (const source of sources) {
+        const page = await cleanScanPage(source);
+        if (!page) return;
+        cleaned.push(page);
       }
-      c.putImageData(img, 0, 0);
-      const jpeg = canvas.toDataURL("image/jpeg", 0.92);
-      setPreview(jpeg);
+      const first = cleaned[0]!;
+      setPreview(first.jpeg);
       const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? "landscape" : "portrait",
+        orientation: first.width > first.height ? "landscape" : "portrait",
         unit: "pt",
         format: "letter",
       });
-      const pw = pdf.internal.pageSize.getWidth(),
-        ph = pdf.internal.pageSize.getHeight(),
-        ratio = Math.min((pw - 36) / canvas.width, (ph - 36) / canvas.height);
-      pdf.addImage(
-        jpeg,
-        "JPEG",
-        (pw - canvas.width * ratio) / 2,
-        (ph - canvas.height * ratio) / 2,
-        canvas.width * ratio,
-        canvas.height * ratio,
-        undefined,
-        "FAST",
-      );
+      cleaned.forEach((page, index) => {
+        if (index > 0) pdf.addPage("letter", page.width > page.height ? "landscape" : "portrait");
+        const pw = pdf.internal.pageSize.getWidth(),
+          ph = pdf.internal.pageSize.getHeight(),
+          ratio = Math.min((pw - 36) / page.width, (ph - 36) / page.height);
+        pdf.addImage(
+          page.jpeg,
+          "JPEG",
+          (pw - page.width * ratio) / 2,
+          (ph - page.height * ratio) / 2,
+          page.width * ratio,
+          page.height * ratio,
+          undefined,
+          "FAST",
+        );
+      });
       const blob = pdf.output("blob");
       const b64 = (await blobDataUrl(blob)).split(",")[1] ?? "";
       await api.saveScannedDocument({
@@ -30949,6 +31086,7 @@ function ScannerTool({
       refresh();
       setFile(null);
       setCapture(null);
+      setExtraPages([]);
       try { window.sessionStorage.removeItem(SCAN_DRAFT_KEY); } catch { /* noop */ }
       setTitle("");
       setVendor("");
@@ -30969,11 +31107,23 @@ function ScannerTool({
   };
   return (
     <section className="toolkit-section">
-      <h2>{lang === "es" ? "Escáner de recibos" : "Receipt scanner"}</h2>
+      <h2>
+        {variant === "standalone"
+          ? lang === "es"
+            ? "Escáner de documentos"
+            : "Document scanner"
+          : lang === "es"
+            ? "Escáner de recibos"
+            : "Receipt scanner"}
+      </h2>
       <p className="privacy-note">
-        {lang === "es"
-          ? "El escáner mejora el contraste y guarda un PDF limpio. Los recibos también crean un gasto del negocio enlazado."
-          : "The scanner boosts contrast and saves a clean PDF. Receipt scans also create a linked business expense."}
+        {variant === "standalone"
+          ? lang === "es"
+            ? "Escanea contratos, permisos y páginas firmadas en un solo PDF limpio. Agrega las páginas que necesites y enlaza el escaneo a un trabajo, o déjalo en General."
+            : "Scan contracts, permits, and signed pages into one clean PDF. Add as many pages as you need, and link the scan to a job — or leave it in General."
+          : lang === "es"
+            ? "El escáner mejora el contraste y guarda un PDF limpio. Los recibos también crean un gasto del negocio enlazado."
+            : "The scanner boosts contrast and saves a clean PDF. Receipt scans also create a linked business expense."}
       </p>
       <form
         className="compact-form"
@@ -31128,10 +31278,54 @@ function ScannerTool({
               alt={lang === "es" ? "Foto capturada" : "Captured photo"}
             />
             <p className="scan-hint">
-              {lang === "es"
-                ? "Foto lista. Revisa el título y crea el PDF."
-                : "Photo ready. Check the title, then create the PDF."}
+              {pageCount > 1
+                ? lang === "es"
+                  ? `${pageCount} páginas listas. Se guardarán como un solo PDF.`
+                  : `${pageCount} pages ready. They'll save as one PDF.`
+                : lang === "es"
+                  ? "Foto lista. Revisa el título y crea el PDF."
+                  : "Photo ready. Check the title, then create the PDF."}
             </p>
+            <div className="scan-pages">
+              {[capture, ...extraPages].map((page, index) => (
+                <figure key={index} className="scan-page-thumb">
+                  <img
+                    src={page}
+                    alt={lang === "es" ? `Página ${index + 1}` : `Page ${index + 1}`}
+                  />
+                  <figcaption>{index + 1}</figcaption>
+                  <button
+                    type="button"
+                    aria-label={
+                      lang === "es"
+                        ? `Quitar página ${index + 1}`
+                        : `Remove page ${index + 1}`
+                    }
+                    onClick={() => removePage(index)}
+                  >
+                    ×
+                  </button>
+                </figure>
+              ))}
+              <button
+                type="button"
+                className="scan-page-add"
+                onClick={() => addPageInput.current?.click()}
+              >
+                + {lang === "es" ? "Agregar página" : "Add page"}
+              </button>
+            </div>
+            <input
+              ref={addPageInput}
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={(e) => {
+                void onAddPage(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
           </>
         )}
         {error && <p className="status error">{error}</p>}
@@ -31148,9 +31342,13 @@ function ScannerTool({
             ? lang === "es"
               ? "Limpiando…"
               : "Cleaning…"
-            : lang === "es"
-              ? "Crear PDF limpio"
-              : "Create clean PDF"}
+            : pageCount > 1
+              ? lang === "es"
+                ? `Crear PDF limpio (${pageCount} páginas)`
+                : `Create clean PDF (${pageCount} pages)`
+              : lang === "es"
+                ? "Crear PDF limpio"
+                : "Create clean PDF"}
         </button>
       </form>
       {preview && (
@@ -31161,16 +31359,42 @@ function ScannerTool({
         />
       )}
       <div className="tool-records">
+        {relinkError && <p className="status error">{relinkError}</p>}
         {data.scans.map((s) => (
           <article key={s.id}>
             <div>
               <strong>{s.title}</strong>
               <span>
                 {s.kind} · {formatDate(s.createdAt.slice(0, 10), lang)}
+                {" · "}
+                {s.jobId
+                  ? (data.jobs.find((j) => j.id === s.jobId)?.label ??
+                    (lang === "es" ? "Trabajo" : "Job"))
+                  : "General"}
                 {s.expenseId
                   ? ` · ${lang === "es" ? "Gasto enlazado" : "Expense linked"}`
                   : ""}
               </span>
+              <label className="scan-relink">
+                <span>{lang === "es" ? "Trabajo" : "Job"}</span>
+                <select
+                  value={s.jobId ?? ""}
+                  disabled={relinkingId === s.id}
+                  onChange={(e) =>
+                    void relinkScan(
+                      s.id,
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                >
+                  <option value="">General</option>
+                  {data.jobs.map((j) => (
+                    <option value={j.id} key={j.id}>
+                      {j.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             <a
               className="small-button"
