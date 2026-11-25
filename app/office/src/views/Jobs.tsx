@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { Job, JobPhoto, PhotoStage, ProductionStage } from "../types";
 import { PHOTO_STAGE_LABELS, PRODUCTION_STAGES, PRODUCTION_STAGE_LABELS } from "../types";
-import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, formatMoney, parseMoney } from "../utils";
+import { cleanError, downloadUrl, fileToBase64, formatDate, formatDateTime, formatMoney, parseMoney, todayIso } from "../utils";
 import type { DocSelection } from "./Documents";
 import { PortalLinkPanel } from "../components/LinkPanel";
 import { WorkSummaryPanel } from "../components/WorkSummaryPanel";
@@ -63,6 +63,7 @@ export function JobsView({
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [mode, setMode] = useState<"list" | "board">("list");
+  const [creating, setCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "completed">("all");
   const searchTimer = useRef<number | undefined>(undefined);
 
@@ -138,6 +139,7 @@ export function JobsView({
           <p className="view-sub">{`${jobs.length} jobs · ${jobs.filter((j) => !j.completedAt).length} active.`}</p>
         </div>
         <div className="head-controls">
+          <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>+ New job</button>
           <div className="segmented" role="group" aria-label="Jobs view mode">
             <button type="button" className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>List</button>
             <button type="button" className={mode === "board" ? "active" : ""} onClick={() => setMode("board")}>Production Board</button>
@@ -166,6 +168,13 @@ export function JobsView({
           ) : null}
         </div>
       </div>
+
+      {creating ? (
+        <NewJobModal
+          onClose={() => setCreating(false)}
+          onCreated={(id) => { setCreating(false); setMode("list"); onSelectJob(id); }}
+        />
+      ) : null}
 
       {mode === "board" ? (
         <ProductionBoard onOpenJob={(id) => { onSelectJob(id); setMode("list"); }} />
@@ -717,6 +726,142 @@ function PhotoLightbox({
           <span className="appt-actions-spacer" />
           <button type="button" className="btn btn-primary btn-small" onClick={() => downloadUrl(photo.url, photo.filename || "crewkat-photo")}>
             Download
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ new job (parity item 3) ------------------------------ */
+
+/**
+ * Job creation from the desktop — the same createJob action the phone's
+ * New Job screen uses (it links or creates the client record server-side,
+ * exactly like the phone). Before this, jobs could only enter Office via
+ * lead conversion or the phone.
+ */
+function NewJobModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const queryClient = useQueryClient();
+  const clientsQuery = useQuery({ queryKey: ["clients", ""], queryFn: () => api.listClients({ search: "" }) });
+  const clients = clientsQuery.data?.clients ?? [];
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [jobAddress, setJobAddress] = useState("");
+  const [jobType, setJobType] = useState("");
+  const [jobDate, setJobDate] = useState(todayIso());
+  const [dueDate, setDueDate] = useState("");
+  const [amountDue, setAmountDue] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [error, setError] = useState("");
+
+  const pickClient = (id: number | null) => {
+    setClientId(id);
+    const c = clients.find((x) => x.id === id);
+    if (c) {
+      setClientName(c.name);
+      setClientPhone(c.phone);
+      setClientEmail(c.email);
+      if (!jobAddress) setJobAddress(c.address);
+    }
+  };
+
+  const createMutation = useMutation({
+    mutationFn: () => api.createJob({
+      clientId,
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      clientEmail: clientEmail.trim(),
+      jobAddress: jobAddress.trim(),
+      jobType: jobType.trim(),
+      notes: notes.trim(),
+      jobDate,
+      appointmentAt: "",
+      amountDue: amountDue.trim(),
+      dueDate,
+      depositAmount: depositAmount.trim(),
+      paymentNotes: paymentNotes.trim(),
+    }),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+      void queryClient.invalidateQueries({ queryKey: ["production-board"] });
+      onCreated(res.id);
+    },
+    onError: (e) => setError(cleanError(e)),
+  });
+
+  const canSubmit = clientName.trim() !== "" && jobAddress.trim() !== "" && jobType.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(jobDate);
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="New job" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>New job</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="form-grid">
+          <label className="field span2">
+            <span>Client (existing — or type a new name below)</span>
+            <select value={clientId ?? ""} onChange={(e) => pickClient(e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— New client —</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Client name *</span>
+            <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name" />
+          </label>
+          <label className="field">
+            <span>Job type *</span>
+            <input value={jobType} onChange={(e) => setJobType(e.target.value)} placeholder="Kitchen remodel" />
+          </label>
+          <label className="field">
+            <span>Phone</span>
+            <input type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Email</span>
+            <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+          </label>
+          <label className="field span2">
+            <span>Job address *</span>
+            <input value={jobAddress} onChange={(e) => setJobAddress(e.target.value)} placeholder="Street, city, ZIP" />
+          </label>
+          <label className="field">
+            <span>Job date *</span>
+            <input type="date" value={jobDate} onChange={(e) => setJobDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Due date</span>
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Amount due</span>
+            <input inputMode="decimal" value={amountDue} onChange={(e) => setAmountDue(e.target.value)} placeholder="0.00" />
+          </label>
+          <label className="field">
+            <span>Deposit</span>
+            <input inputMode="decimal" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="0.00" />
+          </label>
+          <label className="field span2">
+            <span>Notes</span>
+            <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          <label className="field span2">
+            <span>Payment notes</span>
+            <input value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} />
+          </label>
+        </div>
+        {error ? <p className="inline-error">{error}</p> : null}
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" disabled={!canSubmit || createMutation.isPending} onClick={() => createMutation.mutate()}>
+            {createMutation.isPending ? "Creating…" : "Create job"}
           </button>
         </div>
       </div>
