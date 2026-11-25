@@ -8,6 +8,7 @@ import type { DocSelection } from "./Documents";
 import { PortalLinkPanel } from "../components/LinkPanel";
 import { WorkSummaryPanel } from "../components/WorkSummaryPanel";
 import { JobLoadsPanel } from "../components/JobLoadsPanel";
+import { DailyLogsPanel, ProgressPanel, PunchListPanel, ScansPanel } from "../components/JobOpsPanels";
 import { ProductionBoard } from "./ProductionBoard";
 import { TimelineFeed } from "./Timeline";
 
@@ -489,16 +490,22 @@ function JobDetail({ jobId, onClose, onOpenDocument, canDelete }: { jobId: numbe
             <TimelineFeed events={timelineQuery.data?.events ?? []} isLoading={timelineQuery.isLoading} />
           </section>
 
+          <PunchListPanel jobId={job.id} canDelete={canDelete} />
+
+          <DailyLogsPanel jobId={job.id} />
+
+          <ProgressPanel jobId={job.id} canDelete={canDelete} />
+
+          <ScansPanel jobId={job.id} />
+
           <section className="drawer-section">
             <h3>Linked records</h3>
 
             <div className="mini-stats">
               <div><span>Documents</span><strong>{(data?.documents.length ?? 0) + jobQuotes.length + jobInvoices.length}</strong></div>
               <div><span>Files</span><strong>{data?.jobFiles.length ?? 0}</strong></div>
-              <div><span>Punch items</span><strong>{data?.punchItems.length ?? 0}</strong></div>
               <div><span>Receipts</span><strong>{data?.receipts.length ?? 0}</strong></div>
               <div><span>Time entries</span><strong>{data?.timeEntries.length ?? 0}</strong></div>
-              <div><span>Progress updates</span><strong>{data?.progressUpdates.length ?? 0}</strong></div>
             </div>
           </section>
         </>
