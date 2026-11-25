@@ -308,7 +308,7 @@ export interface OfficeSearchResults {
   jobs: { id: number; clientName: string; jobAddress: string; jobType: string }[];
 }
 
-export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "promotions" | "reputation" | "money" | "settings" | "team" | "admin" | "safety";
+export type ViewKey = "dashboard" | "pipeline" | "followups" | "clients" | "jobs" | "documents" | "schedule" | "marketplace" | "promotions" | "reputation" | "money" | "settings" | "team" | "admin" | "safety" | "expenses" | "payroll" | "reports" | "templates";
 
 /* ---------- Safety (0096): toolbox talks + member credentials ----------
    Mirrors the server payloads in server/src/actions.ts (safetyTalkSchema /

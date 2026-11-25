@@ -34,6 +34,10 @@ import { PipelineView } from "./views/Pipeline";
 import { ScheduleView } from "./views/Schedule";
 import { SettingsView } from "./views/Settings";
 import { TeamView } from "./views/Team";
+import { ExpensesView } from "./views/Expenses";
+import { PayrollView } from "./views/Payroll";
+import { ReportsView } from "./views/Reports";
+import { TemplatesView } from "./views/Templates";
 import crewkatC from "./assets/crewkat-c.png";
 import mascotIpad from "./assets/mascot-ipad.webp";
 
@@ -58,6 +62,9 @@ const NAV: NavNode[] = [
       { id: "promotions", key: "promotions", label: "Promotions" },
       { id: "reputation", key: "reputation", label: "Reputation" },
       { id: "money", key: "money", label: "Money" },
+      { id: "expenses", key: "expenses", label: "Expenses" },
+      { id: "payroll", key: "payroll", label: "Payroll" },
+      { id: "reports", key: "reports", label: "Reports" },
     ],
   },
   { id: "clients", key: "clients", label: "Clients", icon: "👥" },
@@ -68,6 +75,7 @@ const NAV: NavNode[] = [
       { id: "estimates", key: "documents", label: "Estimates", docKind: "quote" },
       { id: "invoices", key: "documents", label: "Invoices", docKind: "invoice" },
       { id: "documents", key: "documents", label: "All documents", docKind: "" },
+      { id: "templates", key: "templates", label: "Templates" },
     ],
   },
   { id: "schedule", key: "schedule", label: "Schedule", icon: "📅" },
@@ -375,6 +383,10 @@ export function App() {
           {view === "safety" && user.teamRole !== "field" ? <SafetyView canManage={user.teamRole === "admin"} /> : null}
           {view === "reputation" ? <ReputationView canDelete={user.teamRole === "admin"} /> : null}
           {view === "money" ? <MoneyView onOpenDocument={openDocument} /> : null}
+          {view === "expenses" ? <ExpensesView canDelete={user.teamRole === "admin"} canExport={user.access.seeMoney} /> : null}
+          {view === "payroll" ? <PayrollView /> : null}
+          {view === "reports" ? <ReportsView /> : null}
+          {view === "templates" ? <TemplatesView canDelete={user.teamRole === "admin"} onOpenDocument={openDocument} /> : null}
           {view === "settings" ? <SettingsView canManage={user.teamRole === "admin"} userName={user.name} seeMoney={user.access.seeMoney} /> : null}
           {view === "team" && user.teamRole === "admin" ? <TeamView /> : null}
           {view === "admin" && canAdmin ? (

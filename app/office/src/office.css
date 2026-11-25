@@ -1024,3 +1024,17 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .photo-pick-item.picked { border-color: var(--accent, #f2762e); }
 .scan-relink { margin-top: 4px; max-width: 320px; }
 .link-btn.danger { color: #b3261e; }
+
+/* Parity views (items 1/7/9/12): expenses, payroll, templates, reports. */
+.table-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.table-tools .search-box { flex: 1; min-width: 180px; }
+.row-actions { white-space: nowrap; text-align: right; }
+.row-actions .link-btn + .link-btn { margin-left: 8px; }
+.panel-title { font-size: 15px; margin: 0 0 10px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.template-lines { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.template-lines li { display: flex; justify-content: space-between; gap: 10px; }
+.rate-input { width: 90px; text-align: right; }
+.totals-row td { border-top: 2px solid var(--border, #d8dde3); }
+.field.inline { display: inline-flex; align-items: center; gap: 6px; }
+.field.inline span { margin: 0; }
