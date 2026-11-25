@@ -217,7 +217,7 @@ export const ALL_ROLE_ACTIONS: ReadonlySet<string> = new Set([
   "checkSmsCap", "clockInCrew", "clockOutCrew",
   "completeEquipmentMaintenance", "completeJob", "convertQuoteToInvoice",
   "convertQuoteToJob", "craneRunGetChampion", "craneRunGetLeaderboard",
-  "craneRunSetOptIn", "craneRunSubmitScore", "createDocumentLink",
+  "craneRunSetOptIn", "craneRunSubmitScore", "createDocumentLink", "emailDocumentLink",
   "createJob", "createMarketplaceBooking", "createPhotoPair",
   "deleteMyAccount", "dismissOnboardingChecklist", "duplicateInvoice",
   "duplicateQuote", "getAutomationCenter", "getClient", "getClientTimeline",
@@ -396,7 +396,7 @@ export function effectiveAccess(role: ProductRole, overrides: AccessOverrides): 
 // version to a client. (revoke* stay available — pulling a link back is
 // a safety valve, not a send.)
 export const SEND_DOCUMENT_ACTIONS: ReadonlySet<string> = new Set([
-  "createDocumentLink", "createPortalLink", "rotatePortalLink", "sendQuoteVersion",
+  "createDocumentLink", "createPortalLink", "rotatePortalLink", "sendQuoteVersion", "emailDocumentLink",
 ]);
 
 // Actions a member may only call with recordPayments ON.

@@ -7352,6 +7352,55 @@ if(quote){const state=parseOptionSelection(quote.optionSelectionJson);const next
   // formal document). Portal-token scoped to the token's own job.
   getPortalChangeOrderPdf: defineAction({request:z.object({token:z.string().min(8).max(200),documentId:z.number().int().positive(),lang:z.enum(["en","es"]).default("en")}),response:z.object({pdfBase64:z.string(),filename:z.string()}),async handler(ctx,args):Promise<{pdfBase64:string;filename:string}>{const db=ctx.db<typeof schema>();const access=await requirePortalAccess(ctx,args.token,{logView:false});const document=(await db.select().from(schema.documents).where(eq(schema.documents.id,args.documentId)).limit(1))[0];if(!document||document.jobId!==access.jobId||document.kind!=="change_order")throw new Error("Change order not found.");const blobKey=document.clientSignedPdfBlobKey??document.originalBlobKey??null;if(blobKey){const bytes=await ctx.blobs.get(blobKey);if(bytes&&bytes.length>0){const safeTitle=document.title.replace(/[^A-Za-z0-9._-]+/g,"_").replace(/^_+|_+$/g,"")||"document";return{pdfBase64:Buffer.from(bytes).toString("base64"),filename:document.clientSignedAt?`${safeTitle}-signed.pdf`:(document.originalFilename||`${safeTitle}.pdf`)};}}const built=await buildChangeOrderPdfForDocument(ctx,document.id,args.lang);return{pdfBase64:Buffer.from(built.bytes).toString("base64"),filename:built.filename};} }),
   createDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ token: z.string(), shortCode: z.string(), hint: z.string(), expiresAt: z.string() }), async handler(ctx, args) { const db=ctx.db<typeof schema>(); if(!await documentLinkTargetExists(ctx,args.kind,args.id)) throw new Error("Document not found."); const token=`${crypto.randomUUID().replace(/-/g,"")}${crypto.randomUUID().replace(/-/g,"")}`; const hash=await hashLinkToken(token); const shortCode=await uniqueDocumentShortCode(ctx); const now=new Date(); const expiresAt=new Date(now.getTime()+30*86400000); /* Build 0.5 (item 2): links are no longer revoked on re-share — previously shared links stay valid until explicitly revoked, so a link sent to a client can't silently die. */ await db.insert(schema.documentLinks).values({documentKind:args.kind,documentId:args.id,tokenHash:hash,tokenHint:token.slice(-6),shortCode,expiresAt,createdAt:now}); ctx.invalidateQueries(); return{token,shortCode,hint:token.slice(-6),expiresAt:expiresAt.toISOString()}; } }),
+  // Office parity item 10 (2026-11-24): direct email send for a
+  // document. Office could only create/copy the client link; the phone
+  // hands documents off through share targets. This mints a fresh
+  // document link (same row createDocumentLink writes — previously
+  // shared links stay valid) and emails it to the client through the
+  // attachment-capable mailer, from the company's own identity.
+  emailDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive(), email: z.string().trim().email().max(200), message: z.string().trim().max(1000).default("") }), response: z.object({ ok: z.literal(true), shortCode: z.string() }), async handler(ctx, args): Promise<{ ok: true; shortCode: string }> {
+    const db = ctx.db<typeof schema>();
+    if (!await documentLinkTargetExists(ctx, args.kind, args.id)) throw new Error("Document not found.");
+    let label = "Document";
+    let clientName = "";
+    if (args.kind === "invoice") {
+      const row = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, args.id)).limit(1))[0];
+      if (row) { label = `Invoice ${row.invoiceNumber || `INV-${String(row.id).padStart(4, "0")}`}`; clientName = row.clientName; }
+    } else if (args.kind === "quote") {
+      const row = (await db.select().from(schema.quotes).where(eq(schema.quotes.id, args.id)).limit(1))[0];
+      if (row) { label = row.jobType ? `Estimate — ${row.jobType}` : `Estimate #${row.id}`; clientName = row.clientName; }
+    } else if (args.kind === "contract" || args.kind === "change_order") {
+      const row = (await db.select().from(schema.documents).where(eq(schema.documents.id, args.id)).limit(1))[0];
+      if (row) label = row.title || (args.kind === "contract" ? "Contract" : "Change order");
+    } else {
+      label = "Work summary";
+    }
+    const token = `${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
+    const hash = await hashLinkToken(token);
+    const shortCode = await uniqueDocumentShortCode(ctx);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 86400000);
+    await db.insert(schema.documentLinks).values({ documentKind: args.kind, documentId: args.id, tokenHash: hash, tokenHint: token.slice(-6), shortCode, expiresAt, createdAt: now });
+    const companyId = workspaceIdentity(ctx).workspaceCompanyId;
+    const settings = (await db.select().from(schema.settings).where(eq(schema.settings.companyId, companyId)).limit(1))[0]
+      ?? (await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1))[0];
+    const companyName = settings?.companyName ?? "";
+    const url = `${appPublicUrl()}/d/${shortCode}`;
+    const needsSign = args.kind === "contract" || args.kind === "change_order";
+    const result = await ctx.executePrivileged(privileged.sendBackupEmail, {
+      to: args.email,
+      subject: `${label}${companyName ? ` from ${companyName}` : ""}`,
+      text: `Hi ${clientName || "there"},\n\n${args.message ? `${args.message}\n\n` : ""}${companyName || "Your contractor"} shared "${label}" with you. Open it here:\n\n${url}\n\nYou can view${needsSign ? " and sign" : ""} the document on that page — no account needed. The link stays valid for 30 days.\n\n— ${companyName || "Crewkat"}`,
+      attachments: [],
+    });
+    if (!result || (result as { delivery?: string }).delivery !== "sent") throw new Error("We couldn't send the email. Please try again.");
+    if (args.kind === "quote") {
+      const row = (await db.select({ sentAt: schema.quotes.sentAt }).from(schema.quotes).where(eq(schema.quotes.id, args.id)).limit(1))[0];
+      if (row && !row.sentAt) await db.update(schema.quotes).set({ sentAt: now.toISOString().slice(0, 10), updatedAt: now }).where(eq(schema.quotes.id, args.id));
+    }
+    ctx.invalidateQueries();
+    return { ok: true as const, shortCode };
+  } }),
   getDocumentLinkInfo: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ link: z.object({ hint: z.string(), shortCode: z.string().nullable(), expiresAt: z.string(), expired: z.boolean(), viewCount: z.number(), firstViewedAt: z.string().nullable(), lastViewedAt: z.string().nullable(), createdAt: z.string() }).nullable() }), async handler(ctx, args) { const link=await getActiveDocumentLinkRow(ctx,args.kind,args.id); if(!link) return{link:null}; return{link:{hint:link.tokenHint,shortCode:link.shortCode,expiresAt:link.expiresAt.toISOString(),expired:link.expiresAt.getTime()<Date.now(),viewCount:link.viewCount,firstViewedAt:link.firstViewedAt?.toISOString()??null,lastViewedAt:link.lastViewedAt?.toISOString()??null,createdAt:link.createdAt.toISOString()}}; } }),
   revokeDocumentLink: defineAction({ request: z.object({ kind: documentKindSchema, id: z.number().int().positive() }), response: z.object({ ok: z.literal(true) }), async handler(ctx,args): Promise<{ok:true}> { await ctx.db<typeof schema>().update(schema.documentLinks).set({revokedAt:new Date()}).where(and(eq(schema.documentLinks.documentKind,args.kind),eq(schema.documentLinks.documentId,args.id),isNull(schema.documentLinks.revokedAt))); ctx.invalidateQueries(); return{ok:true}; } }),
   // Work summaries (0094, SimplySub steals Item 1): generate a frozen,

@@ -465,7 +465,7 @@ function DocDetail({
               {pdfBusy === "download" ? "Preparing…" : "Download PDF"}
             </button>
           </div>
-          <DocumentLinkPanel kind="quote" id={quote.id} />
+          <DocumentLinkPanel kind="quote" id={quote.id} clientEmail={quote.clientEmail} />
         </>
       ) : null}
 
@@ -483,7 +483,7 @@ function DocDetail({
               {pdfBusy === "download" ? "Preparing…" : "Download PDF"}
             </button>
           </div>
-          <DocumentLinkPanel kind="invoice" id={invoice.id} />
+          <DocumentLinkPanel kind="invoice" id={invoice.id} clientEmail={invoice.clientEmail} />
           {invoice.jobId ? <PortalLinkPanel jobId={invoice.jobId} /> : <InvoiceJobLinker invoice={invoice} jobs={jobs} onError={setActionError} />}
         </>
       ) : null}
@@ -533,7 +533,7 @@ function DocDetail({
               {signable.clientSignedAt ? "Re-sign as contractor" : "Sign as contractor"}
             </button>
           </div>
-          <DocumentLinkPanel kind={signable.kind} id={signable.id} clientSignedAt={signable.clientSignedAt} />
+          <DocumentLinkPanel kind={signable.kind} id={signable.id} clientSignedAt={signable.clientSignedAt} clientEmail={signable.jobId ? (jobById.get(signable.jobId)?.clientEmail ?? "") : ""} />
           <PortalLinkPanel jobId={signable.jobId} />
         </>
       ) : null}

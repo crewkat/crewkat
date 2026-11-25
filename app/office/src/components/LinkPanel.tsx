@@ -16,15 +16,20 @@ export function DocumentLinkPanel({
   kind,
   id,
   clientSignedAt,
+  clientEmail,
 }: {
   kind: DocKind;
   id: number;
   clientSignedAt?: string | null;
+  /** Prefill for the direct email send (parity item 10). */
+  clientEmail?: string;
 }) {
   const queryClient = useQueryClient();
   const [freshUrl, setFreshUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [emailTo, setEmailTo] = useState(clientEmail ?? "");
+  const [emailNote, setEmailNote] = useState("");
 
   const linkQuery = useQuery({
     queryKey: ["doc-link", kind, id],
@@ -47,6 +52,19 @@ export function DocumentLinkPanel({
   const revokeMutation = useMutation({
     mutationFn: () => api.revokeDocumentLink({ kind, id }),
     onSuccess: () => { setFreshUrl(""); invalidate(); },
+    onError: (e) => setError(cleanError(e)),
+  });
+  // Direct email send (parity item 10): emailDocumentLink mints a
+  // fresh link server-side and emails it to the client — Office is no
+  // longer link-copy-only.
+  const emailMutation = useMutation({
+    mutationFn: () => api.emailDocumentLink({ kind, id, email: emailTo.trim(), message: "" }),
+    onSuccess: (res) => {
+      setFreshUrl(`${window.location.origin}/d/${res.shortCode}`);
+      setEmailNote(`Emailed to ${emailTo.trim()} — the link is valid for 30 days.`);
+      setError("");
+      invalidate();
+    },
     onError: (e) => setError(cleanError(e)),
   });
 
@@ -107,6 +125,24 @@ export function DocumentLinkPanel({
         )}
       </div>
       <p className="feed-meta">The client opens this page to view{kind === "contract" || kind === "change_order" || kind === "quote" ? " and sign" : ""} the document. Previously shared links stay valid until revoked or expired.</p>
+      <div className="link-actions email-send-row">
+        <input
+          type="email"
+          value={emailTo}
+          onChange={(e) => setEmailTo(e.target.value)}
+          placeholder="Client email"
+          aria-label="Email the document to"
+        />
+        <button
+          type="button"
+          className="btn btn-primary btn-small"
+          disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTo.trim()) || emailMutation.isPending}
+          onClick={() => emailMutation.mutate()}
+        >
+          {emailMutation.isPending ? "Sending…" : "Email to client"}
+        </button>
+      </div>
+      {emailNote ? <p className="feed-meta block">{emailNote}</p> : null}
     </section>
   );
 }

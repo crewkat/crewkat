@@ -1044,3 +1044,4 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .pricebook-bar { margin-bottom: 10px; }
 .pricebook-bar select { min-width: 260px; }
 .recurrence-box { border-top: 1px solid var(--border, #e3e6ea); margin-top: 14px; padding-top: 6px; }
+.email-send-row input[type="email"] { flex: 1; min-width: 200px; }
