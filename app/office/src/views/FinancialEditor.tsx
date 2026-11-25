@@ -5,7 +5,7 @@ import type { DocSettings, Invoice, LineItem, MaterialItem, Quote } from "../typ
 import { cleanError, financialTotals, formatMoney, isoPlusDays, lineTotal, moneyOf, moneyString, todayIso } from "../utils";
 
 export type FinancialEditorTarget =
-  | { mode: "create"; kind: "quote" | "invoice"; presetClientId?: number | null; presetJobId?: number | null }
+  | { mode: "create"; kind: "quote" | "invoice"; presetClientId?: number | null; presetJobId?: number | null; presetItems?: LineItem[] }
   | { mode: "edit"; kind: "quote"; doc: Quote }
   | { mode: "edit"; kind: "invoice"; doc: Invoice };
 
@@ -68,7 +68,9 @@ export function FinancialEditor({
   const [items, setItems] = useState<ItemRow[]>(
     doc && doc.lineItems.length > 0
       ? doc.lineItems.map((i) => ({ ...i, name: i.name ?? "", quantity: i.quantity ?? 1, discount: i.discount ?? "0", unit: i.unit ?? "none" }))
-      : [blankItem()],
+      : target.mode === "create" && target.presetItems && target.presetItems.length > 0
+        ? target.presetItems.map((i) => ({ ...i, name: i.name ?? "", quantity: i.quantity ?? 1, discount: i.discount ?? "0", unit: i.unit ?? "none" }))
+        : [blankItem()],
   );
   const [discountOn, setDiscountOn] = useState<boolean | null>(null);
   const [discountType, setDiscountType] = useState<"percent" | "fixed">(doc?.discountType ?? "percent");
