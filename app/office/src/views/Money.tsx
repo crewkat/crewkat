@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api";
 import { formatDate, formatMoney, parseMoney, todayIso } from "../utils";
 import type { DocSelection } from "./Documents";
+import { RecurringPanel } from "../components/RecurringPanel";
 
 /**
  * Money — the financial dashboard (see MoneyView below). The plan and
@@ -260,6 +261,8 @@ export function MoneyView({ onOpenDocument }: { onOpenDocument: (sel: DocSelecti
                 </ul>
               </section>
             ) : null}
+
+            <RecurringPanel onOpenDocument={onOpenDocument} />
           </div>
         </>
       )}
