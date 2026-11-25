@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import type { DocSettings, Invoice, LineItem, MaterialItem, Quote } from "../types";
-import { cleanError, financialTotals, formatMoney, isoPlusDays, lineTotal, moneyOf, moneyString, todayIso } from "../utils";
+import { cleanError, financialTotals, formatDate, formatMoney, isoPlusDays, lineTotal, moneyOf, moneyString, todayIso } from "../utils";
 
 export type FinancialEditorTarget =
   | { mode: "create"; kind: "quote" | "invoice"; presetClientId?: number | null; presetJobId?: number | null; presetItems?: LineItem[] }
@@ -88,6 +88,19 @@ export function FinancialEditor({
   const [dueDate, setDueDate] = useState(target.mode === "edit" && target.kind === "invoice" ? target.doc.dueDate : "");
   const [status, setStatus] = useState<"draft" | "sent">("draft");
   const [error, setError] = useState("");
+  // Recurring invoices (parity item 11): the create path used to
+  // hardcode "none"; the fields ride saveInvoice like the phone's.
+  const [recurringFrequency, setRecurringFrequency] = useState<"none" | "daily" | "weekly" | "monthly" | "quarterly">(
+    target.mode === "edit" && target.kind === "invoice" ? target.doc.recurringFrequency : "none",
+  );
+  const [nextDueDate, setNextDueDate] = useState(target.mode === "edit" && target.kind === "invoice" ? target.doc.nextDueDate : "");
+  const [recurringEndDate, setRecurringEndDate] = useState(target.mode === "edit" && target.kind === "invoice" ? target.doc.recurringEndDate : "");
+  const [recurrenceNote, setRecurrenceNote] = useState("");
+  // Price book (parity item 2): the same saved prices the phone's
+  // editors pick from (getGrowthToolkit.priceBook).
+  const toolkitQuery = useQuery({ queryKey: ["growth-toolkit"], queryFn: () => api.getGrowthToolkit({}), staleTime: 60_000, retry: false });
+  const priceBook = toolkitQuery.data?.priceBook ?? [];
+  const [priceBookPick, setPriceBookPick] = useState<number | "">("");
 
   // Create-mode toggles seed from the company defaults once settings land.
   const effDiscountOn = discountOn ?? (isEdit ? (doc?.showDiscountLine ?? true) : (settings?.defaultShowDiscountLine ?? true));
@@ -193,9 +206,9 @@ export function FinancialEditor({
         issueDate,
         dueDate,
         status,
-        recurringFrequency: "none",
-        nextDueDate: "",
-        recurringEndDate: "",
+        recurringFrequency,
+        nextDueDate: recurringFrequency === "none" ? "" : (nextDueDate || dueDate || isoPlusDays(30)),
+        recurringEndDate: recurringFrequency === "none" ? "" : recurringEndDate,
         ...design,
       });
       return res.id;
@@ -208,6 +221,32 @@ export function FinancialEditor({
     },
     onError: (e) => setError(cleanError(e)),
   });
+
+  // Edit-mode recurrence rides updateInvoiceRecurrence (the document
+  // editor's own save path deliberately doesn't carry recurrence).
+  const recurrenceMutation = useMutation({
+    mutationFn: () => api.updateInvoiceRecurrence({
+      id: (doc as Invoice).id,
+      recurringFrequency,
+      nextDueDate: recurringFrequency === "none" ? "" : (nextDueDate || dueDate || isoPlusDays(30)),
+      recurringEndDate: recurringFrequency === "none" ? "" : recurringEndDate,
+    }),
+    onSuccess: () => {
+      setRecurrenceNote(recurringFrequency === "none" ? "Recurrence turned off for this invoice." : `Recurring ${recurringFrequency} — next invoice ${formatDate(nextDueDate || dueDate || isoPlusDays(30))}.`);
+      void queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e) => setRecurrenceNote(cleanError(e)),
+  });
+
+  const insertPriceBookItem = () => {
+    const picked = priceBook.find((p) => p.id === priceBookPick);
+    if (!picked) return;
+    setItems((prev) => [
+      ...prev.filter((i) => i.description.trim() || moneyOf(i.amount) > 0 || i.isTitle),
+      { name: picked.name, description: picked.description || picked.name, amount: picked.unitPrice, quantity: 1, discount: "0", unit: "none" as const },
+    ]);
+    setPriceBookPick("");
+  };
 
   const title = isEdit
     ? kind === "quote" ? `Edit estimate #${(doc as Quote).id}` : `Edit invoice ${(doc as Invoice).invoiceNumber}`
@@ -300,7 +339,57 @@ export function FinancialEditor({
           )}
         </div>
 
+        {kind === "invoice" ? (
+          <div className="recurrence-box">
+            <h3 className="editor-section-title">Recurring</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Repeats</span>
+                <select value={recurringFrequency} onChange={(e) => setRecurringFrequency(e.target.value as typeof recurringFrequency)}>
+                  <option value="none">Doesn't repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                </select>
+              </label>
+              {recurringFrequency !== "none" ? (
+                <>
+                  <label className="field">
+                    <span>Next invoice date</span>
+                    <input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>End date (optional)</span>
+                    <input type="date" value={recurringEndDate} onChange={(e) => setRecurringEndDate(e.target.value)} />
+                  </label>
+                </>
+              ) : null}
+            </div>
+            {isEdit ? (
+              <div className="link-actions">
+                <button type="button" className="btn btn-ghost btn-small" disabled={recurrenceMutation.isPending} onClick={() => recurrenceMutation.mutate()}>
+                  {recurrenceMutation.isPending ? "Saving…" : "Save recurrence"}
+                </button>
+                <span className="muted small">Recurrence is saved separately from the invoice's lines and totals.</span>
+              </div>
+            ) : (
+              <p className="muted small">The repeat is set when the invoice is created; manage the series later from Money → Recurring invoices.</p>
+            )}
+            {recurrenceNote ? <p className="feed-meta block">{recurrenceNote}</p> : null}
+          </div>
+        ) : null}
+
         <h3 className="editor-section-title">Line items</h3>
+        {priceBook.length > 0 ? (
+          <div className="inline-form pricebook-bar">
+            <select value={priceBookPick} onChange={(e) => setPriceBookPick(e.target.value ? Number(e.target.value) : "")} aria-label="Price book item">
+              <option value="">Insert from price book…</option>
+              {priceBook.map((p) => <option key={p.id} value={p.id}>{p.name} — {formatMoney(p.unitPrice)}</option>)}
+            </select>
+            <button type="button" className="btn btn-ghost btn-small" disabled={priceBookPick === ""} onClick={insertPriceBookItem}>Insert line</button>
+          </div>
+        ) : null}
         <table className="line-table">
           <thead>
             <tr>

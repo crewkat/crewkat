@@ -1038,3 +1038,9 @@ h1, h2, h3 { margin: 0; color: var(--navy-900); }
 .totals-row td { border-top: 2px solid var(--border, #d8dde3); }
 .field.inline { display: inline-flex; align-items: center; gap: 6px; }
 .field.inline span { margin: 0; }
+
+/* FinancialEditor additions (parity items 2/11): price-book insert bar
+   and the recurring-invoice box. */
+.pricebook-bar { margin-bottom: 10px; }
+.pricebook-bar select { min-width: 260px; }
+.recurrence-box { border-top: 1px solid var(--border, #e3e6ea); margin-top: 14px; padding-top: 6px; }
